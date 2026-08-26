@@ -80,7 +80,7 @@ const (
 	// error).
 	eventTaskStarted = "task-started"
 	// eventTaskPageOpened is ctrl+. or /history actually raising the page
-	// (taskview.go's [app.openTaskSheet]).
+	// (place_tasks.go's [app.showTaskPlace]).
 	eventTaskPageOpened = "task-page-opened"
 	// eventMenuOpened is the command list opening under a typed "/" (app.go's
 	// [app.syncLists]).

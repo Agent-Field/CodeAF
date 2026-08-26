@@ -121,7 +121,7 @@ func historyApp(t *testing.T, count int) *app {
 			"past-"+itoa(i), "task-"+itoa(i), "The "+fadeWord(i)+" errand", time.Duration(i+1)*time.Hour))
 	}
 	a.comp.tasks = rows
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open on a project with a record")
 	}
 	return a
@@ -229,7 +229,7 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("past-1", "one", "An errand from before", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open")
 	}
 	rows := historyRows(a)

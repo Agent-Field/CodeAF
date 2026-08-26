@@ -25,12 +25,18 @@ The memory commands have two postures:
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
 default; off, nothing is carried, nothing is written, neither of the two calls
-below is made, and the background tidy never runs. With it off, all three
-commands answer:
+below is made, and the background tidy never runs. With it off, `/remember`,
+`/forget` and `/memories` answer:
 
 ```
-memory is off · turn it on under /settings
+memory is off for this session · turn it on under /settings
 ```
+
+**The memory PLACE still opens with it off.** `alt+4`, `tab` and `/memory` all reach it, and
+what they reach is the three sentences saying what memory is for with that same line said
+once under them, above the composer — *What the memory place shows when there is nothing in
+it* below. It used to refuse to open at all, which made `alt+4` on a fresh machine a key
+that did nothing.
 
 ## How do I see what aforge remembers about me?
 
@@ -76,6 +82,32 @@ the way to the next place now, and a view of a place belongs to the `alt+<letter
 
 `/memory <query>` and `/memories <query>` print matching lines into the conversation instead
 of opening anything — a query is a question rather than a door.
+
+## What the memory place shows when there is nothing in it
+
+Two machines have an empty memory place and they show **the same body**: one that has simply
+not remembered anything yet, and one where memory is switched off. Both open, and both spend
+the frame on the three sentences that say what this is:
+
+```
+What I hold true about you and this machine.
+I put a line in here when it looked like it would matter later, and I only carry it into a chat it bears on.
+Corrections are the point — a wrong line here is wrong in every chat.
+```
+
+No shelf heading is drawn over an absence, and no count. The prose appears whenever fewer
+than eight lines are held, so a nearly-empty page teaches too rather than switching from a
+lesson to a list at the first memory.
+
+The one thing the sentences cannot carry is said **once**, on the dim note line between the
+rule and the composer:
+
+- memory switched off — `memory is off for this session · turn it on under /settings`
+- a store that is there and will not answer — `what is remembered could not be read just now`
+
+Neither is an error colour and neither is repeated on the three-second beat. The second one
+deliberately does not carry the underlying message: what you can do about it is the same
+either way.
 
 ## How do I edit a memory?
 

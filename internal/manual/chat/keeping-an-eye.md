@@ -531,7 +531,7 @@ everything you set up from it:
 Three things are missing over a connection, and each says nothing rather than
 guessing:
 
-- **Home does not open at all** over `--host` — it says
+- **Home opens with no rows on it** over `--host` — where the list would be it says
   `home shows this machine's projects, and this session is on another` — so there
   is no `◦` band and no `p`/`s` keys on a remote session. The status line still
   counts: `◦ keeping an eye on 2` is about the workspace this window is on, which

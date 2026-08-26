@@ -465,9 +465,13 @@ func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
 	})
 }
 
-// memoryReady is whether the memory place has a store to open onto. It is the
-// guard [app.openMemory] refuses on, asked out loud so a door can choose a
-// different answer instead of walking into the refusal.
+// memoryReady is whether the memory place has a store behind it.
+//
+// IT IS NOT A GUARD ON OPENING ANY MORE — the place opens either way
+// ([app.openMemory]) — and it is what tells the two empty pages apart: nothing
+// remembered yet, or nothing that CAN be remembered here. It is also what
+// /memories asks before choosing the printed list over the place, which is the
+// one door that still has two honest answers.
 func (a *app) memoryReady() bool {
 	_, ok := a.brain()
 	return ok && a.memory != nil
@@ -487,30 +491,56 @@ const memorySnapshotRows = 500
 // without starting one would be a photograph of a store other windows go on
 // writing to.
 func (a *app) openMemory() tea.Cmd {
-	if !a.memoryReady() {
-		a.refusePage("memory is off · turn it on under /settings")
-		return nil
-	}
-	shelves, err := a.memory.Snapshot(memorySnapshotRows)
-	if err != nil {
-		a.refusePage("could not read what is remembered · " + err.Error())
-		return nil
-	}
+	// THE PLACE OPENS WHETHER OR NOT THERE IS A STORE BEHIND IT. It used to
+	// refuse twice — once when this build was not remembering anything, once when
+	// the store would not answer — and both refusals put the person back on the
+	// page they came from, so `alt+4` on a fresh machine was a key that did
+	// nothing. SCREEN 1f'S PREAMBLE is the law: the place opens on its own three
+	// sentences ([memoryTeaching]), which is exactly the reading somebody who has
+	// never seen this page needs, and the one fact those sentences cannot carry —
+	// that there is no store here to hold any of it — is said once on the note
+	// line under them ([memoryOffNote], [memoryPanel.footer]).
+	shelves, why := a.memorySnapshot()
 	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
-	// ([app.standDownFullscreen]). It is done here rather than at the top of the
-	// function so that a refusal — memory switched off, a store that will not
-	// answer — leaves whatever page a person was on standing where it was.
+	// ([app.standDownFullscreen]).
 	a.standDownFullscreen()
 	a.page = pageMemory
 	a.memPanel.start(shelves, a.now())
+	a.memPanel.footer = why
 	a.touch()
 	return a.armPlaceClock()
 }
 
+// memorySnapshot is what the store holds, and — when it holds nothing because
+// there is no store — the one dim sentence saying so.
+//
+// IT ANSWERS AN EMPTY SNAPSHOT RATHER THAN AN ERROR, because every caller draws
+// a page either way now. The sentence is in the same register as the teaching
+// prose above it: a fact about this machine, not a fault anybody committed
+// (styles.go's THE EMPTINESS LAW covers the figures; this covers the reason).
+func (a *app) memorySnapshot() (store.MemoryShelves, string) {
+	if !a.memoryReady() {
+		return store.MemoryShelves{}, memoryOffNote
+	}
+	shelves, err := a.memory.Snapshot(memorySnapshotRows)
+	if err != nil {
+		return store.MemoryShelves{}, memoryUnreadableWord
+	}
+	return shelves, ""
+}
+
+// memoryUnreadableWord is a store that is there and will not answer. The error's
+// own text is deliberately not carried onto the screen: a SQLite message is
+// machinery vocabulary, and what a person can do about it is the same in every
+// case. The OTHER sentence this place says about itself — that this build is not
+// remembering anything at all — is [memoryOffNote], spelled once in memory.go
+// and said here and in the transcript both.
+const memoryUnreadableWord = "what is remembered could not be read just now"
+
 // refreshMemory is the place clock's beat on this page: the same two statements
 // again, with the filter, the folds and the line under the cursor kept.
 func (a *app) refreshMemory() {
-	if !a.memPanel.open || a.memory == nil {
+	if !a.memPanel.open || !a.memoryReady() {
 		return
 	}
 	shelves, err := a.memory.Snapshot(memorySnapshotRows)

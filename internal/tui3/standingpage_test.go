@@ -270,53 +270,54 @@ func TestAnExceptedOrderIsOneLineUnderItsShelf(t *testing.T) {
 	}
 }
 
-// NOTHING STANDS, SO NO PAGE OPENS — one sentence in the conversation, and no
-// overlay to dismiss before it can be told it was useless (deliverables.go's
-// law, restated).
-func TestStandingOnNothingSaysOneLineAndOpensNothing(t *testing.T) {
+// NOTHING STANDS, SO THE PAGE OPENS AND SAYS WHAT STANDING ORDERS ARE.
+//
+// THIS TEST USED TO PIN THE OPPOSITE — one sentence in the conversation and no
+// overlay to dismiss before it could be told it was useless. The sentence stayed
+// ([standNothingWord]) and moved into the place's own body, because a machine
+// nothing stands on is every machine for its first week, and refusing there made
+// `alt+3` a key that did nothing at all.
+func TestStandingOnNothingOpensThePageAndTeachesIt(t *testing.T) {
 	a, _ := standPageApp(t, nil, nil)
 	typeLine(t, a, "/standing")
-	if a.standPage.up {
-		t.Fatal("a conversation nothing stands over opened a page anyway")
+	if !a.standPage.up {
+		t.Fatal("a conversation nothing stands over opened no page")
 	}
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said:\n%s", text)
+	if text := standPageScreen(a); !strings.Contains(text, standNothingWord) {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
 
-// AND IT SAYS IT ONCE, HOWEVER OFTEN IT IS ASKED. This is the command a person
-// presses again when the first press looked like it did nothing — the page does
-// not open, so there is nothing on screen to say the command was taken except
-// the line itself — and four presses left four identical lines stacked in the
-// transcript. The emptiness law reaches repetition: a screen counting how many
-// times it had nothing to report is the same fault as a screen printing `0`.
-func TestStandingOnNothingSaysItOnceHoweverOftenItIsAsked(t *testing.T) {
+// AND ASKING FOUR TIMES IS FOUR OPENINGS OF ONE PAGE, with nothing stacked in
+// the transcript behind it. The repetition this used to guard against was a
+// repetition of the REFUSAL; there is no refusal, so there is nothing to repeat.
+func TestStandingOnNothingWritesNothingIntoTheTranscript(t *testing.T) {
 	a, _ := standPageApp(t, nil, nil)
 	for range 4 {
 		typeLine(t, a, "/standing")
 	}
-	if n := notesSaying(a, standNothingWord); n != 1 {
-		t.Fatalf("asking four times said it %d times:\n%s", n, strings.Join(plainRows(a), "\n"))
+	if n := notesSaying(a, standNothingWord); n != 0 {
+		t.Fatalf("the place's own body was written into the transcript %d times:\n%s",
+			n, strings.Join(plainRows(a), "\n"))
 	}
-	// The line is still THERE — the fix is that the repeat is not written again,
-	// not that the repeat goes unanswered.
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said at all:\n%s", text)
+	if !a.standPage.up {
+		t.Fatal("asking four times left no page open")
 	}
 }
 
-// A SURFACE WHOSE SESSION HAS NO AMBIENT SIDE SAYS THE SAME THING. The seam is
-// absent rather than broken, which is what the whole codebase does with a
-// capability that cannot work.
-func TestASessionWithNoAmbientSideOpensNoPage(t *testing.T) {
+// A SURFACE WHOSE SESSION HAS NO AMBIENT SIDE OPENS THE SAME PAGE. The seam is
+// absent rather than broken — which is what the whole codebase does with a
+// capability that cannot work — and what a place does with an absent seam is
+// spend the frame saying what would be here if it were not.
+func TestASessionWithNoAmbientSideStillOpensThePlace(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	typeLine(t, a, "/standing")
-	if a.standPage.up {
-		t.Fatal("a session with no ambient side opened a page")
+	if !a.standPage.up {
+		t.Fatal("a session with no ambient side opened no page")
 	}
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said:\n%s", text)
+	if text := standPageScreen(a); !strings.Contains(text, standNothingWord) {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
 

@@ -307,7 +307,7 @@ func TestTheTasksWindowUsesTheSharedArrowGrammar(t *testing.T) {
 
 func TestTheEmptyTasksPlaceTeachesWithoutInventingRows(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
-	if got := tasksTeach(pal); len(got) != 3 || !strings.Contains(strings.Join(got, "\n"), "enter opens") {
+	if got := tasksTeach(pal); len(got) != 4 || !strings.Contains(strings.Join(got, "\n"), "enter opens") {
 		t.Fatalf("teaching rows = %#v", got)
 	}
 	empty := readTasks(session.World{}, tasksMine{}, session.UsageWindow{}, time.Time{}, time.Time{})

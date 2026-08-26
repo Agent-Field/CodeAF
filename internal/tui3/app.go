@@ -1344,7 +1344,7 @@ type app struct {
 	// somebody asks for one.
 	//
 	// SETTINGS, THE TASK PAGE AND HOME ARE MUTUALLY EXCLUSIVE. Opening any one
-	// of them closes the other two ([app.openSettings], [app.openTaskSheet],
+	// of them closes the other two ([app.openSettings], [app.showTaskPlace],
 	// [app.openHome]), because two pages that both believe they own the frame is
 	// a frame that draws one and takes keys for the other.
 	home homeView
@@ -1367,12 +1367,6 @@ type app struct {
 	// was drawn.
 	tabs   []placeTabSpan
 	tabRow int
-	// pageRouting is true only while [app.showPage] is opening a place, and it
-	// is what tells a REFUSAL where to be said ([app.refusePage]): on this road
-	// a place frame is what a person is looking at, so the sentence is the
-	// router's own line; typed into a conversation the same refusal is a note in
-	// that conversation.
-	pageRouting bool
 	// teach says WHICH of spend and search is standing, and draws what that place
 	// is for on the days it has nothing of its own to draw (teachplace.go). It
 	// stayed the open flag for both after they grew bodies, because it is what
@@ -4271,9 +4265,9 @@ func (a *app) settleCompaction(text string) {
 //
 // THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE. Half the lines in this lane
 // are the surface answering an act a person repeats while they work out what to
-// do next: /standing on a conversation nothing stands over answers
-// [standNothingWord] every single time, /files on a machine that has made
-// nothing answers [filesNothingWord], and a refusal answers whatever it refused.
+// do next: /files on a machine that has made nothing answers [filesNothingWord]
+// every single time, /subharness on a build with none answers [subNothingWord],
+// and a refusal answers whatever it refused.
 // Four presses used to leave four identical lines stacked in the transcript,
 // which is the emptiness law's own complaint said about repetition — the screen
 // counting how many times it had nothing to report. So a note whose words are

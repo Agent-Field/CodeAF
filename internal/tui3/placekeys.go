@@ -151,9 +151,9 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // home.md), which made the program's own account of itself the thing that was
 // wrong on the screen.
 //
-// A ROOM THAT WILL NOT OPEN STILL ANSWERS: [app.showPage] goes through the door
-// and puts back what was standing, and its refusal is a note in the conversation
-// because that is the surface being looked at (pages.go's [app.refusePage]).
+// AND EVERY ROOM OPENS, so this key never has to answer for one that would not:
+// a place with nothing in it spends the frame saying what it is for (pages.go's
+// [app.showPage] holds the law and the story of the three that used to refuse).
 func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	id, ok := placeDigit(msg.String())
 	if !ok {

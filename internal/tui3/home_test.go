@@ -2269,22 +2269,34 @@ func TestHomeSaysNothingOnAMachineWithNoProjects(t *testing.T) {
 }
 
 // Over --host the projects under this process's state root belong to the wrong
-// machine, so the screen refuses rather than drawing a confident lie.
-func TestHomeRefusesOverHost(t *testing.T) {
+// machine, so home opens WITHOUT THEM and says why, rather than drawing a
+// confident lie or refusing to open at all.
+//
+// THIS TEST USED TO PIN A REFUSAL — the door shut, the screen not raised, the
+// sentence written into the transcript. Every place opens now (pages.go's
+// [app.showPage]), so what --host costs is the ROWS: the head, the tab bar and
+// the composer are all still there, and [homeRemoteWord] stands in the one slot
+// the rows would have used.
+func TestHomeOverHostOpensWithoutItsRows(t *testing.T) {
 	lab := newHomeLab(t)
+	now := time.Now()
+	lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now)
 	a := lab.app("")
 	a.host = "box"
-	// The one place the door stays shut: neither the gesture nor the
-	// advertisement, because what they would open is a refusal.
-	if a.homeDoorOpen() || a.homeDoorShowing() {
-		t.Fatal("the door to home is open over --host")
+	if !a.homeDoorOpen() {
+		t.Fatal("the door to home is shut over --host")
 	}
 	a.openHome()
-	if a.home.open {
-		t.Fatal("home opened over --host")
+	if !a.home.open {
+		t.Fatal("home did not open over --host")
 	}
-	if !strings.Contains(homeNotes(a), homeRemoteWord) {
-		t.Fatalf("home did not say why it refused:\n%s", homeNotes(a))
+	text := homeText(a)
+	if !strings.Contains(text, homeRemoteWord) {
+		t.Fatalf("home did not say why it is empty:\n%s", text)
+	}
+	// AND NOT ONE OF THE WRONG MACHINE'S CONVERSATIONS IS ON IT.
+	if strings.Contains(text, "porting the picker") {
+		t.Fatalf("home over --host listed this machine's projects:\n%s", text)
 	}
 }
 

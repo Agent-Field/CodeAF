@@ -709,8 +709,9 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it says `no tasks yet — /task <brief> starts one`**
-and opens nothing, which is the same refusal `/history` gives there.
+**On a project that has never run a task it opens the page anyway**, and the page says what
+tasks are and ends `no tasks yet — /task <brief> starts one` — which is exactly what
+`/history` and `ctrl+.` do there too.
 
 **The forms that start work are completely unchanged.** `/task <brief>`, `/task solo
 <brief>` and `/task adaptive <brief>` still size, shape and start the work directly, with
@@ -937,19 +938,23 @@ At the bottom: one dim line counting what is on the page, such as
 `2 needs your look · 3 running · 12 done today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 
-**`/history` on a machine that has run nothing says `no tasks yet — /task <brief> starts
-one`** and opens nothing; a bare `/task` says the same line there. `ctrl+.` there does
-nothing at all rather than raising an empty page. A session that has run nothing itself
-**does** open the page when another window on the same directory is running something — that
-is the one fact it was opened to report. The **tab bar** still walks into the place with
-nothing on it — so do `tab` and `alt+2`, which are the same walk — and that is the one
-screen where the page explains itself instead of drawing counts:
+**Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
+a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
+the page explains itself instead of drawing counts:
 
 ```
 tasks is the history of work this machine has run.
 it lists work aforge ran on its own, across every project.
 enter opens a task's room when there is one here.
+no tasks yet — /task <brief> starts one
 ```
+
+That last line used to be what `/history` said **instead** of opening, with `ctrl+.` doing
+nothing at all rather than raising an empty page. On a machine aforge was installed on an
+hour ago that was every door onto the page, so the first thing anybody tried appeared not to
+work. The sentence stayed and moved onto the page it is about. A session that has run
+nothing itself still shows work another window on the same directory is running — that is
+the one fact it was opened to report.
 
 The list is as long as the record is — internal to aforge each project's record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.

@@ -6,50 +6,41 @@ import (
 	"time"
 )
 
-// WALKING BETWEEN THE PLACES, AND WHAT A PLACE THAT WILL NOT OPEN OWES YOU.
+// WALKING BETWEEN THE PLACES.
 //
 // The owner's report against the real binary: "in home left right does not seem
 // to move tabs, only shift does". The cause was not the arrows — it was `tab`
 // walking into the tasks place, being refused because this machine had run no
 // work, and being put straight back on home. Every press did that, so the
 // circle had one member and `shift+tab` (which lands on settings, and settings
-// always opens) was the only key that appeared to work.
-
-// TAB WALKS TO A PLACE THAT ACTUALLY OPENS. The circle is the whole set of
-// rooms; a room that has nothing in it to show is one the walk goes past, and a
-// walk that stopped dead at it would make `tab` a key that does nothing.
+// always opened) was the only key that appeared to work.
 //
-// THE ROOM IT IS ASKED OF IS MEMORY AND NO LONGER TASKS. This test was written
-// against the tasks place — which is where the owner met the fault — and the
-// tasks place does not refuse any more: the tab bar's door opens it empty and
-// spends the frame teaching (place_tasks.go's [app.showTaskPlace], pinned below
-// by [TestTheTabBarOpensTheTasksPlaceOnAMachineThatHasRunNothing]). The LAW is
-// untouched, so it is asked of a room that still shuts: this surface has no
-// brain and no store, so the memory place refuses ([app.memoryReady]).
-func TestTabWalksPastAPlaceThatCannotOpen(t *testing.T) {
+// THE WALK ANSWERED IT BY STEPPING PAST A SHUT ROOM. Then the refusals went
+// (pages.go's [app.showPage]), and with them the idea of a shut room — so the
+// walk is `tab` and nothing else again, and what these tests pin is that the
+// circle is the whole set and that every step of it lands.
+
+// TAB WALKS THE WHOLE CIRCLE AND EVERY ROOM ON IT OPENS. On a surface with no
+// brain, no store and nothing run, all seven still take the frame.
+func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	a := placeApp(t)
-	if a.memoryReady() {
-		t.Skip("this surface has memories to show, so the memory place does not refuse")
-	}
-	drive(t, a, key("tab"))
-	if a.page == pageHome {
-		t.Fatal("tab from home stayed on home")
-	}
-	if a.page == pageMemory {
-		t.Fatal("tab landed on a place that cannot open")
-	}
-	// AND ROUND AGAIN, however many rooms are shut: pressing it seven times must
-	// visit more than one place.
 	seen := map[page]bool{a.page: true}
-	for i := 0; i < 7; i++ {
+	for range len(pages()) {
+		was := a.page
 		drive(t, a, key("tab"))
+		if a.page == was {
+			t.Fatalf("tab from the %s place stayed where it was", was.word())
+		}
+		if !a.pageShowing() {
+			t.Fatalf("tab landed the router on %q with nothing on the frame", a.page.word())
+		}
 		seen[a.page] = true
 	}
-	if len(seen) < 2 {
-		t.Fatalf("tab visited only %v", seen)
+	if len(seen) != len(pages()) {
+		t.Fatalf("tab visited %d of the %d places: %v", len(seen), len(pages()), seen)
 	}
-	if !seen[pageHome] {
-		t.Fatal("the circle never came back to home")
+	if a.page != pageHome {
+		t.Fatalf("the circle came back to %q rather than home", a.page.word())
 	}
 }
 
@@ -68,35 +59,37 @@ func TestShiftTabWalksTheCircleBack(t *testing.T) {
 	}
 }
 
-// A PLACE THAT REFUSES SAYS WHY, WHERE THE PERSON IS STANDING. `alt+n` on a
-// machine that has nothing in that room used to write its sentence into the
-// transcript under a screen drawn over the top of it, so the key read as broken.
-//
-// IT IS ASKED OF MEMORY for the reason above: tasks stopped refusing, and memory
-// is the room this surface genuinely cannot open (place_memory.go's
-// [app.openMemory] says so through pages.go's [app.refusePage]).
-func TestAPlaceThatRefusesSaysSoOnTheFrame(t *testing.T) {
+// NO PLACE REFUSES, AND MEMORY IS THE ONE THAT REFUSED LAST. This surface has
+// no brain and no store, which used to be the state that shut the room and wrote
+// `memory is off` into a transcript nobody could see under the screen drawn over
+// it. It opens now, on the three sentences that say what memory is for, with
+// that same line said once under them where it can be read.
+func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 	a := placeApp(t)
 	if a.memoryReady() {
-		t.Skip("this surface has memories to show, so the memory place does not refuse")
+		t.Skip("this surface has memories to show, so there is nothing to say about a missing store")
 	}
 	drive(t, a, key("alt+4"))
-	if a.page != pageHome {
-		t.Fatalf("the refused place took the band: %q", a.page.word())
+	if a.page != pageMemory || !a.memPanel.open {
+		t.Fatalf("alt+4 left the router on %q", a.page.word())
 	}
-	if !strings.Contains(placeFrameText(a), "memory is off") {
-		t.Fatalf("the refusal is nowhere on the frame:\n%s", placeFrameText(a))
+	screen := placeFrameText(a)
+	if !strings.Contains(screen, memoryTeaching[0]) {
+		t.Fatalf("the place with no store teaches nothing:\n%s", screen)
+	}
+	if !strings.Contains(screen, memoryOffNote) {
+		t.Fatalf("the place with no store does not say so:\n%s", screen)
 	}
 }
 
-// AND THE TASKS PLACE IS THE ONE THAT STOPPED REFUSING, which is why the two
-// tests above had to move rooms. A person pressing `alt+2` or a tab word is
-// WALKING, and a room that bounced them back would be the bar pointing at a
-// place they are not allowed to stand in — so it opens on whatever the reading
-// holds, and an empty one spends the frame saying what the place is for. The
-// COMMAND still refuses ([app.openTaskPage] and [taskSheetEmpty]), because a
-// command typed on purpose that answers with silence reads as one that broke.
-func TestTheTabBarOpensTheTasksPlaceOnAMachineThatHasRunNothing(t *testing.T) {
+// AND THE TASKS PLACE OPENS EMPTY FROM EVERY DOOR. A person pressing `alt+2` or
+// a tab word is WALKING, and a room that bounced them back would be the bar
+// pointing at a place they are not allowed to stand in — so it opens on whatever
+// the reading holds, and an empty one spends the frame saying what the place is
+// for. The command reaches the same page: /history on a machine that has run
+// nothing used to answer with one line and no screen, which on a fresh machine
+// was every door onto it.
+func TestTheTasksPlaceOpensOnAMachineThatHasRunNothing(t *testing.T) {
 	a := placeApp(t)
 	if len(a.takeTaskReading().reading.items) > 0 {
 		t.Skip("this surface has work to show, so the empty place is not what is drawn")
@@ -109,12 +102,10 @@ func TestTheTabBarOpensTheTasksPlaceOnAMachineThatHasRunNothing(t *testing.T) {
 	if !strings.Contains(screen, "enter opens") {
 		t.Fatalf("the empty tasks place teaches nothing:\n%s", screen)
 	}
-	if strings.Contains(screen, taskSheetEmpty) {
-		t.Fatalf("the walk was answered with the command's refusal:\n%s", screen)
-	}
-	// AND THE WALK GOES THROUGH IT rather than past it, because it opens.
-	if !a.pageReady(pageTasks) {
-		t.Fatal("the walk still treats the tasks place as a room it cannot get into")
+	// AND THE LAST LINE OF THAT LESSON IS WHAT THE COMMAND USED TO SAY INSTEAD OF
+	// OPENING, moved onto the page it is about.
+	if !strings.Contains(screen, taskSheetEmpty) {
+		t.Fatalf("the empty tasks place does not say what to do about it:\n%s", screen)
 	}
 }
 

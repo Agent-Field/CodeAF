@@ -139,20 +139,67 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	}
 }
 
-// A PLACE THAT REFUSES TO OPEN LEAVES THE BAND WHERE IT WAS. A tab bar pointing
-// at a room nobody is standing in is worse than no tab bar.
-func TestARefusedPlaceDoesNotMoveTheBand(t *testing.T) {
-	a := placeApp(t)
-	// Memory is off on this surface, so the place cannot open.
-	if a.memory != nil {
-		t.Skip("this surface has a memory store, so there is nothing to refuse")
+// EVERY PLACE OPENS ON AN EMPTY MACHINE, and each one spends the frame saying
+// what it is for.
+//
+// THIS IS THE DEFECT THE OWNER FOUND BY RUNNING THE BINARY. On a fresh home the
+// tab bar drew all seven words and three of the keys did nothing at all: tasks
+// refused with no task in the world, standing refused with nothing standing, and
+// memory refused with no store behind it — which on a fresh machine is all three
+// of them, every time. SCREEN 1f's preamble is the law they broke: an almost-
+// empty place is the best teacher on the machine.
+//
+// It is ONE LOOP OVER THE REGISTRY and not seven cases, so a place added later
+// is covered by having been added to [pages].
+func TestEveryPlaceOpensOnAnEmptyMachine(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.app("")
+	a.width, a.height = 120, 40
+	// EVERY SEAM IS NIL AND NOTHING IS ON THE DISK. This is the machine somebody
+	// has just installed aforge on, which is the only machine this test is about.
+	a.memory, a.stands, a.places = nil, StandingSeam{}, nil
+	a.openHome()
+	for _, id := range pages() {
+		a.showPage(id)
+		if a.page != id {
+			t.Fatalf("%s did not take the band: the router is standing on %q", id.word(), a.page.word())
+		}
+		if !a.pageShowing() {
+			t.Fatalf("the router says %q and nothing is on the frame", id.word())
+		}
+		// AND THE FRAME IS THE WHOLE TERMINAL WITH THE PLACE'S OWN WORD ON IT.
+		text := placeFrameText(a)
+		if lines := strings.Split(text, "\n"); len(lines) != a.height {
+			t.Fatalf("the empty %s place drew %d rows into %d", id.word(), len(lines), a.height)
+		}
+		if !strings.Contains(text, id.word()) {
+			t.Fatalf("the empty %s place does not draw its own tab:\n%s", id.word(), text)
+		}
 	}
-	a.showPage(pageMemory)
-	if a.page != pageHome {
-		t.Fatalf("a refused place took the band anyway: %q", a.page.word())
-	}
-	if !a.home.open {
-		t.Fatal("a refused place closed the one that was up")
+}
+
+// AND NOTHING IS EVER PUT BACK, because nothing refuses.
+//
+// The router used to close what was standing, ask the place to open, and — when
+// it would not — re-open what it had just closed. That path is gone with the
+// refusals it existed for ([app.showPage]), and this is what replaced the test
+// that pinned it: whatever place is asked for is the place a person is left on,
+// on a machine with nothing in any of them.
+func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.app("")
+	a.width, a.height = 120, 40
+	a.memory, a.stands, a.places = nil, StandingSeam{}, nil
+	a.openHome()
+	for _, id := range []page{pageMemory, pageStanding, pageTasks} {
+		was := a.page
+		a.showPage(id)
+		if a.page == was && was != id {
+			t.Fatalf("%s put back %q", id.word(), was.word())
+		}
+		if a.home.open && id != pageHome {
+			t.Fatalf("%s left home standing under it", id.word())
+		}
 	}
 }
 
@@ -424,3 +471,99 @@ var _ placeCounts = countingPlaces(nil)
 // And the session package's own look stamp is untouched by this wave, which is
 // stated here because it is the seam the counts will eventually be built on.
 var _ = session.LastLook
+
+// ── the owner's path: every key that moves between places, from everywhere ──
+
+// THE SEVEN KEYS THAT JUMP AND THE TWO THAT WALK ARE TRUE FROM EVERY PLACE, and
+// that includes settings — which has a tab bar of its own under the router's —
+// and the search place, whose composer takes every printable key.
+//
+// It is a loop over the registry crossed with itself rather than a list of
+// pairs, because "does `alt+4` work from settings" is the question nobody thinks
+// to ask until a key does nothing.
+func TestEveryPlaceReachesEveryOtherPlace(t *testing.T) {
+	a := placeApp(t)
+	for _, from := range pages() {
+		for _, to := range pages() {
+			a.showPage(from)
+			drive(t, a, key("alt+"+itoa(placeAt(to)+1)))
+			if a.page != to {
+				t.Fatalf("alt+%d from %s landed on %q", placeAt(to)+1, from.word(), a.page.word())
+			}
+		}
+		// AND THE CIRCLE WALKS BOTH WAYS FROM HERE.
+		a.showPage(from)
+		drive(t, a, key("tab"))
+		if want := nextPage(from, false); a.page != want {
+			t.Fatalf("tab from %s landed on %q, not %q", from.word(), a.page.word(), want.word())
+		}
+		a.showPage(from)
+		drive(t, a, key("shift+tab"))
+		if want := nextPage(from, true); a.page != want {
+			t.Fatalf("shift+tab from %s landed on %q, not %q", from.word(), a.page.word(), want.word())
+		}
+		// AND THE MAP DRAWS FROM HERE TOO, which is the one chord that has to
+		// survive a place claiming every printable key for its filter.
+		a.showPage(from)
+		drive(t, a, key("alt+."))
+		if !a.mapShowing {
+			t.Fatalf("alt+. drew no map on %s", from.word())
+		}
+		drive(t, a, key("esc"))
+	}
+}
+
+// placeAt is a place's position in [pages], which is the digit that jumps to it.
+func placeAt(id page) int {
+	for i, at := range pages() {
+		if at == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// AND THE NUMBERS WORK FROM THE CONVERSATION, which is the screen a person
+// spends most of the day on and was the one surface they did not work from.
+//
+// `tab` and the shift-arrows deliberately do NOT: in the chat those already
+// belong to path completion and to the caret, and taking them would be a router
+// seizing keys somebody has muscle memory for. The digits are the spare class.
+func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
+	a := placeApp(t)
+	drive(t, a, key("esc"))
+	if a.home.open {
+		t.Fatal("esc did not put the conversation back")
+	}
+	drive(t, a, key("alt+2"))
+	if a.page != pageTasks || !a.taskSheet.open {
+		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.taskSheet.open)
+	}
+	drive(t, a, key("esc"))
+	drive(t, a, key("alt+3"))
+	if a.page != pageStanding || !a.standPage.up {
+		t.Fatalf("alt+3 from the conversation landed on %q", a.page.word())
+	}
+	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
+	drive(t, a, key("esc"))
+	page := a.page
+	drive(t, a, key("tab"))
+	if a.page != page || a.taskSheet.open || a.standPage.up {
+		t.Fatal("tab in the conversation opened a place")
+	}
+}
+
+// THE TAB BAR CARRIES ALL SEVEN WORDS AT EVERY WIDTH A PERSON ACTUALLY USES.
+// The ladder that gives words up is for terminals narrower than any of these
+// ([app.placeTabBar]); at 80 columns and up nothing is dropped.
+func TestTheTabBarCarriesAllSevenAtEveryUsableWidth(t *testing.T) {
+	a := placeApp(t)
+	for _, width := range []int{80, 120, 200} {
+		bar := plain(a.placeTabBar(width, false, a.pal))
+		for _, id := range pages() {
+			if !strings.Contains(bar, id.word()) {
+				t.Fatalf("at %d columns the bar has no %q: %q", width, id.word(), bar)
+			}
+		}
+	}
+}

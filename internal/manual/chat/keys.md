@@ -1036,16 +1036,17 @@ meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box holding exactly one space,
 takes both away and opens home — so a leading space you actually wanted is never eaten
-(space then `x` leaves ` x`). It does nothing when the box has words in it, it is not bound
-over `--host` where home refuses, and it is not a paste: text pasted with two leading
-spaces is two spaces. A machine with one conversation, or none, opens an empty home.
+(space then `x` leaves ` x`). It does nothing when the box has words in it, and it is not a
+paste: text pasted with two leading spaces is two spaces. A machine with one conversation,
+or none, opens an empty home; so does a session over `--host`, where home opens with one
+sentence in place of its rows.
 
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
 When the box is empty, the legend line above the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type, and it is absent only over `--host`.
+you type.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second

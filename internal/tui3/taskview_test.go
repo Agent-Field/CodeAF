@@ -103,24 +103,35 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	}
 }
 
-// THE KEY FALLS THROUGH ON A PROJECT THAT HAS RUN NOTHING, and /history says so
-// rather than raising a page with a title and nothing under it. The emptiness law
-// reaches modals: a fullscreen page with no rows is the loudest way of saying
-// nothing.
-func TestTheTaskPageRefusesToOpenWithNoTasksAtAll(t *testing.T) {
+// EVERY DOOR ONTO THIS PLACE OPENS IT ON A PROJECT THAT HAS RUN NOTHING, and
+// what it opens onto is three sentences saying what tasks are plus the one that
+// says what to do about it ([tasksTeach]).
+//
+// THIS TEST USED TO PIN THE OPPOSITE. `ctrl+.` fell through in silence and
+// /history wrote a line, on the argument that a fullscreen page with no rows is
+// the loudest possible way of saying nothing. What that produced is a machine on
+// which the first thing a new person does with the task page does nothing at all
+// — on a fresh machine every door onto it was the refusing one — and SCREEN 1f's
+// preamble is the law it broke: an almost-empty place is the best teacher on the
+// machine.
+func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	a, _, _ := taskApp(t)
 
 	drive(t, a, ctrlDot())
-	if a.taskSheet.open {
-		t.Fatal("ctrl+. raised an empty task page")
+	if !a.taskSheet.open {
+		t.Fatal("ctrl+. opened nothing on a project that has run nothing")
 	}
+	if text := taskSheetText(a); !strings.Contains(text, taskSheetEmpty) {
+		t.Fatalf("the empty place does not say what to do about it:\n%s", text)
+	}
+	drive(t, a, key("esc"))
 
 	a.slash("/history")
-	if a.taskSheet.open {
-		t.Fatal("/history raised an empty task page")
+	if !a.taskSheet.open {
+		t.Fatal("/history opened nothing on a project that has run nothing")
 	}
-	if text := taskText(a); !strings.Contains(text, taskSheetEmpty) {
-		t.Fatalf("/history said nothing about why it opened nothing:\n%s", text)
+	if text := taskSheetText(a); !strings.Contains(text, "tasks is the history of work") {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
 
@@ -152,7 +163,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// Work behind it: the body draws rows and the note counts exactly them, and
 	// the teaching prose is gone.
 	railRun(a)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over this window's own work")
 	}
 	if note := plain(strings.Join(a.placeNote(a.width), "\n")); !strings.Contains(note, "4 "+taskSheetNowHead) {
@@ -227,7 +238,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		pastTask("9", "port-the-parser", "Port the parser", 40*time.Hour),
 	}
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a session with work in it")
 	}
 	text := taskSheetText(a)
@@ -302,7 +313,7 @@ func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 	text := taskSheetText(a)
@@ -320,7 +331,7 @@ func TestTheTwoFullscreenPagesAreNeverBothOpen(t *testing.T) {
 	railRun(a)
 
 	a.openSettings()
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the task page refused to open over the settings panel")
 	}
 	if a.sheet.open {
@@ -341,7 +352,7 @@ func TestTheTaskPageCursorNeverLandsOnASectionWord(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -377,7 +388,7 @@ func TestEnterOnTheTaskPageOpensThatTasksRoom(t *testing.T) {
 	// roomApp's one node is 7, and it is the only family here, so the cursor opens
 	// on it.
 	a, _, _ := roomApp(t)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -400,7 +411,7 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a project with only a record")
 	}
 	// THE FOOT SAYS WHICH DOOR enter IS. A page that promised a room over work
@@ -447,7 +458,7 @@ func TestMFromInsideAnOldTaskStillWritesTheMention(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a project with only a record")
 	}
 	drive(t, a, key("enter"))
@@ -475,7 +486,7 @@ func TestTheRecordCardDrawsOnlyTheFactsItHas(t *testing.T) {
 	bare := pastTask("11", "mix-the-audio", "Mix the audio", 2*time.Hour)
 	bare.Outcome = ""
 	a.comp.tasks = []session.TaskIndexEntry{rich, bare}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -520,7 +531,7 @@ func TestTheRecordCardShowsWhatTheTaskSaidAtTheEnd(t *testing.T) {
 	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
 	entry.TranscriptURI = "file://" + journal
 	a.comp.tasks = []session.TaskIndexEntry{entry}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -561,7 +572,7 @@ func TestTheRecordCardSaysWhenTheTranscriptIsGone(t *testing.T) {
 	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
 	entry.TranscriptURI = "file://" + filepath.Join(t.TempDir(), "never-written.jsonl")
 	a.comp.tasks = []session.TaskIndexEntry{entry}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 	drive(t, a, key("enter"))
@@ -762,7 +773,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 		pastTask("11", "mix-the-audio", "Mix the audio", 40*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -819,7 +830,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 	drive(t, a, key("t"), key("r"), key("e"), key("e"))
@@ -840,7 +851,7 @@ func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 	}
 
 	// The chord is not a layer: it closes the page from inside a filter.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open again")
 	}
 	drive(t, a, key("t"))
@@ -849,7 +860,7 @@ func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 		t.Fatal("ctrl+. did not close a filtered page")
 	}
 	// And a page opened again opens unfiltered: the query goes with the page.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open a third time")
 	}
 	if a.taskSheetFiltering() {

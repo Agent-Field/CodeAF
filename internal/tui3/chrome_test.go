@@ -1272,7 +1272,7 @@ func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
 	// one.
 	open := map[string]func(*app){
 		"the settings panel": func(a *app) { a.openSettings() },
-		"the task page":      func(a *app) { a.openTaskSheet() },
+		"the task page":      func(a *app) { openTaskPlaceWithRows(a) },
 		"home":               func(a *app) { a.openHome() },
 		"the spend place":    func(a *app) { a.showPage(pageSpend) },
 		"the search place":   func(a *app) { a.showPage(pageSearch) },
@@ -1332,7 +1332,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatalf("home is not what the frame draws:\n%s", home)
 	}
 	// And the task page over home.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the task page refused to open over home")
 	}
 	page, _, _ := a.frame()

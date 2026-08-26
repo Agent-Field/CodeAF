@@ -282,7 +282,7 @@ func (a *app) frame() (string, int, int) {
 	// THE REWIND TIMELINE — oldest surface first, which is also the order
 	// settings.go tells the story in. No two of them can actually be open at once:
 	// opening any one closes the other three ([app.openSettings],
-	// [app.openTaskSheet], [app.openHome], [app.openRewindSheet], all through
+	// [app.showTaskPlace], [app.openHome], [app.openRewindSheet], all through
 	// [app.standDownFullscreen]). The order is written down anyway, because an
 	// invariant that is only true while nobody makes a mistake is an invariant
 	// that draws a blank frame the day somebody does.
