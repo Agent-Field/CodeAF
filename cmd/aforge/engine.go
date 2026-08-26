@@ -400,6 +400,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// reads as nothing to show rather than as an empty list.
 		StandingItems: engineStandingItems(cfg.Standing),
 		StandingSave:  engineStandingSave(cfg.Standing),
+		StandingWatch: engineStandingWatch(cfg.Standing),
 		// ── THE PLACES, AS THIS MACHINE HOLDS THEM ──────────────────────
 		//
 		// The world under THIS machine's state root, and the root it was walked
@@ -470,6 +471,16 @@ func engineStandingSave(seam *session.Standing) func(standing.Item) error {
 		return nil
 	}
 	return seam.Store.Save
+}
+
+func engineStandingWatch(seam *session.Standing) func() (standing.WatchStatus, bool) {
+	if seam == nil || seam.Watch == nil {
+		return nil
+	}
+	return func() (standing.WatchStatus, bool) {
+		status, err := seam.Watch.Status()
+		return status, err == nil
+	}
 }
 
 // engineWorkspace resolves the directory the surface asked for.

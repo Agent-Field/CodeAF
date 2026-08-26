@@ -78,6 +78,8 @@ type fakeAgent struct {
 	panicking bool
 }
 
+func (f *fakeAgent) PendingConnect() []string { return nil }
+
 func (f *fakeAgent) open() <-chan session.Event {
 	stream := make(chan session.Event, 64)
 	f.streams = append(f.streams, stream)

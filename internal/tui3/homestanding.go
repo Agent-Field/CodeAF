@@ -876,6 +876,9 @@ func (a *app) watchLine() (string, bool) {
 	if !a.standingHere() {
 		return "", false
 	}
+	if a.stands.Watch == nil && a.stands.Ticking == nil {
+		return "", false
+	}
 	status, known := standing.WatchStatus{}, false
 	if a.stands.Watch != nil {
 		status, known = a.stands.Watch()
