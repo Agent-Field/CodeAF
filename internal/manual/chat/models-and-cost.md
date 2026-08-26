@@ -511,6 +511,10 @@ token of thinking, a piece of a tool call.
 | first word | **1m30s** | accepted the request and never started |
 | a gap mid-reply | **45s** | started writing and stopped |
 
+There is a third clock for the opposite problem — a reply that keeps writing and never
+finishes. It is not a fixed number, so it has its own section below: *A reply that never
+finished*.
+
 The first bound is generous on purpose: a reasoning model at a long context legitimately
 thinks for a minute before its first token, and cutting a request that was about to answer
 costs the whole prompt again. The second is shorter because the question is different — a
@@ -569,6 +573,50 @@ which endpoint served it, or you have set `routing` to `off` on the **Providers*
 nothing is being routed around and the next attempt lands in exactly the same place — so
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 switches off **endpoint** steering; it does not switch off moving to another model.
+
+## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
+
+The two clocks above are both about **silence**. A reply that keeps producing a token every
+few seconds resets both of them forever, and for a long time nothing in aforge ended a
+request like that: a turn could sit there for half an hour with the reply still technically
+arriving, and the session log recorded nothing at all while it did.
+
+So every request also carries a **wall** — the longest it may run before it is cut, whether
+or not it is still writing.
+
+**The wall is not a fixed number.** It is worked out from what that endpoint has actually
+done for you: **five times the longest reply it has finished** in this session, never less
+than **5 minutes** and never more than **20 minutes**. Two endpoints serving the same model
+therefore get two different walls, and one that routinely writes long answers earns a
+longer one by writing them. A model aforge has not spoken to yet gets the 5-minute floor,
+because there is nothing measured to work from; the numbers are forgotten when aforge
+closes, so a fresh session starts from the floor again.
+
+When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
+the endpoint is avoided on the retry, and a dim line lands:
+
+```
+the reply kept going and never finished — asking again
+```
+
+and if it keeps happening, the turn moves to your next fallback model:
+
+```
+the reply kept running on without finishing — finishing this one on openai/gpt-5-mini
+```
+
+with the same ending when there is nowhere to move:
+
+```
+error: the reply ran past 15m0s without finishing and was cut, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
+```
+
+**Nothing you can set changes the wall.** It has no settings row, because a number you had
+to pick would be a number nobody could pick correctly — that is the whole reason it is
+measured instead.
+
+**A cut reply is thrown away whole**, like every other cut: none of the text reaches the
+conversation, and the retry starts the reply from the beginning.
 
 ## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
 

@@ -884,6 +884,19 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// keeps the fork one deep.
 		writeScope: part.Scope,
 		inHand:     true,
+		// AND WHOSE WORK THIS HAND IS DOING. A hand shares its caller's working
+		// directory, so the question treehold.go asks about every write — is
+		// somebody else working in this tree — has to get the same answer for a
+		// hand as for the worker that forked it. Without these two a hand of a
+		// node's worker is indistinguishable from the conversation, and it would
+		// be refused writes into the very tree its own node is holding.
+		//
+		// They are the caller's, unchanged, at any depth: a hand of a hand of a
+		// worker is still that node writing. Nothing else on a hand's belt reads
+		// them — the belt is a fixed allowlist with no task verb on it
+		// ([forkBelt]) — so this carries identity and no new power.
+		tasker: parent.tasker,
+		taskID: parent.taskID,
 		// And the budget, as a citizen of the same plane (hooks.go).
 		handLeash:      leash,
 		SupportsImages: parent.SupportsImages,

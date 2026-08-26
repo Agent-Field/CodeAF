@@ -255,18 +255,29 @@ type journalCall struct {
 // session made of the request it was about to send, which is the only token
 // figure a failed call has — the provider counted none.
 //
+// Output and DurationMS are the exception to "the provider counted none", and
+// they exist for ONE class of failure: a guard cut (internal/provider's
+// StreamCut). A cut stream ran for a measurable time and delivered a measurable
+// amount of answer before it was ended, and those two figures are what tell a
+// silent endpoint apart from one that wrote for eighteen minutes and never
+// finished. Every other failure leaves both empty, which is the emptiness law:
+// a zero here would read as "it produced nothing", and only a cut can say that
+// honestly.
+//
 // IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason and one more: a
 // failed call was not billed, so there is nothing here to sum.
 type journalError struct {
-	Model    string `json:"model,omitempty"`
-	Endpoint string `json:"endpoint,omitempty"`
-	Role     string `json:"role,omitempty"`
-	Status   int    `json:"status,omitempty"`
-	Provider string `json:"provider,omitempty"`
-	Message  string `json:"message,omitempty"`
-	Raw      string `json:"raw,omitempty"`
-	Attempt  int    `json:"attempt,omitempty"`
-	Input    int    `json:"input,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Status     int    `json:"status,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Raw        string `json:"raw,omitempty"`
+	Attempt    int    `json:"attempt,omitempty"`
+	Input      int    `json:"input,omitempty"`
+	Output     int    `json:"output,omitempty"`
+	DurationMS int64  `json:"durationMs,omitempty"`
 }
 
 // journalMark is ONE reading taken at a checkpoint mark: what the sidecar was

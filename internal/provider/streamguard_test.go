@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -539,6 +541,12 @@ func streamAgainstCtx(ctx context.Context, t *testing.T, base string, observed *
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
+	// A LEDGER OF ITS OWN, because the wall is derived from one. Every client
+	// NewClient builds folds into the process-wide ledger by design
+	// (velocity.go's sharedVelocity), so a guard test left on it would open
+	// under a wall earned by whichever test ran before it — which is exactly
+	// what happened the first time this line was not here.
+	client.velocity = newVelocityLedger()
 	ctx = WithStreamObserver(ctx, func(event StreamEvent) {
 		if observed != nil {
 			*observed = append(*observed, event)
@@ -547,4 +555,245 @@ func streamAgainstCtx(ctx context.Context, t *testing.T, base string, observed *
 	return client.CompleteWithMessages(ctx, []ai.Message{{
 		Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "hello"}},
 	}})
+}
+
+// ── the wall ────────────────────────────────────────────────────────────────
+
+// TestAStreamThatNeverStopsIsCutAtTheWall is the whole of the missing bound.
+// The endpoint writes a token, and another, and another, forever: every silence
+// bound in this file is reset by each one, the streaming client has no total
+// deadline (retry.go's clientFor), and before the wall existed nothing in this
+// process ended such a request. The cut also carries the three facts the journal
+// row needs — who served, how long, how much arrived.
+func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
+	defer shortenWall(t, 150*time.Millisecond, time.Second)()
+
+	stop := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, `data: {"id":"one","provider":"gusher","choices":[{"index":0,`+
+			`"delta":{"content":"the answer begins "}}]}`+"\n\n")
+		w.(http.Flusher).Flush()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-stop:
+				return
+			default:
+			}
+			fmt.Fprint(w, "data: "+deltaChunk("and on ")+"\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(2 * time.Millisecond)
+		}
+	}))
+	defer func() { close(stop); server.Close() }()
+
+	_, err := streamAgainst(t, server.URL, nil)
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a stream cut", err)
+	}
+	if cut.Reason != CutOverrun {
+		t.Fatalf("reason = %d, want CutOverrun: the stream was never quiet", cut.Reason)
+	}
+	if cut.Waited != 150*time.Millisecond {
+		t.Fatalf("waited = %s, want the wall that fired", cut.Waited)
+	}
+	if !strings.Contains(cut.Error(), "without finishing") {
+		t.Fatalf("sentence = %q", cut.Error())
+	}
+	if cut.Provider != "gusher" {
+		t.Fatalf("provider = %q, want the endpoint the stream named", cut.Provider)
+	}
+	if cut.Ran <= 0 {
+		t.Fatalf("ran = %s, want how long the request was actually open", cut.Ran)
+	}
+	if cut.Tokens <= 0 {
+		t.Fatalf("tokens = %d, want how much answer had arrived before the cut", cut.Tokens)
+	}
+}
+
+// TestALongHealthyReplyUnderTheWallIsNotCut is the other half of the law, and
+// the one that keeps the wall from being a new way to fail: a reply that writes
+// for a long time and then FINISHES is an answer, and it must land untouched —
+// and what it took must be remembered, because that is what the next wall on
+// this lane is derived from.
+func TestALongHealthyReplyUnderTheWallIsNotCut(t *testing.T) {
+	defer shortenWall(t, 2*time.Second, 4*time.Second)()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, `data: {"id":"one","provider":"steady","choices":[{"index":0,`+
+			`"delta":{"content":"working "}}]}`+"\n\n")
+		w.(http.Flusher).Flush()
+		for i := 0; i < 60; i++ {
+			fmt.Fprint(w, "data: "+deltaChunk("on it ")+"\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(5 * time.Millisecond)
+		}
+		fmt.Fprint(w, `data: {"id":"one","choices":[{"index":0,"delta":{"content":"done"},`+
+			`"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	client.velocity = newVelocityLedger()
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	response, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatalf("a healthy reply under the wall was cut: %v", err)
+	}
+	if !strings.Contains(response.Choices[0].Message.Content[0].Text, "done") {
+		t.Fatalf("the reply did not land whole: %q", response.Choices[0].Message.Content[0].Text)
+	}
+	client.velocity.mu.Lock()
+	longest := client.velocity.runs["sim/model"]["steady"]
+	client.velocity.mu.Unlock()
+	if longest <= 0 {
+		t.Fatal("the completed reply left no run on the ledger, so no wall can ever be earned")
+	}
+}
+
+// TestTheWallIsTheLanesOwnHistoryAndNotTheModels is the derivation. Two
+// endpoints of one model, two different histories, two different walls — which
+// is the point of deriving it at all rather than picking a number.
+func TestTheWallIsTheLanesOwnHistoryAndNotTheModels(t *testing.T) {
+	ledger, _ := testLedger()
+	const model = "vendor/fast-model"
+	ledger.noteRun(model, "brisk", 90*time.Second)
+	ledger.noteRun(model, "brisk", 30*time.Second) // the maximum stands, not the last
+	ledger.noteRun(model, "ponderous", 3*time.Minute)
+
+	if got := ledger.wall(model, "brisk"); got != 90*time.Second*streamWallFactor {
+		t.Fatalf("brisk wall = %s, want five times its own longest reply", got)
+	}
+	if got := ledger.wall(model, "ponderous"); got != 3*time.Minute*streamWallFactor {
+		t.Fatalf("ponderous wall = %s, want five times its own longest reply", got)
+	}
+	// A lane nothing is known about inherits the lineage's widest rather than
+	// the bare floor: a router that has just moved this session onto a fresh
+	// endpoint must not have its first long reply cut.
+	if got := ledger.wall(model, "newcomer"); got != 3*time.Minute*streamWallFactor {
+		t.Fatalf("newcomer wall = %s, want the lineage's widest", got)
+	}
+	// And a model nothing has ever answered gets the floor.
+	if got := ledger.wall("vendor/unheard-model", "anybody"); got != streamWallFloor {
+		t.Fatalf("cold wall = %s, want the floor", got)
+	}
+}
+
+// TestTheWallIsClampedAtBothEnds pins the two constants that keep a derived
+// bound honest: a lane whose replies are tiny cannot earn a wall shorter than
+// the floor, and one pathological completion cannot buy an hour.
+func TestTheWallIsClampedAtBothEnds(t *testing.T) {
+	if got := wallFor(time.Second); got != streamWallFloor {
+		t.Fatalf("wallFor(1s) = %s, want the floor", got)
+	}
+	if got := wallFor(19 * time.Minute); got != streamWallCeiling {
+		t.Fatalf("wallFor(19m) = %s, want the ceiling", got)
+	}
+	if got := wallFor(2 * time.Minute); got != 10*time.Minute {
+		t.Fatalf("wallFor(2m) = %s, want the multiple between the two clamps", got)
+	}
+}
+
+// TestAWallCutStrikesTheLaneAndTheNextRequestRoutesAround is the fourth thing
+// the law asks for: the cut is not just an error, it is a verdict about the
+// endpoint that earned it. The lane goes into the ledger's refusals, and the
+// very next request encodes around it — which is how the turn loop's re-ask
+// reaches somebody else rather than the same wall again.
+func TestAWallCutStrikesTheLaneAndTheNextRequestRoutesAround(t *testing.T) {
+	defer shortenWall(t, 120*time.Millisecond, time.Second)()
+	const model = "vendor/fast-model"
+
+	var mu sync.Mutex
+	calls := 0
+	recorded := &capture{}
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorded.record(request)
+		mu.Lock()
+		calls++
+		call := calls
+		mu.Unlock()
+		if call > 1 {
+			body := `data: {"id":"done","choices":[{"index":0,"delta":{"content":"ok"},` +
+				`"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    request,
+			}, nil
+		}
+		reader, writer := io.Pipe()
+		go func() {
+			_, _ = writer.Write([]byte(`data: {"id":"one","provider":"gusher","choices":` +
+				`[{"index":0,"delta":{"content":"start "}}]}` + "\n\n"))
+			for {
+				if request.Context().Err() != nil {
+					_ = writer.CloseWithError(request.Context().Err())
+					return
+				}
+				if _, err := writer.Write([]byte("data: " + deltaChunk("and on ") + "\n\n")); err != nil {
+					return
+				}
+				time.Sleep(2 * time.Millisecond)
+			}
+		}()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       reader,
+			Request:    request,
+		}, nil
+	})}
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1", Model: model,
+		Routing: StaticRouting(RoutingLatency), HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.velocity = newVelocityLedger()
+	client.velocity.brisk(model, "quicksilver")
+
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	_, err = client.CompleteWithMessages(ctx, userMessages("hello"))
+	cut, ok := CutFrom(err)
+	if !ok || cut.Reason != CutOverrun {
+		t.Fatalf("err = %v, want an overrun cut", err)
+	}
+	if !cut.Rerouted {
+		t.Fatal("the cut did not report a strike, so the turn loop cannot know the retry moves")
+	}
+	if _, err := client.CompleteWithMessages(ctx, userMessages("again")); err != nil {
+		t.Fatal(err)
+	}
+	written := prefsOn(t, recorded, 1)
+	if got := words(written["ignore"]); !equalStrings(got, []string{"gusher"}) {
+		t.Fatalf("next request ignore = %v, want the endpoint the wall cut", got)
+	}
+	if got := words(written["order"]); !equalStrings(got, []string{"quicksilver"}) {
+		t.Fatalf("next request order = %v, want the healthy lane", got)
+	}
+}
+
+// shortenWall makes the derived bound testable in milliseconds, the way
+// shortenStallBounds does for the silence bounds. Only the clamps move:
+// [streamWallFactor] is what the derivation MEANS, so a test that changed it
+// would be testing a different law.
+func shortenWall(t *testing.T, floor, ceiling time.Duration) func() {
+	t.Helper()
+	oldFloor, oldCeiling := stallWallFloor, stallWallCeiling
+	stallWallFloor, stallWallCeiling = floor, ceiling
+	return func() { stallWallFloor, stallWallCeiling = oldFloor, oldCeiling }
 }

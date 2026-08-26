@@ -540,6 +540,24 @@ func outputTokens(response *ai.Response, text string) int {
 	return len(text) / 4
 }
 
+// stampCut writes onto a cut the three facts only the read loop holds: who the
+// stream said was serving it, how long it had been open, and how much answer had
+// arrived. See [StreamCut.Provider] for who reads them.
+//
+// The token figure is the estimate, because a cut stream never delivered a usage
+// block — the provider counts at the end and there was no end. It is the same
+// estimator a finished stream falls back to (outputTokens), so a row that says
+// "eleven hundred tokens in eighteen minutes" is comparable with the call rows
+// beside it.
+func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text string) {
+	if cut == nil {
+		return
+	}
+	cut.Provider = strings.TrimSpace(served)
+	cut.Ran = c.clock().Sub(began)
+	cut.Tokens = outputTokens(nil, text)
+}
+
 // completeWithMessagesStreaming preserves the completion interface while
 // exposing each text delta to an interactive observer. The accumulated
 // response is the same shape callers already parse after the stream closes.
@@ -579,7 +597,11 @@ func (c *Client) completeWithMessagesStreaming(
 	// (streamguard.go). Only the MODEL WRITING moves its clock; keepalives buy
 	// bounded patience instead — the decoder reports them through the alive
 	// seam below, and streamguard.go says exactly what they are worth.
-	stall := newStallWatch(cutStream)
+	//
+	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
+	// lineage's widest — no chunk has named a serving endpoint yet — and
+	// narrows to the lane's own the moment one does, below.
+	stall := newStallWatch(cutStream, c.streamWall(c.modelFor(request), ""))
 	defer stall.stop()
 	// And the degeneration guard, unless this call has it switched off. It is
 	// nil rather than dormant when off, so a call that is not watching pays
@@ -645,6 +667,11 @@ func (c *Client) completeWithMessagesStreaming(
 			// against the CALLER'S context and never against this one, so a
 			// stop that lands while a watchdog is firing still reads as a stop.
 			if cut := stall.cut(); cut != nil && ctx.Err() == nil {
+				// HOW FAR IT GOT, ON THE CUT ITSELF. A journal row about a cut
+				// that cannot say who was serving or how much answer had
+				// arrived is the row that made this whole bound guesswork the
+				// first time ([StreamCut.Provider]).
+				c.stampCut(cut, served, began, content.String())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
@@ -665,6 +692,12 @@ func (c *Client) completeWithMessagesStreaming(
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {
+			if served == "" {
+				// The first naming is what narrows the wall onto the lane that
+				// is actually serving; [stallWatch.rewall] does it once and
+				// measures the new bound from when the stream opened.
+				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider))
+			}
 			served = chunk.Provider
 		}
 		// A REFUSAL DELIVERED INSIDE A 200 IS STILL A REFUSAL. The router accepted
@@ -720,6 +753,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// turn loop and none of it reaches the transcript.
 				if babble != nil && babble.write(choice.Delta.Content) {
 					cut := &StreamCut{Reason: CutBabble}
+					c.stampCut(cut, served, began, content.String())
 					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 					// An endpoint producing soup has failed this lineage as
 					// surely as one that went quiet, so the pin moves too.
@@ -779,6 +813,11 @@ func (c *Client) completeWithMessagesStreaming(
 	// still a sighting: its TTFT is the whole call, which is exactly the
 	// complaint a person has about it.
 	generation := c.clock()
+	// THE REPLY FINISHED, SO ITS LENGTH IS EVIDENCE. It is the whole request —
+	// the wait to be served plus the writing — because that is what the wall
+	// bounds, and it is recorded whatever the routing preference says
+	// (velocity.go's [Client.noteRun]).
+	c.noteRun(c.modelFor(request), served, generation.Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	if !firstToken.IsZero() {
 		c.noteVelocity(
