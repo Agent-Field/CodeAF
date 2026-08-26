@@ -56,6 +56,10 @@ type errandLab struct {
 	standing string
 	agent    *errandAgent
 	dirs     []string
+	// orders is every [ErrandOrders] the seam was handed, so a test can assert
+	// WHAT the composer layer settled — the destination, the execution model, the
+	// cap — and not only where the folder went.
+	orders []ErrandOrders
 }
 
 func newErrandLab(t *testing.T) *errandLab {
@@ -91,9 +95,10 @@ func (l *errandLab) app(here string, turns ...[]session.Event) *app {
 	l.agent = &errandAgent{fakeAgent: fakeAgent{model: "m", turns: turns}}
 	a := l.homeLab.app(here)
 	a.standingRoot = l.standing
-	a.errand = func(dir, workspace string) (Agent, error) {
-		l.dirs = append(l.dirs, dir)
-		if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"),
+	a.errand = func(orders ErrandOrders) (Agent, error) {
+		l.dirs = append(l.dirs, orders.Dir)
+		l.orders = append(l.orders, orders)
+		if err := os.WriteFile(filepath.Join(orders.Dir, "transcript.jsonl"),
 			[]byte(`{"type":"session","version":1}`+"\n"), 0o600); err != nil {
 			return nil, err
 		}
