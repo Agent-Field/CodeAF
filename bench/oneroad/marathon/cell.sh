@@ -105,6 +105,13 @@ if [ -d "$CELL" ] && ! rm -rf "$CELL" 2>/dev/null; then
   rm -rf "$CELL"
 fi
 mkdir -p "$CELL"/{profile,home,logs,peer,snapshots}
+# THIS CELL'S OWN PID, WRITTEN WHERE ONLY THIS CELL WRITES. finish.sh ends a cell by
+# releasing its cell.sh so the EXIT trap performs the teardown, and it once found
+# that pid with `pgrep -f "cell.sh $ARM $TASK" | head -1` — the OLDEST cell of the
+# arm, not this one. With six seeds of one arm alive, retiring s8 tore down s4 and
+# retiring s9 tore down s5 (2026-08-26 00:39, both lost without a record). The pid
+# is a fact about this cell, so it lives in this cell's directory.
+echo $$ > "$CELL/cell.pid"
 CONTAINER="oneroad-mar-$ARM-$TASK-$SEED"
 SESSION_NAME="$CONTAINER"
 
