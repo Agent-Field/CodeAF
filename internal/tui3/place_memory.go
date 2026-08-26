@@ -682,6 +682,9 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 }
 
 func (placeMemory) stops(a *app) []int { return a.mem.stops() }
+func (placeMemory) cursorRow(a *app, rows []placeRow) int {
+	return placeRowAtLine(rows, a.mem.cursor)
+}
 
 // enter opens a shelf, or the card behind one line.
 func (placeMemory) enter(a *app) tea.Cmd {

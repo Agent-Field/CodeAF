@@ -1094,7 +1094,23 @@ func (placeTasks) tick(a *app, now time.Time) bool {
 func (placeTasks) body(a *app, width, room int) []placeRow {
 	return a.taskSheet.body(a, width, room)
 }
-func (placeTasks) stops(a *app) []int                  { return a.taskSheet.stops(a) }
+func (placeTasks) stops(a *app) []int { return a.taskSheet.stops(a) }
+
+// cursorRow is which drawn row the tasks cursor landed on. A task's card can be
+// several lines and every one of them carries the same hit, so this answers the
+// LAST of them — the strip belongs under the whole row it is about, not inside
+// it (pages.go's [place.cursorRow]).
+func (placeTasks) cursorRow(a *app, rows []placeRow) int {
+	found := -1
+	for i, row := range rows {
+		if hit, ok := row.hit.(taskSheetHit); ok &&
+			hit.kind == taskSheetHitRow && hit.index == a.taskSheet.cursor {
+			found = i
+		}
+	}
+	return found
+}
+
 func (placeTasks) enter(a *app) tea.Cmd                { return a.taskSheet.enter(a) }
 func (placeTasks) verbs(a *app) []verb                 { return a.taskSheet.verbs(a) }
 func (placeTasks) window(a *app, key string) bool      { return a.taskSheet.window(a, key) }

@@ -198,7 +198,8 @@ with something that is not drawn, and so does a terminal too narrow to draw the 
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
 
-Press `→` on a row that can be acted on and a strip of verbs opens under the list:
+Press `→` on a row that can be acted on and a strip of verbs opens **directly under that
+row**, on every place that has verbs — home, tasks, standing and memory:
 
 ```
 p pause   s stop   n not here
@@ -209,7 +210,8 @@ On home the verbs are the row's own — a question's first two answers in its ow
 `p pause it` or `r resume it` on a standing item.
 
 While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
-strip pushes the body down by a row, and that visible displacement is exactly why the letters
+strip pushes the rest of the list down by its own height — the frame stays the same height
+and the composer does not move — and that visible displacement is exactly why the letters
 are safe: you can see that typing has stopped.
 
 `esc` or `←` closes it. `enter` still opens the row. Moving off the row with `↑` or `↓`

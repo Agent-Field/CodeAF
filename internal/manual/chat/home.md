@@ -425,19 +425,21 @@ card*), at that same width and no other.
 
 ## How do I answer without opening the chat — the verb strip on a row
 
-**Press `→`.** A strip opens under the list with that row's own verbs on it, and **while it
-is drawn those letters are the verbs and the composer is asleep**:
+**Press `→`.** A strip opens **directly under the row you are standing on**, carrying that
+row's own verbs, and **while it is drawn those letters are the verbs and the composer is
+asleep**:
 
 ```
 y let it send   n not this time   a put it away   t new chat here
 esc or ← to leave · enter opens it instead
 ```
 
-The first line is the strip; the second is the hint line under the box, which says both
-ways out while it is up. `esc` or `←` closes it, `enter` still opens the row, and moving
-off the row with `↑` or `↓` closes it too — verbs belong to one row. The strip pushes the
-body down by a row, and that visible displacement is exactly what makes the bare letters
-safe.
+The first line is the strip, drawn in the list itself with the row it acts on directly
+above it; the second is the hint line under the box, which says both ways out while it is
+up. `esc` or `←` closes it, `enter` still opens the row, and moving off the row with `↑` or
+`↓` closes it too — verbs belong to one row. **The strip pushes the rest of the list down by
+its own height** and the frame stays exactly as tall as it was, so the composer does not
+move; that visible displacement is exactly what makes the bare letters safe.
 
 **The verbs are the row's own and nothing invents one:**
 

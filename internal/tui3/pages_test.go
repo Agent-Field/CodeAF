@@ -332,6 +332,100 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	}
 }
 
+// THE STRIP IS DRAWN UNDER THE ROW IT BELONGS TO, AND PUSHES THE LIST DOWN BY
+// ITS OWN ROWS (SCREEN 3c).
+//
+// That displacement is the whole argument for bare letters: "the strip pushes
+// the list down and takes the letters with it — that visible displacement is why
+// bare letters are safe here". A strip under the composer displaces nothing, so
+// this asserts three things at once — the letters are on the row after the
+// cursor's, the row above them is the one the verbs act on, and the frame is
+// exactly as tall as it was before `→` was pressed.
+func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
+	a := placeApp(t)
+	a.home.box.reset()
+	a.home.build()
+	before := strings.Split(placeFrameText(a), "\n")
+	drive(t, a, key("right"))
+	if !a.strip.open {
+		t.Fatal("`→` opened no strip on a row that has verbs")
+	}
+	after := strings.Split(placeFrameText(a), "\n")
+	if len(before) != len(after) {
+		t.Fatalf("the frame changed height with the strip up: %d rows became %d", len(before), len(after))
+	}
+	at := -1
+	for i, row := range after {
+		if strings.Contains(row, "a put it away") && strings.Contains(row, "t new chat here") {
+			at = i
+		}
+	}
+	if at < 1 {
+		t.Fatalf("the strip is not on the frame:\n%s", strings.Join(after, "\n"))
+	}
+	if !strings.Contains(after[at-1], "Porting the Picker") {
+		t.Fatalf("the strip is not under the row its letters act on — row above is %q\n%s",
+			after[at-1], strings.Join(after, "\n"))
+	}
+	// AND THE COMPOSER IS STILL WHERE IT WAS, under everything. The strip is a
+	// row of the body now, so the foot did not move.
+	foot, footBefore := -1, -1
+	for i, row := range after {
+		if strings.Contains(row, placeRestWord) {
+			foot = i
+		}
+	}
+	for i, row := range before {
+		if strings.Contains(row, placeRestWord) {
+			footBefore = i
+		}
+	}
+	if foot != footBefore || foot < 0 {
+		t.Fatalf("the composer moved when the strip opened: row %d became row %d", footBefore, foot)
+	}
+	if at > foot {
+		t.Fatalf("the strip is drawn below the composer, at row %d of a foot at %d", at, foot)
+	}
+	// AND THE LIST BELOW THE ROW MOVED DOWN BY THE STRIP'S OWN HEIGHT.
+	was := -1
+	for i, row := range before {
+		if strings.Contains(row, "Pricing Research") {
+			was = i
+		}
+	}
+	now := -1
+	for i, row := range after {
+		if strings.Contains(row, "Pricing Research") {
+			now = i
+		}
+	}
+	if was < 0 || now != was+1 {
+		t.Fatalf("the row under the strip is at %d, was at %d — the list did not move by one", now, was)
+	}
+	// AND THE FOOT SAYS BOTH WAYS OUT AND THE ONE KEY THE STRIP DOES NOT TAKE.
+	if !strings.Contains(placeFrameText(a), stripHint) {
+		t.Fatalf("the foot does not say %q:\n%s", stripHint, placeFrameText(a))
+	}
+}
+
+// AND THE COMPOSER IS ASLEEP WHILE THE STRIP IS UP: every printable is a verb or
+// nothing, and none of them is a character.
+func TestTheComposerIsAsleepWhileTheStripIsUp(t *testing.T) {
+	a := placeApp(t)
+	a.home.box.reset()
+	a.home.build()
+	drive(t, a, key("right"))
+	for _, letter := range []string{"z", "q", "1"} {
+		drive(t, a, key(letter))
+		if got := a.home.box.String(); got != "" {
+			t.Fatalf("%q reached the composer while the strip was up: %q", letter, got)
+		}
+		if !a.strip.open {
+			t.Fatalf("%q closed the strip", letter)
+		}
+	}
+}
+
 // ── typing offers places (SCREEN 1g) ────────────────────────────────────────
 
 // TYPING OFFERS PLACES BESIDE CHATS, a place ranks first, and each result says

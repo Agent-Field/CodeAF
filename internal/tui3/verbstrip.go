@@ -117,17 +117,78 @@ func (a *app) stripKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// placeStrip is the strip row (or rows) in the frame's foot: the verbs when they
-// are up, and otherwise home's answer strip, which is the same object opened by
-// the row having a question rather than by a key.
+// placeStrip is what the frame's FOOT carries above the hint: home's answer
+// strip, which is the same object as the verbs' and is opened by the row having
+// a question rather than by a key.
+//
+// THE VERBS ARE NOT HERE ANY MORE (SCREEN 3c). They are drawn inline, under the
+// row they belong to, by [placeStripInline]; this file's own law says why —
+// "the strip displaces the body by its own height, and that visible displacement
+// is what makes the bare letters safe" — and a strip under the composer displaces
+// nothing at all. The answer chips stay at the foot because they are not a row's
+// verbs: they are what a conversation ANOTHER window is holding is waiting for,
+// and they belong beside the box that could answer it.
 func (a *app) placeStrip(width int) []string {
 	if a.strip.open {
-		return a.verbStripRow(width)
+		return nil
 	}
 	if a.at(pageHome) {
 		return a.answerStrip(width, time.Now())
 	}
 	return nil
+}
+
+// placeStripInline puts the verb strip INTO the body, directly under the row its
+// letters are about (SCREEN 3c: "the strip pushes the list down and takes the
+// letters with it").
+//
+// THE ROW IS THE PLACE'S OWN ANSWER and this function knows nothing about which
+// place is up ([place.cursorRow]). The rows below the strip move down by its
+// height and the body was built one row shorter to pay for it, so the frame is
+// exactly the height it was before `→` was pressed.
+//
+// A CURSOR ON NOTHING THIS FRAME DREW PUTS THE STRIP LAST. It cannot happen from
+// a keypress — the strip only opens over a row that offered verbs, and every
+// place's window follows its own cursor — but a frame resized to two rows can
+// leave the row off the bottom, and a strip that vanished there would be four
+// letters bound and nothing on screen naming them, which is the one state this
+// whole file exists to prevent.
+func placeStripInline(a *app, rows []placeRow, strip []string) []placeRow {
+	if len(strip) == 0 || len(rows) == 0 {
+		return rows
+	}
+	at := len(rows) - 1
+	if pl := a.showing(); pl != nil {
+		if row := pl.cursorRow(a, rows); row >= 0 && row < len(rows) {
+			at = row
+		}
+	}
+	out := make([]placeRow, 0, len(rows)+len(strip))
+	out = append(out, rows[:at+1]...)
+	for _, line := range strip {
+		// THE STRIP'S OWN ROWS ANSWER THE POINTER WITH NOTHING. They are not a row
+		// of the place's reading, so a press on one must not resolve against the
+		// line that happened to be at that index (pages.go's [placeHitsOf] turns a
+		// nil hit into each place's own "no row").
+		out = append(out, placeRow{text: line})
+	}
+	return append(out, rows[at+1:]...)
+}
+
+// placeRowAtLine is which of the rows just built carries one line of a place's
+// own reading, for the places whose hit IS that line number. It is the answer
+// [place.cursorRow] gives on standing and memory, and it is one function so the
+// two cannot come to disagree about what a hit means.
+func placeRowAtLine(rows []placeRow, line int) int {
+	if line < 0 {
+		return -1
+	}
+	for i, row := range rows {
+		if at, ok := row.hit.(int); ok && at == line {
+			return i
+		}
+	}
+	return -1
 }
 
 // stripRow paints the verbs: the letter in the payload rule's own ink, the word

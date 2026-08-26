@@ -788,6 +788,20 @@ func (placeHome) stops(a *app) []int {
 	return out
 }
 
+// cursorRow is which drawn row home's cursor landed on, found through the hit
+// map the body just wrote. Home's rows carry two facts each — the list line and
+// the errand pane sharing it — so the line is unpacked from [homeMark] rather
+// than read as a bare index (pages.go's [place.cursorRow] says why the rows are
+// handed in).
+func (placeHome) cursorRow(a *app, rows []placeRow) int {
+	for i, row := range rows {
+		if mark, ok := row.hit.(homeMark); ok && mark.line == a.home.cursor {
+			return i
+		}
+	}
+	return -1
+}
+
 func (placeHome) enter(a *app) tea.Cmd { return a.homeEnter() }
 
 func (placeHome) verbs(a *app) []verb { return a.homeRowVerbs() }
