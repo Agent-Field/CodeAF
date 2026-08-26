@@ -540,12 +540,26 @@ finishes with a question mark, it is waiting on you, and carrying it on would be
 answering a question that was addressed to you. That is the whole of the test — the mark
 itself, so it works whatever language you are talking in.
 
-**A short reply is not read at all.** If the reply ended before it reached the first of those
-three points — a couple of tool calls and an answer, or no tools at all — it is never read
-for what remains. There was not enough work in it to leave half done, and reading every small
-reply cost a thinking-tier call on every message you sent: measured, that was a third to a
-half of a small question's whole bill, and it almost never found anything left to do. The
-same count decides both things, so nothing about what you asked for is read to decide it.
+**A short reply that only LOOKED at things is not read at all.** If the reply ended before it
+reached the first of those three points — a couple of reads and an answer, or no tools at all
+— it is never read for what remains. There was not enough work in it to leave half done, and
+reading every small reply cost a thinking-tier call on every message you sent: measured, that
+was a third to a half of a small question's whole bill, and it almost never found anything
+left to do.
+
+**But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
+what the reply left behind, not what it cost. If the last thing a reply did was save or edit
+something — and it then stopped in words, with nothing run over the top of it — it is read for
+what remains whatever its length. A short reply cannot leave a job half done; it can very
+easily leave an **unbuilt edit**, and that is exactly what happened on a measured run: a reply
+woke up, made six calls, overwrote an 18,000-byte source file, said "now let me build and run
+the full test suite", and ended without running anything. The file it had just written was the
+six compile errors that shipped, and three hours of the request went unspent.
+
+**Running anything after the save takes it back off that gate.** A build, a test, a re-read of
+the file it just wrote — anything at all after the last save is the reply having checked
+itself, and it is then priced like any other short reply. aforge does not try to tell a build
+from a test from a read; it only asks whether the reply stopped on the change or looked at it.
 
 **What bounds it is the same meter as everything else on this page.** Carrying on counts as a
 round, so it climbs the same three points, and a carried-on reply that reaches the third one
@@ -730,6 +744,7 @@ These are the exact words on screen.
 | landed clean | `done` |
 | landed short | `failed` |
 | landed, but nobody could judge it | `needs your look` |
+| cut off while it was being checked | `needs your look`, with `incomplete — it was stopped while its work was being checked` |
 | …the same thing on the roster | `finished — look it over` |
 | …the same thing when there was no report | `finished, but needs your look` |
 | …its branch, on the card | `branch kept` |
@@ -743,6 +758,30 @@ can act on and a queue clears itself.
 
 How a branch came home is spelled `merged`, `conflicted`, or `inplace` (the work ran
 directly in your own tree because there was no repository to branch from).
+
+## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
+
+**A cancel is an interruption, never a finding about the work.** When aforge quits, a
+deadline on the whole session fires, or something outside the task ends it while the check
+is running, nobody has looked at the deliverable and nobody has said anything about it. So
+the task does **not** land as `failed`. It lands as **`needs your look`**, with the plain
+sentence:
+
+```
+incomplete — it was stopped while its work was being checked, so nothing finished
+checking it — what it wrote is on its branch
+```
+
+and, underneath it, **the task's own last words about what it did**, quoted. Whatever the
+check had already said before it was cut off stands under that. Nothing is merged into your
+tree, and the branch is kept, so the work is still there to read, finish or throw away.
+
+**This is not the same as a task that was checked and came back short.** That one *is* a
+finding — somebody looked and said what is missing — and it lands `failed` with the gaps in
+front of it, exactly as before. The difference is whether anybody actually looked.
+
+**And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
+the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
 ## The three ways work lands
 
