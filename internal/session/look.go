@@ -183,6 +183,12 @@ func NoteLookAt(root, place string, at time.Time) {
 // temporary directory: a rename across two filesystems is not atomic, and on
 // most of them is not a rename at all.
 func writeLookStamps(root string, payload []byte) {
+	// The root is NOT created here, for [NoteLook]'s stated reason: a places
+	// root brought into being for a stamp alone is state the world reader then
+	// walks. It exists by the time anybody can leave a place — opening a
+	// conversation makes the project bucket underneath it (cmd/aforge's
+	// v3ProjectDir) — and on the one run where it somehow does not, a lost
+	// stamp costs a place its origin and nothing else.
 	temporary, err := os.CreateTemp(root, looksStampName+".*")
 	if err != nil {
 		return

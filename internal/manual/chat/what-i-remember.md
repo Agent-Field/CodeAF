@@ -38,6 +38,51 @@ once under them, above the composer — *What the memory place shows when there 
 it* below. It used to refuse to open at all, which made `alt+4` on a fresh machine a key
 that did nothing.
 
+## It said memory is off and I never turned it off
+
+Then it is not the setting, it is the file. Two different sentences use the same
+words, and the one printed on the terminal before the screen appears always says
+what the trouble was after a colon:
+
+```
+memory is off for this session: could not open ~/.aforge/graph.db: permission denied
+```
+
+Everything remembered on this machine lives in one file, `~/.aforge/graph.db`,
+and every part of aforge opens that same file. When it will not open, this
+conversation runs without memory rather than refusing to start — you asked for a
+conversation, and a sulky file is no reason not to have one. Nothing already in
+the file is lost by this; nothing new is written until it opens again.
+
+The reason after the colon is the operating system's own, and it is the thing to
+act on:
+
+- `permission denied` — something owns `~/.aforge` that you do not. `ls -la ~/.aforge`
+  says who.
+- `read-only file system` — the disk it is on will not take writes.
+- `file is not a database` / `database disk image is malformed` — the file is
+  damaged. Move it aside and the next launch makes a fresh one, empty.
+
+**On a machine that has never run aforge there is no trouble to report.** The
+folder is made on the way in, and the first launch comes up with an empty memory
+that teaches rather than an error. It did not always: a first run once reported
+`out of memory (14)`, which was never true — that is one code SQLite uses for
+every reason a file will not open, and a build old enough to print it is a build
+worth replacing.
+
+## Where is everything you remember kept
+
+In `~/.aforge/graph.db`, one file, made the first time aforge runs. Memories,
+every conversation this machine has held, and the work it has run are all in it,
+which is why a memory kept in one project is there in the next.
+
+`AFORGE_HOME` moves the whole folder — set it and aforge keeps everything
+somewhere else, which is how a disposable run gets a brain of its own without
+touching yours.
+
+Copy the file to another machine and your memories go with it. Delete it and
+they are gone; nothing else keeps a second copy.
+
 ## How do I see what aforge remembers about me?
 
 Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
