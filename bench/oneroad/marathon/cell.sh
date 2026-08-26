@@ -33,7 +33,11 @@
 #    does, and the container is created immediately before the prompt is sent so
 #    the agent's remaining budget matches the cell's remaining wall.
 #
-# 3. /logs IS SHARED BETWEEN THE TWO PHASES. The agent's own `run_tests.sh`
+# 3. THE AGENT COMPILES WITH THE IMAGE'S TOOLCHAIN, AND THE NETWORK IS THE
+#    TASK'S ALLOWLIST. Both were measured defects, and both are runner faults
+#    rather than harness ones — see "The toolchain" and "The network" below.
+#
+# 4. /logs IS SHARED BETWEEN THE TWO PHASES. The agent's own `run_tests.sh`
 #    writes /logs/verifier/reward.txt and metrics.json — a score the AGENT
 #    produced against the visible corpus, which must never be mistaken for the
 #    verifier's verdict. So everything the agent left in /logs is moved aside to
@@ -69,6 +73,16 @@ OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 # away, and the cost of waiting is bounded by the wall while the cost of killing
 # is not bounded by anything.
 SILENCE_SECONDS="${SILENCE_SECONDS:-900}"
+# THE EGRESS ALLOWLIST IS ON BY DEFAULT AND A FAILURE TO INSTALL IT IS FATAL.
+# A cell that quietly falls back to full egress is a cell whose prompt lies to
+# the agent ("only the package registries … are reachable") and whose row cannot
+# be compared with a leaderboard number. NETLOCK=0 is for debugging only and is
+# written into the record where it cannot be missed.
+NETLOCK="${NETLOCK:-1}"
+NETLOCK_REFRESH="${NETLOCK_REFRESH:-30}"
+# PIN_TOOLCHAIN=1 fixes the agent's rustc to the one the image shipped. See
+# "The toolchain" below for why the shared RUSTUP_HOME alone is not enough.
+PIN_TOOLCHAIN="${PIN_TOOLCHAIN:-1}"
 POLL="${POLL:-15}"
 SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-3600}"
 
@@ -124,6 +138,65 @@ WORKDIR="$(docker image inspect -f '{{.Config.WorkingDir}}' "$IMAGE")"
 IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
 TASK_COMMIT="$(git -C "$MARATHON_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
 
+# ── the toolchain: the agent's compiler is the verifier's compiler ──────────
+#
+# THE DEFECT THIS FIXES, MEASURED. The agent is run with `HOME=/chome` so the
+# harness's dotfiles stay out of /root — but the image installs rust as root,
+# into /root/.rustup and /root/.cargo, and rustup finds its store through
+# $HOME/.rustup. With HOME=/chome the agent's very first `rustc --version`
+# answers
+#
+#   error: rustup could not choose a version of rustc to run, because one wasn't
+#   specified explicitly, and no default is configured.
+#   help: run 'rustup default stable' …
+#
+# and every model does what the help text says. On an open network that
+# downloaded a NEWER stable into /chome/.rustup, and the workspace then drifted
+# to whatever that compiler allowed: seed s6's Cargo.lock pinned url 2.5.8 →
+# idna → icu 2.3, which needs rustc 1.88. It built in the cell. It could not
+# build under `tests/test.sh`, which exports PATH=/root/.cargo/bin and runs with
+# HOME=/root — so the benchmark's own verifier scored it 0.0, and so did the
+# hourly snapshot scorer in its fresh image container. The agent was never told.
+#
+# RUSTUP_HOME/CARGO_HOME point the agent at the image's store, which is the store
+# the verifier reads. That alone is what the official environment has (there the
+# agent simply runs as root with HOME=/root).
+#
+# RUSTUP_TOOLCHAIN goes one step further and pins the compiler to the one the
+# image shipped. This is a DEVIATION, deliberately: the benchmark's allowlist
+# includes static.rust-lang.org, so an agent may legitimately install a newer
+# stable and — sharing /root/.rustup — the verifier would inherit it. But the
+# hourly snapshot scorer builds in a FRESH container of the image, which has only
+# the shipped toolchain, and a curve that cannot build what the cell built is a
+# curve that lies. Pinning makes all three compilers the same one. It is proven
+# to hold: with RUSTUP_TOOLCHAIN set, `rustup default stable` still installs
+# 1.98.0 and rustup itself prints "note that the toolchain '1.86.0-…' is
+# currently in use (overridden by environment variable RUSTUP_TOOLCHAIN)", and
+# `rustc --version` still answers 1.86.0.
+IMAGE_TOOLCHAIN="$(docker run --rm --entrypoint sh "$IMAGE" -c \
+  'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
+IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/dev/null' 2>/dev/null)"
+# test.sh's PATH, verbatim — the agent searches for cargo exactly where the
+# verifier will.
+TOOLCHAIN_PATH="/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+TOOLCHAIN_ENV="-e RUSTUP_HOME=/root/.rustup -e CARGO_HOME=/root/.cargo -e PATH=$TOOLCHAIN_PATH"
+VERIFIER_TC_ENV=""
+if [ "$PIN_TOOLCHAIN" = "1" ] && [ -n "$IMAGE_TOOLCHAIN" ]; then
+  TOOLCHAIN_ENV="$TOOLCHAIN_ENV -e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
+  VERIFIER_TC_ENV="-e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
+fi
+
+# ── the network deviation, in one string, told the same way everywhere ──────
+# record.py and verify.sh both used to carry their own hardcoded sentence about
+# full egress. There is now one sentence, it is computed from what this cell
+# actually did, and both readers are handed it.
+if [ "$NETLOCK" = "1" ]; then
+  NETWORK_DEVIATION="egress allowlist enforced in the container netns (host iptables via nsenter): task.toml's five hosts — crates.io, index.crates.io, static.crates.io, github.com, static.rust-lang.org — plus openrouter.ai for the model API, which the benchmark's own agent phase also adds. REMAINING DEVIATION: openrouter.ai is reachable, and the allowlist is by resolved address, so it cannot separate static.rust-lang.org from the crate registries (same Fastly address)"
+else
+  NETWORK_DEVIATION="NETLOCK=0: default docker bridge, FULL EGRESS — the task asks for a crates.io + model-endpoint allowlist and this cell did not build one"
+fi
+export NETWORK_DEVIATION
+
 # ── the prompt: instruction.md, verbatim ────────────────────────────────────
 # There is no `## Task` section to cut out of it as there is on the SWE track —
 # instruction.md IS the whole agent-facing instruction, including the sentence
@@ -131,6 +204,7 @@ TASK_COMMIT="$(git -C "$MARATHON_REPO" rev-parse HEAD 2>/dev/null || echo unknow
 cp "$TASKDIR/instruction.md" "$CELL/prompt.txt"
 
 say "$ARM/$TASK: image=${IMAGE_ID:7:19} wd=$WORKDIR cpus=$CPUS mem=${MEM_MB}m wall=${CELL_SECONDS}s"
+say "$ARM/$TASK: toolchain=${IMAGE_TOOLCHAIN:-unknown} (${IMAGE_RUSTC:-unknown}) pinned=$PIN_TOOLCHAIN netlock=$NETLOCK"
 
 # ── the container ───────────────────────────────────────────────────────────
 docker rm -f "$CONTAINER" >/dev/null 2>&1
@@ -155,9 +229,46 @@ say "$ARM/$TASK: container up — timer says $(tr '\n' ' ' < "$CELL/timer-at-sta
 # Proof for the record that no part of tests/ or solution/ was reachable.
 docker exec "$CONTAINER" sh -c 'ls -d /tests /solution 2>&1 | head -5' > "$CELL/oracle-absent.txt" 2>&1
 
+# ── the network: the task's own allowlist, before the agent draws a frame ───
+#
+# instruction.md tells the agent, verbatim, "Network access is restricted — only
+# the package registries needed to fetch your crate dependencies are reachable;
+# all other internet egress is blocked", and task.toml names the five hosts for
+# both the agent and the verifier phase. Cells before this ran on docker's
+# default bridge with full egress, which made that sentence in the prompt false
+# and let seeds s4–s9 install their own toolchains from static.rust-lang.org.
+#
+# netlock.sh writes the rules with the HOST's iptables into the CONTAINER's
+# network namespace (nsenter -t <pid> -n). The image is not modified, no
+# capability is added to the container, and no proxy variable is put in its
+# environment — which matters because the peer arms are node and bun programs
+# that ignore HTTPS_PROXY, and a policy that only two of four arms obey is a bias
+# rather than a policy. See netlock.sh's header for the two mechanisms rejected.
+NETLOCK_PID=""
+if [ "$NETLOCK" = "1" ]; then
+  bash "$MAR/netlock.sh" apply "$CONTAINER" >> "$CELL/cell.log" 2>&1 \
+    || { say "$ARM/$TASK: EGRESS ALLOWLIST COULD NOT BE INSTALLED — refusing to run open"; \
+         echo INVALID > "$CELL/outcome"; docker rm -f "$CONTAINER" >/dev/null 2>&1; exit 1; }
+  bash "$MAR/netlock.sh" watch "$CONTAINER" "$NETLOCK_REFRESH" >> "$CELL/netlock.log" 2>&1 &
+  NETLOCK_PID=$!
+  bash "$MAR/netlock.sh" show "$CONTAINER" > "$CELL/netlock-rules.txt" 2>&1
+  # The proof travels with the cell: what answered and what was refused, from
+  # inside the container the agent is about to be given.
+  docker exec "$CONTAINER" sh -c '
+    for u in https://index.crates.io/config.json https://crates.io/ https://github.com/ \
+             https://openrouter.ai/api/v1/models https://pypi.org/simple/ \
+             https://registry.npmjs.org/ https://www.google.com/; do
+      printf "%-40s %s\n" "$u" "$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 "$u" 2>&1 | tail -1)"
+    done' > "$CELL/netlock-probe.txt" 2>&1
+  say "$ARM/$TASK: egress allowlist live (watch pid $NETLOCK_PID) — see netlock-probe.txt"
+else
+  say "$ARM/$TASK: NETLOCK=0 — running on FULL EGRESS, this row is not comparable"
+fi
+
 SNAP_PID=""
 cleanup() {
   [ -n "$SNAP_PID" ] && kill "$SNAP_PID" 2>/dev/null
+  [ -n "${NETLOCK_PID:-}" ] && kill "$NETLOCK_PID" 2>/dev/null
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null
   # HAND THE FILES BACK BEFORE THE CONTAINER GOES. Everything under the cell is a
   # bind mount written by root inside the container; left that way it is
@@ -213,6 +324,7 @@ PY
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
     "docker exec -it -w $WORKDIR \
        -e HOME=/chome -e AFORGE_HOME=/prof -e AFORGE_PROFILE_DIR=/prof \
+       $TOOLCHAIN_ENV \
        -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -e TERM=xterm-256color \
        $CONTAINER aforge chat --yolo --model '$MODEL'; echo AFORGE-EXITED; sleep 60"
 
@@ -338,6 +450,7 @@ run_peer() {
   # would otherwise read as a cheat.
   timeout "$CELL_SECONDS" docker exec -w "$WORKDIR" \
     -e HOME=/peer -e "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
+    $TOOLCHAIN_ENV \
     "$CONTAINER" bash -lc "$inner"
 }
 
@@ -379,7 +492,16 @@ sleep 2
 # agent actually left behind, target directory and all.
 docker cp "$TASKDIR/tests" "$CONTAINER:/tests" >/dev/null || { say "could not stage /tests"; echo INVALID > "$CELL/outcome"; }
 VSTART=$(date +%s)
-timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" "$CONTAINER" bash /oneroad-verify.sh \
+# THE VERIFIER GETS THE SAME PIN. tests/test.sh sets its own PATH and reads
+# rustup's store through HOME=/root, so it needs nothing from here to find the
+# toolchain — but if the agent ran `rustup default stable` it changed the DEFAULT
+# in the shared /root/.rustup, and the verifier would then compile with a
+# compiler the agent never used and the snapshot scorer does not have. Handing it
+# RUSTUP_TOOLCHAIN closes that last gap without editing one line of test.sh.
+timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
+  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" \
+  $VERIFIER_TC_ENV \
+  "$CONTAINER" bash /oneroad-verify.sh \
   > "$CELL/verify.log" 2>&1
 VCODE=$?
 VWALL=$(( $(date +%s) - VSTART ))
@@ -394,6 +516,7 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
 AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" PIN_TOOLCHAIN="$PIN_TOOLCHAIN" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="$CELL_SECONDS" \
 python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" "$CODE" "$VWALL" "$VCODE"
 cleanup

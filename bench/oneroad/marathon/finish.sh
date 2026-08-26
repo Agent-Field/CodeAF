@@ -81,8 +81,40 @@ docker exec "$CONTAINER" sh -c \
 sleep 2
 
 docker cp "$TASKDIR/tests" "$CONTAINER:/tests" >/dev/null || { say "could not stage /tests"; exit 1; }
+
+# ── WHAT THIS CELL ACTUALLY HAD, READ OFF THE CONTAINER ─────────────────────
+# finish.sh ends a cell that is ALREADY UP, and a cell that is already up may
+# have been launched before the egress allowlist and the toolchain fix existed —
+# the six seeds of 2026-08-25/26 were. So neither is assumed here: the network
+# policy is read from the container's own netns, and the toolchain split is read
+# from the filesystem. A cell whose agent installed its own rust into
+# /chome/.rustup is verified WITHOUT the pin, because 1.86.0 is not the compiler
+# that workspace was built with and the benchmark's own verifier would not have
+# had it either. Its 0.0 is a real reading about a real cell.
+if bash "$MAR/netlock.sh" show "$CONTAINER" 2>/dev/null | grep -q ONEROAD_ALLOW; then
+  NETWORK_DEVIATION="egress allowlist enforced in the container netns (host iptables via nsenter): task.toml's five hosts — crates.io, index.crates.io, static.crates.io, github.com, static.rust-lang.org — plus openrouter.ai for the model API, which the benchmark's own agent phase also adds. REMAINING DEVIATION: openrouter.ai is reachable, and the allowlist is by resolved address, so it cannot separate static.rust-lang.org from the crate registries (same Fastly address)"
+else
+  NETWORK_DEVIATION="default docker bridge, FULL EGRESS — this cell was started before the allowlist existed, or with NETLOCK=0"
+fi
+export NETWORK_DEVIATION
+say "$ARM/$TASK: network was — $NETWORK_DEVIATION"
+
+VERIFIER_TC_ENV=""
+SPLIT_TOOLCHAIN="$(docker exec "$CONTAINER" sh -c 'ls -d /chome/.rustup/toolchains 2>/dev/null' 2>/dev/null)"
+IMAGE_TOOLCHAIN="$(docker exec "$CONTAINER" sh -c 'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
+IMAGE_RUSTC="$(docker exec "$CONTAINER" sh -c 'rustc --version 2>/dev/null' 2>/dev/null)"
+if [ -n "$SPLIT_TOOLCHAIN" ]; then
+  say "$ARM/$TASK: this cell had a SPLIT toolchain (/chome/.rustup exists) — verifying unpinned, as the benchmark would"
+  PIN_TOOLCHAIN=0
+elif [ "${PIN_TOOLCHAIN:-1}" = "1" ] && [ -n "$IMAGE_TOOLCHAIN" ]; then
+  VERIFIER_TC_ENV="-e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
+  PIN_TOOLCHAIN=1
+fi
+
 VSTART=$(date +%s)
-timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" "$CONTAINER" bash /oneroad-verify.sh \
+timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
+  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" $VERIFIER_TC_ENV \
+  "$CONTAINER" bash /oneroad-verify.sh \
   > "$CELL/verify.log" 2>&1
 VCODE=$?
 VWALL=$(( $(date +%s) - VSTART ))
@@ -92,6 +124,7 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
 AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" PIN_TOOLCHAIN="${PIN_TOOLCHAIN:-0}" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="${CELL_SECONDS:-36000}" \
 python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCODE"
 
