@@ -576,6 +576,7 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 		{"a node that came back short once", TaskFailed, gapsOutcome([][]string{shortFirst.evidence})},
 		{"a node that came back short twice", TaskFailed, gapsOutcome([][]string{shortFirst.evidence, shortAgain.evidence})},
 		{"a node with a finding and no evidence", TaskFailed, gapsOutcome(nil)},
+		{"a node cut off mid-check", TaskUnverified, withReport(taskCutMidCheck, held.checkedSoFar())},
 		{"a node nobody could judge", TaskUnverified, essay.lookOutcome()},
 		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome()},
 		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome()},

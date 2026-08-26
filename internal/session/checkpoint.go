@@ -1951,20 +1951,45 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 //     harness answering a question that was addressed to somebody else. It is read
 //     structurally ([endsAskingThePerson]) and never by keyword, because a rule
 //     that knew what "shall I" looked like would be a rule about English.
-//   - A TURN THE METER NEVER THOUGHT WORTH ONE READING IS NOT WORTH A
-//     REMAINS-READING EITHER. The gate is the mark ladder's FIRST RUNG
-//     ([checkpointMeter.markAt]), which keeps this a cost gate in the meter's own
-//     currency rather than a content one, exactly like every other trigger in this
-//     file — and keeps it on the SAME number, from the same constant, that already
-//     decides when a running turn has become dear enough to interrupt. It was one
-//     finished round until that was measured: `bash ls` is one round, so EVERY
-//     small turn that touched a tool paid a mastermind call — $0.001 to $0.002, a
-//     third to a half of a tiny ask's whole bill — and in eight of nine measured
-//     runs the call re-opened nothing. A turn the ladder has not yet charged a
-//     single reading for has not done enough work to have left any of it
-//     half-done, and charging it a mastermind call anyway would be the bill this
-//     file's own digest exists to prevent. route_judge.go already reads the turn
-//     that answered in words alone and asks the other question about it.
+//
+//   - A TURN THAT TOUCHED NOTHING AND THE METER NEVER THOUGHT WORTH ONE READING
+//     IS NOT WORTH A REMAINS-READING EITHER. The price gate is the mark ladder's
+//     FIRST RUNG ([checkpointMeter.markAt]), which keeps it a cost gate in the
+//     meter's own currency rather than a content one, exactly like every other
+//     trigger in this file — and keeps it on the SAME number, from the same
+//     constant, that already decides when a running turn has become dear enough to
+//     interrupt. It was one finished round until that was measured: `bash ls` is
+//     one round, so EVERY small turn that touched a tool paid a mastermind call —
+//     $0.001 to $0.002, a third to a half of a tiny ask's whole bill — and in eight
+//     of nine measured runs the call re-opened nothing. A turn that only LOOKED has
+//     not done enough work to have left any of it half-done, and charging it a
+//     mastermind call anyway would be the bill this file's own digest exists to
+//     prevent. route_judge.go already reads the turn that answered in words alone
+//     and asks the other question about it.
+//
+//   - BUT THE READER IS GATED ON EXPOSURE, NOT ON PRICE. A turn that CHANGED THE
+//     WORKING TREE and then stopped without anybody looking at the change is read
+//     for what remains whatever it cost ([turnLeftTheTreeUnchecked]) — because the
+//     thing a cheap turn cannot leave behind is a half-done job, and the thing it
+//     very much CAN leave behind is an unbuilt edit.
+//
+//     SWE-Marathon s10, 10:35Z: a turn woken by a job's exit ran six rounds,
+//     overwrote an 18,771-byte source file, said "now let me build and run the full
+//     test suite" WITHOUT calling anything, and sealed. Six is under the first rung,
+//     so the price gate returned early and nothing read the turn; the file it had
+//     just written was the six compile errors the run shipped with, and three hours
+//     of the ask went unspent. The rounds were cheap. The exposure was total.
+//
+//     WHAT COUNTS AS EXPOSURE IS THE DIGEST'S OWN FACT AND NOT A SECOND OPINION
+//     ABOUT TOOLS: [checkpointLedger] already names the writers and the workClock
+//     already holds the step the deliverable last moved on (novelty.go), so the
+//     whole rule is "the last thing this turn did was change something". A turn
+//     that wrote and then ran ANYTHING — a build, a test, a read of what it just
+//     wrote — has had its change looked at by the one party that could, and it goes
+//     back on the price gate like every other turn. That bounds the new spend to
+//     turns whose last act was a write, which is a small set and is exactly the set
+//     that was measured going wrong.
+//
 //   - AND THE METER IS THE ONLY COUNTER. A re-open is charged as a ROUND, through
 //     the ordinary [Agent.checkpointRound], which is what "on the same meter"
 //     has to mean if it is to mean anything: the marks still fire, a re-opened
@@ -2003,10 +2028,27 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
-	if meter == nil || meter.rounds < meter.markAt(1) {
+	if meter == nil {
 		return false, false
 	}
+	// THE CHEAP EXCLUSIONS FIRST, then the two gates. A question to the person is
+	// a string test on what was just said; the exposure reading walks the turn's
+	// messages, and there is no sense walking them for a turn that is waiting.
 	if endsAskingThePerson(said) {
+		return false, false
+	}
+	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT.
+	//
+	// THE ROUND COUNT IS WHAT MAKES THE SECOND READING THIS TURN'S. The ledger
+	// walks the whole transcript (the digest's own habit), so "the last call was a
+	// write" is a fact about the CONVERSATION until something says this turn made
+	// calls at all — and a turn that made at least one round owns every call at
+	// the newest end of that transcript, because its rounds are the newest thing
+	// in it. Without this a person typing "thanks" after a turn that wrote would
+	// pay a reader for a message that touched nothing, which is the exact bill the
+	// price gate exists to prevent.
+	if meter.rounds < meter.markAt(1) &&
+		!(meter.rounds > 0 && turnLeftTheTreeUnchecked(a.snapshot())) {
 		return false, false
 	}
 	remains := a.readRemains(ctx)
@@ -2024,6 +2066,30 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	hub.send(Event{Kind: EventNotice, Text: checkpointCarryOnNote})
 	a.record(textMessage("user", checkpointCarryOnLead+remains))
 	return true, false
+}
+
+// turnLeftTheTreeUnchecked reports the one thing about a finished turn that
+// outranks its price: IT CHANGED SOMETHING, AND NOTHING LOOKED AT THE CHANGE.
+//
+// THE FACT IS ALREADY IN THE DIGEST AND THIS ONLY ASKS FOR IT. [checkpointLedger]
+// walks the turn once and hands back the workClock (novelty.go) it kept on the
+// way: `steps` is how many calls the turn made and `changedAt` is the step the
+// deliverable last moved on. So "wrote, then stopped" is one comparison — the
+// last call this turn made was the write — and there is no second list of tool
+// names here to disagree with [checkpointWriters] the day a verb is renamed.
+//
+// A TURN THAT WROTE AND THEN RAN SOMETHING IS NOT EXPOSED BY THIS ARM. Whatever
+// came after the write — the build, the test, a read of the file it had just
+// saved — is the change having been looked at, and a harness cannot tell which of
+// those the model meant by looking at its name. It may still be read at the ≥10
+// arm like any other dear turn; what it is not is read for FREE.
+//
+// AND A TURN THAT NEVER WROTE ANSWERS FALSE, which is the whole of the
+// regression-wave economics: a small read-only turn is priced exactly as it was
+// before this existed and pays no reader.
+func turnLeftTheTreeUnchecked(messages []ai.Message) bool {
+	_, _, _, moved := checkpointLedger(messages)
+	return moved.changedAt > 0 && moved.changedAt == moved.steps
 }
 
 // turnBroke reports that the step which ended this turn FAILED rather than

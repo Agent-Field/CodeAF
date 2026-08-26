@@ -1152,7 +1152,7 @@ re-tell the model about work it already read about.
 
 ## Where task state is written on disk
 
-Three places.
+Four places.
 
 **The checkpoint**, one per conversation, in the conversation's own folder:
 
@@ -1209,6 +1209,44 @@ task itself. A conversation that has a session folder keeps them inside it inste
 `<session folder>/tasks/`, and that pointer is written on the conversation's task
 checkpoint, which is what lets a finished task's room replay its transcript after a
 restart.
+
+## The heartbeat — telling a working task from a hung one, is my task still alive, why does the file keep changing
+
+The checkpoint is written when a task is **admitted** and when it **lands**, and a task can
+spend eleven minutes between those two moments. From outside the process that leaves
+`"state": "running"` and nothing else, so a task calling a model every twenty seconds and a
+task wedged on a build that will never return look identical.
+
+**So every running task writes its own heartbeat**, one small file per task, beside its
+transcript:
+
+```
+<session folder>/tasks/<task id>.beat.json
+```
+
+The running task's row in `tasks.json` names the file in a `beat` field, so anything that
+already has the checkpoint open can find it without guessing.
+
+It holds:
+
+| field | what it says |
+| --- | --- |
+| `phase` | `working`, `checking` or `repairing` — which of the task's three lives this is |
+| `request_started` | when its last model request went out |
+| `request_finished` | when that request came back; earlier than `request_started` means one is in flight |
+| `requests` | how many requests the task's workers, checkers and repair rounds have made between them |
+| `started` | when the task itself began |
+| `updated_at` | when the file was last written |
+
+**It is written at every model request boundary** — the cadence of the work itself, not a
+clock. There is no ticker, so a task that is genuinely wedged writes nothing new, and that
+is the news: a `request_started` four minutes old with no finish beside it is a task inside
+one long call, and a `request_finished` four minutes old with nothing since is a task inside
+one long command.
+
+**The file goes away when the task lands**, because the checkpoint's own row is the answer
+from then on. A process that is killed removes nothing, so a heartbeat left behind is
+believed only by its age — the same bargain the session's presence file makes.
 
 ## What happens when a task fails
 

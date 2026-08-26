@@ -432,7 +432,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// request being measured.
 		a.guardOversizeRequest(ctx, hub)
 
+		// THE NODE'S PULSE, EITHER SIDE OF THE WIRE. This is the one line in this
+		// package where a request actually goes out, so it is the one place a
+		// heartbeat at the cadence of the work can be taken — no ticker, nothing
+		// to start, and nothing written at all by a node that is genuinely wedged,
+		// which is exactly the news an outside reader wants (task_beat.go). It is
+		// nil for a conversation, whose liveness the presence file already carries
+		// (taskpresence.go).
+		a.config.beat.began()
 		response, answered, err := a.completeWithRetry(ctx, hub, model, effort, partial, warm, forming)
+		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
 		// and everything the rest of the turn attributes — the usage rows, the
