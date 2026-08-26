@@ -81,14 +81,23 @@ kill "$SNAPPER" 2>/dev/null
 
 # What was and was not asked, written beside the results so a reader of the row
 # never has to reconstruct it from this file.
-cat > /logs/verifier/oneroad_stages.json <<JSON
-{
-  "ran": ["tests/test.sh (whole: cargo build, anti_cheat, verify_integrity, cached-golden scan, score_golden main, score_golden holdout, merge)"],
-  "skipped": [],
-  "deviations": [
-    "network: the container runs on docker's default bridge with full egress, not the task's crates.io+model allowlist — no egress allowlist was built for this run",
-    "storage: task.toml asks for a 20480 MB quota; docker's overlay2 here enforces no per-container disk quota"
-  ]
-}
-JSON
+NETWORK_DEVIATION="${NETWORK_DEVIATION:-unknown: this verifier ran without NETWORK_DEVIATION set}" \
+python3 - <<'PY'
+import json, os
+json.dump({
+    "ran": ["tests/test.sh (whole: cargo build, anti_cheat, verify_integrity, cached-golden scan, score_golden main, score_golden holdout, merge)"],
+    "skipped": [],
+    "deviations": [
+        "network: " + os.environ["NETWORK_DEVIATION"],
+        "storage: task.toml asks for a 20480 MB quota; docker's overlay2 here enforces no per-container disk quota",
+    ],
+    # WHICH COMPILER JUDGED THIS, written down beside the verdict. The agent may
+    # legally have upgraded it, and a reader comparing two rows has to be able to
+    # see that without re-deriving it from a log.
+    "rustc": os.popen("rustc --version 2>&1").read().strip(),
+    "rustup_home": os.environ.get("RUSTUP_HOME", "/root/.rustup (default)"),
+    "cargo_home": os.environ.get("CARGO_HOME", "/root/.cargo (default)"),
+    "active_toolchain": os.popen("rustup show active-toolchain 2>&1").read().strip().splitlines()[:1],
+}, open("/logs/verifier/oneroad_stages.json", "w"), indent=2)
+PY
 exit 0

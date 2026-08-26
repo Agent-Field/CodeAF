@@ -21,9 +21,18 @@ Three arms, one model — `deepseek/deepseek-v4-flash` over OpenRouter:
 docker build -t swe-marathon/rust-java-lsp:v1.1 \
   -f <repo>/tasks/rust-java-lsp/environment/Dockerfile <repo>/tasks/rust-java-lsp/environment
 
+bash preflight.sh rust-java-lsp        # ALWAYS FIRST: proves the toolchain and the egress allowlist
 bash cell.sh <arm> rust-java-lsp        # one cell, the task's own 10 h wall
 bash wave.sh rust-java-lsp aforge-crew pi opencode   # all three, arm-fair
+bash rescore.sh s6 1                    # an out-of-band honest score of a LIVE cell
 ```
+
+`preflight.sh` builds a throwaway container the way `cell.sh` builds a real one
+and asserts the two things that are invisible from inside a run and fatal to its
+row — which compiler the agent is holding and what the network reaches. It takes
+about a minute and it has already caught the defect described under **The
+toolchain** below. Run it after any change to `cell.sh` or `netlock.sh`, and
+before any wave whose numbers are going to be quoted.
 
 The three 10 h cells of 2026-08-25 were launched as:
 
@@ -70,7 +79,9 @@ single cell.
 Knobs, all with the task's own value as the default: `SEED`, `CELL_SECONDS`
 (default `[agent] timeout_sec` = 36000), `SILENCE_SECONDS` (900), `SNAPSHOT_EVERY`
 (3600, `0` disables the curve), `SNAPSHOT_TIMEOUT` (1800), `MODEL`, `NEW_BIN`,
-`MARATHON_REPO`, `IMAGE`, `MAR_OUT`.
+`MARATHON_REPO`, `IMAGE`, `MAR_OUT`, `NETLOCK` (1; `0` runs on full egress and
+says so in the record), `NETLOCK_REFRESH` (30 s). There is no toolchain knob:
+the agent's compiler is whatever the agent chose, and everything else follows it.
 
 Artifacts land in `~/af-bench/marathon/<arm>-<task>-<seed>/`, and `_results` here
 is a **symlink** to `~/af-bench/marathon`. That is not tidiness: a cell's bind
@@ -110,6 +121,13 @@ which writes `/logs/verifier/reward.txt` and `metrics.json` against the **visibl
 corpus. Everything the agent left in `/logs` is moved to `/logs/agent-phase/`
 before `tests/test.sh` runs — kept, because what the agent believed about its own
 progress is evidence, just never the verdict.
+
+**The agent's toolchain and the agent's network are the runner's job, and both
+were once wrong.** The agent and the verifier share one rustup state on the
+image's own paths, so an upgrade the agent makes is inherited rather than
+forbidden; the container reaches only the hosts `task.toml` names plus the model
+endpoint. See **The toolchain** and **The network** below; `preflight.sh` proves
+both against a throwaway container before a wave is launched.
 
 **The verifier runs whole.** Unlike the SWE track — where three of five stages are
 LLM judges we have no key for — marathon's is entirely deterministic: rebuild,
@@ -202,10 +220,16 @@ container would hand its four CPUs to a release build and a 68,000-point scoring
 run several times over a ten-hour cell, and every curve point would be paid for
 out of the result it measures. A per-cell docker volume holds the snapshot
 builds' cargo registry so each hour's build is not a fresh download; the agent's
-container never sees it, so nothing is warmed for the run under test.
+container never sees it, so nothing is warmed for the run under test. A second
+per-cell volume at `/root/.rustup` holds the toolchains, for the same reason and
+with one extra: the scorer must **adopt the agent's compiler** before it builds
+(see **The toolchain**), and without a cache that would be a fresh download every
+hour.
 
 `curve.csv` (`csv.QUOTE_MINIMAL`): `elapsed_s, partial_score, passed, total,
-reward, note`. A snapshot that fails to copy, fails to start, or runs out of its
+reward, note`. The `note` column always carries the rustc the row was scored with
+(`rustc 1.98.0 (…)`), because two rows taken with different compilers are two
+different measurements and a reader must not have to guess which. A snapshot that fails to copy, fails to start, or runs out of its
 half hour writes a row with `partial_score` 0 **and the reason**, and goes back to
 sleep. Nothing in that loop can take the cell down.
 
@@ -251,6 +275,9 @@ only the end-of-cell verifier runs against the container the agent actually left
 sha256 + which tier config; pi/opencode: their `--version`), model, image id and
 ref, task repo commit, started/ended/wall/verify wall, outcome and settle reason,
 reward, partial_score, pass_rate, passed/total, holdout block, `per_method`,
+the `toolchain` block (the image's toolchain and rustc, the toolchain the AGENT
+ended on, which rustup store it came from, and `split_home` for the cells whose
+store our own bug misplaced), `network_deviation` as the cell computed it,
 tokens in/out/cached, requests, `cost_usd`, workspace file count, the timer's
 reading at t=0, the curve, and for the aforge arms the road summary from
 `lib/road.py` (marks, ceiling decision, divisions, parts, peak concurrency).
@@ -269,22 +296,256 @@ or `/workspace`: `tests/test.sh`'s cached-golden scan walks exactly those four f
 `.json`/`.jsonl` files over 1 MB, and a harness store that happened to hold a
 large one would otherwise read as a cheat that never happened.
 
+## The toolchain: inheritance, not a pin
+
+The image installs rust as root — `curl … | sh -s -- -y --default-toolchain 1.86.0
+--profile minimal` — into `/root/.rustup` and `/root/.cargo`, with
+`ENV PATH="/root/.cargo/bin:$PATH"`. `tests/test.sh` exports exactly that PATH and
+runs under `docker exec` as root, so **the verifier reads `/root/.rustup`**.
+
+### What the benchmark actually allows
+
+`task.toml`'s allowlist includes `static.rust-lang.org`, for the agent phase and
+the verifier phase alike, and officially the agent runs as root with `HOME=/root`.
+So `rustup default stable` is a **legal move**, and because the verifier runs in
+the *same container* off the *same* `/root/.rustup`, it **inherits** the agent's
+choice. The compiler the agent picked is the compiler the agent is judged with.
+
+That is not a loophole to be closed. It is close to unavoidable: `lsp-types`
+depends on `url`, any fresh resolution today lands on `url 2.5.8` → `idna` →
+`icu 2.3`, and that needs rustc ≥ 1.88 while the image ships 1.86.0. **Two of the
+six live seeds (s6, s8) already have such a lockfile.** A runner that forbids the
+upgrade makes the obvious crate unusable and scores a legitimate workspace 0.0.
+
+### What our runner broke
+
+The cell ran the agent with `HOME=/chome` — the right instinct, keeping the
+harness's dotfiles out of `/root` — and rustup finds its store through
+`$HOME/.rustup`. So the agent's first `rustc --version` answered:
+
+```
+error: rustup could not choose a version of rustc to run, because one wasn't
+specified explicitly, and no default is configured.
+help: run 'rustup default stable' to download the latest stable release …
+```
+
+Every model did what the help text said, and the install landed in
+`/chome/.rustup`, where `tests/test.sh` could never see it. **The inheritance was
+broken, not the upgrade.** Seed s6 built all day against a compiler the verifier
+did not have and scored 0.0.
+
+### The fix
+
+Three environment variables on the agent's `docker exec`, keeping `HOME=/chome`:
+
+| variable | value | why |
+| --- | --- | --- |
+| `RUSTUP_HOME` | `/root/.rustup` | the store the verifier reads |
+| `CARGO_HOME` | `/root/.cargo` | the registry and the shims the verifier reads |
+| `PATH` | `tests/test.sh`'s PATH, verbatim | `cargo` is found where the verifier finds it |
+
+That is all. One rustup state, shared by agent and verifier, exactly as
+officially — and **nothing is pinned**.
+
+An earlier version of this work *did* pin the agent to the image's toolchain with
+`RUSTUP_TOOLCHAIN`. It was wrong, and it is worth saying why, because it looked
+safe: it guaranteed the cell, the verifier and the hourly curve all used one
+compiler. But it bought that agreement by making this runner **stricter than the
+benchmark** — an agent that upgraded legally would have been compiled with 1.86.0
+anyway, and a `url 2.5.8` lockfile would have failed in the cell rather than
+building. Wrong in the opposite direction from the original defect, and just as
+invisible. Agreement has to come from *following* the agent's choice, not from
+removing it.
+
+### Everything that compiles this workspace adopts the agent's compiler
+
+`toolchain.sh detect <container>` answers "what is this cell's default toolchain,
+and which store is it in", and it is the single place that decides:
+
+* **the verifier** — `cell.sh` and `finish.sh` hand its `RUSTUP_HOME`/`CARGO_HOME`
+  to the verifier's `docker exec`. For a cell run after the fix these are the
+  image's own defaults and change nothing.
+* **the hourly curve** — `snapshot.sh` re-detects every hour (the agent can
+  upgrade at any point in ten hours) and runs
+  `rustup toolchain install --profile minimal <tc> && rustup default <tc>` in its
+  scorer container before `cargo build`. The rustc it actually used is written
+  into the curve row's `note` column, so two rows taken with different compilers
+  read as the different measurements they are.
+* **an out-of-band reading** — `rescore.sh` does the same.
+
+The scorer's toolchains live in a **per-cell docker volume mounted at
+`/root/.rustup`**. A named volume is populated from the image on first use, so the
+scorer starts with the shipped 1.86.0 already present and downloads only the delta
+the agent chose — measured here at about five seconds for the first snapshot of a
+cell and **0 s for every one after** (`preflight.sh` asserts the second adoption
+takes under 20 s). Two toolchains cost about 950 MB of volume per cell;
+`snapshot.sh` removes both of its volumes when the cell ends.
+
+`toolchain.sh` looks at `/chome/.rustup` **before** `/root/.rustup`, and that is
+for the six cells launched before this: their agents upgraded into `/chome`, so
+that store is what they compiled with, and it is the official-equivalent state —
+the same upgrade, written to the wrong path by our runner. `finish.sh` points the
+verifier at it and `record.json`'s `toolchain` block carries `split_home: true`
+and says so in words. New cells have no `/chome/.rustup` at all.
+
+### `rescore.sh` — an honest reading of a live cell
+
+```bash
+bash rescore.sh s6 3          # the third out-of-band reading of seed s6
+```
+
+Copies the running cell's `/workspace` **with the droppings stripped** — no
+`target/` (build output the verifier rebuilds), no `.git`, no `.aforge-v3` (the
+harness's own store, which the agent happened to write inside the working
+directory and which is no part of the work being judged) — scores it in a
+short-lived two-CPU container with the agent's toolchain adopted, and appends a
+row to `<MAR_OUT>/rescore/<arm>-<task>-<seed>/curve.txt`. `<n>` is just the
+sequence number of the reading. Output goes **beside** the cell, never inside it:
+a live cell's directory is being read by `record.py` and `road.py` while it runs.
+
+Its caches (`oneroad-mar-{cargo,rustup}-rescore-<seed>`) are deliberately kept
+between runs and are the only volumes here that are not cleaned up automatically.
+
+One consequence of `CARGO_HOME=/root/.cargo` worth stating: the crate registry now
+lands under `/root`, which `tests/test.sh`'s cached-golden scan walks. That is also
+true of the official environment, and it is the hazard already measured at the
+bottom of this file — the largest JSON a tree-sitter build leaves there is
+`grammar.json` at 186 KB, an order of magnitude under the 1 MB threshold.
+
+## The network, and what an address can and cannot say
+
+`instruction.md` tells the agent, verbatim:
+
+> Network access is restricted — only the package registries needed to fetch your
+> crate dependencies are reachable; all other internet egress is blocked.
+
+and `task.toml` names the hosts, identically for the agent and the verifier
+phase: `crates.io`, `index.crates.io`, `static.crates.io`, `github.com`,
+`static.rust-lang.org`. Cells before this ran on docker's default bridge with
+full egress, which made that sentence in the prompt **false**.
+
+`netlock.sh` writes the policy with the **host's** iptables into the
+**container's** network namespace (`nsenter -t <pid> -n`). Two other mechanisms
+were considered and rejected:
+
+* **An HTTP proxy on an `--internal` docker network.** Enforces perfectly, but
+  only for clients that honour `HTTPS_PROXY`. node's undici (`pi`) and opencode's
+  runtime do not by default, so the peer arms would lose their model endpoint and
+  die. A policy only half the arms obey is a bias, not a policy.
+* **iptables inside the container with `--cap-add NET_ADMIN`.** The image is plain
+  ubuntu:24.04 and ships no iptables, so this means `apt-get install` into the
+  image under test. The whole point of this runner is that the dataset's image is
+  the one measured.
+
+The netns approach adds no capability to the container, installs nothing in it,
+and puts no proxy variable in its environment — every process in it, in whatever
+language, is filtered by the kernel. The last rule is `REJECT`, not `DROP`, so a
+blocked connection fails in about 50 ms and the agent's tool reports a refused
+connection instead of hanging on a timeout it cannot see.
+
+**Allowed, and nothing else:**
+
+| host | why |
+| --- | --- |
+| `index.crates.io`, `static.crates.io`, `crates.io` | `task.toml` `[agent].allowed_hosts` |
+| `github.com` | `task.toml` — cargo git dependencies |
+| `static.rust-lang.org` | `task.toml` |
+| `openrouter.ai` | the model API. `task.toml`'s own note: "Oddish adds only the selected model API endpoint to the agent phase" |
+
+plus DNS to the container's own resolvers, and loopback. IPv6 is refused
+outright.
+
+**What an address-based allowlist cannot express.** `index.crates.io`,
+`static.crates.io` and `static.rust-lang.org` all resolve to the *same* Fastly
+address (151.101.138.137, measured here). No address filter can allow the crate
+registries and refuse the toolchain server; separating them needs SNI inspection.
+It costs nothing, because `static.rust-lang.org` is on the benchmark's own
+allowlist and because the toolchain pin above makes an installed compiler
+inert. `github.com` round-robins across a block, so `140.82.112.0/20` —
+GitHub's own published git/codeload range — is allowed rather than a single
+resolved address; the Fastly and Cloudflare names are allowed by address, because
+`151.101.0.0/16` is shared Fastly space that would let through half the internet.
+
+The watcher re-resolves every 30 s and only ever **adds** addresses; removing one
+would cut a live `cargo` connection for no reason. It also re-installs the whole
+policy if it ever finds the rules gone.
+
+`preflight.sh` step 3 is the proof, from inside the container:
+
+```
+  PASS  https://index.crates.io/config.json answered 200 (84ms)
+  PASS  https://static.crates.io/ answered 403 (328ms)
+  PASS  https://crates.io/ answered 403 (184ms)
+  PASS  https://github.com/ answered 200 (317ms)
+  PASS  https://openrouter.ai/api/v1/models answered 200 (136ms)
+  PASS  https://pypi.org/simple/ refused in 52ms
+  PASS  https://registry.npmjs.org/ refused in 46ms
+  PASS  https://www.google.com/ refused in 58ms
+  PASS  http://archive.ubuntu.com/ refused in 52ms
+  PASS  https://huggingface.co/ refused in 51ms
+```
+
+(403 from a CDN for a bare path is an answer: the connection was allowed. `000`
+is curl failing to connect at all.)
+
+A failure to install the allowlist is **fatal to the cell**. A run that quietly
+fell back to full egress would be a run whose prompt lies to the agent and whose
+row cannot be compared with a leaderboard number.
+
+### Cells run before this
+
+**Seeds s4–s9, launched 2026-08-25/26, ran on the open default bridge and with the
+split toolchain.** Their agents saw the rustup error and installed their own
+stable into `/chome/.rustup`. Their egress was not the task's allowlist, and their
+rows are not comparable on that count with rows produced after this commit;
+`record.json` for each of them carries the honest `network_deviation` sentence
+("default docker bridge, full egress"), which `finish.sh` now reads off the
+container rather than assuming.
+
+Their **toolchain**, though, is recoverable rather than ruined. The upgrade those
+agents made is legal and is what the official run would also have had — it simply
+landed in `/chome/.rustup` instead of `/root/.rustup`. So `finish.sh` points the
+verifier at `/chome/.rustup` for exactly these cells (`toolchain.sh` checks it
+first), and `rescore.sh` adopts the same toolchain in its scorer. That is how s6
+and s8 — whose lockfiles pin `url 2.5.8` → `idna` → `icu 2.3` and need rustc ≥
+1.88 — get read at their real score instead of a build failure.
+
+The **snapshot scorer's scoring was not changed**: it still builds in a fresh
+container of the image from a tarball of the workspace, which is what makes it an
+outside reading rather than the cell's own opinion of itself. What changed is
+only *which compiler* it installs before building — the agent's, re-detected every
+hour — because a scorer stuck on 1.86.0 would have reported 0.0 for a workspace
+the benchmark scores properly, and a curve that under-reads is worse than no
+curve. It also remains outside the egress allowlist (a snapshot container has full
+egress, and must, to install that toolchain and fetch crates), which changes no
+score: it only ever builds and scores a tarball, and never runs the agent.
+
 ## Deviations from the benchmark, stated
 
-1. **Network is not the task's allowlist.** `task.toml` asks for
-   `network_mode = "allowlist"` over `crates.io`, `index.crates.io`,
-   `static.crates.io`, `github.com`, `static.rust-lang.org` plus the model
-   endpoint, for both the agent and the verifier phases. These cells run on
-   docker's **default bridge with full egress**. No egress allowlist was built
-   for this run. It is recorded in every `record.json` (`network_deviation`) and
-   in `/logs/verifier/oneroad_stages.json`.
-2. **No per-container storage quota.** `task.toml` asks for 20480 MB; docker's
+1. **The egress allowlist is the task's, plus the model endpoint.** `netlock.sh`
+   enforces `task.toml`'s five hosts and `openrouter.ai` in the container's
+   network namespace; everything else is REJECTed. What REMAINS a deviation:
+   `openrouter.ai` is reachable (the benchmark's own agent phase adds a model
+   endpoint too, so this is a deviation in *identity* rather than in kind), the
+   filter is by address so it cannot separate `static.rust-lang.org` from the
+   crate registries, and `github.com` is allowed as GitHub's published
+   `140.82.112.0/20` rather than one rotating address. Each cell's exact policy is
+   recorded in `record.json` (`network_deviation`) and in
+   `/logs/verifier/oneroad_stages.json`, computed from what the cell did rather
+   than written down here. **Seeds s4–s9 predate this and ran open** — see above.
+2. **The agent's compiler is not deviated from at all** — it may upgrade exactly
+   as it may officially, and the verifier inherits the upgrade because they share
+   one rustup state, as officially. The hourly curve is the only thing that is
+   not the benchmark's: it scores in a *separate* container, so it has to be told
+   which toolchain to adopt rather than inheriting it for free. See **The
+   toolchain** above.
+3. **No per-container storage quota.** `task.toml` asks for 20480 MB; docker's
    overlay2 on this host enforces no per-container disk quota.
-3. **The wall is the runner's, measured from container start.** The container is
+4. **The wall is the runner's, measured from container start.** The container is
    created immediately before the prompt is sent, so the agent's `timer.sh`
    reading and the cell's own wall agree to within a few seconds — but the few
    seconds are the runner's, not the benchmark's.
-4. **Snapshot scoring is extra load the benchmark does not have** — two CPUs and
+5. **Snapshot scoring is extra load the benchmark does not have** — two CPUs and
    up to half an hour, once an hour, in a separate container. Sized to keep the
    host under its 20 CPUs with three cells running.
 
