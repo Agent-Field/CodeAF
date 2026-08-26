@@ -13,8 +13,8 @@ import (
 // IT IS [palette.money] AND NO LONGER [palette.add]. The design's own preamble
 // spends green on money — "green = money" — and this file was reaching for the
 // tick's olive instead, which said that finishing and paying are one event.
-// styles.go's [hueMoneyPlace] is the mint the design names; the conversation's
-// own [hueMoney] is the same reading held inside its narrower signal band.
+// styles.go's [hueMoney] is the mint the design names, held at this table's own
+// lightness so it sits inside the conversation's signal band.
 func placeMoneyInk(pal palette) func(string) string { return pal.money }
 
 // foldLine keeps every collapsed count in one sentence grammar. A clause is

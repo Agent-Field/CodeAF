@@ -151,7 +151,7 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 	}
 	if facts.spent > 0 {
 		// GREEN, BECAUSE IT IS MONEY, and green on a place is money and nothing
-		// else (styles.go's [hueMoneyPlace]).
+		// else (styles.go's [hueMoney]).
 		//
 		// THE CEILING IS DRAWN ONLY WHERE THERE IS ONE. A machine with no
 		// allowance set has no denominator, and `$0.55 / ` with nothing after it

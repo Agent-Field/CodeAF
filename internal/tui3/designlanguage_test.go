@@ -150,28 +150,19 @@ var backgroundAuthors = map[string]string{
 	"imagepreview.go": "a half-block cell's lower pixel is the image's colour, not ours",
 }
 
-// EVERY GROUND ON THIS SURFACE COMES THROUGH THE LADDER, AND THE LADDER NOW HAS
-// A FLOOR. This law was written as "rest is the default" — a row nobody is
-// pointing at wears the terminal's own background — and FIDELITY.md item 13
-// changes what it is a law ABOUT rather than repealing it. The owner signed the
-// change on 2026-08-25 ("follow the exact design"), and it reads like this now:
+// REST IS THE DEFAULT, AND THIS IS WHAT KEEPS IT ONE. A row nobody is pointing
+// at, has not chosen and has not marked wears the terminal's own background —
+// which is only true for as long as nothing else in the package can paint one.
+// Every tinted run on this surface therefore comes through the ladder, and
+// "which step is this" is a question with three answers rather than forty.
 //
-//   - THE CONVERSATION IS UNCHANGED. A transcript still paints no ground at all.
-//     Rest there is still the absence of a paint, for the reason it always was:
-//     a reply is read for minutes over a page somebody else chose, and a chat
-//     that repainted it would be a program with an opinion about their theme.
-//   - THE PLACES BRING THEIR OWN PAGE. Home and the six places paint #12121A
-//     over every cell of the frame ([huePlaceGround]), so on those surfaces rest
-//     is the FLOOR STEP of the ladder rather than the absence of one, and the
-//     cursor and selection steps are measured against a ground that is known
-//     instead of assumed. The old comment's reason — that the terminal's
-//     background is unknowable — is answered by not needing to know it.
-//
-// What is unchanged is the thing this test actually checks, and it is why the
-// test body did not move a line: styles.go is still the ONLY file in the package
-// that may open an SGR 48. A place does not paint its own page; it is handed one
-// by [palette.groundRows] on a frame that is already finished, so "which ground
-// is this" is still a question with four answers rather than forty.
+// FIDELITY.md item 13 briefly made the places an exception: home and the six
+// paint #12121A over every cell of the frame, so rest gained a floor step there.
+// The owner tested it on 2026-08-25 and reversed it — "i want bg color and text
+// color to be same as in inside chat please this new bg looks weird i think we
+// were taking user terminal stuff or something previously" — so there is one
+// ladder again, with three drawable steps and a fourth that is the absence of a
+// paint, on every surface this program draws.
 func TestOnlyTheGroundLadderPaintsABackground(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -223,34 +214,6 @@ func lightnessOf(h hue) float64 {
 // converges on, and it is the arithmetic behind "many colours, still quiet".
 const signalBand = 15.0
 
-// placeSignalBand is THE SAME LAW, WIDENED BY ONE POINT FOR THE PLACES, AND THE
-// OWNER SIGNED IT.
-//
-// 2026-08-25, twice: "follow the exact design", and "colors we have are also
-// like the ones in design". docs/design/home-rethink/FIDELITY.md item 1 asks for
-// the design's own three signal hexes on the place surfaces and says in as many
-// words that this test is ADJUSTED DELIBERATELY in the same commit. So the
-// number here is a decision that was made rather than a measurement that came
-// out differently, and this comment is the record of it.
-//
-// What the extra point actually buys, measured (DATA-AUDIT.md §17.3 computed the
-// same figures and recommended against them, which is the recommendation the
-// owner overruled):
-//
-//	amber #EECE96   L 76.1
-//	green #A2E2BC   L 76.1
-//	cyan  #A4D7EA   L 78.0    the design's own three spread 1.9 points
-//	bad   #D08770   L 62.7    the one hue a place keeps from the conversation
-//
-// THE DESIGN'S OWN THREE ARE FAR TIGHTER THAN THE LAW ASKS — 1.9 points where
-// fifteen is allowed — and the whole of the spread is the FAILURE hue, which the
-// design's preamble does not name and which a place keeps anyway because a failed
-// row stripped of colour is a failure carried by one cell of punctuation
-// (styles.go's THE ONE-ACCENT LAW flags it to the owner). Sixteen is the smallest
-// number that admits the design unaltered; the day the owner settles what a
-// failure looks like on a place, this comes back to fifteen or lower.
-const placeSignalBand = 16.0
-
 // THE SIGNAL HUES SIT INSIDE A FIFTEEN-POINT LIGHTNESS BAND, on both ladders.
 //
 // The eye reads lightness as figure and ground and hue as identity, so a set of
@@ -265,13 +228,11 @@ const placeSignalBand = 16.0
 func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 	for _, ladder := range []struct {
 		name    string
-		band    float64
 		signals map[string]hue
 		reading map[string]hue
 	}{
 		{
 			name: "dark",
-			band: signalBand,
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
 				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
@@ -283,32 +244,12 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 		},
 		{
 			name: "light",
-			band: signalBand,
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
 				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
 				"money": lightMoney,
 			},
 			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
-		},
-		{
-			// THE PLACE LADDER, at the design's own values and its own band
-			// ([placeSignalBand] carries the owner's signature and the arithmetic).
-			// It is a third walk rather than three more entries in the dark one
-			// because the two tables are two surfaces: a place never draws the
-			// conversation's violet question and the conversation never draws the
-			// design's amber, so holding them to one band would be measuring a
-			// spread no eye can see at once.
-			name: "place",
-			band: placeSignalBand,
-			signals: map[string]hue{
-				"ask": hueAskPlace, "live": hueLivePlace, "money": hueMoneyPlace,
-				// The failure hue is the one a place keeps rather than re-authors,
-				// so it is walked here: it is on the screen and the law is about
-				// what shares a screen.
-				"bad": hueBad,
-			},
-			reading: map[string]hue{"tier1": hueTier1, "tier2": hueTier2, "tier3": hueTier3},
 		},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
@@ -322,7 +263,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			}
 			sort.Slice(got, func(i, j int) bool { return got[i].at < got[j].at })
 			low, high := got[0], got[len(got)-1]
-			if spread := high.at - low.at; spread > ladder.band {
+			if spread := high.at - low.at; spread > signalBand {
 				var table []string
 				for _, r := range got {
 					table = append(table, r.name+" L "+trimFloat(r.at))
@@ -331,7 +272,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 					"%s is the low outlier and %s the high one. Move the outlier's LIGHTNESS "+
 					"only — hold its hue and saturation so it stays itself — and re-check its "+
 					"xterm-256 neighbour afterwards.",
-					ladder.name, trimFloat(spread), trimFloat(ladder.band),
+					ladder.name, trimFloat(spread), trimFloat(signalBand),
 					strings.Join(table, "\n\t"), low.name, high.name)
 			}
 			// And the exclusion is deliberate: the reading tiers are a ladder, so
@@ -385,17 +326,11 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
 			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
 			"money": hueMoney,
-			// THE PLACE LADDER'S SIX ARE IN THE DARK WALK RATHER THAN IN A WALK OF
-			// THEIR OWN, and that is the strict reading rather than the convenient
-			// one: a place inherits every role it does not re-author (styles.go's
-			// [placeRampFrom]), so the conversation's table and the design's six
-			// genuinely do share a screen and a collision between them would be two
-			// meanings painted one grey on most terminals. Computed, and all six
-			// are clear: 255, 248, 102, 222, 152, 151. The near miss worth naming is
-			// tier3's 102 against [hueNarr]'s 103 — one step apart, and the two are
-			// never on one surface anyway.
-			"tier1": hueTier1, "tier2": hueTier2, "tier3": hueTier3,
-			"askPlace": hueAskPlace, "livePlace": hueLivePlace, "moneyPlace": hueMoneyPlace,
+			// THE PLACE LADDER ADDS NOTHING TO THIS WALK, and after 2026-08-25 that
+			// is a fact about the palette rather than a gap in the test: a place
+			// paints from the conversation's own table with three roles re-pointed
+			// at colours already in it (styles.go's [placeRampFrom]), so every hue
+			// a place can draw is a row of this map.
 		}},
 		{"light", map[string]hue{
 			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
@@ -438,12 +373,6 @@ var (
 	darkMid      = "#1a1b26"
 	lightGrounds = []string{"#FFFFFF", "#ECEFF4"}
 	lightMid     = "#FFFFFF"
-	// placeGround is not an assumption at all, and that is the point: it is the
-	// colour the places PAINT ([huePlaceGround]), written here a second time so
-	// this file can measure against it the way it measures against the grounds it
-	// had to guess. The day the two disagree, the place ladder's own laws below
-	// are measuring a page nobody is standing on.
-	placeGround = "#12121A"
 )
 
 // THE THREE DRAWABLE STEPS LAND IN THE BAND THEY WERE AIMED AT, measured
@@ -460,26 +389,10 @@ func TestTheGroundLadderLandsInItsBand(t *testing.T) {
 		name                     string
 		grounds                  []string
 		mid                      string
-		cursorBand, selectedBand [2]float64
 		cursor, selected, marked hue
 	}{
-		{"dark", darkGrounds, darkMid,
-			[2]float64{1.10, 1.25}, [2]float64{1.32, 1.52}, hueCursor, hueSelected, hueMark},
-		{"light", lightGrounds, lightMid,
-			[2]float64{1.10, 1.25}, [2]float64{1.32, 1.52}, lightCursor, lightSelected, lightMark},
-		// THE PLACE LADDER, MEASURED AGAINST ITS OWN PAGE, AND ITS SELECTED BAND
-		// IS THE DESIGN'S OWN — the owner signed it (FIDELITY.md item 13).
-		//
-		// #262633 measures 1.25:1 against #12121A. Against the middle of the
-		// range the conversation has to assume it measures 1.15, which is why
-		// DATA-AUDIT.md §17.3 filed it as "a quieter band aimed at a darker
-		// assumed ground" and refused it: on a page this surface did not paint it
-		// lands in the cursor band instead of the selected one. On the page the
-		// places DO paint, it lands where a selection belongs. The band below is
-		// the design's value with the slack any authored number gets, and the two
-		// steps do not overlap, which is the fact a person actually reads.
-		{"place", []string{placeGround}, placeGround,
-			[2]float64{1.08, 1.19}, [2]float64{1.20, 1.35}, huePlaceCursor, huePlaceBand, hueMark},
+		{"dark", darkGrounds, darkMid, hueCursor, hueSelected, hueMark},
+		{"light", lightGrounds, lightMid, lightCursor, lightSelected, lightMark},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
 			steps := []struct {
@@ -487,8 +400,8 @@ func TestTheGroundLadderLandsInItsBand(t *testing.T) {
 				ground    hue
 				low, high float64
 			}{
-				{"cursor", ladder.cursor, ladder.cursorBand[0], ladder.cursorBand[1]},
-				{"selected", ladder.selected, ladder.selectedBand[0], ladder.selectedBand[1]},
+				{"cursor", ladder.cursor, 1.10, 1.25},
+				{"selected", ladder.selected, 1.32, 1.52},
 				{"mark", ladder.marked, 1.75, 2.30},
 			}
 			for _, step := range steps {
@@ -542,13 +455,6 @@ func TestTheGroundLadderStepsNeverCollapse(t *testing.T) {
 	for name, h := range map[string]hue{
 		"dark cursor": hueCursor, "dark selected": hueSelected, "dark mark": hueMark,
 		"light cursor": lightCursor, "light selected": lightSelected, "light mark": lightMark,
-		// The place ladder's three, and the one nudged index in the whole file is
-		// here: #262633's true neighbour is 235, which is [hueCursor]'s, so the
-		// band states 236 instead (styles.go's THE PLACE GROUNDS gives the
-		// arithmetic and the rule — move the index, never the authored colour).
-		// This test is what would have caught the collision, and it is what holds
-		// the fix.
-		"place page": huePlaceGround, "place cursor": huePlaceCursor, "place band": huePlaceBand,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d — two steps of the ladder "+
@@ -579,37 +485,6 @@ const (
 	glareCeiling = 11.0
 	glareFloor   = 8.0
 )
-
-// placeGlareCeiling is THE GLARE LAW's place-scoped ceiling, AND THE OWNER SIGNED
-// IT. It is the single most deliberate number in this file, so it says exactly
-// what was traded.
-//
-// #E6E6F0 is the design's body tier and it is also the precise white this whole
-// law was written against: styles.go names it "the glare this whole law was
-// written about", [oldBodyWhite] holds it as the absolute ceiling the live tier
-// may never reach, and DATA-AUDIT.md §17.3 measured it at 13.79:1 against the
-// middle of the assumed dark range and concluded "the mockups' body text cannot
-// be adopted". On 2026-08-25 the owner read that and answered "follow the exact
-// design", twice. FIDELITY.md items 1 and 13 are the instruction.
-//
-// TWO THINGS MAKE THIS AN EXCEPTION RATHER THAN A HOLE, and both are facts about
-// the places rather than opinions about the colour:
-//
-//   - THE GROUND IS KNOWN. The chat's ceiling is 11 because the ground is
-//     unknowable and a body ink has to be comfortable across a whole range of
-//     terminals. A place paints its own ground ([huePlaceGround]), so there is
-//     one number rather than a range, and it is measured against that number:
-//     15.03:1 against #12121A. The reason the old law had to assume the worst
-//     does not apply to a surface that brings its own page.
-//   - IT IS NOT WHAT A PERSON READS FOR MINUTES. The chat's ceiling protects
-//     PROSE — paragraphs of a reply, read continuously. Tier 1 on a place is a
-//     title, a shelf's sentence, a model's id: a word or a line, glanced at, on a
-//     screen a person is scanning rather than reading. SCREEN 2a's own scale says
-//     so — level 3 is "the subject", the thing itself, and it is one line.
-//
-// The floor stays at 8: a body that has gone faint is faint on any ground, and
-// nothing about the design asks for that.
-const placeGlareCeiling = 15.5
 
 // glareInkOverMuted is how far the body must stand above the surface's second
 // voice, as a ratio of their two contrasts against the same ground.
@@ -647,27 +522,20 @@ func TestTheBodyInkDoesNotGlare(t *testing.T) {
 	for _, ladder := range []struct {
 		name            string
 		mid             string
-		ceiling         float64
 		ink, muted, dim hue
 	}{
-		{"dark", darkMid, glareCeiling, hueInk, hueMuted, hueDim},
-		{"light", lightMid, glareCeiling, lightInk, lightMuted, lightDim},
-		// THE PLACE LADDER, MEASURED AGAINST THE GROUND IT PAINTS ITSELF rather
-		// than against a range somebody assumed — which is the whole reason its
-		// ceiling can be a different number ([placeGlareCeiling] carries the
-		// owner's signature). The reading ladder is still asserted to be a ladder,
-		// and it is a wide one: 15.03, 7.69, 4.87.
-		{"place", placeGround, placeGlareCeiling, hueTier1, hueTier2, hueTier3},
+		{"dark", darkMid, hueInk, hueMuted, hueDim},
+		{"light", lightMid, lightInk, lightMuted, lightDim},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
 			ink := contrastOf(ladder.ink, ladder.mid)
-			if ink > ladder.ceiling {
+			if ink > glareCeiling {
 				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at most %s:1 — "+
 					"this is THE GLARE LAW (styles.go): the body is the one colour somebody "+
 					"reads for minutes at a time, and above the ceiling it halates instead of "+
 					"reading. Lower the LIGHTNESS of the ink in styles.go, hold its hue, and "+
 					"re-check its xterm-256 neighbour afterwards.",
-					ladder.name, trimFloat(ink), ladder.mid, trimFloat(ladder.ceiling))
+					ladder.name, trimFloat(ink), ladder.mid, trimFloat(glareCeiling))
 			}
 			if ink < glareFloor {
 				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at least %s:1 — "+

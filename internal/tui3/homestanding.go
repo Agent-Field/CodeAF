@@ -388,7 +388,7 @@ func standRowInk(view StandingItemView) noteInk {
 		}
 		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
 		// colour on that reading everywhere it appears (styles.go's
-		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// [hueWarn]); this note used to take the accent, which on a place now
 		// means work in flight — the opposite fact.
 		return pal.warn(note)
 	}
@@ -582,7 +582,7 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 		for _, line := range wrap("needs your look · "+item.NeedsPerson, width) {
 			// Amber: this is the card's one line about a person being waited on,
 			// and the design gives that reading one colour (styles.go's
-			// [hueAskPlace]).
+			// [hueWarn]).
 			state = append(state, pal.warn(line))
 		}
 	}
