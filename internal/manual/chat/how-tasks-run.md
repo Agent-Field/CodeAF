@@ -149,6 +149,37 @@ about that reading is your work: nothing of aforge's is written into your reposi
 into the task's copy of it. Only a conversation with no folder at all falls back to
 `<workspace>/.aforge-v3/`.
 
+## How a task is told to spend its time — the measure, a zero, and not remaking what exists
+
+Beyond the tools, a task is given three working habits in its own instructions. They are
+written as principles rather than examples, because aforge hands tasks prose, research,
+data, operations and code through the same door and a habit written in one trade's words
+is a habit that is wrong for the next job.
+
+- **When the work comes with its own measure, that measure is the loop, not the report.**
+  A check to run, a count to reach, a reading somebody will take — the task is told to
+  work *between* readings rather than saving the reading for the end, and that the
+  interval between two of them **shrinks when the reading is zero** rather than growing.
+  A result it cannot explain is the moment to take the reading more often and change less
+  in between. Anything changed but never measured is called what it is: a guess.
+- **Nothing on every count is one shared fault, not many separate ones.** Parts that do
+  not depend on each other do not all fail at once by coincidence, so a task reading zero
+  everywhere is told to find what they have in common — how they are reached, where they
+  are looked for, the step before any of them runs — and to prove that shared path carries
+  one case end to end **before** it touches any single part. Uneven readings say the
+  opposite, and there it starts with the worst one.
+- **Before making a thing itself, it spends one step asking whether it already exists** in
+  a form it can use: a tool, a source, a service, something the work already carries,
+  something done here before. Asking costs one step; not asking costs the whole thing.
+  And it asks *before* the first piece exists, because the answer stops being welcome once
+  there is something to be attached to.
+
+These came out of two unattended runs of the same brief measured against each other: the
+one that hunted for what every zero had in common was off zero eleven minutes later, and
+the one that answered the same zero by reading its own work spent most of its calls
+changing things it had never measured — and built from scratch something that already
+existed, without ever spending the one step it would have cost to ask.
+
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
 A task works in **its own copy of the repository**, and its copy shares the repository's

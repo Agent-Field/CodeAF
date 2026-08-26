@@ -188,6 +188,20 @@ func (ep *episode) noteToolOutcome(call ai.ToolCall, result toolResult) toolResu
 // noteFailure consults the store, settles any verdict the previous failure on
 // this lane was owed, and appends the line.
 func (ep *episode) noteFailure(shelf *fixShelf, tool string, result toolResult) toolResult {
+	// THE FIRST QUESTION IS WHETHER ANY COMMAND COULD HAVE FIXED THIS AT ALL. A
+	// door's refusal, a hand that is not on the belt, and a program this machine
+	// does not have are all failures whose "fix" would be nothing but the next
+	// thing the model typed (fixblame.go's law, and the run that put it there).
+	//
+	// The lane is left exactly as it was, for the reason an unkeyable failure
+	// leaves it: a refusal in the middle of a broken lane does not mend the lane,
+	// and clearing it would throw away the signature the eventual success was
+	// going to confirm. It is simply NOT AN EVENT this sidecar has anything to
+	// say about — nothing is learned, and nothing is offered.
+	if blamelessFailure(result.text) {
+		return result
+	}
+
 	signature, keyed := fixSignature(tool, result.text)
 	if !keyed {
 		// A failure with nothing to key on leaves the lane exactly as it was. It
@@ -238,38 +252,70 @@ func (ep *episode) noteSuccess(shelf *fixShelf, tool string, call ai.ToolCall) {
 	if patch == "" {
 		return
 	}
-	shelf.confirm(pending.signature, patch)
 	// The verdict on this store's own advice is narrow on purpose. It is a
 	// `worked` only when the patch that was OFFERED is the patch that then
 	// succeeded; a retry that succeeded with something else means the line was
 	// read and set aside, which is a fact about the model's judgement and not
 	// about the advice's accuracy.
-	if pending.advised != "" && pending.from != nil && fixCleanPatch(pending.advised) == patch {
+	//
+	// IT IS THE SAME QUESTION THE ENTRY'S OWN `worked` COUNT ANSWERS, so it is
+	// asked once and carried into both — the store-wide counter and the patch's
+	// own record. What the two do with it differs: the counter belongs to the
+	// store that ANSWERED, because it is that file's own hit rate, and the count
+	// belongs to the patch in both files, because "this command was handed back
+	// and it worked" is a fact about the command and not about which file
+	// remembered it.
+	advised := pending.advised != "" && fixCleanPatch(pending.advised) == patch
+	shelf.confirm(pending.signature, patch, advised)
+	if advised && pending.from != nil {
 		pending.from.outcome(true)
 	}
 }
 
 // fixAnnotate appends the advice to a failed result.
 //
-// THE WORDING IS THE PRODUCT. It says what happened, how well it went, and what
-// worked, in that order, in a person's words — because this line lands in the
-// model's context AND on the person's screen, in the output of the tool row they
-// can open. There is no jargon in it and no name for the machinery behind it:
+// THE WORDING IS THE PRODUCT, AND IT SAYS ONLY WHAT WAS OBSERVED. It states what
+// happened, how well it went, and what to try, in that order, in a person's
+// words — because this line lands in the model's context AND on the person's
+// screen, in the output of the tool row they can open. There is no jargon in it
+// and no name for the machinery behind it.
+//
+// There are TWO SHAPES, and the difference between them is the difference
+// between a patch that has been handed back and seen to work and a patch nobody
+// has ever re-run:
 //
 //	this exact error was fixed 7/8 times before · what worked: go build ./...
+//	this exact error came up here before · what ran next and it went away: go build ./...
 //
-// A patch that has never failed still reads as a fraction (`3/3`), which is the
-// honest shape — "3 times before" would hide the denominator that makes the
-// number mean anything.
+// THE FIRST IS ONLY EVER PRINTED WHEN THIS PATCH HAS WORKED — when it was
+// offered on this error, the offer was taken, and the error went away
+// (fixEntry.Worked). The second is the honest shape of the weaker observation
+// every entry starts life as: a command followed a failure and the failure did
+// not come back, which is a pairing and not yet a cure. The store that put this
+// distinction here was carrying `worked: 0` in its own counters while telling
+// the model "fixed 1/1 times · what worked: pwd" — a claim about a command
+// nothing had ever seen work.
+//
+// A patch that has worked still reads as a fraction (`3/3`), which is the honest
+// shape — "3 times before" would hide the denominator that makes the number mean
+// anything. The denominator is the offers that were TAKEN and the ones that came
+// back, because those are the only two things a fraction here can be measuring.
 func fixAnnotate(text string, advice []fixAdvice) string {
 	lines := make([]string, 0, len(advice))
 	for index, one := range advice {
 		if index >= fixAdviceLimit {
 			break
 		}
+		if one.worked > 0 {
+			lines = append(lines, fmt.Sprintf(
+				"this exact error was fixed %d/%d times before · what worked: %s",
+				one.worked, one.worked+one.failed, one.patch,
+			))
+			continue
+		}
 		lines = append(lines, fmt.Sprintf(
-			"this exact error was fixed %d/%d times before · what worked: %s",
-			one.ok, one.ok+one.failed, one.patch,
+			"this exact error came up here before · what ran next and it went away: %s",
+			one.patch,
 		))
 	}
 	if len(lines) == 0 {
