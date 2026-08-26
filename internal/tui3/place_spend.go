@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -68,6 +69,11 @@ type spendPage struct {
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
+	// names is the catalog's display name per model id, lower-cased, TAKEN ONCE
+	// WHEN THE PLACE OPENS. The catalog is a file this surface caches; a table
+	// that re-read it on every beat would be reading six hundred rows every three
+	// seconds to spell a dozen words that do not change while a window is open.
+	names map[string]string
 }
 
 // spendWindowDays is the window this place opens on: a fortnight, by the day.
@@ -80,9 +86,67 @@ const spendWindowDays = 14
 func (a *app) openSpend() tea.Cmd {
 	now := a.now()
 	a.spend = spendPage{cache: session.UsageCache{Path: a.usageLedger},
-		win: session.LastDays(now, spendWindowDays), hover: -1}
+		win: session.LastDays(now, spendWindowDays), hover: -1,
+		names: a.modelDisplayNames()}
 	a.readSpendLines(now)
 	return a.armPlaceClock()
+}
+
+// modelDisplayNames is what this machine's catalog CALLS each model, by id.
+//
+// IT IS THE PICKER'S OWN LADDER and not a second reading of the catalog: the
+// live list the door hands over, then the cache on disk, then the built-ins
+// ([app.modelsFor] states the order and why). A model the catalog has never
+// listed is simply absent, and the row that wanted it falls back to the
+// product's own shortener (spendplace.go's [spendReading.modelName]).
+func (a *app) modelDisplayNames() map[string]string {
+	names := map[string]string{}
+	for _, model := range a.modelsFor(func(Model) bool { return true }) {
+		id := strings.TrimSpace(model.ID)
+		if name := strings.TrimSpace(model.Name); id != "" && name != "" {
+			names[strings.ToLower(id)] = name
+		}
+	}
+	return names
+}
+
+// spendCrewNow is WHO IS BOUND TO WHAT RIGHT NOW: the crew as the settings
+// registry reads it, turned around so a model id answers with its slot's word,
+// plus the slots nothing is bound to.
+//
+// IT IS THE BINDING AND NOT AN ATTRIBUTION (FIDELITY item 7). A model's rows in
+// the ledger say what each call named ITSELF; this says what a person has told
+// this machine that model is for, which is the only version of the fact they can
+// act on from the chip the table sends them to.
+//
+// THE READ IS IN MEMORY. [config.Settings.ModelSlotBindings] asks each role slot
+// through the seams this surface wired when the registry was built
+// (settings.go's [app.registry]) — the conversation's own model, and whatever
+// the door answers for the rest — so this costs no disk and may run on the beat.
+func (a *app) spendCrewNow() spendCrew {
+	crew := spendCrew{role: map[string]string{}, name: a.spend.names}
+	bound := a.registry().ModelSlotBindings()
+	for _, slot := range config.ModelSlots() {
+		if slot.Role == "" {
+			continue
+		}
+		model := strings.TrimSpace(bound[slot.Slot])
+		if model == "" {
+			crew.unbound = append(crew.unbound, slot)
+			continue
+		}
+		// TWO SLOTS ON ONE MODEL SAY BOTH, in the ladder's order, because the
+		// same model answering the conversation and the work is the ordinary
+		// arrangement and a row that named only the first would be telling
+		// somebody the other slot is somewhere else.
+		key := strings.ToLower(model)
+		if was := crew.role[key]; was != "" {
+			crew.role[key] = was + " · " + slot.Label
+			continue
+		}
+		crew.role[key] = slot.Label
+	}
+	return crew
 }
 
 // refreshSpend is the place clock's beat on this page: the cache reads only
@@ -111,7 +175,7 @@ func (a *app) readSpendLines(now time.Time) {
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
-	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames())
+	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames()).crewed(a.spendCrewNow())
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on

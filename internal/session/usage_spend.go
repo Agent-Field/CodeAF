@@ -403,40 +403,37 @@ func UsageTotals(lines []UsageLine) DaySpend {
 
 // ── which models ────────────────────────────────────────────────────────────
 
-// ModelSpend is one row of "what ran it": a model, the role it named itself
-// under, and what that pairing cost.
+// ModelSpend is one row of "what ran it": a model, and what it cost.
 type ModelSpend struct {
 	// Model is the provider's own id, and empty where a line named none. A page
 	// makes the pretty name; this is the join key.
-	Model string
-	// Role is the auxiliary name a call gave itself — "title", "taskname",
-	// "intake" — and EMPTY FOR ALMOST EVERY ROW, including every turn a person
-	// took. It is not one of the five router slots and a column headed with
-	// those words would be a lie ([UsageLine.Role] says why).
-	Role   string
+	Model  string
 	Calls  int
 	Tokens int
 	USD    float64
 }
 
-// UsageByModel groups by the pair (model, role), dearest first.
+// UsageByModel groups by the MODEL, dearest first.
 //
-// THE PAIR AND NOT THE MODEL ALONE, because the same model answers a turn and
-// names a session, and a page that showed one row for it could not tell somebody
-// that a third of their naming bill is on a model they meant to be cheap. Rows
-// where nobody named a role collapse into one row per model, which is what
-// almost the whole file is.
+// THE MODEL ALONE, AND NOT THE PAIR IT USED TO BE. This grouped by (model, role)
+// — the role being the auxiliary word a call gave itself, "title", "taskname" —
+// on the argument that a page could then say which slice of a model's bill was
+// naming. SCREEN 2c asks a different question and says so in its own caption:
+// `by the model, and the role it was bound to`. The role a person can act on is
+// the CREW BINDING, which is a fact about the settings and not about a call, so
+// the page joins each of these rows against [config.ModelSlots] and this file
+// answers one row per model. The per-call word is still on every
+// [UsageLine.Role] for anything that wants it.
 //
-// Ties break on calls, then on the names, so two runs over one ledger draw the
+// Ties break on calls, then on the name, so two runs over one ledger draw the
 // same table in the same order.
 func UsageByModel(lines []UsageLine) []ModelSpend {
-	type key struct{ model, role string }
-	totals := map[key]*ModelSpend{}
+	totals := map[string]*ModelSpend{}
 	for _, line := range lines {
-		id := key{strings.TrimSpace(line.Model), strings.TrimSpace(line.Role)}
+		id := strings.TrimSpace(line.Model)
 		row := totals[id]
 		if row == nil {
-			row = &ModelSpend{Model: id.model, Role: id.role}
+			row = &ModelSpend{Model: id}
 			totals[id] = row
 		}
 		row.Calls += line.Calls
@@ -453,10 +450,8 @@ func UsageByModel(lines []UsageLine) []ModelSpend {
 			return rows[i].USD > rows[j].USD
 		case rows[i].Calls != rows[j].Calls:
 			return rows[i].Calls > rows[j].Calls
-		case rows[i].Model != rows[j].Model:
-			return rows[i].Model < rows[j].Model
 		}
-		return rows[i].Role < rows[j].Role
+		return rows[i].Model < rows[j].Model
 	})
 	return rows
 }
