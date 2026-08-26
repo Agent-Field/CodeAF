@@ -1080,9 +1080,17 @@ func (placeTasks) counted() bool { return true }
 func (placeTasks) open(a *app) tea.Cmd { return a.showTaskPlace() }
 func (placeTasks) close(a *app)        { a.taskSheet.close(a) }
 
-// tick keeps the record current while somebody stands on it: work that landed in
-// the next terminal is on this frame within three seconds.
-func (placeTasks) tick(a *app, now time.Time) { a.taskSheet.regroup(a) }
+// tick keeps the record current while somebody stands on it: the other windows'
+// readings are re-filed without a second walk of the disk.
+//
+// IT ANSWERS FALSE because this place never arms the clock — the reading is taken
+// on the keystroke that walks in ([app.showTaskPlace]) and re-filed on the common
+// frame ([tasksPlace.regroup]). A beat here would be a third reader of the same
+// record.
+func (placeTasks) tick(a *app, now time.Time) bool {
+	a.taskSheet.regroup(a)
+	return false
+}
 
 func (placeTasks) body(a *app, width, room int) []placeRow {
 	return a.taskSheet.body(a, width, room)

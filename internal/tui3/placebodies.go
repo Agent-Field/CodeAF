@@ -1,6 +1,17 @@
 package tui3
 
-// The two overlays the router promoted to places, and what promotion costs.
+// ── THE SHARED FOOT, AND THE HEAD THE POINTER COUNTS FROM ───────────────────
+//
+// What the frame draws for EVERY place and no place draws for itself: how tall
+// the head is, the one line a place may say about what it is holding, and the
+// prose a place with nothing in it teaches instead of a body.
+//
+// The frame itself is pages.go's ([placeFrame]) and a place's own rows are that
+// place's file's — this is the part that is the same on all seven, and a router
+// file that knew how one place draws is the shape ARCHITECTURE.md exists to
+// retire.
+//
+// ── WHAT PROMOTION COST THE TWO OVERLAYS ────────────────────────────────────
 //
 // The standing list and the memory list were ≤12-row overlays drawn UNDER the
 // draft, inside the conversation's chrome. As places they take the frame whole,
@@ -17,12 +28,7 @@ package tui3
 //     the scope moved to `alt+s`, which is the class a view belongs to.
 //
 // Both keep their bodies exactly as they drew them. What changed is the frame
-// around them and the keyboard, which is the whole of what this wave claimed.
-//
-// WHAT IS LEFT IN THIS FILE IS THE SHARED FOOT AND NOTHING ELSE. A place's own
-// frame lives in that place's own file — `place_memory.go`, `place_spend.go`,
-// `place_search.go` — because a router file that knew how one place draws is
-// the shape ARCHITECTURE.md exists to retire.
+// around them and the keyboard, which is the whole of what that wave claimed.
 
 // placeHeadRows is how many rows every place spends before its body: the pulse,
 // the tab bar, the rule, and the blank under it (pages.go's [placeFrame]).

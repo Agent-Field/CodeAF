@@ -131,16 +131,19 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 	if gen != a.placeGen {
 		return nil
 	}
-	// HOME RUNS ITS OWN BEAT AND ALWAYS HAS (home.go's [homeEvery]); this clock is
-	// for every OTHER place, and it stops the moment there is no place to keep
-	// current. A place answers the beat itself — the registry walking itself
-	// again — so a room added later is refreshed by having a `tick`.
+	// THE PLACE ANSWERS THE BEAT AND SAYS WHETHER IT WANTS ANOTHER — the registry
+	// walking itself, so a room added later is refreshed by having a `tick` and
+	// nothing else. Home runs a beat of its own and therefore answers false, which
+	// is what stops a clock armed by the memory place turning forever behind home
+	// ([place.tick] holds the whole argument).
 	pl := a.showing()
-	if pl == nil || pl.id() == pageHome {
+	if pl == nil {
 		return nil
 	}
 	now := a.now()
-	pl.tick(a, now)
+	if !pl.tick(a, now) {
+		return nil
+	}
 	a.refreshPlaceCounts(now)
 	a.touch()
 	return placeTick(a.placeGen)

@@ -635,7 +635,10 @@ func (placeMemory) close(a *app) {
 	a.memPanel.close()
 }
 
-func (placeMemory) tick(a *app, now time.Time) { a.refreshMemory() }
+func (placeMemory) tick(a *app, now time.Time) bool {
+	a.refreshMemory()
+	return true
+}
 
 // body is the shelves, or the one line whose card is open.
 //

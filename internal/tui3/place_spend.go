@@ -326,7 +326,10 @@ func (placeSpend) close(a *app) {
 	a.spend = spendPage{}
 }
 
-func (placeSpend) tick(a *app, now time.Time) { a.refreshSpend() }
+func (placeSpend) tick(a *app, now time.Time) bool {
+	a.refreshSpend()
+	return true
+}
 
 // spendTeach is what this place says on a machine that has spent nothing.
 //
