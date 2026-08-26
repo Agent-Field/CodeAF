@@ -62,9 +62,30 @@ type dragSelect struct {
 }
 
 // dragSlop is how many columns a pressed pointer may wander sideways and still
-// be a click. Any row change is a sweep — rows are what a sweep selects — but a
-// hand is not a vice, and a press that slid two cells is a press.
-const dragSlop = 3
+// be a click, and dragSlopRows is how many rows. A hand is not a vice, and a
+// press that slid two cells is a press.
+//
+// THE SLOP IS THE SAME PHYSICAL DISTANCE ON BOTH AXES, and that is why the two
+// numbers differ. A terminal cell is roughly twice as tall as it is wide, so
+// three columns and one row are about the same tremor of the wrist — and the
+// vertical figure used to be ZERO, on the reasoning that "rows are what a sweep
+// selects". That reasoning was about what a SWEEP means and got applied to what
+// a CLICK survives: a press that landed a couple of pixels from a row boundary
+// and drifted across it was silently spent as a two-line copy — the tool call
+// under the pointer did not open, and the status line said `copied · 2 lines`
+// instead. It reads as "clicking does not work", and no synthetic click ever
+// reproduced it, because bytes fed to the surface never wobble.
+//
+// WHAT IT COSTS IS ONE GESTURE: selecting exactly two adjacent rows in a single
+// straight drag. The sweep still starts the moment the pointer passes the slop,
+// and once it has started it stays started — so those two rows are had by
+// sweeping past them and coming back. Selecting ONE row is unaffected: that is
+// done by sweeping sideways within it, which the column slop above already
+// admits as a sweep once it is wider than a wobble.
+const (
+	dragSlop     = 3
+	dragSlopRows = 1
+)
 
 // bodyContentRow converts one screen row into an index into the body's own row
 // list, through whichever body is up — the conversation's window or a room's
@@ -122,7 +143,7 @@ func (a *app) dragMotion(x, y int) bool {
 		return false
 	}
 	if !a.drag.on {
-		if y == a.drag.py && abs(x-a.drag.px) < dragSlop {
+		if abs(y-a.drag.py) <= dragSlopRows && abs(x-a.drag.px) < dragSlop {
 			return true
 		}
 		a.drag.on, a.drag.anchorRow = true, a.drag.prow
