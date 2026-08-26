@@ -984,16 +984,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// is the instruction the engine puts in front of the sentence, which
 		// lives on this side of the wire (internal/session's standing_mark.go).
 		if args.Standing {
-			return s.stream(agent.SubmitStanding(context.Background(), args.Text))
+			events, err := agent.SubmitStanding(context.Background(), args.Text)
+			return s.stream(args.Text, events, err)
 		}
-		return s.stream(agent.Submit(context.Background(), args.Text))
+		events, err := agent.Submit(context.Background(), args.Text)
+		return s.stream(args.Text, events, err)
 
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
 			return nil, err
 		}
-		return s.stream(agent.FollowUp(args.Text))
+		events, err := agent.FollowUp(args.Text)
+		return s.stream(args.Text, events, err)
 
 	case MethodSubmitImage:
 		args, err := arg[SubmitImageArgs](call)
@@ -1004,7 +1007,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		return s.stream(agent.SubmitImage(context.Background(), args.Text, images))
+		events, err := agent.SubmitImage(context.Background(), args.Text, images)
+		return s.stream(args.Text, events, err)
 
 	// The other two doors a person's own files come through, both in file.go:
 	// what they attached on the way out, and what they asked for on the way
@@ -1294,7 +1298,7 @@ func arg[T any](call Frame) (T, error) {
 // the result naming it would be events about a stream the surface has never
 // heard of — the one ordering this protocol cannot recover from, and a race that
 // would show up as a lost first token on a fast turn and never in a test.
-func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage, error) {
+func (s *server) stream(said string, events <-chan session.Event, err error) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -1307,7 +1311,7 @@ func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage
 		events = empty
 	}
 	id, generation := s.session.mint()
-	s.pending = &pending{id: id, generation: generation, events: events}
+	s.pending = &pending{id: id, generation: generation, said: said, events: events}
 	return json.Marshal(StreamRef{Stream: id})
 }
 
@@ -1315,7 +1319,10 @@ func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage
 type pending struct {
 	id         uint64
 	generation uint64
-	events     <-chan session.Event
+	// said is the sentence that opened this turn, carried so the rest of the
+	// room can draw it above the reply ([Turn.Said]).
+	said   string
+	events <-chan session.Event
 }
 
 // release starts whatever the call just opened. It runs on the reader
@@ -1332,6 +1339,10 @@ func (s *server) release() {
 		return
 	}
 	sess := s.session
+	// THE ROOM IS TOLD BEFORE THE FIRST EVENT OF IT MOVES. Every other surface
+	// is about to receive this turn's events and would otherwise have nowhere to
+	// put them, because a surface draws the streams it knows about ([Turn]).
+	sess.tellTurn(Turn{Stream: waiting.id, Said: waiting.said}, s)
 	sess.pumps.Add(1)
 	go sess.pump(waiting.id, waiting.generation, waiting.events)
 }

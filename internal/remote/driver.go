@@ -218,3 +218,29 @@ func notDrivingWord(driver Driver) string {
 	}
 	return "the keyboard is " + where + " right now — press enter here to take it back"
 }
+
+// ── the turns a surface did not start ───────────────────────────────────────
+
+// tellTurn says "a turn has started here" to everybody in the room except the
+// surface that started it.
+//
+// THE ROOM MUST BE ABLE TO WATCH ITSELF. A turn's events have fanned out to
+// every attached surface since version 2, but a surface only DRAWS a stream it
+// has been told about, so a turn started on another machine went past a watching
+// window in silence — the whole promise of staying attached, unkept. See [Turn]
+// for why the engine sends this rather than the surface inferring it.
+func (sess *Session) tellTurn(turn Turn, except *server) {
+	sess.mu.Lock()
+	watching := make([]*server, 0, len(sess.surfaces))
+	for surface := range sess.surfaces {
+		if surface != except {
+			watching = append(watching, surface)
+		}
+	}
+	sess.mu.Unlock()
+
+	frame := Frame{Kind: "turn", Payload: mustJSON(turn)}
+	for _, surface := range watching {
+		_ = surface.send(frame)
+	}
+}

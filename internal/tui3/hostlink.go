@@ -106,6 +106,16 @@ type LinkSeam struct {
 	// way a turn's events are.
 	DrivingChanged func() <-chan struct{}
 
+	// Follow is the turns some OTHER window on this conversation started.
+	//
+	// A WINDOW THAT IS NOT TYPING IS STILL WATCHING THE WORK, and the work is a
+	// turn somebody started somewhere else. Without this a watcher's frame goes
+	// quiet the moment the other machine sends a message — which is the whole
+	// promise of staying attached, unkept. The channel hands over the turn's
+	// own event channel, so the surface draws it with the code that draws every
+	// turn (watching.go's [app.watchFollowing]).
+	Follow func() <-chan Following
+
 	// Take asks for the keyboard back. One round trip, never a reconnect, and
 	// the far end does not refuse it — a person pressing enter on their own work
 	// has said the only thing that needs saying. Its error is a link that is
