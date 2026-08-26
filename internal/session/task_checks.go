@@ -20,7 +20,15 @@ package session
 //
 // Everything else is refused, and the refusal NAMES what this audit may run, so
 // a model that reached for the wrong door reads the right one in the same
-// breath (task_audit.go's [refuseOutsideAllowlist]).
+// breath (task_audit.go's [refuseOutsideDoor]).
+//
+// A CHECK IS A FILE OR IT IS A COMMAND, and the two are not matched the same
+// way. A declared check that names a file the tree really holds is admitted
+// UNDER ANY SPELLING OF THAT FILE — the file on its own, the file with a
+// directory in front of it, the file with one program word before it — because
+// every one of those spellings starts the same file, and which of them a model
+// reaches for is a coin toss the work never had an opinion about. A check that
+// names no file keeps the field-by-field prefix match it always had.
 //
 // ── THE MEASURED FAILURE THAT PUT IT HERE ──
 //
@@ -52,8 +60,37 @@ package session
 // why a command a blanket-allow policy would still stop and ask about
 // (internal/approval's critical table) never becomes a door however the work
 // spelled it.
+//
+// ── THE SECOND MEASURED FAILURE: ONE FILE, FIVE SPELLINGS, FIVE REFUSALS ──
+//
+// The door above was live on the next run of the same benchmark, and it opened
+// onto nothing anyway. It offered:
+//
+//	You may run: /workspace/rust-java-lsp/target/release/rust-java-lsp,
+//	run_tests.*, /workspace/golden.jsonl, bash /app/timer.sh, git diff, ...
+//
+// and the auditor, reading that, tried in order: the check with the directory it
+// was standing in stated first — refused, composition; the check with its
+// absolute path — refused, not on the list; the bare name — no such program on
+// the PATH; the name with a program word in front — refused; the name with a dot
+// and a slash in front — refused. FIVE SPELLINGS OF ONE FILE, and the file was
+// sitting in the tree the whole time. That is [auditDoor.admitsFile]: the door
+// asks WHICH FILE a command names, not how the model typed it.
+//
+// The same run's receipts were every one of them `cd /workspace/rust-java-lsp &&
+// cargo build --release 2>&1 | tail -3`, so source (b) admitted NOTHING while the
+// command the work checked itself with sat in the middle of every line. Two of
+// those three pieces are not commands: the `cd` is the worker STATING THE CWD the
+// auditor already stands in, and the tail is reading the output of the command in
+// front of it. What the line RUNS is its first stage. That is [receiptCheck],
+// and the derived command is put through the same two questions the raw one was —
+// is it one simple command, and would a blanket allow still stop and ask about
+// it — because what changed is which words are read off the receipt, not what the
+// auditor may run.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -123,11 +160,14 @@ var auditAllowed = approval.Policy{Default: approval.ActionAllow}
 // auditDoor is what ONE audit may run: the checks it found, and the whole
 // allowlist those checks sit at the front of.
 //
-// THE TWO FIELDS ARE NOT THE SAME QUESTION. `allowed` is what the gate matches
-// against. `checks` is whether this audit can VERIFY anything at all — an audit
-// holding nothing but the reading commands can look at the work and cannot test
-// it, and that changes both what it is told and how long it is given
-// ([auditDoor.window], [auditDoor.line]).
+// THE FIELDS ARE NOT THE SAME QUESTION. `allowed` is what the gate PREFIX-matches
+// against. `files` is what it matches BY IDENTITY — the checks that turned out to
+// name a file the tree really holds, which are admitted under any spelling of
+// that file and are matched by nothing else ([auditDoor.admitsFile]). `checks` is
+// whether this audit can VERIFY anything at all — an audit holding nothing but
+// the reading commands can look at the work and cannot test it, and that changes
+// both what it is told and how long it is given ([auditDoor.window],
+// [auditDoor.line]).
 type auditDoor struct {
 	// checks are the commands the work named or ran, declared first.
 	checks []string
@@ -135,25 +175,173 @@ type auditDoor struct {
 	// because it is the order a refusal lists them in and the check is the thing
 	// the auditor came for.
 	allowed []string
+	// ground is the directory the auditor will stand in, which is the one every
+	// relative spelling of a file is resolved against. Empty means there is no
+	// tree to resolve against and so no file check can exist.
+	ground string
+	// files are the checks that name a file under `ground`.
+	files []fileCheck
+}
+
+// fileCheck is a declared check that turned out to NAME A FILE THE TREE HOLDS.
+//
+// It carries the two things the door needs to be useful about it: `written` is
+// the spelling the WORK used, which is the entry this check occupies in
+// [auditDoor.allowed] and the one the prefix walk must therefore skip; `path` is
+// the file itself, resolved and cleaned, which is the identity every spelling the
+// AUDITOR reaches for is compared against.
+type fileCheck struct {
+	written string
+	path    string
+}
+
+// auditPlace is the two directories a door is read against, and they are two
+// because THE AUDIT DOES NOT HAPPEN WHERE THE WORK HAPPENED. `ground` is where
+// the auditor will stand — a clean restore beside the node's own checkout
+// (task_audit.go's [auditGroundFor]) — and it is what every spelling of a file is
+// resolved against, since a file check has to name something that is really there
+// under the auditor's own feet. `ran` is where the WORK stood, and it is what a
+// receipt's statement of its own working directory is read against, since that is
+// the directory the worker was talking about. A door that asked one of those
+// questions of the other's directory would answer both of them wrong.
+type auditPlace struct {
+	ground string
+	ran    string
+}
+
+// plainDoor is a door made of a bare list of commands and nothing else: the
+// fork's read-only shell, the reading-only belt, and every test that asks the
+// gate about a list it wrote by hand. There is no ground under it, so there are
+// no file checks in it and the gate is exactly the prefix walk it always was.
+func plainDoor(allowed []string) auditDoor {
+	return auditDoor{allowed: allowed}
 }
 
 // auditDoorFor reads one node's door off the node itself: what its own document
-// declares, and what its last worker actually ran.
+// declares, what its last worker actually ran, and which of those turn out to
+// name a file sitting in the ground this audit will stand on.
 //
 // A NIL NODE STILL GETS THE READING COMMANDS. Every caller here has a node, but
 // a door with no allowlist at all would be a bash that refuses everything, and a
 // belt whose hand refuses everything is a hand this build would not have put on
 // (CLAUDE.md's absent-not-broken law).
-func auditDoorFor(node *TaskNode) auditDoor {
+//
+// THE GROUND IS THE DIRECTORY THE AUDITOR WILL BE PUT IN and not some other one:
+// a file check resolved against a directory the auditor is not standing in would
+// admit spellings that name nothing where it is typing them. The receipts are
+// read against the other directory in [auditPlace], for the reason stated there.
+func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 	var checks []string
 	if node != nil {
 		checks = appendChecks(checks, declaredChecks(node.instruction()))
-		checks = appendChecks(checks, ranChecks(node.lastReceipts()))
+		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
 	allowed = append(allowed, checks...)
 	allowed = append(allowed, auditReadCommands...)
-	return auditDoor{checks: checks, allowed: allowed}
+	door := auditDoor{checks: checks, allowed: allowed, ground: place.ground}
+	for _, check := range checks {
+		door.files = append(door.files, fileChecksIn(place.ground, check)...)
+	}
+	return door
+}
+
+// admitsFile is the identity half of the gate: does this command NAME A FILE THIS
+// DOOR HOLDS, whatever spelling it reached for?
+//
+// TWO SHAPES ARE A FILE BEING RUN, and they are counted by their shape rather
+// than read for their words. One word IS the file — `run_tests.sh`,
+// `./run_tests.sh`, `/abs/path/run_tests.sh`, all of which start it. Two words
+// are a program and the file it is handed; this asks only that ONE word stands in
+// front, never which word, because a rule that knew which words launch a script
+// would be a launcher list, and a launcher list is the constant this whole file
+// replaced. Three words are not a spelling of the check — they are the check plus
+// arguments the work never declared, and this door speaks only for what the work
+// declared.
+//
+// THE CRITICAL FLOOR STILL STANDS UNDER IT. The word in front is any word, so the
+// same question the work's own receipts are put to is asked of the line the
+// auditor typed: one simple command, and not one a gate told to allow everything
+// would still stop and put to a person.
+func (d auditDoor) admitsFile(fields []string) bool {
+	if len(d.files) == 0 {
+		return false
+	}
+	var word string
+	switch len(fields) {
+	case 1:
+		word = fields[0]
+	case 2:
+		// An option is not a program, which is the same reading [commandLike]
+		// gives a first word.
+		if strings.HasPrefix(fields[0], "-") {
+			return false
+		}
+		word = fields[1]
+	default:
+		return false
+	}
+	path, ok := groundFile(d.ground, word)
+	if !ok {
+		return false
+	}
+	command := strings.Join(fields, " ")
+	if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
+		return false
+	}
+	for _, file := range d.files {
+		if sameFile(path, file.path) {
+			return true
+		}
+	}
+	return false
+}
+
+// identified says whether one entry of the allowlist is a file check, which is
+// how the prefix walk knows to leave it alone: a file check is matched by which
+// file it is and by nothing else, so prefix-matching it as well would admit
+// `<the check> --whatever-else`, which the work never declared.
+func (d auditDoor) identified(entry string) bool {
+	for _, file := range d.files {
+		if file.written == entry {
+			return true
+		}
+	}
+	return false
+}
+
+// spelling is how ONE entry of this door is written down for the model to read.
+//
+// A plain command is written as it stands. A FILE CHECK IS WRITTEN AS THE
+// SPELLINGS THAT OPEN IT, because the measured failure was a model reading a door
+// that named a file and then guessing wrong about it five times running. A door
+// that says which shapes it takes is a door walked through on the first try.
+func (d auditDoor) spelling(entry string) string {
+	var said []string
+	for _, file := range d.files {
+		if file.written != entry {
+			continue
+		}
+		said = append(said, "the check "+file.path+" — run it as `"+file.path+"` or `<one word> "+file.path+"`")
+	}
+	if len(said) == 0 {
+		return entry
+	}
+	return strings.Join(said, ", ")
+}
+
+// offer is the whole door in the one line a refusal and the shell's own
+// description both end on: every entry, in order, each written the way a model
+// can retype it.
+func (d auditDoor) offer() string {
+	if len(d.files) == 0 {
+		return strings.Join(d.allowed, ", ")
+	}
+	said := make([]string, 0, len(d.allowed))
+	for _, entry := range d.allowed {
+		said = append(said, d.spelling(entry))
+	}
+	return strings.Join(said, ", ")
 }
 
 // window is how long this audit gets. See [auditReadingDeadline] for why the
@@ -181,8 +369,12 @@ func (d auditDoor) line() string {
 			"command to run: read the files and the change, judge what you can see, and answer now. " +
 			"An answer from reading alone is a real answer; running out of time is not.\n"
 	}
+	said := make([]string, 0, len(d.checks))
+	for _, check := range d.checks {
+		said = append(said, d.spelling(check))
+	}
 	return "THE CHECKS THIS WORK NAMES OR RAN, which are the only verification commands your bash will run:\n" +
-		"  " + strings.Join(d.checks, "\n  ") + "\n" +
+		"  " + strings.Join(said, "\n  ") + "\n" +
 		"Run them as they are written. Anything else is refused, and the refusal will say what you may run.\n"
 }
 
@@ -248,32 +440,267 @@ func declaredChecks(text string) []string {
 // receipts the node already carries for the auditor's packet (task_audit.go's
 // [lastToolReceipts]).
 //
-// ONLY WHAT IT RAN AS ONE COMMAND. A worker's `cd x && build 2>&1 | tail` is not
-// a door: this gate runs one command with no composition, so a composed line
-// could only be re-run by taking it apart, and a check taken apart is not the
-// check that ran. [approval.Vouchable] is the build's existing answer to "is
-// this one simple command" — the same question a standing approval has to ask
-// before it may speak for a line somebody typed — and asking it here means the
-// two can never drift apart.
+// ONLY WHAT IT RAN AS ONE COMMAND, and [receiptCheck] is the reading that decides
+// which words of a receipt those are. Everything after that reading is what it
+// always was: [approval.Vouchable] is the build's existing answer to "is this one
+// simple command" — the same question a standing approval has to ask before it
+// may speak for a line somebody typed — and asking it here means the two can
+// never drift apart.
 //
 // AND NOT WHAT A BLANKET ALLOW WOULD STILL ASK ABOUT ([auditAllowed]). The work
 // ran with hands this auditor does not have; the fact that it ran something is
 // not a reason to hand the judge a way to destroy the tree it is judging.
-func ranChecks(receipts []toolReceipt) []string {
+func ranChecks(receipts []toolReceipt, ran string) []string {
 	var out []string
 	for _, receipt := range receipts {
-		command := strings.TrimSpace(receipt.command)
-		if command == "" || !approval.Vouchable(command) {
-			continue
-		}
-		if auditAllowed.CheckBash(command).Action != approval.ActionAllow {
-			continue
-		}
-		if command, ok := commandLike(command); ok {
+		if command, ok := receiptCheck(receipt.command, ran); ok {
 			out = append(out, command)
 		}
 	}
 	return out
+}
+
+// receiptCheck reads ONE COMMAND out of one line a worker ran, and it is the
+// answer to the second measured failure at the top of this file: every receipt of
+// that run was `cd <the tree> && <the build> 2>&1 | tail -3`, so the old reading —
+// which asked whether the WHOLE LINE was one simple command and gave up when it
+// was not — handed the auditor nothing at all, while the command the work checked
+// itself with sat in the middle of every one of them.
+//
+// TWO OF THE THREE PIECES OF THAT LINE ARE NOT THE COMMAND:
+//
+//   - A LEADING `<word> <directory> &&` IS THE WORKER STATING WHERE IT IS. The
+//     auditor is handed a working directory of its own, so the statement is
+//     redundant rather than composed, and it is dropped. It is recognised by SHAPE
+//     and not by which verb spells it: one word, then one word that resolves to the
+//     tree the work ran in or to somewhere inside it. A directory anywhere else is
+//     not a statement about this tree, and then the line stays composed and
+//     contributes nothing.
+//   - WHAT A PIPELINE RUNS IS ITS FIRST STAGE. The stages after it only read the
+//     output of the one in front; so do the redirections of stdout and stderr that
+//     trail the end of it. Neither is part of the command being checked, and
+//     neither is re-run.
+//
+// WHAT IS DERIVED IS STILL RUN AS ONE COMMAND WITH NO COMPOSITION. This changes
+// which words are read off a receipt; it changes nothing about what the auditor
+// may type, which is the same single uncomposed command it always was.
+func receiptCheck(line, ran string) (string, bool) {
+	line, ok := dropStandingIn(strings.TrimSpace(line), ran)
+	if !ok {
+		return "", false
+	}
+	line, ok = firstStage(line)
+	if !ok {
+		return "", false
+	}
+	command, ok := commandLike(line)
+	if !ok || !approval.Vouchable(command) {
+		return "", false
+	}
+	if auditAllowed.CheckBash(command).Action != approval.ActionAllow {
+		return "", false
+	}
+	return command, true
+}
+
+// dropStandingIn takes off a leading statement of the working directory the
+// auditor is already standing in. See [receiptCheck] for why that is a redundancy
+// rather than a composition, and why the shape rather than the verb is what is
+// read.
+func dropStandingIn(line, ran string) (string, bool) {
+	head, rest, joined := strings.Cut(line, "&&")
+	if !joined {
+		return line, true
+	}
+	fields := strings.Fields(head)
+	if len(fields) != 2 {
+		return "", false
+	}
+	if _, ok := groundDir(ran, fields[1]); !ok {
+		return "", false
+	}
+	return strings.TrimSpace(rest), true
+}
+
+// firstStage keeps the command a line RUNS and drops what only reads its output:
+// the stages after the first pipe, and the redirections of stdout and stderr that
+// trail the end of it.
+//
+// A LINE WITH NOTHING IN FRONT OF ITS FIRST REDIRECTION IS NOT A COMMAND, and it
+// does not become a door. Neither does `a || b`, which is not a pipeline at all
+// but a second command waiting on the first one failing.
+//
+// THE REDIRECTIONS ARE TAKEN OFF THE END AND NOWHERE ELSE. A redirection in the
+// middle of a line leaves the line composed, [commandLike] refuses it, and the
+// receipt contributes nothing — which is the right way to be wrong: cutting a
+// command short at the first arrow it happens to contain would hand the door a
+// SHORTER command than the work ran, and a shorter command is a wider one.
+func firstStage(line string) (string, bool) {
+	if head, rest, piped := strings.Cut(line, "|"); piped {
+		if strings.HasPrefix(rest, "|") {
+			return "", false
+		}
+		line = head
+	}
+	fields := strings.Fields(line)
+	for len(fields) > 0 {
+		last := len(fields) - 1
+		switch {
+		case redirection(fields[last]):
+			// `2>&1`, `>log`, and the bare arrow of a redirection whose file was
+			// written apart from it.
+			fields = fields[:last]
+		case last > 0 && redirection(fields[last-1]):
+			// The file that arrow was pointing at, and the arrow with it.
+			fields = fields[:last-1]
+		default:
+			return strings.Join(fields, " "), true
+		}
+	}
+	return "", false
+}
+
+// redirection reads one word for the SHAPE of a redirection — an optional file
+// descriptor or an ampersand, and then an arrow — rather than for any particular
+// spelling of one. A word that merely contains an arrow somewhere inside it is an
+// argument, not a redirection, and is left where the work put it.
+func redirection(field string) bool {
+	arrow := strings.TrimLeft(field, "0123456789&")
+	return strings.HasPrefix(arrow, ">") || strings.HasPrefix(arrow, "<")
+}
+
+// fileChecksIn decides whether one check NAMES A FILE, reading the same two
+// shapes [auditDoor.admitsFile] admits: the file alone, or one program word and
+// then the file.
+//
+// A WILDCARD THE WORK WROTE IS RESOLVED RATHER THAN REFUSED. The run this was
+// written for declared its check as `run_tests.*`, which names exactly one file
+// on disk and no program at all; a rule that only understood literal paths would
+// have left that door shut for the same reason it was shut before.
+func fileChecksIn(ground, check string) []fileCheck {
+	fields := strings.Fields(check)
+	var word string
+	switch len(fields) {
+	case 1:
+		word = fields[0]
+	case 2:
+		if strings.HasPrefix(fields[0], "-") {
+			return nil
+		}
+		word = fields[1]
+	default:
+		return nil
+	}
+	var out []fileCheck
+	for _, path := range groundFiles(ground, word) {
+		out = append(out, fileCheck{written: check, path: path})
+	}
+	return out
+}
+
+// groundFiles resolves one word of a check to the files it names under the ground
+// this audit stands on — one file for a literal path, however many a wildcard the
+// work wrote actually matches, and none at all for a word that names nothing.
+func groundFiles(ground, word string) []string {
+	if !strings.ContainsAny(word, "*?[") {
+		if path, ok := groundFile(ground, word); ok {
+			return []string{path}
+		}
+		return nil
+	}
+	pattern, ok := underGround(ground, word)
+	if !ok {
+		return nil
+	}
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, match := range matches {
+		if path, ok := groundFile(ground, match); ok {
+			out = append(out, path)
+			if len(out) >= auditCheckCount {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// groundFile resolves one word to a REGULAR FILE UNDER THE GROUND, which is the
+// only thing this door will ever call a file check: a word naming something
+// outside the tree is a word about somebody else's machine, and a word naming a
+// directory or a device is not a check anybody runs.
+func groundFile(ground, word string) (string, bool) {
+	path, ok := underGround(ground, word)
+	if !ok {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return path, true
+}
+
+// groundDir is [groundFile]'s question asked about a directory: the ground itself
+// counts, because "I am standing here" is the commonest thing a receipt says.
+func groundDir(ground, word string) (string, bool) {
+	path, ok := underGround(ground, word)
+	if !ok {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return path, true
+}
+
+// underGround resolves a word the way the auditor's own shell would — relative to
+// the directory it stands in — and then refuses anything that landed outside that
+// directory. WITH NO GROUND THERE IS NO RESOLUTION AND NO FILE CHECK: a door built
+// without a tree behind it is the prefix walk it always was.
+func underGround(ground, word string) (string, bool) {
+	ground = strings.TrimSpace(ground)
+	if ground == "" || word == "" {
+		return "", false
+	}
+	root, err := filepath.Abs(ground)
+	if err != nil {
+		return "", false
+	}
+	path := word
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	path = filepath.Clean(path)
+	inside, err := filepath.Rel(root, path)
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return path, true
+}
+
+// sameFile asks whether two resolved paths are ONE FILE. The cleaned paths agree
+// in the ordinary case; os.SameFile is asked when they do not, because a tree
+// reached through a symlinked parent — a temporary directory on a Mac, a restore
+// beside the node's own checkout — spells the same file two ways and a door that
+// refused the second spelling would be the failure this was written for again.
+func sameFile(one, other string) bool {
+	if one == other {
+		return true
+	}
+	first, err := os.Stat(one)
+	if err != nil {
+		return false
+	}
+	second, err := os.Stat(other)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(first, second)
 }
 
 // commandLike decides whether a fragment of text is a command this door could

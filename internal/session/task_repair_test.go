@@ -682,7 +682,7 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	}
 
 	byName := map[string]func(context.Context, json.RawMessage) (string, bool, error){}
-	for _, tool := range auditBelt(dir, auditReadCommands) {
+	for _, tool := range auditBelt(dir, plainDoor(auditReadCommands)) {
 		byName[tool.Name] = tool.Execute
 	}
 	arguments := json.RawMessage(`{"command":` + strconv.Quote("cat huge.txt") + `}`)

@@ -3319,7 +3319,7 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	// check reads a running tree and decides whether the work is moving; it has
 	// no business with a wider hand than the judge that will grade the result,
 	// and no reason for a narrower one.
-	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node))
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, auditPlace{ground: dir, ran: dir}))
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}
