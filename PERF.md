@@ -134,10 +134,19 @@ The rule for the next thing anybody adds: **a fact a frame reads belongs in
 asked.** The transcript, the rewind points and a file fetched from that machine
 are all the second kind, and all of them are off the frame path.
 
-The number that is NOT pinned here is the boot: opening a hosted conversation
-costs a handful of calls, and every one of them is a launch cost paid once with a
-person watching a connection open, which is the moment waiting is correct. The
-laws above are about the moments it never is.
+The number that is NOT pinned here is the boot. Opening a hosted conversation
+costs five calls, read off the engine's own side of a real ssh pipe: the
+transcript, the earlier history, the recent sessions, this workspace's standing
+items and the questions held for somebody to come back to. Every one is a launch
+cost paid once with a person watching a connection open, which is the moment
+waiting is correct, and NOT ONE OF THEM IS A FACT A FRAME READS — those arrive
+in the welcome. The laws above are about the moments waiting is never correct.
+
+The other thing that shows on a real link and is not pinned here is the standing
+band's own beat, which asks the engine for this workspace's items every few
+seconds. It is a poll of the far machine's DISK rather than a fact a frame reads,
+so it is a different lane's question; it is written down because anybody counting
+frames on a real connection will see it and should know what it is.
 
 ## The launch-path pins
 
