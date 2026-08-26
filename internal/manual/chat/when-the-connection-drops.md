@@ -162,12 +162,33 @@ people, or you and a laptop you forgot to close. When there is, the entry notice
 as you come in:
 
 ```
-another window is on this conversation
+another window is on this conversation — typing is here now
 ```
 
-or, for more than one, `2 other windows are on this conversation`. The count comes from
-the far machine, because only the machine holding the session can know it. When you are
-alone — the ordinary case — nothing is said at all.
+or, for more than one, `2 other windows are on this conversation — typing is here now`.
+The count comes from the far machine, because only the machine holding the session can
+know it. When you are alone — the ordinary case — nothing is said at all.
+
+The second half of that sentence is what opening it here just did to the other window:
+**the keyboard follows the newest window.** That window is still attached and still drawing
+every reply; it simply cannot type until somebody presses `enter` there. The whole of it —
+the line it shows, how to take the keyboard back, and what a redial does — is on *Staying
+on that machine*.
+
+## My window came back and now I cannot type
+
+Because you started typing somewhere else while it was away, and the keyboard went with
+you.
+
+A connection coming back is not somebody arriving, so a redial does **not** take the
+keyboard off the machine you walked to. The returning window rejoins as a watcher and says
+
+```
+typing from spark now                                     enter takes it back
+```
+
+Press `enter` there if you want it back. If nothing else had the keyboard while you were
+gone, the returning window simply has it and says nothing.
 
 ## Does quitting end what is running over there
 

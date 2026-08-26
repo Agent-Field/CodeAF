@@ -186,10 +186,47 @@ not know how to draw is skipped and left waiting rather than half-rendered.
 Open `aforge chat --host devbox` in two terminals. The second should say
 
 ```
-another window is on this conversation
+another window is on this conversation — typing is here now
 ```
 
-Start a turn in one; the other should receive it live.
+**The keyboard follows the newest window.** The second terminal keeps its composer; the
+first one's box is replaced by a single dim line:
+
+```
+typing from <machine> now                                      enter takes it back
+```
+
+A window on the SAME machine reads `typing from another window now`. Start a turn in the
+second; the first should draw it live — the message above the reply, the reply token by
+token — with no keystroke on it. Press `enter` on the first: it takes the keyboard in one
+round trip, its unsent draft is exactly where it was, and the second becomes the watcher in
+the same instant. Close one and the other gets the keyboard back with no line at all.
+
+Typing at a watcher does nothing; two spaces still open home. A message that races a
+hand-over is answered rather than dropped:
+
+```
+the keyboard is on <machine> right now — press enter here to take it back
+```
+
+Driving it without a keyboard, which is what an agent has to do:
+
+```sh
+for s in w1 w2; do
+  tmux new-session -d -s $s -x 140 -y 40 "aforge chat --host localhost:code/app --model <m>"
+  sleep 11
+done
+tmux capture-pane -p -t w1 | tail -2      # the watcher's line
+tmux send-keys -t w2 "say hello" Enter; sleep 20
+tmux capture-pane -p -t w1 | head -12     # the turn w1 did not start, drawn live
+tmux send-keys -t w1 Enter; sleep 3       # w1 takes the keyboard; w2 becomes the watcher
+```
+
+**Verified this way, on this tree** (`--host localhost`, two tmux surfaces, one workspace):
+the arriving window's notice, the older window's line, a draft left untouched across two
+hand-overs, a real turn drawn in the watching window with its question above it, `enter`
+swapping the roles in both directions, and the survivor getting the keyboard back when the
+other window closed.
 
 ### 3e. Files
 
