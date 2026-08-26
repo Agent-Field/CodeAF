@@ -221,6 +221,52 @@ protect a stolen laptop is worse off than somebody who knows it is a file. So
 ever starts promising otherwise. When the seam is filled, `Keeper.Where()` is the one
 sentence that changes.
 
+## Decision 10 — A place follows the machine the session is on, and one door serves five of them
+
+**Decision.** The seven places are a listing of one machine's disk, and over a
+connection that machine is the one the SESSION runs on. `Places.World` answers
+`session.ReadWorld(session.PlacesRoot())` on the engine, and `Welcome` carries
+the root it was walked under. The surface reads it through one seam
+(`tui3.Options.World`), backed by a cache the door keeps warm
+(`cmd/aforge`'s `hostWorld`), and **a hosted surface with no seam reads nothing
+at all** rather than falling back to its own disk.
+
+**Why one door and not one per place.** Five of the seven are built from that
+single walk — home lists it, tasks reads the task rows inside it, standing walks
+its projects to ask the far store what else stands there, spend joins its titles
+onto the ledger's ids, and search opens a hit's conversation out of it. A method
+per place would have been five round trips answering one question, and five
+chances for two screens to disagree about which machine they were describing.
+
+**Why the seam answers whether it has an answer.** An empty list of standing
+items and no answer yet are the same thing on a screen — the emptiness law draws
+both as nothing. An empty WORLD is not: it is a machine with no projects, and
+`nothing here yet — say something and this fills up` drawn over a server full of
+work is the one wrong sentence home can say about somebody else's disk. So the
+seam is `func() (session.World, bool)` and the surface draws nothing until the
+far machine has spoken once.
+
+**Why it is a cache and not a call.** A place may read on its open and on its
+three-second beat, and over a wire both are moments a person is waiting through:
+a call carries a ten-second deadline, so an open that made one would be a
+terminal that stopped answering keys for as long as the far machine took. This
+is `hostStanding`'s law applied to the reading five screens share.
+
+**What is still local, and says so.** Spend reads the ledger file, search reads
+the conversation index, memory reads the memory store — three files on the
+machine this process runs on, with no door on the wire yet. Each place opens and
+draws one dim line where its rows would be (`tui3`'s `place.remote`), which is
+the corollary of Decision 6 stated for a screen rather than for a capability.
+
+**And two things the surface must not ask its own disk.** Home's `readGone`
+stats every project it draws; over a connection those paths are the engine's, so
+the stat is not made and no row is marked `folder gone` — a stat here would
+report every remote row as deleted. And the look stamps behind a tab's number
+are kept per machine, in `~/.aforge/v3/looks/<machine>` on the SURFACE's disk:
+what changed belongs to the far machine, when you last looked belongs to this
+terminal, and one stamp answering for both would let a glance at the server clear
+the badge over the laptop's own tab.
+
 ---
 
 ## What runs where
