@@ -213,9 +213,11 @@ strip pushes the rest of the list down by its own height — the frame stays the
 and the composer does not move — and that visible displacement is exactly why the letters
 are safe: you can see that typing has stopped.
 
-`esc` or `←` closes it. `enter` still opens the row. Moving off the row with `↑` or `↓`
-closes it too — verbs belong to one row, and carrying them onto the next is how a key acts on
-something you were not looking at.
+`esc` or `←` closes it. `enter` still opens the row. **Anything that moves the cursor off
+that row closes it** — `↑`, `↓`, `ctrl+p`, `ctrl+n`, `home`, `end`, the page keys, a click on
+another row, the wheel, or the list being rebuilt under you by the three-second beat. The
+strip belongs to the row it was opened on and not to a list of keys: verbs belong to one row,
+and carrying them onto the next is how a key acts on something you were not looking at.
 
 The verbs are the row's own. A conversation that is not asking anything has no `y`; a row
 that cannot be paused has no `p`. Where a row has no verbs at all, `→` keeps every other
