@@ -31,11 +31,6 @@ var memoryTeaching = []string{
 	"Corrections are the point — a wrong line here is wrong in every chat.",
 }
 
-type memoryVerb struct {
-	key  rune
-	word string
-}
-
 type memoryStop struct {
 	shelf string
 	line  *store.Memory
@@ -408,17 +403,6 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 		return memoryStop{shelf: line.shelf, line: line.memory}, true
 	}
 	return memoryStop{}, false
-}
-
-func (r memoryReading) verbs(i int) []memoryVerb {
-	stop, ok := r.at(i)
-	if !ok {
-		return nil
-	}
-	if stop.line == nil {
-		return []memoryVerb{{key: '\r', word: "enter open"}}
-	}
-	return []memoryVerb{{key: 'e', word: "e fix the wording"}, {key: 'f', word: "f forget it"}}
 }
 
 // THERE IS ONE EMPTY STATE HERE AND THE READING ITSELF IS IT.

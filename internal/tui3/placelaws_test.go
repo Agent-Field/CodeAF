@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -391,4 +392,69 @@ type panicSearch struct {
 func (p panicSearch) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
 	p.t.Fatalf("the %s place searched what was said while drawing its body", p.place)
 	return nil, nil
+}
+
+// A FACT SPELLED TWICE IS A BUG (ARCHITECTURE.md), pinned for the words a strip
+// puts in front of a person.
+//
+// The memory reading carried a second copy of two of them — a `memoryReading.verbs`
+// with no caller, naming `e fix the wording` with the letter baked into the word
+// while the live strip pairs the letter and the word separately (verbstrip.go:
+// `pal.data(string(v.key)) + pal.dim(" "+v.word)`). Revived, it would have drawn
+// `e e fix the wording`. Dead code is not inert when it holds a second answer to
+// a question somebody will ask again.
+//
+// The words are STRING LITERALS in the code and quoted in the manual, so this
+// counts the literals: exactly one, the constant's own declaration. A comment
+// that mentions a verb is not a spelling of it, so the source is parsed rather
+// than grepped — the same call [TestTheReadingLayersImportNoApp] makes and for
+// the same reason.
+func TestEachVerbWordIsSpelledOnce(t *testing.T) {
+	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord}
+	seen := map[string]int{}
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatalf("could not parse %s: %v", name, err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			text, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				return true
+			}
+			for _, word := range words {
+				// CONTAINS AND NOT EQUALS, because the second copy that was here
+				// did not spell the word the same way — it was `e fix the wording`,
+				// the letter baked into the word. A test that asked for equality
+				// would have watched it go past.
+				if !strings.Contains(text, word) {
+					continue
+				}
+				seen[word]++
+				if text != word || name != "verbstrip.go" {
+					t.Errorf("%q is spelled again inside %q at %s — the strip's words live in verbstrip.go and nowhere else",
+						word, text, fset.Position(lit.Pos()))
+				}
+			}
+			return true
+		})
+	}
+	for _, word := range words {
+		if seen[word] == 0 {
+			t.Errorf("%q is spelled nowhere at all", word)
+		}
+	}
 }

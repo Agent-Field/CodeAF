@@ -136,7 +136,18 @@ func TestAFilteredMemoryWithNoMatchesDrawsOnlyItsNoMatchLine(t *testing.T) {
 	}
 }
 
-func TestMemoryStopsAndVerbsLandOnlyOnShelvesAndLines(t *testing.T) {
+// THE CURSOR STOPS ON SHELVES AND LINES AND ON NOTHING ELSE — the teaching
+// prose, the header and the section line are things to read.
+//
+// IT USED TO ASSERT THE VERBS TOO, off a second spelling of them this reading
+// carried: `memoryReading.verbs`, which named `e fix the wording` with the
+// letter baked into the word while the live strip pairs the letter and the word
+// separately. It had no caller and it disagreed with the strip; revived, it
+// would have drawn `e e fix the wording`. The law it protected — a row is
+// offered only what that row can be asked for — is pinned where the verbs
+// actually are, on the place (TestTheMemoryFootSaysWhatTheRowUnderTheCursorCanBeAskedFor
+// and TestTheStripCannotOutliveTheRowItWasOpenedOn).
+func TestMemoryStopsLandOnlyOnShelvesAndLines(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	r := readMemory(memoryPlaceFixture(now), map[string]bool{store.MemoryScopeUser: true}, "", now)
 	var shelfAt, lineAt = -1, -1
@@ -155,13 +166,13 @@ func TestMemoryStopsAndVerbsLandOnlyOnShelvesAndLines(t *testing.T) {
 	if shelfAt < 0 || lineAt < 0 {
 		t.Fatalf("the reading has no shelf or line stop: %+v", r.lines)
 	}
-	if got := r.verbs(shelfAt); len(got) != 1 || got[0].key != '\r' || got[0].word != "enter open" {
-		t.Fatalf("shelf verbs = %+v", got)
+	if stop, _ := r.at(shelfAt); stop.line != nil || stop.shelf == "" {
+		t.Fatalf("the shelf stop is not a shelf: %+v", stop)
 	}
-	if got := r.verbs(lineAt); len(got) != 2 || got[0].word != "e fix the wording" || got[1].word != "f forget it" {
-		t.Fatalf("line verbs = %+v", got)
+	if stop, _ := r.at(lineAt); stop.line == nil {
+		t.Fatalf("the line stop carries no line: %+v", stop)
 	}
-	if _, ok := r.at(0); ok || r.verbs(0) != nil {
+	if _, ok := r.at(0); ok {
 		t.Fatal("teaching/header lines became cursor stops")
 	}
 }
