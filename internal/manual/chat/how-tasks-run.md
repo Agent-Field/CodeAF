@@ -43,9 +43,45 @@ Two limits:
 
 - A workspace that is **not a repository**, or a repository with **no commit to branch
   from**, runs **in place** in your own directory, and says so:
-  `it worked directly in the workspace: there was no repository to branch`
+  `it worked directly in the workspace: there was no repository to branch`.
+  While that task runs, **the chat cannot write in that directory** — see *A task working
+  in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
+
+## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
+
+When a task got a checkout of its own, you and it are in different directories and nothing
+either of you writes can reach the other. **When a task is running in place there is only
+one directory**, and two writers in one directory do not produce either person's work.
+
+So a task running in place **holds that directory for as long as it runs**, including
+while its work is being checked and repaired. Anything else that tries to write a file
+there — this conversation, one of the hands inside a reply, another task — is refused
+before the write happens, and told who has it:
+
+```
+src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
+nothing was written. That work is writing there until it finishes — wait for its report and
+make this change on top of what it did, or change something outside /workspace/rust-java-lsp.
+```
+
+Three things this does **not** stop:
+
+- **Reading.** Everything can still read every file in there. The hold is on writing only.
+- **The task's own family.** The task itself, its sub-tasks, and the hands its worker forks
+  are all that task writing, and they are never refused.
+- **`bash`.** A shell command's effects are whatever the command did, so a command that
+  writes is not caught. Only `write` and `edit` — the two hands whose file is known before
+  they run — are held back.
+
+The hold ends the moment the task does: it lands, fails, is stopped, or the process closes,
+and the next write goes straight through. Nothing has to be released and there is nothing to
+clear by hand.
+
+**Two tasks cannot both run in place in one directory.** Whichever started first has it;
+the second is refused its writes and told which task to wait for. When the first lands, the
+second gets the directory.
 
 ## What a finished task brings home, and what it leaves behind
 

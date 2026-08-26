@@ -683,6 +683,29 @@ in your files, and the line says exactly that instead of guessing:
 another window has work out in this project · it has not said which files yet
 ```
 
+## Can I keep editing while a task is running — who may write while work is out
+
+**Almost always, yes.** A task gets its own checkout of the repository on its own branch, so
+you and it are in different directories: keep editing, keep saving, keep running things.
+Anything you change lands in yours and anything it changes lands in its own, and the two
+meet only when the work comes home.
+
+**The one exception is a task running in place.** When the directory is not a git repository
+— or is one with nothing to branch from — there is no second checkout to give the task, so
+it works in your directory. While that is happening the chat becomes a **reader** of that
+directory: it can read anything, and a `write` or an `edit` there is refused with the task
+named:
+
+```
+src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
+nothing was written.
+```
+
+You are not stopped from doing anything yourself in your own editor or shell — this is a
+rule about what the chat's own tools will do on your behalf, not a lock on the files. It
+ends when the task lands, fails or is stopped. *How work runs* has the whole of it, under
+*A task working in place holds the directory*.
+
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
 **aforge never tells you that a file is yours alone.** No line means nothing was found, not
