@@ -135,11 +135,11 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	}
 	// THE OTHER FULLSCREEN PAGES STAND DOWN. This is an open path onto the page,
 	// so it owes the same law every other one does ([app.standDownFullscreen],
-	// settings.go) — and it is stated here rather than left to [app.openTaskSheet]
+	// settings.go) — and it is stated here rather than left to [app.showTaskPlace]
 	// because this one does not go through it.
 	a.standDownFullscreen()
 	// THE LIST UNDERNEATH IS A REAL LIST. This door does not go through
-	// [app.openTaskSheet], so it takes the same snapshot that one does — a card
+	// [app.showTaskPlace], so it takes the same snapshot that one does — a card
 	// opened from home used to leave an EMPTY place behind it, and esc dropped
 	// the person onto a page with nothing on it.
 	a.taskSheet = a.takeTaskReading()

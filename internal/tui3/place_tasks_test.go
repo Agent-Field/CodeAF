@@ -26,7 +26,7 @@ import (
 func tasksFootApp(t *testing.T) (*app, *stopFake) {
 	t.Helper()
 	a, agent := stopApp(t)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a running node")
 	}
 	return a, agent
@@ -71,7 +71,7 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to reopen")
 	}
 	for i := 0; i < 20; i++ {
@@ -133,7 +133,7 @@ func TestTheTasksPlaceNeverNamesRunItAgain(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to reopen")
 	}
 	for step := 0; step < 20; step++ {
@@ -160,7 +160,7 @@ func TestTheTasksStripOffersNoVerbOverWorkItCannotStop(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to reopen")
 	}
 	for i := 0; i < 20; i++ {
@@ -181,7 +181,7 @@ func TestTheTasksStripOffersNoVerbOverWorkItCannotStop(t *testing.T) {
 func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open")
 	}
 	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
@@ -220,4 +220,18 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 	if a.stopping() {
 		t.Fatal("the strip raised a card this place cannot draw")
 	}
+}
+
+// openTaskPlaceWithRows raises the task place through the router and reports
+// whether anything landed on it.
+//
+// IT IS TWO QUESTIONS BECAUSE THE PLACE ONLY ANSWERS ONE NOW. `a.openTaskSheet`
+// used to be both — it refused to raise a page with nothing on it, so "did it
+// open" and "is there anything in it" were one boolean — and the refusal is
+// gone ([app.showTaskPlace] tells the story). Every test below that opens the
+// place is a test ABOUT rows, so the second half of the old answer is what they
+// still need, and it is asked here once rather than in forty places.
+func openTaskPlaceWithRows(a *app) bool {
+	a.showPage(pageTasks)
+	return a.taskSheet.open && len(a.taskSheet.reading.items) > 0
 }

@@ -320,4 +320,5 @@ than moving it a second time.
   a reminder; a card does, and only after you press `1`.
 - **It will not end an errand because you looked away.** Closing home, opening another
   conversation and quitting a *different* window all leave it running.
-- **It will not work over `--host`.** Home itself refuses there, and this is a row on home.
+- **It will not work over `--host`.** Home opens there but draws no rows — the projects it
+  would read are on this computer and the work is on the other — and this is a row on home.

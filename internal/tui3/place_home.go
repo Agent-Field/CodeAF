@@ -135,9 +135,14 @@ func (h *homeView) buildSwitch() {
 	}
 	// A MACHINE WITH NOTHING ON IT STILL SAYS SO WHERE ITS FIRST ROW WOULD BE
 	// ([homeEmptyRow]) — an empty home is the same screen with fewer rows, never
-	// a different screen.
+	// a different screen. A machine whose rows CANNOT be read from here says why
+	// instead, in the same slot and the same dim register ([homeView.why]).
 	if len(h.lines) == 0 {
-		for _, part := range homeEmptyLines() {
+		empty := homeEmptyLines()
+		if h.why != "" {
+			empty = []string{h.why}
+		}
+		for _, part := range empty {
 			h.lines = append(h.lines, homeLine{kind: homeEmptyRow, project: part})
 		}
 	}

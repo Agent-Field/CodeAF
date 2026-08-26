@@ -77,9 +77,15 @@ const (
 	// work, in the order it happened, and the word a person uses for the thing
 	// that came before this one is the word that goes on it.
 	taskSheetPastHead = "earlier"
-	// taskSheetEmpty is what /history says instead of opening an empty page. The
-	// emptiness law reaches modals too — a fullscreen page with nothing on it is
-	// the loudest possible way of saying nothing.
+	// taskSheetEmpty is the last line of the teaching prose on a machine that has
+	// run nothing ([tasksTeach]) — what to do about the empty page, in the words
+	// the person would have to type.
+	//
+	// IT USED TO BE WHAT /history SAID INSTEAD OF OPENING. The argument was that
+	// the emptiness law reaches modals and a fullscreen page with nothing on it is
+	// the loudest possible way of saying nothing; what a fresh machine actually
+	// got was a command that appeared not to work, and every other door onto the
+	// place refusing with it. The place opens now and this sentence is on it.
 	taskSheetEmpty = "no tasks yet — /task <brief> starts one"
 )
 
@@ -288,7 +294,7 @@ func (a *app) elsewhere() session.Elsewhere {
 //
 // IT IS CALLED FROM THE PAINT CLOCK AND ONLY WHILE SOMETHING DRAWS IT (app.go's
 // [app.paint] gates on the roster standing or this page being open), and from
-// [app.openTaskSheet] on the way in — a page raised after ten minutes of a
+// [app.showTaskPlace] on the way in — a page raised after ten minutes of a
 // stowed column must not answer out of a ten-minute-old reading.
 func (a *app) refreshElsewhere() {
 	if a.away.read && a.now().Sub(a.away.at) < elsewhereEvery {

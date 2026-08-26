@@ -89,51 +89,27 @@ const taskSheetRows = 12
 
 // ── opening and closing ─────────────────────────────────────────────────────
 
-// openTaskSheet raises the place, and reports whether it went up. It is the
-// place's `open`: the snapshot is taken ONCE on the way in, never per frame.
+// showTaskPlace is THE ONE DOOR ONTO THIS PLACE, and it opens the place EMPTY.
 //
-// It keeps its old name because the `open bool` beside it is still what every
-// other file on this surface asks whether this place is up — the six of those
-// are the refactor lane's to retire together, and one renamed here would be one
-// place answering a question the other five answer differently.
+// THERE USED TO BE TWO. `ctrl+.` and /history went through an `openTaskSheet`
+// that took the reading, found nothing in it and refused — the chord fell
+// through in silence, the command wrote one line — while `tab` and `alt+2` came
+// through here and got the teaching prose. The argument for the split was that a
+// command typed on purpose which answers with nothing reads as a command that
+// broke; what the split actually produced is a machine on which the FIRST thing
+// a new person does with the task page is the thing that does nothing, because
+// on a fresh machine every door onto it was the refusing one.
 //
-// IT REFUSES WITH NOTHING TO SHOW rather than drawing a page with a title and
-// nothing under it. The reading is the whole page, so "is there anything here"
-// is one question asked of one snapshot. The refusal is the caller's to say —
-// /history writes a line and the key falls through in silence — because a
-// command typed on purpose that answers with nothing reads as a command that
-// broke, and a chord that was never bound in the person's mind reads as a chord
-// that was never bound.
-//
-// The teaching prose is NOT drawn here. It belongs to the one door that reaches
-// an empty place — the tab bar's ([app.showTaskPlace]) — so a person who asked
-// for their history is never answered with a lesson about what history is.
-func (a *app) openTaskSheet() bool {
-	// THE OTHER WINDOWS ARE RE-READ ON THE WAY IN, before the place decides
-	// whether it has anything to show — a directory whose only live work is in
-	// the window next door is a directory this page has something to say about,
-	// and answering out of a reading taken while the column was stowed would
-	// refuse to open over work that is happening right now.
-	a.refreshElsewhere()
-	sheet := a.takeTaskReading()
-	if len(sheet.reading.items) == 0 {
-		return false
-	}
-	a.raiseTaskPlace(sheet)
-	return true
-}
-
-// showTaskPlace is THE TAB BAR'S door, and it is the one door that opens this
-// place EMPTY.
-//
-// A PLACE YOU WALK INTO IS NOT A COMMAND YOU TYPED. `ctrl+.` and /history are
-// asked FOR the history and answer nothing when there is none. `tab` and `alt+2`
-// are somebody walking round the seven rooms, and a room that bounced them back
-// would be the bar pointing at a place they are not allowed to stand in — so
-// this one opens whatever the reading holds, and an empty one spends the frame
-// saying what the place is FOR ([tasksTeach]), which is the same bargain spend
-// and search make ([page.explain]).
+// SCREEN 1f'S PREAMBLE SETTLES IT: an almost-empty place is the best teacher on
+// the machine, and three sentences saying what tasks ARE ([tasksTeach]) is a
+// better answer to /history-with-no-history than a line in a transcript. So
+// every door opens the place, and the reading is taken ONCE on the way in,
+// never per frame.
 func (a *app) showTaskPlace() tea.Cmd {
+	// THE OTHER WINDOWS ARE RE-READ ON THE WAY IN. A directory whose only live
+	// work is in the window next door is a directory this page has something to
+	// say about, and drawing out of a reading taken while the column was stowed
+	// would open over work that is happening right now with no sign of it.
 	a.refreshElsewhere()
 	a.raiseTaskPlace(a.takeTaskReading())
 	return a.loadTasks()
@@ -157,7 +133,7 @@ func (a *app) raiseTaskPlace(sheet tasksPlace) {
 // once, asks this window what it knows that no file does, and hands back a place
 // that is open but not yet raised.
 //
-// It is a function rather than four lines inside [app.openTaskSheet] because
+// It is a function rather than four lines inside [app.showTaskPlace] because
 // three doors reach this page — the key, the command, and a card opened from
 // home ([app.openTaskRecord]) — and a door that built the reading differently
 // would be a second answer to what this machine has run.
@@ -327,31 +303,20 @@ func taskNodeKind(node *taskNode) session.TaskKind {
 	return ""
 }
 
-// openTaskPage is the whole of what a COMMAND does with this place: open it, or
-// say why there was nothing to open.
+// openTaskPage is what a COMMAND does with this place, and it is the router's
+// own door and nothing else.
 //
-// IT IS ONE FUNCTION BECAUSE THERE ARE TWO DOORS. /history is the page's own
-// name, and a bare /task reaches it as well (taskcommand.go says why), and two
-// copies of these lines are two ways for the same command to differ from itself
-// — the refusal in particular, which is a sentence a person reads.
+// IT IS ONE FUNCTION BECAUSE THERE ARE TWO COMMANDS. /history is the page's own
+// name and a bare /task reaches it as well (taskcommand.go says why), and two
+// copies of this line are two ways for one place to differ from itself.
 //
-// THE COMMAND ASKS A QUESTION AND THE TAB BAR WALKS INTO A ROOM, and that is the
-// whole difference between this and [app.showTaskPlace]. A command typed on
-// purpose over a machine that has run nothing must answer: a page with a title
-// and nothing under it reads as a command that broke, and the emptiness law
-// reaches modals.
-//
-// It reads the machine TWICE on the way in — once to find out whether there is
-// anything, and once through the router that raises the place. That is one extra
-// directory walk for one keystroke a person typed, and the alternative is this
-// file keeping its own copy of [app.showPage]'s bookkeeping, which is a fact
-// spelled twice and drifts.
+// THE COMMAND AND THE TAB BAR NOW WALK INTO THE SAME ROOM. This used to read the
+// machine first and refuse when nothing had run, on the argument that a command
+// typed on purpose must answer rather than draw a page with a title and nothing
+// under it. What that page draws with nothing under it is three sentences saying
+// what tasks are ([tasksTeach]), which is an answer — and the extra directory
+// walk it cost per keystroke goes with the refusal.
 func (a *app) openTaskPage() tea.Cmd {
-	a.refreshElsewhere()
-	if len(a.takeTaskReading().reading.items) == 0 {
-		a.note(taskSheetEmpty)
-		return nil
-	}
 	return a.showPage(pageTasks)
 }
 
@@ -497,17 +462,15 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.menu.open, a.comp.open, a.guarding(), a.stopping():
 			return nil, false
 		}
-		// THE KEY FALLS THROUGH WHEN THERE IS NOTHING TO SHOW rather than raising
-		// an empty page, which is ctrl+t's own rule for the same reason
-		// ([app.railKey]): a chord that answers with nothing is a chord a person
-		// cannot tell they pressed.
-		if !a.openTaskSheet() {
-			return nil, false
-		}
-		// The record is re-read on the way in, so a page opened an hour into a
-		// session is not showing an hour-old file (taskmention.go's
-		// [app.refreshTasks] keeps it fresh from there on).
-		return a.loadTasks(), true
+		// THE CHORD RAISES THE PLACE WHETHER OR NOT THERE IS ANYTHING IN IT
+		// ([app.showTaskPlace] states the law and the reason). A chord that
+		// answered with nothing was a chord a person could not tell they had
+		// pressed, which is the defect this used to be written to avoid and is in
+		// fact the one it caused: on a fresh machine there is never anything in
+		// it. The record is re-read on the way in through the router, so a page
+		// opened an hour into a session is not showing an hour-old file
+		// (taskmention.go's [app.refreshTasks] keeps it fresh from there on).
+		return a.showPage(pageTasks), true
 	}
 
 	defer a.touch()

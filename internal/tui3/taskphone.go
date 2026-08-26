@@ -22,7 +22,7 @@ import (
 //     there and that it opens — `▸ 3 tasks · 1 running` — the fold glyph the
 //     rest of the phone UI folds with ([glyphShut]), the count the chips would
 //     have carried, and the most urgent state among them. The whole row is one
-//     tap target, and it opens the roster PAGE ([app.openTaskSheet]) — the
+//     tap target, and it opens the roster PAGE ([app.showTaskPlace]) — the
 //     scrollable list of task cards this file also shapes, not the overlay
 //     column a keyboard drives.
 //
@@ -155,10 +155,7 @@ func (a *app) stripPhonePress(width int) (tea.Cmd, bool) {
 	if layoutTier(width) != tierPhone {
 		return nil, false
 	}
-	if !a.openTaskSheet() {
-		return nil, false
-	}
-	return a.loadTasks(), true
+	return a.showPage(pageTasks), true
 }
 
 // ── THE ROSTER PAGE, AS CARDS ───────────────────────────────────────────────

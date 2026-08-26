@@ -456,3 +456,22 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 	}
 	return lines, owner, scrolled, shown
 }
+
+// standingTeach spends an empty page on explaining the place rather than drawing
+// a time control over a list with nothing in it.
+//
+// THE FIRST SENTENCE IS THE ONE THIS PLACE HAS ALWAYS SAID ([standNothingWord]),
+// which is why it is not spelled again here: it was the refusal's own words back
+// when a machine with nothing standing on it opened no page at all, and moving a
+// sentence from a transcript line to the body of the place it was about is the
+// whole of what that change was. The two under it are the same three-line shape
+// tasks and memory teach in ([tasksTeach], [memoryTeaching]): what the place
+// holds, where the things in it come from, and what a key does once there is
+// something here.
+func standingTeach(pal palette) []string {
+	return []string{
+		pal.dim(standNothingWord),
+		pal.dim("an order stands until you stop it, and it can reach just this conversation, this project, or everywhere."),
+		pal.dim("enter opens the conversation that made one, when there is one here."),
+	}
+}

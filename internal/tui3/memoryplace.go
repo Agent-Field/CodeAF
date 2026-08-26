@@ -410,10 +410,10 @@ func (r memoryReading) verbs(i int) []memoryVerb {
 //
 // This file used to carry a `memoryTeach` that said "nothing is remembered yet"
 // and then repeated the command surface's `memory is off for this session` note
-// under it. Both halves were wrong on a PLACE. A machine that has remembered
-// nothing meets [memoryTeaching] — the three sentences that say what this is
-// for, which is what a nearly-empty page is worth — and a machine with memory
-// switched off never reaches a body at all: [app.openMemory] refuses to open
-// the place and says so on the transcript's own note line ([memoryOffNote]).
-// So an empty page teaching that memory might be off would be a page guessing
-// at a state the door has already ruled out.
+// under it. Both halves were wrong on a PLACE, and they are wrong in the same
+// way: the reading is the empty state. A machine that has remembered nothing
+// meets [memoryTeaching] — the three sentences that say what this is for, which
+// is what a nearly-empty page is worth — and a machine with memory switched off
+// meets exactly the same three sentences, with [memoryOffNote] said ONCE on the
+// note line under them ([app.openMemory] puts it there). Neither state is a
+// second body, and neither is a refusal: the place opens on both.

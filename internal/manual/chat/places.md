@@ -30,9 +30,9 @@ Four ways, and they all reach the same seven rooms:
 - **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
 - **`alt+1`** … **`alt+7`** — jump straight to one, **from a place or from a conversation**.
   The numbers are the tab bar's own order, so `alt+1` is home and `alt+7` is settings. Hold
-  `alt` and press the digit. `tab` is the walk between rooms and belongs to the composer
-  while you are in a conversation; the numbers are the one class of place key that works
-  wherever you are standing.
+  `alt` and press the digit. `tab` and the shift-arrows are not like them: in a conversation
+  those already belong to path completion and to the caret, so the digits are the one class
+  of place key that means the same thing wherever you are standing.
 - **type its name** — on home, typing `sta` offers the standing place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin.
@@ -276,17 +276,36 @@ everywhere.
 
 You only ever arrive at a place on purpose — from the tab bar, from a number, or by typing
 the word. That arrival is the one moment somebody is asking "what is this", so a place with
-nothing of its own to draw answers, in three sentences, and says nothing else.
+nothing of its own to draw answers, in a few sentences, and says nothing else.
 
-Today that is **spend on a machine that has spent nothing inside the window it is showing**,
-**memory on a machine that has remembered nothing** — which says what memory is for rather
-than what the place is — and **tasks on a machine that has run nothing**, which is the room
-this rule matters most in: it is the one place you can walk into empty, and it teaches
-instead of turning you back.
+**Every place opens, always.** There is no state of the machine in which one of the seven
+words on the bar is a key that does nothing. On a machine aforge was installed on an hour
+ago, `alt+2`, `alt+3` and `alt+4` all open:
+
+- **tasks** on a machine that has run nothing says what tasks are, and ends
+  `no tasks yet — /task <brief> starts one`.
+- **standing** on a machine nothing stands on says
+  `nothing stands here yet — say what should always be true, and I'll hold it.`
+  and two lines about how far an order can reach. No shelf heading and no time window is
+  drawn over it.
+- **memory** on a machine that has remembered nothing says what memory is for. If this
+  build is not remembering anything at all, it says the same thing with one dim line under
+  it: `memory is off for this session · turn it on under /settings`.
+- **spend** inside a window nothing was spent in says what spend is for.
+- **search** with an empty box says what search is for.
+- **home** over `--host` says `home shows this machine's projects, and this session is on
+  another` where its rows would be — the projects under this process belong to the laptop
+  and the session is on the server, so the list is the only part that cannot be drawn.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
 a plan — which is also why a heading is never drawn over an absence.
+
+Commands behave the same way. `/history` on a machine that has run nothing, `/standing` on
+one nothing stands on, and `/memory` with no store all open their place and let it teach.
+They used to write one line into the conversation and open nothing; on a fresh machine that
+was every door onto those three pages, so the first thing a new person tried appeared not to
+work.
 
 ## What a number beside a place means
 

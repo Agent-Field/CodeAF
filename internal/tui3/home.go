@@ -257,8 +257,14 @@ const (
 	homeEmptyWord = "nothing here yet — say something and this fills up"
 	// homeNoMatchWord is a filter that matched nothing.
 	homeNoMatchWord = "no conversation matches"
-	// homeRemoteWord is the refusal over --host: the projects under
+	// homeRemoteWord is the one line home draws over --host: the projects under
 	// ~/.aforge/v3 are THIS machine's, and the session is on another one.
+	//
+	// IT USED TO BE A REFUSAL AND IT IS A BODY NOW. Every place opens (pages.go's
+	// [app.showPage] states the law), so the sentence goes where the list would
+	// have gone — one dim row in the column, in the same slot and the same
+	// register as [homeEmptyWord] — and the head, the tab bar and the composer
+	// are all still there for the person to walk on with.
 	homeRemoteWord = "home shows this machine's projects, and this session is on another"
 	// homeOpenWord is what a conversation THIS PROCESS holds says when it has
 	// nothing more urgent to say. It goes where `another window` goes — below
@@ -497,6 +503,12 @@ type homeBare struct {
 type homeView struct {
 	open bool
 
+	// why is the one line drawn where the rows would be when there CANNOT be any
+	// — over --host, where this process's ~/.aforge/v3 is the wrong machine's
+	// ([homeRemoteWord]). It is empty on every machine home can read, because a
+	// machine that has simply not been used yet already has a sentence of its own
+	// ([homeEmptyWord]) and does not need a reason on top of it.
+	why string
 	// world is the reading the rows were built from, replaced whole on every
 	// rescan.
 	world session.World
@@ -696,15 +708,42 @@ func (h *homeView) say(msg, path string) {
 // It returns its own clock, because home is the one screen here that changes
 // with nothing arriving, and a surface that opened without starting one would be
 // a photograph.
-func (a *app) openHome() tea.Cmd {
+// homeWorld is the world home lists, and it is EMPTY over --host.
+//
+// The walk this wraps reads ~/.aforge/v3 under THIS process, which over --host
+// is the laptop's disk while the session runs on the server. Answering nothing
+// is what makes [homeRemoteWord] the whole of the column rather than a caption
+// over somebody else's projects, and it is one function so that the open and
+// the three-second beat cannot disagree about which machine they are describing.
+func (a *app) homeWorld() session.World {
 	if a.hosted() {
-		// A capability that cannot work is absent, not broken: over --host the
-		// state root under this process belongs to the wrong machine, and a
-		// screen full of the laptop's projects while the session runs on the
-		// server would be a lie drawn confidently.
-		a.refusePage(homeRemoteWord)
-		return nil
+		return session.World{}
 	}
+	return a.readWorld()
+}
+
+// homeWhyEmpty is the one line home draws where its rows would be when the rows
+// could not exist at all, and "" when their absence needs no explaining.
+//
+// A MACHINE THAT HAS SIMPLY NOT BEEN USED YET IS NOT AN EXPLANATION, which is
+// why this answers "" for it: [homeEmptyWord] already says that, in the person's
+// own terms, and a second sentence about it would be the screen apologising.
+func (a *app) homeWhyEmpty() string {
+	if a.hosted() {
+		return homeRemoteWord
+	}
+	return ""
+}
+
+func (a *app) openHome() tea.Cmd {
+	// OVER --host THE LIST IS THE LIE AND THE PLACE IS NOT. The state root under
+	// this process belongs to the wrong machine, so a screen full of the laptop's
+	// projects while the session runs on the server would be drawn confidently
+	// and be false. What that costs is the ROWS, and nothing else: the place
+	// still opens, and [homeRemoteWord] stands where the rows would have been —
+	// which is the same bargain every other place makes with an empty world
+	// (pages.go's [app.showPage]).
+	//
 	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and the task
 	// page both ([app.standDownFullscreen] states the law). It happens BEFORE the
 	// screen below is built, because standing down closes home too and a call the
@@ -716,7 +755,31 @@ func (a *app) openHome() tea.Cmd {
 	a.page = pageHome
 	a.closeLists()
 	a.dismissWelcome()
-	a.home = a.newHomeView(a.readWorld())
+	a.home = homeView{
+		open:         true,
+		why:          a.homeWhyEmpty(),
+		world:        a.homeWorld(),
+		seen:         session.LastLook(a.placesRoot()),
+		bucket:       homeBucketOf(a.file),
+		here:         homeSessionDirOf(a.file),
+		tier:         a.homeTierNow(),
+		hover:        -1,
+		last:         map[string]session.Summary{},
+		news:         map[string]homeNewsCache{},
+		deliverables: map[string]homeDeliverablesCache{},
+		expanded:     map[string]bool{},
+		itemsOpen:    map[string]bool{},
+		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
+		// this screen and nothing else does, which is why they are seeded from
+		// the app rather than kept here (place_home.go).
+		grouped:   a.switchGrouped,
+		hideQuiet: a.switchQuiet,
+		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
+		// screen, so opening home again finds every one that was still going —
+		// with its row, its tail and its pane exactly as they were left
+		// (homeexchange.go).
+		exchanges: a.exchanges,
+	}
 	a.readStandBands()
 	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
 	// beat (place_home.go's [app.readSwitchLedger]).
@@ -969,7 +1032,7 @@ func (a *app) refreshHome() {
 	if !a.home.open {
 		return
 	}
-	a.home.world = a.readWorld()
+	a.home.world = a.homeWorld()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
@@ -2861,12 +2924,17 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 // A gesture that silently typed two spaces on the one day a person first tried
 // it was the surface teaching them the door does not exist.
 //
-// The two conditions left are about the machine, not its contents: the surface
-// has a disk to read ([app.canOpen]), and it is this machine's disk — over
-// --host the projects under this process belong to the wrong computer, and
-// [app.openHome] refuses with [homeRemoteWord] rather than drawing a lie.
+// The one condition left is about the machine, not its contents: the surface has
+// a disk to read ([app.canOpen]).
+//
+// --host USED TO BE A SECOND CONDITION AND IS NOT ONE ANY MORE. Home refused
+// over --host, so a door onto a refusal was correctly kept shut; home opens over
+// --host now and draws [homeRemoteWord] where its rows would be, so the gesture
+// leads somewhere a person can read and walk on from — and a gesture that worked
+// from `alt+1` and not from two spaces would be the surface teaching two
+// different answers to one question.
 func (a *app) homeDoorOpen() bool {
-	return a.canOpen() && !a.hosted() && !a.home.open
+	return a.canOpen() && !a.home.open
 }
 
 // homeDoorShowing reports whether the foot of the conversation should advertise

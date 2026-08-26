@@ -28,49 +28,28 @@ func conversationApp(t *testing.T) *app {
 	return a
 }
 
-// THE NUMBERS OPEN THEIR ROOM FROM THE CONVERSATION. Every place that opens on
-// this machine is reachable by its own digit without first going somewhere else
-// to press it.
+// THE NUMBERS OPEN THEIR ROOM FROM THE CONVERSATION, and EVERY room opens.
+//
+// This used to ask a `pageReady` first and accept a refusal for the three places
+// that could give one. Nothing refuses any more (pages.go's [app.showPage]), so
+// the assertion is the whole of the law: seven digits, seven rooms, from the
+// surface a person is most often on.
 func TestTheNumbersJumpFromTheConversation(t *testing.T) {
 	for at, id := range pages() {
 		t.Run(id.word(), func(t *testing.T) {
 			a := conversationApp(t)
-			ready := a.pageReady(id)
 			drive(t, a, key("alt+"+string(rune('1'+at))))
-			if ready {
-				if !a.pageShowing() || a.page != id {
-					t.Fatalf("alt+%d on the conversation drew nothing: the router says %q, showing=%v",
-						at+1, a.page.word(), a.pageShowing())
-				}
-				return
+			if !a.pageShowing() || a.page != id {
+				t.Fatalf("alt+%d on the conversation drew nothing: the router says %q, showing=%v",
+					at+1, a.page.word(), a.pageShowing())
 			}
-			// A ROOM WITH NOTHING IN IT SAYS SO, in a sentence — the refusal is
-			// the router's whole answer to a door that will not open, and a
-			// silent one is what the owner met.
-			if a.pageShowing() {
-				t.Fatalf("alt+%d opened the %s place, which has nothing to open onto", at+1, id.word())
-			}
-			if !pageRefusalSaid(a) {
-				t.Fatalf("alt+%d on the conversation refused the %s place without saying why", at+1, id.word())
+			// AND NOTHING IS WRITTEN INTO THE CONVERSATION ON THE WAY. A refusal
+			// used to land there; a place that opens has nothing to say about it.
+			if strings.TrimSpace(a.pageMsg) != "" {
+				t.Fatalf("alt+%d opened the %s place and said %q anyway", at+1, id.word(), a.pageMsg)
 			}
 		})
 	}
-}
-
-// pageRefusalSaid is whether the surface said anything back. A refusal on the
-// conversation's road is a note in the transcript, which is where a person is
-// looking; on a place's road it is the router's own line (pages.go's
-// [app.refusePage] holds both halves).
-func pageRefusalSaid(a *app) bool {
-	if strings.TrimSpace(a.pageMsg) != "" {
-		return true
-	}
-	for _, written := range a.entries {
-		if written.kind == entryNote && strings.TrimSpace(written.text) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // ── `→` AND `←`, ON ALL SEVEN ───────────────────────────────────────────────

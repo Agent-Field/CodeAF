@@ -634,12 +634,27 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // booleans already carry, and the two page-stack laws in chrome_test.go hold
 // without an edit to what they assert.
 //
-// A place that refuses to open leaves `a.page` where it was. The memory place
-// refuses when memory is off, and a router that moved the tab bar's band onto a
-// place that did not open would be a bar pointing at an empty room.
+// ── EVERY PLACE OPENS, ALWAYS ───────────────────────────────────────────────
+//
+// This function used to have a second half: a place that refused to open put
+// back whatever was standing, and three places refused — tasks with no task in
+// the world, standing with nothing standing, memory with no store behind it. The
+// owner ran the binary on a fresh machine and found that `alt+2`, `alt+3` and
+// `alt+4` did nothing at all, because on a fresh machine all three of those are
+// exactly the state a new person is in.
+//
+// SCREEN 1f'S PREAMBLE IS THE LAW NOW: an almost-empty place is the best teacher
+// on the machine, so it always opens and spends the whole frame saying what it
+// is for. There is no refusal path left here to put anything back with, and each
+// place answers an empty world with its own teaching prose ([tasksTeach],
+// [standingTeach], [memoryTeaching]) rather than with a bounce. The one fact a
+// place cannot teach its way around — a session running on another machine,
+// where home's own state root belongs to the wrong disk — is drawn as a single
+// dim line in the place's body ([homeRemoteWord]), which is still the place
+// being open and saying why it is empty.
 func (a *app) showPage(id page) tea.Cmd {
-	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the answer is
-	// what a refusal below has to put back.
+	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the place that
+	// was actually being looked at is the one whose look stamp is written.
 	was, standing := a.page, a.pageShowing()
 	// LEAVING A PLACE IS THE LOOK. The stamp the next count is measured from is
 	// written HERE and where a place is closed by `esc`, and never on the way in:
@@ -657,59 +672,7 @@ func (a *app) showPage(id page) tea.Cmd {
 	a.mapShowing = false
 	a.pageMsg = ""
 	a.page = id
-	// A REFUSAL ON THIS ROAD IS THE ROUTER'S LINE AND NOT A NOTE IN THE
-	// TRANSCRIPT ([app.refusePage] holds both halves). The flag is what tells
-	// the two roads apart: `/standing` typed into a conversation is answered in
-	// that conversation, and `alt+3` pressed on a place is answered on the place
-	// a person is looking at — the same sentence, put where it can be read.
-	a.pageRouting = true
-	cmd, opened := a.openPage(id)
-	a.pageRouting = false
-	if opened {
-		return cmd
-	}
-	// A REFUSAL PUTS BACK WHAT WAS STANDING. The stand-down above closed it, so
-	// a router that merely moved the band back would leave the person looking at
-	// the conversation they were not in — which reads as the key having thrown
-	// them out rather than as the place having nothing to show. The refusal's own
-	// sentence is already in the transcript; this is only about which screen they
-	// are left on.
-	a.page = was
-	if !standing {
-		// NOTHING IS DRAWN OVER THE CONVERSATION, so there is no place line for
-		// the refusal to be read on and the transcript is where it belongs.
-		if a.pageMsg != "" {
-			a.note(a.pageMsg)
-			a.pageMsg = ""
-		}
-		return cmd
-	}
-	back, _ := a.openPage(was)
-	return tea.Batch(cmd, back)
-}
-
-// refusePage is what a place says when it will not open, put where the person
-// who asked is actually looking.
-//
-// IT USED TO BE [app.note] EVERYWHERE, AND THAT IS WHY THE JUMP KEYS READ AS
-// BROKEN. A note is a line of the CONVERSATION, and a person pressing `alt+3`
-// is standing on home — which is drawn over the conversation, whole — so the
-// sentence explaining why the standing place would not open was written
-// somewhere nobody could see, and the key answered with silence. On the
-// router's road the sentence is the router's one line ([app.placeMsgLine]);
-// typed into a conversation it is still a note, because that is the surface
-// being looked at.
-//
-// The place this was first written about was TASKS, which does not refuse any
-// more — the tab bar's door opens it empty and teaches ([app.pageReady] says
-// why). The two rooms that still shut are standing and memory.
-func (a *app) refusePage(word string) {
-	if a.pageRouting {
-		a.pageMsg = word
-		a.touch()
-		return
-	}
-	a.note(word)
+	return a.openPage(id)
 }
 
 // pageShowing is whether the place the router is pointing at is actually up. It
@@ -733,64 +696,35 @@ func (a *app) pageShowing() bool {
 	return false
 }
 
-// openPage opens the one place's own state, and says whether it took.
-func (a *app) openPage(id page) (tea.Cmd, bool) {
+// openPage opens the one place's own state.
+//
+// EVERY ARM OF THIS SWITCH TAKES THE FRAME. It used to answer a second value —
+// whether the place had actually gone up — and the caller used that to put back
+// what it had just closed. Nothing answers false any more, so nothing is put
+// back: a place with nothing in it opens on its own teaching prose, which is the
+// state a person on a fresh machine spends their first ten minutes in.
+func (a *app) openPage(id page) tea.Cmd {
 	switch id {
 	case pageHome:
-		return a.openHome(), a.home.open
+		return a.openHome()
 	case pageTasks:
-		// THE TAB BAR OPENS THIS PLACE EMPTY, which is where it parts company with
-		// the command and the chord (place_tasks.go's [app.showTaskPlace] says
-		// why): walking into a room is not asking it a question.
-		return a.showTaskPlace(), a.taskSheet.open
+		return a.showTaskPlace()
 	case pageStanding:
 		a.openStanding()
-		return nil, a.standPage.up
+		return nil
 	case pageMemory:
-		return a.openMemory(), a.memPanel.open
+		return a.openMemory()
 	case pageSpend:
 		a.teach.open, a.teach.at = true, pageSpend
-		return a.openSpend(), true
+		return a.openSpend()
 	case pageSearch:
 		a.teach.open, a.teach.at = true, pageSearch
-		return a.openSearch(), true
+		return a.openSearch()
 	case pageSettings:
 		a.openSettings()
-		return nil, a.sheet.open
+		return nil
 	}
-	return nil, false
-}
-
-// pageReady is whether this place has anything to open onto, asked WITHOUT
-// opening it.
-//
-// IT IS THE WALK'S QUESTION AND NOT THE DOOR'S. `tab` has to know which room it
-// can get into before it turns any handle, because [app.showPage] pays for a
-// refusal twice — the place that was standing is closed, refused, and reopened
-// — and home's reopening is a walk of every project on the machine. A direct
-// jump (`alt+2`, a press on the word) still goes through the door and still
-// gets the sentence saying why it would not open; only the walk asks first.
-//
-// A place not named here is always ready: spend, search and settings have
-// something to draw on any machine, home is where a refusal puts you back, and
-// THE TASKS PLACE STOPPED REFUSING. It was the room the walk was written for —
-// `tab` used to step into it on a machine that had run nothing, be put straight
-// back, and read as a key that does nothing — and the tab bar's door now opens
-// it empty and spends the frame saying what the place is for
-// (place_tasks.go's [app.showTaskPlace]). The command still refuses, because a
-// command typed on purpose that answers with silence reads as one that broke;
-// the walk is not a command.
-func (a *app) pageReady(id page) bool {
-	switch id {
-	case pageStanding:
-		rows, _ := a.standingPlaceReading()
-		return len(rows) > 0
-	case pageMemory:
-		return a.memoryReady()
-	case pageHome:
-		return !a.hosted() && a.canOpen()
-	}
-	return true
+	return nil
 }
 
 // ── the pointer, one place at a time ────────────────────────────────────────

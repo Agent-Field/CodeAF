@@ -359,7 +359,7 @@ func TestAPageOverTheRoomKeepsTheFoldKey(t *testing.T) {
 	a := briefRoom(t, said)
 	before := len(briefBodyRows(a))
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Skip("this session has no record page to raise")
 	}
 	a.touch()

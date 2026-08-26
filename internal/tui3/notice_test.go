@@ -358,7 +358,7 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 
 	// THE GESTURE RETIRES IT: the task page actually opening.
 	a.comp.tasks = []session.TaskIndexEntry{pastTask("4", "port-the-parser", "Port the parser", time.Hour)}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the task page did not open")
 	}
 	a.closeTaskSheet()
@@ -402,7 +402,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventTaskStarted: startTask,
 		eventTaskPageOpened: func(t *testing.T, a *app) {
 			a.comp.tasks = []session.TaskIndexEntry{pastTask("4", "port-the-parser", "Port the parser", time.Hour)}
-			if !a.openTaskSheet() {
+			if !openTaskPlaceWithRows(a) {
 				t.Fatal("the task page did not open")
 			}
 		},

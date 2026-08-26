@@ -46,7 +46,7 @@ import (
 //     WHOLE, keyboard and pointer with it, and every fullscreen surface since
 //     has been written to it. THE THREE ARE MUTUALLY EXCLUSIVE BY CONSTRUCTION:
 //     opening any one of settings, the task page or home closes the other two
-//     ([app.openSettings], [app.openTaskSheet] and [app.openHome] each say so),
+//     ([app.openSettings], [app.showTaskPlace] and [app.openHome] each say so),
 //     because two pages that both believe they own the frame is a frame that
 //     draws one and takes keys for the other.
 //   - Every write goes through [config.Setting.Apply], which validates in plain

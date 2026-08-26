@@ -72,11 +72,16 @@ const (
 	// it appears: the dim line under a shelf, the verb on the row's strip, and
 	// the receipt for the key that wrote it.
 	standNotHereWord = "not here"
-	// standNothingWord is /standing on a machine nothing stands on at all. It is
-	// SAID rather than dropped, for [filesNothingWord]'s reason — silence after
-	// a deliberate command reads as a command that broke — and no page is opened
-	// behind it, for that list's other reason: a place with no rows is a screen
-	// that has to be dismissed before it can be told it was useless.
+	// standNothingWord is the standing place on a machine nothing stands on at
+	// all, and it is the first line of that place's teaching prose
+	// ([standingTeach]).
+	//
+	// IT USED TO BE A REFUSAL. `/standing` said it and opened nothing, on the
+	// argument that a place with no rows is a screen which has to be dismissed
+	// before it can be told it was useless. On a fresh machine that is every
+	// door onto the place, so the tab was drawn and the key did nothing — and
+	// SCREEN 1f'S PREAMBLE says the opposite: an almost-empty place is the best
+	// teacher on the machine. The sentence stayed and the refusal went.
 	standNothingWord = "nothing stands here yet — say what should always be true, and I'll hold it."
 	// standHereWord is enter on the order this very conversation asked for.
 	// There is a door and it leads exactly where the person already is, so the

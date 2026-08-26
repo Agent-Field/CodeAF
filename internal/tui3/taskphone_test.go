@@ -106,7 +106,7 @@ func TestThePhoneRosterRowsAreTwoLineCards(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open with work to show")
 	}
 
@@ -151,7 +151,7 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 		pastTask("44", "cut-the-goldens", "Cut the goldens", 5*time.Hour),
 		pastTask("45", "read-the-law", "Read the law twice", 6*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -201,7 +201,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.width, a.height = 50, 28
 	railRun(a)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -235,7 +235,7 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -296,7 +296,7 @@ func TestThePhoneTaskFlowChangesNothingAtEightyColumns(t *testing.T) {
 		t.Fatalf("the wide strip lost its chips:\n%q", door)
 	}
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 	lines := taskSheetLines(a)

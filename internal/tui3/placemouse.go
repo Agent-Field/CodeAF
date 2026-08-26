@@ -148,34 +148,21 @@ func placeHoverMoved(at *int, next int, a *app) bool {
 	return true
 }
 
-// walkPage is `tab` and `shift+tab`: the next place a person can actually get
-// into, and round again from the last.
+// walkPage is `tab` and `shift+tab`: the next place, and round again from the
+// last.
 //
-// A ROOM WITH NOTHING IN IT IS ONE THE WALK GOES PAST. The tasks place refuses
-// on a machine that has run no work and the standing place refuses with no
-// orders on it, and `tab` used to walk into the refusal, be put straight back
-// where it started, and do it again on the next press — so on a fresh machine
-// the circle had one member and the key read as broken. That is what the owner
-// met: "left right does not seem to move tabs, only shift does", shift+tab
-// happening to land on settings, which always opens.
+// IT USED TO ASK WHETHER THE NEXT ROOM WOULD LET IT IN. Tasks refused on a
+// machine that had run no work and standing refused with no orders on it, so
+// `tab` walked into the refusal, was put straight back where it started, and did
+// it again on the next press — on a fresh machine the circle had one member and
+// the key read as broken, which is what the owner met ("left right does not seem
+// to move tabs, only shift does", shift+tab happening to land on settings, which
+// always opened). The walk answered it by asking a `pageReady` before turning any
+// handle.
 //
-// IT ASKS BEFORE IT TURNS THE HANDLE ([app.pageReady]) rather than trying and
-// undoing, because [app.showPage] pays for a refusal twice — what was standing
-// is closed and reopened — and home's reopening is a walk of every project on
-// the machine. A direct jump still goes through the door and still gets the
-// sentence saying why it would not open; only the walk asks first.
+// EVERY ROOM OPENS NOW (pages.go's [app.showPage]), so there is nothing to ask:
+// the next place is the next place, and a room with nothing in it spends the
+// frame saying what it is for rather than bouncing anybody out of it.
 func (a *app) walkPage(back bool) tea.Cmd {
-	at := a.page
-	for range pages() {
-		at = nextPage(at, back)
-		if at == a.page {
-			// All the way round with nothing else open to us: stay, rather than
-			// close and reopen the one place there is.
-			return nil
-		}
-		if a.pageReady(at) {
-			return a.showPage(at)
-		}
-	}
-	return nil
+	return a.showPage(nextPage(a.page, back))
 }

@@ -79,11 +79,17 @@ const (
 	// wired, or a registry with nothing in it, which are the same fact from
 	// where a person is sitting and get the same sentence.
 	//
-	// IT IS SAID AND NO PAGE IS OPENED BEHIND IT ([standNothingWord] states both
-	// halves): silence after a deliberate command reads as a command that broke,
-	// and an overlay with no rows is a trap that has to be dismissed before it
-	// can be told it was useless. What the sentence says is what a subharness IS,
-	// because somebody typing the word on a build that has none is asking.
+	// IT IS SAID AND NO PAGE IS OPENED BEHIND IT: silence after a deliberate
+	// command reads as a command that broke, and an overlay with no rows is a
+	// trap that has to be dismissed before it can be told it was useless. What
+	// the sentence says is what a subharness IS, because somebody typing the word
+	// on a build that has none is asking.
+	//
+	// THE SEVEN PLACES ANSWER THIS DIFFERENTLY AND THE DIFFERENCE IS THE FRAME.
+	// A place has a tab bar, a composer and six neighbours to walk on to, so it
+	// opens empty and teaches ([standNothingWord] is now the first line of one
+	// such lesson). This is a modal overlay with none of that, and a modal with
+	// no rows is still a trap.
 	subNothingWord = "no subharnesses here yet — a subharness is a saved program for work that comes round again."
 	// subNoMatchWord is the filter that matched nothing, drawn where the rows
 	// would have been (the deliverables picker's own line, in its own grammar).

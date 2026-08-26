@@ -352,12 +352,19 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	}
 }
 
-// THE EMPTY PLACE TEACHES, AND IT DOES NOT GUESS THAT MEMORY MIGHT BE OFF.
+// THE EMPTY PLACE TEACHES, AND SO DOES THE ONE WITH NO STORE BEHIND IT.
 //
 // A machine that has remembered nothing meets the three sentences that say what
-// this place is for. The other empty state — memory switched off in the
-// settings — never reaches a body at all: the door refuses to open the place
-// and says so on the transcript's own note line.
+// this place is for. Memory switched off in the settings meets exactly the same
+// three, with the one fact they cannot carry said once on the note line under
+// them — this build is not remembering anything, and here is the row that
+// changes that ([memoryOffNote]).
+//
+// THE SECOND HALF USED TO BE A REFUSAL. The door would not open the place at all
+// and wrote its sentence into the transcript, so `alt+4` on a build without a
+// store was a key that did nothing; SCREEN 1f's preamble says an almost-empty
+// place is the best teacher on the machine, and a person who has never seen this
+// page is exactly who is standing there.
 func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 	a, _ := memoryPanelApp(t, nil)
 	a.slash("/memory")
@@ -374,9 +381,17 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 	}
 
 	off := newTestApp(&rememberingAgent{off: true})
+	off.width, off.height = 100, 30
 	off.slash("/memory")
-	if got := lastNote(t, off); got != "memory is off · turn it on under /settings" {
-		t.Fatalf("off note was %q", got)
+	if !off.memPanel.open {
+		t.Fatal("a build with no store behind it opened no memory place")
+	}
+	offScreen := plain(frame(off))
+	if !strings.Contains(offScreen, memoryTeaching[0]) {
+		t.Fatalf("the place with no store did not teach:\n%s", offScreen)
+	}
+	if !strings.Contains(offScreen, memoryOffNote) {
+		t.Fatalf("the place with no store does not say so:\n%s", offScreen)
 	}
 
 	// TYPING FILTERS THE HELD SNAPSHOT AND READS NOTHING. The store is asked

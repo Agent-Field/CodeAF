@@ -100,37 +100,46 @@ type standPage struct {
 	// holding every firing the machine has, so the first frame hides nothing and
 	// narrowing is the person's own act ([standingOpenWindow]).
 	win session.UsageWindow
+	// held is whether this machine holds ANY standing order, in any window, and
+	// it is what tells the two empty pages apart.
+	//
+	// A LIST EMPTIED BY THE WINDOW IS NOT AN EMPTY PLACE. Both draw no rows, and
+	// the right answer to each is the opposite of the right answer to the other:
+	// a machine with nothing standing on it wants the whole frame spent saying
+	// what standing orders ARE ([standingTeach]), while a window paged past the
+	// last firing wants the HEADER — the control that pages it back — above
+	// nothing at all. A place that taught in both cases would have swallowed the
+	// only way out of the second.
+	held bool
 }
 
 // ── the interface the frame asks of a place ─────────────────────────────────
 
 // open primes the place's caches and lays it out, once, on entry.
 //
-// A PLACE WITH NOTHING TO SHOW DOES NOT OPEN, AND NOTHING IS LOWERED ON THE WAY
-// TO FINDING THAT OUT. The reading is taken first and the frame is only taken
-// once there is something to put in it, because a command that closed the screen
-// a person was on in order to tell them it had nothing would cost them their
-// place to say nothing at all. The refusal is a sentence they read
-// ([standNothingWord]) and never a silent return.
-//
-// AND IT IS SAID WHERE THE PERSON WHO ASKED IS LOOKING (pages.go's
-// [app.refusePage]). `/standing` typed into a conversation is answered in that
-// conversation, which is what this always did; `alt+3` pressed while a place is
-// up is answered on the place, because a note written under a screen drawn over
-// the whole terminal is a sentence nobody can read — and that is exactly what
-// made the jump key look broken.
+// A PLACE WITH NOTHING TO SHOW OPENS ANYWAY AND SAYS WHAT IT IS FOR. This used
+// to be the opposite law — the reading was taken first and the frame was only
+// taken once there was something to put in it, so a machine nothing stands on
+// answered `alt+3` with one line and no page. That is exactly the machine a
+// person is on for their first week, and the owner found it by running the
+// binary on a fresh home: the tab was drawn, the key did nothing. SCREEN 1f'S
+// PREAMBLE IS THE LAW: an almost-empty place is the best teacher on the machine,
+// so the sentence that used to be the refusal ([standNothingWord]) is the first
+// line of the body instead ([standingTeach]).
 func (p *standPage) open(a *app) tea.Cmd {
 	rows, win := a.standingPlaceReading()
-	if len(rows) == 0 {
-		a.refusePage(standNothingWord)
-		return nil
-	}
+	// WHETHER THE MACHINE HOLDS ANYTHING IS ASKED OF THE UNSCOPED PARTS, because
+	// the window the reading measured holds every firing there is: rows can only
+	// be empty above when there is nothing to put in them, and asking the parts
+	// says so without depending on that being true.
+	stand, excepted, elsewhere := a.standingPageParts()
+	held := len(standingShelves(stand, excepted, elsewhere)) > 0
 	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
 	// stood under the draft and could sit beneath any page; as a place it owns
 	// the whole screen, so a page left open under it would take keys nobody can
 	// see ([app.standDownFullscreen] holds the law and the reason).
 	a.standDownFullscreen()
-	*p = standPage{up: true, rows: rows, win: win, hover: -1}
+	*p = standPage{up: true, rows: rows, win: win, held: held, hover: -1}
 	p.cursor = p.settle(0)
 	a.page = pageStanding
 	a.closeLists()
@@ -151,6 +160,25 @@ func (p *standPage) close(a *app) {
 // reserved. It reads the cached rows and never a seam — that is the whole of
 // "nothing reads the disk on a draw".
 func (p *standPage) body(a *app, width, room int) []placeRow[int] {
+	if !p.held {
+		// THE TEACHING PROSE IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
+		// header row rather than under it: the header carries the time window
+		// ([standingHeaderRow]), and a control naming a span of days on a machine
+		// that has never held a standing order is a control about nothing. A list
+		// emptied by the window keeps its header ([standPage.held] says why).
+		rows := make([]placeRow[int], 0, room)
+		for _, line := range standingTeach(a.pal) {
+			if len(rows) >= room {
+				break
+			}
+			rows = append(rows, placeRow[int]{text: " " + line, hit: -1})
+		}
+		for len(rows) < room {
+			rows = append(rows, placeRow[int]{text: "", hit: -1})
+		}
+		p.top, p.shown, p.owner = 0, 0, nil
+		return rows
+	}
 	lines, owner, top, shown := standingLines(
 		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())
 	p.top, p.shown, p.owner = top, shown, owner
@@ -606,6 +634,9 @@ func (p *standPage) write(a *app, item standing.Item, status standing.Status) te
 	}
 	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
 	a.readStandingElsewhere()
+	// THE UNSCOPED READING IS TAKEN TOO, because stopping the last order is how a
+	// machine gets back to holding none and the page has to notice ([standPage.held]).
+	p.held = len(a.standingPageRows(session.UsageWindow{})) > 0
 	p.adopt(a.standingPageRows(p.win))
 	return nil
 }
@@ -679,13 +710,14 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 // standingPlaceReading is the whole of what opening this place decides: every
 // order the machine holds, the span they fall in, and the shelves scoped by it.
 //
-// IT IS ONE FUNCTION BECAUSE TWO ROADS ASK IT. [standPage.open] takes it to put
-// a page on the frame, and pages.go's [app.pageReady] takes it to find out
-// whether `tab` may walk in here at all — and a walk that answered "there is
-// something" out of a second reading would step into a room that then refused,
-// which is the fault the walk was rebuilt to end. The window is measured BEFORE
-// anything is scoped by it, over every order the machine holds, which is what
-// makes the span it opens on the true one and the first frame's list complete.
+// The window is measured BEFORE anything is scoped by it, over every order the
+// machine holds, which is what makes the span it opens on the true one and the
+// first frame's list complete.
+//
+// IT USED TO HAVE A SECOND CALLER — a `pageReady` the tab walk asked before
+// turning any handle, so that `tab` could step past a room that would refuse.
+// Nothing refuses now (pages.go's [app.showPage]), so the walk turns every
+// handle and this is the open's own reading again.
 func (a *app) standingPlaceReading() ([]standRow, session.UsageWindow) {
 	a.readStandingElsewhere()
 	stand, excepted, elsewhere := a.standingPageParts()

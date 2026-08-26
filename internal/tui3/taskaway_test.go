@@ -152,7 +152,7 @@ func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 	if row, ok := railRowFor(a, 20, "Port it"); ok {
 		t.Fatalf("a row nobody is running turned up on the column: %q", row)
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a row nobody is running")
 	}
 	if row := awayRowWith(t, taskSheetText(a), "Port it"); !strings.Contains(row, taskRecordStoppedWord) {
@@ -186,7 +186,7 @@ func TestTheHistoryPageShowsAnotherWindowsRunningWork(t *testing.T) {
 
 	// The session itself has run nothing and the project's file is empty: every
 	// row on this page belongs to somebody else.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over work happening in another window")
 	}
 	page := taskSheetText(a)
@@ -218,7 +218,7 @@ func TestAnotherWindowWithNoNameSaysOnlyThatItIsAnotherWindow(t *testing.T) {
 	agent.away = session.NewElsewhere(time.Now(), nil,
 		window("the-other-window", session.PresenceTask{
 			ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	row := awayRowWith(t, taskSheetText(a), "Sweep the call sites")
@@ -262,7 +262,7 @@ func TestAnotherWindowsRowTakesNoCursor(t *testing.T) {
 	agent.away = session.NewElsewhere(time.Now(), nil,
 		window("the-other-window", session.PresenceTask{
 			ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	if _, ok := a.taskSheetCurrent(); ok {
@@ -293,7 +293,7 @@ func TestTheFilterReachesAnotherWindowsWork(t *testing.T) {
 		window("the-other-window",
 			session.PresenceTask{ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)},
 			session.PresenceTask{ID: "8", Title: "Port the parser", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	a.taskSheet.query.setText("parser")

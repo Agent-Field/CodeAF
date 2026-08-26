@@ -282,10 +282,9 @@ space space home · / commands
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
 words does the same; `/` opens the command list. It is there on a fresh machine from the
-first minute — an empty home is still a home. The home half is dropped only over `--host`,
-where home refuses, leaving just `/ commands`, and the whole slot gives way the moment you
-type or a state above claims it. It costs no row either way — this line is on the frame
-regardless.
+first minute — an empty home is still a home — and over `--host` too, where home opens with
+one sentence in place of its rows. The whole slot gives way the moment you type or a state
+above claims it. It costs no row either way — this line is on the frame regardless.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
@@ -2163,8 +2162,12 @@ Some lines in the conversation are not the model's. They lead with a dim `· ` a
 aforge answering you directly: the tables `/status`, `/cost` and `/help` print, an
 `exported · …` receipt, a refusal, and the one-line answers a command gives when there is
 nothing for it to open — `nothing made yet.` from `/files`, or
-`nothing stands here yet — say what should always be true, and I'll hold it.` from
-`/standing`. None of them is ever sent to the model.
+`no subharnesses here yet — a subharness is a saved program for work that comes round
+again.` from `/subharness`. None of them is ever sent to the model.
+
+The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+page whatever is in it and let the page say so, rather than writing a line here (the Places
+page states the law).
 
 **The same line twice running is one line.** Press a command four times because the first
 press looked like it did nothing, and you get one copy of its answer rather than four

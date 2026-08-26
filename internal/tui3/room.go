@@ -2149,8 +2149,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// the page is a place you go and come back from, not a state the column
 	// enters.
 	if line.more {
-		a.openTaskSheet()
-		return nil, true
+		return a.showPage(pageTasks), true
 	}
 	if line.hint {
 		a.railWiden(!a.railWide)

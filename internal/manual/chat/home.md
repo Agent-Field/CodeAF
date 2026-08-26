@@ -1308,10 +1308,10 @@ space is all there is.
 It works with a turn running. Home takes the frame the way the settings panel does, and the
 answer goes on streaming underneath — `esc` puts you back in it, still running.
 
-Two things it will not do: it does nothing when the box already has words in it, and it is
-not bound at all over `--host`, where home refuses (*Home on a fresh machine, and over
---host*). It works on a machine with one conversation, and on one with none — what opens
-there is an empty home.
+One thing it will not do: it does nothing when the box already has words in it. It works on
+a machine with one conversation, on one with none, and over `--host` — what opens in each
+case is a home with a sentence where its rows would be (*Home on a fresh machine, and over
+--host*).
 
 ## What does pressing space twice do — the home door at the foot of a conversation
 
@@ -1330,29 +1330,28 @@ advertised.
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
 
-It appears on a fresh machine too, from the first minute: a machine with one conversation
-or with none still has a home to go to, and a door that is drawn is a door that goes
-somewhere. The one session it never appears in is one over `--host`, where home refuses.
-The rule that keeps home from *greeting* a first run is a different rule — not being
-greeted by home and not being able to reach it are two different things.
+It appears on a fresh machine too, from the first minute, and over `--host` as well: a
+machine with one conversation or with none still has a home to go to, and a door that is
+drawn is a door that goes somewhere. The rule that keeps home from *greeting* a first run is
+a different rule — not being greeted by home and not being able to reach it are two
+different things.
 
 ## space space does nothing — why the gesture did not open home
 
-Four reasons, and the machine holding nothing is not one of them any more:
+Three reasons, and neither the machine holding nothing nor `--host` is one of them any
+more:
 
 - **The box had something in it.** The gesture fires only when the second space arrives to
   find a box holding exactly one space. ` x` and then two spaces is three characters.
 - **It was a paste.** Pasted text arrives whole and never reaches the key router, so two
   leading spaces in a paste are two spaces (*Is there a key for home?*).
-- **The session is over `--host`.** Home refuses there — the projects it would read are on
-  this computer and the work is on the other — so the gesture is not bound and the foot
-  does not advertise it.
 - **Home is already open.** On home, space is a character in the search box.
 
 A machine with one conversation, or with none, opens home all the same: an empty home is
-a screen (*Home is empty — what an empty home shows*), not a refusal. It used to be
-otherwise — the gesture stayed inert until the machine held a second conversation — and
-that rule is gone.
+a screen (*Home is empty — what an empty home shows*), not a refusal. So does a session
+over `--host`, which draws one sentence where its rows would be. Both used to be otherwise
+— the gesture stayed inert until the machine held a second conversation, and it was not
+bound at all over `--host` — and both those rules are gone.
 
 ## how do I get back to home with one chat
 
@@ -1573,10 +1572,15 @@ A machine that has held nothing yet draws an empty home — the pulse line, the 
 keys at the foot (*home is empty — what an empty home shows* has the whole screen). The
 conversation you opened it from is on it as soon as there is one.
 
-Over `--host` home refuses to open and says
-`home shows this machine's projects, and this session is on another`. The projects it
-would read are under *this* computer's `~/.aforge/v3`, and the work is on the far end — a
-screen full of the wrong machine's projects would be a confident lie.
+Over `--host` home **opens without its rows** and says
+`home shows this machine's projects, and this session is on another` where they would have
+been. The projects it would read are under *this* computer's `~/.aforge/v3`, and the work is
+on the far end — a screen full of the wrong machine's projects would be a confident lie, so
+the list is the one part that is not drawn. The top line, the tab bar, the composer and the
+way on to the other six places are all there, and the space-space door works.
+
+It used to refuse to open at all. Every place opens now (the Places page states the law),
+and a place that cannot draw its rows says why in the slot the rows would have used.
 
 ## Does home update while I look at it?
 
