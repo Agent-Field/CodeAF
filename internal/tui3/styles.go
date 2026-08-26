@@ -333,10 +333,10 @@ var (
 	// murmur", which narration is not.
 	hueNarr = mustHue("#848FA6", flat)
 	hueDim  = mustHue("#6B7280", quiet)
-	hueAdd    = mustHue("#A3BE8C", heavy)
-	hueDel    = mustHue("#C67173", quiet)
-	hueBad    = mustHue("#D08770", heavy)
-	hueAsk    = mustHue("#C08FE8", heavy)
+	hueAdd  = mustHue("#A3BE8C", heavy)
+	hueDel  = mustHue("#C67173", quiet)
+	hueBad  = mustHue("#D08770", heavy)
+	hueAsk  = mustHue("#C08FE8", heavy)
 	// hueWarn is the SIXTH colour, and since the places wave it carries two
 	// readings that are the same reading: A BOUND ABOUT TO BE REACHED, and A
 	// PERSON BEING WAITED ON. Home used to say the second of those in two colours
@@ -678,11 +678,11 @@ var (
 	// rounds onto one of them; the grey ramp's 247 is claimed by nothing.
 	lightNarr = mustHue("#9E9EA4", flat)
 	lightDim  = mustHue("#9AA3B2", quiet)
-	lightAdd    = mustHue("#7BA23F", heavy)
-	lightDel    = mustHue("#B55B64", quiet)
-	lightBad    = mustHue("#C57A3C", heavy)
-	lightAsk    = mustHue("#6F3FA8", heavy)
-	lightWarn   = mustHue("#A6791F", heavy)
+	lightAdd  = mustHue("#7BA23F", heavy)
+	lightDel  = mustHue("#B55B64", quiet)
+	lightBad  = mustHue("#C57A3C", heavy)
+	lightAsk  = mustHue("#6F3FA8", heavy)
+	lightWarn = mustHue("#A6791F", heavy)
 	// The data hue inverted for the page, the same way the accent was: deeper
 	// and less saturated rather than pale. L 39.6 sits inside the light signal
 	// band (warn's 38.6 is its floor), and 31 on the 256 rung collides with
@@ -786,7 +786,6 @@ var (
 // there is nothing to suppress — and TestEveryPlaceHoldsAtThePlainFloor still
 // walks every place with both floors on, because "legible as text with every
 // escape removed" is a law about the layout rather than about the ground.
-
 
 // ramp is one whole ladder: every role this surface paints, resolved once.
 //
@@ -1233,9 +1232,9 @@ func (p palette) muted(s string) string  { return p.paint(s, p.ramp.muted) }
 func (p palette) narr(s string) string { return p.paint(s, p.ramp.narr) }
 
 func (p palette) dim(s string) string { return p.paint(s, p.ramp.dim) }
-func (p palette) add(s string) string    { return p.paint(s, p.ramp.add) }
-func (p palette) del(s string) string    { return p.paint(s, p.ramp.del) }
-func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
+func (p palette) add(s string) string { return p.paint(s, p.ramp.add) }
+func (p palette) del(s string) string { return p.paint(s, p.ramp.del) }
+func (p palette) bad(s string) string { return p.paint(s, p.ramp.bad) }
 
 // warn is the tier below bad: something is about to go wrong rather than has
 // (styles.go's [hueWarn]). The only thing that wears it today is a timeout with

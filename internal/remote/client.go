@@ -56,10 +56,11 @@ import (
 // connection is gone. That is a true sentence: a round trip to a healthy engine
 // is milliseconds, and one that has taken ten seconds is not coming back.
 //
-// NOTHING HERE MEASURES ANYTHING EXTRA. Every getter is one frame out and one
-// frame back. The surface asks Model() on frames it repaints, so a client that
-// took a second round trip to "check" something would have doubled the cost of
-// drawing a status line.
+// NO GETTER MEASURES ANYTHING EXTRA. Every getter is one frame out and one
+// frame back. [Client.Ping] is the explicit exception: one empty call on the
+// surface's five-second clock, never a second call hidden behind a getter. The
+// surface asks Model() on frames it repaints, so a measurement there would have
+// doubled the cost of drawing a status line.
 
 // callDeadline is how long any one call waits for its result. See the law above.
 const callDeadline = 10 * time.Second
@@ -199,6 +200,7 @@ func newClient(host string, hello Hello) *Client {
 	if strings.TrimSpace(hello.Surface) == "" {
 		hello.Surface = MachineName()
 	}
+	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
 		host:    strings.TrimSpace(host),
 		hello:   hello,
@@ -238,6 +240,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	if err := lines.Decode(&frame); err != nil {
 		return Welcome{}, c.gone(err)
 	}
+	if err := expandFrame(&frame); err != nil {
+		return Welcome{}, c.gone(err)
+	}
 	switch frame.Kind {
 	case "welcome":
 	case "fatal":
@@ -259,6 +264,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// has an older aforge on it, and the person knows which machine is which.
 	if welcome.Version != Version {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())}
+	}
+	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
+		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
 	}
 	c.mu.Lock()
 	c.welcome = welcome
@@ -479,6 +487,34 @@ func (c *Client) Take() error {
 	return nil
 }
 
+// Ping measures one empty call to the engine and back.
+//
+// THE CLOCK STAYS ON THIS MACHINE. Two hosts need not agree about the time,
+// while the elapsed time around one call is exactly the path a keystroke and
+// its answer use. A reconnecting client refuses before [Client.call], so the
+// gentle meter on the surface never adds traffic to a link already trying to
+// find its way back.
+func (c *Client) Ping() (time.Duration, error) {
+	c.mu.Lock()
+	if c.reconnecting {
+		reason := c.roamingRefusal()
+		c.mu.Unlock()
+		return 0, errors.New(reason)
+	}
+	if c.dead != nil {
+		dead := c.dead
+		c.mu.Unlock()
+		return 0, dead
+	}
+	c.mu.Unlock()
+
+	started := time.Now()
+	if _, err := c.call(nil, MethodPing, nil); err != nil {
+		return 0, err
+	}
+	return time.Since(started), nil
+}
+
 // LinkNote is the quiet true sentence about the connection right now, and the
 // empty string whenever there is nothing to say — which is almost always, and
 // is what the emptiness law asks a status line to draw as nothing at all.
@@ -622,7 +658,10 @@ func (c *Client) write(frame Frame) error {
 		return errors.New("no link")
 	}
 	_, err = conn.Write(line)
-	return err
+	if err != nil {
+		return err
+	}
+	return flushFrame(conn)
 }
 
 // read is the reader goroutine: the only thing that decodes frames, and the
@@ -640,6 +679,10 @@ func (c *Client) read() {
 			if c.lost(err) {
 				continue
 			}
+			return
+		}
+		if err := expandFrame(&frame); err != nil {
+			c.bury(err)
 			return
 		}
 		switch frame.Kind {
@@ -781,12 +824,6 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		payload = encoded
 	}
 	id := c.seq.Add(1)
-	// COUNTED HERE AND NOWHERE ELSE, because this is the one place a round trip
-	// can happen. It is counted before the refusals below rather than after,
-	// because a law that says "this frame puts nothing on the wire" is a claim
-	// about what the surface ASKED FOR, and a call a dead link refused is still
-	// a call the code decided to make.
-	c.made.Add(1)
 	waiting := make(chan result, 1)
 
 	c.mu.Lock()
@@ -822,6 +859,7 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		}
 		return nil, c.gone(err)
 	}
+	c.made.Add(1)
 
 	if ctx == nil {
 		ctx = context.Background()

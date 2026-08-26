@@ -581,3 +581,52 @@ func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
 		t.Fatal("the wait held a lone delta back looking for more")
 	}
 }
+
+const scrollAllocationCeiling = 220
+
+// THE CACHE KEY INCLUDES THE INK THAT PAINTED IT. Width and content can stay
+// unchanged while a terminal reports a different ground; a row keyed only by
+// wrap would keep yesterday's escape sequences forever in old scrollback.
+func TestSettledEntryCacheIsKeyedByInkState(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = []entry{{kind: entryAssistant, text: "settled", settled: true}}
+	a.entryRows(a.conversation(), 0, 60)
+	before := a.renders
+	a.inkState++
+	a.entryRows(a.conversation(), 0, 60)
+	if a.renders != before+1 {
+		t.Fatalf("a new ink state caused %d renders, want one", a.renders-before)
+	}
+}
+
+func TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 42
+	a.entries = a.entries[:0]
+	for i := 0; i < 4000; i++ {
+		a.entries = append(a.entries, entry{kind: entryUser, text: fmt.Sprintf("line %04d", i), turn: i})
+	}
+	a.touch()
+	a.frame()
+	a.stick = false
+	a.offset = len(a.visible(a.bodyWidth())) - a.viewHeight()
+	page := a.scrollPage()
+	renders := a.renders
+	up := true
+	allocs := testing.AllocsPerRun(100, func() {
+		if up {
+			a.scroll(-page)
+		} else {
+			a.scroll(page)
+		}
+		up = !up
+		a.frame()
+	})
+	t.Logf("one-screen scroll: %.0f allocations, %d unchanged-entry renders", allocs, a.renders-renders)
+	if allocs > scrollAllocationCeiling {
+		t.Fatalf("one-screen scroll allocated %.0f times, ceiling %d", allocs, scrollAllocationCeiling)
+	}
+	if got := a.renders - renders; got != 0 {
+		t.Fatalf("one-screen scrolling re-rendered %d unchanged entries, want zero", got)
+	}
+}

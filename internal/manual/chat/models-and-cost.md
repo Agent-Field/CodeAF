@@ -852,7 +852,8 @@ The labels come in this order, each dropped when its value is empty: `session`, 
 inside a task room), `model` (the full routing address, with `:level` when a reasoning level
 is set), `crew`, `task model` (only in a room), `served`, then the telemetry segments under
 their own words — `background`, `changes`, `spend`, `context`, `cache`, `rate`,
-`compaction`, `approvals`, `state` — then `tasks`, `place`, `keys`, and finally `file`.
+`compaction`, `approvals`, `connection`, `state` — then `tasks`, `place`, `keys`, and
+finally `file`.
 Labels are padded into two aligned columns.
 
 The `crew` line sits directly under `model` and reads the preset word — or `custom` — with
@@ -874,6 +875,9 @@ Two things differ deliberately from the status line on screen:
   `$0.00`; a note printed into the conversation must not.
 
 Over `--host`, the `place` and `file` values are written in full as `machine:/path`.
+After the first connection measurement answers, `connection` is a sentence such as
+`the round trip to devbox is about 3ms`; while redialling it is the reconnecting sentence
+instead. With no measurement there is no connection line, never `0ms`.
 
 ## How much room the conversation has, and giving it a longer context window
 

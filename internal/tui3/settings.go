@@ -172,6 +172,32 @@ var settingUI = map[string]settingMeta{
 		about: "seconds an approval question waits before it answers no for you. " +
 			"Any key stops the clock; 0 turns it off.",
 	},
+	// THE FOUR ssh ROWS ARE THIS CONVERSATION'S TOO, because a connection to
+	// another machine is a property of the session that runs over it and of
+	// nothing else on this screen — a change lands on the next launch, which the
+	// registry's own hint says. They sit together, after the rows about what a
+	// session may do, and they are text and a cycle for the same reason the
+	// countdown above is text: a number a person types, and one choice they turn.
+	config.KeySSHControlPersist: {
+		tab: tabSession, label: "ssh reuse", widget: widgetText,
+		about: "seconds an ssh connection stays reusable after it closes, so a quick " +
+			"reconnect skips the handshake. 0 turns it off; a change lands next launch.",
+	},
+	config.KeySSHServerAlive: {
+		tab: tabSession, label: "ssh heartbeat", widget: widgetText,
+		about: "seconds of silence before ssh asks whether the far machine is still there. " +
+			"0 turns heartbeats off; a change lands next launch.",
+	},
+	config.KeySSHServerMisses: {
+		tab: tabSession, label: "ssh missed heartbeats", widget: widgetText,
+		about: "how many unanswered heartbeats end a dead connection — three with the " +
+			"default heartbeat notices one in about nine seconds. A change lands next launch.",
+	},
+	config.KeySSHIPQoS: {
+		tab: tabSession, label: "ssh traffic", widget: widgetCycle,
+		about: "how ssh marks its traffic: lowdelay by default, af21 on networks that honor " +
+			"it, none where marking is filtered. A change lands next launch.",
+	},
 	// THE MACHINERY IS NOT THE SURFACE'S TO NAME, and a settings row is as much
 	// the surface as a card is. The key is the engine's ([config.KeyTaskAudit])
 	// and it keeps its name; what a person reads is what the switch DOES to their

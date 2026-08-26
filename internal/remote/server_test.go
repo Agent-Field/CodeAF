@@ -8,6 +8,7 @@ package remote
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -581,6 +582,63 @@ func TestServeWelcomesAHello(t *testing.T) {
 	}
 	if err := l.end(); err != nil {
 		t.Fatalf("serve: %v", err)
+	}
+}
+
+func TestLargeFramesCompressOnlyAfterNegotiation(t *testing.T) {
+	entries := []session.DisplayEntry{{Role: "assistant", Text: strings.Repeat("compressible transcript ", 4000)}}
+	agent := &fakeAgent{transcript: entries}
+
+	oldSurface := dialAgent(t, engineOn(agent))
+	welcome := decode[Welcome](t, oldSurface.hello(Hello{Version: Version}).Payload)
+	if welcome.Encoding != "" {
+		t.Fatalf("an old surface was assigned %q", welcome.Encoding)
+	}
+	plain := oldSurface.ok(1, MethodTranscript, nil)
+	if plain.Encoding != "" || len(plain.Payload) < compressionThreshold {
+		t.Fatalf("old surface got encoding=%q payload=%d", plain.Encoding, len(plain.Payload))
+	}
+	_ = oldSurface.end()
+
+	newSurface := dialAgent(t, engineOn(agent))
+	welcome = decode[Welcome](t, newSurface.hello(Hello{Version: Version, Encodings: []string{frameEncodingGzip}}).Payload)
+	if welcome.Encoding != frameEncodingGzip {
+		t.Fatalf("negotiated encoding = %q", welcome.Encoding)
+	}
+	compressed := newSurface.call(1, MethodTranscript, nil)
+	if compressed.Encoding != frameEncodingGzip || len(compressed.Payload) != 0 || len(compressed.Data) == 0 {
+		t.Fatalf("negotiated frame = encoding %q payload %d data %d", compressed.Encoding, len(compressed.Payload), len(compressed.Data))
+	}
+	if err := expandFrame(&compressed); err != nil {
+		t.Fatal(err)
+	}
+	if got := decode[[]session.DisplayEntry](t, compressed.Payload); len(got) != 1 || got[0].Text != entries[0].Text {
+		t.Fatal("expanded transcript changed")
+	}
+	_ = newSurface.end()
+}
+
+type flushCountingWriter struct {
+	bytes.Buffer
+	flushes int
+}
+
+func (w *flushCountingWriter) Flush() error {
+	w.flushes++
+	return nil
+}
+
+func TestEveryServerFrameIsFlushed(t *testing.T) {
+	out := &flushCountingWriter{}
+	s := &server{out: out}
+	if err := s.send(Frame{Kind: "result", ID: 1, Payload: raw(t, "ready")}); err != nil {
+		t.Fatal(err)
+	}
+	if out.flushes != 1 {
+		t.Fatalf("flushes = %d, want one for one frame", out.flushes)
+	}
+	if !strings.HasSuffix(out.String(), "\n") {
+		t.Fatalf("frame was not completed as one line: %q", out.String())
 	}
 }
 

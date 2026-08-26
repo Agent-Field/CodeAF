@@ -499,12 +499,26 @@ type entry struct {
 	// sent a message.
 	pending bool
 
-	// The row cache. built distinguishes "no rows yet" from "renders to no
-	// rows", which an empty slice cannot.
-	rows  []string
-	width int
-	built bool
-	stale bool
+	// The row cache. Its key names the three facts that can change painted rows:
+	// which block owns them, the width they wrap at, and the ladder that supplied
+	// their ink. Staleness is the block itself changing between two readings of
+	// that key; built distinguishes "no rows yet" from "renders to no rows".
+	rows     []string
+	rowKey   renderedEntryKey
+	identity uint64
+	width    int
+	built    bool
+	stale    bool
+}
+
+// renderedEntryKey keeps the cache contract explicit. The cache lives on the
+// entry, so identity looks redundant until a block value is moved or reused;
+// keeping it in the key makes a cached slice incapable of answering for the
+// next block that happens to occupy the same storage.
+type renderedEntryKey struct {
+	identity uint64
+	width    int
+	ink      uint64
 }
 
 // forming reports whether this row is a call the model is STILL SPELLING OUT.
@@ -557,6 +571,18 @@ type (
 	// pointer crossing a row it is already on must cost no frame at all, so the
 	// thing that wakes it up may not draw one (coalesce.go).
 	pointerMsg struct{}
+	// historyPageMsg is one local page of the mirrored transcript returning to
+	// the update loop. Even a hosted session therefore never waits on ssh in the
+	// key or wheel path, and a conversation replaced while the command was out
+	// rejects the old generation rather than prepending somebody else's words.
+	historyPageMsg struct {
+		gen     int
+		entries []session.DisplayEntry
+		from    int
+		to      int
+		earlier bool
+		seam    bool
+	}
 	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
 	// a message rather than a call because `git status` on a large tree is tens
 	// of milliseconds and the model loop is not a place to wait.
@@ -683,6 +709,10 @@ type app struct {
 	previews map[string]imagePreview
 
 	entries []entry
+	// transcript is the surface's local mirror of the engine transcript. The
+	// opening read may cross ssh; every page walked afterwards is cut from this
+	// slice on the local side.
+	transcript []session.DisplayEntry
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
 	// live is the assistant entry currently being streamed into, or -1.
@@ -730,6 +760,10 @@ type app struct {
 	// exactly that boundary (the entryCompact block), and a second line saying
 	// the same thing two rows above it is the surface stuttering.
 	earlierSeam bool
+	// historyLoading admits one page command at a time, and historyGen makes its
+	// answer belong to the replay that asked for it.
+	historyLoading bool
+	historyGen     int
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
@@ -1006,6 +1040,13 @@ type app struct {
 	painting bool
 	paints   int
 	builds   int
+	// renders counts actual entry renderer calls so allocation laws can prove a
+	// viewport move did not repaint a block whose key stayed the same.
+	renders uint64
+	// renderIdentity mints the identity half of an entry's cache key lazily;
+	// inkState advances whenever the terminal's measured ladder changes.
+	renderIdentity uint64
+	inkState       uint64
 
 	// ptr is the pointer's fold: the sweep's newest position and the notches of
 	// a wheel run, kept so that a burst of them costs the surface one answer per
@@ -1266,6 +1307,12 @@ type app struct {
 	// door home is reached from a register with no box on the frame
 	// (watching.go's [app.watchKey]). It is zero everywhere else.
 	watchSpaces int
+	// linkLatency is the hosted connection's rolling round trip, and
+	// linkPingAsking keeps its slow clock to one call at a time. Both are zero on
+	// every local session and before the first hosted answer, which the
+	// emptiness law draws as no segment at all.
+	linkLatency    time.Duration
+	linkPingAsking bool
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
 	// is every frame of a conversation nobody has pressed the chord in.
@@ -2043,9 +2090,10 @@ func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c") 
 
 var _ tea.Model = (*app)(nil)
 
-// Init starts the paint clock when — and only when — the first frame has
-// something to animate. That is the welcome box's arrival and nothing else: an
-// idle surface with no box is a surface with no wakeups at all.
+// Init starts the standing lanes, and starts the paint clock only when the first
+// frame has something to animate. An ordinary idle local surface with no box
+// has no wakeups; a hosted one also owns hostlink.go's separate five-second
+// measurement clock.
 func (a *app) Init() tea.Cmd {
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
@@ -2081,9 +2129,12 @@ func (a *app) Init() tea.Cmd {
 	// the moment somebody arrived, so it is the moment to be handed it
 	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
 	// the seam saying there is no far machine to have a waiting room.
+	// AND THE HOSTED LINK'S SLOW CLOCK STARTS HERE. It is a five-second timer,
+	// separate from the paint clock because an idle hosted session still has a
+	// round trip to measure and because no frame is permission to call the wire.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		tea.RequestBackgroundColor}
+		a.linkPingTick(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2332,6 +2383,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.copiedFile(msg)
 		return a, nil
 
+	case historyPageMsg:
+		return a, a.historyPrefetched(msg)
+
 	case tea.MouseWheelMsg:
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
 		// is the thing the wheel would otherwise move (copymode.go).
@@ -2481,9 +2535,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.Mouse().Button {
 		case tea.MouseWheelUp:
-			a.scroll(-3)
+			return a, a.scroll(-3)
 		case tea.MouseWheelDown:
-			a.scroll(3)
+			return a, a.scroll(3)
 		}
 		return a, nil
 
@@ -3144,6 +3198,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// through the door its live twin comes through, and a kind this build
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
+
+	case linkPingTickMsg:
+		// The next timer is armed immediately when this one finds a reconnect in
+		// progress; after a real call, its answer arms the next one instead, so
+		// calls cannot overlap even when a link is slow.
+		if kick := a.linkPingKick(); kick != nil {
+			return a, kick
+		}
+		return a, a.linkPingTick()
+
+	case linkPingMsg:
+		a.linkPingBack(msg)
+		return a, a.linkPingTick()
 
 	case levelsMsg:
 		// What each of a batch of models is dialled to, asked off this loop
