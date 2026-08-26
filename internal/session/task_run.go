@@ -3410,7 +3410,20 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 // childrenOutstanding reports whether any sub-task THIS agent handed out has
 // yet to deliver its report. It is false in a conversation and in a node that
 // never fanned out: neither has a family to be outstanding.
+//
+// A FORKED HAND COUNTS HERE TOO, and it is the same question with a smaller
+// piece of work in it: this agent handed part of what it is doing to something
+// else, and has not been told what came of it. A hand is a stream now rather
+// than a barrier (fork.go), so a node CAN reach the end of its turn with hands
+// still out — and the two readers of this answer are exactly the two that must
+// not get it wrong. The tail loop in [runTaskChild] would land the node on top
+// of a hand's unread report and throw away the writes the fork was for; the
+// no-progress counter would read a node whose work is in somebody else's hands
+// as a node spinning.
 func (a *Agent) childrenOutstanding() bool {
+	if a.jobs.handsOutstanding() {
+		return true
+	}
 	a.mu.Lock()
 	graph, parent := a.config.tasker, a.config.taskID
 	a.mu.Unlock()
