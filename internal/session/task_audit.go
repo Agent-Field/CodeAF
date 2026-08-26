@@ -627,7 +627,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// worker ran (task_checks.go); a retry that recomputed it could be judging
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
-	door := auditDoorFor(node)
+	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			door.window())
@@ -2070,7 +2070,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// may touch, and every later hand added to the session would silently join
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
-	tools := auditBelt(dir, door.allowed)
+	tools := auditBelt(dir, door)
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()
@@ -2094,14 +2094,14 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 // bounds an investigation is what ONE ANSWER may weigh, whichever hand returned
 // it, so it is applied here — where the hands are chosen — and not five times
 // over in five wrappers.
-func auditBelt(dir string, allowed []string) []bare.Tool {
+func auditBelt(dir string, door auditDoor) []bare.Tool {
 	var belt []bare.Tool
 	for _, tool := range bare.AllTools(dir) {
 		switch tool.Name {
 		case "read", "grep", "find", "ls":
 			belt = append(belt, boundedResult(tool))
 		case "bash":
-			belt = append(belt, boundedResult(verifyOnlyBash(tool, allowed)))
+			belt = append(belt, boundedResult(verifyOnlyBash(tool, door)))
 		}
 	}
 	return belt
@@ -2162,10 +2162,10 @@ var auditShell = shellLeash{who: "an auditor", forWhat: "verification", hint: au
 // The commands interpolated here are the checks the work declares and ran, so
 // the first thing the auditor reads about its shell is the exact command the
 // work is checked with (task_checks.go).
-func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
-	tool = readingOnlyBash(tool, allowed, auditShell)
+func verifyOnlyBash(tool bare.Tool, door auditDoor) bare.Tool {
+	tool = readingOnlyBash(tool, door, auditShell)
 	tool.Description = "Run one of THIS WORK's own verification commands and read its output: " +
-		strings.Join(allowed, ", ") + ". Every other command is refused, including anything that " +
+		door.offer() + ". Every other command is refused, including anything that " +
 		"edits, installs, fetches, or chains a second command onto one of these. " +
 		auditReaderHint + " " + tool.Description
 	return tool
@@ -2182,7 +2182,7 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 // The DESCRIPTION is left to the caller, because what a bash is for is the one
 // thing the two citizens disagree about and it is the sentence the model reads
 // before it ever reaches a refusal.
-func readingOnlyBash(tool bare.Tool, allowed []string, voice shellLeash) bare.Tool {
+func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool {
 	inner := tool.Execute
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		var fields struct {
@@ -2191,7 +2191,7 @@ func readingOnlyBash(tool bare.Tool, allowed []string, voice shellLeash) bare.To
 		if err := json.Unmarshal(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
-		if refusal, ok := refuseOutsideAllowlist(fields.Command, allowed, voice); !ok {
+		if refusal, ok := refuseOutsideDoor(fields.Command, door, voice); !ok {
 			return refusal, true, nil
 		}
 		return inner(ctx, args)
@@ -2199,24 +2199,38 @@ func readingOnlyBash(tool bare.Tool, allowed []string, voice shellLeash) bare.To
 	return tool
 }
 
-// auditRefusal is [refuseOutsideAllowlist] in the auditor's own voice. It is a
-// door rather than a call site so that everything already written against the
-// auditor's gate — this package's tests included — asks the same question with
-// the same two arguments it always did.
+// auditRefusal is [refuseOutsideDoor] in the auditor's own voice, asked about a
+// door that is a bare list of commands. It is a door rather than a call site so
+// that everything already written against the auditor's gate — this package's
+// tests included — asks the same question with the same two arguments it always
+// did.
 func auditRefusal(command string, allowed []string) (string, bool) {
-	return refuseOutsideAllowlist(command, allowed, auditShell)
+	return refuseOutsideDoor(command, plainDoor(allowed), auditShell)
 }
 
-// refuseOutsideAllowlist decides one command, and it decides it in two steps
+// refuseOutsideAllowlist is the same question asked about a list rather than a
+// whole door, for the citizens that have no tree behind them (fork.go's
+// read-only shell).
+func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) (string, bool) {
+	return refuseOutsideDoor(command, plainDoor(allowed), voice)
+}
+
+// refuseOutsideDoor decides one command, and it decides it in three steps
 // because a prefix check on its own is not a gate: `go test ./... && rm -rf .`
 // starts with an allowed prefix and is not an allowed command.
 //
 // So SHELL COMPOSITION IS REFUSED OUTRIGHT — every operator that can start a
 // second command, redirect output, or substitute one — and only then is what
-// remains matched against the allowlist. That order is the whole safety
-// argument: after the first check there is exactly one command in the string,
-// and the second check is about that command.
-func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) (string, bool) {
+// remains matched against the door. That order is the whole safety argument:
+// after the first check there is exactly one command in the string, and the
+// checks after it are about that command.
+//
+// THE DOOR IS MATCHED THE TWO WAYS IT IS WRITTEN. A check that named a file is
+// matched by WHICH FILE the command names, under any spelling of it
+// ([auditDoor.admitsFile]); everything else is matched field by field as the
+// prefix it is. A file check is skipped by the prefix walk on purpose: it speaks
+// for that file being run and not for arguments the work never declared.
+func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string, bool) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
@@ -2225,21 +2239,27 @@ func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) 
 	if index := strings.IndexAny(command, shellComposition); index >= 0 {
 		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
 			voice.who, voice.forWhat, string(command[index]), clip(command, auditCommandLimit),
-			strings.Join(allowed, ", "), voice.hint), false
+			door.offer(), voice.hint), false
 	}
 	// Whitespace is normalized so "make  check" is the same command as
-	// "make check": the allowlist is about which program runs, not about how it
+	// "make check": the door is about which program runs, not about how it
 	// was typed.
 	normalized := strings.Join(strings.Fields(command), " ")
 	fields := strings.Fields(normalized)
-	for _, prefix := range allowed {
+	if door.admitsFile(fields) {
+		return "", true
+	}
+	for _, prefix := range door.allowed {
+		if door.identified(prefix) {
+			continue
+		}
 		if matchesCommandPrefix(fields, strings.Fields(prefix)) {
 			return "", true
 		}
 	}
 	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
 		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
-		strings.Join(allowed, ", "), voice.hint), false
+		door.offer(), voice.hint), false
 }
 
 // shellComposition is every character that can start a second command, redirect
