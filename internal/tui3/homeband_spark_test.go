@@ -39,14 +39,14 @@ func handsLab(t *testing.T, working int) (*app, time.Time) {
 
 // THE PULSE COUNTS THE MACHINE'S HANDS, AND SAYS NOTHING AT ZERO.
 //
-// `N working` is the one place the FIGURE is said — the chart under it is the
+// `N moving` is the one place the FIGURE is said — the chart under it is the
 // shape and prints no number — and it obeys the emptiness law at the bottom and
 // nowhere else: one hand out is worth knowing from across a room, so the segment
 // draws at one and vanishes at nothing.
 func TestThePulseSaysHowManyHandsAreWorkingAndIsAbsentAtZero(t *testing.T) {
 	a, now := handsLab(t, 3)
 	line := plain(a.pulseLine(90, a.pal))
-	if !strings.Contains(line, "3"+pulseWorkingWord) {
+	if !strings.Contains(line, "3"+pulseMovingWord) {
 		t.Fatalf("the pulse does not count the machine's hands: %q", line)
 	}
 	if facts := a.machineFactsAt(now); facts.hands != 3 {
@@ -68,43 +68,47 @@ func TestThePulseSaysHowManyHandsAreWorkingAndIsAbsentAtZero(t *testing.T) {
 
 	// AND ONE HAND STILL SPEAKS.
 	one, _ := handsLab(t, 1)
-	if line := plain(one.pulseLine(90, one.pal)); !strings.Contains(line, "1"+pulseWorkingWord) {
+	if line := plain(one.pulseLine(90, one.pal)); !strings.Contains(line, "1"+pulseMovingWord) {
 		t.Fatalf("a machine with one hand out says nothing about it: %q", line)
 	}
 
-	// A MACHINE WITH NOTHING OUT SAYS NOTHING AT ALL — never `0 working`.
+	// A MACHINE WITH NOTHING OUT SAYS NOTHING AT ALL — never `0 moving`.
 	quiet, still := handsLab(t, 0)
 	for _, segment := range quiet.pulseSegments(still, quiet.pal) {
-		if strings.Contains(plain(segment), strings.TrimSpace(pulseWorkingWord)) {
+		if strings.Contains(plain(segment), strings.TrimSpace(pulseMovingWord)) {
 			t.Fatalf("a quiet machine's pulse still counts its hands: %q", plain(segment))
 		}
 	}
 }
 
-// THE PAYLOAD RULE, ON THE ONE LINE THAT IS ALL PAYLOAD: the count steps up into
-// the datum hue and the word beside it stays dim. Never the accent — the budget
-// is one lit element per screen and a top line is a glance rather than the live
-// or chosen thing.
+// ONE MEANING, ONE COLOUR, ON THE ONE LINE THAT IS ALL MEANING: the whole
+// `4 moving` clause is the live hue, count and word together.
+//
+// This assertion used to hold the payload rule here — the count in the datum hue
+// and the word dim beside it, and explicitly NOT the accent. The design reassigns
+// both ends of that (styles.go's THE ONE-ACCENT LAW): a place has three colours,
+// the accent among them IS the in-flight one, and the datum hue is retired on a
+// place because a screen with three colours lifts a datum by tier instead. So the
+// clause leads in the accent now, and what the old assertion was really
+// protecting — that the pulse never spends a colour on nothing — is held by the
+// clause being absent at zero, one test up.
 func TestTheHandsCountIsTheDatumAndTheWordIsDim(t *testing.T) {
 	a, now := handsLab(t, 2)
 	segments := a.pulseSegments(now, a.pal)
 	found := ""
 	for _, segment := range segments {
-		if strings.Contains(plain(segment), pulseWorkingWord) {
+		if strings.Contains(plain(segment), pulseMovingWord) {
 			found = segment
 		}
 	}
 	if found == "" {
 		t.Fatalf("the pulse has no hands segment on it: %q", segments)
 	}
-	if !strings.HasPrefix(found, a.pal.data("2")) {
-		t.Fatalf("the count is not the datum hue: %q", plain(found))
+	if found != a.pal.accent("2"+pulseMovingWord) {
+		t.Fatalf("the moving clause is not one colour in the live hue: %q", plain(found))
 	}
-	if !strings.Contains(found, a.pal.dim(pulseWorkingWord)) {
-		t.Fatalf("the word beside the count is not dim: %q", plain(found))
-	}
-	if accent := paintPrefix(a.pal.accent("x")); strings.Contains(found, accent) {
-		t.Fatalf("the hands segment spends the accent: %q", plain(found))
+	if warn := paintPrefix(a.pal.warn("x")); strings.Contains(found, warn) {
+		t.Fatalf("the moving clause wears the amber, which means a person is waited on: %q", plain(found))
 	}
 }
 
@@ -279,7 +283,7 @@ func TestTheHandsSparkNeverDrawsAtTheListTier(t *testing.T) {
 		t.Fatalf("the chart drew at the list tier: %q", rows)
 	}
 	// AND THE COUNT STILL SHOWS, which is what the narrow frame keeps.
-	if line := plain(a.pulseLine(70, a.pal)); !strings.Contains(line, "3"+pulseWorkingWord) {
+	if line := plain(a.pulseLine(70, a.pal)); !strings.Contains(line, "3"+pulseMovingWord) {
 		t.Fatalf("a narrow home lost the hands count too: %q", line)
 	}
 	a.home.tier = homeTierCard

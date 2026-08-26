@@ -78,6 +78,17 @@ type machineFacts struct {
 	// list showing four, which is the exact failure the one-reader law was
 	// written against.
 	hands int
+	// wants is HOW MANY THINGS ON THIS MACHINE HAVE STOPPED ON A PERSON RIGHT
+	// NOW: a conversation waiting for an answer, a standing order that will not
+	// fire until somebody says so, an errand holding a question.
+	//
+	// IT IS [machineFacts.hands]' MIRROR AND IS COUNTED THE SAME WAY, off the same
+	// three worlds in the same order ([app.machineWants]). The two are the whole
+	// of the switcher's sort order said as two numbers — SCREEN 2b ranks the one
+	// list by "what wants you first", then what is moving — so a pulse whose two
+	// counts came from anywhere else would be a headline over somebody else's
+	// article.
+	wants int
 }
 
 // machineCeilingNear is how much of the day's allowance has to be gone before
@@ -129,6 +140,7 @@ func (a *app) machineFactsAt(now time.Time) machineFacts {
 	}
 	facts.chats, facts.tasks, facts.spent = a.machineDay(now)
 	facts.hands = a.machineHands()
+	facts.wants = a.machineWants()
 	h.machine, h.machineAt = facts, now
 	// AND THIS IS THE BEAT THE SPARK IS SAMPLED ON. A fresh reading happens once
 	// per [homeEvery] whoever asks for it first, which is exactly the clock a
@@ -207,6 +219,49 @@ func (a *app) machineHands() int {
 		}
 	}
 	return hands
+}
+
+// machineWants is how many things on this machine have stopped on a person,
+// counted off the world the list is ranked from — the same three walks
+// [app.machineHands] makes, asking the opposite question of each.
+//
+// ONE ROW IS ONE THING HERE, and that is where it differs from its mirror. A
+// conversation with three tasks out is three hands because three things are being
+// done; a conversation that has asked you something is ONE question however many
+// nodes it has parked behind it, because what a person does about it is answer it
+// once. The count is a count of decisions waiting, not of work waiting.
+//
+// IT IS COUNTED OFF THE READING AND NOT OFF THE COLUMN, for [app.machineHands]'
+// reason: the list caps what it draws and this figure is about the MACHINE, so a
+// tenth thing asking would otherwise be a thing the top line did not know about.
+func (a *app) machineWants() int {
+	wants := 0
+	for _, row := range a.home.world.Sessions() {
+		if row.Archived || !row.NeedsPerson() {
+			continue
+		}
+		wants++
+	}
+	// ONE ITEM IS ONE QUESTION HOWEVER MANY PROJECTS HOLD IT, which is the same
+	// double-counting [app.machineHands] guards against and for the same reason:
+	// a machine-wide order sits in every project's band.
+	counted := make(map[string]bool)
+	for _, views := range a.home.items {
+		for _, view := range views {
+			item := view.Item
+			if strings.TrimSpace(item.NeedsPerson) == "" || counted[item.ID] {
+				continue
+			}
+			counted[item.ID] = true
+			wants++
+		}
+	}
+	for _, ex := range a.home.exchanges {
+		if ex.waiting() {
+			wants++
+		}
+	}
+	return wants
 }
 
 // machineWatching is every active order on the machine, soonest first.

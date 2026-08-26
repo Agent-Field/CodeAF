@@ -339,7 +339,7 @@ where you are sitting.
 ```
   standing orders
   in this conversation
-› ▲ keep the tests green         needs your look · the fix touches migrations
+› ? keep the tests green         needs your look · the fix touches migrations
   for this project
   ◦ draft the weekly update                                  Mondays at 9am
   everywhere
@@ -355,7 +355,7 @@ not reach the conversation you are in — including orders in a folder you have 
 a conversation in. An order is on exactly one shelf: what already stands over this
 conversation is never repeated down there.
 
-Each row leads with the mark every aforge screen uses — `▲` needs you, `●` being
+Each row leads with the mark every aforge screen uses — `?` needs you, `◐` being
 checked or fired right now, `◦` waiting for its time, `∙` paused or stopped — then what
 the order is called, then where it stands. A rule that never wakes says `holds` there,
 because it has no cadence and nothing it last found. Rows are drawn the same way on all

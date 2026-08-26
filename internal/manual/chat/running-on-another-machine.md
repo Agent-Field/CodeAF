@@ -298,7 +298,7 @@ Three readings are absent over a connection, and each says nothing rather than g
 - **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
   state is read from a file on that disk. A line drawn from this laptop's timer would be a
   status about a machine nobody consulted.
-- **No row ever shows the firing mark `●`.** Nothing on any disk says an item is firing at
+- **No row ever shows the firing mark `◐`.** Nothing on any disk says an item is firing at
   this instant — a run is in flight inside whichever process holds the tick lock — so the
   surface does not claim it. That is true locally too.
 

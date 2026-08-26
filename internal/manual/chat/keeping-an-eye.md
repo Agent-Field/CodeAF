@@ -56,7 +56,7 @@ row of its own:
 
 ```
 ◦ remind me at 6 to leave · said: time to leave
-▲ keep main green · needs your look: the fix touches migrations
+? keep main green · needs your look: the fix touches migrations
 ```
 
 Live — roads 1 and 2, a chat that is open — the row is drawn **the moment the
@@ -539,7 +539,7 @@ guessing:
 - **`/status` prints no `keeping watch` line.** The OS timer is devbox's and this
   surface has no way to read its state; a line read off this laptop's timer would
   be a status about the wrong machine.
-- **No row ever shows the firing mark `●`.** Nothing on disk says an item is
+- **No row ever shows the firing mark `◐`.** Nothing on disk says an item is
   firing at this instant, so nothing claims it — the same silence a local window
   keeps.
 
@@ -571,7 +571,7 @@ has cost, when it last fired, what it last saw.
 
 To see what stands here, ask what you have set up, or type `/standing` for the page
 of it with `p` and `s` on its rows. Each row leads with the glyph every aforge
-screen uses — `▲` needs you, `●` being checked or fired right now, `◦` waiting
+screen uses — `?` needs you, `◐` being checked or fired right now, `◦` waiting
 for its time, `∙` paused or stopped — then your own words, then the cadence in
 words. A project with nothing set up answers
 `Nothing stands in this project yet.`
@@ -581,13 +581,13 @@ to except one place from it are on the standing-orders page.
 
 ## Why does my watch show a filled dot right now
 
-`●` on an item means a pass has that item in its hands **at this moment** — not
+`◐` on an item means a pass has that item in its hands **at this moment** — not
 that something is wrong, and not that it has news for you. It is one of two
 things, and the item's card says which:
 
 ```
-● checking now · since 4s
-● firing now
+◐ checking now · since 4s
+◐ firing now
 ```
 
 **Checking** is the look: a probe command running, the files you are watching
@@ -601,7 +601,7 @@ own folder — `~/.aforge/v3/standing/<id>/running` — naming the process, the
 moment it started and which of the two halves it is in, and removes it when that
 item's pass ends. Every aforge screen reads that file. So a firing started by
 the OS timer with no window open at all, or by a window in another terminal,
-still shows `●` on your home and in your status line.
+still shows `◐` on your home and in your status line.
 
 A marker is always doubted before it is believed. If the process that wrote it
 is gone, or the marker is older than the **2 minutes** one pass may last, it is
@@ -609,7 +609,7 @@ read as a leftover and no dot is drawn — a machine that lost power mid-firing
 never leaves a watch reading "checking now" for the rest of the week.
 
 Most passes are over in far less than a second, so the ordinary state of a
-healthy watch is `◦`. Seeing `●` means you caught one working. On the status
+healthy watch is `◦`. Seeing `◐` means you caught one working. On the status
 line the `keeping an eye on N` segment is still while nothing is running and
 turns while something is.
 
