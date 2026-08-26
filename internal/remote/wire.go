@@ -103,6 +103,11 @@ import (
 // still refuses a mismatch: a version-3 engine states nothing, so a version-4
 // surface reading a replica off it would draw a status line frozen at whatever
 // the welcome said.
+//
+// VERSION 4 ADDS [MethodPing]. It changes no session state and carries no
+// payload in either direction; the version still moves because a method one
+// half may send and the other half cannot answer is a protocol difference, and
+// Decision 3 in docs/REMOTE.md says those differences are refused at the door.
 const Version = 4
 
 // Frame is one line on the wire, either direction.
@@ -126,6 +131,12 @@ type Frame struct {
 	Method string `json:"method,omitempty"`
 	// Payload is the frame's body, shaped by Kind and Method.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// Encoding and Data carry a large payload after both ends agreed on the
+	// encoding at the version door. Payload stays the ordinary representation
+	// so an older peer sees exactly the frames it has always seen; Data is only
+	// emitted to a peer whose hello named this encoding.
+	Encoding string `json:"encoding,omitempty"`
+	Data     []byte `json:"data,omitempty"`
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
@@ -216,6 +227,11 @@ const (
 	// machine, spend joins its titles onto the ledger's ids, and search opens
 	// the conversation behind a hit out of it — so one door answers all five.
 	MethodPlacesWorld = "Places.World" // nothing → session.World
+	// MethodPing is one empty frame out and one empty frame back. The surface
+	// times that round trip on its own machine; a timestamp carried between two
+	// machines would mix clocks that need not agree and would not measure the
+	// path the person is actually waiting on.
+	MethodPing = "Ping" // nothing → nothing
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
@@ -326,6 +342,12 @@ type Hello struct {
 	Model string `json:"model,omitempty"`
 	Level string `json:"level,omitempty"`
 
+	// Encodings are the optional frame payload encodings this surface can read.
+	// They are negotiated INSIDE one protocol version because absence means the
+	// old JSON payload and every added field is omitempty: an older engine
+	// ignores this offer, and a newer engine sends it nothing encoded.
+	Encodings []string `json:"encodings,omitempty"`
+
 	// Resume is how far this surface got before it went away, one entry per
 	// stream it still cares about. Empty is a surface that has seen nothing,
 	// which is every first attach.
@@ -393,6 +415,9 @@ type Welcome struct {
 	// the surface's own settings would be a safety claim about a machine
 	// nobody consulted.
 	ApprovalMode string `json:"approvalMode,omitempty"`
+	// Encoding is the one frame payload encoding selected from Hello.Encodings,
+	// or empty when this connection stays on ordinary JSON payloads.
+	Encoding string `json:"encoding,omitempty"`
 
 	// PlacesRoot is the engine machine's own state root — the directory
 	// [MethodPlacesWorld] walked, on the disk it walked it on.

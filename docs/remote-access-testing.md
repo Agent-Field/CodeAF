@@ -25,8 +25,8 @@ part is code-complete but has no service deployed, so it fails with a clear sent
 make build          # → bin/aforge
 ```
 
-Add `bin/aforge` to the PATH of **both** machines you test with. The two halves must be the
-same build: the protocol version is checked at the door and a mismatch is refused with
+Add `bin/aforge` to the PATH of **both** machines you test with. The two halves must speak
+the same protocol version: that version is checked at the door and a mismatch is refused with
 
 ```
 <dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
@@ -93,7 +93,7 @@ they do.
 ```sh
 ssh localhost true                       # the only prerequisite
 cp bin/aforge <somewhere on the PATH a non-login ssh sees>
-ssh localhost aforge version             # both ends must be the SAME build
+ssh localhost aforge version             # both ends must speak the same protocol version
 aforge chat --host localhost:code/app --model deepseek/deepseek-v4-flash
 ```
 
@@ -111,7 +111,7 @@ pid**, because a pattern wide enough to match `aforge engine` also matches the s
 typed it in:
 
 ```sh
-kill -9 $(pgrep -f "^ssh -T localhost aforge engine" | head -1)
+kill -9 $(pgrep -f "^ssh -T .* localhost aforge engine" | head -1)
 ```
 
 **Verified this way, on this tree:** a turn mid-`bash` survives the kill and completes
@@ -132,10 +132,10 @@ aforge chat --host devbox:/srv/code/app   # absolute, over there
 aforge resume --host devbox               # the picker, on that machine's conversations
 ```
 
-**What you should see.** The machine appears only as part of the place — `devbox:app` in the
+**What you should see.** The machine appears as part of the place — `devbox:app` in the
 status line's place segment, `devbox:/srv/code/app` in `/status`, and `devbox · porting the
-parser` in the legend under the input box. There is **no** "connected" badge and no icon; a
-healthy connection says nothing about itself.
+parser` in the legend under the input box. After its first measurement, the connection
+segment reads like `devbox · 3ms`. There is **no** "connected" badge and no icon.
 
 **What to check:** ask it to run `pwd` and read a file. Every path it names should be the far
 machine's. `~` collapsing runs against *your* home, so expect full paths.

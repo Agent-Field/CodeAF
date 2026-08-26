@@ -10,10 +10,10 @@ import (
 
 // ── THE LINK TO THE MACHINE THE CONVERSATION IS ON ──────────────────────────
 //
-// host.go says the connection is shown as the PLACE and nowhere else, and that
-// is still true of a connection that is working. This file is the other half:
-// what the surface says when the link between here and there is not working, or
-// has just come back and brought news with it.
+// host.go says the MACHINE is shown as the place; this file says what the link
+// itself can honestly add: a measured round trip while it is healthy, the
+// reconnecting condition while it is not, and news or waiting questions when
+// it comes back.
 //
 // Do not confuse this with link.go, which is about the terminal READING this
 // surface being on the far side of an ssh — a different link, a different fact,
@@ -21,11 +21,13 @@ import (
 // pipe `--host` opens to the engine, and internal/remote redials it for up to
 // five minutes without telling anybody (its redial.go).
 //
-// THREE THINGS CROSS AND EACH IS A DIFFERENT KIND OF SENTENCE:
+// FOUR THINGS CROSS AND EACH HAS A DIFFERENT LIFE:
 //
 //	the note      a CONDITION, true right now and false a second later, so it
 //	              is a status-line segment and nothing else. It is asked on the
 //	              frame, so it must answer from what is already held.
+//	the ping      a MEASUREMENT, one empty round trip on a slow clock. Its
+//	              rolling answer is cached before the frame reads it.
 //	the notice    NEWS, once — the engine did not keep the turn, or it came back
 //	              with a different conversation open. It is an ordinary note in
 //	              the transcript, which is where every one-off sentence this
@@ -35,7 +37,7 @@ import (
 //	              new kind of card: it is the card this surface would have drawn
 //	              live, replayed through the same door.
 //
-// AND ALL THREE ARE ABSENT ON A LOCAL SESSION, because there is no link to have
+// AND ALL FOUR ARE ABSENT ON A LOCAL SESSION, because there is no link to have
 // anything to say about — a capability that cannot work is absent, not broken.
 
 // LinkSeam is what a door that opened this conversation over a connection can
@@ -67,6 +69,13 @@ type LinkSeam struct {
 	// set, under the mutex that guards it, with nothing on the wire behind it.
 	// A door that wired something slower here would be wiring a different law.
 	Note func() string
+
+	// Ping measures one empty call to the far machine and back. It is asked on
+	// this file's own slow clock, never while a frame is being assembled and
+	// never while Note says the link is being redialled.
+	//
+	// Nil is the whole local-session rule: no timer, no call and no segment.
+	Ping func() (time.Duration, error)
 
 	// Notice is one sentence to show once and then forget, and the empty string
 	// when there is none.
@@ -165,13 +174,14 @@ const (
 
 // linkSegment is the status line's segment for the link:
 //
+//	devbox · 3ms
 //	reconnecting to devbox — trying for up to 5 minutes
 //
-// NOTHING AT ALL WHEN THERE IS NOTHING, which is the emptiness law and also
-// exactly what host.go's header has always promised about a remote session:
-// there is no badge, no icon and no "connected" word. A working link says
-// nothing, and this segment exists only in the seconds where that stops being
-// true — which is the test a good indicator passes.
+// NOTHING AT ALL UNTIL A ROUND TRIP HAS ANSWERED. A local session has no seam,
+// and a hosted one begins with no estimate, so neither guesses `0ms`. Once a
+// measurement exists, the machine and the rolling estimate are one quiet fact.
+// If the link drops, the reconnecting sentence outranks that old measurement
+// and occupies this segment until the link comes back.
 //
 // THE SENTENCE IS THE CLIENT'S OWN AND IS NOT REBUILT HERE. It names the
 // machine and the span it will keep trying for, both of which are derived over
@@ -179,6 +189,19 @@ const (
 // roamSpan): a second spelling on this side would be a number that drifts the
 // first time somebody changes that window.
 func (a *app) linkSegment() string {
+	if note := a.linkNote(); note != "" {
+		return note
+	}
+	if !a.hosted() || a.linkLatency <= 0 {
+		return ""
+	}
+	return a.host + " · " + latencyWord(a.linkLatency)
+}
+
+// linkNote is the reconnecting condition already held by the client. Keeping
+// its nil rule in one place lets the meter, the paint and the clock all give
+// that sentence precedence without each inventing a different fallback.
+func (a *app) linkNote() string {
 	if a.link.Note == nil {
 		return ""
 	}
@@ -189,7 +212,81 @@ func (a *app) linkSegment() string {
 // is the paint clock's question — a frame drawn while a redial is running has
 // to be followed by another one, or the segment would stay on the screen after
 // the link came back and vanish only when something else happened to repaint.
-func (a *app) linkNoting() bool { return a.linkSegment() != "" }
+func (a *app) linkNoting() bool { return a.linkNote() != "" }
+
+// hostPingEvery is the connection meter's cadence. Five seconds is frequent
+// enough to follow a link a person is using and slow enough that an idle window
+// adds twelve empty round trips a minute rather than turning observation into
+// traffic.
+const hostPingEvery = 5 * time.Second
+
+// latencyHandful is the EWMA's effective window. A quarter of each new sample
+// moves the reading, so a brief spike is visible without making the status row
+// twitch on every answer.
+const latencyHandful = 4
+
+type (
+	linkPingTickMsg struct{}
+	linkPingMsg     struct {
+		elapsed time.Duration
+		err     error
+	}
+)
+
+// linkPingTick schedules the next gentle reading. Its nil result is the entire
+// local-session rule and keeps an ordinary idle surface free of wakeups.
+func (a *app) linkPingTick() tea.Cmd {
+	if !a.hosted() || a.link.Ping == nil {
+		return nil
+	}
+	return tea.Tick(hostPingEvery, func(time.Time) tea.Msg { return linkPingTickMsg{} })
+}
+
+// linkPingKick sends one reading off the update loop. The reconnecting check is
+// made from state the client already holds, so a broken link gets no extra call
+// and the existing sentence keeps the row to itself.
+func (a *app) linkPingKick() tea.Cmd {
+	if !a.hosted() || a.link.Ping == nil || a.linkPingAsking || a.linkNote() != "" {
+		return nil
+	}
+	a.linkPingAsking = true
+	ping := a.link.Ping
+	return func() tea.Msg {
+		elapsed, err := ping()
+		return linkPingMsg{elapsed: elapsed, err: err}
+	}
+}
+
+// linkPingBack folds one answer into the cached estimate. Errors leave the last
+// measured fact alone; the reconnecting sentence hides it while a redial is in
+// progress, and the next healthy answer moves it again.
+func (a *app) linkPingBack(msg linkPingMsg) {
+	a.linkPingAsking = false
+	if msg.err != nil || msg.elapsed <= 0 {
+		return
+	}
+	if a.linkLatency <= 0 {
+		a.linkLatency = msg.elapsed
+	} else {
+		a.linkLatency = (a.linkLatency*time.Duration(latencyHandful-1) + msg.elapsed) / latencyHandful
+	}
+	a.touch()
+}
+
+// latencyWord is a measured duration in the row's compact grammar. A real
+// sub-millisecond loopback is shown as 1ms rather than `0ms`: zero means unknown
+// everywhere else on this surface and the emptiness law does not let a rounded
+// measurement borrow that spelling.
+func latencyWord(elapsed time.Duration) string {
+	if elapsed <= 0 {
+		return ""
+	}
+	rounded := elapsed.Round(time.Millisecond)
+	if rounded < time.Millisecond {
+		rounded = time.Millisecond
+	}
+	return itoa(int(rounded/time.Millisecond)) + "ms"
+}
 
 // ── 2. the notice, once ─────────────────────────────────────────────────────
 

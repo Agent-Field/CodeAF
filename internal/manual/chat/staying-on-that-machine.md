@@ -41,6 +41,27 @@ the connection came back, but devbox does not keep a turn running while nothing 
 Nothing is lost either way. The far machine is the only thing that writes the session
 file and it writes it as the conversation happens.
 
+## How quickly a dead ssh link is noticed and retried
+
+With the defaults, an ssh connection that stops answering is noticed in about **9
+seconds**: aforge asks after 3 seconds of silence and gives up after 3 unanswered asks.
+The existing reconnect loop then keeps trying for up to 5 minutes. A cleanly closed link
+is noticed immediately. During that gap the status line says
+`reconnecting to devbox — trying for up to 5 minutes`; a message submitted in the gap is
+refused visibly rather than lost.
+
+A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
+full handshake when the underlying ssh connection is still healthy. Its control socket
+lives under this machine's aforge state directory at `~/.aforge/v3/ssh/` (moved by
+`AFORGE_HOME`). A state path too long for a unix socket disables reuse only; the ordinary
+ssh connection still opens.
+
+These network-dependent defaults are editable in settings as `ssh reuse`, `ssh
+heartbeat`, `ssh missed heartbeats`, and `ssh traffic`. Setting the heartbeat to 0 turns
+dead-link probes off; setting reuse to 0 stops keeping a connection after its channel
+closes. Whole-stream ssh compression stays off because it usually slows a LAN attach;
+large transcript frames compress themselves only when both aforge builds support it.
+
 ## I closed my laptop — did it keep going
 
 If that machine holds sessions: yes, and you rejoin the turn part-way through.

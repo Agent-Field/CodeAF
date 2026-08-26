@@ -820,6 +820,10 @@ func (a *app) groundReply(msg tea.BackgroundColorMsg) tea.Cmd {
 // removed, arriving through the door the wave added. So it is re-made here,
 // once per measurement, and every row rebuilt afterwards is rebuilt through it.
 func (a *app) repaintPalette() {
+	// The generation is the ink half of every entry's rendered-row key. Marking
+	// rows stale below remains useful for the other painted memos, while this
+	// number makes the entry cache correct on its own terms.
+	a.inkState++
 	a.mdStyler = markdownStyler().WithBodyInk(a.pal.ramp.ink.tokenColor())
 	stale := func(entries []entry) {
 		for i := range entries {

@@ -72,6 +72,11 @@ const (
 // is answered as "no host today" and the caller falls back to the pipe.
 const socketLimit = 104
 
+// SocketPathFits exposes the shared Unix-socket ceiling to other doors that
+// place a socket under the aforge state root. Keeping the number here prevents
+// ssh control sockets and engine-host sockets from drifting across platforms.
+func SocketPathFits(path string) bool { return len(path) <= socketLimit }
+
 // Dir is where the host for one workspace keeps its socket: a directory under
 // ~/.aforge/v3/hosts, resolved through internal/home so AFORGE_HOME moves it
 // with everything else.
@@ -103,7 +108,7 @@ func SocketPath(workspace string) (string, error) {
 		return "", err
 	}
 	socket := filepath.Join(dir, socketName)
-	if len(socket) > socketLimit {
+	if !SocketPathFits(socket) {
 		return "", fmt.Errorf("engine host: %s is too long a path for a socket", socket)
 	}
 	return socket, nil

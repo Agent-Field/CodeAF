@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,6 +114,35 @@ func TestMissingCommandIsRecognizedInEveryShellsWording(t *testing.T) {
 	}
 	if mentionsMissingCommand("Permission denied (publickey).") {
 		t.Fatal("an ssh refusal was read as a missing aforge")
+	}
+}
+
+func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(os.TempDir(), "acp"))
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	for _, want := range []string{
+		"-T", "ControlMaster=auto", "ControlPath=", "ControlPersist=300",
+		"ServerAliveInterval=3", "ServerAliveCountMax=3", "IPQoS=lowdelay",
+		"devbox aforge engine",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("ssh args %q do not contain %q", args, want)
+		}
+	}
+	if strings.Contains(args, " -C ") || strings.Contains(args, "Compression=yes") {
+		t.Fatalf("ssh args enable whole-stream compression on the LAN: %q", args)
+	}
+}
+
+func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), strings.Repeat("deep", 40)))
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	if strings.Contains(args, "ControlPath=") || strings.Contains(args, "ControlMaster=") {
+		t.Fatalf("overlong control socket was still enabled: %q", args)
+	}
+	if !strings.Contains(args, "ServerAliveInterval=3") || !strings.HasSuffix(args, "devbox aforge engine") {
+		t.Fatalf("the ordinary ssh transport was lost with multiplexing: %q", args)
 	}
 }
 
@@ -405,24 +435,25 @@ func TestTheEntryNoticeSaysWhoElseIsOnTheConversation(t *testing.T) {
 	}
 }
 
-// THE THREE THINGS ONLY A CONNECTION KNOWS REACH THE SURFACE. The client
-// answers all three, and this door hands all three over: the live sentence about
-// a link being redialled, the one-off news a redial discovered, and the
-// questions raised while nobody was attached. A nil in any of them is a fact a
-// person would never be told, so the test is about presence rather than about
-// wording — the sentences themselves belong to internal/remote.
+// THE FOUR THINGS ONLY A CONNECTION KNOWS REACH THE SURFACE. The client answers
+// all four, and this door hands all four over: the live sentence about a link
+// being redialled, the measured round trip, the one-off news a redial
+// discovered, and the questions raised while nobody was attached. A nil in any
+// of them is a fact a person would never be told, so the test is about presence
+// rather than wording — the sentences themselves belong to internal/remote.
 func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
 	var client *remote.Client
 	seams := newHostSeams(client)
 	var _ func() string = seams.Link
+	var _ func() (time.Duration, error) = seams.Ping
 	var _ func() string = seams.Notice
 	var _ func() ([]remote.HeldQuestion, error) = seams.Held
-	if seams.Link == nil || seams.Notice == nil || seams.Held == nil {
+	if seams.Link == nil || seams.Ping == nil || seams.Notice == nil || seams.Held == nil {
 		t.Fatal("a seam that is not filled is a seam nobody can wire")
 	}
 
 	options := hostOptions(client, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
-	if options.Link.Note == nil || options.Link.Notice == nil || options.Link.Held == nil {
+	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
 		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
 	}
 }

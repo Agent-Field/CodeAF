@@ -665,9 +665,10 @@ type Options struct {
 
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
-	// link is being redialled, the one-off news a redial discovered, and the
-	// questions raised while nobody was attached ([LinkSeam] says what each
-	// function owes, and hostlink.go says where each one lands on the screen).
+	// link is being redialled, the empty round trip to measure on a slow clock,
+	// the one-off news a redial discovered, and the questions raised while nobody
+	// was attached ([LinkSeam] says what each function owes, and hostlink.go says
+	// where each one lands on the screen).
 	//
 	// The zero value is a surface with no link to report, which is every LOCAL
 	// session: no segment on the status line, no notice looked for, no question
