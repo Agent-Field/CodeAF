@@ -1012,6 +1012,31 @@ The welcome box is the one exception worth naming: **`tab` does not dismiss it**
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
 
+## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
+
+`alt+enter` with something typed into the composer on any place opens the **composer
+layer**: the page behind dims, the box stays where it is, and the three facts a task needs
+appear under it. The places page has the layer in full; these are its keys.
+
+| Key | What it does |
+| --- | --- |
+| `alt+enter` | first press opens the layer; second press sends the task off |
+| `alt+w` | move the task to the next project aforge knows, and round again |
+| `alt+o` | open the model list for the **execution** slot — what the work runs on |
+| a digit, or `.` | type the spend cap; the figure changes as you type |
+| `backspace` | take one character off the cap |
+| `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
+| `esc` | back to the place you were on, sentence still in the box |
+
+`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
+neither can move a view while you are aiming at a destination, and pressing them with no
+layer up does nothing at all.
+
+While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
+letters do not reach the composer — what you typed is already written and is on the screen
+above you. Inside the model list `alt+o` opens, the keys are the model picker's own — type
+to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
+
 ## Keys on home, and is there a shortcut for it
 
 **Press the space bar twice with an empty message box.** That is the way back to home from

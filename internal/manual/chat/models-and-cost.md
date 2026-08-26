@@ -792,7 +792,9 @@ place, a standing promise to the standing place, a conversation to home.
 
 **There is no budget editor here and there will not be one.** The allowance is a rail and it
 is edited on the status line's money segment — the one that shows it. See "Spending limits"
-below.
+below. A cap on **one task** is a different figure and is set where that task is started —
+on the composer layer's third line, before you send it (the tasks page, *a task started from
+the composer carries a cap*).
 
 Until the ledger has a priced line inside the window, the place says what it is for and
 nothing else, which is what every place with nothing to draw does.
@@ -1021,3 +1023,9 @@ is no way to zero a conversation's recorded spend while keeping the conversation
 The settings panel's **Session** tab carries a row for it, labelled `session ceiling`. The
 panel's search matches a row's registry key as well as its label, so typing either `spendRail`
 or `ceiling` finds it.
+
+**A task started from the composer carries a ceiling of its own**, whether or not this row
+is set: `alt+enter` opens the composer layer, and its third line is the figure that errand
+may spend before it stops and asks you. It is the same mechanism — the errand's own session
+gets that ceiling — so everything above is true of it, and any adaptive run it starts is
+held to a tank no bigger than the same figure. The tasks page has it in full.
