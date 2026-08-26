@@ -157,14 +157,16 @@ on the far machine.
 
 ## How you can tell you are on another machine
 
-**While the connection is healthy, the machine is shown as part of the place and nowhere
-else.** There is no badge, no icon and no "connected" word — a working connection says
-nothing about itself.
+**The machine is part of the place, and the link's speed is a measured segment.** There is
+no badge, icon or "connected" word. The connection segment begins empty; after its first
+empty round trip answers it reads like `devbox · 3ms`. The figure is a rolling estimate,
+asked every few seconds and never on the frame path. It is not guessed, so there is no
+segment before the first answer and never a `0ms` placeholder.
 
-The one exception is a connection that is **not** healthy: while a dropped link is being
-redialled, a `connection` segment appears in the status line reading
+When a dropped link is being redialled, its sentence wins over the last measurement. The
+`connection` segment reads
 `reconnecting to devbox — trying for up to 5 minutes`, and it goes away again when the link
-is back. Nothing is drawn at any other time.
+is back. No latency check is sent while the redial is in progress.
 
 The workspace is written with the machine in front of it and a colon between, the way you
 would type it into `scp`:
@@ -178,7 +180,8 @@ than as a path prefix, because that line carries the conversation's name and not
 folder: `devbox · porting the parser`.
 
 `/status` also names the session file with its machine in front of it, because that is a
-path you may want to copy.
+path you may want to copy. Once a measurement exists it also says `the round trip to
+devbox is about 3ms` under `connection`.
 
 The `~` collapse still runs against **this** machine's home directory, so it rarely fires
 on a remote path — expect to see the full path.

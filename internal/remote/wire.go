@@ -49,7 +49,12 @@ import (
 // version-1 engine would silently interrupt a turn the surface believed was
 // detached — but it does mean this file stayed a superset rather than becoming
 // a second protocol.
-const Version = 3
+//
+// VERSION 4 ADDS [MethodPing]. It changes no session state and carries no
+// payload in either direction; the version still moves because a method one
+// half may send and the other half cannot answer is a protocol difference, and
+// Decision 3 in docs/REMOTE.md says those differences are refused at the door.
+const Version = 4
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -132,6 +137,12 @@ const (
 	// exactly where they were.
 	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
 	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
+
+	// MethodPing is one empty frame out and one empty frame back. The surface
+	// times that round trip on its own machine; a timestamp carried between two
+	// machines would mix clocks that need not agree and would not measure the
+	// path the person is actually waiting on.
+	MethodPing = "Ping" // nothing → nothing
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 

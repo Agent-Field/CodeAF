@@ -98,11 +98,11 @@ between waiting and running the command again. **A narrow terminal never drops i
 everything else on that end of the line is a number, and this is the reason none of those
 numbers are moving.
 
-**A working connection draws nothing at all.** There is no badge, no icon and no
-"connected" word — this segment exists only in the seconds where the link has stopped
-working, and it is gone the moment it comes back. On a window with nothing running and
-nobody typing, nothing on the screen is being redrawn at all, so the segment turns up the
-moment anything redraws it; a keystroke is enough.
+**The reconnecting sentence replaces the healthy round-trip reading.** After a measurement
+has answered, a working connection reads like `devbox · 3ms`; before the first answer it
+draws nothing, never `0ms`. There is no badge, icon or "connected" word. While the link is
+down no latency check is sent, and the reconnecting sentence takes the segment until the
+link comes back.
 
 On a narrow phone-width terminal the row has no room for a sentence that long, and it
 moves into the status sheet with the rest of the numbers. `/status` prints it there too,

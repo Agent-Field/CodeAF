@@ -459,7 +459,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 | 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
 | 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 9 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
-| 10 | connection | `reconnecting to devbox — trying for up to 5 minutes` | the link to the machine a `--host` conversation runs on has dropped and is being redialled | empty on every local session, and on a remote one whenever the link is working — which is almost always |
+| 10 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
 | 11 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
@@ -472,6 +472,18 @@ terminals leave behind, so it never lags: a conversation that stops on a questio
 are looking at a different one is counted in `N waiting` on the next frame. `tab` over an
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
+
+## Host latency and round-trip time in the status line
+
+For `aforge chat --host devbox`, the connection segment begins empty. Every few seconds
+the surface sends one empty call, off the drawing path, and folds the reply into a rolling
+estimate. After the first answer it reads like `devbox · 3ms`. A sub-millisecond reply is
+shown as `1ms`, never `0ms`; no answer means no segment.
+
+The check is never sent per frame and is skipped while the link is reconnecting. During a
+redial the existing sentence — `reconnecting to devbox — trying for up to 5 minutes` —
+takes the segment. `/status` spells the healthy fact out as `the round trip to devbox is
+about 3ms` under `connection`.
 
 ## Why the numbers on the status line fade
 

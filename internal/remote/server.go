@@ -910,6 +910,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, errors.New("engine: no conversation is open")
 	}
 	switch call.Method {
+	case MethodPing:
+		// The empty answer is the point: elapsed time belongs to the surface's
+		// clock, so the engine contributes no timestamp and no machine-clock skew.
+		return nil, nil
+
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
