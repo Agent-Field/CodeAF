@@ -721,11 +721,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.cycleEffort()
 
 	case "pgup":
-		a.scroll(-a.scrollPage())
-		return nil
+		return a.scroll(-a.scrollPage())
 	case "pgdown":
-		a.scroll(a.scrollPage())
-		return nil
+		return a.scroll(a.scrollPage())
 
 	case jumpKey:
 		// BACK TO THE LIVE EDGE IN ONE KEY, from anywhere in the transcript and
@@ -763,8 +761,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.input.empty() && a.selectTool(-1) {
 			return nil
 		}
-		a.scroll(-1)
-		return nil
+		return a.scroll(-1)
 
 	case "down":
 		if !a.input.onLastLine() {
@@ -778,8 +775,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.input.empty() && a.selectTool(1) {
 			return nil
 		}
-		a.scroll(1)
-		return nil
+		return a.scroll(1)
 
 	case "backspace":
 		// BACKSPACE AFTER A LIVE TAG MAKES IT PLAIN BEFORE IT EDITS IT. The

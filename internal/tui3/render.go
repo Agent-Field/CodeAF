@@ -43,7 +43,7 @@ const (
 	// with different things — hitMore lifts a cap and can never put it back,
 	// while a fold is a thing a person opens AND shuts.
 	hitBrief
-	hitTask             // a task proposal (task.go): click opens its brief
+	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
 	// names. It is a hit of its own rather than another hitTask because the two
@@ -673,11 +673,16 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryUser && len(e.steers) > 0 && a.steersMoving(e) {
 		return a.renderEntry(i, e, width)
 	}
-	if e.built && e.width == width && !e.stale {
+	if e.identity == 0 {
+		a.renderIdentity++
+		e.identity = a.renderIdentity
+	}
+	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
+	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
 	}
 	e.rows = a.renderEntry(i, e, width)
-	e.width, e.built, e.stale = width, true, false
+	e.rowKey, e.width, e.built, e.stale = key, width, true, false
 	return e.rows
 }
 
@@ -700,6 +705,7 @@ const userLeadCols = len(userLead)
 // thinking block, whose marker brightens — is also the only one whose rows are
 // cached (hover.go marks it stale in exchange).
 func (a *app) renderEntry(i int, e *entry, width int) []string {
+	a.renders++
 	switch e.kind {
 	case entryUser:
 		// THE PERSON'S OWN WORDS, IN A QUIET BLUE OF THEIR OWN — the accent on

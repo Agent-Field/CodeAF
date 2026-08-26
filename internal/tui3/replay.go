@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -77,6 +79,12 @@ func (a *app) replay() {
 // [Agent.Transcript] ([app.backfill]): the two lists are identical up to where
 // the running turn begins, and the backfill never walks past it.
 func (a *app) replayList(all []session.DisplayEntry) {
+	// THE TRANSCRIPT IS MIRRORED ON THE SURFACE. A hosted agent paid for this
+	// reading across ssh; paging the words afterwards must be a local slice read,
+	// not another engine call hidden inside a scroll gesture.
+	a.transcript = append([]session.DisplayEntry(nil), all...)
+	a.historyGen++
+	a.historyLoading = false
 	// THE BACKFILL'S BOOKKEEPING IS SET HERE, on every path including the one
 	// with nothing to replay. A fresh session that inherited a mark from the
 	// conversation before it would offer to scroll back into somebody else's
@@ -170,6 +178,11 @@ func (a *app) rebase() {
 		return
 	}
 	crossed := len(a.earlier) > 0 && a.earlierFrom < len(a.earlier)
+	// Compaction replaced the engine's live prefix, so both halves of the local
+	// mirror are refreshed together before their splice is rebased.
+	a.historyGen++
+	a.historyLoading = false
+	a.transcript = append([]session.DisplayEntry(nil), a.agent.Transcript()...)
 	history := a.agent.EarlierHistory()
 	a.earlier, a.earlierFloor = history.Entries, history.Floor
 	switch {
@@ -233,7 +246,7 @@ func (a *app) backfill() bool {
 // backfillLive hands up one helping of the conversation below the floor — the
 // part of the transcript that is not a rewritten copy of anything.
 func (a *app) backfillLive() bool {
-	all := a.agent.Transcript()
+	all := a.transcript
 	to := a.replayFrom
 	if to > len(all) {
 		// A transcript that got SHORTER than the mark is one a rewind cut under
@@ -253,6 +266,85 @@ func (a *app) backfillLive() bool {
 	a.prepend(all[from:to], false)
 	a.replayFrom = from
 	return true
+}
+
+// prefetchHistory asks for the next local page once the viewport is within one
+// screen of the oldest materialized row. The command boundary is deliberate
+// even though the data is memory-resident: replaying entries can grow into
+// markdown work, and no key or wheel handler is allowed to wait for that page.
+func (a *app) prefetchHistory() tea.Cmd {
+	if a.historyLoading || a.room != nil || !a.moreHistory() {
+		return nil
+	}
+	height := a.viewHeight()
+	total := len(a.visible(a.bodyWidth()))
+	if a.offsetFor(total, height) > height {
+		return nil
+	}
+
+	msg := historyPageMsg{gen: a.historyGen}
+	var source []session.DisplayEntry
+	switch {
+	case a.replayFrom > a.earlierFloor:
+		msg.to = a.replayFrom
+		msg.from = msg.to - replayTail
+		if msg.from < a.earlierFloor {
+			msg.from = a.earlierFloor
+		}
+		if msg.to > len(a.transcript) || msg.from >= msg.to {
+			return nil
+		}
+		source = a.transcript
+	case a.earlierFrom > 0:
+		msg.earlier = true
+		msg.to = min(a.earlierFrom, len(a.earlier))
+		msg.from = max(0, msg.to-replayTail)
+		msg.seam = !a.earlierSeam
+		if msg.from >= msg.to {
+			return nil
+		}
+		source = a.earlier
+	default:
+		return nil
+	}
+
+	a.historyLoading = true
+	return func() tea.Msg {
+		msg.entries = append([]session.DisplayEntry(nil), source[msg.from:msg.to]...)
+		return msg
+	}
+}
+
+// historyPrefetched materializes one returned page above the viewport without
+// moving the line under the reader's eye. A stale answer is harmless: the
+// generation and source position must both still describe the current replay.
+func (a *app) historyPrefetched(msg historyPageMsg) tea.Cmd {
+	if msg.gen != a.historyGen {
+		return nil
+	}
+	a.historyLoading = false
+	if msg.earlier {
+		if a.earlierFrom != msg.to {
+			return a.prefetchHistory()
+		}
+	} else if a.replayFrom != msg.to {
+		return a.prefetchHistory()
+	}
+
+	height := a.viewHeight()
+	beforeTotal := len(a.visible(a.bodyWidth()))
+	beforeOffset := a.offsetFor(beforeTotal, height)
+	a.prepend(msg.entries, msg.seam)
+	if msg.earlier {
+		a.earlierFrom, a.earlierSeam = msg.from, true
+	} else {
+		a.replayFrom = msg.from
+	}
+	afterTotal := len(a.visible(a.bodyWidth()))
+	if !a.stick {
+		a.offset = beforeOffset + afterTotal - beforeTotal
+	}
+	return a.prefetchHistory()
 }
 
 // backfillEarlier hands up one helping from ABOVE the seam — the conversation
