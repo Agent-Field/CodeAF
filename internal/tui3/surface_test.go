@@ -425,8 +425,8 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c twice quits") {
 		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
 	}
-	if !strings.Contains(helpText(""), "alt+enter") {
-		t.Fatalf("help has to name the newline key:\n%s", helpText(""))
+	if !strings.Contains(helpText("", chordSpelling{}), "alt+enter") {
+		t.Fatalf("help has to name the newline key:\n%s", helpText("", chordSpelling{}))
 	}
 }
 
@@ -952,7 +952,7 @@ func TestRewindIsOnTheTableAndDispatches(t *testing.T) {
 }
 
 func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
-	text := helpText("")
+	text := helpText("", chordSpelling{})
 	for _, want := range []string{
 		"/new",
 		"also /clear /clean /reset",
