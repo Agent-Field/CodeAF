@@ -1592,6 +1592,9 @@ The reasons, in the order they are worth checking:
 - **The row is under 8 columns wide.**
 - **The call has not finished.** A picture is drawn when the file exists, and
   `generate_image` writes the file last.
+- **The session is over `--host`.** The generated file is on the other machine, so this
+  terminal keeps the full result path instead of reading the same path on this machine.
+  Open the linked path to fetch it and use your desktop viewer.
 - **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
   four types** — a `svg`, a `tiff`, a `pdf`.
 

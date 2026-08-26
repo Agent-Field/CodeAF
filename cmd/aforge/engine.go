@@ -415,7 +415,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// connection would be a second law about one layout — the same argument
 		// Recent's own comment makes two lines down.
 		World: func() session.World {
-			return session.ReadWorld(session.PlacesRoot())
+			world := session.ReadWorld(session.PlacesRoot())
+			world.Artifacts = session.ReadArtifacts(artifactsIndexPath())
+			return world
 		},
 		PlacesRoot: session.PlacesRoot(),
 		Recent: func() []session.Summary {

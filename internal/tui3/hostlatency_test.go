@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -330,6 +331,26 @@ func TestAKeyOverAConnectionAsksTheFarMachineNothing(t *testing.T) {
 	}
 	if made := client.CallsMade() - before; made != 0 {
 		t.Fatalf("thirty-six keystrokes put %d calls on the wire; a key must put none", made)
+	}
+}
+
+// A DELIVERABLE ROW IS DRAWN FROM THE WORLD ALREADY HELD HERE. Its path may be
+// queued for the ordinary batched confirmation, but drawing home must not turn
+// each file in the far index into its own round trip.
+func TestAHostedDeliverablesBandAsksTheFarMachineNothingWhileDrawing(t *testing.T) {
+	a, client := hostedSurface(t)
+	now := time.Now()
+	a.home.world = session.World{Artifacts: []session.Artifact{{
+		Path: "/srv/app/chart.png", Session: "far-session", Title: "chart", Kind: "image", Created: now,
+	}}}
+	row := session.SessionRow{ID: "far-session", Transcript: "/srv/app/far-session/transcript.jsonl"}
+	before := client.CallsMade()
+	got := plain(strings.Join(drawDeliverablesBand(a, ambientBandContext(a, row, now, 60)), "\n"))
+	if !strings.Contains(got, "chart.png") {
+		t.Fatalf("the held far deliverable was not drawn: %q", got)
+	}
+	if made := client.CallsMade() - before; made != 0 {
+		t.Fatalf("drawing one far deliverable put %d calls on the wire", made)
 	}
 }
 

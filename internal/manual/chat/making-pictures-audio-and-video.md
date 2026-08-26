@@ -50,6 +50,13 @@ passed to the image model untouched. Leave them out for its own default.
 
 **You see it, in colour, in the terminal, without doing anything at all.**
 
+That automatic preview is for a session running on this machine. **Over `--host`, the
+generated picture is on the other machine, so the row stays as its full path instead of
+painting pixels from a path this terminal cannot read.** The path is clickable: opening
+it fetches the file and hands the local copy to your desktop. Home's `made for you` band
+also lists the far machine's generated pictures, audio, music and video under the
+conversation that made them, and those paths open through the same file door.
+
 The line above is what aforge itself reads — a path is all that goes into the
 conversation — but the screen does more with it. The moment the call finishes,
 the picture is drawn under its row as a thumbnail, at most 12 rows tall (4 at
