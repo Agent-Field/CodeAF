@@ -3020,14 +3020,19 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	defer stop()
 
 	var (
-		changed    []string
-		seen       = map[string]bool{}
-		seenInfo   = map[string]bool{}
-		lastDirt   string
-		failure    error
-		stopped    string
-		steps      int
-		idle       int
+		changed  []string
+		seen     = map[string]bool{}
+		seenInfo = map[string]bool{}
+		lastDirt string
+		failure  error
+		stopped  string
+		steps    int
+		idle     int
+		// ranCheck says this node had been RUNNING its work — a build, a test, a
+		// script — before anything was taken off its belt. It is what makes the
+		// landing's "unverified" sentence a fact rather than a guess: a node that
+		// never ran a check is not a node whose last edits went unchecked.
+		ranCheck   bool
 		extensions int
 		deadline   = time.Now().Add(limits.deadline)
 		evidence   []string
@@ -3073,6 +3078,15 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				if len(evidence) > 24 {
 					evidence = evidence[len(evidence)-24:]
 				}
+				// AND WHETHER THIS NODE WAS RUNNING ITS WORK, which is not a
+				// question about progress at all — it is what makes the landing's
+				// "unverified" sentence below a fact rather than a guess
+				// (withdrawn.go's [checkingTools]). A harness-made failure does not
+				// count: an answer this side of the wall wrote is not the node
+				// having run anything.
+				if checkingTools[event.Tool] && !event.HarnessMade {
+					ranCheck = true
+				}
 				// ALL THREE QUESTIONS ARE ASKED OF EVERY STEP, and each is
 				// asked before any of them is read, because two of them RECORD
 				// as they answer. The worktree fingerprint has to be refreshed
@@ -3094,6 +3108,24 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 					node.noteWrote(path)
 				}
 				switch {
+				// ── A STEP THE HARNESS FAILED IS THE HARNESS'S STEP ──
+				//
+				// It comes FIRST, ahead of every other reading, because it is not a
+				// finding about the node at all: the tool never ran, the world never
+				// answered, and the bytes the node read were written on this side of
+				// the wall — a hand that was withdrawn, a door that refused the call
+				// (withdrawn.go's [Event.HarnessMade]).
+				//
+				// Measured in SWE-Marathon s4: the landing pass took `bash` off a
+				// worker's belt and the harness then answered eight retries with
+				// "Unknown tool", each of which was a step that taught nothing, saved
+				// nothing and moved no worktree — a counter reading them would have
+				// been counting its own refusals against the model. NEITHER
+				// DIRECTION: it is not progress either, so a harness failure cannot
+				// launder a genuine spin by resetting the count. The step still
+				// costs a step and still stands in the evidence, because the money
+				// was really spent and the auditor should see what happened.
+				case event.HarnessMade:
 				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
 				// node may never write until its final words; a build node may
 				// spend its first dozen steps reading; a node making pictures
@@ -3190,12 +3222,17 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		// being ordered to produce — see [landingInstruction] for what the node
 		// then said. The instruction is generated FROM the belt, so a media verb
 		// the machine does not have is neither offered nor named.
-		child.armMu.Lock()
-		oldTools, oldDefinitions := child.tools, child.definitions
-		child.tools = landingBelt(oldTools)
-		child.definitions, _ = toolDefinitions(child.tools)
-		landing := landingInstruction(child.tools)
-		child.armMu.Unlock()
+		//
+		// THE NARROWING IS A WITHDRAWAL AND SAYS SO (withdrawn.go). It used to be
+		// two slice headers swapped in place, which left the dispatcher unable to
+		// tell a hand that was TAKEN from a name that never existed — so a node
+		// reaching for its build was answered "Unknown tool: bash", retried eight
+		// times because eighteen bytes gave it no reason not to, and was then
+		// nudged for repeating itself. Going through [Agent.withdrawTools] records
+		// what went and what is left, under the same lock as the swap.
+		restore := child.withdrawTools(landingBelt, landingWithdrawal)
+		landing := landingInstruction(child.beltTools())
+		savedInLanding := false
 		if events, err := child.Submit(ctx, landing); err == nil {
 			for event := range events {
 				room.publish(event)
@@ -3205,12 +3242,34 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 						changed = append(changed, path)
 						node.noteWrote(path)
 					}
+					if savingTools[event.Tool] {
+						savedInLanding = true
+					}
 				}
 			}
 		}
-		child.armMu.Lock()
-		child.tools, child.definitions = oldTools, oldDefinitions
-		child.armMu.Unlock()
+		lostItsCheck := child.landingLostTheCheck()
+		restore()
+		// ── AND WHAT IT SAVED IN THAT TURN WAS NEVER CHECKED ──
+		//
+		// Measured in SWE-Marathon s4: a worker that had been building and testing
+		// all run was landed, lost `bash` with the narrowing, and then edited two
+		// source files anyway — the last two things it did. They never compiled.
+		// The report said the work was done, the parent believed it, and the
+		// conversation discovered the breakage five minutes later.
+		//
+		// THREE FACTS MAKE THE SENTENCE TRUE, and it is written only when all
+		// three hold: the node had been running a check, the narrowing took that
+		// hand away, and it saved something afterwards. It says nothing about what
+		// the check was, what language the work is in, or whether the edits are
+		// good — only that nothing looked at them, which is the one thing the
+		// reader downstream cannot see for itself. The words are the vocabulary a
+		// landing already uses for work nobody could stand behind, and they lead
+		// the report, so a parent reading a stopped node's account is never handed
+		// unverified edits as finished ones ([Agent.landStopped]).
+		if savedInLanding && ranCheck && lostItsCheck {
+			stopped = withReport(stopped, unverifiedEdits)
+		}
 	}
 
 	// ── THE NODE THAT HANDED PART OF ITS WORK OUT ──

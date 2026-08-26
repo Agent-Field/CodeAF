@@ -496,6 +496,21 @@ type Event struct {
 	// output for any purpose other than showing it to a person.
 	Output string
 
+	// HarnessMade says this step's failure was written by the HARNESS and not by
+	// the world the model reached for: a hand that was withdrawn (withdrawn.go),
+	// a door that refused the call (consent.go and the rest of the pre-action
+	// chain). It is set on EventToolFailed and on nothing else.
+	//
+	// IT EXISTS FOR THE COUNTERS. A stuck detector's whole claim is that a step
+	// which taught nothing was a step the model had no business taking, and that
+	// claim is false when the harness wrote the answer itself — measured in
+	// SWE-Marathon s4, where the harness withdrew `bash`, answered eight retries
+	// with "Unknown tool", and then injected three [stuck] notes blaming the
+	// model for the retries (withdrawn.go states the whole failure). A surface
+	// may show it or ignore it; the runner reads it to keep the harness's own
+	// steps out of the model's ledger ([runTaskChild]).
+	HarnessMade bool
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through
@@ -1506,6 +1521,14 @@ type Agent struct {
 	// It is under armMu with the belt, and written at the same door, because a
 	// tool on the belt without its record would be a tool judged by nothing.
 	served map[string]servedTool
+	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
+	// hands the harness took, why, and what is left. Nil whenever the belt is
+	// whole, which is nearly always.
+	//
+	// It is under armMu WITH the belt because it is the belt's other half: a
+	// dispatcher that found a name missing needs to know whether it was taken or
+	// never existed, and the two answers must not be able to disagree.
+	withdrawn *toolWithdrawal
 	// armMu guards those headers, that map, and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
