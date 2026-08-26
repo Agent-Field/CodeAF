@@ -134,12 +134,15 @@ func (p *standingPlace) open(a *app) tea.Cmd {
 	p.cursor = p.settle(0)
 	a.closeLists()
 	a.dismissWelcome()
+	// AND THE CLOCK IS ARMED, because what this place is about goes on happening
+	// while somebody is standing in front of it ([placeStanding.tick]).
+	cmd := a.armPlaceClock()
 	// THE BOARD IS TOLD HERE AND NOT AT A DOOR, because there are four doors —
 	// `/standing`, `alt+3`, the tab bar, and the status row's own segment — and
 	// the notice that retires on "you have seen this place" retired on exactly
 	// one of them while this line sat in [app.openStandingAt].
 	a.noticeEvent(eventStandingOpened)
-	return nil
+	return cmd
 }
 
 // close writes the look stamp and forgets the reading. The stamp is what the
@@ -858,6 +861,28 @@ func (placeStanding) counted() bool { return true }
 
 func (placeStanding) open(a *app) tea.Cmd { return a.orders.open(a) }
 func (placeStanding) close(a *app)        { a.orders.close(a) }
+
+// tick is the three-second beat, and THIS IS THE ONE PLACE ON THE SURFACE WHOSE
+// WHOLE SUBJECT IS WHAT HAPPENS WHILE NOBODY IS LOOKING.
+//
+// It never turned the beat at all for a wave: the reading was taken on the open
+// and rebuilt only after one of this place's own writes, so an order that fired,
+// one made in the next terminal, one paused elsewhere, one whose person is
+// wanted — none of them appeared while somebody stood here watching for exactly
+// that. The relative ages moved, because they are measured at draw time from
+// a.now(); the data behind them was frozen.
+//
+// It re-takes the reading the way [standingPlace.window] does — the rows, then
+// the cursor settled onto the list they made — because a list rebuilt under a
+// cursor that was not moved with it is a cursor standing on whatever slid into
+// its line number.
+func (placeStanding) tick(a *app, now time.Time) bool {
+	p := &a.orders
+	a.readStandingElsewhere()
+	p.rows = a.standingPageRows(p.win)
+	p.cursor = p.settle(p.cursor)
+	return true
+}
 func (placeStanding) body(a *app, width, room int) []placeRow {
 	return a.orders.body(a, width, room)
 }

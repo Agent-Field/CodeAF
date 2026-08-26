@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -32,8 +34,16 @@ func (placeSettings) word() string { return "settings" }
 
 func (placeSettings) open(a *app) tea.Cmd {
 	a.raiseSettings()
-	return nil
+	// THE CLOCK IS ARMED FOR THE BAR AND NOT FOR THIS PANEL. Nothing here is
+	// read from disk on a beat — the rows are this machine's settings and they
+	// change when somebody changes them — but the tab bar's numbers are
+	// recomputed on that beat, and a room that armed no clock stopped the whole
+	// bar counting while it was up ([placeSettings.tick]).
+	return a.armPlaceClock()
 }
+
+// tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
+func (placeSettings) tick(a *app, now time.Time) bool { return true }
 
 func (placeSettings) close(a *app) { a.dropSettings() }
 

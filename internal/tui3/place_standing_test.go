@@ -880,3 +880,41 @@ func TestTheRopeIsOnTheStandingPlacesRows(t *testing.T) {
 		t.Fatalf("the page says the resident's word:\n%s", screen)
 	}
 }
+
+// THE ONE PLACE WHOSE SUBJECT IS WHAT HAPPENS WHILE NOBODY IS LOOKING REFRESHES
+// WHILE SOMEBODY IS.
+//
+// Its reading used to be taken on the open and rebuilt only after one of its own
+// writes, and it armed no clock at all — so an order that fired, one made in the
+// next terminal, or one paused elsewhere never appeared on the page a person was
+// watching for exactly that. The ages moved, because they are measured from
+// a.now() at draw time; the data behind them did not.
+func TestTheStandingPlaceRefreshesWhileSomebodyIsStandingOnIt(t *testing.T) {
+	a, agent := standingPlaceApp(t, []standing.Item{
+		standOrder("one", "watch the filings", standing.AltitudeMachine),
+	}, nil)
+	a.openStanding()
+	if !a.at(pageStanding) {
+		t.Fatal("the standing place did not open")
+	}
+	if text := standingPlaceScreen(a); !strings.Contains(text, "watch the filings") {
+		t.Fatalf("the order it opened over is not on the page:\n%s", text)
+	}
+
+	// The next terminal makes one.
+	agent.stand = append(agent.stand, standOrder("two", "sweep the inbox", standing.AltitudeProject))
+	if text := standingPlaceScreen(a); strings.Contains(text, "sweep the inbox") {
+		t.Fatal("the page redrew from the store rather than from its own reading")
+	}
+
+	a.placeBeat(a.placeGen)
+	if text := standingPlaceScreen(a); !strings.Contains(text, "sweep the inbox") {
+		t.Fatalf("the beat did not bring the new order onto the page:\n%s", text)
+	}
+	// AND THE CURSOR IS STILL ON THE ORDER IT WAS ON. A list rebuilt under a
+	// cursor that was not settled with it is a cursor standing on whatever slid
+	// into its line number.
+	if row, ok := a.orders.choice(); !ok || strings.TrimSpace(row.view.Item.Title()) == "" {
+		t.Fatalf("the beat left the cursor on nothing: %+v", row)
+	}
+}

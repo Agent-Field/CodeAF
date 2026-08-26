@@ -141,10 +141,20 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	now := a.now()
+	// THE COUNTS ARE THE BAR'S AND NOT THE ROOM'S, so they are recomputed before
+	// the room is asked anything. They used to sit under the `tick` gate, which
+	// meant a place answering false stopped every OTHER tab's number from being
+	// recomputed as well — standing on the tasks place froze the memory tab's
+	// count, and which room you happened to be in decided whether the bar was
+	// alive. A room may decline to re-read its own rows; it may not silence the
+	// bar.
+	a.refreshPlaceCounts(now)
+	// AND THE ROOM ANSWERS ONLY WHETHER THE BEAT GOES ON. Home runs a beat of
+	// its own and answers false, which is what stops a clock armed by another
+	// place turning forever behind it ([place.tick] holds the whole argument).
 	if !pl.tick(a, now) {
 		return nil
 	}
-	a.refreshPlaceCounts(now)
 	a.touch()
 	return placeTick(a.placeGen)
 }
