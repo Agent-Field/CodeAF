@@ -329,6 +329,35 @@ writes up what it has — so nothing is ever lost mid-flight. And a task stopped
 still checked against its acceptance afterwards: if the work holds it lands finished and
 merges, and the `stopped:` line never reaches you.
 
+## What "bringing the work home" tells the task, and why a tool says it was withdrawn
+
+When the landing turn takes a tool away, a task that reaches for it anyway is not told the
+tool is unknown. It is told it was **withdrawn**, and the answer carries three things: why
+it is gone (`bash was withdrawn from your tools: the work is being brought home`), the
+**exact list of what it still has** by name, and what to do with them — finish what it is
+saving and stop, because calling it again cannot bring it back and there is nothing left to
+run or poll.
+
+This is the difference between an eighteen-byte `Unknown tool: bash` and a sentence. One
+really happened: a task lost `bash`, `read` and `grep` when it was landed, was answered
+`Unknown tool` eight times, retried each call because nothing told it the hand was gone for
+good, and worked out what had happened only in its very last words. A name that was **never**
+on the belt still answers `Unknown tool: <name>` — that one is a genuine mistake by the
+model, and the two are deliberately worded differently.
+
+**Nothing the harness refuses is counted against the task.** A withdrawn tool and a call a
+permission rule turned down are the harness's own answers, not the task working badly: they
+never advance the no-progress counter, never reset it, and never earn a `[stuck]` note. They
+are still steps, they still cost, and they are still in the task's transcript.
+
+**Files saved after a withdrawal are reported as unverified.** If a task had been running
+its work with `bash`, lost it to the landing turn, and then saved something anyway, its
+report says `incomplete — nothing checked the files it saved after its tools were withdrawn
+— they were never built or run`. It stands at the head of the report, directly under the
+limit that fired, so nobody reading it — you, or the conversation that started the task —
+takes those last edits for finished work. It says nothing about whether they are right,
+only that nothing looked at them.
+
 ## What counts as progress, and what gets a task stopped as stuck
 
 The `no_progress` counter resets on any one of three things, and only fires when a step is
@@ -362,6 +391,14 @@ progress: a task writing its own memory again has not learned anything.
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
 stuck and is stopped — which is what the counter is for.
+
+**A failure aforge itself produced is never counted, in either direction.** A tool that was
+withdrawn from the task's belt, and a call a permission rule refused before it ran, are
+answers written on this side of the wall: the tool never ran and the world never saw the
+call. Those steps do not advance the counter, do not reset it, and do not earn the task a
+`[stuck]` note telling it to stop repeating itself. The reason is the run that produced this
+rule: a task was disarmed mid-flight, answered `Unknown tool` eight times, and was then
+nudged three times for the retries the harness had just manufactured.
 
 **A task that handed parts of its work out waits for them, and that wait is never counted
 as being stuck.** While any part is still running the counter does not advance, nothing is

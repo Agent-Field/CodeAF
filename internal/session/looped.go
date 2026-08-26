@@ -21,6 +21,13 @@ package session
 //     across tools rather than per tool, because this is the shape a real loop
 //     takes: the model varies the call, the failure does not move.
 //
+// AND NOTHING THE HARNESS ITSELF ANSWERED IS WATCHED AT ALL. A hand that was
+// withdrawn (withdrawn.go) and a door that refused the call never reached the
+// world: the failure was written on this side of the wall, and a repetition of
+// it is the harness's doing, not the model's. Those results are skipped before
+// either rule sees them — the measured cost of not doing so is three [stuck]
+// notes scolding a worker for retrying a tool the harness had just taken away.
+//
 // ── WHAT A NUDGE IS ──
 //
 // A note in the transcript, in the lane a person's steering rides (agent.go's
@@ -176,6 +183,20 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 	var found nudge
 	ok := false
 	for index, call := range calls {
+		// ── A FAILURE THE HARNESS WROTE IS NOT THE MODEL REPEATING ITSELF ──
+		//
+		// Measured in SWE-Marathon s4 (withdrawn.go): the harness took `bash` off
+		// a worker's belt mid-run, answered every call to it "Unknown tool: bash",
+		// and this watch then injected three [stuck] notes telling the worker it
+		// had "repeated bash 4 times and it has failed the same way each time" —
+		// which was true, and which the harness had caused. A withdrawn hand, a
+		// refused door and every other answer written on this side of the wall
+		// are skipped ENTIRELY: not entered in the window, not counted as an
+		// error, so neither rule can fire on them and neither can a later, real
+		// repetition be blamed on the run they interrupted.
+		if index < len(results) && results[index].harness {
+			continue
+		}
 		signature := callSignature(call)
 		w.recent = append(w.recent, signature)
 		if len(w.recent) > loopWindow {
