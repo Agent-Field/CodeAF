@@ -30,6 +30,10 @@ import (
 
 // runCrew is /crew: the three presets with the current one marked, or one applied.
 func (a *app) runCrew(arg string) {
+	if a.hosted() {
+		a.note(a.remoteProfileWord("the crew"))
+		return
+	}
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
 		a.closeLists()

@@ -1000,10 +1000,10 @@ question in an empty room. Build the harness while working on that machine direc
 is available to run from anywhere afterwards.
 
 **`/harness` is unavailable over a connection.** The registry belongs to the far machine
-and this build has no door onto it from here, so the command says exactly:
+and this build has no door onto it from here, so the command names that machine:
 
 ```
-harnesses are unavailable here
+<machine> owns harnesses · change it on that machine
 ```
 
 rather than listing this machine's harnesses and offering to run them over there.

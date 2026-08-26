@@ -1,10 +1,12 @@
 # --host parity: the slash commands and the keys
 
-WIP handoff from the laptop to spark. This is an AUDIT lane's findings, driven
+Audit continued from the laptop on spark. The findings were driven
 live over an ssh shim (a script named `ssh` first on PATH that execs the far
 command with a different `AFORGE_HOME` — a real second process over real pipes
 on a genuinely separate disk). Nothing is fixed yet; every row below was
-observed on a running `--host` surface, not read off the code alone.
+observed on a running `--host` surface, not read off the code alone. The wrong-disk
+commands below now stop before reading or writing this machine and name the connected
+machine; the remaining keys and commands are recorded below as they are driven.
 
 The rig, for whoever picks this up:
 
@@ -24,6 +26,9 @@ page), `/export` (writes here and says so), `/memory` bare (the place, saying
 [memoryRemoteWord]).
 
 ## BROKEN — the surface answers for the wrong machine
+
+These five findings are fixed on this branch with an honest refusal. No new wire method
+was added, so protocol version remains 5.
 
 1. **`/cache` and `/cache clean`** (`internal/tui3/cachecmd.go`). Reads and
    DELETES `~/.aforge/cache` on the machine the SURFACE runs on. Observed:
@@ -61,19 +66,42 @@ page), `/export` (writes here and says so), `/memory` bare (the place, saying
 
 ## Weak but honest
 
-`/harness` says `harnesses are unavailable here` — true, but it names no machine
-and no reason. One sentence in the register of [connectRemoteWord] would finish
-it.
+`/harness` now names the connected machine and says to change it there.
 
 ## Stale in host.go's honesty table
 
-The table says `the task rail  absent, and absent by construction`. It is NOT
-absent: a hosted surface draws the rail (`+ /task`, `❯ ctrl+g hide`). The deck
-belongs to lane fix/task-card-host; the TABLE belongs to this lane and is wrong.
+The table now records the hosted task rail drawn from `Places.Task`. Live driving also
+confirmed that `/task` itself has no remote task door and refuses honestly; the visible
+rail is a reading of work in the far world, not a task-creation capability.
 
-## Not yet driven
+## Remaining command census
 
-The keys: ctrl+t, ctrl+g, ctrl+e, ctrl+l, ctrl+., ctrl+b, ctrl+s, ctrl+o,
-ctrl+q, ctrl+,, esc esc, space space, alt+1…7, tab, ctrl+r, the steer chord.
-Also `/task`, `/history`, `/resume`, `/new`, `/compact`, `/rewind`, `/attach`,
-`/image`, `/select`, `/quit`, and `/files <path>`.
+| Door | Result | Classification |
+| --- | --- | --- |
+| `/task` | The far world draws the rail, but creation says `this session has no task door`. | HONEST |
+| `/history` | Opens the history held by the attached conversation. | WORKS |
+| `/resume`, `/new` | Ask the engine to replace the attached conversation; paths remain prefixed by the machine. | WORKS |
+| `/compact`, `/rewind` | Act through the remote agent; an empty rewind says `nothing to rewind`. | WORKS |
+| `/attach` | Resolves the source here and carries its bytes to the far session. Bare form refuses with its ordinary usage line. | WORKS |
+| `/image` | Deliberately resolves pictures here and carries the bytes with the message. | WORKS |
+| `/select` | Local terminal selection mode; it describes and selects the rows already on screen. | WORKS |
+| `/files`, `/files <path>` | Browse or fetch from the far workspace through the file seam. | WORKS |
+| `/quit` | Closes this surface and detaches from the far conversation. | WORKS |
+
+## Key census
+
+| Door | Result | Classification |
+| --- | --- | --- |
+| `ctrl+t`, `ctrl+g`, `ctrl+.` | Open/hide the roster and open history from the far world already carried to the surface. | WORKS |
+| `ctrl+e`, `ctrl+l`, `ctrl+o` | Reveal thinking, return to latest, and fold tool output in the transcript already here. | WORKS |
+| `ctrl+b`, `ctrl+s` | Copy and pointer-selection modes are wholly local to the terminal. | WORKS |
+| `ctrl+q`, the steer chord | Follow-up and steer intent travel through the remote agent. | WORKS |
+| `ctrl+,` | Opens settings and immediately says which rows are local and which belong to the other machine. | HONEST |
+| `esc esc` | Rewinds through the remote agent; with no point to take back it says so. | WORKS |
+| `space space` | Opens home from the far world. | WORKS |
+| `alt+1`…`alt+7`, `tab` | Move among the seven places. Home, tasks and standing use far data; spend, search and memory draw their explicit other-machine sentence; settings states its split ownership. | HONEST |
+| `ctrl+r` | Changes the conversation's reasoning rung through the remote agent and its facts replica. | WORKS |
+
+No key in this census reads or writes an undisclosed local substitute. The three place
+keys whose stores have no wire door are honest rather than functional; estimates for
+their missing doors are in the final gap table.

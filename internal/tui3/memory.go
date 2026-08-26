@@ -57,6 +57,10 @@ const memoryOffNote = "memory is off for this session · turn it on under /setti
 
 // runRemember is /remember: keep one thing across conversations.
 func (a *app) runRemember(text string) {
+	if a.hosted() {
+		a.note(memoryRemoteWord)
+		return
+	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
@@ -81,6 +85,10 @@ func (a *app) runRemember(text string) {
 // the recovery — the store keeps a tombstone, not the row's contents in any
 // place a surface can reach — is a database question rather than a keystroke.
 func (a *app) runForget(query string) {
+	if a.hosted() {
+		a.note(memoryRemoteWord)
+		return
+	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
@@ -104,6 +112,10 @@ func (a *app) runForget(query string) {
 
 // runMemories is /memories: the whole list, or the ones matching a word.
 func (a *app) runMemories(query string) {
+	if a.hosted() {
+		a.note(memoryRemoteWord)
+		return
+	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
