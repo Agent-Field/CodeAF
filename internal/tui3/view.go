@@ -1021,32 +1021,6 @@ func (a *app) scroll(delta int) tea.Cmd {
 	return nil
 }
 
-// queueWheel accumulates the conversation's trackpad reports until one frame
-// can apply their sum. Intermediate offsets were never visible, so spending a
-// scroll and a possible history check on each report was work with no reader.
-func (a *app) queueWheel(delta int) tea.Cmd {
-	if delta == 0 {
-		return nil
-	}
-	a.wheelDelta += delta
-	if a.wheelPending {
-		return nil
-	}
-	a.wheelPending = true
-	return tea.Tick(a.frameEvery(), func(time.Time) tea.Msg { return wheelFrameMsg{} })
-}
-
-// flushWheel applies the whole frame's movement once and leaves history paging
-// to the same asynchronous path keyboard scrolling uses.
-func (a *app) flushWheel() tea.Cmd {
-	delta := a.wheelDelta
-	a.wheelDelta, a.wheelPending = 0, false
-	if delta == 0 {
-		return nil
-	}
-	return a.scroll(delta)
-}
-
 // reveal scrolls just enough to put an entry's first row on screen. It is what
 // keeps ↑/↓ selection from walking off the top of the window.
 func (a *app) reveal(entry int) {
