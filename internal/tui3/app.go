@@ -1125,6 +1125,12 @@ type app struct {
 	// stop listing the laptop (tui3.go's [Options.World], [app.worldRoot]).
 	world     func() (session.World, bool)
 	farPlaces string
+	// farRecord is ONE ROW of that machine's record, read deeper than the walk
+	// reads it: the last thing one piece of work said, out of the journal it left
+	// over there. Nil is this process's own disk, which is every local launch —
+	// the card opens the journal itself then (tui3.go's [Options.TaskRecord],
+	// taskrecord.go's [app.readTaskTail]).
+	farRecord func(uri string) (session.TaskRecord, error)
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1902,6 +1908,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		usageLedger:      opts.UsageLedger,
 		world:            opts.World,
 		farPlaces:        opts.WorldRoot,
+		farRecord:        opts.TaskRecord,
 		live:             -1,
 		echoAt:           -1,
 		sel:              -1,

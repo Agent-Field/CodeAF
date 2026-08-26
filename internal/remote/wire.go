@@ -108,6 +108,20 @@ import (
 // payload in either direction; the version still moves because a method one
 // half may send and the other half cannot answer is a protocol difference, and
 // Decision 3 in docs/REMOTE.md says those differences are refused at the door.
+//
+// AND [MethodPlacesTask] JOINS IT WITHOUT MOVING THE NUMBER, which is the one
+// place this file makes that choice on purpose. Version 4 moved the PLACES onto
+// the machine that owns the work ([MethodPlacesWorld]), and the tasks place duly
+// listed the far machine's four hundred pieces of work — but the CARD behind one
+// of those rows still read the last thing that work said off THIS process's
+// disk, at a path that only exists on the other one. The door that ends it is
+// PURELY ADDITIVE: an engine that has never heard of the method answers the
+// error every unknown method gets, and the surface draws the one sentence that
+// says so ([tui3.taskCardRemoteRefused]) instead of a report it does not have.
+// A version bump would have refused every one of those connections at the door
+// for a card, which is Decision 3 spent on something Decision 3 is not for —
+// the capabilities paragraph above is the rule that applies, and absence
+// preserves the old wire exactly.
 const Version = 4
 
 // Frame is one line on the wire, either direction.
@@ -232,6 +246,24 @@ const (
 	// machines would mix clocks that need not agree and would not measure the
 	// path the person is actually waiting on.
 	MethodPing = "Ping" // nothing → nothing
+
+	// MethodPlacesTask is ONE ROW of that record, read deeper than the walk
+	// reads it: the last thing that piece of work said, out of the journal it
+	// left on the engine machine's disk ([session.TaskRecord]).
+	//
+	// IT IS A SECOND DOOR AND NOT A FIELD ON THE WORLD, for what it costs. The
+	// walk is taken on a beat and answers five places; a report is a forward scan
+	// of a whole session journal and is wanted for exactly one row — the one
+	// somebody just pressed. Putting it on the walk would read four hundred
+	// journals to draw a list that shows none of them.
+	//
+	// AND IT IS NOT [MethodFetchFile]. That door answers under the two-roots law
+	// — this conversation's workspace and this conversation's own folder — and a
+	// task's journal is in ANOTHER conversation's folder under the state root, so
+	// a fetch of it is refused, correctly. This one answers under its own root,
+	// the places root, and hands back the sentence rather than the file: a
+	// transcript is megabytes and the card draws one paragraph of it.
+	MethodPlacesTask = "Places.Task" // PlacesTaskArgs → session.TaskRecord
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
@@ -603,6 +635,23 @@ type WireFile struct {
 // the wrong machine.
 type FetchFileArgs struct {
 	Path string `json:"path"`
+}
+
+// PlacesTaskArgs names the row of the record a card was opened on.
+//
+// IT IS THE URI OFF THE ROW, WHICH THE ENGINE ITSELF WROTE. The row travelled
+// here on the world walk carrying the journal's own address on that machine
+// ([session.TaskIndexEntry.TranscriptURI]), and this hands it straight back —
+// the same law every path on this wire obeys, and the same reason
+// [FetchFileArgs] does not resolve one either. The engine checks it against its
+// own places root before it opens anything ([session.ReadTaskRecordUnder]),
+// because a boundary the surface asserted would be a permission decision taken
+// on the wrong machine.
+//
+// IT IS A STRUCT AND NOT A BARE STRING so the card can learn to ask for a second
+// fact about the same row without a second door and without a second version.
+type PlacesTaskArgs struct {
+	Transcript string `json:"transcript"`
 }
 
 // FetchedFile is one file coming back the other way.
