@@ -10,17 +10,26 @@ import (
 //
 // A pointer swept across this window sends ONE MESSAGE PER CELL it crosses. A
 // slow diagonal over a hundred-column terminal is two hundred messages in the
-// time it takes to move a hand; a fast one is six hundred. Every one of them
-// used to be answered in full — hit-test the row, ask the far disk about the
-// path under it, mark what changed — and answered in full over a link, where
-// the same answer costs twenty milliseconds instead of a tenth of one. Six
-// hundred of those is twelve seconds of work for a gesture that MEANT ONE
-// THING: the pointer ended up here.
+// time it takes to move a hand; a fast one is six hundred, and they arrive in
+// ONE WRITE — the terminal fills the pipe and the surface reads a burst.
 //
 // The positions in between are not information. They are the same claim, made
-// two hundred times, and every one but the last of them was already false when
+// six hundred times, and every one but the last of them was already false when
 // it was read. So this file folds them: the newest position is kept, the rest
 // are dropped, and the surface answers ONCE PER FRAME.
+//
+// WHAT IT COSTS TO ANSWER THEM ALL, MEASURED. Answering a motion is cheap now —
+// reasoninglevel.go took the far machine out of the pointer's way, and PERF.md's
+// "connection laws" hold it there. What is NOT cheap is that Bubble Tea builds a
+// frame after every message it delivers and writes one every sixtieth of a
+// second, so a burst is six hundred frames built for the sixty a person could
+// possibly have seen. On the loopback client through a 20ms round trip, a
+// character typed straight after a six-hundred-motion write took 45ms to appear
+// and after three thousand, 204ms; with the fold, 13ms and 16ms — the same as
+// with no motion at all. The BEFORE column is linear in the burst and the AFTER
+// column is flat, which is the whole claim: THE COST OF A STORM NO LONGER
+// DEPENDS ON HOW BIG THE STORM IS, and a per-message cost added back tomorrow
+// cannot resurrect the stall.
 //
 // WHAT MAY NEVER BE FOLDED IS A KEY. Keys are meaning, one apiece, and they are
 // ordered with respect to each other and to everything else — a `q` behind a

@@ -114,20 +114,38 @@ once with a person watching a connection open, which is the moment waiting is
 correct; the laws above are about the moments it never is.
 ## The storm laws
 
-Four things arrive on this surface in bursts, and the pointer is the worst of
-them: a sweep across the window sends **one message per cell it crosses** — two
-hundred for a slow diagonal, six hundred for a fast one. Every one of them used
-to be answered in full: hit-test the row, ask the far disk about the path under
-it, mark what changed. Over a link that answer costs about twenty milliseconds,
-so six hundred of them is twelve seconds of work — during which a typed
-character sits in the terminal's pipe behind them, because the surface is busy
-answering a question about where the pointer was three hundred cells ago.
+The section above took the far machine out of the pointer's way. What is left is
+the one cost every input message pays whether or not anything is far away: a
+pointer swept across the window sends **one message per cell it crosses** — six
+hundred for a fast diagonal — and Bubble Tea builds a frame after every one of
+them. It writes one per sixtieth of a second, so nearly all of those frames are
+built and thrown away, and the keystroke behind the sweep waits for all of them.
 
-`internal/tui3/coalesce.go` folds them. The positions in between are not
-information; they are the same claim made six hundred times, and every one but
-the last was already false when it was read. So the newest is kept, the rest are
-dropped, and the surface answers **once per frame** — `pointerEvery`, which is
-`frameInterval` and not a second cadence.
+Measured on the loopback client through a pipe with a 20 ms round trip, with the
+connection laws above already in place, delivering the whole sweep in **one
+write** — which is what a terminal actually does, and what `tmux send-keys` in a
+loop cannot reproduce because it paces itself at about 7 ms an event:
+
+| A typed character appears after… | before | after |
+| --- | --- | --- |
+| no motion at all | 0.015 s | 0.015 s |
+| 600 motions in one write | 0.045 s | 0.013 s |
+| 3000 motions in one write | 0.204 s | 0.016 s |
+| 600 wheel notches in one write | 0.047 s | 0.013 s |
+
+The before column is linear in the burst — 0.07 ms a message, all of it frame
+building — and the after column is flat. That is the point: **the cost of a
+storm no longer depends on how big the storm is**, so a per-message cost added
+back tomorrow cannot resurrect the stall.
+
+`internal/tui3/coalesce.go` is the fold. The positions between the ends of a
+sweep are not information; they are the same claim made six hundred times, and
+every one but the last was already false when it was read. So the newest is
+kept, the rest are dropped, and the surface answers **once per frame** —
+`pointerEvery`, which is `frameInterval` and not a second cadence. A folded
+message also declares the frame before it rather than building one, because it
+provably changed nothing `app.View` reads; that half is the larger one, and it
+is only reachable because the fold is what knows.
 
 | Law | Where it is pinned |
 | --- | --- |
@@ -152,12 +170,10 @@ instead — keep the newest position, answer it on a clock of its own.
 **What Bubble Tea already rate-limits, and what it does not.** Measured against
 v2.0.8, not assumed: the renderer writes to the terminal on a 60 Hz ticker
 (`startRenderer`), and `render(view)` only stores the view under a lock. But
-`model.View()` is called after **every** message, so the frame is BUILT per
-message and most of a burst's frames are thrown away unwritten. A clean frame
-over a twenty-turn conversation measures 31 µs and 19 KB, independent of
-transcript length — the row list is cached (`app.visible`) and the chrome around
-it is not. So the fold says when it changed nothing, and `app.View` hands back
-the frame it declared last time.
+`model.View()` is called after **every** message. A clean frame over a
+twenty-turn conversation measures 31 µs and 19 KB, independent of transcript
+length — the row list is cached (`app.visible`) and the chrome around it is not.
+Thirty-one microseconds times six hundred is the middle row of the table above.
 
 ## The launch-path pins
 
