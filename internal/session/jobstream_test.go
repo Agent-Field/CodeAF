@@ -225,7 +225,7 @@ func TestTheJobFooterComesOffAgainExactly(t *testing.T) {
 // notice a node getting nowhere read each one as a discovery and reset itself.
 func TestNineIdenticalAnswersToNineDistinctCommandsAreNoProgress(t *testing.T) {
 	t.Parallel()
-	seen := newLineNovelty()
+	seen := newProgressLedger()
 	progress := 0
 	for poll := 1; poll <= 9; poll++ {
 		event := Event{

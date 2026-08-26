@@ -131,6 +131,14 @@ const (
 	// no NEW information and no new dirt is the shape of a spin — the detector
 	// reads novelty now, so it only fires when a node is genuinely re-treading
 	// the same call, and it fires in a minute rather than in thirty.
+	//
+	// SIX IS NOT RETUNED FOR A FAST WORKER. A node calling a tool every three
+	// seconds spends six dead steps in eighteen of them, which reads like a hair
+	// trigger and is not one: the number bounds what is SPENT — six model
+	// round-trips and six tool calls that added nothing — and a worker that is
+	// cheap per step is not thereby entitled to more of them. What was wrong in
+	// the runs that made this comment was never the six; it was three shapes of
+	// real work being counted as dead ([addedSomething]).
 	taskMaxSteps   = 200
 	taskNoProgress = 6
 	// Four renewals plus the original allowance make five equal budgets: 1000
@@ -1365,10 +1373,12 @@ type taskLimits struct {
 	// maxSteps is the whole budget: the node stops when it has taken this many.
 	maxSteps int
 	// noProgress is how many CONSECUTIVE steps may pass with no progress —
-	// and progress is broader than an edit: a successful edit or write, a
-	// bash that leaves the worktree dirtier, or a read/search/fetch of a
-	// target the node has not looked at before all reset it to zero. What it
-	// catches is the spin: the same query, the same file, the same nothing.
+	// and progress is broader than an edit: a successful edit or write, a bash
+	// that leaves the worktree dirtier, a reading taken over work that has just
+	// changed, a question the node has not asked before whose answer brought
+	// something back, or a re-run whose result was more new than old all reset
+	// it to zero ([addedSomething]). What it catches is the spin: the same
+	// query, the same file, the same nothing.
 	noProgress int
 	// deadline is one checkpoint interval, renewed in the same-sized unit.
 	deadline time.Duration
@@ -2999,13 +3009,22 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
 // side of the wall sees the calls they produce. PROGRESS is any of the three
-// halves of the job — a SUCCESSFUL call to a hand that saves a file
-// ([savingTools], on EventToolEnd and never EventToolFailed, because an edit
-// whose oldText did not match changed nothing and a node repeating it is the
-// exact spin the counter exists to catch), a step that left the worktree
+// halves of the job ([addedSomething]) — a SUCCESSFUL call to a hand that saves
+// a file ([savingTools], on EventToolEnd and never EventToolFailed, because an
+// edit whose oldText did not match changed nothing and a node repeating it is
+// the exact spin the counter exists to catch), a step that left the worktree
 // different from how it found it ([worktreeMoved]), or a step that TAUGHT the
 // node something it did not know ([taughtSomething]). What the counter kills is
 // the fourth thing: the same call again, changing nothing, learning nothing.
+//
+// AND "TAUGHT" IS ASKED OF THE SHAPE IT WAS BUILT FOR. A reading taken over a
+// deliverable that has just changed is information by construction, and so is a
+// question the node has never asked whose answer brought something back; line
+// novelty judges the third case, which is the same question asked again of work
+// that has not moved (novelty.go's [progressLedger]). The unit is still the
+// STEP and not the second: what the counter is spending is a model round-trip
+// and a tool call, and six of those that added nothing is a spin whether they
+// took eighteen seconds or eighteen minutes.
 //
 // The cancel is this function's own, hung off the node's context, so tripping a
 // threshold ends the child the way `jobs kill` does — a cancelled turn, its
@@ -3022,7 +3041,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	var (
 		changed  []string
 		seen     = map[string]bool{}
-		seenInfo = newLineNovelty()
+		ledger   = newProgressLedger()
 		lastDirt string
 		failure  error
 		stopped  string
@@ -3095,10 +3114,16 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// as its own; the target has to be recorded even on a step that
 				// was already progress for another reason, or the same call can
 				// be spent twice. A short-circuiting `switch` did both wrong.
+				//
+				// THE THREE ARE READ IN ONE PLACE ([addedSomething]), because
+				// they are one rule and because the ledger they keep has state
+				// now — a step that moved the work arms the reading after it
+				// (novelty.go's [progressLedger]) — and a rule with state that
+				// is spelled out at its call site is a rule with two versions.
 				moved := worktreeMoved(dir, &lastDirt)
-				learned := taughtSomething(event, seenInfo)
 				path, wrote := changedPath(event, dir)
 				saved := wrote && event.Kind == EventToolEnd
+				added := addedSomething(event, saved, moved, ledger)
 				if saved && !seen[path] {
 					seen[path] = true
 					changed = append(changed, path)
@@ -3134,7 +3159,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// the same target again, no new file, no new dirt — not the
 				// absence of an edit (PMCoder's "reads saturated", not "reads
 				// happened").
-				case saved, moved, learned:
+				case added:
 					idle = 0
 				case child.childrenOutstanding():
 					// AND A NODE WHOSE WORK IS IN SOMEBODY ELSE'S HANDS IS NOT
@@ -3541,14 +3566,50 @@ var knowledgeTools = map[string]bool{
 // early so that those bytes are not remembered EITHER, because a sentence this
 // side of the wall wrote must not be able to make a later, real result look
 // like something the node had already been told.
-func taughtSomething(event Event, seen *lineNovelty) bool {
+func taughtSomething(event Event, ledger *progressLedger) bool {
 	if event.HarnessMade {
 		return false
 	}
 	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
 		return false
 	}
-	return freshAnswer(event, seen)
+	return freshAnswer(event, ledger)
+}
+
+// addedSomething is the WHOLE of what resets the no-progress counter, in one
+// place so the runner's switch and the tests that hold it to the law cannot
+// answer differently.
+//
+// Three ways a step adds to the run, and the ledger's books are kept as it
+// answers:
+//
+//   - it SAVED a file ([savingTools], on a call that ended rather than failed);
+//   - it CHANGED THE WORKTREE ([worktreeMoved]), which is the backstop under
+//     every hand nobody classified;
+//   - it TAUGHT the node something ([taughtSomething] → [progressLedger.read]),
+//     which is now three questions and not one — see the ledger for why.
+//
+// A HARNESS-MADE RESULT IS NEITHER, and it returns before anything is recorded:
+// a hand that was withdrawn and a door that refused the call never reached the
+// world, so those bytes must not be able to make a later real result look like
+// something the node had already been told (withdrawn.go).
+//
+// AND THE TWO THAT MOVED THE WORK ARM THE NEXT READING. A step that changed the
+// deliverable is information itself, and it also makes the reading after it
+// information by construction — the node is about to measure a state that did
+// not exist a step ago.
+func addedSomething(event Event, saved, moved bool, ledger *progressLedger) bool {
+	if event.HarnessMade {
+		return false
+	}
+	added := taughtSomething(event, ledger) || saved || moved
+	if added {
+		ledger.informed()
+	}
+	if saved || moved {
+		ledger.wrote()
+	}
+	return added
 }
 
 // freshAnswer reports whether this call came back with bytes the node has not
@@ -3573,8 +3634,9 @@ func taughtSomething(event Event, seen *lineNovelty) bool {
 // not "have I seen this result" but "how much of this result have I seen" —
 // more new than old ([taughtLineThreshold]) is a step that taught the node
 // something, and one changed line in sixteen is not.
-func freshAnswer(event Event, seen *lineNovelty) bool {
-	return seen.informative(event.Tool, stripJobFooter(event.Output))
+func freshAnswer(event Event, ledger *progressLedger) bool {
+	added, _, _ := ledger.read(event.Tool, event.Args, stripJobFooter(event.Output))
+	return added
 }
 
 // argField reads one string field out of a tool call's display args. The args
