@@ -348,7 +348,10 @@ func (placeSearch) close(a *app) {
 	a.search = searchPage{}
 }
 
-func (placeSearch) tick(a *app, now time.Time) { a.refreshSearch() }
+func (placeSearch) tick(a *app, now time.Time) bool {
+	a.refreshSearch()
+	return true
+}
 
 // body is the results, or — while the box is empty — this place's own three
 // sentences ([searchTeach]). It ALWAYS has something to say, which is why it is

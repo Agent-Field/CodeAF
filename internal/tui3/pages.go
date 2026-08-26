@@ -86,7 +86,14 @@ type place interface {
 	close(a *app)
 	// tick is the three-second beat: the cached reading is taken again, so a
 	// memory learned in the next terminal is on this frame within three seconds.
-	tick(a *app, now time.Time)
+	// It answers whether this place wants the beat AGAIN.
+	//
+	// A PLACE THAT DOES NOT ARM THE CLOCK MUST NOT KEEP IT TURNING. Home has a
+	// beat of its own and arms it itself (home.go's [homeEvery]); the tasks place
+	// re-reads on the keystroke that walks in. A clock left running on a place
+	// that never asked for one is a second reader of the same disk, and walking
+	// out of memory onto home used to be exactly that (placecounts.go).
+	tick(a *app, now time.Time) bool
 	// body is the rows and the hit map, painted into exactly the room the frame
 	// reserved. It reads caches and never a seam.
 	body(a *app, width, room int) []placeRow
@@ -170,7 +177,7 @@ type placeBase struct{}
 func (placeBase) counted() bool                           { return false }
 func (placeBase) open(a *app) tea.Cmd                     { return nil }
 func (placeBase) close(a *app)                            {}
-func (placeBase) tick(a *app, now time.Time)              {}
+func (placeBase) tick(a *app, now time.Time) bool         { return false }
 func (placeBase) body(a *app, width, room int) []placeRow { return nil }
 func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 	return "", nil, false
