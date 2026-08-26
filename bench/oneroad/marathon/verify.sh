@@ -91,8 +91,13 @@ json.dump({
         "network: " + os.environ["NETWORK_DEVIATION"],
         "storage: task.toml asks for a 20480 MB quota; docker's overlay2 here enforces no per-container disk quota",
     ],
+    # WHICH COMPILER JUDGED THIS, written down beside the verdict. The agent may
+    # legally have upgraded it, and a reader comparing two rows has to be able to
+    # see that without re-deriving it from a log.
     "rustc": os.popen("rustc --version 2>&1").read().strip(),
-    "rustup_toolchain_env": os.environ.get("RUSTUP_TOOLCHAIN", ""),
+    "rustup_home": os.environ.get("RUSTUP_HOME", "/root/.rustup (default)"),
+    "cargo_home": os.environ.get("CARGO_HOME", "/root/.cargo (default)"),
+    "active_toolchain": os.popen("rustup show active-toolchain 2>&1").read().strip().splitlines()[:1],
 }, open("/logs/verifier/oneroad_stages.json", "w"), indent=2)
 PY
 exit 0

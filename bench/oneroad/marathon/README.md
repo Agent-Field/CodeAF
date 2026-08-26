@@ -24,6 +24,7 @@ docker build -t swe-marathon/rust-java-lsp:v1.1 \
 bash preflight.sh rust-java-lsp        # ALWAYS FIRST: proves the toolchain and the egress allowlist
 bash cell.sh <arm> rust-java-lsp        # one cell, the task's own 10 h wall
 bash wave.sh rust-java-lsp aforge-crew pi opencode   # all three, arm-fair
+bash rescore.sh s6 1                    # an out-of-band honest score of a LIVE cell
 ```
 
 `preflight.sh` builds a throwaway container the way `cell.sh` builds a real one
@@ -79,7 +80,8 @@ Knobs, all with the task's own value as the default: `SEED`, `CELL_SECONDS`
 (default `[agent] timeout_sec` = 36000), `SILENCE_SECONDS` (900), `SNAPSHOT_EVERY`
 (3600, `0` disables the curve), `SNAPSHOT_TIMEOUT` (1800), `MODEL`, `NEW_BIN`,
 `MARATHON_REPO`, `IMAGE`, `MAR_OUT`, `NETLOCK` (1; `0` runs on full egress and
-says so in the record), `NETLOCK_REFRESH` (30 s), `PIN_TOOLCHAIN` (1).
+says so in the record), `NETLOCK_REFRESH` (30 s). There is no toolchain knob:
+the agent's compiler is whatever the agent chose, and everything else follows it.
 
 Artifacts land in `~/af-bench/marathon/<arm>-<task>-<seed>/`, and `_results` here
 is a **symlink** to `~/af-bench/marathon`. That is not tidiness: a cell's bind
@@ -121,8 +123,9 @@ before `tests/test.sh` runs — kept, because what the agent believed about its 
 progress is evidence, just never the verdict.
 
 **The agent's toolchain and the agent's network are the runner's job, and both
-were once wrong.** The agent compiles with the image's rustc, out of the image's
-`/root/.rustup`, and reaches only the hosts `task.toml` names plus the model
+were once wrong.** The agent and the verifier share one rustup state on the
+image's own paths, so an upgrade the agent makes is inherited rather than
+forbidden; the container reaches only the hosts `task.toml` names plus the model
 endpoint. See **The toolchain** and **The network** below; `preflight.sh` proves
 both against a throwaway container before a wave is launched.
 
@@ -217,10 +220,16 @@ container would hand its four CPUs to a release build and a 68,000-point scoring
 run several times over a ten-hour cell, and every curve point would be paid for
 out of the result it measures. A per-cell docker volume holds the snapshot
 builds' cargo registry so each hour's build is not a fresh download; the agent's
-container never sees it, so nothing is warmed for the run under test.
+container never sees it, so nothing is warmed for the run under test. A second
+per-cell volume at `/root/.rustup` holds the toolchains, for the same reason and
+with one extra: the scorer must **adopt the agent's compiler** before it builds
+(see **The toolchain**), and without a cache that would be a fresh download every
+hour.
 
 `curve.csv` (`csv.QUOTE_MINIMAL`): `elapsed_s, partial_score, passed, total,
-reward, note`. A snapshot that fails to copy, fails to start, or runs out of its
+reward, note`. The `note` column always carries the rustc the row was scored with
+(`rustc 1.98.0 (…)`), because two rows taken with different compilers are two
+different measurements and a reader must not have to guess which. A snapshot that fails to copy, fails to start, or runs out of its
 half hour writes a row with `partial_score` 0 **and the reason**, and goes back to
 sleep. Nothing in that loop can take the cell down.
 
@@ -266,8 +275,9 @@ only the end-of-cell verifier runs against the container the agent actually left
 sha256 + which tier config; pi/opencode: their `--version`), model, image id and
 ref, task repo commit, started/ended/wall/verify wall, outcome and settle reason,
 reward, partial_score, pass_rate, passed/total, holdout block, `per_method`,
-the `toolchain` block (the image's toolchain and rustc, and whether the compiler
-was pinned), `network_deviation` as the cell computed it,
+the `toolchain` block (the image's toolchain and rustc, the toolchain the AGENT
+ended on, which rustup store it came from, and `split_home` for the cells whose
+store our own bug misplaced), `network_deviation` as the cell computed it,
 tokens in/out/cached, requests, `cost_usd`, workspace file count, the timer's
 reading at t=0, the curve, and for the aforge arms the road summary from
 `lib/road.py` (marks, ceiling decision, divisions, parts, peak concurrency).
@@ -286,13 +296,28 @@ or `/workspace`: `tests/test.sh`'s cached-golden scan walks exactly those four f
 `.json`/`.jsonl` files over 1 MB, and a harness store that happened to hold a
 large one would otherwise read as a cheat that never happened.
 
-## The toolchain, and the ten hours it cost
+## The toolchain: inheritance, not a pin
 
-The image installs rust as root: `curl … | sh -s -- -y --default-toolchain 1.86.0
---profile minimal`, into `/root/.rustup` and `/root/.cargo`, with
+The image installs rust as root — `curl … | sh -s -- -y --default-toolchain 1.86.0
+--profile minimal` — into `/root/.rustup` and `/root/.cargo`, with
 `ENV PATH="/root/.cargo/bin:$PATH"`. `tests/test.sh` exports exactly that PATH and
-runs under `docker exec` as root, so **the verifier's compiler is
-`/root/.rustup`'s**.
+runs under `docker exec` as root, so **the verifier reads `/root/.rustup`**.
+
+### What the benchmark actually allows
+
+`task.toml`'s allowlist includes `static.rust-lang.org`, for the agent phase and
+the verifier phase alike, and officially the agent runs as root with `HOME=/root`.
+So `rustup default stable` is a **legal move**, and because the verifier runs in
+the *same container* off the *same* `/root/.rustup`, it **inherits** the agent's
+choice. The compiler the agent picked is the compiler the agent is judged with.
+
+That is not a loophole to be closed. It is close to unavoidable: `lsp-types`
+depends on `url`, any fresh resolution today lands on `url 2.5.8` → `idna` →
+`icu 2.3`, and that needs rustc ≥ 1.88 while the image ships 1.86.0. **Two of the
+six live seeds (s6, s8) already have such a lockfile.** A runner that forbids the
+upgrade makes the obvious crate unusable and scores a legitimate workspace 0.0.
+
+### What our runner broke
 
 The cell ran the agent with `HOME=/chome` — the right instinct, keeping the
 harness's dotfiles out of `/root` — and rustup finds its store through
@@ -304,53 +329,87 @@ specified explicitly, and no default is configured.
 help: run 'rustup default stable' to download the latest stable release …
 ```
 
-Every model did what the help text said. On an open network that installed a
-newer stable into `/chome/.rustup`, and the workspace then drifted to whatever
-that compiler allowed. Seed **s6** is the clean example: its `Cargo.lock` pinned
-`url 2.5.8` → `idna` → `icu 2.3`, which needs rustc 1.88. It built in the cell,
-all day. It could not build under `tests/test.sh`, so the benchmark's own
-verifier scored it **0.0** — and the hourly snapshot scorer, building in a fresh
-container of the image, reported the same 0.0 for the same reason. The agent was
-never told, because inside the cell everything worked.
+Every model did what the help text said, and the install landed in
+`/chome/.rustup`, where `tests/test.sh` could never see it. **The inheritance was
+broken, not the upgrade.** Seed s6 built all day against a compiler the verifier
+did not have and scored 0.0.
 
-The fix is three environment variables on the agent's `docker exec`, and it keeps
-`HOME=/chome`:
+### The fix
+
+Three environment variables on the agent's `docker exec`, keeping `HOME=/chome`:
 
 | variable | value | why |
 | --- | --- | --- |
 | `RUSTUP_HOME` | `/root/.rustup` | the store the verifier reads |
 | `CARGO_HOME` | `/root/.cargo` | the registry and the shims the verifier reads |
 | `PATH` | `tests/test.sh`'s PATH, verbatim | `cargo` is found where the verifier finds it |
-| `RUSTUP_TOOLCHAIN` | the image's own toolchain | see below |
 
-The first two are simply what the official environment has — there the agent runs
-as root with `HOME=/root` and shares the store with the verifier by default.
+That is all. One rustup state, shared by agent and verifier, exactly as
+officially — and **nothing is pinned**.
 
-`RUSTUP_TOOLCHAIN` is **a deliberate deviation, one notch stricter than the
-benchmark**. `task.toml`'s allowlist includes `static.rust-lang.org`, so an agent
-may legitimately install a newer stable; sharing `/root/.rustup`, the verifier
-would inherit it and agree. But the hourly snapshot scorer builds in a *fresh*
-container of the image, which has only the shipped toolchain, and a curve that
-cannot build what the cell built is a curve that lies. Pinning makes all three
-compilers the same one. `cell.sh` hands the same pin to the verifier's
-`docker exec`, so a `rustup default stable` run by the agent cannot move the
-verifier either.
+An earlier version of this work *did* pin the agent to the image's toolchain with
+`RUSTUP_TOOLCHAIN`. It was wrong, and it is worth saying why, because it looked
+safe: it guaranteed the cell, the verifier and the hourly curve all used one
+compiler. But it bought that agreement by making this runner **stricter than the
+benchmark** — an agent that upgraded legally would have been compiled with 1.86.0
+anyway, and a `url 2.5.8` lockfile would have failed in the cell rather than
+building. Wrong in the opposite direction from the original defect, and just as
+invisible. Agreement has to come from *following* the agent's choice, not from
+removing it.
 
-The pin is proven rather than assumed — `preflight.sh` step 5 runs
-`rustup default stable` inside the locked container and shows rustup installing
-1.98.0 while still reporting
+### Everything that compiles this workspace adopts the agent's compiler
 
+`toolchain.sh detect <container>` answers "what is this cell's default toolchain,
+and which store is it in", and it is the single place that decides:
+
+* **the verifier** — `cell.sh` and `finish.sh` hand its `RUSTUP_HOME`/`CARGO_HOME`
+  to the verifier's `docker exec`. For a cell run after the fix these are the
+  image's own defaults and change nothing.
+* **the hourly curve** — `snapshot.sh` re-detects every hour (the agent can
+  upgrade at any point in ten hours) and runs
+  `rustup toolchain install --profile minimal <tc> && rustup default <tc>` in its
+  scorer container before `cargo build`. The rustc it actually used is written
+  into the curve row's `note` column, so two rows taken with different compilers
+  read as the different measurements they are.
+* **an out-of-band reading** — `rescore.sh` does the same.
+
+The scorer's toolchains live in a **per-cell docker volume mounted at
+`/root/.rustup`**. A named volume is populated from the image on first use, so the
+scorer starts with the shipped 1.86.0 already present and downloads only the delta
+the agent chose — measured here at about five seconds for the first snapshot of a
+cell and **0 s for every one after** (`preflight.sh` asserts the second adoption
+takes under 20 s). Two toolchains cost about 950 MB of volume per cell;
+`snapshot.sh` removes both of its volumes when the cell ends.
+
+`toolchain.sh` looks at `/chome/.rustup` **before** `/root/.rustup`, and that is
+for the six cells launched before this: their agents upgraded into `/chome`, so
+that store is what they compiled with, and it is the official-equivalent state —
+the same upgrade, written to the wrong path by our runner. `finish.sh` points the
+verifier at it and `record.json`'s `toolchain` block carries `split_home: true`
+and says so in words. New cells have no `/chome/.rustup` at all.
+
+### `rescore.sh` — an honest reading of a live cell
+
+```bash
+bash rescore.sh s6 3          # the third out-of-band reading of seed s6
 ```
-info: note that the toolchain '1.86.0-aarch64-unknown-linux-gnu' is currently in
-use (overridden by environment variable RUSTUP_TOOLCHAIN)
-```
 
-and `rustc --version` still answering 1.86.0.
+Copies the running cell's `/workspace` **with the droppings stripped** — no
+`target/` (build output the verifier rebuilds), no `.git`, no `.aforge-v3` (the
+harness's own store, which the agent happened to write inside the working
+directory and which is no part of the work being judged) — scores it in a
+short-lived two-CPU container with the agent's toolchain adopted, and appends a
+row to `<MAR_OUT>/rescore/<arm>-<task>-<seed>/curve.txt`. `<n>` is just the
+sequence number of the reading. Output goes **beside** the cell, never inside it:
+a live cell's directory is being read by `record.py` and `road.py` while it runs.
 
-One consequence worth stating: with `CARGO_HOME=/root/.cargo` the crate registry
-now lands under `/root`, which `tests/test.sh`'s cached-golden scan walks. That is
-also true of the official environment, and it is the hazard already measured at
-the bottom of this file — the largest JSON a tree-sitter build leaves there is
+Its caches (`oneroad-mar-{cargo,rustup}-rescore-<seed>`) are deliberately kept
+between runs and are the only volumes here that are not cleaned up automatically.
+
+One consequence of `CARGO_HOME=/root/.cargo` worth stating: the crate registry now
+lands under `/root`, which `tests/test.sh`'s cached-golden scan walks. That is also
+true of the official environment, and it is the hazard already measured at the
+bottom of this file — the largest JSON a tree-sitter build leaves there is
 `grammar.json` at 186 KB, an order of magnitude under the 1 MB threshold.
 
 ## The network, and what an address can and cannot say
@@ -435,20 +494,31 @@ row cannot be compared with a leaderboard number.
 
 ### Cells run before this
 
-**Seeds s4–s9, launched 2026-08-25/26, ran on the open default bridge and with
-the split toolchain.** Their agents saw the rustup error, installed their own
-stable from `static.rust-lang.org` into `/chome/.rustup`, and compiled against a
-compiler `tests/test.sh` does not have. Their rows are not comparable with rows
-produced after this commit, and `record.json` for each of them carries the old
-`network_deviation` sentence ("default docker bridge, full egress"), which is the
-truth about them.
+**Seeds s4–s9, launched 2026-08-25/26, ran on the open default bridge and with the
+split toolchain.** Their agents saw the rustup error and installed their own
+stable into `/chome/.rustup`. Their egress was not the task's allowlist, and their
+rows are not comparable on that count with rows produced after this commit;
+`record.json` for each of them carries the honest `network_deviation` sentence
+("default docker bridge, full egress"), which `finish.sh` now reads off the
+container rather than assuming.
 
-The **snapshot scorer was not changed** and did not need to be: it already builds
-in a fresh container of the image, which is why it correctly reported s6's 0.0
-while the cell itself was building happily. It remains the honest oracle. It also
-remains outside the allowlist — a snapshot container has full egress — which
-changes no score, because it only ever *builds and scores* a tarball of the
-workspace and never runs the agent.
+Their **toolchain**, though, is recoverable rather than ruined. The upgrade those
+agents made is legal and is what the official run would also have had — it simply
+landed in `/chome/.rustup` instead of `/root/.rustup`. So `finish.sh` points the
+verifier at `/chome/.rustup` for exactly these cells (`toolchain.sh` checks it
+first), and `rescore.sh` adopts the same toolchain in its scorer. That is how s6
+and s8 — whose lockfiles pin `url 2.5.8` → `idna` → `icu 2.3` and need rustc ≥
+1.88 — get read at their real score instead of a build failure.
+
+The **snapshot scorer's scoring was not changed**: it still builds in a fresh
+container of the image from a tarball of the workspace, which is what makes it an
+outside reading rather than the cell's own opinion of itself. What changed is
+only *which compiler* it installs before building — the agent's, re-detected every
+hour — because a scorer stuck on 1.86.0 would have reported 0.0 for a workspace
+the benchmark scores properly, and a curve that under-reads is worse than no
+curve. It also remains outside the egress allowlist (a snapshot container has full
+egress, and must, to install that toolchain and fetch crates), which changes no
+score: it only ever builds and scores a tarball, and never runs the agent.
 
 ## Deviations from the benchmark, stated
 
@@ -463,9 +533,12 @@ workspace and never runs the agent.
    recorded in `record.json` (`network_deviation`) and in
    `/logs/verifier/oneroad_stages.json`, computed from what the cell did rather
    than written down here. **Seeds s4–s9 predate this and ran open** — see above.
-2. **The agent's compiler is pinned to the image's**, one notch stricter than the
-   benchmark, so that the cell, the verifier and the hourly curve all build with
-   one toolchain. See **The toolchain** above.
+2. **The agent's compiler is not deviated from at all** — it may upgrade exactly
+   as it may officially, and the verifier inherits the upgrade because they share
+   one rustup state, as officially. The hourly curve is the only thing that is
+   not the benchmark's: it scores in a *separate* container, so it has to be told
+   which toolchain to adopt rather than inheriting it for free. See **The
+   toolchain** above.
 3. **No per-container storage quota.** `task.toml` asks for 20480 MB; docker's
    overlay2 on this host enforces no per-container disk quota.
 4. **The wall is the runner's, measured from container start.** The container is
