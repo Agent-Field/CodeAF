@@ -14,7 +14,8 @@ on the tray above the message box, and it goes with the next thing you send.
 
 Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
 this conversation is about, and an absolute path is left alone. Tab completes the path as
-you type it.
+you type it. Over `--host`, that completion walks the machine you are sitting at, because
+those are the bytes `/attach` is about to send.
 
 The file lands on the tray as its own chip — `▤ server.log`, or `+ server.log` on a
 terminal that cannot draw the box — and the message box stays the sentence you were

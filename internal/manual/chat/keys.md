@@ -1009,9 +1009,10 @@ snapshot already in memory and never touches the disk, so a slug pasted whole an
 sent in the same beat resolves to nothing and stays plain text. The entry remembered
 for `↑` is the sentence as you typed it, before expansion.
 
-**The honest limit: only `/image ` and `/export ` get path completion.** That is the
-whole list. Any other command that takes a path gets no completion at all, and says
-nothing about it.
+**The honest limit: `/image `, `/attach ` (and its `/upload ` alias), and `/export `
+get path completion.** That is the whole list. Any other command that takes a path gets
+no completion at all, and says nothing about it. Over `--host`, completion still walks
+the machine you are sitting at: `/attach` and `/image` send those local bytes across.
 
 ## Keys in the command list and the `@` list
 
