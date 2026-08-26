@@ -791,6 +791,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what are the three lines that appear when I press alt+enter", "places"},
 		{"how do I change which project a task runs in before I send it", "places"},
 		{"what does alt+w do", "places"},
+		// THE PLATFORM QUESTION, in the four shapes it actually arrives in: the Mac
+		// user whose option key is composing accents (which is what they SEE, so
+		// they ask about the character rather than about the modifier), the person
+		// wondering whether the manual's `alt+` is their `⌥`, the one who tried
+		// `ctrl+1` because the number is drawn on the tab, and the Windows user
+		// checking whether any of it applies to them.
+		{"why does option type ¡ instead of jumping to a place", "screen"},
+		{"use option as meta", "screen"},
+		{"is alt the same as option on a mac", "screen"},
+		{"does ctrl+1 go to a place", "keys"},
+		{"do the alt chords work on windows", "screen"},
 		{"how do I pick the model a task runs on before starting it", "places"},
 		{"why did pressing alt+enter not send my task straight away", "places"},
 		{"how much money can a task spend before it stops and asks me", "tasks"},

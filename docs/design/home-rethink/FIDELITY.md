@@ -117,9 +117,30 @@ height; the small 11.5px runs are the canvas's own captions, not screen content.
     >
     > What stays from this item: the layout still may not depend on a ground, which is what
     > `TestEveryPlaceHoldsAtThePlainFloor` walks.
-14. **Terminal adaptation checks:** the first-run note (and `screen.md`) carries the design's own
+14. **Terminal adaptation checks:** ~~the first-run note (and `screen.md`) carries the design's own
     open item — macOS terminals need "use option as meta" for the `alt` class; say which setting,
-    per terminal, and what `esc`-prefix behaviour looks like when it is off.
+    per terminal, and what `esc`-prefix behaviour looks like when it is off.~~
+
+    > **LANDED, and it grew two halves the checklist did not ask for** (`internal/tui3/chords.go`).
+    > A TUI cannot see whether Option is meta — it sees what the emulator sent — so the item is
+    > three separate mechanisms rather than one:
+    >
+    > - **One spelling.** `chordSpelling`, from `runtime.GOOS` plus a `tokens.Env` closure. On
+    >   macOS the modifier is drawn `⌥` (`⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`, `⌥s`, `⌥w`, `⌥o`);
+    >   everywhere else `alt+`. Every constant stays authored `alt+` — which is what the manual
+    >   quotes and the gates grep for — and `chordSpelling.say` substitutes at the one drawing door.
+    > - **A second encoding where the terminal reports one.** `ctrl+1`…`ctrl+7` and `ctrl+.`, bound
+    >   off `app.keysDisambiguated` — the terminal's own reply to the kitty-keyboard query, which
+    >   bargein.go already spends on `shift+enter` — and never off an environment guess. The map's
+    >   line names the alias exactly when it is live, so it is never a phantom.
+    > - **The check itself.** `app.chordWatch` reads every key: a Mac that sends `¡ ™ £ ¢ ∞ § ¶ ≥
+    >   © œ ß ∑ ø ∫ ƒ` where a bound chord was aimed draws one line in the place's note slot naming
+    >   the terminal and its setting, and the first real `alt+` chord retires it for the process.
+    >   The first-run setup says the same remedy ahead of time, as a condition.
+    >
+    > `esc`-prefix behaviour is NOT described, and deliberately: `alt+1` arriving as escape-then-`1`
+    > is what the terminal does when the setting is ON, and a person reads that as the chord simply
+    > working. What "off" looks like is the character, which is what the note names.
 
 ## Deviations that remain, and why (each flagged to the owner)
 

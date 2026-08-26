@@ -135,15 +135,32 @@ Font, in Terminal.app under Profiles → Text → Font → Change…, and in kit
 ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
 files.
 
-**Option as meta, on macOS.** Every chord aforge binds is `alt` — `alt+enter` to send what
-you typed off as a task, `alt+1`…`alt+7` to jump to a place, `alt+.` for the map. Most Mac
+**Option as meta, on macOS.** Every chord aforge binds is the option key, and on a Mac it is
+drawn the way the keycap spells it — `⌥enter` to send what you typed off as a task, `⌥1`…`⌥7`
+to jump to a place, `⌥.` for the map. (On Linux and Windows the same chords are drawn
+`alt+enter`, `alt+1`…`alt+7`, `alt+.`; this manual names both spellings together.) Most Mac
 terminals send Option as an accent-composing key until you tell them otherwise, so those
-chords insert `≠` and `…` instead of doing anything. Turn on **iTerm2** → Profiles → Keys →
+chords type `¡ ™ £ ≥` instead of doing anything. Turn on **iTerm2** → Profiles → Keys →
 *Left Option key: Esc+*, or **Terminal.app** → Profiles → Keyboard → *Use Option as Meta
 key*, or set `macos_option_as_alt yes` (kitty), `option_as_alt = "Both"` (alacritty),
-`macos-option-as-alt = true` (ghostty). With it on, `alt+1` arrives as escape-then-`1`,
-which is how meta has been sent for forty years. With it off, `tab` still walks the places
-in order and the foot line under the composer still names what `enter` does.
+`macos-option-as-alt = true` (ghostty), `send_composed_key_when_left_alt_is_pressed = false`
+(WezTerm). With it on, `⌥1` arrives as escape-then-`1`, which is how meta has been sent for
+forty years. With it off, `tab` still walks the places in order and the foot line under the
+composer still names what `enter` does — and the first place you land on says so in one dim
+line: `your terminal sends ⌥ as a letter — turn on "use option as meta" in …`, naming the
+terminal you are actually in.
+
+**The first-run setup says it too.** When the three questions are done, a Mac gets one more
+line: `the seven places answer ⌥1…⌥7 · if ⌥ types a character instead, turn on "use option as
+meta" in …`. It is a condition rather than a report — nothing has been pressed yet — and it is
+said once.
+
+**On kitty, ghostty and WezTerm there is also a way in with no setting at all:** those
+terminals report that they run the kitty keyboard protocol, and where that report arrives
+`ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same map. The map's
+own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live.
 
 On Linux and on Windows terminals, Alt is already meta and there is nothing to set. The
-whole of this is also in *Screen* — see *The font aforge is drawn for* and *alt on macOS*.
+whole of this is also in *Screen* — see *The font aforge is drawn for*, *alt or option or ⌥ —
+how the chords are spelled on a Mac, on Linux and on Windows*, and *Why my option key types
+¡ ™ £ instead of jumping*.
