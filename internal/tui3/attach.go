@@ -680,6 +680,11 @@ func (a *app) submitImages(text string) tea.Cmd {
 		kind: entryUser, text: userLine(text, chips, a.pal), turn: a.turn,
 		context: a.turnContext(),
 	})
+	// And it is marked until the far end has it, for [app.submittingShown]'s
+	// reason and by the same door (echo.go). A message carrying files has a
+	// LONGER gap than a plain one — the bytes go up before the turn opens — so
+	// this is the road the mark matters most on.
+	mark := a.echoPending()
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
@@ -689,7 +694,7 @@ func (a *app) submitImages(text string) tea.Cmd {
 	return tea.Batch(func() tea.Msg {
 		images, err := readAttachments(pictures)
 		if err != nil {
-			return submittedMsg{err: err}
+			return submittedMsg{err: err, echo: mark}
 		}
 		// A MESSAGE WITH NO FILES AND A MESSAGE WHOSE FILES ARE ALREADY ON THE
 		// ENGINE'S OWN DISK ARE THE SAME CALL. Locally nothing is copied and
@@ -699,7 +704,7 @@ func (a *app) submitImages(text string) tea.Cmd {
 		// naming a file on the engine's own disk, which the session reads itself.
 		if len(files) == 0 || !hosted {
 			ch, err := agent.SubmitImage(ctx, spoken, images)
-			return submittedMsg{ch: ch, err: err}
+			return submittedMsg{ch: ch, err: err, echo: mark}
 		}
 		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A door that
 		// handed no file seam over is a connection this build cannot put a file
@@ -707,14 +712,14 @@ func (a *app) submitImages(text string) tea.Cmd {
 		// still in their hands rather than to send the words without the file.
 		taker, ok := agent.(fileSubmitter)
 		if !ok {
-			return submittedMsg{err: errors.New(attachRemoteWord)}
+			return submittedMsg{err: errors.New(attachRemoteWord), echo: mark}
 		}
 		loaded, err := readFiles(files)
 		if err != nil {
-			return submittedMsg{err: err}
+			return submittedMsg{err: err, echo: mark}
 		}
 		ch, err := taker.SubmitFiles(ctx, spoken, loaded, images)
-		return submittedMsg{ch: ch, err: err}
+		return submittedMsg{ch: ch, err: err, echo: mark}
 	}, a.wake())
 }
 
