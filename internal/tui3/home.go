@@ -202,7 +202,7 @@ const homeGutter = 4
 // internal/tui2/tokens already holds for exactly this — [tokens.GlyphNeedsHuman],
 // whose own comment reads `"?" // always amber (5.16)` — so the mark, the hue and
 // the meaning were already agreed everywhere except here. It is `?` on every
-// place now, in the amber (styles.go's [hueAskPlace]), and SCREEN 2b, 2f, 3b and
+// place now, in the amber (styles.go's [hueWarn]), and SCREEN 2b, 2f, 3b and
 // 3c all draw it that way.
 //
 // `◐` AND NOT `●` FOR A ROW WITH WORK RUNNING. The filled circle said "there is
@@ -3125,10 +3125,11 @@ func (a *app) homeHover(x, y int) {
 // draw did not put there.
 func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// HOME IS A PLACE, SO IT PAINTS FROM THE PLACE LADDER (styles.go's
-	// [palette.onPlaces]). The swap is made here as well as in pages.go's own
-	// frame because the phone tier below never reaches that frame — it is home's
-	// own shape at forty columns — and a home that changed colour when the window
-	// was narrowed would be two products.
+	// [palette.onPlaces] — the conversation's inks, with the three roles THE
+	// ONE-ACCENT LAW retires re-pointed). The swap is made here as well as in
+	// pages.go's own frame because the phone tier below never reaches that frame
+	// — it is home's own shape at forty columns — and a home that changed colour
+	// when the window was narrowed would be two products.
 	was := a.pal
 	a.pal = was.onPlaces()
 	defer func() { a.pal = was }()
@@ -3148,11 +3149,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		a.home.build()
 	}
 	if a.home.phone {
-		// The phone frame builds its own rows rather than going through
-		// [placeFrame], so it grounds them itself — the page is the frame's, and
-		// every tier of home owes the person the same page.
-		lines, hits, caretX, caretY := a.homePhoneFrame(width, height)
-		return a.pal.groundRows(lines, width), hits, caretX, caretY
+		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
 	// The pulse, the tab bar, the rule, the composer with its scope chip, the
@@ -3607,7 +3604,7 @@ func homeNoteInk(row session.SessionRow, shut bool) noteInk {
 		}
 		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
 		// colour on that reading everywhere it appears (styles.go's
-		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// [hueWarn]); this note used to take the accent, which on a place now
 		// means work in flight — the opposite fact.
 		return pal.warn(note)
 	}
@@ -3683,7 +3680,7 @@ func (h *homeView) projectInk(project session.Project) noteInk {
 		}
 		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
 		// colour on that reading everywhere it appears (styles.go's
-		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// [hueWarn]); this note used to take the accent, which on a place now
 		// means work in flight — the opposite fact.
 		return pal.warn(note)
 	}

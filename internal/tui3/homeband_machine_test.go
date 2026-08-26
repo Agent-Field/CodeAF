@@ -322,7 +322,7 @@ func TestTheMachineCardPaintsMeaningAndNotMood(t *testing.T) {
 	// the amber as the bound came close, which was a glance's way of saying what
 	// the line could not spell; the line spells it now — `$0.90 / $1.00` — so the
 	// colour says the one thing green says on a place, which is that this is money
-	// (pulse.go's fourth law, styles.go's [hueMoneyPlace]).
+	// (pulse.go's fourth law, styles.go's [hueMoney]).
 	if !strings.Contains(a.pulseLine(90, a.pal), placeMoneyInk(a.pal)("$0.90"+pulseAllowanceGap+"$1.00")) {
 		t.Fatalf("the pulse's spend is not the money ink against its allowance: %q", plain(a.pulseLine(90, a.pal)))
 	}
