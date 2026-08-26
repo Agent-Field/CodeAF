@@ -47,13 +47,23 @@ func scrollToTop(t *testing.T, a *app) {
 	for i := 0; i < 400; i++ {
 		before := len(a.visible(a.bodyWidth()))
 		beforeOffset := a.offsetFor(before, a.viewHeight())
-		a.scroll(-a.scrollPage())
+		scrollBy(t, a, -a.scrollPage())
 		after := len(a.visible(a.bodyWidth()))
 		if after == before && a.offsetFor(after, a.viewHeight()) == beforeOffset {
 			return
 		}
 	}
 	t.Fatal("scrolling up never reached a top")
+}
+
+// scrollBy follows the page command the same way Bubble Tea does. History is
+// deliberately not materialized inside [app.scroll], so a test that stops at
+// the returned command would be testing the input handler rather than scrolling.
+func scrollBy(t *testing.T, a *app, delta int) {
+	t.Helper()
+	for _, msg := range runCmd(a.scroll(delta)) {
+		drive(t, a, msg)
+	}
 }
 
 // ── S1: the whole conversation is reachable ─────────────────────────────────
@@ -130,7 +140,7 @@ func TestBackfillKeepsTheReaderOnTheSameLine(t *testing.T) {
 	// Park just short of the top, where the next page up is the one that
 	// triggers the backfill.
 	for a.offsetFor(len(a.visible(a.bodyWidth())), a.viewHeight()) > 0 {
-		a.scroll(-1)
+		scrollBy(t, a, -1)
 	}
 	before, _ := a.window(a.bodyWidth(), a.viewHeight())
 	if len(before) == 0 {
@@ -138,7 +148,7 @@ func TestBackfillKeepsTheReaderOnTheSameLine(t *testing.T) {
 	}
 	top := plain(before[0].text)
 
-	a.scroll(-1) // the gesture that has nothing left above it until the backfill
+	scrollBy(t, a, -1) // the gesture that walks into the prefetched page
 	after, _ := a.window(a.bodyWidth(), a.viewHeight())
 	if len(after) == 0 {
 		t.Fatal("the window went empty across the backfill")
@@ -290,5 +300,59 @@ func TestBackfillDoesNotDetachTheStreamingBlock(t *testing.T) {
 	a.event(text(session.EventTextDelta, " and its next words"))
 	if got := a.entries[a.live].text; got != said+" and its next words" {
 		t.Fatalf("the delta after the backfill landed as %q", got)
+	}
+}
+
+// THE NEXT PAGE IS ASKED FOR WHILE A SCREEN STILL REMAINS. The gesture changes
+// only the offset it can already see; materializing older blocks is the command
+// that comes back, so neither a key nor a wheel can wait on history work.
+func TestEarlierHistoryPrefetchesBeforeTheViewportReachesTheTop(t *testing.T) {
+	agent := &fakeAgent{model: "m", past: longPast(80)}
+	a := newTestApp(agent)
+	a.entries = nil
+	a.replay()
+	a.height = 24
+	a.touch()
+	rows := len(a.visible(a.bodyWidth()))
+	height := a.viewHeight()
+	a.stick = false
+	a.offset = height + 1
+	before := len(a.entries)
+
+	cmd := a.scroll(-1)
+	if cmd == nil || !a.historyLoading {
+		t.Fatal("entering the one-screen prefetch margin scheduled no history page")
+	}
+	if a.offsetFor(rows, height) == 0 {
+		t.Fatal("the viewport reached the top before prefetch began")
+	}
+	if len(a.entries) != before {
+		t.Fatal("the scroll gesture materialized history synchronously")
+	}
+
+	msgs := runCmd(cmd)
+	if len(msgs) != 1 {
+		t.Fatalf("the prefetch command returned %d messages, want one", len(msgs))
+	}
+	drive(t, a, msgs[0])
+	if len(a.entries) <= before {
+		t.Fatal("the returned history page added no entries")
+	}
+}
+
+// A HOSTED TRANSCRIPT IS READ ONCE AND THEN SCROLLED LOCALLY. The fake's read
+// count stands in for MethodTranscript crossing ssh: every page after replay is
+// cut from the surface's mirror and no upward gesture calls the agent again.
+func TestScrollingHistoryReadsTheMirroredTranscriptOnly(t *testing.T) {
+	agent := &fakeAgent{model: "m", past: longPast(100)}
+	a := newTestApp(agent)
+	reads := agent.transcriptReads
+	if agent.transcriptReads != 1 {
+		t.Fatalf("opening read the transcript %d times, want one", agent.transcriptReads)
+	}
+
+	scrollToTop(t, a)
+	if agent.transcriptReads != reads {
+		t.Fatalf("scrolling crossed the transcript door %d extra times", agent.transcriptReads-reads)
 	}
 }

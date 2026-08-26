@@ -581,3 +581,91 @@ func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
 		t.Fatal("the wait held a lone delta back looking for more")
 	}
 }
+
+// THE CACHE KEY INCLUDES THE INK THAT PAINTED IT. Width and content can stay
+// unchanged while a terminal reports a different ground; a row keyed only by
+// wrap would keep yesterday's escape sequences forever in old scrollback.
+func TestSettledEntryCacheIsKeyedByInkState(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = []entry{{kind: entryAssistant, text: "settled", settled: true}}
+	a.entryRows(a.conversation(), 0, 60)
+	before := a.renders
+	a.inkState++
+	a.entryRows(a.conversation(), 0, 60)
+	if a.renders != before+1 {
+		t.Fatalf("a new ink state caused %d renders, want one", a.renders-before)
+	}
+}
+
+// TRACKPAD REPORTS INSIDE ONE FRAME ARE ONE MOVEMENT. The reports themselves
+// only accumulate; the returned frame message applies their sum once.
+func TestWheelDeltasAreAppliedOncePerFrame(t *testing.T) {
+	a := resumedApp(t, longPast(40)...)
+	a.height = 24
+	a.touch()
+	total := len(a.visible(a.bodyWidth()))
+	a.stick = false
+	a.offset = max(0, total-a.viewHeight())
+	before := a.offset
+
+	var clock tea.Cmd
+	for i := 0; i < 3; i++ {
+		_, cmd := a.Update(tea.MouseWheelMsg{X: 2, Y: a.bodyTop() + 2, Button: tea.MouseWheelUp})
+		if i == 0 {
+			clock = cmd
+		} else if cmd != nil {
+			t.Fatalf("wheel report %d scheduled a second frame", i+1)
+		}
+	}
+	if a.offset != before {
+		t.Fatalf("wheel reports moved immediately: %d to %d", before, a.offset)
+	}
+	if a.wheelDelta != -9 {
+		t.Fatalf("the pending wheel sum is %d, want -9", a.wheelDelta)
+	}
+	msgs := runCmd(clock)
+	if len(msgs) != 1 {
+		t.Fatalf("the wheel frame returned %d messages, want one", len(msgs))
+	}
+	drive(t, a, msgs[0])
+	if a.offset != before-9 {
+		t.Fatalf("the frame moved to %d, want %d", a.offset, before-9)
+	}
+}
+
+const scrollAllocationCeiling = 220
+
+// SCROLLING FOUR THOUSAND LINES IS A VIEWPORT WRITE, NOT FOUR THOUSAND WRAPS.
+// The frame still composes its screen string, which is the measured residual;
+// every settled entry keeps the same identity/width/ink cache key throughout.
+func TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 42
+	a.entries = a.entries[:0]
+	for i := 0; i < 4000; i++ {
+		a.entries = append(a.entries, entry{kind: entryUser, text: fmt.Sprintf("line %04d", i), turn: i})
+	}
+	a.touch()
+	a.frame()
+	a.stick = false
+	a.offset = len(a.visible(a.bodyWidth())) - a.viewHeight()
+	page := a.scrollPage()
+	renders := a.renders
+	up := true
+	allocs := testing.AllocsPerRun(100, func() {
+		if up {
+			a.scroll(-page)
+		} else {
+			a.scroll(page)
+		}
+		up = !up
+		a.frame()
+	})
+	t.Logf("one-screen scroll: %.0f allocations, %d unchanged-entry renders", allocs, a.renders-renders)
+	if allocs > scrollAllocationCeiling {
+		t.Fatalf("one-screen scroll allocated %.0f times, ceiling %d", allocs, scrollAllocationCeiling)
+	}
+	if got := a.renders - renders; got != 0 {
+		t.Fatalf("one-screen scrolling re-rendered %d unchanged entries, want zero", got)
+	}
+}

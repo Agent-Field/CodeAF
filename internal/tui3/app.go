@@ -499,12 +499,26 @@ type entry struct {
 	// sent a message.
 	pending bool
 
-	// The row cache. built distinguishes "no rows yet" from "renders to no
-	// rows", which an empty slice cannot.
-	rows  []string
-	width int
-	built bool
-	stale bool
+	// The row cache. Its key names the three facts that can change painted rows:
+	// which block owns them, the width they wrap at, and the ladder that supplied
+	// their ink. Staleness is the block itself changing between two readings of
+	// that key; built distinguishes "no rows yet" from "renders to no rows".
+	rows     []string
+	rowKey   renderedEntryKey
+	identity uint64
+	width    int
+	built    bool
+	stale    bool
+}
+
+// renderedEntryKey keeps the cache contract explicit. The cache lives on the
+// entry, so identity looks redundant until a block value is moved or reused;
+// keeping it in the key makes a cached slice incapable of answering for the
+// next block that happens to occupy the same storage.
+type renderedEntryKey struct {
+	identity uint64
+	width    int
+	ink      uint64
 }
 
 // forming reports whether this row is a call the model is STILL SPELLING OUT.
@@ -557,6 +571,22 @@ type (
 	// pointer crossing a row it is already on must cost no frame at all, so the
 	// thing that wakes it up may not draw one (coalesce.go).
 	pointerMsg struct{}
+	// wheelFrameMsg folds every wheel report that arrived inside one display
+	// interval into one scroll. Trackpads can send several reports for a single
+	// visible movement, and laying out an intermediate viewport cannot be seen.
+	wheelFrameMsg struct{}
+	// historyPageMsg is one local page of the mirrored transcript returning to
+	// the update loop. Even a hosted session therefore never waits on ssh in the
+	// key or wheel path, and a conversation replaced while the command was out
+	// rejects the old generation rather than prepending somebody else's words.
+	historyPageMsg struct {
+		gen     int
+		entries []session.DisplayEntry
+		from    int
+		to      int
+		earlier bool
+		seam    bool
+	}
 	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
 	// a message rather than a call because `git status` on a large tree is tens
 	// of milliseconds and the model loop is not a place to wait.
@@ -683,6 +713,10 @@ type app struct {
 	previews map[string]imagePreview
 
 	entries []entry
+	// transcript is the surface's local mirror of the engine transcript. The
+	// opening read may cross ssh; every page walked afterwards is cut from this
+	// slice on the local side.
+	transcript []session.DisplayEntry
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
 	// live is the assistant entry currently being streamed into, or -1.
@@ -730,6 +764,10 @@ type app struct {
 	// exactly that boundary (the entryCompact block), and a second line saying
 	// the same thing two rows above it is the surface stuttering.
 	earlierSeam bool
+	// historyLoading admits one page command at a time, and historyGen makes its
+	// answer belong to the replay that asked for it.
+	historyLoading bool
+	historyGen     int
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
@@ -1006,6 +1044,13 @@ type app struct {
 	painting bool
 	paints   int
 	builds   int
+	// renders counts actual entry renderer calls so allocation laws can prove a
+	// viewport move did not repaint a block whose key stayed the same.
+	renders uint64
+	// renderIdentity mints the identity half of an entry's cache key lazily;
+	// inkState advances whenever the terminal's measured ladder changes.
+	renderIdentity uint64
+	inkState       uint64
 
 	// ptr is the pointer's fold: the sweep's newest position and the notches of
 	// a wheel run, kept so that a burst of them costs the surface one answer per
@@ -1029,6 +1074,10 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
+	// wheelDelta is the trackpad reports waiting for their one frame, and
+	// wheelPending says that frame is already on its way.
+	wheelDelta   int
+	wheelPending bool
 	// sizing says a resize is still settling, so the scroll clamp that a new
 	// size asks for is already on its way and a second one would be a second
 	// relayout for nothing (see [app.resized]).
@@ -2342,6 +2391,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.copiedFile(msg)
 		return a, nil
 
+	case historyPageMsg:
+		return a, a.historyPrefetched(msg)
+
+	case wheelFrameMsg:
+		return a, a.flushWheel()
+
 	case tea.MouseWheelMsg:
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
 		// is the thing the wheel would otherwise move (copymode.go).
@@ -2491,9 +2546,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.Mouse().Button {
 		case tea.MouseWheelUp:
-			a.scroll(-3)
+			return a, a.queueWheel(-3)
 		case tea.MouseWheelDown:
-			a.scroll(3)
+			return a, a.queueWheel(3)
 		}
 		return a, nil
 

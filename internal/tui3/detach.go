@@ -259,6 +259,13 @@ func (a *app) clearConversation() {
 	// clearing them here is what makes that the design rather than luck.
 	a.replayFrom, a.replayFloor = 0, 0
 	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
+	a.transcript = nil
+	a.historyGen++
+	a.historyLoading = false
+	// A page or conversation replacing this one also owns the wheel reports that
+	// have not reached their frame yet. Letting one land afterwards would move a
+	// transcript the gesture was never made over.
+	a.wheelDelta, a.wheelPending = 0, false
 	a.unfolded = map[int]bool{}
 	// Per-turn fold state carried across would be applied to another
 	// conversation's turn NUMBERS, which is the same index meaning something

@@ -327,9 +327,17 @@ chosen by file modification time. A directory that has never held one gets a fre
 
 It opens showing the last **40** blocks of that conversation rather than all of it, which is
 what keeps the first frame quick. Everything older is still there and still reachable:
-scroll up and aforge reads the previous 40 out of the file and puts them above what you are
-reading, over and over, until you are at the first message. While there is more above you
-the top row says `· earlier · keep scrolling`. The screen page has the keys.
+aforge keeps a local copy of the transcript and prepares the previous 40 blocks before you
+reach the top — when the first visible line is within one screen of the oldest part already
+drawn. The page arrives between frames and is put above what you are reading without moving
+that line. Keep scrolling and this repeats until you are at the first message. While there is
+more above you the top row says `· earlier · keep scrolling`. The screen page has the keys.
+
+**This is local even with `aforge chat --host <machine>`.** The conversation and its files
+stay on the other machine, but the transcript shown by this window is mirrored on the machine
+holding your terminal. A scroll key or wheel movement never waits for ssh; several trackpad
+reports arriving inside one frame are applied together. New conversation work still crosses
+the connection in the ordinary way.
 
 **A compaction in the middle of it does not shorten what you can read.** A pass rewrites the
 conversation for the model and writes the rewritten version back into the file below its
