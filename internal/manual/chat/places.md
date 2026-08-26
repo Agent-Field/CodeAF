@@ -558,10 +558,15 @@ that reads a real disk and names the wrong machine is worse than a page that say
 - **search** — `search reads what was said on this machine, and this session is on another`
 - **memory** — `memory shows what this machine has learned, and this session is on another`
 
-Each opens, keeps its head, its tab bar and its box, and says that one line where its rows
-would be. The three read a file or a database on the machine this window is running on, and
-there is no door on the wire for them yet — so what they can honestly show over a connection
-is nothing, and they say which nothing it is.
+Spend and search say that line **where their rows would be**. Memory keeps its own three
+sentences about what memory is for and says its line **on the note line under them**, in the
+slot where a local session says `memory is off for this session · turn it on under
+/settings` — which would have been a claim about a setting on a machine this surface never
+asked.
+
+The three read a file or a database on the machine this window is running on, and there is no
+door on the wire for them yet — so what they can honestly show over a connection is nothing,
+and they say which nothing it is.
 
 The search box still takes letters. A search that found nothing looks exactly like a search
 that found nothing, which is why the line is there before you read an empty result as an
