@@ -30,11 +30,7 @@ func liveHost(t *testing.T, workspace string) {
 			},
 		})
 	}()
-	conn, err := waitForHost(workspace, 5*time.Second)
-	if err != nil {
-		t.Fatalf("no host answered: %v", err)
-	}
-	_ = conn.Close()
+	waitForHostQuietly(t, workspace)
 	t.Cleanup(func() {
 		// Whatever the test did, nothing is left listening: a host that
 		// outlived its test is exactly the thing this file is about.
@@ -44,6 +40,41 @@ func liveHost(t *testing.T, workspace string) {
 		case <-time.After(5 * time.Second):
 		}
 	})
+}
+
+// waitForHostQuietly waits for a host to be listening WITHOUT connecting to it,
+// which is the whole point of the helper.
+//
+// A connection is reaped on its own goroutine after the far end closes it, so a
+// test that dialled to find out whether the host was up would then race that
+// reaping — and a host with a connection it has not finished letting go of
+// honestly answers that it is holding something. That answer is the safe side
+// of the question in the field (a refusal, never a retirement) and it is a
+// coin toss inside a test. So this asks the two things a host publishes without
+// being spoken to: it has taken the lock, and its socket file exists.
+func waitForHostQuietly(t *testing.T, workspace string) {
+	t.Helper()
+	dir, err := Dir(workspace)
+	if err != nil {
+		t.Fatalf("resolve the directory: %v", err)
+	}
+	socket := filepath.Join(dir, socketName)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(socket); err == nil {
+			held, err := takeLock(filepath.Join(dir, lockName))
+			if err != nil {
+				// The lock is taken and the socket file is there, which
+				// together are a host that is listening.
+				return
+			}
+			_ = releaseLock(held)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no host came up")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // ── which build is holding this ─────────────────────────────────────────────
