@@ -942,8 +942,8 @@ one`** and opens nothing; a bare `/task` says the same line there. `ctrl+.` ther
 nothing at all rather than raising an empty page. A session that has run nothing itself
 **does** open the page when another window on the same directory is running something — that
 is the one fact it was opened to report. The **tab bar** still walks into the place with
-nothing on it, and that is the one screen where the page explains itself instead of drawing
-counts:
+nothing on it — so do `tab` and `alt+2`, which are the same walk — and that is the one
+screen where the page explains itself instead of drawing counts:
 
 ```
 tasks is the history of work this machine has run.

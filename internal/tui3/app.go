@@ -1358,6 +1358,21 @@ type app struct {
 	// held on, and this field is what the tab bar's band and `alt+1`…`alt+7`
 	// read.
 	page page
+	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
+	// that survived the width ladder, and the row of the terminal the bar landed
+	// on (-1 when a short frame cut it off). They are written by the draw
+	// (pages.go's [placeFrameWithBar]) and read by the press, which is the same
+	// bargain every hit map on this surface strikes: a click resolves against
+	// what was actually drawn, never against what a second computation thinks
+	// was drawn.
+	tabs   []placeTabSpan
+	tabRow int
+	// pageRouting is true only while [app.showPage] is opening a place, and it
+	// is what tells a REFUSAL where to be said ([app.refusePage]): on this road
+	// a place frame is what a person is looking at, so the sentence is the
+	// router's own line; typed into a conversation the same refusal is a note in
+	// that conversation.
+	pageRouting bool
 	// teach says WHICH of spend and search is standing, and draws what that place
 	// is for on the days it has nothing of its own to draw (teachplace.go). It
 	// stayed the open flag for both after they grew bodies, because it is what
@@ -2192,6 +2207,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// AND THE FOUR PLACES THE ROUTER PROMOTED, on exactly the same terms as
+		// the three above (pages.go's [app.placeBodyWheel]). Each of them is the
+		// whole screen and each has a window that follows its cursor rather than
+		// an offset of its own, so the wheel walks the cursor — and a wheel that
+		// fell through from one of them would scroll a transcript nobody can see,
+		// which is what a person turning it over the standing list actually got.
+		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 && a.placeBodyWheel(delta) {
+			return a, nil
+		}
 		// And the rewind timeline, on the same terms as all three: it is the whole
 		// screen, and its window follows its cursor rather than an offset of its
 		// own, so the wheel walks the cursor (rewindsheet.go).
@@ -2289,6 +2313,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
+			// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, because it is
+			// the router's row and not any place's: it is drawn on every one of
+			// them, in the same cells, and a press answered by the place under it
+			// would be the one row of the frame that means something different
+			// depending on which room you happen to be standing in
+			// (placemouse.go's [app.placeTabPress]).
+			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if a.sheet.open {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
@@ -2303,6 +2336,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.home.open {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
+			// THE SAME REASON: each is the whole screen, so a press that fell
+			// through to the conversation underneath would open a tool call
+			// nobody can see. A press on one of their rows moves that place's
+			// cursor and never acts (pages.go's [app.placeBodyPress]).
+			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// And the rewind timeline at the same rung and for the same reason: a
 			// press that fell through to the conversation underneath would open a
@@ -2371,17 +2412,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.permPanel.open {
 				return a, a.permPanelPress(msg.Mouse().Y)
 			}
-			// AND THE STANDING PAGE IS THE FOURTH, on the same terms except for
-			// what a press on a row DOES: it moves the cursor and never acts,
-			// because every verb there is a key and enter leaves this
-			// conversation (standingpage.go).
-			if a.standPage.up {
-				return a, a.standPage.press(a, msg.Mouse().Y)
-			}
-			// AND /subharness IS THE FIFTH, on the standing page's terms and for
-			// a sharper version of its reason: one of the card's rows starts work
-			// and spends money, so a press moves the cursor and never acts
-			// (subharness.go).
+			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
+			// panels. It is a PLACE now and is read with the other three of them,
+			// above — one rung for every surface that takes the whole frame,
+			// rather than one place resolved among the overlays that are drawn
+			// inside a conversation.
+			//
+			// AND /subharness IS THE FOURTH OF THESE PANELS, on the standing
+			// page's old terms and for a sharper version of its reason: one of
+			// the card's rows starts work and spends money, so a press moves the
+			// cursor and never acts (subharness.go).
 			if a.subPage.open {
 				return a, a.subPagePress(msg.Mouse().Y)
 			}
@@ -2576,6 +2616,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.home.open {
 			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		// AND THE FOUR PLACES THE ROUTER PROMOTED, on home's own law: THE POINTER
+		// PREVIEWS AND THE CURSOR SELECTS (pages.go's [app.placeBodyHover]). They
+		// had no hover at all — the standing list's map answered -1 and the other
+		// three had none — so a pointer crossing them lit nothing, on the four
+		// screens whose whole shape is a list of rows to aim at.
+		if a.placeBodyHover(msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.rewSheet.open {

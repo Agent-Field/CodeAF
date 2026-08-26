@@ -45,12 +45,6 @@ func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
 	})
 }
 
-// standPageHover is the row under the pointer, and it is -1 until the place
-// grows a hover map of its own. The overlay read it off the chrome's marks, and
-// the chrome does not draw this list any more; a hover resolved against a map
-// nobody writes would be a highlight on whatever row it used to be.
-func (a *app) standPageHover() int { return -1 }
-
 // placeNote is the one line a place says about what it is holding, drawn under
 // the rule and above the composer (pages.go's [placeFrame] states the law).
 //

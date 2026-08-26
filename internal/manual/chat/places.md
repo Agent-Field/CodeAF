@@ -28,16 +28,55 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
-- **`alt+1`** … **`alt+7`** — jump straight to one. The numbers are the tab bar's own order,
-  so `alt+1` is home and `alt+7` is settings. Hold `alt` and press the digit.
+- **`alt+1`** … **`alt+7`** — jump straight to one, **from a place or from a conversation**.
+  The numbers are the tab bar's own order, so `alt+1` is home and `alt+7` is settings. Hold
+  `alt` and press the digit. `tab` is the walk between rooms and belongs to the composer
+  while you are in a conversation; the numbers are the one class of place key that works
+  wherever you are standing.
 - **type its name** — on home, typing `sta` offers the standing place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin.
 - **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
   place it names.
+- **click the word** — the tab bar itself is the control. A press on a place's word goes
+  there; a press in the gap between two words does nothing, and a press on the word you are
+  already standing on does nothing (going there would throw away what you have typed and
+  the row you are on).
 
 `alt+<digit>` arrives in every terminal aforge runs in. `ctrl+<digit>` does not exist as a
 thing a terminal can send, which is why the numbers are on `alt`.
+
+**`tab` goes past a place that has nothing to open.** Two rooms can be shut: **standing**,
+when nothing stands over you anywhere on this computer, and **memory**, when memory is
+turned off. `tab` and `shift+tab` walk on to the next room a person can actually get into,
+rather than stopping dead.
+
+**The tasks place is never shut.** Walking into it — `tab`, `alt+2`, a click on its word —
+opens it on whatever the machine has run, and on a machine that has run nothing it spends
+the frame saying what the place is for. Walking into a room is not asking it a question, so
+there is nothing to refuse. The **command** is a question and still answers one: `/history`
+and a bare `/task` on a machine that has run nothing say `no tasks yet — /task <brief>
+starts one` and open nothing.
+
+A shut place asked for **by name** — `alt+3`, `alt+4`, a click on its word — still says why
+it will not open, on the hint line of the place you are left on. Pressed in a conversation
+the same sentence is written into the conversation, because that is the surface you are
+looking at.
+
+## The mouse on a place — clicking a row, hovering, and the wheel
+
+Three gestures, the same on all seven places:
+
+- **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
+  what the card beside the list is about, and on home it is what the right-hand card shows.
+  Moving the pointer moves nothing else — the cursor stays where you put it.
+- **a click puts the cursor on that row.** On the places it never acts: the verbs are keys
+  and `enter` leaves the conversation you are sitting in, so a click that opened something
+  would be a gesture nobody can aim. Home is the exception it always was — the first click
+  chooses the row, a second click on the same row opens it.
+- **the wheel walks the list**, three rows a turn, on every place. There is no separate
+  scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
+  Walking off the bottom with `↓` scrolls the same way.
 
 ## The composer — typing on any place, and how to start a task from any page
 
@@ -240,8 +279,10 @@ the word. That arrival is the one moment somebody is asking "what is this", so a
 nothing of its own to draw answers, in three sentences, and says nothing else.
 
 Today that is **spend on a machine that has spent nothing inside the window it is showing**,
-and **memory on a machine that has remembered nothing** — which says what memory is for
-rather than what the place is.
+**memory on a machine that has remembered nothing** — which says what memory is for rather
+than what the place is — and **tasks on a machine that has run nothing**, which is the room
+this rule matters most in: it is the one place you can walk into empty, and it teaches
+instead of turning you back.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like

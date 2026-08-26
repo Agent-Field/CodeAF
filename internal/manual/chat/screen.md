@@ -47,7 +47,8 @@ session has tasks to come back to.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-jump straight to one, and each has commands of its own (`/home`, `/history`, `/standing`,
+jump straight to one from wherever you are standing — a place or a conversation — and each
+has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven — it is something you do to this conversation rather than
 a room in the machine.
@@ -2219,6 +2220,11 @@ picture on the tray above the box, one of the four answers on a landed card, one
 two answers on the stop card, a chip or a link on an adaptive run's page: the one under
 the pointer lights and its neighbours stay dark. The gap between two chips lights nothing
 — it is a place to miss, not a door.
+
+**The tab bar of the places is one of them.** Each place's word is its own chip, clicking
+it goes there, and the gap between two words is a place to miss. Under the bar, every
+place answers the pointer the same way: the row you are hovering takes the band, and the
+wheel walks the list three rows a turn.
 
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
 accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
