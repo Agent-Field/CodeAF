@@ -166,6 +166,13 @@ func TestTheTabsGoOnCountingInEveryRoom(t *testing.T) {
 			brain.origins = map[string]memoryOrigin{}
 			a.agent = &rememberingAgent{}
 			a.memory = brain
+			// THE ROOT IS THE TEST'S OWN, AND IT EXISTS. [session.NoteLookAt] refuses
+			// to stamp a root that is not there — creating it for a stamp alone
+			// would invent state the reader then walks — so a lab that left the
+			// root unset was stamping the developer's real ~/.aforge, and passed
+			// only on a machine that had one: with AFORGE_HOME pointed somewhere
+			// empty the stamp was dropped and the beat counted nothing.
+			a.homeRoot = t.TempDir()
 			session.NoteLookAt(a.placesRoot(), pageMemory.word(), time.Now().Add(-time.Hour))
 
 			a.refreshPlaceCounts(time.Now())
