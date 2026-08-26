@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
@@ -953,6 +954,85 @@ func (c *Client) World() (session.World, error) {
 		return session.World{}, err
 	}
 	return world, nil
+}
+
+func (c *Client) Ledger(since time.Time) (LedgerReading, error) {
+	payload, err := c.call(nil, MethodPlacesLedger, LedgerArgs{Since: since})
+	if err != nil {
+		return LedgerReading{}, err
+	}
+	var out LedgerReading
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+func (c *Client) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
+	payload, err := c.call(nil, MethodPlacesSearch, SearchArgs{Terms: terms, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var out []store.ConversationHit
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+func (c *Client) Archive(dir string, archived bool) error {
+	_, err := c.call(nil, MethodPlacesArchive, ArchiveArgs{Dir: dir, Archived: archived})
+	return err
+}
+
+func (c *Client) Snapshot(limit int) (store.MemoryShelves, error) {
+	var out store.MemoryShelves
+	payload, err := c.call(nil, MethodMemorySnapshot, limit)
+	if err == nil {
+		err = json.Unmarshal(payload, &out)
+	}
+	return out, err
+}
+
+func (c *Client) ChangedSince(at time.Time) (int, int, error) {
+	payload, err := c.call(nil, MethodMemoryChanged, at)
+	if err != nil {
+		return 0, 0, err
+	}
+	var out MemoryChange
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return 0, 0, err
+	}
+	return out.Learned, out.LetGo, nil
+}
+
+func (c *Client) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	var out []store.Memory
+	payload, err := c.call(nil, MethodMemoryList, MemoryListArgs{Scope: scope, Limit: limit})
+	if err == nil {
+		err = json.Unmarshal(payload, &out)
+	}
+	return out, err
+}
+
+func (c *Client) UpdateMemory(id, title, text string, tags []string) error {
+	_, err := c.call(nil, MethodMemoryUpdate, MemoryUpdateArgs{ID: id, Title: title, Text: text, Tags: tags})
+	return err
+}
+func (c *Client) ForgetMemory(id string) error {
+	_, err := c.call(nil, MethodMemoryForget, id)
+	return err
+}
+func (c *Client) RestoreMemory(id string) error {
+	_, err := c.call(nil, MethodMemoryRestore, id)
+	return err
+}
+func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) {
+	payload, err := c.call(nil, MethodMemoryProvenance, id)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	var out MemoryOrigin
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", "", time.Time{}, err
+	}
+	return out.Session, out.Title, out.At, nil
 }
 
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {

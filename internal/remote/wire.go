@@ -108,7 +108,12 @@ import (
 // payload in either direction; the version still moves because a method one
 // half may send and the other half cannot answer is a protocol difference, and
 // Decision 3 in docs/REMOTE.md says those differences are refused at the door.
-const Version = 4
+//
+// VERSION 5 ADDS THE PLACES METHODS. Places.Task moved the door once; the
+// ledger, search, memory and archive methods in wire_places.go stay on that
+// same version because an older engine's no-such-method answer has an explicit
+// honest fallback on the surface.
+const Version = 5
 
 // Frame is one line on the wire, either direction.
 type Frame struct {

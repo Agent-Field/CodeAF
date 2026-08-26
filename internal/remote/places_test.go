@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // ── THE PLACES OVER THE WIRE ────────────────────────────────────────────────
@@ -38,6 +39,41 @@ func farWorld(now time.Time) session.World {
 				}}},
 			}},
 		}},
+	}
+}
+
+func TestTheLatePlaceDoorsCrossAndArchiveStaysInsidePlaces(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	var archived string
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: &fakeAgent{model: "m"}, PlacesRoot: "/srv/.aforge/v3/projects",
+			Ledger: func(time.Time) LedgerReading {
+				return LedgerReading{Lines: []session.UsageLine{{At: now, USD: 1.25}}, Held: true}
+			},
+			Search: func(q string, limit int) ([]store.ConversationHit, error) {
+				return []store.ConversationHit{{Title: q}}, nil
+			},
+			Archive: func(dir string, _ bool) error { archived = dir; return nil },
+		}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	ledger, err := loop.Client.Ledger(now.Add(-time.Hour))
+	if err != nil || !ledger.Held || len(ledger.Lines) != 1 {
+		t.Fatalf("ledger: %+v, %v", ledger, err)
+	}
+	hits, err := loop.Client.SearchConversations("importer", 4)
+	if err != nil || len(hits) != 1 || hits[0].Title != "importer" {
+		t.Fatalf("search: %+v, %v", hits, err)
+	}
+	inside := "/srv/.aforge/v3/projects/-srv-code-api/one"
+	if err := loop.Client.Archive(inside, true); err != nil || archived != inside {
+		t.Fatalf("archive: %q, %v", archived, err)
+	}
+	if err := loop.Client.Archive("/tmp/not-a-place", true); err == nil {
+		t.Fatal("archive accepted a path outside places")
 	}
 }
 
