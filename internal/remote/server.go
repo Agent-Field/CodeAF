@@ -205,7 +205,7 @@ type Engine struct {
 	// ([MethodPlacesTask]). nil is the same absence World's nil is — the door is
 	// answered as a refusal and the card says so, rather than the surface reading
 	// a path on its own disk that only exists on this one.
-	TaskRecord func(uri string) (session.TaskRecord, error)
+	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -1366,7 +1366,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			// as a piece of work that said nothing at the end, which is a claim.
 			return nil, errors.New("engine: this engine cannot read its record")
 		}
-		record, err := read(args.Transcript)
+		record, err := read(args.Transcript, args.Tail)
 		if err != nil {
 			return nil, err
 		}

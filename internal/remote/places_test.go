@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,8 +140,8 @@ func farRecordEngine(t *testing.T) (*Loop, string, string) {
 			Agent: &fakeAgent{model: "m"}, Workspace: "/srv/code/api",
 			World:      func() session.World { return session.World{} },
 			PlacesRoot: root,
-			TaskRecord: func(uri string) (session.TaskRecord, error) {
-				return session.ReadTaskRecordUnder(root, uri)
+			TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+				return session.ReadTaskRecordUnder(root, uri, tail)
 			},
 		}, nil
 	}})
@@ -155,7 +156,7 @@ func farRecordEngine(t *testing.T) (*Loop, string, string) {
 // first — which is the whole of what [session.PeekReport] is for.
 func TestOneRowOfTheRecordCrossesTheWire(t *testing.T) {
 	loop, _, journal := farRecordEngine(t)
-	record, err := loop.Client.TaskRecord("file://" + journal)
+	record, err := loop.Client.TaskRecord("file://"+journal, 0)
 	if err != nil {
 		t.Fatalf("ask for the record: %v", err)
 	}
@@ -170,12 +171,24 @@ func TestOneRowOfTheRecordCrossesTheWire(t *testing.T) {
 	}
 }
 
+func TestARoomTailCrossesTheRecordDoor(t *testing.T) {
+	loop, _, journal := farRecordEngine(t)
+	record, err := loop.Client.TaskRecord("file://"+journal, session.TaskJournalTail)
+	if err != nil {
+		t.Fatalf("ask for the room journal: %v", err)
+	}
+	if !bytes.Contains(record.Journal, []byte(`"content":"widen the pipe"`)) ||
+		!bytes.Contains(record.Journal, []byte(`"content":"widened the pipe and re-ran the importer."`)) {
+		t.Fatalf("the journal tail did not cross whole: %q", record.Journal)
+	}
+}
+
 // A row whose journal has been deleted is an ANSWER and not a refusal: the row
 // still names the file, the card still says where it was, and `Kept` false is the
 // sentence the card has for exactly this.
 func TestAJournalTheEngineNoLongerHasIsAnAnswer(t *testing.T) {
 	loop, root, _ := farRecordEngine(t)
-	record, err := loop.Client.TaskRecord("file://" + filepath.Join(root, "-srv-code-api", "bbbb000000000002", "tasks", "gone.jsonl"))
+	record, err := loop.Client.TaskRecord("file://"+filepath.Join(root, "-srv-code-api", "bbbb000000000002", "tasks", "gone.jsonl"), 0)
 	if err != nil {
 		t.Fatalf("a deleted journal was refused rather than answered: %v", err)
 	}
@@ -195,7 +208,7 @@ func TestNothingOutsideTheEnginesRecordCrosses(t *testing.T) {
 	if err := os.WriteFile(outside, []byte(`{"type":"message","role":"assistant","content":"no"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loop.Client.TaskRecord("file://" + outside); err == nil {
+	if _, err := loop.Client.TaskRecord("file://"+outside, 0); err == nil {
 		t.Fatal("a journal outside the engine's record crossed the wire")
 	}
 }
@@ -211,7 +224,7 @@ func TestAnEngineWithNoRecordDoorRefusesRatherThanAnsweringEmpty(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() { _ = loop.Close() })
-	if _, err := loop.Client.TaskRecord("file:///srv/anything.jsonl"); err == nil {
+	if _, err := loop.Client.TaskRecord("file:///srv/anything.jsonl", 0); err == nil {
 		t.Fatal("an engine with no record door answered a record")
 	}
 }

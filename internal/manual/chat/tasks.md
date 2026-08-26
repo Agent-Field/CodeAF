@@ -1368,6 +1368,19 @@ room on it would be an empty page with nothing coming), and a queued task by way
 (it has no worker yet, so there is nothing to talk to). An agent with no rooms at all
 writes one note in the conversation: `room unavailable — this session has no task rooms`.
 
+## Task roster and rooms while running on another machine
+
+Over `--host`, the roster beside the conversation lists that far conversation's landed
+tasks from the far machine's record. `ctrl+g` closes or restores it exactly as it does for
+a local conversation; it never falls back to tasks on the machine holding the screen.
+
+Opening a landed row is asynchronous. The room opens at once with
+`bringing this task's transcript from the other machine…`, then replaces that line with
+the bounded end of the task's transcript when it arrives. The calls, results, reasoning,
+and messages use the ordinary room renderer. The room is read-only over `--host`:
+steering, `x` to stop, and changing the task's model are absent because this connection
+does not carry those actions. Leaving with `esc` or `←` works normally.
+
 ## What is different inside a room
 
 | | the main thread | inside a room |

@@ -60,7 +60,7 @@ func farCardLab(t *testing.T, answer func(uri string) (session.TaskRecord, error
 		}, true
 	}
 	var asked atomic.Int64
-	a.farRecord = func(uri string) (session.TaskRecord, error) {
+	a.farRecord = func(uri string, _ int) (session.TaskRecord, error) {
 		asked.Add(1)
 		return answer(uri)
 	}
@@ -100,6 +100,15 @@ func pressFarCard(t *testing.T, a *app) {
 	}
 }
 
+func farRoomText(a *app) string {
+	rows := a.roomRows(a.bodyWidth())
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, plain(row.text))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // The card opens over --host and its report is the FAR machine's — asked of the
 // machine that owns the journal, exactly once.
 func TestAHostedTaskCardReadsTheFarMachinesRecord(t *testing.T) {
@@ -129,6 +138,68 @@ func TestAHostedTaskCardReadsTheFarMachinesRecord(t *testing.T) {
 	}
 }
 
+// The hosted roster is this conversation's slice of the far world, not an
+// assertion on the remote agent (which deliberately has no local disk doors).
+func TestAHostedRosterListsTheFarConversationsTasks(t *testing.T) {
+	a := hostedPlaceLab(t)
+	entry := farCardEntry(time.Now())
+	var reads atomic.Int64
+	a.farTasks = func() ([]session.TaskIndexEntry, bool) {
+		reads.Add(1)
+		return []session.TaskIndexEntry{entry}, true
+	}
+	cmd := a.loadTasks()
+	msg := cmd().(tasksLoadedMsg)
+	a.tasksLoaded(msg.rows)
+	if reads.Load() != 1 {
+		t.Fatalf("one roster load made %d far reads", reads.Load())
+	}
+	if node := a.tasks[9]; node == nil || node.title != "widening the pipe" {
+		t.Fatalf("the far row did not become a roster node: %#v", node)
+	}
+	if entries := a.railEntries(); len(entries) != 1 || entries[0].node == nil || entries[0].node.id != 9 {
+		t.Fatalf("the hosted roster stayed empty: %#v", entries)
+	}
+}
+
+// A hosted room opens immediately with one honest loading line, then replaces
+// it with the journal the engine answered. The seam is counted because drawing
+// and hovering the finished page must never make another round trip.
+func TestAHostedRoomReadsTheFarJournalOnce(t *testing.T) {
+	a := hostedPlaceLab(t)
+	entry := farCardEntry(time.Now())
+	a.adoptFarTaskRows([]session.TaskIndexEntry{entry})
+	var reads atomic.Int64
+	a.farRecord = func(uri string, tail int) (session.TaskRecord, error) {
+		reads.Add(1)
+		if uri != entry.TranscriptURI || tail != session.TaskJournalTail {
+			t.Fatalf("room asked for %q tail %d", uri, tail)
+		}
+		journal := []byte(`{"type":"message","role":"user","content":"widen the pipe"}` + "\n" +
+			`{"type":"message","role":"assistant","content":"widened it"}` + "\n")
+		return session.TaskRecord{Journal: journal, Kept: true}, nil
+	}
+	a.openRoomFor(9, entry.Title)
+	if a.room == nil || !a.room.loading {
+		t.Fatal("the hosted room did not open while its journal was on the way")
+	}
+	if screen := farRoomText(a); !strings.Contains(screen, roomLoadingWord) {
+		t.Fatalf("the loading room said nothing:\n%s", screen)
+	}
+	cmd := a.takeRoomPump()
+	msg := cmd().(roomRecordMsg)
+	a.farRoomRead(msg)
+	for range 3 {
+		_ = a.roomRows(a.bodyWidth())
+	}
+	if reads.Load() != 1 {
+		t.Fatalf("one room made %d far reads", reads.Load())
+	}
+	if screen := farRoomText(a); !strings.Contains(screen, "widened it") || strings.Contains(screen, roomLoadingWord) {
+		t.Fatalf("the far journal did not replace the loading line:\n%s", screen)
+	}
+}
+
 // AND IT NEVER OPENS A FILE ON THIS DISK. The path on the row is the engine's; a
 // read of it here is either nothing or a stranger's file, and it is the read that
 // produced the wrong sentence in the first place. The pin is a REAL journal at
@@ -155,7 +226,7 @@ func TestAHostedTaskCardNeverReadsThisDisk(t *testing.T) {
 			}},
 		}}}, true
 	}
-	a.farRecord = func(string) (session.TaskRecord, error) {
+	a.farRecord = func(string, int) (session.TaskRecord, error) {
 		return session.TaskRecord{Report: "the far machine's word", Kept: true}, nil
 	}
 	a.showPage(pageTasks)

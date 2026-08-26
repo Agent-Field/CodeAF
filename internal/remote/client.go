@@ -964,8 +964,8 @@ func (c *Client) World() (session.World, error) {
 // nothing at the end, and a call that failed is a card that has not been told
 // yet. The surface draws a different line for each, and only an error can carry
 // the second.
-func (c *Client) TaskRecord(uri string) (session.TaskRecord, error) {
-	payload, err := c.call(nil, MethodPlacesTask, PlacesTaskArgs{Transcript: uri})
+func (c *Client) TaskRecord(uri string, tail int) (session.TaskRecord, error) {
+	payload, err := c.call(nil, MethodPlacesTask, PlacesTaskArgs{Transcript: uri, Tail: tail})
 	if err != nil {
 		return session.TaskRecord{}, err
 	}

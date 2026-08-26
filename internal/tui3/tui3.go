@@ -326,7 +326,12 @@ type Options struct {
 	// would be a cache nobody reads twice. It is therefore ALLOWED to block, and
 	// the surface never calls it anywhere but off the loop, in a [tea.Cmd]
 	// (taskrecord.go's [app.readTaskTail]).
-	TaskRecord func(uri string) (session.TaskRecord, error)
+	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
+
+	// TaskIndex is this conversation's rows from the same far world. False says
+	// the cache has not answered yet, so the roster waits instead of deciding
+	// that a machine full of work is empty.
+	TaskIndex func() ([]session.TaskIndexEntry, bool)
 
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no

@@ -109,20 +109,14 @@ import (
 // half may send and the other half cannot answer is a protocol difference, and
 // Decision 3 in docs/REMOTE.md says those differences are refused at the door.
 //
-// AND [MethodPlacesTask] JOINS IT WITHOUT MOVING THE NUMBER, which is the one
-// place this file makes that choice on purpose. Version 4 moved the PLACES onto
+// VERSION 5 ADDS [MethodPlacesTask]. Version 4 moved the PLACES onto
 // the machine that owns the work ([MethodPlacesWorld]), and the tasks place duly
 // listed the far machine's four hundred pieces of work — but the CARD behind one
 // of those rows still read the last thing that work said off THIS process's
 // disk, at a path that only exists on the other one. The door that ends it is
-// PURELY ADDITIVE: an engine that has never heard of the method answers the
-// error every unknown method gets, and the surface draws the one sentence that
-// says so ([tui3.taskCardRemoteRefused]) instead of a report it does not have.
-// A version bump would have refused every one of those connections at the door
-// for a card, which is Decision 3 spent on something Decision 3 is not for —
-// the capabilities paragraph above is the rule that applies, and absence
-// preserves the old wire exactly.
-const Version = 4
+// one. The method also carries the bounded journal tail a hosted task room
+// needs, so both halves must agree on its meaning at the version door.
+const Version = 5
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -652,6 +646,7 @@ type FetchFileArgs struct {
 // fact about the same row without a second door and without a second version.
 type PlacesTaskArgs struct {
 	Transcript string `json:"transcript"`
+	Tail       int    `json:"tail,omitempty"`
 }
 
 // FetchedFile is one file coming back the other way.

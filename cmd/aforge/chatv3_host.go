@@ -572,6 +572,18 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// (internal/tui3's [app.readTaskTail]), so the wire's own deadline is the
 		// only clock it needs.
 		TaskRecord: client.TaskRecord,
+		TaskIndex: func() ([]session.TaskIndexEntry, bool) {
+			far, known := world.world()
+			if !known {
+				return nil, false
+			}
+			for _, row := range far.Sessions() {
+				if filepath.Clean(row.Transcript) == filepath.Clean(welcome.SessionFile) {
+					return append([]session.TaskIndexEntry(nil), row.Tasks.Rows...), true
+				}
+			}
+			return nil, true
+		},
 		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
 		// the machine that runs them, so both halves go over the wire and
 		// neither reads a store on this laptop — the far end answers about the
