@@ -151,19 +151,141 @@ func (m *lineNovelty) remember(tool, line string) bool {
 	return true
 }
 
-// informative reports whether one result carried more new lines than old ones,
-// and records every line either way.
+// mostlyNew reports whether a measured result carried more new lines than old
+// ones. It is the estimator itself, said once, so the ledger below and anything
+// that ever asks the same question read one threshold.
 //
 // AN EMPTY RESULT IS NOT INFORMATION. `(no output)` is a real answer the first
 // time — it has a line — but a result with no lines at all told the node
 // nothing, and reading it as a discovery is how a silent poll used to look
 // productive.
-func (m *lineNovelty) informative(tool, text string) bool {
-	fresh, lines := m.measure(tool, text)
+func mostlyNew(fresh, lines int) bool {
 	if lines == 0 {
 		return false
 	}
 	return float64(fresh)/float64(lines) >= taughtLineThreshold
+}
+
+// ── what a step added ───────────────────────────────────────────────────────
+
+// progressLedger is the whole of one run's no-progress accounting: the lines it
+// has been told, the questions it has already asked, and whether the deliverable
+// has moved since the last thing it learned.
+//
+// ── LINE NOVELTY JUDGES A RE-MEASUREMENT AND NOTHING ELSE ──
+//
+// The ratio above is the right judge of ONE shape: the same question asked again
+// of a deliverable that has not moved. That is where the measure→measure loop
+// lives, and it is the only shape in which "most of this answer is a repeat"
+// means "this step told me nothing". Two other shapes reach the same estimator
+// and are not that, and reading them through the ratio kills working nodes:
+//
+//   - A READING TAKEN OVER A CHANGED DELIVERABLE IS INFORMATION BY CONSTRUCTION.
+//     The node measured a state it had never measured before, and learning that
+//     an edit moved little is still learning. MEASURED (SWE-Marathon s9, two
+//     seeds, this binary): edit, `cargo build` reprinting the same warnings,
+//     then a check reprinting a sixteen-row table in which three numbers had
+//     moved — 3 of 16 is 19%, so build→check→build→check after real edits
+//     counted as six dead steps and the node was landed after nine minutes of
+//     work, right after its check went from ~0 to 21,838 passes. THE MOST
+//     LEGITIMATE LOOP THERE IS, read as a spin.
+//
+//   - A QUESTION THE NODE HAS NEVER ASKED IS NOT A RE-MEASUREMENT. MEASURED
+//     (SWE-Marathon s8, task 4, replayed in progress_law_test.go): six commands
+//     in a row, each pulling a DIFFERENT method's expected shapes out of a
+//     corpus of pretty-printed JSON. Every answer was new to the node and every
+//     answer was mostly `    {`, `      "startLine": 1,` and `  }` — 4% to 20%
+//     new lines — because structured data repeats its own scaffolding. Six of
+//     those and the node was landed mid-survey.
+//
+// So the estimator is asked LAST, of the case it was built for, and the two
+// structural facts are read first.
+//
+// ── AND WHAT STOPS THAT FROM BEING THE OLD DEFECT AGAIN ──
+//
+// "A new question counts" is one word away from "a new CALL counts", which is
+// the activity detector lane/l replaced: nine `sleep N && tail jobs/1.log`
+// commands, nine distinct strings, nine identical `(no output)` answers, and a
+// counter that congratulated the node each time. The word is the answer. A
+// question is only asked once, and it only counts when THE ANSWER BROUGHT
+// SOMETHING BACK — a result with no new line in it at all told the node nothing,
+// however novel the sentence that fetched it. The same journal contains both
+// shapes three steps apart and this rule separates them: six greps of new
+// records (13, 2, 9, 19, 22, 15 new lines) are information; the two one-line
+// answers it had already been given are not.
+//
+// THE CHANGED-DELIVERABLE ARM CARRIES NO SUCH GUARD, deliberately. An identical
+// reading after an edit is the sentence "your change did not move this", which
+// is a fact about a state that did not exist a step ago; an identical reading
+// after nothing changed is the same sentence twice.
+type progressLedger struct {
+	// lines is what the run has been told (above).
+	lines *lineNovelty
+	// asked is where it has aimed, held in the same bounded memory and keyed the
+	// same way — the hand plus its arguments instead of the hand plus a line of
+	// its answer. Reusing it is not thrift: a question memory that grew with the
+	// run would be the leak [noveltyGeneration] exists to refuse, and a second
+	// eviction rule would be a second thing to get wrong.
+	asked *lineNovelty
+	// unread says the deliverable has changed and nothing has been read over it
+	// since. It is set by the step that changed the work and spent by the first
+	// result that counts as information — "since the last informative result" —
+	// so ONE reading gets the free pass and the seventh re-run of an unchanged
+	// check does not.
+	unread bool
+}
+
+func newProgressLedger() *progressLedger {
+	return &progressLedger{lines: newLineNovelty(), asked: newLineNovelty()}
+}
+
+// read weighs one finished call and reports whether it ADDED anything to the
+// run, along with how much of what came back was new.
+//
+// IT RECORDS BEFORE IT JUDGES, both the lines and the question, so a caller may
+// ask it on every step and no answer can be spent as new twice.
+func (p *progressLedger) read(tool, args, text string) (added bool, fresh, lines int) {
+	if p == nil {
+		return true, 0, 0
+	}
+	fresh, lines = p.lines.measure(tool, text)
+	first := p.asked.remember(tool, strings.TrimSpace(args))
+	switch {
+	case p.unread:
+		// A reading taken over a changed deliverable. The change is spent here
+		// and not by the next one.
+		p.unread = false
+		return true, fresh, lines
+	case lines == 0, fresh == 0:
+		// Nothing came back, or nothing in what came back was new. Neither is
+		// information, and this is the one guard the arm below needs.
+		return false, fresh, lines
+	case first:
+		// A question this run has never asked, answered with something it has
+		// never been told.
+		return true, fresh, lines
+	default:
+		// A re-measurement of an unchanged deliverable: the estimator's own case.
+		return mostlyNew(fresh, lines), fresh, lines
+	}
+}
+
+// informed records that this step counted as information for a reason [read]
+// did not see — the work saved a file, or the worktree moved under it. Those
+// are informative in their own right, and they end the stretch that "since the
+// last informative result" is counted over.
+func (p *progressLedger) informed() {
+	if p != nil {
+		p.unread = false
+	}
+}
+
+// wrote records that this step CHANGED THE DELIVERABLE, so the next reading is
+// taken over a state the run has never measured.
+func (p *progressLedger) wrote() {
+	if p != nil {
+		p.unread = true
+	}
 }
 
 // ── the work's own clock ─────────────────────────────────────────────────────

@@ -151,14 +151,22 @@ type loopWatch struct {
 	streak map[string]int
 	// nudges is how many nudges this turn has produced.
 	nudges int
-	// clock and lines are the turn's account of ITSELF rather than of its
+	// clock and ledger are the turn's account of ITSELF rather than of its
 	// repetitions: when the work last changed, and how much of what has come
 	// back since was new (novelty.go). Nothing here fires a rule — the two
 	// rules above are the only things that nudge — but a note that says "you
 	// have repeated this three times" is much more useful beside "and the work
 	// has not changed since step 12".
-	clock workClock
-	lines *lineNovelty
+	//
+	// IT IS THE RUNNER'S LEDGER AND NOT A SECOND ONE. The no-progress counter
+	// out at the task boundary (task_run.go's [addedSomething]) and this note
+	// are two readings of the same run, and the day they are kept by two
+	// mechanisms is the day a node is told the work has been moving while the
+	// counter that kills it says otherwise. Everything here goes through
+	// [progressLedger] — the line memory, the questions, and the change that
+	// arms the reading after it — so the two sides count the same way.
+	clock  workClock
+	ledger *progressLedger
 }
 
 func newLoopWatch() *loopWatch {
@@ -166,7 +174,7 @@ func newLoopWatch() *loopWatch {
 		errors: make(map[string]int, 4),
 		named:  make(map[string]bool, 2),
 		streak: make(map[string]int, 2),
-		lines:  newLineNovelty(),
+		ledger: newProgressLedger(),
 	}
 }
 
@@ -250,16 +258,27 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 // AND A HAND THAT SAVED SOMETHING IS INFORMATION BY CONSTRUCTION, whatever its
 // confirmation said. `wrote 12 lines` is boilerplate the second time, so its
 // bytes are weighed and then the clock is reset around them: what is being
-// counted since is what came back AFTER the world last changed.
+// counted since is what came back AFTER the world last changed — and the ledger
+// is told the same thing, so the reading that follows a write is read the way
+// the runner's counter reads it (novelty.go's [progressLedger]).
+//
+// THE WATCH GATES NOTHING ON INFORMATIVENESS and so does not read the answer:
+// its two rules are repetition rules, and a nudge that also fired on "you have
+// learned nothing" would be a third rule nobody asked for. What it needs from
+// the ledger is the BOOKS — the same lines remembered, the same questions
+// counted, the same change spent — so the [stuck] note's fact and the counter
+// out at the task boundary are one account of one run.
 func (w *loopWatch) count(call ai.ToolCall, results []toolResult, index int) {
 	w.clock.step()
 	failed := index >= len(results) || results[index].isError
 	if index < len(results) {
-		fresh, lines := w.lines.measure(call.Function.Name, stripJobFooter(results[index].text))
+		_, fresh, lines := w.ledger.read(call.Function.Name, call.Function.Arguments,
+			stripJobFooter(results[index].text))
 		w.clock.read(fresh, lines)
 	}
 	if savingTools[call.Function.Name] && !failed {
 		w.clock.wrote()
+		w.ledger.wrote()
 	}
 }
 
