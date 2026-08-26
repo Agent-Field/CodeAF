@@ -44,7 +44,7 @@ the terminal, draft, input history, browser and downloaded copies.
 | `/permissions` | NOT YET | The YOLO badge is the far engine's posture, but the page reads and deletes this surface machine's saved approval rows and gives no host-specific sentence. |
 | `/connect` | HONEST | It says `connecting an account is not available over --host yet — the sign-in opens a browser here and the account belongs to the machine over there. accounts already connected on that machine keep working.` |
 | `/harness` and `/subharness` listing | HONEST | No registry seam is supplied, so the panels say harnesses are unavailable instead of listing the surface machine's registry. Running an already selected far harness still works. |
-| `/task` | HONEST | The task verb is absent because the remote handle has no task seam. |
+| `/task` | NOT YET | Bare `/task` opens the far-backed tasks place, but `/task <brief>` reaches `could not start the task · this session has no task door`; the remote handle has no task seam and the refusal is not in the surface's register. |
 | `/crew` | NOT YET | The picker reads and writes this surface machine's profile. It does not change the crew the far engine resolves, and gives no host-specific sentence. |
 | `/quit`, `/exit`, `/q`, double `ctrl+c` | WORKS | The surface closes deliberately; the engine distinguishes close from a torn pipe. |
 | `space space`, `tab`, place digits and place clicks | WORKS | They navigate the surface; far-backed places use the cached far world. A place-row click only selects (home opens on the second click), the same as locally. |
@@ -69,7 +69,7 @@ the terminal, draft, input history, browser and downloaded copies.
 | detach, close and idle retirement | WORKS | Detach leaves persistent work running; close ends the conversation; idle hosts retire themselves. |
 | `aforge engine --stop` | HONEST | It is not a command. There is no early-stop surface door; the host retires after its idle clocks. |
 | `aforge engine --no-host` | WORKS | It deliberately serves one pipe without attaching to or starting a session host. |
-| `--at` paired connection | WORKS for the shared session protocol | It uses another byte-stream transport after pairing; the conversation semantics above are the same, while ssh-specific settings and prompts do not apply. |
+| `--at` paired connection | WORKS | It uses another byte-stream transport after pairing; the conversation semantics above are the same, while ssh-specific settings and prompts do not apply. |
 | model tools (`read`, `write`, `edit`, `bash`, web and enabled account tools) | WORKS | The engine assembles and runs the belt against its workspace, credentials and policy. |
 | model memory tools | WORKS | Capability presence follows the engine configuration; an unavailable tool is absent, never a callable failure. When present, the tool runs on the engine. |
 | model task, harness-design and adaptive-run tools | HONEST | Tools whose result or control lanes cannot reach the surface are omitted from the far belt. |
