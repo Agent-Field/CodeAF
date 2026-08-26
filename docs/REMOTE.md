@@ -221,6 +221,68 @@ protect a stolen laptop is worse off than somebody who knows it is a file. So
 ever starts promising otherwise. When the seam is filled, `Keeper.Where()` is the one
 sentence that changes.
 
+## Decision 10 — The room has one keyboard, and the engine says whose
+
+**Decision.** A `Session` names one attached surface the **driver**. The
+newest arrival takes it; a surface whose link merely dropped (`Hello.Back`)
+takes it only if it is going spare; `MethodTake` moves it in one round trip; a
+detach hands it to the newest surface still attached. `Submit`, `FollowUp`,
+`SubmitImage` and `SubmitFiles` from a non-driver are refused with one sentence
+that names the machine holding it and the key that takes it back. Every surface
+learns who drives from a `driver` frame the engine sent, worded per recipient.
+Protocol version 4.
+
+**Why not lock-and-refuse.** A person who walked to another machine and opened
+the conversation there is not an intruder. Refusing them would make the second
+machine useless at exactly the moment they are standing in front of it, and the
+only way out would be a gesture on a window in another building.
+
+**Why not close the other window.** A forgotten window still showing the work is
+a feature: it is the desk display, the phone on the side, the second monitor.
+Closing it would throw away the one thing a second surface is for.
+
+**Why the newest arrival rather than the first.** Because attaching is the
+gesture a person makes with their hands, and the machine they are sitting at is
+the machine they just typed a command on. Any other rule needs a second gesture
+to say "no, really, me".
+
+**Why `Hello.Back` is not optional.** A redial is an attach the person did not
+make. Without it, a lid closed in a café reconnecting half an hour later would
+pull the keyboard off the desk they are now sitting at, silently, and the
+surface that stole it would be one nobody is looking at.
+
+**Why the wording is per-recipient.** "The driver is macbook" is two different
+sentences depending on who hears it: to the window beside it on the same
+machine the honest word is `another window`, which is what aforge already says
+at home; to a surface on another machine it is the machine's name. Only the
+engine knows both names. The surface still owns the words — the engine sends
+facts (`Driver{Yours, Machine, Here}`), except for the refusal, which is a
+refusal and therefore the engine's to word (Decision 6).
+
+## Decision 11 — A turn is announced to the surfaces that did not start it
+
+**Decision.** When a turn opens, the engine sends every OTHER attached surface a
+`turn` frame naming the stream and carrying the sentence that opened it.
+`Welcome.Live` does the same job at attach time and carries no sentence.
+
+**Why it was needed at all.** Events have fanned out to every attached surface
+since version 2, and it made no difference: a surface only DRAWS a stream it
+knows about — the one its own `Submit` named — so a turn started by another
+window went past a watching one in silence. Two surfaces on one conversation
+was true on the wire and false on the screen, and it stayed that way until
+somebody sat in front of both at once.
+
+**Why the engine sends it rather than the client inferring it.** The engine is
+the only thing that knows who called `Submit`. A client that inferred "a turn I
+did not start" from an event on an unfamiliar stream would race its own
+submit's result and draw its own turn twice.
+
+**Why the sentence rides the frame.** A reply with no question above it is a
+screen that has lost the thread, and that message was typed on another machine.
+A turn already running when a surface ATTACHES needs none of it — that message
+is in the journal the surface reads on its way in — which is exactly why
+`Welcome.Live` carries no sentence and this frame does.
+
 ---
 
 ## What runs where
@@ -241,6 +303,7 @@ sentence that changes.
 | Path | What it is |
 | --- | --- |
 | `internal/remote/wire.go` | the protocol: frames, methods, payloads, the version |
+| `internal/remote/driver.go` | the room's one keyboard: who drives, who is told, and the refusal |
 | `internal/remote/client.go` | the surface half — `Client`, and the `Agent` that satisfies `tui3.Agent` |
 | `internal/remote/server.go` | the engine half — serves one conversation and the doors that replace it |
 | `internal/remote/image.go` | the payload that cannot be handed on: a picture, remade on arrival |
