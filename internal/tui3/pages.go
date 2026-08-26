@@ -119,6 +119,17 @@ type place interface {
 	ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool)
 	// stops is the cursor-legal rows of the last body, in order.
 	stops(a *app) []int
+	// cursorRow is which of the rows JUST BUILT the cursor is standing on, and
+	// -1 for a place whose cursor is on nothing this frame drew.
+	//
+	// THE FRAME ASKS SO THE VERB STRIP CAN BE DRAWN UNDER THE ROW IT BELONGS TO
+	// (SCREEN 3c). The whole key law turns on the strip DISPLACING the list —
+	// "that visible displacement is why bare letters are safe here" — and a
+	// strip at the foot displaces nothing. The rows are handed in rather than
+	// remembered because a map written by anything other than the draw is a map
+	// that answers for a row the draw did not put there, which is the law every
+	// hit map on this surface is held to.
+	cursorRow(a *app, rows []placeRow) int
 	// owns is A LAYER INSIDE THIS PLACE THAT HAS TAKEN THE WHOLE KEYBOARD, and it
 	// is read BEFORE the router's own six classes. Home's focused errand pane and
 	// its phone sheet, and the settings panel's value editor, model picker and
@@ -202,6 +213,7 @@ func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int,
 	return nil, nil, 0, 0, false
 }
 func (placeBase) stops(a *app) []int                      { return nil }
+func (placeBase) cursorRow(a *app, rows []placeRow) int   { return -1 }
 func (placeBase) enter(a *app) tea.Cmd                    { return nil }
 func (placeBase) verbs(a *app) []verb                     { return nil }
 func (placeBase) alt(a *app, letter rune) bool            { return false }
@@ -610,6 +622,13 @@ func placeFrameWithBar(a *app, width, height int,
 	if draftHeight < 1 {
 		draftHeight = 1
 	}
+	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
+	// FOOT, and they are asked for separately because they are two different
+	// claims. The verbs belong to ONE ROW and are drawn under it, pushing the
+	// list down by their own height (SCREEN 3c, verbstrip.go); home's answer
+	// chips are what a conversation ANOTHER window is holding is waiting for,
+	// and they belong beside the composer that could answer them.
+	inline := a.verbStripRow(width)
 	strip := a.placeStrip(width)
 	note := a.placeNote(width)
 	// THE COMPOSER LAYER'S ROWS ARE PART OF THE FOOT AND ARE MEASURED WITH IT.
@@ -624,6 +643,21 @@ func placeFrameWithBar(a *app, width, height int,
 	if room < 1 {
 		room = 1
 	}
+	// THE BODY IS BUILT INTO THE ROOM THE STRIP LEAVES IT, which is what makes
+	// the displacement exact: the list gives up precisely as many rows as the
+	// strip takes, and the frame is the same height it was before `→` was
+	// pressed. On a frame with no room to give the strip is not drawn at all,
+	// and the letters go with it — a strip nobody can see is a strip whose
+	// letters are a lottery (verbstrip.go's first law).
+	//
+	// AND THE COMPOSER LAYER TAKES THE STRIP DOWN WITH THE REST OF THE PAGE. The
+	// layer has claimed the whole keyboard (composerlayer.go), so every letter on
+	// a strip drawn under it would be a letter that does nothing — which is the
+	// one state this surface may never be in.
+	bodyRoom := room - len(inline)
+	if a.composer.open || bodyRoom < 1 {
+		bodyRoom, inline = room, nil
+	}
 
 	// AND THE PAGE BEHIND DIMS RATHER THAN BEING COVERED. While the layer is up
 	// the place's own rows are repainted at the faintest stop of the depth ladder
@@ -631,21 +665,21 @@ func placeFrameWithBar(a *app, width, height int,
 	// new screen (SCREEN 2e). The rows are still the place's own: the frame asks
 	// for exactly the body it would have asked for and paints it differently,
 	// which is why no place has a word to say about being underneath one.
-	drawn := body(width, room)
+	drawn := body(width, bodyRoom)
 	if a.composer.open {
 		// The model list `alt+o` opens is drawn in the body's room and not over
 		// the page, because a place takes the frame whole and the bottom-anchored
 		// overlay has nothing under it to sit on (composerlayer.go's
 		// [app.composerPickRows], which is the settings panel's own move).
 		if a.composer.pick.open {
-			drawn = a.composerPickRows(width, room, pal)
+			drawn = a.composerPickRows(width, bodyRoom, pal)
 		} else {
 			for i := range drawn {
 				drawn[i].text = composerFade(drawn[i].text, pal)
 			}
 		}
 	}
-	for _, row := range drawn {
+	for _, row := range placeStripInline(a, drawn, inline) {
 		add(row.text, row.hit)
 	}
 	add("", nil)

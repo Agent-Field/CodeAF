@@ -1094,8 +1094,9 @@ where it stands (`1 allow once · 2 always · 3 deny`, and the like for the othe
 — home's own page has the table) · **anything else you type goes into the box**, which
 searches the whole machine and offers to start a new conversation at the same time.
 
-**`→` opens the row's verbs**, and while that strip is drawn its letters are the verbs and
-the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
+**`→` opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
+of the list down by its own height, and while that strip is drawn its letters are the verbs
+and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
 with no verbs the arrows are the fold's, the way they are in the task column: on home's one

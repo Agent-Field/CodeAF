@@ -844,6 +844,9 @@ func (placeStanding) body(a *app, width, room int) []placeRow {
 	return a.orders.body(a, width, room)
 }
 func (placeStanding) stops(a *app) []int { return a.orders.stops() }
+func (placeStanding) cursorRow(a *app, rows []placeRow) int {
+	return placeRowAtLine(rows, a.orders.cursor)
+}
 
 // standingPlaceFrame is this place, drawn: the shared frame with this place's body
 // in it, and the hit map cast back into the body lines this place answers with

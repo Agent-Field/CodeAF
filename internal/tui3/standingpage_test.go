@@ -446,13 +446,25 @@ func TestTheStandingPageNamesItsVerbs(t *testing.T) {
 			t.Fatalf("the hint does not name %q: %q", want, hint)
 		}
 	}
-	// AND THE STRIP NAMES THE LETTERS, once `→` has drawn it.
+	// AND THE STRIP NAMES THE LETTERS, once `→` has drawn it — ON THE ROW, under
+	// the order they act on (SCREEN 3c). The frame is read rather than the strip's
+	// own rows, because where it lands is half of what makes a bare letter safe.
 	drive(t, a, key("right"))
-	strip := plain(strings.Join(a.placeStrip(a.width), "\n"))
-	for _, want := range []string{"p " + homeItemPauseWord, "s " + homeItemStopWord, "n " + standNotHereWord} {
-		if !strings.Contains(strip, want) {
-			t.Fatalf("the strip does not offer %q: %q", want, strip)
+	rows := strings.Split(placeFrameText(a), "\n")
+	at := -1
+	for i, row := range rows {
+		if strings.Contains(row, "p "+homeItemPauseWord) && strings.Contains(row, "s "+homeItemStopWord) {
+			at = i
 		}
+	}
+	if at < 0 {
+		t.Fatalf("the strip does not offer its letters:\n%s", strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[at], "n "+standNotHereWord) {
+		t.Fatalf("the strip is missing a verb: %q", rows[at])
+	}
+	if at < 1 || !strings.Contains(rows[at-1], "draft the weekly update") {
+		t.Fatalf("the strip is not drawn under the order it acts on:\n%s", strings.Join(rows, "\n"))
 	}
 }
 
