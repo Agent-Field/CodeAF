@@ -187,7 +187,7 @@ func TestAModelSwitchShowsAtOnceAndTheEnginesOwnWordSettlesIt(t *testing.T) {
 // A FRAME'S OWN READS ISSUE ZERO FAR CALLS. This is the law stated against the
 // exact five methods internal/tui3 asks from its update loop, asked as often as
 // a busy repaint asks them.
-func TestTheFactsAFrameDrawsIssueZeroFarCalls(t *testing.T) {
+func TestTheFactsAFrameDrawsPutNothingOnTheWire(t *testing.T) {
 	agent := &fakeAgent{model: "a/b", title: "roof", tokens: 4212}
 	loop := stateOn(t, agent)
 	handle := loop.Client.Agent()
