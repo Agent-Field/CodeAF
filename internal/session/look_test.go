@@ -1,8 +1,12 @@
 package session
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
@@ -128,5 +132,103 @@ func TestAPlaceIsTheSamePlaceHoweverItIsSpelled(t *testing.T) {
 	NoteLookAt(root, "  Memory ", at)
 	if got := LastLookAt(root, "memory"); !got.Equal(at) {
 		t.Fatalf("memory answered %s after being stamped as \" Memory \"", got)
+	}
+}
+
+// TWO WINDOWS LEAVING A PLACE AT THE SAME INSTANT COST ONE PLACE'S ORIGIN, AND
+// NEVER EVERY PLACE'S.
+//
+// [looksMu] serializes one process and says out loud that two PROCESSES are not
+// serialized at all — a deliberate bargain, whose stated cost is that a lost
+// race loses one place's origin. A shared temporary path made the cost much
+// larger than the bargain: both writers truncated and wrote the same
+// `looks.json.tmp`, so either could rename a half-written or interleaved file
+// onto looks.json — and a document that will not parse answers empty for EVERY
+// place at once.
+//
+// The writers here go through [writeLookStamps] directly, which is what makes
+// this a test of two PROCESSES: NoteLookAt would take the mutex and queue them,
+// and the race being reproduced is the one the mutex explicitly does not cover.
+func TestTwoWritersRacingLeaveAWholeFileBehind(t *testing.T) {
+	root := t.TempDir()
+	// The documents are long and differently long, because a torn file is what
+	// two writes of DIFFERENT lengths into one path leave behind.
+	payloads := make([][]byte, 4)
+	for writer := range payloads {
+		stamps := lookStamps{Places: map[string]string{}}
+		for place := 0; place < 200+writer*40; place++ {
+			stamps.Places[strconv.Itoa(writer)+"-place-"+strconv.Itoa(place)] =
+				time.Date(2026, 8, 25, 9, 0, writer, place, time.UTC).Format(time.RFC3339Nano)
+		}
+		raw, err := json.Marshal(stamps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payloads[writer] = raw
+	}
+
+	for round := 0; round < 40; round++ {
+		var ready, done sync.WaitGroup
+		start := make(chan struct{})
+		for _, payload := range payloads {
+			ready.Add(1)
+			done.Add(1)
+			go func(payload []byte) {
+				defer done.Done()
+				ready.Done()
+				<-start
+				writeLookStamps(root, payload)
+			}(payload)
+		}
+		ready.Wait()
+		close(start)
+		done.Wait()
+
+		// THE FILE IS THERE AND IT IS ONE OF THE FOUR, WHOLE. Last writer wins is
+		// the bargain; a file that is missing, truncated or two writers' bytes
+		// spliced together is not.
+		raw, err := os.ReadFile(filepath.Join(root, looksStampName))
+		if err != nil {
+			t.Fatalf("round %d left no stamp file at all: %v", round, err)
+		}
+		var stamps lookStamps
+		if err := json.Unmarshal(raw, &stamps); err != nil {
+			t.Fatalf("round %d left a torn stamp file (%d bytes): %v", round, len(raw), err)
+		}
+		whole := false
+		for _, payload := range payloads {
+			if bytes.Equal(bytes.TrimSpace(raw), payload) {
+				whole = true
+			}
+		}
+		if !whole {
+			t.Fatalf("round %d left a document no writer wrote (%d bytes, %d places)",
+				round, len(raw), len(stamps.Places))
+		}
+		// AND NO TEMPORARY FILE IS LEFT LYING BESIDE IT. Each writer renames its
+		// own away, so the root holds exactly the one document.
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			names := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				names = append(names, entry.Name())
+			}
+			t.Fatalf("round %d left %v beside the stamp", round, names)
+		}
+	}
+
+	// AND THE STAMPS STILL READ BACK, which is the fact every tab's count is
+	// measured against. Whichever writer won, its places are all there.
+	read := false
+	for writer := range payloads {
+		if !LastLookAt(root, strconv.Itoa(writer)+"-place-7").IsZero() {
+			read = true
+		}
+	}
+	if !read {
+		t.Fatal("the surviving document names no place at all")
 	}
 }
