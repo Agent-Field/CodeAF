@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -58,19 +59,22 @@ func TestAFailureThenASuccessRecordsTheCommandThatWorked(t *testing.T) {
 	}
 }
 
-// And the line the model reads is exactly this one.
+// And the line the model reads is exactly this one — once the patch has been
+// handed back and seen to work. The first round only ever earns the weaker
+// sentence (see [TestTheFooterNeverClaimsAFixWorkedUntilItHasBeenSeenToWork]).
 func TestTheLineSaysWhatWorkedAndHowOftenItDid(t *testing.T) {
 	episode, _ := fixTestLane(t)
 	broken := "ugrep: error at position 5 (empty (sub)expression)\n\nCommand exited with code 2"
 
-	// Three rounds of the same error and the same fix.
+	// Three rounds of the same error and the same fix. The first round is the
+	// bare pairing; the second and third are the offered patch being taken.
 	for i := 0; i < 3; i++ {
 		episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
 		episode.noteToolOutcome(fixBash("grep -F '(sub)' ."), fixWorked("found it"))
 	}
 	annotated := episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
 
-	want := "this exact error was fixed 3/3 times before · what worked: grep -F '(sub)' ."
+	want := "this exact error was fixed 2/2 times before · what worked: grep -F '(sub)' ."
 	if !strings.HasSuffix(annotated.text, want) {
 		t.Fatalf("the result should end with the line:\n%q", annotated.text)
 	}
@@ -317,7 +321,9 @@ func TestTheChokepointLearnsFromARealToolCall(t *testing.T) {
 	again := agent.runToolsWarm(context.Background(), agent.newEpisode(), []ai.ToolCall{
 		fixBash("echo 'ld: symbol(s) not found for architecture arm64' >&2; exit 1"),
 	}, hub, nil)
-	if !strings.Contains(again[0].text, "this exact error was fixed 1/1 times before · what worked: true") {
+	// Nothing has yet been offered and taken, so the line is the weaker of the
+	// two shapes: the pairing that was watched, and not a claim it is a cure.
+	if !strings.Contains(again[0].text, "this exact error came up here before · what ran next and it went away: true") {
 		t.Fatalf("the failed result should carry the line:\n%q", again[0].text)
 	}
 }
@@ -332,5 +338,204 @@ func TestAMultiLineCommandIsRecordedWhole(t *testing.T) {
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if len(document.Entries) != 1 || document.Entries[0].Fix != "make clean make build" {
 		t.Fatalf("the whole command should be kept on one line; got %+v", document.Entries)
+	}
+}
+
+// ── what a fix memory may learn from (fixblame.go) ──────────────────────────
+
+// A DOOR SAYING NO IS NOT AN ERROR A COMMAND FIXED. The checker's reading-only
+// bash refuses a command outright; whatever the model types next is simply the
+// next thing it typed, and filing it as the cure is how the store came to hold
+// `pwd` as the answer to a refusal.
+func TestARefusalTeachesTheStoreNothing(t *testing.T) {
+	episode, bucket := fixTestLane(t)
+	refusal, allowed := auditRefusal("bash run_tests.sh", auditReadCommands)
+	if allowed {
+		t.Fatal("this command has to be refused for the test to be about anything")
+	}
+
+	annotated := episode.noteToolOutcome(fixBash("bash run_tests.sh"), fixFailed(refusal))
+	if annotated.text != refusal {
+		t.Fatalf("a refusal must leave with the door's own words and nothing else:\n%q", annotated.text)
+	}
+	episode.noteToolOutcome(fixBash("pwd"), fixWorked("/work"))
+
+	document := readFixDocument(filepath.Join(bucket, fixesFileName))
+	if len(document.Entries) != 0 {
+		t.Fatalf("nothing a door refused may be learned from; got %+v", document.Entries)
+	}
+}
+
+// AND NEITHER IS A PROGRAM THIS MACHINE DOES NOT HAVE. There is no git in that
+// container and there was never going to be: the next command is a route
+// around an absence, not a patch anybody can be handed later.
+func TestAnAbsentProgramTeachesTheStoreNothing(t *testing.T) {
+	for _, absent := range []string{
+		"bash: git: command not found",
+		"sh: 1: git: not found",
+		`exec: "git": executable file not found in $PATH`,
+	} {
+		episode, bucket := fixTestLane(t)
+		annotated := episode.noteToolOutcome(fixBash("git status"), fixFailed(absent))
+		if annotated.text != absent {
+			t.Fatalf("%q should leave untouched; got %q", absent, annotated.text)
+		}
+		episode.noteToolOutcome(fixBash("pwd"), fixWorked("/work"))
+
+		document := readFixDocument(filepath.Join(bucket, fixesFileName))
+		if len(document.Entries) != 0 {
+			t.Fatalf("%q must teach nothing; got %+v", absent, document.Entries)
+		}
+	}
+}
+
+// THE OTHER HALF OF THE LAW: a failure the model really did cause, followed by
+// the command that made the same failure go away, is still recorded. The gate
+// above must not be a gate on everything.
+func TestAGenuineFailureFollowedByTheCommandThatEndedItIsStillLearned(t *testing.T) {
+	episode, bucket := fixTestLane(t)
+	broken := "ugrep: error at position 5 (empty (sub)expression)"
+
+	episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
+	episode.noteToolOutcome(fixBash("grep -F '(sub)' ."), fixWorked("internal/x.go: (sub)"))
+
+	document := readFixDocument(filepath.Join(bucket, fixesFileName))
+	if len(document.Entries) != 1 || document.Entries[0].Fix != "grep -F '(sub)' ." {
+		t.Fatalf("a real failure and its real answer should be kept; got %+v", document.Entries)
+	}
+	// And the same failure, again, comes back with the line on it.
+	again := episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
+	if !strings.Contains(again.text, "grep -F '(sub)' .") {
+		t.Fatalf("the answer should have been offered back:\n%q", again.text)
+	}
+}
+
+// A REFUSAL IS NOT ANSWERED EITHER. Advice about how to get past a door is
+// advice about a command that never ran, so the refusal leaves as the door
+// wrote it however much the store knows about that signature.
+func TestARefusalIsNeverAnsweredWithAdvice(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("AFORGE_HOME", root)
+	bucket := filepath.Join(root, "v3", "projects", "ws")
+
+	refusal, _ := auditRefusal("bash run_tests.sh", auditReadCommands)
+	signature, keyed := fixSignature("bash", refusal)
+	if !keyed {
+		t.Fatal("the refusal has to normalize to something for this test to mean anything")
+	}
+	// Plant the very entry the measured run had, by the back door the live path
+	// is now forbidden from taking.
+	store := newFixStore(filepath.Join(bucket, fixesFileName))
+	for i := 0; i < 5; i++ {
+		store.confirmAdvised(signature, "pwd")
+	}
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.fixesDir = bucket
+	})
+	annotated := agent.newEpisode().noteToolOutcome(fixBash("bash run_tests.sh"), fixFailed(refusal))
+	if annotated.text != refusal {
+		t.Fatalf("a refusal must never be annotated, however well worn the entry:\n%q", annotated.text)
+	}
+}
+
+// THE FOOTER SAYS ONLY WHAT WAS SEEN TO WORK. A pairing the store merely
+// watched is offered in the weaker words; the claim that something WORKED waits
+// until the patch has been handed back and taken.
+func TestTheFooterNeverClaimsAFixWorkedUntilItHasBeenSeenToWork(t *testing.T) {
+	episode, bucket := fixTestLane(t)
+	broken := "ld: symbol(s) not found for architecture arm64"
+
+	// One pairing watched, nothing offered yet.
+	episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
+	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+
+	document := readFixDocument(filepath.Join(bucket, fixesFileName))
+	if len(document.Entries) != 1 || document.Entries[0].Worked != 0 {
+		t.Fatalf("a watched pairing is not yet a fix that worked; got %+v", document.Entries)
+	}
+
+	offered := episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
+	if strings.Contains(offered.text, "what worked") {
+		t.Fatalf("nothing has been seen to work, so the line may not say it did:\n%q", offered.text)
+	}
+	if !strings.Contains(offered.text, "this exact error came up here before · what ran next and it went away: make clean && make build") {
+		t.Fatalf("the weaker line is what an unproven patch earns:\n%q", offered.text)
+	}
+
+	// The offer is taken and the error goes away. NOW it has worked.
+	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+	document = readFixDocument(filepath.Join(bucket, fixesFileName))
+	if document.Entries[0].Worked != 1 || document.Entries[0].OK != 2 {
+		t.Fatalf("the taken offer should read worked=1 ok=2; got %+v", document.Entries[0])
+	}
+
+	proven := episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
+	if !strings.Contains(proven.text, "this exact error was fixed 1/1 times before · what worked: make clean && make build") {
+		t.Fatalf("a patch seen to work earns the stronger line:\n%q", proven.text)
+	}
+}
+
+// The number in the footer is the OFFERS, never the pairings. An entry that was
+// watched nine times and taken once says 1/1, because nine watched pairings are
+// nine coincidences until one of them is put to the test.
+func TestTheFooterCountsOffersTakenAndNotPairingsWatched(t *testing.T) {
+	signature, _ := fixSignature("bash", "ld: symbol(s) not found for architecture arm64")
+	store := testStore(t, time.Now())
+	for i := 0; i < 9; i++ {
+		store.confirm(signature, "make clean && make build")
+	}
+	store.confirmAdvised(signature, "make clean && make build")
+
+	found := store.consult(signature)
+	if len(found) != 1 {
+		t.Fatalf("the patch should be offered; got %d", len(found))
+	}
+	line := fixAnnotate("boom", []fixAdvice{{
+		patch:  found[0].Fix,
+		ok:     found[0].ok(),
+		worked: found[0].worked(),
+		failed: found[0].failed(),
+	}})
+	if !strings.HasSuffix(line, "this exact error was fixed 1/1 times before · what worked: make clean && make build") {
+		t.Fatalf("ten pairings and one taken offer reads 1/1; got:\n%q", line)
+	}
+}
+
+// THE VOICE IS PINNED TO THE LIVE DOORS. The recogniser keys on the one word
+// this package's doors refuse with; a door reworded out from under it would
+// otherwise go back to teaching the store nonsense, silently.
+func TestEveryLiveDoorStillSpeaksTheRefusalTheSidecarKnows(t *testing.T) {
+	refused := []string{}
+	for _, command := range []string{"bash run_tests.sh", "cargo test && rm -rf .", ""} {
+		text, ok := auditRefusal(command, auditReadCommands)
+		if ok {
+			t.Fatalf("%q should have been refused", command)
+		}
+		refused = append(refused, text)
+	}
+	refused = append(refused, refusal("refused in a task: rm -rf / — nobody to ask").text)
+	refused = append(refused, "Unknown tool: nosuchtool")
+
+	for _, text := range refused {
+		if !blamelessFailure(text) {
+			t.Errorf("the sidecar no longer recognises a door's refusal, so it will learn from it:\n%q", text)
+		}
+	}
+
+	// And an ordinary failure is still ordinary — the recogniser must not be a
+	// gate on everything a tool ever says.
+	for _, ordinary := range []string{
+		"ugrep: error at position 5 (empty (sub)expression)",
+		"ld: symbol(s) not found for architecture arm64",
+		"Error reading file: open /x/notes.txt: no such file or directory",
+		// "not found" is in half the errors ever written, and most of them ARE
+		// failures a command fixes. Only the shells' own ending counts.
+		"go: module github.com/x@v1.2.3 not found in the module cache",
+		"grep: no matches found",
+	} {
+		if blamelessFailure(ordinary) {
+			t.Errorf("an ordinary failure must still be learned from: %q", ordinary)
+		}
 	}
 }
