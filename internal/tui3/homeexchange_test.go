@@ -289,6 +289,13 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 // spellings are bound because terminals disagree about which one they can send
 // (home.go's ctrl+enter case says so); alt+enter is the one every terminal here
 // delivers, so it is the one the test presses.
+//
+// IT IS TWO PRESSES NOW AND THE LAW IT PINS IS UNCHANGED: the chord reaches the
+// errand door without the cursor ever leaving the row it was on. The first press
+// opens the composer layer, where the three facts a task needs are settled
+// (composerlayer.go, SCREEN 2e); the second is the send. What would break this
+// test is the chord walking somebody onto the `ask here` row to work — which is
+// exactly what it never did and still never does.
 func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -296,6 +303,10 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	a := lab.app(mine, []session.Event{{Kind: session.EventTurnDone}})
 	a.openHome()
 	typeHome(a, "remind me at 6")
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	if !a.composerShowing() {
+		t.Fatal("the first alt+enter opened no composer layer")
+	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
 
 	if len(lab.agent.sent) != 1 {

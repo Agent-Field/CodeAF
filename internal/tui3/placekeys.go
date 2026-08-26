@@ -63,7 +63,15 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	if pl == nil {
 		return nil
 	}
-	// A LAYER INSIDE THE PLACE THAT HAS THE WHOLE KEYBOARD IS READ FIRST, before
+	// THE ROUTER'S OWN LAYER IS READ BEFORE THE PLACE'S, and it is the only thing
+	// on this surface that is. The composer layer belongs to no place — the three
+	// facts it settles are the same three wherever the sentence was typed — so a
+	// place asked first would be a place answering keys for a decision it has
+	// never heard of (composerlayer.go).
+	if cmd, took := a.composerLayerKey(msg); took {
+		return cmd
+	}
+	// A LAYER INSIDE THE PLACE THAT HAS THE WHOLE KEYBOARD IS READ NEXT, before
 	// the router claims a single chord ([place.owns] holds the argument).
 	if cmd, took := pl.owns(a, msg); took {
 		return cmd
@@ -117,6 +125,14 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "alt+enter":
 		return a.placeSend(), true
+
+	case "alt+w", "alt+o":
+		// THE LAYER'S TWO CHORDS ARE HELD BACK FROM THE PLACES. They mean one
+		// thing and only inside the layer, and a place that bound either of them
+		// would be a place whose view moved when somebody was aiming at a
+		// destination. The layer is read above this function, so a press that
+		// reaches here has no layer up and there is nothing to do.
+		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":
 		// TIME IS TWO AXES AND FOUR KEYS (SCREEN 3d): ←→ moves the window this
@@ -262,29 +278,28 @@ func (a *app) placeBox() *editor {
 	return pl.box(a)
 }
 
-// placeSend is `alt+enter`: what is in the composer leaves as a task.
+// placeSend is `alt+enter` over a composer with something in it: THE COMPOSER
+// LAYER OPENS, and a second press is what sends (composerlayer.go, SCREEN 2e).
 //
-// FROM A PLACE THAT IS NOT HOME IT CARRIES YOU TO HOME AND ASKS THERE, and that
-// is a design decision rather than a shortcut. An errand's answer is drawn in
-// home's own column ([app.showExchanges]); minting one from the spend place and
-// leaving the person on the spend place would be work started somewhere they
-// cannot watch it — the failure [app.askHere]'s own comment calls "the one
-// failure worse than saying no". So the verb is in reach from every place, and
-// pressing it puts you where the answer will arrive.
+// IT USED TO SEND ON THE FIRST PRESS, and what that cost is the whole reason the
+// layer exists: a task left with three facts nobody had been shown — where it
+// would run, what its work would run on, how much it could spend — and the only
+// way to learn any of them was to watch what it did. The layer is the design's
+// own answer, and it is a layer rather than a confirmation: the page behind
+// dims, the box does not move, and `esc` puts you back exactly where you were.
+//
+// FROM A PLACE THAT IS NOT HOME IT STILL CARRIES YOU TO HOME, and that is a
+// design decision rather than a shortcut. An errand's answer is drawn in home's
+// own column ([app.showExchanges]); minting one from the spend place and leaving
+// the person on the spend place would be work started somewhere they cannot
+// watch it — the failure [app.askHere]'s own comment calls "the one failure
+// worse than saying no". So the verb is in reach from every place, and the
+// second press puts you where the answer will arrive.
 func (a *app) placeSend() tea.Cmd {
-	box := a.placeBox()
-	if box == nil {
-		return nil
+	if a.openComposerLayer() {
+		a.touch()
 	}
-	text := strings.TrimSpace(box.String())
-	if text == "" {
-		return nil
-	}
-	if a.at(pageHome) {
-		return a.askHere(text)
-	}
-	box.reset()
-	return tea.Batch(a.showPage(pageHome), a.askHere(text))
+	return nil
 }
 
 // placeTalk is `enter` on a place with something in the composer and no row to

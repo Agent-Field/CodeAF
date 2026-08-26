@@ -138,10 +138,16 @@ func New(goal string, planner Planner, exec Executor, opts Options) *Orchestrato
 		halt:         make(chan struct{}),
 		// THE SNAPSHOT IS SEEDED, not left zero. A surface may poll before the
 		// opening planner call returns — that call takes seconds and the page
-		// opens immediately — and the two things that are true from construction
-		// are the goal and who is thinking about it. Every later publish writes
-		// the same two back.
-		snap: Snapshot{Goal: goal, Planner: model},
+		// opens immediately — and three things are true from construction: the
+		// goal, who is thinking about it, and THE TANK. Every later publish
+		// writes the same three back.
+		//
+		// The tank was left out of this seed and should not have been: it is the
+		// figure a person approved before anything started, so it is the one
+		// number on the page that cannot be too early to state — and a run's
+		// first seconds drew `$0.00` for it, which is a figure this build had
+		// been given and was reporting wrongly rather than not yet knowing.
+		snap: Snapshot{Goal: goal, Planner: model, Fuel: Fuel{Cap: opts.Cap}},
 	}
 }
 
