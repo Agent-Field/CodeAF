@@ -1114,6 +1114,21 @@ func (placeTasks) tick(a *app, now time.Time) bool {
 	return true
 }
 
+// remote is this place over --host: what THIS machine has run, said in one line
+// where the rows would be (pages.go's [place.remote], host.go's places section).
+//
+// IT IS THE REPAIR FOR THE WORST OF THE SEVEN. The world this place reads is a
+// walk of ~/.aforge/v3 under this process, and over a connection that is the
+// laptop while the conversation lives on the server — so a click on this tab
+// drew the laptop's eight tasks and its $22.54 under a session that had never
+// run one of them, with the confidence of a page that had read a real disk.
+func (placeTasks) remote(a *app) string {
+	if a.hosted() {
+		return tasksRemoteWord
+	}
+	return ""
+}
+
 func (placeTasks) body(a *app, width, room int) []placeRow {
 	return a.taskSheet.body(a, width, room)
 }

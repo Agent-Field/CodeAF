@@ -713,20 +713,6 @@ func (h *homeView) say(msg, path string) {
 // It returns its own clock, because home is the one screen here that changes
 // with nothing arriving, and a surface that opened without starting one would be
 // a photograph.
-// homeWorld is the world home lists, and it is EMPTY over --host.
-//
-// The walk this wraps reads ~/.aforge/v3 under THIS process, which over --host
-// is the laptop's disk while the session runs on the server. Answering nothing
-// is what makes [homeRemoteWord] the whole of the column rather than a caption
-// over somebody else's projects, and it is one function so that the open and
-// the three-second beat cannot disagree about which machine they are describing.
-func (a *app) homeWorld() session.World {
-	if a.hosted() {
-		return session.World{}
-	}
-	return a.readWorld()
-}
-
 // homeWhyEmpty is the one line home draws where its rows would be when the rows
 // could not exist at all, and "" when their absence needs no explaining.
 //
@@ -759,7 +745,7 @@ func (a *app) raiseHome() tea.Cmd {
 	a.dismissWelcome()
 	a.home = homeView{
 		why:          a.homeWhyEmpty(),
-		world:        a.homeWorld(),
+		world:        a.readWorld(),
 		seen:         session.LastLook(a.placesRoot()),
 		bucket:       homeBucketOf(a.file),
 		here:         homeSessionDirOf(a.file),
@@ -931,9 +917,19 @@ func worldHasElsewhere(world session.World, here string) bool {
 	return false
 }
 
-// readWorld is the one reading of the machine every home is built from: the
+// readWorld is the one reading of the machine EVERY PLACE is built from: the
 // walk under the places root, with the conversation THIS WINDOW IS SITTING IN
 // put back if the walk was too early to see it.
+//
+// AND IT IS EMPTY OVER --host. The walk reads ~/.aforge/v3 under THIS process,
+// which over --host is the laptop's disk while the session runs on the server.
+// The gate used to stand one function further up, on home's own reading, and
+// home was never the only place that took this walk: the tasks place read the
+// laptop's `world.Projects[].Sessions[].Tasks.Rows` and drew them — eight rows
+// and a total in dollars — under a conversation living on a server. So the gate
+// is HERE, on the reading, and every place that asks for the world is answered
+// the same way at the same moment. Each of them says so in its own words where
+// its rows would have been ([place.remote], host.go's places section).
 //
 // A fresh launch's folder has a meta.json nobody has spoken into, and the walk
 // skips that shape on purpose ([session.World.Adopt] carries the whole of why).
@@ -944,6 +940,9 @@ func worldHasElsewhere(world session.World, here string) bool {
 // The surface hands over what it knows about itself — the title the session
 // gave itself, the workspace, the model — and the folder adds the rest.
 func (a *app) readWorld() session.World {
+	if a.hosted() {
+		return session.World{}
+	}
 	world := session.ReadWorld(a.placesRoot())
 	if file := strings.TrimSpace(a.file); file != "" {
 		world.Adopt(a.placesRoot(), session.SessionRow{
@@ -1049,7 +1048,7 @@ func (a *app) refreshHome() {
 	if !a.at(pageHome) {
 		return
 	}
-	a.home.world = a.homeWorld()
+	a.home.world = a.readWorld()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of

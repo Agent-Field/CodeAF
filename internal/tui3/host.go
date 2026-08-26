@@ -309,3 +309,53 @@ const (
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
 )
+
+// ── THE PLACES AND THE MACHINE THE SESSION IS ON ────────────────────────────
+//
+// A PLACE IS A LISTING OF ONE MACHINE'S DISK. Home lists the conversations under
+// `~/.aforge/v3`; tasks lists the work those conversations ran; spend adds up the
+// ledger every model call on that machine appends to; search reads the index of
+// what was said there; memory reads the store the sessions there remember into;
+// standing lists the documents that machine's timer fires from. Every one of
+// those is a directory under the state root of THIS process — which over --host
+// is the laptop's, while the conversation the person is sitting in runs on the
+// server.
+//
+// SO EVERY ONE OF THEM SAYS SO, in one dim line where its rows would be, in the
+// same slot and the same register as [homeRemoteWord]. Home has said it since
+// the places landed; the other five did not, and one of them was worse than
+// silent — the tasks place drew the LAPTOP's eight tasks and its $22.54 under a
+// conversation that lives on the server, with the full confidence of a page that
+// had read a real disk. A confidently wrong screen is the fault this whole file
+// exists to prevent, and it does not stop being that fault because the reading
+// was true about some other machine.
+//
+// The sentence is a place's own ([place.remote]), because the noun in it is the
+// place's own: what this machine RAN is not what this machine has LEARNED. What
+// is shared is the shape — the thing the place shows, then the fact that the
+// session is somewhere else — so that seven rooms say one thing in one voice.
+const (
+	// tasksRemoteWord is the tasks place over --host. It is the sentence the
+	// owner's report was owed: eight rows and a total, drawn out of a walk of
+	// this laptop's projects, under a session on a server.
+	tasksRemoteWord = "tasks shows what this machine has run, and this session is on another"
+	// standingRemoteWord is the HALF of the standing place that cannot cross,
+	// and it is a note rather than a body because the other half already does.
+	// What stands on THIS conversation comes from the engine over the wire
+	// (internal/remote's ResolveStanding and Standing.Items), so those rows are
+	// the far machine's and are true; what a walk of this laptop's projects
+	// would add underneath them is not.
+	standingRemoteWord = "what else keeps an eye on this machine is not shown — the session is on another"
+	// memoryRemoteWord is the memory place over --host. It replaces
+	// [memoryOffNote], which would otherwise say memory is off for this session
+	// — and that is a claim about the far machine's settings that this surface
+	// has never asked about.
+	memoryRemoteWord = "memory shows what this machine has learned, and this session is on another"
+	// spendRemoteWord is the spend place over --host.
+	spendRemoteWord = "spend shows what this machine has cost, and this session is on another"
+	// searchRemoteWord is the search place over --host. The box still takes
+	// letters, because a place with a composer that refused them would be a box
+	// that eats typing; what it cannot do is find anything, and this says so
+	// before somebody reads an empty result as an answer.
+	searchRemoteWord = "search reads what was said on this machine, and this session is on another"
+)
