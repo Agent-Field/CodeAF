@@ -1270,6 +1270,16 @@ func v3BuiltinApprovals() map[string]any {
 // ([defaultChatDB]). Memories are the person's, not a conversation's, and a
 // second file beside it would be a second set of them that nothing else could
 // read.
+//
+// A FIRST RUN IS NOT ONE OF THOSE UNHAPPY CASES, and for a long time it was.
+// The state root does not exist on a machine that has never run aforge, SQLite
+// creates database files but never the directories holding them, and the
+// resulting complaint came back spelled `out of memory (14)` — so the first
+// launch on a new machine reported a memory problem it did not have and then
+// held nothing, for as long as that person kept using it. The directory is now
+// made by [store.Open] itself, which is the one door every caller goes through,
+// and what reaches the line below is only ever a real reason: it names the file
+// and says what the disk said about it.
 func v3Memory(profileDir string) *store.Store {
 	if !config.MemoryEnabledAt(profileDir) {
 		return nil

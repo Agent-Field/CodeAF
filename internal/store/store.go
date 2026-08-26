@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -596,6 +598,89 @@ type spinePayload struct {
 	Provenance Provenance `json:"provenance"`
 }
 
+// openFailure says why the store at path would not open, in words somebody can
+// act on.
+//
+// SQLITE'S OWN WORDING IS ACTIVELY MISLEADING, and it is the reason this
+// function exists. Every reason a database file cannot be opened — a directory
+// that is not there, a disk mounted read-only, a file whose permissions belong
+// to somebody else — arrives back as one code, SQLITE_CANTOPEN, and
+// modernc.org/sqlite renders that code as `unable to open database file: out of
+// memory (14)`. Nothing has run out of memory. A person who reads it goes
+// hunting for a leak on a machine with fifty gigabytes free, and the actual
+// cause — a missing folder — is nowhere in the sentence.
+//
+// So the path is asked about a second time, using the operating system's own
+// open, which answers in words: `permission denied`, `read-only file system`,
+// `no such file or directory`. The sentence names the FILE as well, because the
+// path is the one thing a person needs in order to go and look, and no other
+// line on the way out carries it.
+func openFailure(path string, err error) error {
+	reason := err
+	if probed := probeOpen(path); probed != nil {
+		reason = probed
+	}
+	return fmt.Errorf("could not open %s: %w", storePathForPerson(path), reason)
+}
+
+// probeOpen asks the operating system what is wrong with path, and answers
+// nothing at all when the answer is "nothing" — a database that opens fine but
+// will not answer as a database (a truncated file, a file that is not one)
+// leaves SQLite's own complaint standing, which for those is the true one.
+//
+// IT NEVER LEAVES ANYTHING BEHIND. An existing file is opened and closed
+// without creating it, and a file that does not exist yet is stood in for by a
+// temporary file in the directory that would hold it, which is removed again —
+// because a store that failed to open must not leave a zero-byte database on
+// disk for the next launch to find and believe.
+func probeOpen(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if err == nil {
+		_ = file.Close()
+		return nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return pathReason(err)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".open-probe-*")
+	if err != nil {
+		return pathReason(err)
+	}
+	name := temporary.Name()
+	_ = temporary.Close()
+	_ = os.Remove(name)
+	return nil
+}
+
+// pathReason strips an operating-system error down to its reason alone.
+// [openFailure] has already named the path, and `could not open ~/.aforge/graph.db:
+// open /home/you/.aforge/graph.db: permission denied` says it twice.
+func pathReason(err error) error {
+	var failure *fs.PathError
+	if errors.As(err, &failure) && failure.Err != nil {
+		return failure.Err
+	}
+	return err
+}
+
+// storePathForPerson spells a path the way the person would write it down
+// themselves, which means `~` where their home directory is. It is only ever
+// used inside a sentence somebody reads; nothing opens what it returns.
+func storePathForPerson(path string) string {
+	house, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(house) == "" {
+		return path
+	}
+	house = filepath.Clean(house)
+	if filepath.Clean(path) == house {
+		return "~"
+	}
+	if rest := strings.TrimPrefix(path, house+string(filepath.Separator)); rest != path {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return path
+}
+
 // Open opens or creates the store at path. WAL is persistent database state;
 // busy_timeout and foreign keys are connection-local and therefore live in the
 // DSN so every pooled connection receives them.
@@ -606,6 +691,19 @@ func Open(path string) (*Store, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
+	}
+
+	// SQLITE CREATES THE DATABASE FILE AND NEVER THE DIRECTORY HOLDING IT, and
+	// on a machine that has never run aforge there is no directory yet — so the
+	// very first launch found no brain, said so, and carried on without one for
+	// as long as the person owned that machine. Every caller opens a store
+	// through this one door, so the directory is made here rather than in the
+	// dozen places that name a path: `aforge`, `aforge run`, `doctor`, `recall`
+	// and the rest all had the same first run and would all have needed the
+	// same line. 0o700 is what the state root is made with everywhere else
+	// (cmd/aforge's v3Dir) — a person's conversations are their own.
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		return nil, fmt.Errorf("could not open %s: %w", storePathForPerson(absolute), pathReason(err))
 	}
 
 	u := url.URL{Scheme: "file", Path: absolute}
@@ -621,7 +719,7 @@ func Open(path string) (*Store, error) {
 
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
-		return nil, fmt.Errorf("open store: %w", err)
+		return nil, openFailure(absolute, err)
 	}
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
@@ -630,7 +728,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
-		return closeOnError(fmt.Errorf("open store: %w", err))
+		return closeOnError(openFailure(absolute, err))
 	}
 	var journalMode string
 	if err := db.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&journalMode); err != nil {
