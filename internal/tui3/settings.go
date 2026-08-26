@@ -1478,6 +1478,19 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := (placeSettings{}).owns(a, msg); took {
 		return cmd, true
 	}
+	// AND THE CARET'S OWN CHORDS BEFORE THE PANEL'S KEYS (editkeys.go). `home`
+	// and `end` walk this sheet's LIST rather than the search box's caret, which
+	// is why they are not in that vocabulary and are read below with the rest of
+	// the walk — but the word jumps and `ctrl+a` mean nothing else here, and a
+	// search box a person cannot move a word in is a box that is worse to type
+	// in than the one on the screen behind it.
+	if editorMotion(&s.query, msg.String()) {
+		return nil, true
+	}
+	if editorWordKill(&s.query, msg.String()) {
+		s.build()
+		return nil, true
+	}
 
 	switch msg.String() {
 	case "esc":
@@ -1672,6 +1685,10 @@ func (a *app) applySetting(item sheetItem, raw string) {
 func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 	s := &a.sheet
 	edit := s.edit
+	// The word and line jumps are the surface's, said once (editkeys.go).
+	if editorMotion(&edit.box, msg.String()) {
+		return
+	}
 	switch msg.String() {
 	case "esc":
 		s.edit = nil
@@ -1697,7 +1714,9 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 		edit.box.left()
 	case "right", "ctrl+f":
 		edit.box.right()
-	case "home", "ctrl+a":
+	case "home":
+		// `ctrl+a` is the same jump, read above with the rest of the surface's
+		// line vocabulary (editkeys.go).
 		edit.box.home()
 	case "end", "ctrl+e":
 		edit.box.end()

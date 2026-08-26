@@ -1976,6 +1976,26 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, took := a.placeKey(msg); took {
 		return cmd
 	}
+	// AND THE CARET'S OWN CHORDS BEFORE THIS SCREEN'S KEYS (editkeys.go). The
+	// box at the foot is a box a person writes a whole SENTENCE into — "make me
+	// a site" leaves it as a new conversation — so it has to move by a word and
+	// jump to a line's end the way every other box on this surface does. It had
+	// none of that: `option+←` arrives as `alt+b` and `cmd+←` as `ctrl+a` on the
+	// commonest Mac profile there is, and both fell through this router to the
+	// bare-letter arm at the bottom, which carries no text for a chord and so
+	// did nothing at all.
+	//
+	// IT IS READ HERE, ABOVE THE SWITCH, because not one of those chords means
+	// anything else on this screen. What the list owns is the arrows, the bare
+	// letters and `ctrl+e`, and every one of those is read below under its own
+	// guard.
+	if editorMotion(&h.box, msg.String()) {
+		return nil
+	}
+	if editorWordKill(&h.box, msg.String()) {
+		h.build()
+		return nil
+	}
 	// A BARE LETTER ALWAYS TYPES. The foot promises "type to search or start
 	// something new", and a promise like that has no asterisk: whatever the
 	// cursor or the pointer are resting on, an m is an m and "make me a site"
@@ -2111,6 +2131,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+e":
+		// WITH SOMEWHERE TO MOVE THE CARET TO, IT MOVES THE CARET. `ctrl+e` is
+		// the byte ⌘→ sends — iTerm2's Natural Text Editing preset maps the
+		// chord to 0x05 — so a hand reaching for the end of a half-typed
+		// sentence was putting a conversation into the archive instead. A
+		// DESTRUCTIVE KEY MAY NOT BE REACHABLE BY A GESTURE THAT MEANS "MOVE THE
+		// CARET", and this is the narrowest guard that says so.
+		//
+		// AND IT IS THE CARET'S POSITION AND NOT THE BOX'S EMPTINESS THAT
+		// DECIDES, because the way back out of the archive runs through this
+		// key: a person types the name of a row they put away, the list finds
+		// it, and `ctrl+e` from there brings it back. The caret is at the end of
+		// what they just typed at that moment, so the key does what the card's
+		// legend promises — and mid-sentence, where the hand meant a jump, it
+		// jumps. One press is never destructive; a second press, from the end of
+		// the line, is the row's.
+		if !h.box.empty() && h.box.cursor != h.box.lineEnd() {
+			h.box.end()
+			return nil
+		}
 		// CTRL+E SETS THE ROW ASIDE, whichever kind of row it is: a
 		// conversation goes into the archive, a standing item is paused. On a
 		// put-away row it is its own undoing — the same key from inside the
@@ -3230,6 +3269,13 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		a.home.build()
 	}
 	if a.home.phone {
+		// THE PHONE FRAME IS HOME'S OWN SHAPE AND NOT THE ROUTER'S, so the box
+		// span the router keeps for the pointer is not written by it — and a
+		// span left standing from the wide frame would be a press resolved
+		// against a row this frame never drew (pages.go's [placeFrameWithBar],
+		// placemouse.go's [app.placeBoxPress]). Emptying it here is the same
+		// answer the clamp gives a box it cut off: no rows, no press.
+		a.boxRow, a.boxRows = 0, 0
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
