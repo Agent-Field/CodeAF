@@ -121,6 +121,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	seq := a.orchestrateSeq
 	named := strings.TrimSpace(model)
 	source, session := a.config.RolesSource, a.model
+	// AND THE TANK IS HELD TO THIS SESSION'S OWN CAP. A session given a spend
+	// rail may not hand out a run larger than the rail (rail.go's [Agent.railCap]);
+	// it is read here, under the same lock every other config field on this path
+	// is, and the gate the tank fires is where the figure is honoured.
+	capDollars = a.railCap(capDollars)
 	a.mu.Unlock()
 	// THE PERSON'S OWN MESSAGE, TAKEN HERE AND NOT ASKED FOR. Whatever door
 	// started this run — the tool on the belt, the anchored cue, /task — the
