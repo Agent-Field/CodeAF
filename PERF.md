@@ -112,6 +112,68 @@ The number that is NOT pinned here is the boot: opening a hosted conversation
 costs six calls, one of them the current model's dial. Six is a launch cost paid
 once with a person watching a connection open, which is the moment waiting is
 correct; the laws above are about the moments it never is.
+## The storm laws
+
+The section above took the far machine out of the pointer's way. What is left is
+the one cost every input message pays whether or not anything is far away: a
+pointer swept across the window sends **one message per cell it crosses** — six
+hundred for a fast diagonal — and Bubble Tea builds a frame after every one of
+them. It writes one per sixtieth of a second, so nearly all of those frames are
+built and thrown away, and the keystroke behind the sweep waits for all of them.
+
+Measured on the loopback client through a pipe with a 20 ms round trip, with the
+connection laws above already in place, delivering the whole sweep in **one
+write** — which is what a terminal actually does, and what `tmux send-keys` in a
+loop cannot reproduce because it paces itself at about 7 ms an event:
+
+| A typed character appears after… | before | after |
+| --- | --- | --- |
+| no motion at all | 0.015 s | 0.015 s |
+| 600 motions in one write | 0.045 s | 0.013 s |
+| 3000 motions in one write | 0.204 s | 0.016 s |
+| 600 wheel notches in one write | 0.047 s | 0.013 s |
+
+The before column is linear in the burst — 0.07 ms a message, all of it frame
+building — and the after column is flat. That is the point: **the cost of a
+storm no longer depends on how big the storm is**, so a per-message cost added
+back tomorrow cannot resurrect the stall.
+
+`internal/tui3/coalesce.go` is the fold. The positions between the ends of a
+sweep are not information; they are the same claim made six hundred times, and
+every one but the last was already false when it was read. So the newest is
+kept, the rest are dropped, and the surface answers **once per frame** —
+`pointerEvery`, which is `frameInterval` and not a second cadence. A folded
+message also declares the frame before it rather than building one, because it
+provably changed nothing `app.View` reads; that half is the larger one, and it
+is only reachable because the fold is what knows.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **Six hundred motions cost one answer**, and 598 of them are folded away. | `internal/tui3/coalesce_test.go` |
+| **A key never waits behind a sweep.** A hundred keys behind a six-hundred-motion storm are handled without the router answering a single motion on the way, and each character is in the draft when its own `Update` returns. | `internal/tui3/coalesce_test.go` |
+| **Keys are never folded and never reordered** — not against each other and not against the motions around them. | `internal/tui3/coalesce_test.go` |
+| **A sweep is answered where it ended**, never at a position it crossed. | `internal/tui3/coalesce_test.go` |
+| **A folded wheel run scrolls exactly as far as an unfolded one.** A scroll is a distance, so a folded run owes its whole length and spends every notch of it at the frame. | `internal/tui3/coalesce_test.go` |
+| **A folded message builds no frame**, at a handful of allocations against a frame's tens of thousands of bytes. | `internal/tui3/coalesce_test.go` |
+| A pointer ARRIVING somewhere is still answered on the spot, with no clock in between: only the SECOND motion in a row is a sweep. | `internal/tui3/coalesce_test.go` |
+| A pointer crossing a row it is already on still leaves no stale entry, no dirty flag and no frame. | `internal/tui3/inputsmooth_test.go` |
+
+**Why a fold and not a drain.** `internal/session`'s stream is coalesced by
+taking events off a channel until it would block (`waitEvent` in `app.go`) —
+the honest way, because the backlog is in hand. A Bubble Tea program has no such
+channel to reach: `Program.msgs` is unbuffered and private, the input reader
+hands over one message at a time and blocks until the model has taken it, and
+the rest of a storm is unparsed bytes in the terminal's own pipe. There is
+nothing queued to drain and no way to look ahead, so the fold is made forward
+instead — keep the newest position, answer it on a clock of its own.
+
+**What Bubble Tea already rate-limits, and what it does not.** Measured against
+v2.0.8, not assumed: the renderer writes to the terminal on a 60 Hz ticker
+(`startRenderer`), and `render(view)` only stores the view under a lock. But
+`model.View()` is called after **every** message. A clean frame over a
+twenty-turn conversation measures 31 µs and 19 KB, independent of transcript
+length — the row list is cached (`app.visible`) and the chrome around it is not.
+Thirty-one microseconds times six hundred is the middle row of the table above.
 
 ## The launch-path pins
 
