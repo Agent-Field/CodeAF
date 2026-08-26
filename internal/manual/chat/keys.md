@@ -1704,6 +1704,13 @@ did. (Under the hood the body's click now fires on release, the way every button
 every GUI does, which is what lets a drag never trigger the thing it started on — a
 sweep that begins on a thinking block does not collapse it.)
 
+**A click is allowed to wobble.** A hand is not a vice, so a press that drifts up to
+**two columns sideways or one row up or down** before you let go is still a click, and
+it lands on the row you pressed rather than the row you drifted onto. Past that it is a
+sweep. The cost of the tolerance is one gesture: you cannot select exactly two adjacent
+rows by dragging down exactly one row — sweep past them and come back, or sweep sideways
+within a single row to select that one row.
+
 aforge still owns the pointer by default — that is what makes wheel scrolling,
 clickable paths and pressable rows work — and there is no scrollback to fall back on,
 because aforge runs in the alternate screen. Two further doors remain for when you
@@ -1724,6 +1731,40 @@ permanently, and `/select` says exactly:
 ```
 your terminal already has the pointer — drag to select.
 ```
+
+## Clicking does not seem to do anything — what to check when the mouse is dead
+
+Five things stop a click, and only one of them is a setting.
+
+**You pressed `ctrl+s`.** That hands the pointer to your terminal so you can drag-select,
+and it is a **toggle** — it is the one key excepted from the automatic handback, so if you
+press it and then only touch the mouse, nothing aforge draws will answer a click until you
+press a key or press `ctrl+s` again. While the pointer is out, the row under the message
+box reads exactly `drag to select · any key ends it`. That line is how you tell this apart
+from everything else here.
+
+**The `ui.mouse` setting is off.** It is **on** by default — `/settings`, the Display
+section, the row labelled `mouse`. With it off, aforge never asks your terminal to report
+the pointer at all: no hover, no click, no wheel, and your terminal keeps drag-select
+permanently. `/select` then says `your terminal already has the pointer — drag to select.`
+
+**Your click drifted.** A press that moves more than two columns or more than one row
+before you release is a **sweep**, not a click: it copies the rows it crossed and the
+status line says `copied · N lines` instead of opening anything. See "selecting text with
+your mouse" above.
+
+**There is nothing under the pointer.** A click on empty space does nothing anywhere on
+this surface, including the gap between two words of the tab bar and the blank rows of a
+task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
+snapshot.
+
+**The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
+as the frame narrows, and at its narrowest it carries only the place you are standing in —
+so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
+and `alt+1`…`alt+7` still go everywhere.
+
+**A file path is your terminal's click, not aforge's** — usually **cmd+click**
+(ctrl+click on Linux). If a plain click on a path does nothing, that is why.
 
 ## Copy mode: taking text out of the conversation
 

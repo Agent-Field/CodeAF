@@ -173,11 +173,19 @@ const (
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
 	KeyCrew = "models.crew"
-	// KeyMouse is whether the surface reports the mouse at all. Off is the
-	// default because an alt-screen app that reports the mouse OWNS every
-	// drag: the terminal's native text selection dies the moment reporting
-	// starts, and selecting text to copy is the more fundamental act. On
-	// buys hover and click; off buys selection.
+	// KeyMouse is whether the surface reports the mouse at all. ON is the
+	// default ([DefaultMouse]), because hover, click and the wheel are v3's own
+	// language and the thing they cost is bought back by a key: an alt-screen
+	// app that reports the mouse OWNS every drag, so the terminal's native text
+	// selection dies the moment reporting starts — and `ctrl+s` hands the
+	// pointer back for as long as somebody is dragging with it.
+	//
+	// THIS COMMENT SAID "OFF IS THE DEFAULT" while [DefaultMouse] said on, and a
+	// stale sentence here is the expensive kind: it is the first thing anybody
+	// reads when the answer to "does aforge ask for the mouse at all" decides
+	// whether a pointer bug is in this program or in the terminal. One source of
+	// truth — [MouseModes] states the choice and [DefaultMouse] states the
+	// answer, and this row's doc may not contradict either.
 	KeyMouse = "ui.mouse"
 	// KeyTimestamps is how much of the clock the v3 conversation carries: a
 	// footer under every finished turn, only the coarse marks where the
