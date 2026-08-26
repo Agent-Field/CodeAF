@@ -158,6 +158,16 @@ type place interface {
 	// changed is the tab's count: how many things in here have moved since the
 	// person last looked at this place.
 	changed(a *app, since time.Time) int
+	// summary is WHAT IS BEHIND THIS PLACE, in a clause a person reads on home's
+	// typed drop-up — `6 orders, 1 fired today` (SCREEN 1g). It is not the tab
+	// bar's number: that one counts what CHANGED since you last looked, and this
+	// one says what is in there at all.
+	//
+	// A PLACE THAT CANNOT ANSWER CHEAPLY ANSWERS NOTHING, and the row then says
+	// only what kind of thing it is. The clause is taken when the drop-up's
+	// lines are BUILT — on home's own three-second beat — because the seams
+	// behind it are the ones a draw may never touch (homeplaces.go).
+	summary(a *app) string
 	// press is a press on one of this place's body rows. It moves the cursor and
 	// never acts, which is the law every place keeps: every verb on these lists
 	// is a key, and `enter` leaves the conversation a person is sitting in, so a
@@ -198,6 +208,7 @@ func (placeBase) alt(a *app, letter rune) bool            { return false }
 func (placeBase) window(a *app, key string) bool          { return false }
 func (placeBase) note(a *app, width int) []string         { return nil }
 func (placeBase) changed(a *app, since time.Time) int     { return 0 }
+func (placeBase) summary(a *app) string                   { return "" }
 func (placeBase) press(a *app, y int) bool                { return false }
 func (placeBase) hover(a *app, y int) bool                { return false }
 func (placeBase) wheel(a *app, delta int) bool            { return false }

@@ -475,3 +475,35 @@ func standingTeach(pal palette) []string {
 		pal.dim("enter opens the conversation that made one, when there is one here."),
 	}
 }
+
+// standingSummary is WHAT IS BEHIND THIS PLACE, in the one clause home's typed
+// drop-up has room for: `6 orders, 1 fired today` (SCREEN 1g).
+//
+// THE NOUN IS `orders` AND NOT THE DESIGN'S `promises`. This place calls itself
+// `standing orders` on its own heading ([standHeading]), the manual says it that
+// way, and every other sentence on this surface about one of these rows uses
+// that noun — so a second noun for one thing would be exactly the drift
+// CLAUDE.md's one-source-of-truth law is written against. The row's left word is
+// already `standing`, which is what lets the clause say `orders` and still read
+// as a whole sentence.
+//
+// AND NOTHING IS SAID ABOUT NOTHING. A machine that holds no orders draws no
+// clause at all — the row then says only what kind of thing it is — and the
+// firing clause is absent on a day nothing fired, rather than drawn as a nought.
+func standingSummary(views []StandingItemView, now time.Time) string {
+	if len(views) == 0 {
+		return ""
+	}
+	fired := 0
+	for _, view := range views {
+		if sameDay(view.Item.LastFired, now) {
+			fired++
+		}
+	}
+	clause := groupedInt(len(views)) + " " + plural("order", len(views))
+	if fired > 0 {
+		clause += ", " + groupedInt(fired) + " fired today"
+	}
+	return clause
+}
+

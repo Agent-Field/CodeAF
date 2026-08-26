@@ -429,6 +429,12 @@ type homeLine struct {
 	// dir is the project's bucket directory, which is how a row answers whether
 	// THIS window can open it.
 	dir string
+	// says is the clause an offered PLACE carries in its right margin — `6
+	// orders, 1 fired today` — and is empty on every other kind of line. It is
+	// taken when the line is built rather than when the row is painted, for the
+	// reason [homeView.placeLines] states: what is behind a place is a seam, and
+	// a draw may not read one.
+	says string
 	// row is the conversation, for [homeSession].
 	row session.SessionRow
 	// quiet is how many conversations the collapsed line stands for, and since
@@ -517,6 +523,10 @@ type homeView struct {
 	top    int
 	// hover is the line the pointer is over, or -1.
 	hover int
+	// says is what each place answers about WHAT IS IN IT, cached on the same
+	// beat the bands are read on so that building the typed drop-up costs no
+	// seam at all ([app.readPlaceSummaries], homeplaces.go).
+	says map[page]string
 	// pane is, for each SCREEN row, which row of the right pane was drawn there
 	// (-1 for none). It is the second half of [app.homeFrame]'s hit map — the
 	// first half answers for the left column — and it exists for the same
@@ -778,6 +788,7 @@ func (a *app) raiseHome() tea.Cmd {
 	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
 	// beat (place_home.go's [app.readSwitchLedger]).
 	a.readSwitchLedger()
+	a.readPlaceSummaries()
 	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
 	// bands, because a project home knows only through a watch is one of the
 	// projects this has to answer for ([homeView.readGone]).
@@ -1048,6 +1059,10 @@ func (a *app) refreshHome() {
 	// it yet.
 	a.readStandBands()
 	a.readSwitchLedger()
+	// AND WHAT EACH PLACE HOLDS, on the same beat, because the typed drop-up
+	// offers places beside conversations and a row built while somebody is
+	// typing may not go to a seam for its own margin (homeplaces.go).
+	a.readPlaceSummaries()
 	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO, for the
 	// reason above it: the pulse line's count and the machine card's rows are
 	// derived from these bands, and a reading taken on its own clock would be a
