@@ -1650,6 +1650,23 @@ type app struct {
 	pathLinks bool
 	pathSeen  map[string]string
 
+	// levels is how hard each model id is asked to think, as this surface last
+	// learned it, and levelWant/levelWanted/levelAsking are the queue that keeps
+	// the question off the draw path. The whole law is in reasoninglevel.go: at
+	// home the agent answers under a mutex, over a connection it answers over an
+	// ssh pipe, and a status row that asked on every frame was a round trip per
+	// frame and — because a hover below the conversation rebuilds the chrome —
+	// a round trip per POINTER MOTION.
+	levels      map[string]string
+	levelWant   []string
+	levelWanted map[string]bool
+	levelAsking bool
+	// usageAsking is the same debounce for the session's running cost, which the
+	// frame clock reads every [usageEvery] slots. It is asked off the loop for
+	// reasoninglevel.go's reason exactly — the agent's answer is a lock at home
+	// and a round trip away — and one ask at a time is all a clock can need.
+	usageAsking bool
+
 	// rfiles is everything this surface knows about the OTHER machine's disk —
 	// which words are real files there, the door that turns them into things
 	// this machine can open, and the content cache under it (remotefiles.go).
@@ -1886,6 +1903,14 @@ func newApp(ctx context.Context, opts Options) *app {
 		// conversation on screen: it belongs in the first frame, not after the
 		// next turn (session's title.go re-names nothing).
 		a.title = strings.TrimSpace(a.agent.Title())
+		// AND THE LEVEL IS SEEDED HERE, beside the two facts above and for the
+		// same reason: the status row spells it onto the model segment, and a
+		// level fetched on the frame clock instead would leave the FIRST frame
+		// naming a model that is dialled up as though it were not
+		// (reasoninglevel.go).
+		// The whole table where the agent can hand it over, and this one model
+		// where it cannot (reasoninglevel.go).
+		a.learnLevel(a.model)
 	}
 	a.hudStale = true
 	// The conversation that already happened is drawn BEFORE the surface says
@@ -2031,7 +2056,27 @@ func (a *app) Init() tea.Cmd {
 	return tea.Batch(standing...)
 }
 
+// Update is the loop's one door, and it does exactly one thing of its own before
+// handing the message on: A SURFACE THAT OWES ITSELF A QUESTION KEEPS ITS CLOCK
+// TURNING UNTIL IT HAS ASKED IT.
+//
+// The background asks are sent from the frame clock and from nowhere else, which
+// is what makes them debounced ([app.paint]) — and the clock stops itself the
+// moment nothing on screen is moving. So a list that queued a question while the
+// surface was still (the model picker opening on a keypress is exactly that)
+// would have queued it into a clock that was not turning, and the rows would have
+// been drawn without their answers until something unrelated woke it. Arming here
+// costs one tick on the frames where anything is owed and nothing at all on the
+// rest, because [app.wake] answers nil to a clock that is already running.
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := a.update(msg)
+	if a.levelsWaiting() {
+		cmd = tea.Batch(cmd, a.wake())
+	}
+	return model, cmd
+}
+
+func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
 	// The seam forgets the sentence as it hands it over, so a second caller
 	// would not show it twice — it would swallow it. This is the one place the
@@ -3028,6 +3073,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
 
+	case levelsMsg:
+		// What each of a batch of models is dialled to, asked off this loop
+		// because over a connection the agent is another machine and the draw
+		// path reads the answer three times a frame (reasoninglevel.go).
+		return a, a.levelsBack(msg)
+
+	case usageMsg:
+		// The session's running cost, on the same terms and for the same reason
+		// ([app.usageKick]).
+		a.usageBack(msg)
+		return a, nil
+
 	case remoteFactsMsg:
 		// The other machine's word on a batch of candidate paths. Confirmed
 		// files become doors on the next frame; everything else stays the plain
@@ -3073,6 +3130,12 @@ func (a *app) paint() tea.Cmd {
 	// one per word and not one per row (remotefiles.go). It is nil on every local
 	// session and on every hosted one with nothing to ask.
 	kick := a.remoteStatKick()
+	// AND WHAT EACH MODEL IS DIALLED TO IS ASKED ON THIS CLOCK TOO, and off the
+	// loop, for the reason reasoninglevel.go's header states at length: the draw
+	// path reads that fact three times a frame and asking the agent for it there
+	// was a round trip per frame and a round trip per pointer motion over a
+	// connection. Nil on every surface that has already been told.
+	kick = tea.Batch(kick, a.levelKick())
 	// A ROOM'S ROWS ARE DROPPED ON THE SAME CLOCK, for the same reason: the page
 	// carries the same spinners, count-ups and streaming blocks the conversation
 	// does, and a cached row is a still photograph of an animation (room.go).
@@ -3080,7 +3143,12 @@ func (a *app) paint() tea.Cmd {
 		a.room.dirty = true
 	}
 	if a.dueEvery(usageEvery) {
-		a.refreshUsage()
+		// THE COST IS ASKED OFF THE LOOP AND NOT ON IT. Locally the agent answers
+		// under a lock; over a connection this is a round trip with a ten-second
+		// deadline, and made from here it was made INSIDE the update loop — three
+		// times a second, while a turn's events were arriving on the same pipe.
+		// The answer lands as a message and folds in there ([app.usageBack]).
+		kick = tea.Batch(kick, a.usageKick())
 	}
 	// WHAT THE OTHER WINDOWS HAVE OUT IS RE-READ HERE, and only while something
 	// on the frame is drawing it: the roster's record rows say `running` or
@@ -3187,7 +3255,13 @@ func (a *app) paint() tea.Cmd {
 		// landed would leave the words of a turn's final sentence plain text
 		// until something unrelated repainted them — and the answer, when it
 		// comes, has rows to turn into doors (remotefiles.go).
-		a.rfiles.waiting() {
+		a.rfiles.waiting() ||
+		// AND A MODEL WHOSE DIAL THIS SURFACE HAS NOT BEEN TOLD ABOUT IS THE
+		// FOURTEENTH, on the line above's reasoning exactly: the ask is sent on
+		// this clock, so a clock that stopped the moment a list was drawn would
+		// leave every row of it spelled without its level until something
+		// unrelated repainted them (reasoninglevel.go).
+		a.levelsWaiting() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
@@ -3780,8 +3854,19 @@ func (a *app) settle() tea.Cmd {
 	// here rather than at the next turn's start, so a session left idle for an
 	// hour cannot open its next turn holding an hour-old anchor.
 	a.awaited = time.Time{}
+	// THESE TWO ARE MEMORY READS OVER A CONNECTION AND NOT ROUND TRIPS. They
+	// used to be the last two synchronous questions a turn's ending put on the
+	// wire — the spending and the weight, asked the instant EventTurnDone landed
+	// — and the engine now STATES both ahead of that event (internal/remote's
+	// server.go), so what they read is this turn's own figures and nothing waits
+	// (PERF.md's connection laws).
 	a.refreshUsage()
 	a.measureContext()
+	// AND THE EFFORT TABLE IS REFRESHED ON THE SAME BEAT, which is what carries a
+	// rung dialled in ANOTHER window on the same hosted conversation across to
+	// this one (reasoninglevel.go states the bound). It costs nothing over a
+	// connection — the whole map is in the replica — and one small copy at home.
+	a.levelsSeed()
 	// THE RING IS SAMPLED HERE AND NOWHERE ELSE: one reading per turn, taken at
 	// the only moment the figure is comparable with the reading before it.
 	a.sampleContext()
@@ -3984,11 +4069,45 @@ func (a *app) said(e entry) {
 	a.live = live
 }
 
+// refreshUsage asks the session what it has spent and folds the answer in. It is
+// the SYNCHRONOUS reading, and its two callers are the two moments where waiting
+// is correct: a turn ending ([app.settle]) and /status, both of which are
+// already asking the agent several questions with somebody waiting on the
+// answer. The frame clock uses [app.usageKick] instead — see there.
 func (a *app) refreshUsage() {
 	if a.agent == nil {
 		return
 	}
 	a.take(a.agent.Usage())
+}
+
+// usageMsg is one reading of the session's running cost, with the AGENT it was
+// read from: a figure about a conversation that has since been replaced is
+// somebody else's bill and is dropped rather than folded in.
+type usageMsg struct {
+	agent Agent
+	usage session.Usage
+}
+
+// usageKick asks the session what it has spent, off the update loop. See the
+// call site in [app.paint] for why it is not asked on it.
+func (a *app) usageKick() tea.Cmd {
+	if a.agent == nil || a.usageAsking {
+		return nil
+	}
+	a.usageAsking = true
+	agent := a.agent
+	return func() tea.Msg { return usageMsg{agent: agent, usage: agent.Usage()} }
+}
+
+// usageBack folds one reading into the status line's figures.
+func (a *app) usageBack(msg usageMsg) {
+	a.usageAsking = false
+	if msg.agent != a.agent {
+		return
+	}
+	a.take(msg.usage)
+	a.touch()
 }
 
 // take folds one usage report into the status line's figures. Every field takes

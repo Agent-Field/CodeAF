@@ -77,14 +77,15 @@ func Loopback(hello Hello, opts Options) (*Loop, error) {
 	return &Loop{Client: client, Served: served, surface: surface}, nil
 }
 
-// FarCalls is how many round trips this loop's surface has made — the reading
-// PERF.md's --host laws are counted against, forwarded here because a test
-// driving a [Loop] holds the loop and not the client.
-func (l *Loop) FarCalls() uint64 {
+// CallsMade is how many calls this loop's surface has put on the wire — the
+// reading every one of PERF.md's connection laws is counted against
+// ([Client.CallsMade]), forwarded here because a test driving a [Loop] holds
+// the loop and not the client.
+func (l *Loop) CallsMade() uint64 {
 	if l.Client == nil {
 		return 0
 	}
-	return l.Client.FarCalls()
+	return l.Client.CallsMade()
 }
 
 // Close ends the connection from the surface's side, which is the ordinary way
