@@ -450,6 +450,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked()
+	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
@@ -703,6 +704,9 @@ type server struct {
 	// dead records that the far end stopped listening. A write error is not
 	// worth reporting twice and there is nowhere left to report it to.
 	dead bool
+	// encoding is selected from the hello before the welcome is sent. Empty is
+	// the old wire, which keeps a new engine compatible with an older surface.
+	encoding string
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -828,6 +832,9 @@ func (s *server) handshake(line []byte) error {
 	}
 	if hello.Version != Version {
 		return s.refuse(fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version))
+	}
+	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
+		s.encoding = frameEncodingGzip
 	}
 	sess, err := s.open(hello)
 	if err != nil {
@@ -1283,6 +1290,11 @@ func (s *server) send(frame Frame) error {
 // what an arrival uses ([Session.attach]) so that the welcome and the replay
 // behind it cannot be overtaken by a live event.
 func (s *server) sendLocked(frame Frame) error {
+	if frame.Kind != "welcome" {
+		if err := compressFrame(&frame, s.encoding); err != nil {
+			return err
+		}
+	}
 	line, err := json.Marshal(frame)
 	if err != nil {
 		return err
@@ -1295,7 +1307,7 @@ func (s *server) sendLocked(frame Frame) error {
 		s.dead = true
 		return err
 	}
-	return nil
+	return flushFrame(s.out)
 }
 
 func (s *server) hungUp() bool {

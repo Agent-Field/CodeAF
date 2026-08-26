@@ -14,8 +14,10 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -169,7 +171,7 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// middle would turn a newline into a carriage return and a frame into
 	// nonsense. ssh's OWN questions do not go through this — it asks them on
 	// /dev/tty, which is still the person's terminal.
-	process := exec.Command("ssh", "-T", l.dest, remoteCommand)
+	process := exec.Command("ssh", sshTransportArgs(l.dest, remoteCommand)...)
 	stdin, err := process.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -191,6 +193,54 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	}
 	l.hold(process, tail)
 	return pipePair{r: stdout, w: stdin}, nil
+}
+
+// sshTransportArgs keeps the carrier's latency policy in one place. -T remains
+// first because a pseudo-terminal changes bytes; the other options keep a warm
+// connection available for redials, notice a machine that stopped answering,
+// and keep interactive frames out of bulk queues on networks that distinguish
+// them. The values come through config's registry, so a network that needs a
+// different policy has a supported override rather than a private environment
+// variable hidden from the settings sheet.
+func sshTransportArgs(dest, remoteCommand string) []string {
+	settings := config.SSHTransportAt(os.Getenv("AFORGE_PROFILE_DIR"))
+	args := []string{
+		"-T",
+		"-o", fmt.Sprintf("ServerAliveInterval=%d", settings.ServerAliveSeconds),
+		"-o", fmt.Sprintf("ServerAliveCountMax=%d", settings.ServerAliveMisses),
+		"-o", "IPQoS=" + settings.IPQoS,
+	}
+	if control := sshControlPath(); control != "" {
+		args = append(args,
+			"-o", "ControlMaster=auto",
+			"-o", "ControlPath="+control,
+			"-o", fmt.Sprintf("ControlPersist=%d", settings.ControlPersistSeconds),
+		)
+	}
+	return append(args, dest, remoteCommand)
+}
+
+// sshControlPath is short by construction and lives under the state root. %C
+// lets OpenSSH hash the resolved host, port and user rather than us guessing at
+// identities hidden in ~/.ssh/config. A state root too long for a unix socket
+// loses multiplexing only: --host must still work, just as enginehost falls
+// back to its pipe when its own socket cannot be made.
+func sshControlPath() string {
+	dir := home.Join("v3", "ssh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ""
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return ""
+	}
+	path := filepath.Join(dir, "ctl-%C")
+	// OpenSSH expands %C to a 40-character SHA-1 digest before bind(2), so the
+	// expanded path is the one that must fit the shared macOS/Linux ceiling.
+	expanded := strings.Replace(path, "%C", strings.Repeat("0", 40), 1)
+	if !enginehost.SocketPathFits(expanded) {
+		return ""
+	}
+	return path
 }
 
 // hold takes the new child and lets go of the old one. THE PREVIOUS SSH IS
