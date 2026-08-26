@@ -193,6 +193,9 @@ func TestDialCarriesTheWorkspaceAndKeepsTheWelcome(t *testing.T) {
 			if hello.Workspace != "app" {
 				t.Fatalf("hello workspace = %q, want the path as typed", hello.Workspace)
 			}
+			if !supportsEncoding(hello.Encodings, frameEncodingGzip) {
+				t.Fatalf("hello encodings = %q, want gzip offered additively", hello.Encodings)
+			}
 		}
 	}
 	e.mu.Unlock()

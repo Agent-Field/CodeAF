@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,6 +114,35 @@ func TestMissingCommandIsRecognizedInEveryShellsWording(t *testing.T) {
 	}
 	if mentionsMissingCommand("Permission denied (publickey).") {
 		t.Fatal("an ssh refusal was read as a missing aforge")
+	}
+}
+
+func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(os.TempDir(), "acp"))
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	for _, want := range []string{
+		"-T", "ControlMaster=auto", "ControlPath=", "ControlPersist=300",
+		"ServerAliveInterval=3", "ServerAliveCountMax=3", "IPQoS=lowdelay",
+		"devbox aforge engine",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("ssh args %q do not contain %q", args, want)
+		}
+	}
+	if strings.Contains(args, " -C ") || strings.Contains(args, "Compression=yes") {
+		t.Fatalf("ssh args enable whole-stream compression on the LAN: %q", args)
+	}
+}
+
+func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), strings.Repeat("deep", 40)))
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	if strings.Contains(args, "ControlPath=") || strings.Contains(args, "ControlMaster=") {
+		t.Fatalf("overlong control socket was still enabled: %q", args)
+	}
+	if !strings.Contains(args, "ServerAliveInterval=3") || !strings.HasSuffix(args, "devbox aforge engine") {
+		t.Fatalf("the ordinary ssh transport was lost with multiplexing: %q", args)
 	}
 }
 

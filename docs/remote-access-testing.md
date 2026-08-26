@@ -25,8 +25,8 @@ part is code-complete but has no service deployed, so it fails with a clear sent
 make build          # → bin/aforge
 ```
 
-Add `bin/aforge` to the PATH of **both** machines you test with. The two halves must be the
-same build: the protocol version is checked at the door and a mismatch is refused with
+Add `bin/aforge` to the PATH of **both** machines you test with. The two halves must speak
+the same protocol version: that version is checked at the door and a mismatch is refused with
 
 ```
 <dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
@@ -93,7 +93,7 @@ they do.
 ```sh
 ssh localhost true                       # the only prerequisite
 cp bin/aforge <somewhere on the PATH a non-login ssh sees>
-ssh localhost aforge version             # both ends must be the SAME build
+ssh localhost aforge version             # both ends must speak the same protocol version
 aforge chat --host localhost:code/app --model deepseek/deepseek-v4-flash
 ```
 
@@ -111,7 +111,7 @@ pid**, because a pattern wide enough to match `aforge engine` also matches the s
 typed it in:
 
 ```sh
-kill -9 $(pgrep -f "^ssh -T localhost aforge engine" | head -1)
+kill -9 $(pgrep -f "^ssh -T .* localhost aforge engine" | head -1)
 ```
 
 **Verified this way, on this tree:** a turn mid-`bash` survives the kill and completes

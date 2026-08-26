@@ -1888,6 +1888,44 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
 		},
+		// The ssh carrier is local surface policy, so its overrides live beside
+		// the other interface choices. Keeping them in the registry matters more
+		// than their rarity: a network that drops idle TCP or rewrites DSCP is a
+		// place where hard-coded command-line options cannot be repaired in
+		// ~/.ssh/config, because command-line options win.
+		Setting{
+			Key: KeySSHControlPersist, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh reuse",
+			Hint: "seconds an ssh connection stays reusable after its channel closes. 300 makes a " +
+				"quick reconnect avoid a new handshake; 0 turns persistence off. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ControlPersistSeconds) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHControlPersist, raw) },
+		},
+		Setting{
+			Key: KeySSHServerAlive, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh heartbeat",
+			Hint: "seconds of silence before ssh asks whether the far machine is still there. 3 detects " +
+				"a dead link promptly; 0 turns heartbeats off. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveSeconds) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHServerAlive, raw) },
+		},
+		Setting{
+			Key: KeySSHServerMisses, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh missed heartbeats",
+			Hint: "how many unanswered ssh heartbeats end a dead connection. 3 with the default heartbeat " +
+				"notices an unresponsive link in about 9 seconds. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveMisses) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHServerMisses, raw) },
+		},
+		Setting{
+			Key: KeySSHIPQoS, Category: CategoryInterface, Kind: SettingChoice,
+			Label:   "ssh traffic",
+			Choices: SSHIPQoSChoices,
+			Hint: "how ssh marks interactive traffic: lowdelay by default, af21 on networks that honor it, " +
+				"or none where traffic marking is filtered. A change lands next launch.",
+			read:  func() string { return SSHTransportAt(dir).IPQoS },
+			write: func(raw string) error { return writeChoice(dir, KeySSHIPQoS, raw, SSHIPQoSChoices) },
+		},
 	)
 	return rows
 }
