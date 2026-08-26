@@ -774,6 +774,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I type on the standing page", "places"},
 		{"what is the here ~/ thing next to the box", "places"},
 		{"how do I start a task from any page", "places"},
+		{"what are the three lines that appear when I press alt+enter", "places"},
+		{"how do I change which project a task runs in before I send it", "places"},
+		{"what does alt+w do", "places"},
+		{"how do I pick the model a task runs on before starting it", "places"},
+		{"why did pressing alt+enter not send my task straight away", "places"},
+		{"how much money can a task spend before it stops and asks me", "tasks"},
+		{"how do I set a spend limit on a task before I send it", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

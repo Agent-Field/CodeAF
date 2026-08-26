@@ -94,6 +94,8 @@ Two keys tell those apart:
 - **`enter`** — talk about it. On a row, it opens that row. With something typed and no row
   chosen, it starts a conversation carrying what you wrote.
 - **`alt+enter`** — send it off as a task. It runs on its own and tells you when it lands.
+  The first press opens the composer layer, where the three facts a task needs are settled;
+  the second press is the send. The next section is that layer in full.
 
 At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
@@ -102,8 +104,61 @@ The path is shortened the same way every path on this surface is: `~` for your h
 directory, and a first letter for each folder above the last when the whole thing will not
 fit. Home used to draw it in full while every other place shortened it; both are short now.
 
-`alt+enter` from a place that is not home takes you to home and asks there, because home is
-where an errand's answer is drawn. You are left looking at the thing you just started.
+## The composer layer — set which project, pick the model and set a spend limit before starting a task
+
+Press **`alt+enter`** with something typed into the composer, on any place, and the layer
+opens. It is not a new screen: **the page behind dims to the faintest tier instead of being
+covered**, the box stays exactly where it was, and three lines appear in the air under it.
+
+```
+› cut the opus spend in half without losing the sweep                       here ~/aforge-v2
+ it will run on its own and tell you when it lands                                    a task
+ · in ~/aforge-v2, on master                                                alt+w to move it
+ · execution runs on opus 4.1                                                alt+o to change
+ · it may spend up to $10.00 before it asks                                    type a number
+ alt+enter send it off · enter talk about it first · esc back to spend
+```
+
+Those three are the only facts a task needs before it leaves: **where, on what, how much.**
+Each one is edited on the line that shows it.
+
+- **`in ~/aforge-v2, on master`** — the project the task will work in, and the branch that
+  tree is on right now. **`alt+w`** cycles it through the projects aforge knows, this
+  window's own first, and round again from the last. A machine with one project has nowhere
+  to move a task to, so the `alt+w to move it` clause is not on the line and the key does
+  nothing. A folder that is not a repository, or one on a detached head, draws the project
+  and stops there rather than trailing a comma.
+- **`execution runs on opus 4.1`** — the model the WORK will run on. That is the *execution*
+  slot, which is a different thing from the model you are talking to: the errand still talks
+  on this window's own model, and only the work it hands out moves. **`alt+o`** opens the
+  model list — the same list `/model` opens, the same rows, the same filter box — drawn
+  inside the layer, and `enter` on a row binds it **for this task only**. Nothing is written
+  to your settings. With nothing anywhere able to say what execution runs on, the line is
+  absent and so is the key.
+- **`it may spend up to $10.00 before it asks`** — the cap. **Type a number** while the
+  layer is up and the figure changes as you type; `backspace` takes a character off. It is
+  a real limit and not a label: the task stops and asks you when it reaches it. See the
+  tasks page, *a task started from the composer carries a cap*.
+
+The foot names everything that is live: **`alt+enter` sends it off**, **`enter` talks about
+it first** (which is the ordinary conversation, carrying the same sentence), and **`esc`
+goes back to the place you were on** with your sentence still in the box. Nothing was
+applied on the way in, so `esc` has nothing to undo.
+
+While the layer is up it has the whole keyboard. `tab` does not walk to the next place and
+letters do not reach the composer — the sentence is already written and is on the screen
+above you.
+
+## Where the task appears after you send it — `alt+enter` takes you to home
+
+**`alt+enter` from a place that is not home takes you to home**, because home's column is
+the only surface that draws an errand's answer. You are left looking at the thing you just
+started rather than on the page you typed it from.
+
+That is a deliberate limit and not a finished design. The right answer is for the errand to
+be drawn on the place you sent it from — a small band the frame draws above the composer on
+any place — and until that lands, the surface carries you to where the answer will arrive
+rather than starting work somewhere you cannot watch it.
 
 ## The keys, and the one law behind them
 
@@ -119,12 +174,17 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `alt+enter` | send what you typed off as a task |
 | `alt+1` … `alt+7` | jump straight to a place |
 | `alt+<letter>` | change how THIS place is shown |
+| `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-The last two are bound where there is something to bind. `alt+<letter>` today is `alt+g` and
-`alt+q` on home, which group the list by project and hide the quiet rows, and `alt+s` on the
-memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
+`alt+w` and `alt+o` belong to the composer layer and to nothing else. No place binds either
+of them, so they can never move a view out from under you while you are aiming at a
+destination; pressed with no layer up, they do nothing.
+
+The last two classes are bound where there is something to bind. `alt+<letter>` today is
+`alt+g` and `alt+q` on home, which group the list by project and hide the quiet rows, and
+`alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
 (which days). A place with no window to move answers those keys with nothing rather than

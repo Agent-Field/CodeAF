@@ -948,8 +948,10 @@ a sentence longer than the frame wraps onto continuation rows — up to three �
 that the window scrolls with the caret, marked with `…` where the `›` was. Nothing you
 type is ever truncated out of view. There is no key to open a new line here (that is the
 chat box's `ctrl+j`); on home and on every other place, **`alt+enter` sends what you typed
-off as a task** — which on home is `ask here` — and `ctrl+enter` does the same thing on the
-terminals that can send it.
+off as a task** — which on home is `ask here`. The first press opens the composer layer,
+where the three facts a task needs are settled (the places page, *the composer layer*), and
+the second press is the send. `ctrl+enter` does the same thing on the terminals that can
+send it.
 
 **A paste lands in home's box.** Paste while home is open and the text goes into the foot
 box — filtering the list, exactly as typing does — or into the ask-here exchange's own
@@ -1880,7 +1882,9 @@ While you are typing, the row directly above `start a new conversation` is
 `ask here: "…"`. It answers the sentence **in the pane on the right** — a real conversation
 with a real transcript, kept outside `~/.aforge/v3/projects` so this list never grows a
 session row for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does
-it without leaving the box.
+it without leaving the box — the chord goes by way of the composer layer, so `alt+enter`
+twice is the whole gesture and the layer in between is where you say where it runs, what it
+runs on and how much it may spend (the places page).
 
 **Every exchange is a row on this column**, marked `?`, **at the very top of the list** —
 above everything the machine has to say for itself, because it is the thing you asked for a

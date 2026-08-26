@@ -673,6 +673,37 @@ restored row is running, none of them is counted on the status line, and none ca
 stopped, because there is nothing left to stop. The log file it was writing is still under
 `<workspace>/.aforge-v3/jobs/`.
 
+## A task started from the composer carries a cap — how much a task may spend before it asks
+
+A task started with **`alt+enter`** from the composer on home or on any other place goes out
+with a **spend cap** on it. The composer layer's third line is where you read it and where
+you change it:
+
+```
+ · it may spend up to $10.00 before it asks                                    type a number
+```
+
+**The default is $10.00**, which is the tank aforge applies to work nobody put a figure on.
+Type digits while the layer is up and the figure is whatever you typed.
+
+**It is a real limit and not a caption.** The figure becomes that errand's own spend rail:
+
+- The errand **stops before its next turn** once its own accumulated spend reaches the
+  figure. It never cuts a turn in half — a turn with tool calls in flight finishes — and it
+  says which figure it stopped at.
+- Any **adaptive run** the errand starts is held to a tank no bigger than the cap, even if
+  something asks for more. When that tank empties the run **finishes what is in flight,
+  starts nothing new, and asks you** — top it up, finish on what is done, or stop. That gate
+  is the *asks* in the sentence on the line.
+
+**A task started any other way carries whatever this window carries.** `/task <brief>`, the
+proposal card and the model's own hands run under the conversation's own rail — which is off
+unless you set the `spend rail` row in settings — and an adaptive run they start opens on
+the $10.00 default.
+
+Changing the engine's default changes the figure the composer layer opens on; the two are
+meant to be one number and are stated in both places on purpose.
+
 ## The + /task row at the foot of the column — starting a task from the side
 
 Under this conversation's task rows the column on the right carries one dim row:
