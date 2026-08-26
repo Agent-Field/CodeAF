@@ -329,6 +329,56 @@ A turn already running when a surface ATTACHES needs none of it — that message
 is in the journal the surface reads on its way in — which is exactly why
 `Welcome.Live` carries no sentence and this frame does.
 
+## Decision 13 — Version 4: intent goes up, facts come down
+
+**Decision.** The engine STATES its fact set — the model, the session's name,
+what has been spent, what the conversation weighs, and the reasoning rung held
+for every model anybody has dialled (`session.Facts`) — in the welcome, and
+again on a `facts` frame whenever one of them moves: a turn ending, a name
+settling, a compaction landing, somebody turning the model or the rung. The
+surface keeps a replica (`internal/remote/replica.go`) and every read a frame or
+a keystroke makes is a read of that. What still travels UP is intent — a
+message, an answer, a key — because intent is the one thing the far end cannot
+know on its own.
+
+**Why not leave them as questions.** Because a question asked while drawing is a
+question asked thirty times a second, and over an ssh pipe that is the repaint
+rate of the terminal set to the round-trip time of the link. The owner met this
+as "even hover seems to slow everything down": the status row asked the agent
+for the reasoning rung while it was painting, and a pointer below the
+conversation rebuilds the chrome per cell, so a two-hundred-cell sweep queued
+seven seconds of keystrokes behind two hundred round trips. PERF.md's connection
+laws pin the result at zero.
+
+**Why the whole set and never a delta.** A push naming only what changed would be
+smaller and would be wrong the first time one went missing: a surface that lost a
+frame would carry a stale field for ever with nothing able to tell it so. The set
+is five short fields and a small map — less than one line of a reply — so every
+push is complete and the newest one is always the truth. A revision number minted
+under the session's own lock is what makes "newest" well-defined when two facts
+move in the same instant.
+
+**Why a frame of its own rather than an event on a stream.** A fact moves between
+turns as well as during one, and a stream only exists while a turn is running.
+The `facts` frame belongs to the CONNECTION: no id, no seq, no stream. A build
+that does not know the kind ignores it, which is what the client's reader already
+does with every kind it has no case for.
+
+**Why the surface may write to its own replica.** `SetModel` and `SetReasoningFor`
+move it before the call goes out, because the person pressed a key and is looking
+at the row it changed. That is optimism and not a second authority: the engine
+announces the change to every surface on the conversation with a higher revision,
+which lands over the top of the assumption. The assumption's whole life is one
+round trip.
+
+**And the same bargain on the way up.** A message typed over `--host` is drawn
+the instant enter is pressed, in the place it will keep, marked one reading step
+quieter until the engine has taken it (`internal/tui3/echo.go`). If the engine
+refuses it — a turn already running, another window driving — the line comes
+back off the page and the engine's own sentence is put where it was, because a
+message the model never received must not sit in the only record of the
+conversation looking as though it did.
+
 ---
 
 ## What runs where
@@ -353,6 +403,7 @@ is in the journal the surface reads on its way in — which is exactly why
 | `internal/remote/client.go` | the surface half — `Client`, and the `Agent` that satisfies `tui3.Agent` |
 | `internal/remote/server.go` | the engine half — serves one conversation and the doors that replace it |
 | `internal/remote/image.go` | the payload that cannot be handed on: a picture, remade on arrival |
+| `internal/remote/replica.go` | the surface's copy of what the engine says about itself, kept fresh by push |
 | `internal/remote/loopback.go` | the transport's test double: a real client, a real server, an in-memory pipe |
 | `cmd/aforge/chatv3_host.go` | the `--host` door: parse the target, start ssh, hand the connection to the surface |
 | `cmd/aforge/engine.go` | the far half ssh starts — machinery, not a command |

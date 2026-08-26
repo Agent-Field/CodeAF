@@ -518,6 +518,7 @@ func (a *app) rebuildTranscript() {
 	a.entries = nil
 	a.turn = 0
 	a.live = -1
+	a.echoAt = -1
 	a.think = -1
 	a.sel = -1
 	a.unfolded = map[int]bool{}

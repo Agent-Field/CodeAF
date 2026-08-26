@@ -88,6 +88,10 @@ asked while resolving a POINTER is asked once per cell the pointer crosses.
 | **A pointer motion over a connection asks the far machine nothing** — including one below the conversation, which rebuilds the chrome to find its row. | `internal/tui3/hostlatency_test.go` |
 | **The model picker draws its whole list for nothing**, however many rows it is showing. | `internal/tui3/hostlatency_test.go` |
 | **The frame clock's beat makes no call on the update loop.** What it reads it reads as a `tea.Cmd`. | `internal/tui3/hostlatency_test.go` |
+| **A key over a connection asks the far machine nothing** — thirty-six of them, typing and moving. | `internal/tui3/hostlatency_test.go` |
+| **A submit over a connection is exactly one call.** The sentence goes up and nothing else does; the update that echoes the line on screen is zero, because the call happens on the command. | `internal/tui3/hostlatency_test.go` |
+| **A turn ending is zero.** The settle reads the spending, the weight and the effort table off the replica, which the engine has already refreshed ahead of the turn's own ending. | `internal/tui3/hostlatency_test.go` |
+| The five facts a frame draws — the model, the name, the spending, the weight, the effort rung — answer from the replica and never from the wire, and the effort table is whole from the first frame. | `internal/remote/replica_test.go`, `internal/tui3/hostlatency_test.go` |
 
 `remote.Client.CallsMade` exists for these pins and for nothing else — one
 atomic add inside the one door every call already goes through. It counts calls
@@ -174,6 +178,42 @@ v2.0.8, not assumed: the renderer writes to the terminal on a 60 Hz ticker
 twenty-turn conversation measures 31 µs and 19 KB, independent of transcript
 length — the row list is cached (`app.visible`) and the chrome around it is not.
 Thirty-one microseconds times six hundred is the middle row of the table above.
+
+**INTENT UP, FACTS DOWN** is the shape that keeps all of these true as the
+surface grows, and it is the second half of the same fix. The first half stopped
+the draw path ASKING; this half stops there being anything to ask. The engine
+STATES its fact set — the model, the session's name, what has been spent, what
+the conversation weighs, and the effort rung held for every model anybody has
+dialled (`session.Facts`) — in the welcome and again on a `facts` frame whenever
+one of them moves: a turn ending, a name settling, a compaction landing, somebody
+turning the model or the rung. The surface keeps a replica of it
+(`internal/remote/replica.go`) and every getter on the frame path is a memory
+read of that.
+
+So the surface-side tables the laws above are drawn from are FED rather than
+filled: `internal/tui3`'s reasoninglevel.go seeds itself from the whole map the
+welcome carries and is complete at boot rather than a level behind, and
+`app.settle`'s two reads at a turn end are the replica's, taken after the engine
+has already restated them.
+
+The rule for the next thing anybody adds: **a fact a frame reads belongs in
+`session.Facts` and is stated; a question a person opened a door for may be
+asked.** The transcript, the rewind points and a file fetched from that machine
+are all the second kind, and all of them are off the frame path.
+
+The number that is NOT pinned here is the boot. Opening a hosted conversation
+costs five calls, read off the engine's own side of a real ssh pipe: the
+transcript, the earlier history, the recent sessions, this workspace's standing
+items and the questions held for somebody to come back to. Every one is a launch
+cost paid once with a person watching a connection open, which is the moment
+waiting is correct, and NOT ONE OF THEM IS A FACT A FRAME READS — those arrive
+in the welcome. The laws above are about the moments waiting is never correct.
+
+The other thing that shows on a real link and is not pinned here is the standing
+band's own beat, which asks the engine for this workspace's items every few
+seconds. It is a poll of the far machine's DISK rather than a fact a frame reads,
+so it is a different lane's question; it is written down because anybody counting
+frames on a real connection will see it and should know what it is.
 
 ## The launch-path pins
 

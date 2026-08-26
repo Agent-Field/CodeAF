@@ -2,6 +2,8 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE REASONING LEVEL IS A FACT THIS SURFACE HOLDS, NOT A QUESTION IT ASKS
@@ -57,16 +59,68 @@ import (
 // next frame at home and over a connection alike — the one thing a cache in
 // front of a knob must not get wrong.
 //
+// ── AND THE WHOLE TABLE ARRIVES AT ONCE WHERE THE ENGINE CAN SEND IT ────────
+//
+// The one-at-a-time asks above are the FALLBACK. An agent that can hand over
+// every level it holds in one answer ([levelSource]) is asked for all of them at
+// the moments this surface already talks to it — the session opening, a
+// conversation being attached, a model switch, and every turn end — and the
+// table is COMPLETE from the first frame rather than a frame behind the first
+// row that needed a level. Nothing is queued, because nothing is unknown.
+//
+// Over a connection that answer is free: internal/remote's Agent reads it out of
+// the replica the engine keeps fresh by push (replica.go), so the table is fed
+// rather than filled and this surface never asks the far machine about a level
+// at all. At home it is one copy of a small map under the session's own lock,
+// once a turn.
+//
 // ── WHAT IT CAN BE WRONG ABOUT, SAID OUT LOUD ───────────────────────────────
 //
-// An answer is kept for the life of the agent and never expires, so a level
-// dialled on ANOTHER window attached to the same hosted session does not reach
-// this one until the conversation is swapped. That is the whole of the bound,
-// and it is deliberate: the alternative is asking again on a clock, per model,
-// down a pipe, to catch a change only a second window can make. The three doors
-// that DO change it — this surface's own ctrl+t, `--reasoning` at launch (which
-// the door sets before [newApp] reads it), and a model switch — are all seeded
-// or written through above.
+// Between two of those moments the table is a photograph. A level dialled on
+// ANOTHER window attached to the same hosted session reaches this one at the end
+// of the next turn — the engine states its facts there — and not the instant it
+// changes. That is the whole of the bound. An agent with no bulk door keeps the
+// older bound: a level it was never asked about is asked for once and then kept
+// for the life of the agent.
+//
+// The three doors that change a level HERE — this surface's own ctrl+t,
+// `--reasoning` at launch (which the door sets before [newApp] reads it), and a
+// model switch — are all seeded or written through above, so nothing a person
+// does on this screen is ever a frame late.
+
+// levelSource is an agent that can hand over every level it holds in one
+// answer. It is asserted rather than added to [Agent] on [effortDialer]'s terms:
+// a method on that interface is a method thirty test doubles have to grow, and a
+// session that cannot answer it simply falls back to the one-at-a-time asks
+// above — which is the whole reason those are kept.
+type levelSource interface {
+	ReasoningLevels() map[string]string
+}
+
+// levelsSeed replaces the table with everything the agent holds, and reports
+// whether it could. It is called from the moments this surface already speaks to
+// the agent and never from a draw.
+//
+// IT REPLACES RATHER THAN MERGES, because the answer is the whole truth: a level
+// this table holds and the agent does not is a level somebody cycled back to off
+// on another window, and merging would keep it standing for ever.
+func (a *app) levelsSeed() bool {
+	if a.agent == nil {
+		return false
+	}
+	source, ok := a.agent.(levelSource)
+	if !ok {
+		return false
+	}
+	held := source.ReasoningLevels()
+	clear(a.levels)
+	clear(a.levelWanted)
+	a.levelWant = nil
+	for id, level := range held {
+		a.keepLevel(id, level)
+	}
+	return true
+}
 
 // levelBatchMax is how many model ids one background ask carries.
 //
@@ -101,10 +155,16 @@ func (a *app) reasoningFor(id string) string {
 	if a.agent == nil || id == "" {
 		return ""
 	}
-	if level, known := a.levels[id]; known {
+	// THE ID IS FOLDED THE WAY THE SESSION FOLDS IT ([session.ReasoningKey]), and
+	// this table is keyed the same way, because a level set from a picker row and
+	// looked up by a `/model <slug>` typed in another case is ONE level. Two
+	// spellings of the folding rule is a level that goes missing on the surface
+	// while the engine still holds it.
+	key := session.ReasoningKey(id)
+	if level, known := a.levels[key]; known {
 		return level
 	}
-	a.wantLevel(id)
+	a.wantLevel(key)
 	return ""
 }
 
@@ -116,13 +176,19 @@ func (a *app) learnLevel(id string) {
 	if a.agent == nil || id == "" {
 		return
 	}
+	// THE WHOLE TABLE IF IT CAN BE HAD, because it costs the same as one answer
+	// where the agent can give it and leaves nothing for the queue to discover.
+	if a.levelsSeed() {
+		return
+	}
 	a.keepLevel(id, a.agent.ReasoningFor(id))
 }
 
 // keepLevel writes one level down, keeping the table bounded and taking the id
 // out of the queue it may have been sitting in.
 func (a *app) keepLevel(id, level string) {
-	if id == "" {
+	key := session.ReasoningKey(id)
+	if key == "" {
 		return
 	}
 	if a.levels == nil {
@@ -131,8 +197,8 @@ func (a *app) keepLevel(id, level string) {
 	if len(a.levels) >= levelWantMax {
 		clear(a.levels)
 	}
-	a.levels[id] = level
-	delete(a.levelWanted, id)
+	a.levels[key] = level
+	delete(a.levelWanted, key)
 }
 
 // forgetLevels drops everything held, which is what an agent being REPLACED

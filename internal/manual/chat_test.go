@@ -174,6 +174,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I give it a longer context", "models-and-cost"},
 		{"how do I make it think harder", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
+		// The echo and the push, in the words somebody actually types when they
+		// notice either one.
+		{"why is my message dimmer than usual over --host", "running-on-another-machine"},
+		{"my message disappeared after I sent it over ssh", "running-on-another-machine"},
+		{"does my message show up straight away over --host", "running-on-another-machine"},
+		{"why did the status line stop moving when the connection dropped", "running-on-another-machine"},
 		{"does it support markdown tables", "screen"},
 		// From the screenshot that provoked the right column's rebuild: the
 		// figures at a tool row's right end were cut down to `0…`, and "what

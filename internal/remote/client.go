@@ -85,6 +85,13 @@ type Client struct {
 	mu      sync.Mutex
 	welcome Welcome
 
+	// facts is the engine's own account of itself, kept fresh by PUSH and read
+	// by every getter a frame or a keystroke asks. It has a lock of its own
+	// rather than living under mu because it is read from the update loop on
+	// every repaint and mu is held by the reader goroutine's routing — see
+	// replica.go for the whole of why this exists.
+	facts replica
+
 	// hello is the door's own first frame, kept because a redial has to say it
 	// again — the same workspace, the same session, the same model and level
 	// (redial.go's [Client.resume] fills the cursors in).
@@ -267,6 +274,12 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// it goes through the same door so that a redial that came back as a watcher
 	// wakes the surface exactly as a live hand-over would.
 	c.drives(welcome.Driver)
+	// THE FIRST FRAME IS DRAWN FROM MEMORY. The welcome carries the fact set, so
+	// a surface that has only just arrived already knows the model, the name,
+	// what has been spent and what the conversation weighs — and a redial fills
+	// it again, which is how a replica that went stale behind a dead link comes
+	// back current without anybody asking a question (replica.go).
+	c.facts.fill(welcome.Facts)
 	return welcome, nil
 }
 
@@ -646,6 +659,13 @@ func (c *Client) read() {
 			if err := json.Unmarshal(frame.Payload, &note); err == nil {
 				c.drives(note)
 			}
+		case "facts":
+			// The engine stating something nobody asked for. It is taken on the
+			// reader goroutine and never handed to the surface as an event: the
+			// surface reads a replica, and a fact delivered as something to be
+			// processed would put a frame's freshness behind however far the
+			// update loop had got through its queue.
+			c.facts.take(frame.Payload)
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
 			return
@@ -761,6 +781,11 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		payload = encoded
 	}
 	id := c.seq.Add(1)
+	// COUNTED HERE AND NOWHERE ELSE, because this is the one place a round trip
+	// can happen. It is counted before the refusals below rather than after,
+	// because a law that says "this frame puts nothing on the wire" is a claim
+	// about what the surface ASKED FOR, and a call a dead link refused is still
+	// a call the code decided to make.
 	c.made.Add(1)
 	waiting := make(chan result, 1)
 
@@ -958,6 +983,10 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 	// so that a surface reading this one does not forget what the last one told
 	// it. It goes through the same door a live hand-over does.
 	c.drives(welcome.Driver)
+	// A SWAP IS A NEW CONVERSATION, so the replica is refilled rather than
+	// updated: everything in it — the name, the spending, the weight — belonged
+	// to the session that just closed.
+	c.facts.fill(welcome.Facts)
 	return welcome, nil
 }
 
@@ -1059,27 +1088,63 @@ func (a *Agent) Close() error {
 }
 
 // Model is the model the next request will use.
-func (a *Agent) Model() string { return a.text(MethodModel) }
+//
+// IT IS A MEMORY READ. The engine states this at the door and again whenever it
+// moves, so the status line asks nothing (replica.go states the whole law, and
+// PERF.md pins it: a View over --host issues zero far calls).
+func (a *Agent) Model() string { return a.c.facts.read().Model }
 
-// SetModel swaps it.
-func (a *Agent) SetModel(model string) { _, _ = a.c.call(nil, MethodSetModel, model) }
+// SetModel swaps it, and the surface's own copy moves with it.
+//
+// THE LOCAL WRITE IS NOT A SECOND AUTHORITY. The engine announces the change to
+// every surface on this conversation, with a revision that lands over the top of
+// what is assumed here; the assumption only covers the round trip, which is the
+// gap in which a person who pressed a key is looking at the row it changed.
+func (a *Agent) SetModel(model string) {
+	a.c.facts.setModel(model)
+	_, _ = a.c.call(nil, MethodSetModel, model)
+}
 
 // SetContextWindow says how many tokens the model now in use accepts.
 func (a *Agent) SetContextWindow(tokens int) { _, _ = a.c.call(nil, MethodSetContext, tokens) }
 
 // ReasoningFor is how hard one model is asked to think.
+//
+// IT IS THE READ THAT MADE THIS WHOLE FILE NECESSARY. internal/tui3's view.go
+// asks it on every frame it draws — the level rides the model segment of the
+// status row — so as a round trip it set the repaint rate of the terminal to the
+// round-trip time of the link. The engine pushes the whole level map, keyed the
+// way internal/session keys it, and this is a lookup in it.
 func (a *Agent) ReasoningFor(model string) string {
-	payload, err := a.c.call(nil, MethodReasoningFor, model)
-	if err != nil {
-		return ""
-	}
-	var level string
-	_ = json.Unmarshal(payload, &level)
-	return level
+	return a.c.facts.read().LevelFor(model)
 }
 
-// SetReasoningFor sets it.
+// ReasoningLevels is every level this conversation holds, in one answer.
+//
+// IT IS THE DOOR THAT MAKES THE SURFACE'S OWN TABLE COMPLETE AT BOOT
+// (internal/tui3's reasoninglevel.go). Asked one model at a time, a picker
+// drawing a three-hundred-row catalog had three hundred questions to get
+// through; the engine states the whole map instead, so this is one memory read
+// of the replica and the surface has nothing left to discover.
+func (a *Agent) ReasoningLevels() map[string]string {
+	held := a.c.facts.read().Reasoning
+	if len(held) == 0 {
+		return nil
+	}
+	// A COPY, for [session.Agent.ReasoningLevels]' reason: the map inside the
+	// replica is replaced under a lock by every push, and a caller ranging over
+	// the live one while a fact frame lands is a race.
+	levels := make(map[string]string, len(held))
+	for model, level := range held {
+		levels[model] = level
+	}
+	return levels
+}
+
+// SetReasoningFor sets it, moving the surface's own copy on [Agent.SetModel]'s
+// terms — the picker's ctrl+t reads the level back the moment it sets one.
 func (a *Agent) SetReasoningFor(model, level string) {
+	a.c.facts.setLevel(model, level)
 	_, _ = a.c.call(nil, MethodSetReasoningFor, ReasoningArgs{Model: model, Level: level})
 }
 
@@ -1126,30 +1191,22 @@ func (a *Agent) NoteConnected(service, account string) {
 	_, _ = a.c.call(nil, MethodNoteConnected, ConnectedArgs{Service: service, Account: account})
 }
 
-// Title is the name the session gave itself.
-func (a *Agent) Title() string { return a.text(MethodTitle) }
+// Title is the name the session gave itself, read from memory. The engine
+// states it when the naming errand settles, which is the only moment it ever
+// changes — so a surface that has one has the one the session earned, and one
+// that has none is looking at a conversation that has not earned one yet.
+func (a *Agent) Title() string { return a.c.facts.read().Title }
 
-// Usage is the session's running total.
-func (a *Agent) Usage() session.Usage {
-	payload, err := a.c.call(nil, MethodUsage, nil)
-	if err != nil {
-		return session.Usage{}
-	}
-	var usage session.Usage
-	_ = json.Unmarshal(payload, &usage)
-	return usage
-}
+// Usage is the session's running total, read from memory. The engine states it
+// at every turn end, ahead of the EventTurnDone that the surface settles on
+// (server.go's emit), so the figures a settle reads are that turn's.
+func (a *Agent) Usage() session.Usage { return a.c.facts.read().Spent }
 
-// ContextTokens is what the conversation weighs right now.
-func (a *Agent) ContextTokens() int {
-	payload, err := a.c.call(nil, MethodContextTokens, nil)
-	if err != nil {
-		return 0
-	}
-	var tokens int
-	_ = json.Unmarshal(payload, &tokens)
-	return tokens
-}
+// ContextTokens is what the conversation weighs right now, read from memory. It
+// is stated at a turn end and after a compaction — the two moments the figure
+// moves — which is exactly where internal/tui3 asks for it (app.go's
+// measureContext, which is written never to ask on the frame clock).
+func (a *Agent) ContextTokens() int { return a.c.facts.read().ContextTokens }
 
 // Transcript is the conversation so far, shaped for display.
 func (a *Agent) Transcript() []session.DisplayEntry {
@@ -1199,21 +1256,17 @@ func (a *Agent) RewindAt(index int) ([]session.DisplayEntry, error) {
 	return entries, nil
 }
 
-// text is the shape four getters share: a call whose result is one string, and
-// whose failure is the empty string. THE EMPTY STRING IS THE HONEST ANSWER
-// HERE, and it is not a swallowed error: these are drawn on a status line, the
-// interface gives them no way to report anything, and the surface's emptiness
-// law already draws a missing fact as nothing at all. The error the person needs
-// arrives on the next Submit, where there is somewhere to put it.
-func (a *Agent) text(method string) string {
-	payload, err := a.c.call(nil, method, nil)
-	if err != nil {
-		return ""
-	}
-	var value string
-	_ = json.Unmarshal(payload, &value)
-	return value
-}
+// THE FOUR STRING GETTERS USED TO SHARE A ROUND TRIP AND NO LONGER MAKE ONE.
+// Model, Title, Usage and ContextTokens were each one frame out and one frame
+// back, drawn on a status line with no way to report a failure — so the empty
+// string was the honest answer to a link that had stopped answering. They read
+// the replica now (replica.go), and the failure they used to swallow is the one
+// a status line should show anyway: a connection that is gone says so on its own
+// row ([Client.LinkNote], [Client.Err]) rather than by drawing a conversation
+// with no model.
+//
+// The engine still SERVES those methods (wire.go, server.go) and must: they are
+// the protocol's doors, and nothing here decides what another build asks for.
 
 func (a *Agent) entries(method string, args any) []session.DisplayEntry {
 	payload, err := a.c.call(nil, method, args)

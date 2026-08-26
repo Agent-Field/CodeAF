@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -814,7 +816,7 @@ func (a *app) cycleReasoning() {
 	if !ok || !chosen.Reasoning || a.agent == nil {
 		return
 	}
-	if _, known := a.levels[chosen.ID]; !known {
+	if _, known := a.levels[session.ReasoningKey(chosen.ID)]; !known {
 		a.learnLevel(chosen.ID)
 	}
 	next := nextReasoning(a.reasoningFor(chosen.ID))
