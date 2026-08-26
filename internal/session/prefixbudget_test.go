@@ -57,6 +57,14 @@ import (
 // are not aforge's to trim. The other 35,133 bytes are aforge's own words, down
 // from 62,810 — and that is the half of the bill a lane adding a sentence is
 // adding to. The budget is that measurement plus a tenth.
+// WHAT HAS BEEN SPENT AND WHAT PAID FOR IT. The working discipline moved into
+// the system prompt (prompt.go's [disciplinePrompt]) because the surface that
+// picks the approach must carry the discipline for picking it, and it cost 1,779
+// bytes. It was paid for, not borrowed: the `# Tool Inventory` section came out,
+// 1,832 bytes of prose naming each tool and paraphrasing its description — the
+// tool block ahead of message[0] carries every one of those descriptions in
+// full, and prompts/system.md's Tool Policy names each tool again where it says
+// which one to reach for. The prefix came out 32 bytes lighter than it went in.
 const fixedPrefixBudget = 45_800
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
