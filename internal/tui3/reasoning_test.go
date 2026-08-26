@@ -73,6 +73,10 @@ func TestANarrowRowClipsTheNameAndKeepsTheLevel(t *testing.T) {
 	a := pickerApp(t, agent, richCatalog)
 	typeLine(t, a, "/model")
 	typeInto(t, a, "sonnet")
+	// The session was dialled before this surface opened, so the row learns the
+	// level off the draw path — one frame late, and never on the wire
+	// (reasoninglevel.go).
+	settleLevels(a, "anthropic/claude-sonnet-4.5")
 
 	line := pickerLines(a)[0]
 	if !strings.Contains(line, ":high") {
