@@ -119,6 +119,20 @@ type place interface {
 	ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool)
 	// stops is the cursor-legal rows of the last body, in order.
 	stops(a *app) []int
+	// cursorAt is WHICH LINE OF ITS OWN BODY this place's cursor is standing on,
+	// in the same numbers [place.stops] answers in.
+	//
+	// IT HAS NO DEFAULT ON [placeBase] AND THAT IS DELIBERATE. A place that did
+	// not say where its cursor was would compare equal to its own first stop from
+	// every row of the list, and `↑` in the middle of it would jump to the tab bar
+	// — a wrong answer that draws perfectly and that nobody would think to look
+	// for. So it is required, like `id` and `word`, and a place that forgets it
+	// does not build.
+	//
+	// The frame asks so that `↑` off the FIRST row of any body lands on the tab
+	// bar ([app.barReach]). That is the whole of what it is for, and it is a fact
+	// about the place rather than about the bar: where the cursor is standing.
+	cursorAt(a *app) int
 	// cursorRow is which of the rows JUST BUILT the cursor is standing on, and
 	// -1 for a place whose cursor is on nothing this frame drew.
 	//
@@ -415,14 +429,26 @@ func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 		a.tabs = spans
 		return full
 	}
-	worth := func(id page) bool { return id == a.page || a.placeCount(id) > 0 }
+	worth := func(id page) bool { return a.barKeeps(id) || a.placeCount(id) > 0 }
 	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
 		a.tabs = spans
 		return some
 	}
-	alone, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return id == a.page })
+	alone, spans, _ := a.tabBarAt(width, numbered, pal, a.barKeeps)
 	a.tabs = spans
 	return alone
+}
+
+// barKeeps is the word the ladder may never give up: the place you are standing
+// in, and — while the cursor is on the bar — the word the cursor is on.
+//
+// A CURSOR ON A WORD THE LADDER DROPPED WOULD BE A CURSOR NOBODY CAN SEE, which
+// is SCREEN 3a's clause said about a row rather than a key: nothing on this
+// surface acts on something that is not drawn. So the narrow bar carries the
+// cursor's word whether or not that place has anything new in it, and `←`/`→`
+// walk cells a person is actually looking at.
+func (a *app) barKeeps(id page) bool {
+	return id == a.page || (a.bar.on && id == a.bar.at)
 }
 
 // placeTabSpan is where one place's CHIP sits on the bar, so the draw and the
@@ -467,14 +493,33 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			word += " " + itoa(n)
 		}
 		chip := tabPad + word + tabPad
-		if id == a.page {
+		band := ansi.StringWidth(word) + tabPadCols
+		switch {
+		case a.bar.on && id == a.bar.at:
+			// THE CURSOR'S OWN BAND, AND IT REPLACES THE SELECTED MARK RATHER THAN
+			// STACKING ON IT. While the cursor is up here the bar is the row a
+			// person is standing on, and the question the frame has to answer is
+			// "where is my cursor" — not "which room am I in", which the body
+			// underneath is already answering with every one of its rows. Two
+			// grounds on one word would be the screen saying both at once and
+			// neither clearly ([barCursor]).
+			line += pal.cursor(pal.bold(pal.ink(chip)), band)
+		case id == a.page:
 			// THE WORD YOU ARE STANDING IN IS TIER 1, BOLD, AND NOT AN ACCENT.
 			// SCREEN 2a's first level is spelled out: "1 · page — bright, bold,
 			// one word, only in the tab bar", and the accent on a place is spent
 			// on the two live states and on nothing else (styles.go's THE
 			// ONE-ACCENT LAW). The band under it is what says "here".
-			line += pal.selected(pal.bold(pal.ink(chip)), ansi.StringWidth(word)+tabPadCols)
-		} else {
+			line += pal.selected(pal.bold(pal.ink(chip)), band)
+		case id == a.tabHover:
+			// AND THE POINTER LIFTS THE WORD AND DOES NOTHING ELSE: the selected
+			// word's own ink and weight, with no band under it. A word that grew a
+			// ground on hover would look like the room a person was standing in,
+			// and a bar with two banded words on it says nothing at all; a word
+			// that lifted a tier says "this one is a door", which is the whole of
+			// what a pointer resting on it has learned.
+			line += pal.bold(pal.ink(chip))
+		default:
 			line += pal.dim(chip)
 		}
 		plain += chip
@@ -482,6 +527,183 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		at += ansi.StringWidth(chip)
 	}
 	return line, spans, ansi.StringWidth(plain) <= width
+}
+
+// ── THE BAR IS A ROW THE CURSOR CAN STAND ON ────────────────────────────────
+
+// barCursor is the tab bar as a ROW, and not only as a set of targets.
+//
+// Every place's body is a list walked with `↑` and `↓`, and the bar over it was
+// the one row of the frame that only a pointer could reach. A hand on the
+// keyboard had `tab`, which is a walk with NO CURSOR IN IT: every step opens the
+// room it lands on, closes the one it left and throws away that room's filter,
+// so looking along the seven words cost seven openings. So `↑` off the first row
+// of ANY body lands here, `←`/`→` walk the words and open nothing at all, and
+// `enter` or `↓` goes into the one under the cursor. Reading the bar is free
+// again, which is what a cursor is for.
+//
+// IT IS FRAME STATE AND NO PLACE HAS A WORD TO SAY ABOUT IT. The bar belongs to
+// the router — it is drawn on all seven places, in the same cells, by one
+// function — so a place that kept a flag about the cursor having left it would
+// be seven answers to one question, and the seventh would be the one that
+// forgot. The law is pinned by [TestNoPlaceFileMentionsTheBar].
+//
+// AND IT IS NOT A MODE. `tab`, `shift+tab` and `alt+1`…`alt+7` mean exactly what
+// they mean everywhere else while it is up, a printable character goes to the
+// composer exactly as it does everywhere else — taking the cursor back down into
+// the body with it — and `esc` puts the cursor back where it came from. Nothing
+// is captured; one row of the frame gained a cursor.
+type barCursor struct {
+	// on is whether the cursor is on the bar rather than in the body.
+	on bool
+	// at is the place whose word wears the cursor's band, and it is NOT
+	// [app.page]. Walking the bar moves this and opens nothing, which is the
+	// whole difference between a cursor and `tab`.
+	at page
+}
+
+// barHover records which place's word the POINTER is resting on, and repaints
+// only when that is news. [pageNone] is "the pointer is not on a word of the bar
+// at all", which covers the gap between two chips and every row that is not the
+// bar.
+//
+// MOTION IS THE CHEAPEST AND COMMONEST MESSAGE THIS SURFACE GETS — a pointer
+// crossing the window sends one per cell — so a hover that repainted on every
+// one of them would be a screen redrawn eighty times for a highlight that did
+// not move (placemouse.go's [placeHoverMoved] states the same rule for a body
+// row).
+func (a *app) barHover(id page) {
+	if id == a.tabHover {
+		return
+	}
+	a.tabHover = id
+	a.touch()
+}
+
+// barRaise puts the cursor on the bar, on the word of the room it is standing
+// in.
+func (a *app) barRaise() {
+	a.bar = barCursor{on: true, at: a.page}
+	// AND THE ROW'S VERBS GO WITH IT. A strip's letters are about the row the
+	// cursor was on (verbstrip.go), and the cursor is not on a row any more —
+	// letters left bound over a bar nobody can act from would be exactly the
+	// lottery that file exists to prevent.
+	a.closeStrip()
+	a.touch()
+}
+
+// barDrop puts the cursor back into the body, on the row it left.
+//
+// THE PLACE'S OWN CURSOR NEVER MOVED. `↑` onto the bar is claimed by the router
+// before the place ever sees it ([app.barReach]), so the row a person walked up
+// off is still the row they walk back down onto — which is what makes `↑` then
+// `↓` cost nothing, and what makes "the first `↓` from the bar lands on the
+// first stop of the body" true without anybody having to put it there.
+func (a *app) barDrop() {
+	if !a.bar.on {
+		return
+	}
+	a.bar = barCursor{}
+	a.touch()
+}
+
+// barWalk is `←` and `→` along the bar: the next word, and round again from the
+// end.
+//
+// IT WRAPS AND DOES NOT CLAMP, which is the one place on this surface a cursor
+// does. Every list here clamps because a list has a top and a bottom a person is
+// reading towards; the bar is a RING — it is the circle `tab` already walks
+// ([nextPage]), and stopping the cursor dead at `settings` would make the two
+// keys disagree about the same seven words.
+func (a *app) barWalk(back bool) {
+	a.bar.at = nextPage(a.bar.at, back)
+	a.touch()
+}
+
+// barEnter is `enter` or `↓` on the bar: into the place under the cursor.
+//
+// THE CURSOR COMES DOWN EITHER WAY. Pressing the word you are already standing
+// in is not a door — going there would close and reopen the room, throwing away
+// the filter somebody typed and the row they were on, which is the same law the
+// pointer already keeps ([app.placeTabPress]) — so it simply puts the cursor
+// back in the body.
+func (a *app) barEnter() tea.Cmd {
+	at := a.bar.at
+	a.barDrop()
+	if at == a.page {
+		return nil
+	}
+	return a.showPage(at)
+}
+
+// barReach reports that `↑` from where the cursor is standing lands on the bar.
+//
+// THREE THINGS HAVE TO BE TRUE, and the first of them is SCREEN 3a's clause: no
+// key does anything that is not drawn on screen right now. The bar has to have
+// been PAINTED — home's phone inbox and the tasks place's record card draw
+// something else in those cells entirely ([app.frame] puts [app.tabRow] back to
+// -1 before every frame) — the cursor must not already be up there, and the
+// place's own cursor has to be on the first row of its body a cursor may stand
+// on. Anywhere else `↑` is the walk it has always been, and the place keeps it.
+func (a *app) barReach() bool {
+	pl := a.showing()
+	if pl == nil || a.bar.on || a.tabRow < 1 {
+		return false
+	}
+	stops := pl.stops(a)
+	if len(stops) == 0 {
+		// A ROOM WITH NOTHING IN IT STILL HAS A BAR OVER IT. An almost-empty page
+		// spends the whole screen saying what it is for (SCREEN 1a) and has no row
+		// to stand on at all; `↑` from it must reach the bar rather than being the
+		// one key that does nothing on the one page that most needs a way onward.
+		return true
+	}
+	return pl.cursorAt(a) <= stops[0]
+}
+
+// barKey is every key while the cursor is on the bar. It reports whether it took
+// the key; a key it does not take means on the bar exactly what it means in the
+// body.
+func (a *app) barKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.bar.on {
+		return nil, false
+	}
+	switch msg.String() {
+	case "left":
+		a.barWalk(true)
+		return nil, true
+	case "right":
+		// AND `→` DOES NOT OPEN A VERB STRIP UP HERE. The strip is a second
+		// reading of the ROW under the cursor, and a fold is a row's too; the bar
+		// is not a row of any place's reading, so both of those arrows are the
+		// walk along the words and nothing else (verbstrip.go).
+		a.barWalk(false)
+		return nil, true
+	case "down", "ctrl+n", "enter":
+		return a.barEnter(), true
+	case "esc":
+		// esc BACKS OUT ONE LAYER, which is the settings panel's rule kept: the
+		// cursor comes down off the bar, and the second esc is the place's own —
+		// it leaves the room.
+		a.barDrop()
+		return nil, true
+	case "up", "ctrl+p":
+		// THERE IS NOTHING OVER THE BAR. Row zero is the pulse, which is telemetry
+		// and not a control, so `↑` here is a key that has arrived at the top —
+		// swallowed rather than falling through into the body it just left.
+		return nil, true
+	}
+	// AND EVERY PRINTABLE CHARACTER GOES WHERE IT ALWAYS GOES, taking the cursor
+	// back down into the body with it. "any letter goes to the composer, on every
+	// page, always" is the second of the six classes (SCREEN 3a) and it has no
+	// asterisk: a person who starts typing has stopped looking at the bar, and a
+	// surface that swallowed the first letter of their sentence would have made
+	// the bar a mode.
+	if msg.Key().Text != "" {
+		a.barDrop()
+		return nil, false
+	}
+	return nil, false
 }
 
 // ── the frame every place is drawn in ───────────────────────────────────────
@@ -1015,6 +1237,12 @@ func (a *app) showPage(id page) tea.Cmd {
 		was.close(a)
 	}
 	a.page = pageNone
+	// AND THE CURSOR COMES DOWN OFF THE BAR WITH THE DOOR. Every road into a room
+	// ends with a person looking at that room's rows — `enter` on the bar, a press
+	// on a tab word, `tab`, `alt+3`, a door on a home row — so a cursor left up
+	// here would be a cursor on furniture in a room somebody has just walked into
+	// ([barCursor]).
+	a.bar = barCursor{}
 	// AND THE PAGES THAT TAKE THE FRAME AND ARE NOT PLACES STAND DOWN WITH IT
 	// ([app.standDownRest] names them and says why they are not in the bar).
 	a.standDownRest()

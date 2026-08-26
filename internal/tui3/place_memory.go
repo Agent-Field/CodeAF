@@ -688,6 +688,10 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 }
 
 func (placeMemory) stops(a *app) []int { return a.mem.stops() }
+
+// cursorAt is the line of the reading the cursor is on (pages.go's
+// [place.cursorAt]).
+func (placeMemory) cursorAt(a *app) int { return a.mem.cursor }
 func (placeMemory) cursorRow(a *app, rows []placeRow) int {
 	return placeRowAtLine(rows, a.mem.cursor)
 }

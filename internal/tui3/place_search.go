@@ -416,6 +416,10 @@ func (placeSearch) stops(a *app) []int {
 	return doors
 }
 
+// cursorAt is the row of the reading the cursor is on (pages.go's
+// [place.cursorAt]).
+func (placeSearch) cursorAt(a *app) int { return a.search.cursor }
+
 func (placeSearch) enter(a *app) tea.Cmd {
 	if hit, ok := a.search.reading.at(a.search.cursor); ok {
 		return a.openSearchHit(hit)

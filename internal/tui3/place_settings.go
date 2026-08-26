@@ -110,6 +110,10 @@ func (placeSettings) stops(a *app) []int {
 	return out
 }
 
+// cursorAt is the item of the current section the cursor is on (pages.go's
+// [place.cursorAt]).
+func (placeSettings) cursorAt(a *app) int { return a.sheet.cursor }
+
 // box is the type-to-search box, and a submenu's own box outranks it in the
 // order the panel already claims the keyboard in ([app.sheetKey]): the value
 // being edited, then the model picker's filter, then the search that crosses

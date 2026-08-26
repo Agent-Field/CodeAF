@@ -174,6 +174,53 @@ func TestOnePlaceOneFile(t *testing.T) {
 	}
 }
 
+// LAW 7 · NO PLACE FILE MENTIONS THE TAB BAR.
+//
+// The bar is drawn on all seven places, in the same cells, by one function, and
+// the cursor that stands on it is frame state (pages.go's [barCursor]). A place
+// that held a flag about the cursor having left it — or that bound `←`/`→` for
+// the bar, or drew a word of it — would be a seventh answer to a question the
+// router already answers, and the seventh would be the one that forgot.
+//
+// IT IS THE SAME ARGUMENT AS LAW 1 asked of a feature rather than of a switch: a
+// feature is a new place file, a new reading function or a new seam — never a
+// new `case` — and this one is none of the three, because it belongs to the
+// frame. [TestTheBarIsARowOnEveryPlace] is the other half: what the frame owes
+// every place, one loop over the registry.
+func TestNoPlaceFileMentionsTheBar(t *testing.T) {
+	// `bar` ON ITS OWN IS NOT THE WORD. Every place answers a `bar(a, width)` —
+	// the thumb foot that stands in for the hint line at [tierPhone] — and home
+	// keeps a `bar []hudSpan` of its own for the phone tier's action bar. What is
+	// forbidden is the ROUTER'S bar reaching into a place file, and each of these
+	// names one piece of it.
+	forbidden := []string{"barCursor", "a.bar.", "barRaise", "barDrop", "barWalk",
+		"barEnter", "barReach", "barKey(", "tabHover", "placeTabBar", "tabBarAt"}
+	for _, name := range placeSourceFiles(t) {
+		if !strings.HasPrefix(name, "place_") {
+			continue
+		}
+		body, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("could not read %s: %v", name, err)
+		}
+		for at, line := range strings.Split(string(body), "\n") {
+			code := line
+			if cut := strings.Index(code, "//"); cut >= 0 {
+				// A COMMENT MAY SAY WHERE THE BAR LIVES, and one of them does:
+				// place_home.go tells the story of the rest state the bar
+				// replaced. What is forbidden is the code.
+				code = code[:cut]
+			}
+			for _, word := range forbidden {
+				if strings.Contains(code, word) {
+					t.Errorf("%s:%d reaches into the router's tab bar: %q",
+						name, at+1, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
+
 // LAW 5 · THE READING LAYERS SEE NO *app.
 //
 // A reading is (data, window, width, palette) → rows. It cannot start a clock,

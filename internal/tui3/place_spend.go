@@ -539,6 +539,10 @@ func (placeSpend) stops(a *app) []int {
 	return doors
 }
 
+// cursorAt is the row of the ledger the cursor is on (pages.go's
+// [place.cursorAt]).
+func (placeSpend) cursorAt(a *app) int { return a.spend.cursor }
+
 func (placeSpend) enter(a *app) tea.Cmd {
 	cmd, _ := a.openSpendRow()
 	return cmd

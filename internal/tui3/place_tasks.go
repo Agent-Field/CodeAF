@@ -1119,6 +1119,10 @@ func (placeTasks) body(a *app, width, room int) []placeRow {
 }
 func (placeTasks) stops(a *app) []int { return a.taskSheet.stops(a) }
 
+// cursorAt is the line of the layout the cursor is on, in [placeTasks.stops]'s
+// own numbers (pages.go's [place.cursorAt]).
+func (placeTasks) cursorAt(a *app) int { return a.taskSheet.cursor }
+
 // cursorRow is which drawn row the tasks cursor landed on. A task's card can be
 // several lines and every one of them carries the same hit, so this answers the
 // LAST of them — the strip belongs under the whole row it is about, not inside
