@@ -916,6 +916,10 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 	c.mu.Lock()
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A SWAP DOES NOT MOVE THE KEYBOARD, and the fresh welcome says who has it
+	// so that a surface reading this one does not forget what the last one told
+	// it. It goes through the same door a live hand-over does.
+	c.drives(welcome.Driver)
 	return welcome, nil
 }
 
