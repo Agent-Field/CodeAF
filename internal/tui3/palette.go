@@ -1052,6 +1052,14 @@ func (p *picker) navigate(msg tea.KeyPressMsg) {
 // own two, because the scoring is about what is being listed. page is how far
 // pgup and pgdn jump, which is that list's own window.
 func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func(), page int) {
+	// THE WORD AND LINE JUMPS ARE THE SURFACE'S, NOT THIS LIST'S (editkeys.go).
+	// They are read before the switch because they belong to every box on the
+	// program and this one is only the busiest door onto them — twelve overlays
+	// share this key map, and a jump added here has to be the same jump the
+	// message box makes or a person learns two of them.
+	if editorMotion(filter, msg.String()) {
+		return
+	}
 	switch msg.String() {
 	case "up", "ctrl+p":
 		move(-1)
@@ -1085,7 +1093,9 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 		filter.left()
 	case "right", "ctrl+f":
 		filter.right()
-	case "home", "ctrl+a":
+	case "home":
+		// `ctrl+a` is the same jump and is read above, with the rest of the
+		// surface's line vocabulary (editkeys.go).
 		filter.home()
 	case "end", "ctrl+e":
 		filter.end()

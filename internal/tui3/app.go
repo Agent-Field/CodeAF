@@ -1388,6 +1388,19 @@ type app struct {
 	// was drawn.
 	tabs   []placeTabSpan
 	tabRow int
+	// boxRow and boxRows are WHERE A PLACE'S COMPOSER WAS LAST PAINTED — the row
+	// its first line landed on and how many lines it took — written by the same
+	// draw and read by the same press, on [app.tabs]'s bargain exactly. A click
+	// on the box puts the caret under the pointer wherever a person is standing,
+	// which is the ordinary text-field gesture the conversation already answers
+	// (draftclick.go) and which every place was silently missing.
+	//
+	// A REST ROW IS NOT A BOX ROW. boxRows is zero while nothing is typed, and
+	// the press falls through to the place underneath — there is no caret to
+	// place in a box with no text in it, and the row is carrying a dim sentence
+	// about the place rather than anything a pointer can act on.
+	boxRow  int
+	boxRows int
 	// bar is THE CURSOR STANDING ON THE TAB BAR ITSELF, which is a row of the
 	// frame a person can walk onto from any place (pages.go's [barCursor] holds
 	// the whole law). It sits here beside [app.page] because the bar belongs to
@@ -2383,6 +2396,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (placemouse.go's [app.placeTabPress]).
 			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
+			}
+			// AND THE COMPOSER AT THE FOOT IS READ BEFORE EVERY PLACE'S OWN ROWS
+			// FOR THE SAME REASON: it is the router's row, drawn by the same
+			// frame on all seven places, and a press on the box is a press on
+			// the box whichever room somebody is standing in. It is the ordinary
+			// text-field gesture the conversation already answers
+			// (placemouse.go's [app.placeBoxPress], draftclick.go).
+			if a.placeBoxPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
 			}
 			if a.at(pageSettings) {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)

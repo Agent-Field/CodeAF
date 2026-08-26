@@ -942,6 +942,16 @@ func placeFrameWithBar(a *app, width, height int,
 	// a verb that is always in reach has to always say where it will land —
 	// otherwise "start a task from anywhere" is "start a task somewhere".
 	chip := a.scopeChip()
+	// AND THE POINTER IS TOLD WHERE THE BOX ENDED UP, on the tab bar's own
+	// bargain: a press resolves against the rows that were actually drawn
+	// ([app.boxRow], placemouse.go's [app.placeBoxPress]). It is recorded as a
+	// local here and published below the clamp, because the clamp is what
+	// decides which rows this frame really kept.
+	//
+	// AT REST THERE IS NOTHING TO PLACE A CARET IN. With nothing typed the row
+	// carries a dim sentence about the place rather than a draft, so the span
+	// stays empty and a press falls through to the place underneath.
+	boxTop, boxHeight := len(lines), len(draftRows)
 	if len(draftRows) == 0 {
 		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
@@ -1004,7 +1014,19 @@ func placeFrameWithBar(a *app, width, height int,
 		case caretY > 0:
 			a.caret = false
 		}
+		// AND THE BOX'S OWN ROWS MOVE WITH THE CARET, by the same arithmetic and
+		// under the same rule: a box the clamp pushed off the top is a box with
+		// no rows on this frame, and a press must never be resolved against a
+		// row that is no longer there.
+		if boxHeight > 0 {
+			if boxTop >= 1+removed {
+				boxTop -= removed
+			} else {
+				boxHeight = 0
+			}
+		}
 	}
+	a.boxRow, a.boxRows = boxTop, boxHeight
 	for len(lines) < height {
 		add("", nil)
 	}

@@ -250,7 +250,7 @@ func (a *app) chordWatch(msg tea.KeyPressMsg) {
 		// else Alt is meta with no setting to turn on, so there is nothing to say.
 		return
 	}
-	if strings.HasPrefix(msg.String(), chordAltWord) {
+	if key := msg.String(); strings.HasPrefix(key, chordAltWord) && !chordSynthesised(key) {
 		a.chordReal, a.chordLost = true, false
 		return
 	}
@@ -267,6 +267,25 @@ func (a *app) chordWatch(msg tea.KeyPressMsg) {
 			return
 		}
 	}
+}
+
+// chordSynthesised is the two `alt+` chords that say NOTHING about whether the
+// option key is meta, because a key mapping can send them with option composing
+// accents exactly as before.
+//
+// iTerm2's Natural Text Editing preset — the commonest Mac profile there is —
+// maps ⌥← to the escape sequence `esc b` and ⌥→ to `esc f`, which arrive here
+// as `alt+b` and `alt+f` and are indistinguishable from the real chords. A
+// terminal doing that delivers the WORD JUMPS perfectly and still types `¡` for
+// ⌥1, because a mapping was written for the two arrows and not for the digits.
+//
+// SO THEY MAY NOT RETIRE THE NOTE. [app.chordWatch]'s bargain is that one real
+// `alt+` chord proves this terminal sends the class and settles the question for
+// the session — and these two do not prove it. Left in, they settled it wrongly
+// on exactly the profile most people have: the first word jump of the session
+// silenced the line that would have explained why the places do not answer.
+func chordSynthesised(key string) bool {
+	return key == chordAltWord+"b" || key == chordAltWord+"f"
 }
 
 // chordFixWords is the REMEDY half of the sentence — what to turn on and where —
