@@ -661,3 +661,40 @@ One process note, since three of the five must-fixes came through gaps in the pi
 than through the code: **extend `TestAPlaceNeverReadsTheDiskOnADraw` to walk `window`, `alt`,
 `press`, `hover` and `wheel`** under the same panicking seams. Finding 3 is a keystroke and not a
 draw, which is the only reason a law written against exactly that defect did not catch it.
+
+---
+
+## What lane `home/review-fixes` closed
+
+2026-08-26, cut from this review's own tip. Eight of the thirteen findings are closed — the five
+must-fixes and the three should-fixes — one commit each, each with a test that fails against the
+code as reviewed. Nothing on the "worth doing, not worth blocking on" list was touched.
+
+| # | Closed by | The test that fails before it |
+| --- | --- | --- |
+| 1 | `session.SpokeIn` — the third answer [Peek] could not give: did anybody speak, and is the file itself what settled it. `v3EmptySession` keeps the folder on anything else | `cmd/aforge` `TestTheReaperKeepsAConversationItCouldNotRead`, `TestTheReaperKeepsEveryFolderItCannotSettle` |
+| 2 | The strip is bound to the ROW. `place.rowID` names the row under the cursor; `holdStrip` drops the strip when that name changes, asked by the frame and by `stripKey`. The key list is gone | `TestTheStripCannotOutliveTheRowItWasOpenedOn` (all eight cursor keys), `TestTheStripCannotOutliveTheRowAWheelWalksOffIt`, `TestAKeyThatMovesNothingLeavesTheStripStanding` |
+| 3 | The name join is made where the world is read and held as `spendPage.names`; `StandingSeam.All` makes it one read instead of N+1. Law 4 extended to `window`, `alt`, `verbs`, `rowID`, `press`, `hover`, `wheel`, and its standing fence installed unconditionally | `TestAPlaceNeverReadsTheDiskOnADraw/spend`, `TestTheSpendWindowMovesWithoutTouchingTheStandingStore` |
+| 4 | `os.CreateTemp` beside the final file, in `writeLookStamps` | `internal/session` `TestTwoWritersRacingLeaveAWholeFileBehind` |
+| 5 | Standing's `tick` re-takes the reading and every room that is not home arms the clock; `refreshPlaceCounts` moved above the `tick` gate, so a room can decline to re-read but cannot silence the bar | `TestTheTabsGoOnCountingInEveryRoom`, `TestEveryPlaceThatIsNotHomeArmsTheClockOnTheWayIn`, `TestTheStandingPlaceRefreshesWhileSomebodyIsStandingOnIt` |
+| 6 | `places.md:55,67` deleted, `places.md:63-65` rewritten, `keys.md:334` and `keys.md:1054` rewritten; `app.go`'s own `/history` comment, which is what this review read to conclude the command still refuses, corrected with them | `internal/manual` `TestNoChatPageSaysAPlaceCanRefuseToOpen` |
+| 7 | Built. `enter` on a line opens a conversation seeded with it through `placeTalkAbout`; the card is `→ c`; the foot follows the row. `ACCEPTANCE.md`'s 2d row says so | `TestEnterOnAMemoryLineOpensAConversationAboutThatLine`, `TestTheMemoryFootSaysWhatTheRowUnderTheCursorCanBeAskedFor` |
+| 8 | Deleted | `TestEachVerbWordIsSpelledOnce` |
+
+Three notes the next lane should have:
+
+- **Finding 1's minimal rule would have disabled the reaper.** `openSessionFile` writes the
+  session header at creation (`sessionfile.go:608`), so an abandoned `/new` leaves a one-line
+  journal and not a zero-byte one — "reap only what is absent or empty" would have kept every
+  dead folder forever. What landed is the review's second option, the one it called the proper
+  fix: `Peek` grew the third answer and the reaper takes only "read it all, nobody spoke".
+- **Finding 6's `/history` refusal was already gone from the code.** `openTaskPage` is
+  `showPage(pageTasks)`; what still described the refusal was the comment over the command's own
+  `case` in `app.go`, and `places.md:380` was therefore correct while `places.md:63-65` was not.
+- **Item 7's foot names two letters that are bound only while the `→` strip is drawn**, because
+  SCREEN 1f spells it that way and FIDELITY quotes it verbatim. That is in tension with
+  verbstrip.go's own first law — a page may not advertise a letter it has not bound — and the
+  page says where they are bound. If the owner would rather the foot used the tasks place's
+  `→ verbs:` grammar, it is one constant.
+
+Still open, in the review's own ranking: 9, 10, 11, 12's remainder and 13.
