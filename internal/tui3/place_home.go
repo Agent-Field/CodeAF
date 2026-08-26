@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -468,6 +469,18 @@ const (
 	homeCardStoppedWord = "it is stopped on you"
 	homeCardWorkWord    = "work"
 	homeCardMadeWord    = "made for you"
+	// homeCardTalkWord is the third thing that can be done with a question a
+	// person is looking at, and 1d draws it on the end of the answer keys:
+	// `y yes · n no · enter open and talk`.
+	//
+	// IT IS A KEY THE CARD MAY NAME, unlike the letters. A letter is a verb only
+	// while the strip naming it is on screen, which is why the card says what can
+	// be done and never which letter does it ([app.homeCardVerbs]); `enter` is
+	// bound on this row whatever is typed, so naming it promises nothing the
+	// composer is about to eat. And it is the honest third option: the chips
+	// answer the question from here, and this opens the conversation that asked
+	// it — which is what somebody who needs the rest of the card has to do.
+	homeCardTalkWord = "enter open and talk"
 )
 
 // homeCardTasks is how many pieces of work the card shows before the rest fold.
@@ -578,7 +591,27 @@ func (a *app) homeCardAnswer(ctx bandContext) []string {
 	for _, said := range wrap(switcherFirstLine(question.Text), ctx.width) {
 		rows = append(rows, ctx.pal.ink(said))
 	}
-	return append(rows, keys...)
+	return append(rows, homeCardTalkTail(keys, ctx.width, ctx.pal)...)
+}
+
+// homeCardTalkTail puts `enter open and talk` on the end of the answer keys, on
+// their own row when the card is too narrow to carry both.
+//
+// THE CLAUSE IS DIM AND THE CHIPS ARE NOT, because they are two different
+// offers: the chips ANSWER the question from here and wear the one hue this
+// screen paints "waiting on you" in, and this is the way out to the conversation
+// that asked it. A third amber chip would read as a third answer.
+func homeCardTalkTail(keys []string, width int, pal palette) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+	last := len(keys) - 1
+	tail := pal.dim(answerChipGap + homeCardTalkWord)
+	if ansi.StringWidth(keys[last])+ansi.StringWidth(answerChipGap+homeCardTalkWord) <= width {
+		keys[last] += tail
+		return keys
+	}
+	return append(keys, pal.dim(fit(homeCardTalkWord, width)))
 }
 
 // homeCardWork is what this conversation had run and what it came to, and the

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -547,5 +548,111 @@ func TestTheFactsLineCarriesTheFilesFigure(t *testing.T) {
 	// (homeband_work.go).
 	if !strings.Contains(card, "tasks") {
 		t.Fatalf("the work band does not say what it could not show:\n%s", card)
+	}
+}
+
+// ── the card at ≥160, all five bands (SCREEN 1d) ────────────────────────────
+
+// THE DESIGN'S FIVE BANDS, IN THE DESIGN'S ORDER, ON ONE CARD.
+//
+// The acceptance walk found four of them: the title, the place line, `work` and
+// the facts. The two it could not see were the two its fixture had nothing
+// behind — `it is stopped on you` needs a conversation ANOTHER window is holding
+// a question in, and `made for you` needs a file some conversation actually left
+// behind. Both are seams, both are wired, and neither had a test that walked the
+// whole card. This is that test: a real presence file with an answerable
+// question in it, a real artifact in the index, and every band asserted in
+// order.
+func TestTheCardDrawsAllFiveBandsOfTheDesign(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", alpha, now.Add(-2*time.Minute))
+	row := lab.session("-beta", "bbbb000000000001", "swarm task splitting", beta, now.Add(-3*time.Minute))
+	// The work band's row, and the money on it.
+	lab.task("-beta", session.TaskIndexEntry{
+		ID: "1", Name: "toy-scale-validation", Label: "toy-scale validation of decomposition",
+		Title: "toy-scale validation of decomposition", Status: string(session.TaskDone),
+		Outcome: "a report", Cost: 1.63, FilesChanged: 1,
+		EndedAt: now.Add(-3 * time.Hour), SessionID: "bbbb000000000001",
+	})
+	// A question ANOTHER window is holding, written the way that window's own
+	// heartbeat writes it (session's taskpresence.go).
+	lab.asking("-beta", "bbbb000000000001", session.PresenceQuestion{
+		Kind:    session.QuestionConsent,
+		ID:      7,
+		Text:    "Add a --report-only mode so the report can be regenerated without re-running the sweep?",
+		Options: session.AnswerOptions(session.QuestionConsent),
+		Asked:   now,
+	}, now)
+	// And a file it left behind.
+	index := filepath.Join(t.TempDir(), session.ArtifactsIndexName)
+	made := filepath.Join(t.TempDir(), "swarm-decomposition.md")
+	if err := os.WriteFile(made, []byte("report"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session.RecordArtifact(index, session.Artifact{
+		Path: made, Session: "bbbb000000000001", Title: "swarm-decomposition.md",
+		Created: now.Add(-2 * time.Hour),
+	})
+
+	a := lab.app(mine)
+	a.artifacts = index
+	a.width, a.height = 200, 40
+	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { return nil }
+	a.openHome()
+
+	// THE CARD ALONE, and not the frame it sits in. The list's own row carries a
+	// cut-down `asks: …` note, so a search over the whole frame would find the
+	// question in the wrong column and prove nothing about the card's order.
+	//
+	// THE FIVE BANDS, IN ORDER. Each is found after the one before it, so a card
+	// that drew them all in the wrong order fails as loudly as one that dropped
+	// a band.
+	card := strings.Join(homeCardFor(t, a, row), "\n")
+	last := -1
+	for _, want := range []string{
+		"Swarm Task Splitting",   // the title
+		"beta",                   // the place line
+		homeCardStoppedWord,      // it is stopped on you
+		"--report-only mode",     // the question, in its own words
+		"1 allow once",           // its answer keys
+		homeCardTalkWord,         // and the way into the conversation that asked
+		homeCardWorkWord,         // work
+		"toy-scale validation",   //   with its row
+		"$1.63",                  //   and what it came to
+		homeCardMadeWord,         // made for you
+		"swarm-decomposition.md", //   with the file
+		homeVerbsWord,            // → verbs: …
+	} {
+		at := strings.Index(card, want)
+		if at < 0 {
+			t.Fatalf("the card does not carry %q:\n%s", want, card)
+		}
+		if at < last {
+			t.Fatalf("%q is drawn out of the design's order:\n%s", want, card)
+		}
+		last = at
+	}
+}
+
+// AND A CARD WITH NOTHING BEHIND A BAND DRAWS NO BAND. The emptiness law reaches
+// the two this lane wired: a conversation nobody is asking anything of has no
+// `it is stopped on you`, and one that made nothing has no `made for you` — and
+// neither leaves a heading over a blank.
+func TestTheCardDrawsNoBandItHasNothingBehind(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-2*time.Minute))
+	row := lab.session("-beta", "bbbb000000000001", "swarm task splitting", lab.workspace("beta"), now.Add(-3*time.Minute))
+	a := lab.app(mine)
+	a.width, a.height = 200, 40
+	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { return nil }
+	a.openHome()
+	card := strings.Join(homeCardFor(t, a, row), "\n")
+	for _, absent := range []string{homeCardStoppedWord, homeCardMadeWord, homeCardTalkWord} {
+		if strings.Contains(card, absent) {
+			t.Fatalf("the card drew %q over an absence:\n%s", absent, card)
+		}
 	}
 }
