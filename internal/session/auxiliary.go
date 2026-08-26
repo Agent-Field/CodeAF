@@ -129,12 +129,6 @@ func (a *Agent) callRole(
 			a.journalRoleCall(response, role, rung.Model, served.Name())
 			return response, rung.Model, nil
 		}
-		// The person's own interrupt, or the caller's deadline, ends the errand
-		// where it stands. Walking a ladder on a context that is already over is
-		// two more requests that cannot land.
-		if ctx.Err() != nil {
-			return nil, rung.Model, ctx.Err()
-		}
 		lastErr = callErr
 		if lastErr == nil {
 			lastErr = errEmptyAnswer
@@ -146,7 +140,26 @@ func (a *Agent) callRole(
 		// with no explanation next to it. No estimate is written: an errand's
 		// request is a digest this session assembled, not the transcript, and the
 		// transcript's own count would be a number about something else.
+		//
+		// THE ROW IS WRITTEN BEFORE THE ERRAND IS ABANDONED, and that ordering is
+		// the measured failure. It used to come after the check below, so an
+		// errand cut by its CALLER'S deadline — the one failure that leaves the
+		// caller with nothing to say and no idea why — returned having written
+		// nothing at all. SWE-Marathon s4, 00:01:54Z: the mastermind that writes a
+		// handed-over turn's brief was asked, [checkpointHandoffWindow] elapsed
+		// ninety seconds later to the millisecond, the ladder fell to the person's
+		// bare sentence, and the journal held no error row, no call row and no
+		// word of why the worker started blind. A deadline is a failure like any
+		// other and it is now recorded like one.
 		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
+		// The person's own interrupt, or the caller's deadline, ends the errand
+		// where it stands. Walking a ladder on a context that is already over is
+		// two more requests that cannot land — and the caller is handed the
+		// context's own error, so it can tell "nobody answered in time" from "the
+		// provider refused" without reading the row this just wrote.
+		if ctx.Err() != nil {
+			return nil, rung.Model, ctx.Err()
+		}
 	}
 	return nil, "", lastErr
 }

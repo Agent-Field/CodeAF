@@ -178,6 +178,11 @@ type sessionEntry struct {
 	Mark    *journalMark    `json:"mark,omitempty"`
 	Ceiling *journalCeiling `json:"ceiling,omitempty"`
 
+	// Carry is ONE RUNG of the ladder that decides what a handed-over worker
+	// opens on (see [journalCarry]). Absent from every line that is not one, and
+	// from every file written before it existed.
+	Carry *journalCarry `json:"carry,omitempty"`
+
 	// Division is ONE division put to the road, whoever asked for it
 	// (task_divide.go). Absent from every line that is not one, and from every
 	// file written before it existed.
@@ -308,10 +313,59 @@ type journalMark struct {
 // nothing could be written down for anybody. TaskID names the node when one was
 // admitted, and is absent otherwise by the emptiness law the rest of the line
 // keeps.
+//
+// Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
+// (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
+// Two ceilings that both read `moved` are not the same event — one started a
+// worker on a document written out of the turn's findings, the other started it
+// on the person's bare sentence — and until this field the file could not tell
+// them apart. The [journalCarry] lines directly above say WHY it was that rung;
+// this is the one-word answer a bench can count.
 type journalCeiling struct {
 	Rounds   int    `json:"rounds,omitempty"`
 	Decision string `json:"decision,omitempty"`
 	TaskID   uint64 `json:"taskId,omitempty"`
+	Carry    string `json:"carry,omitempty"`
+}
+
+// journalCarry is ONE RUNG of the ladder that decides what a worker taken off a
+// running turn OPENS ON (checkpoint.go's [Agent.handOverRunningTurn]).
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s4, 00:01:54Z. A turn hit the round-40 ceiling and the ladder
+// ran: the running model's draft came back as seven tokens nobody could work
+// from, and the mastermind that writes the real brief was then asked and never
+// answered — the call was cut by [checkpointHandoffWindow] ninety seconds later,
+// to the millisecond. Both upper rungs returned the empty string, the task opened
+// on the person's raw request, and the worker spent twelve minutes and seventy
+// calls re-deriving what the chat had already found out.
+//
+// NONE OF THAT REACHED THIS FILE. The journal held a ceiling line saying `moved`
+// and nothing else, which is the same line s2 wrote when the handoff worked and
+// the worker opened on a 3.5 KB document. A fallback that changes what a worker
+// is started on is an EVENT, not a default, and an event nobody wrote down is a
+// difference no autopsy can see.
+//
+// So EVERY RUNG WRITES ONE. Rung is `handoff`, `draft` or `ask`, in ladder order.
+// Outcome is what that rung did — `written`, `degenerate` (words that had stopped
+// saying new things, or no words at all), `failed` with Reason carrying the
+// provider's own sentence, `skipped` with Reason saying why it was never asked,
+// `nothing-left` when the remains contract was answered instead, or `empty` when
+// there was nothing there to carry. Chars is the size of what it produced, which
+// is the one number that says a 3.5 KB dowry apart from a bare sentence. Used
+// marks THE ONE rung that supplied the brief, so a reader of these lines alone —
+// at the ceiling and at a mark's split, which writes no ceiling line — can see
+// which of them the worker actually opened on.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: the money these
+// rungs cost is already on their own call lines.
+type journalCarry struct {
+	Rung    string `json:"rung,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Chars   int    `json:"chars,omitempty"`
+	Used    bool   `json:"used,omitempty"`
 }
 
 // journalDivision is ONE piece of work being put to the division road: who asked,
@@ -1005,7 +1059,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// transcript. It is evidence for whoever reads the file afterwards,
 			// and replaying it would put a provider's refusal into somebody's
 			// conversation as though the model had said it.
-		case "mark", "ceiling", "division":
+		case "mark", "ceiling", "division", "carry":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
 			// not a message and not money. Whatever the mark's reader cost is
@@ -1013,7 +1067,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// what the ceiling did to the turn is already in the transcript —
 			// the line the person read, and the task the graph admitted. A
 			// division's parts are nodes in the graph's own checkpoint and its
-			// receipt is already in the worker's transcript.
+			// receipt is already in the worker's transcript. A carry line is the
+			// same kind of fact about the same moment: which rung of the brief
+			// ladder the worker opened on, which the spec in the graph already
+			// holds.
 			// Replaying them would put machinery into somebody's conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
@@ -1581,6 +1638,19 @@ func (s *sessionFile) appendCeiling(ceiling journalCeiling) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "ceiling", Ceiling: &ceiling, Timestamp: stamp()})
+}
+
+// appendCarry writes down ONE RUNG of the brief ladder (see [journalCarry]).
+//
+// A rung with no outcome on it writes nothing, for [sessionFile.appendCeiling]'s
+// reason: the whole value of the line is saying what that rung DID, and a line
+// that cannot say it is a line that says a rung existed — which the code already
+// says.
+func (s *sessionFile) appendCarry(carry journalCarry) {
+	if s == nil || strings.TrimSpace(carry.Rung) == "" || strings.TrimSpace(carry.Outcome) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "carry", Carry: &carry, Timestamp: stamp()})
 }
 
 // appendDivision writes down one division put to the road (see
