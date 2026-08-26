@@ -502,10 +502,10 @@ var deckSegWords = [segCount]string{
 	segBurn:    "rate",
 	segETA:     "compaction",
 	segYolo:    "approvals",
-	// phone lane: the link's sentence is fifty cells and the deck's rows are
-	// forty-four, so a dropped connection reaches a phone through the SHEET
-	// rather than through the row — which is the same road nine of the eleven
-	// facts on this line already take (hostlink.go, and this file's header).
+	// phone lane: the link's healthy reading fits the row, while its reconnecting
+	// sentence is fifty cells and reaches a phone through the SHEET — the same
+	// road nine of the eleven facts on this line already take (hostlink.go, and
+	// this file's header).
 	segLink:  "connection",
 	segState: "state",
 }

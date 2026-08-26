@@ -11,10 +11,10 @@ import (
 
 // ── 1. the note on the status line ──────────────────────────────────────────
 
-// A HEALTHY LINK SAYS NOTHING AT ALL. The emptiness law applied to a whole
-// segment, and host.go's own promise about a remote session: no badge, no icon,
-// no "connected" word, and — while the link is fine — no segment either.
-func TestAWorkingLinkDrawsNoSegmentAtAll(t *testing.T) {
+// A HEALTHY LINK SAYS NOTHING BEFORE ITS FIRST MEASUREMENT. The emptiness law
+// applied to a whole segment: no badge, no icon, no "connected" word and no
+// guessed `0ms` while the first reply is still out.
+func TestAWorkingLinkDrawsNothingBeforeItsFirstMeasurement(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.host = "devbox"
 	a.link = LinkSeam{Note: func() string { return "" }}
@@ -36,6 +36,79 @@ func TestAWorkingLinkDrawsNoSegmentAtAll(t *testing.T) {
 	local := newTestApp(&fakeAgent{model: "m"})
 	if local.linkSegment() != "" || local.linkNoting() {
 		t.Fatal("a local session found something to say about a connection it does not have")
+	}
+}
+
+// A LOCAL SURFACE NEVER DRAWS A ROUND TRIP. Even an accidentally retained
+// cached duration cannot turn into a host segment without a host, which keeps
+// the zero-value seam and the emptiness law aligned.
+func TestALocalSurfaceNeverDrawsTheRoundTripSegment(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.linkLatency = 3 * time.Millisecond
+	if got := a.linkSegment(); got != "" {
+		t.Fatalf("a local surface drew %q", got)
+	}
+	if got := plain(a.status(200)); strings.Contains(got, "3ms") {
+		t.Fatalf("a local status line drew a hosted round trip:\n%s", got)
+	}
+}
+
+// A HOSTED SURFACE WAITS FOR THE ANSWER. The host alone is not permission to
+// guess `0ms`; the first reply creates the segment and the same cached fact is
+// written as a sentence by /status.
+func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "spark"
+	a.link = LinkSeam{Ping: func() (time.Duration, error) { return 3 * time.Millisecond, nil }}
+	a.width = 200
+
+	if got := plain(a.status(a.width)); strings.Contains(got, "ms") || strings.Contains(got, "spark ·") {
+		t.Fatalf("the hosted status line guessed before a reply:\n%s", got)
+	}
+	a.linkPingBack(linkPingMsg{elapsed: 3 * time.Millisecond})
+	if got := plain(a.status(a.width)); !strings.Contains(got, "spark · 3ms") {
+		t.Fatalf("the hosted status line missed the answered round trip:\n%s", got)
+	}
+	if got := a.statusText(); !strings.Contains(got, "the round trip to spark is about 3ms") {
+		t.Fatalf("/status does not say the measured fact in a sentence:\n%s", got)
+	}
+}
+
+// THE ESTIMATE IS A HANDFUL, NOT THE LAST PACKET. With a four-sample EWMA, a
+// new eight-millisecond answer moves a four-millisecond reading to five.
+func TestTheRoundTripEstimateRollsOverAHandful(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "spark"
+	a.linkPingBack(linkPingMsg{elapsed: 4 * time.Millisecond})
+	a.linkPingBack(linkPingMsg{elapsed: 8 * time.Millisecond})
+	if got := latencyWord(a.linkLatency); got != "5ms" {
+		t.Fatalf("rolling estimate = %q, want 5ms", got)
+	}
+}
+
+// THE RECONNECTING SENTENCE WINS AND THE METER STAYS OFF THE WIRE. The old
+// estimate is hidden, and a cadence landing during the gap schedules no ping.
+func TestReconnectingWinsOverLatencyAndSkipsPing(t *testing.T) {
+	const note = "reconnecting to spark — trying for up to 5 minutes"
+	called := 0
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "spark"
+	a.linkLatency = 3 * time.Millisecond
+	a.link = LinkSeam{
+		Note: func() string { return note },
+		Ping: func() (time.Duration, error) {
+			called++
+			return time.Millisecond, nil
+		},
+	}
+	if got := a.linkSegment(); got != note {
+		t.Fatalf("link segment = %q, want reconnecting sentence", got)
+	}
+	if cmd := a.linkPingKick(); cmd != nil {
+		t.Fatal("a reconnecting link prepared a ping")
+	}
+	if called != 0 {
+		t.Fatalf("a reconnecting link made %d pings", called)
 	}
 }
 

@@ -132,10 +132,10 @@ aforge chat --host devbox:/srv/code/app   # absolute, over there
 aforge resume --host devbox               # the picker, on that machine's conversations
 ```
 
-**What you should see.** The machine appears only as part of the place — `devbox:app` in the
+**What you should see.** The machine appears as part of the place — `devbox:app` in the
 status line's place segment, `devbox:/srv/code/app` in `/status`, and `devbox · porting the
-parser` in the legend under the input box. There is **no** "connected" badge and no icon; a
-healthy connection says nothing about itself.
+parser` in the legend under the input box. After its first measurement, the connection
+segment reads like `devbox · 3ms`. There is **no** "connected" badge and no icon.
 
 **What to check:** ask it to run `pwd` and read a file. Every path it names should be the far
 machine's. `~` collapsing runs against *your* home, so expect full paths.

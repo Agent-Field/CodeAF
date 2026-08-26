@@ -43,7 +43,7 @@ const (
 	// with different things — hitMore lifts a cap and can never put it back,
 	// while a fold is a thing a person opens AND shuts.
 	hitBrief
-	hitTask             // a task proposal (task.go): click opens its brief
+	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
 	// names. It is a hit of its own rather than another hitTask because the two
@@ -1381,13 +1381,12 @@ const (
 	segBurn
 	segETA
 	segYolo
-	// segLink is the connection under a --host session when it has stopped
-	// working: `reconnecting to devbox — trying for up to 5 minutes`, and
-	// nothing at all the rest of the time (hostlink.go). It sits immediately
+	// segLink is the connection under a --host session: `devbox · 3ms` after
+	// its first measured round trip, or `reconnecting to devbox — trying for up
+	// to 5 minutes` when that condition wins (hostlink.go). It sits immediately
 	// before the state word because the two are the only segments on the line
 	// that are true of the WHOLE of it — one says what the conversation is
-	// doing, and this one says whether the machine it is doing it on can still
-	// be reached.
+	// doing, and this one says how the machine it is doing it on answers.
 	segLink
 	segState
 	segCount
@@ -1962,11 +1961,13 @@ func (a *app) paintPart(part hudPart) string {
 		// paint it dim forever anyway, because a segment's FIRST appearance
 		// never stamps a clock ([app.freshen] says why).
 		//
-		// ACCENT AND NOT [palette.bad]: the redialling is expected, bounded and
-		// usually resolves itself, so it belongs with the things a person may
-		// have to act on rather than with the gate left open. It steps up one
-		// from the cluster's dim and no further (hostlink.go).
-		return a.pal.accent(part.text)
+		// ACCENT AND NOT [palette.bad] WHILE REDIALLING: it is expected, bounded
+		// and usually resolves itself. A healthy round-trip reading is ordinary
+		// telemetry and stays dim; the words, not paint alone, distinguish them.
+		if a.linkNote() != "" {
+			return a.pal.accent(part.text)
+		}
+		return a.pal.dim(part.text)
 	case segCtx:
 		// The meter's three-rung ramp outranks its age: a conversation about to
 		// compact is a decision a person can still act on, and "this number is

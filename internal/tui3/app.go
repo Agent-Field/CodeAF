@@ -1266,6 +1266,12 @@ type app struct {
 	// door home is reached from a register with no box on the frame
 	// (watching.go's [app.watchKey]). It is zero everywhere else.
 	watchSpaces int
+	// linkLatency is the hosted connection's rolling round trip, and
+	// linkPingAsking keeps its slow clock to one call at a time. Both are zero on
+	// every local session and before the first hosted answer, which the
+	// emptiness law draws as no segment at all.
+	linkLatency    time.Duration
+	linkPingAsking bool
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
 	// is every frame of a conversation nobody has pressed the chord in.
@@ -2043,9 +2049,10 @@ func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c") 
 
 var _ tea.Model = (*app)(nil)
 
-// Init starts the paint clock when — and only when — the first frame has
-// something to animate. That is the welcome box's arrival and nothing else: an
-// idle surface with no box is a surface with no wakeups at all.
+// Init starts the standing lanes, and starts the paint clock only when the first
+// frame has something to animate. An ordinary idle local surface with no box
+// has no wakeups; a hosted one also owns hostlink.go's separate five-second
+// measurement clock.
 func (a *app) Init() tea.Cmd {
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
@@ -2081,9 +2088,12 @@ func (a *app) Init() tea.Cmd {
 	// the moment somebody arrived, so it is the moment to be handed it
 	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
 	// the seam saying there is no far machine to have a waiting room.
+	// AND THE HOSTED LINK'S SLOW CLOCK STARTS HERE. It is a five-second timer,
+	// separate from the paint clock because an idle hosted session still has a
+	// round trip to measure and because no frame is permission to call the wire.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		tea.RequestBackgroundColor}
+		a.linkPingTick(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3144,6 +3154,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// through the door its live twin comes through, and a kind this build
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
+
+	case linkPingTickMsg:
+		// The next timer is armed immediately when this one finds a reconnect in
+		// progress; after a real call, its answer arms the next one instead, so
+		// calls cannot overlap even when a link is slow.
+		if kick := a.linkPingKick(); kick != nil {
+			return a, kick
+		}
+		return a, a.linkPingTick()
+
+	case linkPingMsg:
+		a.linkPingBack(msg)
+		return a, a.linkPingTick()
 
 	case levelsMsg:
 		// What each of a batch of models is dialled to, asked off this loop
