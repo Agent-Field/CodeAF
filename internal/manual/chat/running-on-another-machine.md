@@ -319,6 +319,38 @@ exact sentence each one says.
 
 The second half of the list, with the exact sentence each one says.
 
+`/cache`, `/permissions`, `/crew`, `/memory <query>`, `/memories`, `/remember`,
+`/forget`, `/subharness` and `/harness` describe stores or settings belonging to the
+machine that runs the session, but this build has no wire door for them. They do not read
+or change this machine's copy. The cache, permissions, crew and harness commands name the
+connected machine and say `change it on that machine`; the memory commands say `memory
+shows what this machine has learned, and this session is on another`. In particular,
+`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/subharness` does not claim the far registry is empty.
+
+## Did cache clean delete the laptop cache or the remote machine's cache?
+
+Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot reach the
+connected machine's build cache and refuse before touching this machine's cache. The
+answer names the connected machine and says to change it there.
+
+## Why didn't crew max change the crew on the remote machine?
+
+`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
+refuse before reading or writing this machine's profile, name the connected machine, and
+say to change the crew there.
+
+## Why does remember over host not say whether memory is off?
+
+The surface has not asked the connected machine whether memory is enabled. `/remember`,
+`/forget`, `/memories`, and `/memory <query>` therefore say only that this session is on
+another machine; they neither claim memory is off there nor read this machine's memories.
+
+## Does subharness know whether the remote machine has saved programs?
+
+No. `/subharness`, `/sub`, and `/harness` have no door onto the connected machine's
+registry yet. They name that machine and refuse; they do not report its registry empty.
+
 6. **The consent card's "always" writes nothing.** No save seams are handed over a
    connection, so the row says `allowed` rather than the local
    `always · saved — /permissions to change`. That is the truth: the answer holds for this
@@ -330,12 +362,13 @@ The second half of the list, with the exact sentence each one says.
    consulted.
 
 8. **`/harness` is unavailable.** The registry is the far machine's and this build has no
-   door onto it over the wire, so the command says exactly:
-   `harnesses are unavailable here`
+   door onto it over the wire, so the command says `<machine> owns harnesses ·
+   change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-9. **The task rail is absent by construction.** The remote session does not carry it, so
-   there is no rail and no room. It says nothing; there is nothing to draw.
+9. **The task rail is drawn, but `/task` has no remote door.** Its rows come from the far
+   machine through `Places.Task`; `/task` answers `could not start the task · this session
+   has no task door` rather than starting work on the wrong machine.
 
 10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes
