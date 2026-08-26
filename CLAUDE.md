@@ -37,6 +37,20 @@ carry vocabulary or assumptions between them.
 The performance laws it and the suite enforce — and the rule that changing any cap
 changes the doc in the same commit — are in [PERF.md](PERF.md).
 
+`make demo-home` builds a **throwaway home with something on every place** — three
+projects, twelve conversations, standing orders, memories, a fourteen-day spending
+ledger — and opens `bin/aforge` against it with `HOME` pointed there. Use it when you
+want to SEE a page full: on a machine that has just started using aforge the standing,
+memory and spend pages correctly draw nothing, which is indistinguishable from a page
+that is broken. It never touches `~/.aforge`. The seeder is `cmd/aforge-demo-home` and
+`docs/design/home-rethink/HANDOFF.md` says what is in the fixture and how to add to it.
+
+```sh
+make demo-home                                       # a fresh one, in a temp directory
+make demo-home DEMO_HOME=/tmp/aforge-demo            # somewhere you can name
+make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is already there
+```
+
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 
 `internal/manual/chat/` is v3's own account of itself, compiled into the binary. The

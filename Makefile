@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug embed test test-swepro test-remote vet check size clean
+.PHONY: all build debug demo-home embed test test-swepro test-remote vet check size clean
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
 # tree that produces it. See `size` below for why it is a file and not a number
@@ -71,6 +71,36 @@ test-swepro:
 # on the day the pipeline cannot yet run it.
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
+
+# ── the demo home ───────────────────────────────────────────────────────────
+#
+# A HOME WITH SOMETHING ON EVERY PLACE, FOR LOOKING AT. On a machine that has
+# just started using aforge the standing store, the memory store and the
+# spending ledger are empty, and every one of those pages correctly draws
+# nothing — which is the emptiness law working and is also indistinguishable
+# from a page that is broken. This builds a THROWAWAY home somewhere else and
+# opens the real binary against it, so all of it can be seen full without a
+# single invented row landing in ~/.aforge.
+#
+# It prints the directory it built and the command to open it again, so the same
+# home can be returned to:
+#
+#   make demo-home                              a fresh one in a temp directory
+#   make demo-home DEMO_HOME=/tmp/aforge-demo    build it somewhere you can name
+#   make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1
+#                                               open the one already there,
+#                                               with whatever the last look left
+#
+# The seeder is its own binary and NOT a hidden verb on aforge, because the
+# shipped binary is on a checked-in byte budget (SIZE-BUDGET) and a developer
+# target must not spend the product's weight. bin/aforge-demo-home is not a
+# second copy of the product and cannot shadow it — it is a different program
+# with a different name.
+DEMO_BINARY := bin/aforge-demo-home
+
+demo-home: build
+	go build -o $(DEMO_BINARY) ./cmd/aforge-demo-home
+	@$(DEMO_BINARY) $(if $(DEMO_HOME),--into "$(DEMO_HOME)") $(if $(KEEP),--keep) --launch "$(CURDIR)/$(BINARY)"
 
 vet:
 	go vet ./...
