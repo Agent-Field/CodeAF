@@ -74,13 +74,26 @@ func (f *farAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return f.Submit(context.Background(), text)
 }
 
-func (f *farAgent) Interrupt()                                                {}
-func (f *farAgent) Compact(ctx context.Context) error                         { return nil }
-func (f *farAgent) Close() error                                              { return nil }
-func (f *farAgent) Model() string                                             { return f.model }
-func (f *farAgent) SetModel(model string)                                     { f.model = model }
-func (f *farAgent) SetContextWindow(tokens int)                               {}
-func (f *farAgent) ReasoningFor(model string) string                          { return f.levels[model] }
+func (f *farAgent) Interrupt()                        {}
+func (f *farAgent) Compact(ctx context.Context) error { return nil }
+func (f *farAgent) Close() error                      { return nil }
+func (f *farAgent) Model() string                     { return f.model }
+func (f *farAgent) SetModel(model string)             { f.model = model }
+func (f *farAgent) SetContextWindow(tokens int)       {}
+func (f *farAgent) ReasoningFor(model string) string  { return f.levels[model] }
+
+// ReasoningLevels is the BULK door the whole table is seeded from
+// (reasoninglevel.go): the engine states every level it holds, so the surface
+// has nothing left to ask about and a picker's rows cost nothing whatever the
+// catalog's length.
+func (f *farAgent) ReasoningLevels() map[string]string {
+	held := make(map[string]string, len(f.levels))
+	for model, level := range f.levels {
+		held[model] = level
+	}
+	return held
+}
+
 func (f *farAgent) SetReasoningFor(model, level string)                       { f.levels[model] = level }
 func (f *farAgent) ResolveConsent(id uint64, allow bool)                      {}
 func (f *farAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
@@ -300,5 +313,81 @@ func TestAQueuedLevelArmsTheFrameClock(t *testing.T) {
 	}
 	if !a.painting {
 		t.Fatal("the clock is not turning, and the ask is sent on the clock")
+	}
+}
+
+// A KEY OVER A CONNECTION ASKS THE FAR MACHINE NOTHING. Typing is the one thing
+// a person does continuously, and a keystroke that waited on a network would
+// make the composer feel broken on a link that is working perfectly.
+func TestAKeyOverAConnectionAsksTheFarMachineNothing(t *testing.T) {
+	a, client := hostedSurface(t)
+	before := client.CallsMade()
+	for _, r := range "fix the roof and then the gutter" {
+		a.Update(key(string(r)))
+	}
+	for _, chord := range []string{"up", "down", "left", "right", "esc"} {
+		a.Update(key(chord))
+	}
+	if made := client.CallsMade() - before; made != 0 {
+		t.Fatalf("thirty-six keystrokes put %d calls on the wire; a key must put none", made)
+	}
+}
+
+// AND A SUBMIT IS EXACTLY ONE. What goes up is the intent — the sentence — and
+// nothing else: a send that also asked what the model was, or what the last turn
+// cost, would be three round trips on the one keystroke a person is waiting on.
+//
+// THE UPDATE THAT ECHOES THE LINE IS ZERO. The line is on the page before
+// anything is written to the wire, because the call happens on the command that
+// update returns (echo.go).
+func TestASubmitOverAConnectionIsExactlyOneCall(t *testing.T) {
+	a, client := hostedSurface(t)
+	before := client.CallsMade()
+	said := len(a.entries)
+
+	cmd := a.submit("fix the roof")
+	if len(a.entries) != said+1 {
+		t.Fatalf("the message was not on the page before the wire was touched")
+	}
+	if made := client.CallsMade() - before; made != 0 {
+		t.Fatalf("the update that echoed the line put %d calls on the wire", made)
+	}
+	a.adopt(runSubmit(t, cmd))
+	if made := client.CallsMade() - before; made != 1 {
+		t.Fatalf("a submit put %d calls on the wire, want exactly 1", made)
+	}
+}
+
+// AND A TURN ENDING IS ZERO. The settle reads the spending, the weight and the
+// effort table the instant the turn's ending lands, and every one of them is a
+// memory read of the replica the engine has already refreshed ahead of that
+// event (internal/remote's server.go).
+func TestATurnEndingOverAConnectionAsksTheFarMachineNothing(t *testing.T) {
+	a, client := hostedSurface(t)
+	before := client.CallsMade()
+	a.settle()
+	if made := client.CallsMade() - before; made != 0 {
+		t.Fatalf("a turn ending put %d calls on the wire; a settle must put none", made)
+	}
+}
+
+// AND THE WHOLE EFFORT TABLE IS THERE FROM THE FIRST FRAME, so a picker opened
+// on a catalog of any length has nothing to discover and queues nothing.
+func TestTheFirstFrameOverAConnectionHoldsEveryLevelTheEngineHolds(t *testing.T) {
+	a, client := hostedSurface(t)
+	before := client.CallsMade()
+	if got := a.reasoningFor("anthropic/claude-sonnet-4.5"); got != "high" {
+		t.Fatalf("the level the engine holds reads %q on the surface", got)
+	}
+	// AND IT IS FOUND UNDER ANY SPELLING OF THE ID, because both sides fold it
+	// the same way ([session.ReasoningKey]).
+	if got := a.reasoningFor("Anthropic/Claude-Sonnet-4.5"); got != "high" {
+		t.Fatalf("the level under a differently-spelled id reads %q", got)
+	}
+	if a.levelsWaiting() {
+		t.Fatal("a table the engine filled still has something queued to ask about")
+	}
+	if made := client.CallsMade() - before; made != 0 {
+		t.Fatalf("reading two levels put %d calls on the wire", made)
 	}
 }

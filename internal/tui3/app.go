@@ -486,6 +486,19 @@ type entry struct {
 	// and the row and the verdict on it must never be able to disagree.
 	stand *standingCard
 
+	// pending says this is the PERSON'S OWN LINE, echoed before the engine has
+	// agreed to take it — the gap a connection puts between pressing enter and
+	// the far end answering (echo.go). It is false on every block of every
+	// conversation held at this machine, and false again the instant the engine
+	// confirms.
+	//
+	// It changes ONE thing about the block: the tier its words are painted in
+	// (render.go's entryUser). No badge, no spinner, no colour of its own — the
+	// ordinary case is a confirmation a few frames later, and a mark loud enough
+	// to notice would read as something having gone wrong every time a person
+	// sent a message.
+	pending bool
+
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
 	rows  []string
@@ -513,6 +526,12 @@ type (
 	submittedMsg struct {
 		ch  <-chan session.Event
 		err error
+		// echo names WHICH echoed line this answer settles, and ZERO when none
+		// was drawn (echo.go). It is stamped where the line was drawn rather
+		// than looked up when the answer lands, because by then the person may
+		// have typed again: an answer that settled "whatever is marked now"
+		// would take the mark off a message the engine has not seen.
+		echo uint64
 	}
 	streamEventMsg struct {
 		gen int
@@ -668,6 +687,12 @@ type app struct {
 	pendingReplyTags []session.TaskReplyTag
 	// live is the assistant entry currently being streamed into, or -1.
 	live int
+	// echoAt is the person's own line drawn before the engine agreed to it, or
+	// -1 when there is none — which is always, on a surface that is not hosted.
+	// echoTok is the token that names it, counting from one so that zero means
+	// "settles nothing" (echo.go).
+	echoAt  int
+	echoTok uint64
 	// turn counts the person's messages. It groups tool calls into clusters
 	// and is what ctrl+o folds and unfolds.
 	turn int
@@ -1831,6 +1856,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		world:            opts.World,
 		farPlaces:        opts.WorldRoot,
 		live:             -1,
+		echoAt:           -1,
 		sel:              -1,
 		think:            -1,
 		unfolded:         map[int]bool{},
@@ -1927,6 +1953,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		// level fetched on the frame clock instead would leave the FIRST frame
 		// naming a model that is dialled up as though it were not
 		// (reasoninglevel.go).
+		// The whole table where the agent can hand it over, and this one model
+		// where it cannot (reasoninglevel.go).
 		a.learnLevel(a.model)
 	}
 	a.hudStale = true
@@ -3356,9 +3384,26 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
-		a.note("submit failed: " + msg.err.Error())
+		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
+		// drew for it comes off the page and the refusal is put where it was
+		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
+		// a turn is already running, another window is driving — and this
+		// surface is not the place to invent a second wording for it.
+		//
+		// A LOCAL SUBMIT KEEPS THE BEHAVIOUR IT ALWAYS HAD: nothing was echoed,
+		// so nothing is withdrawn, and the note lands under the person's line
+		// exactly as before.
+		if a.echoWithdrawn(msg.echo) {
+			a.note(msg.err.Error())
+		} else {
+			a.note("submit failed: " + msg.err.Error())
+		}
 		return a.settle()
 	}
+	// THE ENGINE HAS IT. The mark comes off the SAME line — nothing is appended
+	// — which is why a message can never appear twice however the answer and the
+	// turn's own events happen to interleave.
+	a.echoConfirmed(msg.echo)
 	if msg.ch == nil || a.stream != nil {
 		return nil
 	}
@@ -3893,8 +3938,19 @@ func (a *app) settle() tea.Cmd {
 	// here rather than at the next turn's start, so a session left idle for an
 	// hour cannot open its next turn holding an hour-old anchor.
 	a.awaited = time.Time{}
+	// THESE TWO ARE MEMORY READS OVER A CONNECTION AND NOT ROUND TRIPS. They
+	// used to be the last two synchronous questions a turn's ending put on the
+	// wire — the spending and the weight, asked the instant EventTurnDone landed
+	// — and the engine now STATES both ahead of that event (internal/remote's
+	// server.go), so what they read is this turn's own figures and nothing waits
+	// (PERF.md's connection laws).
 	a.refreshUsage()
 	a.measureContext()
+	// AND THE EFFORT TABLE IS REFRESHED ON THE SAME BEAT, which is what carries a
+	// rung dialled in ANOTHER window on the same hosted conversation across to
+	// this one (reasoninglevel.go states the bound). It costs nothing over a
+	// connection — the whole map is in the replica — and one small copy at home.
+	a.levelsSeed()
 	// THE RING IS SAMPLED HERE AND NOWHERE ELSE: one reading per turn, taken at
 	// the only moment the figure is comparable with the reading before it.
 	a.sampleContext()
@@ -4701,6 +4757,12 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 		}
 	}
 	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
+	// AND OVER A CONNECTION THE LINE IS MARKED UNTIL THE ENGINE HAS IT. The
+	// sentence is already on the page — the line above put it there, in the place
+	// it will keep — and what a connection adds is a gap between that and the far
+	// end agreeing to run it. Marking that gap is the whole of echo.go, and it is
+	// nothing at all on a surface that is not hosted.
+	mark := a.echoPending()
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
@@ -4710,7 +4772,7 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err}
+		return submittedMsg{ch: ch, err: err, echo: mark}
 	}, a.wake())
 }
 

@@ -202,22 +202,50 @@ func (f *fakeAgent) SetContextWindow(tokens int) {
 	f.window = tokens
 }
 
+// THE LEVELS ARE KEYED THE WAY internal/session KEYS THEM ([session.ReasoningKey]),
+// because a double that stored them under the caller's own spelling would let a
+// level set from a picker row go missing from a lookup by a slug typed in
+// another case — a bug the real agent does not have, invented here.
 func (f *fakeAgent) ReasoningFor(model string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.panicking {
 		panic("the reasoning map is not there")
 	}
-	return f.levels[model]
+	return f.levels[session.ReasoningKey(model)]
+}
+
+// ReasoningLevels is the whole map, copied — the fact set's own read
+// ([session.FactsOf]).
+func (f *fakeAgent) ReasoningLevels() map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.levels) == 0 {
+		return nil
+	}
+	levels := make(map[string]string, len(f.levels))
+	for model, level := range f.levels {
+		levels[model] = level
+	}
+	return levels
 }
 
 func (f *fakeAgent) SetReasoningFor(model, level string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	key := session.ReasoningKey(model)
+	if key == "" {
+		return
+	}
+	// Absence is stored as absence, exactly as the agent stores it.
+	if level == "" {
+		delete(f.levels, key)
+		return
+	}
 	if f.levels == nil {
 		f.levels = map[string]string{}
 	}
-	f.levels[model] = level
+	f.levels[key] = level
 }
 
 func (f *fakeAgent) ResolveConsent(id uint64, allow bool) {
@@ -347,6 +375,12 @@ type link struct {
 	frames chan Frame
 	spare  []Frame
 	served chan error
+	// stated is every "facts" frame this link has passed over. THE FACT PUSH IS
+	// UNSOLICITED (wire.go's version 4): it answers no call and belongs to no
+	// stream, so a reader walking a turn's frames in order has to be able to
+	// step past one — exactly as the real client's reader does, by kind. They
+	// are kept rather than dropped so a test can assert one was sent.
+	stated []Frame
 }
 
 // unparsable is the kind the reader invents for a line that is not a frame. It
@@ -400,8 +434,22 @@ func (l *link) write(frame Frame) {
 	}
 }
 
-// recv is the next frame, from the stash first and then the wire.
+// recv is the next frame a caller ASKED FOR, from the stash first and then the
+// wire, stepping over the engine's unsolicited fact pushes on the way.
 func (l *link) recv() Frame {
+	l.t.Helper()
+	for {
+		frame := l.recvAny()
+		if frame.Kind == "facts" {
+			l.stated = append(l.stated, frame)
+			continue
+		}
+		return frame
+	}
+}
+
+// recvAny is the next frame whatever it is, fact pushes included.
+func (l *link) recvAny() Frame {
 	l.t.Helper()
 	if len(l.spare) > 0 {
 		frame := l.spare[0]

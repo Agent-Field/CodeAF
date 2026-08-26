@@ -49,7 +49,7 @@ import (
 // version-1 engine would silently interrupt a turn the surface believed was
 // detached — but it does mean this file stayed a superset rather than becoming
 // a second protocol.
-// VERSION 4 IS TWO THINGS THAT LANDED IN ONE WAVE, AND THEY SHARE A NUMBER
+// VERSION 4 IS THREE THINGS THAT LANDED IN ONE WAVE, AND THEY SHARE A NUMBER
 // because nobody ever ran a build with only one of them.
 //
 // THE PLACES FOLLOW THE SESSION'S MACHINE. A place is a
@@ -82,12 +82,41 @@ import (
 // it knows about: the events have fanned out to the whole room since version 2
 // and a watching window had nowhere to put them, so it sat on a still frame
 // while the work went on in front of somebody else.
+//
+// AND INTENT GOES UP, FACTS COME DOWN. Versions 1 to 3 made every fact a
+// QUESTION: a surface drew a status line by asking the engine what the model
+// was, what had been spent, what the conversation weighed and how hard it was
+// being asked to think — four round trips over an ssh pipe, on a frame the
+// person expected to be instant. Version 4 turns that around. The engine states
+// those facts, unasked, whenever they move; the surface keeps a replica and
+// reads it from memory. What still travels UP is intent — a message, a key, an
+// answer — because intent is the one thing the far end cannot know on its own.
+//
+// The delta is two additions and no removals:
+//
+//   - [FactsPush] is the whole fact set with a revision number, and
+//     [Welcome.Facts] is the one a surface arrives holding.
+//   - the "facts" frame carries later ones. It belongs to the CONNECTION and
+//     not to a stream, so a fact that moves between turns still lands.
+//
+// Both are additive and omitempty, exactly as version 2's were, and the door
+// still refuses a mismatch: a version-3 engine states nothing, so a version-4
+// surface reading a replica off it would draw a status line frozen at whatever
+// the welcome said.
 const Version = 4
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "fatal".
+	// "event", "closed", "facts", "fatal".
+	//
+	// "facts" is the ONE KIND THAT ANSWERS NOTHING. Every other frame from the
+	// engine either replies to a call or belongs to a stream a call opened;
+	// this one is the engine saying something the surface did not ask for,
+	// because the whole point of it is that the surface never has to ask. It
+	// carries a [FactsPush] and no ID, and a build that does not know the kind
+	// ignores it, which is what the reader in client.go already does with every
+	// kind it has no case for.
 	Kind string `json:"kind"`
 	// ID correlates a call with its result, and an event with the Submit that
 	// opened its stream. The client mints call ids; the server mints stream ids
@@ -403,6 +432,17 @@ type Welcome struct {
 	// already has them. See [HeldQuestion].
 	Held []HeldQuestion `json:"held,omitempty"`
 
+	// Facts is the fact set this surface arrives holding — the model, the name,
+	// the spending, the weight, the reasoning levels — so the FIRST frame it
+	// draws is drawn from memory and not from four round trips.
+	//
+	// It is a pointer so that "this engine states nothing" is a thing a decoder
+	// can see. Nothing on the surface has to handle that case today (the door
+	// refuses a version mismatch before the screen exists), but a nil here and a
+	// zero-valued fact set are different facts, and a replica filled from the
+	// second would draw a conversation with no model and nothing spent.
+	Facts *FactsPush `json:"facts,omitempty"`
+
 	// Persistent says the far end is a session HOST — the engine outlives this
 	// connection — rather than version 2's other honest shape, a one-shot
 	// engine on a pipe.
@@ -696,6 +736,26 @@ type Turn struct {
 // StreamRef is the result of the three stream-opening calls: the id every
 // "event" frame of that turn carries. The stream ends with a "closed" frame
 // bearing the same id, which is the channel close.
+// FactsPush is one statement of the whole fact set, and the revision that
+// orders two of them.
+//
+// IT IS THE WHOLE SET AND NEVER A DELTA. A push naming only what changed would
+// be smaller and would be wrong the first time one went missing: a surface that
+// had lost a frame would carry a stale field forever with nothing able to tell
+// it so. The set is five short fields and a tiny map — smaller than one line of
+// a reply — so every push is complete and the newest one is always the truth.
+//
+// REV IS WHY IT CAN BE READ OUT OF ORDER SAFELY. Two facts can move at almost
+// the same instant on the engine, and the two pushes race to the writer; the
+// number is minted where the order is decided (under the session's own lock),
+// so a surface keeps the highest it has seen and drops anything older. Without
+// it a late push would overwrite a newer one and the status line would go
+// backwards, which is the one thing a live row must never do.
+type FactsPush struct {
+	Rev   uint64        `json:"rev"`
+	Facts session.Facts `json:"facts"`
+}
+
 type StreamRef struct {
 	Stream uint64 `json:"stream"`
 }

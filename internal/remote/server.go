@@ -85,6 +85,13 @@ type WrappedAgent interface {
 	SetModel(model string)
 	SetContextWindow(tokens int)
 	ReasoningFor(model string) string
+	// ReasoningLevels is every model somebody has dialled and the level it
+	// holds. It is here rather than left to ReasoningFor above because a
+	// SURFACE ASKS THAT QUESTION ABOUT MODELS IT HAS NOT SWITCHED TO — a picker
+	// row, a ctrl+t on that row — and one round trip per row is exactly the
+	// shape [session.Facts] exists to end. The whole map is a handful of short
+	// strings and travels in one push.
+	ReasoningLevels() map[string]string
 	SetReasoningFor(model, level string)
 	ResolveConsent(id uint64, allow bool)
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
@@ -315,6 +322,12 @@ type Session struct {
 	// are driver.go's, and that file is the whole of the rule.
 	driver   *server
 	arrivals uint64
+	// factsRev counts the fact sets this session has stated. It is minted under
+	// mu beside the reading it labels, which is what makes it an ORDER and not
+	// a timestamp: two facts can move in the same instant and the two pushes
+	// race to the writers, so the surface keeps the highest number it has seen
+	// and drops anything older (wire.go's [FactsPush]).
+	factsRev uint64
 
 	// closed is the conversation deliberately ended — [MethodClose], or the
 	// pipe dying on an engine whose life this pipe was.
@@ -543,7 +556,74 @@ func (sess *Session) welcomeLocked() Welcome {
 		Live:         sess.liveLocked(),
 		Held:         sess.held.waiting(),
 		Persistent:   sess.persistent,
+		Facts:        sess.factsLocked(),
 	}
+}
+
+// factsLocked is the fact set as it stands, numbered.
+//
+// THE READS HAPPEN UNDER THE SESSION'S LOCK, which is a deliberate and narrow
+// exception to the rule that this file does slow things outside it. The reason
+// is the number: a revision minted here and a reading taken there would let a
+// higher number carry an older photograph, which is exactly the reversal the
+// number exists to prevent. What is being paid for that is one walk of the
+// transcript ([session.Agent.ContextTokens]) at a moment that happens once per
+// turn and once per model change — never on a frame, never on a keystroke —
+// and [Session.welcomeLocked] already reads the model and the title from here.
+func (sess *Session) factsLocked() *FactsPush {
+	if sess.agent == nil {
+		return nil
+	}
+	sess.factsRev++
+	return &FactsPush{Rev: sess.factsRev, Facts: session.FactsOf(sess.agent)}
+}
+
+// announce states the fact set to everybody watching, unasked.
+//
+// IT IS THE WHOLE OF "INTENT UP, FACTS DOWN" (wire.go's version 4). A surface
+// that had to ask would be asking on the frame that draws the answer, which
+// over an ssh pipe is a terminal that has stopped repainting; so the engine
+// says it instead, at the four moments a fact actually moves — a turn ending, a
+// name being settled, a compaction landing, and somebody changing the model or
+// the level.
+//
+// IT MIRRORS [Session.emit] EXACTLY: the reading and the watchers are taken
+// under one hold of the lock and the writes happen outside it, so a slow
+// surface cannot hold up the conversation, and a surface arriving mid-announce
+// either is in the snapshot and gets this frame or is not and has the fact in
+// its welcome. Never both, and never neither.
+func (sess *Session) announce() {
+	sess.mu.Lock()
+	if sess.closed {
+		sess.mu.Unlock()
+		return
+	}
+	push := sess.factsLocked()
+	watching := sess.watchingLocked()
+	sess.mu.Unlock()
+	if push == nil || len(watching) == 0 {
+		return
+	}
+	frame := Frame{Kind: "facts", Payload: mustJSON(push)}
+	for _, surface := range watching {
+		_ = surface.send(frame)
+	}
+}
+
+// factsMoved says whether one event of a turn changes something a frame reads.
+//
+// IT IS A SHORT LIST ON PURPOSE, and every entry earns its place: a turn ending
+// settles the spending and the weight, an error ends a turn the same way, a
+// name being chosen is the one time a session's title ever changes, and a
+// compaction is the one thing that makes a conversation weigh LESS. Every other
+// kind moves text on a screen and no fact behind it — and a list that announced
+// on all of them would put a transcript walk between every delta and the next.
+func factsMoved(kind session.EventKind) bool {
+	switch kind {
+	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted:
+		return true
+	}
+	return false
 }
 
 // liveLocked is the stream still running, or zero. The newest wins when two are
@@ -661,6 +741,16 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	sess.held.raise(wire, id, len(sess.surfaces) == 0)
 	watching := sess.watchingLocked()
 	sess.mu.Unlock()
+
+	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
+	// its turn on EventTurnDone — it reads the spending and the weight the
+	// instant that event lands — so a push sent after it would arrive one turn
+	// late and the status line would report the turn before this one. The agent
+	// has already sealed the turn by the time this event reaches the pump, so
+	// the reading taken here is the finished one.
+	if factsMoved(event.Kind) {
+		sess.announce()
+	}
 
 	frame := Frame{Kind: "event", ID: id, Seq: seq, Payload: payload}
 	for _, surface := range watching {
@@ -1101,6 +1191,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.SetModel(model)
+		// AND EVERY SURFACE IS TOLD, not only the one that turned the knob. Two
+		// windows on one conversation is a shape this protocol supports
+		// ([Welcome.Attached]), and a model changed in one of them is a fact the
+		// other one's status line is drawing right now.
+		s.session.announce()
 		return nil, nil
 
 	case MethodSetContext:
@@ -1124,6 +1219,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.SetReasoningFor(args.Model, args.Level)
+		s.session.announce()
 		return nil, nil
 
 	case MethodConsent:

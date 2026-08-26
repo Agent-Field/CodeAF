@@ -41,6 +41,7 @@ func (stubAgent) Model() string                                             { re
 func (stubAgent) SetModel(string)                                           {}
 func (stubAgent) SetContextWindow(int)                                      {}
 func (stubAgent) ReasoningFor(string) string                                { return "" }
+func (stubAgent) ReasoningLevels() map[string]string                        { return nil }
 func (stubAgent) SetReasoningFor(string, string)                            {}
 func (stubAgent) ResolveConsent(uint64, bool)                               {}
 func (stubAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
