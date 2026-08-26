@@ -120,8 +120,8 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 
-	if id, ok := placeDigit(key); ok {
-		return a.showPage(id), true
+	if cmd, took := a.placeJumpKey(msg); took {
+		return cmd, true
 	}
 	if letter, ok := placeAltLetter(key); ok {
 		if a.placeAlt(letter) {
@@ -135,6 +135,31 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+// placeJumpKey is `alt+1`…`alt+7` ALONE, and it is its own function because it
+// is the one class of the six that belongs to no place.
+//
+// THE CONVERSATION IS A SURFACE THE NUMBERS HAVE TO WORK ON. Every other class
+// in [app.placeKey] is about the room a person is standing in — the strip is its
+// row's, the alt+letter is its view, the shift arrows are its window — so the
+// whole grammar was reached only from the seven places' own key handlers. The
+// jump is not like them: it is how a person GETS to a room, and the surface they
+// are most often on when they want one is the conversation, where the chord did
+// nothing at all and said nothing either. The manual has promised it there in as
+// many words the whole time ("alt+1 goes straight there from anywhere",
+// home.md), which made the program's own account of itself the thing that was
+// wrong on the screen.
+//
+// A ROOM THAT WILL NOT OPEN STILL ANSWERS: [app.showPage] goes through the door
+// and puts back what was standing, and its refusal is a note in the conversation
+// because that is the surface being looked at (pages.go's [app.refusePage]).
+func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	id, ok := placeDigit(msg.String())
+	if !ok {
+		return nil, false
+	}
+	return a.showPage(id), true
 }
 
 // placeMapKey is the map (SCREEN 3b). The period is the one punctuation key with

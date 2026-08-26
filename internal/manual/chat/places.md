@@ -28,8 +28,11 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
-- **`alt+1`** … **`alt+7`** — jump straight to one. The numbers are the tab bar's own order,
-  so `alt+1` is home and `alt+7` is settings. Hold `alt` and press the digit.
+- **`alt+1`** … **`alt+7`** — jump straight to one, **from a place or from a conversation**.
+  The numbers are the tab bar's own order, so `alt+1` is home and `alt+7` is settings. Hold
+  `alt` and press the digit. `tab` is the walk between rooms and belongs to the composer
+  while you are in a conversation; the numbers are the one class of place key that works
+  wherever you are standing.
 - **type its name** — on home, typing `sta` offers the standing place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin.
@@ -47,7 +50,9 @@ thing a terminal can send, which is why the numbers are on `alt`.
 that has run no work, and the standing place refuses when nothing stands over you — `tab`
 and `shift+tab` walk on to the next room a person can actually get into, rather than
 stopping dead. A place asked for **by name** — `alt+2`, a click on its word, `/history` —
-still says why it will not open, on the hint line of the place you are left on.
+still says why it will not open, on the hint line of the place you are left on. Pressed in a
+conversation, the same sentence is written into the conversation, because that is the
+surface you are looking at.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
