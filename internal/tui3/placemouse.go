@@ -11,8 +11,10 @@ import (
 //
 //	a press on a tab word   goes to that place
 //	a press on a body row   moves that place's cursor, and never acts
-//	the pointer resting     previews the row it is over, and moves nothing
-//	the wheel               walks the cursor, three rows a tick
+//	the pointer resting     previews the row it is over, and moves nothing —
+//	                        over a tab word, that preview is the word's own ink
+//	the wheel               walks the cursor, three rows a tick, and over the
+//	                        tab bar walks the places, one room a tick
 //
 // THIS FILE IS THE ARITHMETIC AND NEVER THE PLACES. Which place answers which
 // gesture is pages.go's — it is the one file that may know them all by name —
@@ -84,6 +86,61 @@ func (a *app) placeTabPress(x, y int) (tea.Cmd, bool) {
 	// the last chip, is a press on a row that has nothing under it — swallowing
 	// it is what stops it falling through to a body row it visually is not.
 	return nil, true
+}
+
+// placeTabHover is the pointer resting over the tab bar: THE WORD UNDER IT LIFTS
+// ONE INK TIER AND NOTHING ELSE ON THE FRAME MOVES.
+//
+// A TAB WORD IS A DOOR AND A DOOR SHOULD LOOK BACK. The bar answered a press
+// ([app.placeTabPress]) and said nothing at all while a pointer crossed it, so
+// seven words that open seven rooms read as a label strip until somebody
+// gambled a click on one. The lift is the selected word's own ink and weight
+// with no band under it (pages.go's [app.tabBarAt]) — a band would make the
+// hovered word look like the room a person is standing in, and a bar with two
+// grounds on it says nothing clearly.
+//
+// AND IT MOVES NOTHING. No cursor, no place, no window: the pointer previews and
+// the cursor selects, which is the law home wrote and every place inherited
+// (pages.go's [app.placeBodyHover]). Leaving the bar puts the ink back.
+func (a *app) placeTabHover(x, y int) bool {
+	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow {
+		// THE POINTER LEAVING THE ROW IS NEWS TOO, and it is the half that is easy
+		// to forget: a word left lifted after the hand moved away is a door that
+		// claims to be under a pointer that is somewhere else.
+		a.barHover(pageNone)
+		return false
+	}
+	under := pageNone
+	for _, span := range a.tabs {
+		if x >= span.from && x < span.to {
+			under = span.id
+			break
+		}
+	}
+	a.barHover(under)
+	// THE ROW IS THE BAR'S WHETHER OR NOT A WORD WAS UNDER THE POINTER, for
+	// [app.placeTabPress]'s reason: the gap between two chips belongs to no room,
+	// and letting it fall through would light a body row the pointer visually is
+	// not on.
+	return true
+}
+
+// placeTabWheel is the wheel turned over the tab bar: IT WALKS THE PLACES.
+//
+// The wheel means "the next one of these" everywhere else on this surface — it
+// walks a list's cursor, three rows a tick (placeWheelRows) — and over a row
+// whose contents are the seven rooms, the next one of these is the next room. It
+// is `tab` and `shift+tab` under the hand that is already on the bar, which is
+// the same bargain the chips already struck with the left button.
+//
+// ONE ROOM PER TICK AND NOT THREE. A wheel notch that walked three places would
+// open two rooms nobody asked to see on its way to the third, and each of those
+// openings closes the last room and throws away its filter.
+func (a *app) placeTabWheel(y int, delta int) (tea.Cmd, bool) {
+	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow || delta == 0 {
+		return nil, false
+	}
+	return a.walkPage(delta < 0), true
 }
 
 // placeBodyLine turns a row of the terminal into a line of a place's body,

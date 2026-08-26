@@ -887,6 +887,10 @@ func (placeStanding) body(a *app, width, room int) []placeRow {
 	return a.orders.body(a, width, room)
 }
 func (placeStanding) stops(a *app) []int { return a.orders.stops() }
+
+// cursorAt is the row of the shelves the cursor is on (pages.go's
+// [place.cursorAt]).
+func (placeStanding) cursorAt(a *app) int { return a.orders.cursor }
 func (placeStanding) cursorRow(a *app, rows []placeRow) int {
 	return placeRowAtLine(rows, a.orders.cursor)
 }

@@ -836,6 +836,11 @@ func (placeHome) cursorRow(a *app, rows []placeRow) int {
 	return -1
 }
 
+// cursorAt is the line of home's column the cursor is on (pages.go's
+// [place.cursorAt]). It is the same number [homeView.move] walks and the same
+// number [placeHome.stops] answers in.
+func (placeHome) cursorAt(a *app) int { return a.home.cursor }
+
 func (placeHome) enter(a *app) tea.Cmd { return a.homeEnter() }
 
 func (placeHome) verbs(a *app) []verb { return a.homeRowVerbs() }

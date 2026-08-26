@@ -89,11 +89,20 @@ func TestTheWheelMovesEveryPlacesCursorLikeTheArrows(t *testing.T) {
 // placeWalkToTop walks a place's cursor to the first row it will stop on, with
 // the arrow a person would use. It is more presses than any of these labs has
 // rows, because what is wanted is the clamp and not a count.
+//
+// AND THE LAST `↑` LEAVES THE BODY. There is a row above the first row now — the
+// tab bar, which the cursor can stand on (pages.go's [barCursor]) — so the walk
+// ends with `esc`, which is what puts the cursor back in the body on the row it
+// walked up from. Without it every caller would be measuring its first `↓`
+// against a cursor that was not in the list at all.
 func placeWalkToTop(t *testing.T, a *app) {
 	t.Helper()
 	placeFrameText(a)
 	for i := 0; i < 60; i++ {
 		drive(t, a, key("up"))
+	}
+	if a.bar.on {
+		drive(t, a, key("esc"))
 	}
 	placeFrameText(a)
 }

@@ -25,6 +25,15 @@ import (
 //	shift+←→↑↓            move this place's time window         no letters spent
 //	→ then a letter       act on the row — letters are verbs only here
 //
+// AND THE TAB BAR IS ONE OF THE ROWS `↑↓` MOVE THROUGH. It is drawn over every
+// place's body, so the row above the first row of a body is the same row on all
+// seven: `↑` off the top lands on it, `←`/`→` walk the seven words without
+// opening anything, `enter` or `↓` goes into the one under the cursor, and `esc`
+// comes back down. Two arrows change meaning up there and the change is stated
+// where a person can see it — `←`/`→` are ROW verbs (the strip, the folds) and
+// the bar is not a row of any place's reading — so nothing on the bar acts on a
+// row that is not under the cursor (pages.go's [barCursor]).
+//
 // Two adaptations to terminal reality, both forced and both stated:
 //
 //   - THE MAP IS A CHORD, NOT A HOLD. A terminal cannot tell a program that a
@@ -114,6 +123,17 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	}
 
+	// THE CURSOR MAY BE STANDING ON THE TAB BAR, and while it is, five keys mean
+	// something there rather than in the body: `←`/`→` walk the words, `↓` and
+	// `enter` go into the one under the cursor, `esc` puts the cursor back in the
+	// body (pages.go's [barCursor]). Everything else — `tab`, the numbers, the
+	// map, a printable character — falls through to the arms below and means
+	// exactly what it means everywhere else, which is what keeps the bar a row
+	// rather than a mode.
+	if cmd, took := a.barKey(msg); took {
+		return cmd, true
+	}
+
 	switch key {
 	case placeMapKey:
 		a.mapShowing = true
@@ -165,6 +185,24 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// key rather than a seizure of it.
 		if a.openStrip() {
 			a.touch()
+			return nil, true
+		}
+		return nil, false
+
+	case "up", "ctrl+p":
+		// `↑` OFF THE FIRST ROW OF THE BODY LANDS ON THE TAB BAR, on every place
+		// (pages.go's [barCursor]). It is one arm here rather than seven arms in
+		// seven key handlers for the reason the whole of this function is one
+		// function: the bar is drawn on all seven, so "what is above the first
+		// row" has to have one answer.
+		//
+		// ANYWHERE ELSE THE KEY IS THE PLACE'S OWN and this router does not touch
+		// it: [app.barReach] is false in the middle of a list, false on a frame
+		// that drew no bar at all, and false while the cursor is already up there
+		// — so the walk a person's hands know is untouched everywhere it was
+		// already a walk.
+		if a.barReach() {
+			a.barRaise()
 			return nil, true
 		}
 		return nil, false
