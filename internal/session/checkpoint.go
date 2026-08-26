@@ -1965,7 +1965,11 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 //     not done enough work to have left any of it half-done, and charging it a
 //     mastermind call anyway would be the bill this file's own digest exists to
 //     prevent. route_judge.go already reads the turn that answered in words alone
-//     and asks the other question about it.
+//     and asks the other question about it. THIS RUNG IS A PERSON'S TURN'S RUNG:
+//     it protects a cheap message somebody is sitting in front of, and a WOKEN
+//     turn — a task landing's, nobody typed and nobody waiting — is never held by
+//     it, because there is no person to carry the cheap one on (see the wake
+//     carve-out at the gate itself, and [Agent.wakeLocked]).
 //
 //   - BUT THE READER IS GATED ON EXPOSURE, NOT ON PRICE. A turn that CHANGED THE
 //     WORKING TREE and then stopped without anybody looking at the change is read
@@ -2037,7 +2041,28 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if endsAskingThePerson(said) {
 		return false, false
 	}
-	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT.
+	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
+	// STILL GOT WRONG.
+	//
+	// The price gate below is the right rule for a turn A PERSON TYPED: a small
+	// read-only turn that stops is a person's to carry on, they are sitting in
+	// front of the answer, and charging a reader against every cheap message would
+	// be the bill this file's digest exists to prevent. NONE OF THAT IS TRUE OF A
+	// TURN A TASK LANDING STARTED. Nobody typed it, nobody is holding the channel,
+	// and there is no person who will pick up where it stopped — so the cheapness
+	// that lets a typed turn end unread is not a reason to let a woken one end
+	// unread, it is the exact opposite. SWE-Marathon s14, 18:16Z: a task came home
+	// failed at 46329/68186, the note woke a turn, it read for six rounds — four
+	// under the first rung — and sealed on "let me diagnose the failures
+	// systematically rather than rewriting everything", a stated next step and no
+	// question. The price gate returned early, nothing read the ask against the
+	// work, and the cell settled idle with seven and a half of its ten hours
+	// unspent on the best clean seed of the run. A WOKEN TURN IS READ FOR WHAT
+	// REMAINS WHATEVER IT COST ([Agent.wakeLocked] sets the bit); it is owed an
+	// answer by definition, and [endsAskingThePerson] and [turnBroke] above are
+	// the only two endings that still stop the reader from being spent on one.
+	//
+	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT, FOR EVERY OTHER TURN.
 	//
 	// THE ROUND COUNT IS WHAT MAKES THE SECOND READING THIS TURN'S. The ledger
 	// walks the whole transcript (the digest's own habit), so "the last call was a
@@ -2047,7 +2072,8 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// in it. Without this a person typing "thanks" after a turn that wrote would
 	// pay a reader for a message that touched nothing, which is the exact bill the
 	// price gate exists to prevent.
-	if meter.rounds < meter.markAt(1) &&
+	if !user.wake &&
+		meter.rounds < meter.markAt(1) &&
 		!(meter.rounds > 0 && turnLeftTheTreeUnchecked(a.snapshot())) {
 		return false, false
 	}
