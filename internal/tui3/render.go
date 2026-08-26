@@ -728,6 +728,18 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// (steerelbow.go, replay.go). The elbows are drawn hanging from a trunk
 		// that is off the screen, which is what actually happened, rather than
 		// promoted into questions nobody asked.
+		// AND A LINE THE FAR END HAS NOT AGREED TO YET IS ONE STEP QUIETER
+		// (echo.go). It is the same glyph in the same column with the same wrap
+		// — nothing moves when the engine confirms — and the only difference is
+		// the tier its words are painted in: [palette.narr], which is where this
+		// surface already puts words that sit one reading step under the
+		// question's own (steerelbow.go). NO NEW COLOUR IS INVENTED FOR IT,
+		// because the mark's whole job is to be quiet enough that the ordinary
+		// case reads as a line settling rather than as a warning.
+		words := a.pal.muted
+		if e.pending {
+			words = a.pal.narr
+		}
 		body := wrap(e.text, width-userLeadCols)
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
@@ -762,7 +774,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 				// while the scanner still safely recognizes their door on this row.
 				spans = commandSpans([]rune(line), true)
 			}
-			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.muted))
+			out = append(out, lead+paintCommandSpans(line, spans, a.pal, words))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
 		// one here is not typed at all: an `@task` mention leaves a footnote

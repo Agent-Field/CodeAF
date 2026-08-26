@@ -235,6 +235,10 @@ func (a *app) detachConversation() *aside {
 func (a *app) clearConversation() {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
+	// AND THE ECHO GOES WITH THE CONVERSATION IT WAS TYPED INTO (echo.go): an
+	// index into a transcript that has been replaced points at somebody else's
+	// row, and a confirmation arriving after the swap would take the mark off it.
+	a.echoAt = -1
 	a.asks, a.follows = nil, nil
 	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
 	// and after this line that is a different one (quitarm.go).
