@@ -47,6 +47,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/remote"
 )
 
 // socketName, lockName and logName are the three files a host keeps beside each
@@ -180,6 +181,128 @@ func waitForHost(workspace string, within time.Duration) (net.Conn, error) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// ── asking the host which build it is ───────────────────────────────────────
+
+// askTimeout is how long the version exchange may take. It is a local unix
+// socket answering one question with no work behind it, so this is a ceiling on
+// a WEDGED host rather than a wait anybody should ever notice: a surface's
+// launch must not hang on a process that stopped reading.
+const askTimeout = 3 * time.Second
+
+// goneWait is how long a host that agreed to retire is given to finish. It has
+// journals to flush, which is the only thing it owes anybody on the way out.
+const goneWait = 10 * time.Second
+
+// ErrHostBusy is a host that will not retire because it is holding work: a
+// surface attached, a turn running, or a question waiting for an answer. It is
+// not a fault and the caller must not treat it as one — the machine is doing
+// exactly what somebody asked it to.
+var ErrHostBusy = errors.New("engine host: this host is holding work in flight")
+
+// Ask puts internal/remote's version exchange to this workspace's host on a
+// connection of its own, and fails when no host answers.
+//
+// THE CONNECTION IS SPENT ON THE QUESTION AND NEVER BECOMES A SURFACE. A hello
+// would open a conversation — the expensive, journal-locking act this whole
+// exchange exists to keep from happening against the wrong build — so the
+// question travels alone and the caller dials again for the real thing.
+func Ask(workspace string, ask remote.WhoIs) (remote.HostSelf, error) {
+	conn, err := Dial(workspace)
+	if err != nil {
+		return remote.HostSelf{}, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(askTimeout))
+	return remote.AskHost(conn, ask)
+}
+
+// Retire asks this workspace's host to go, and does not return until it has.
+//
+// IT IS THE HOST THAT SAYS WHETHER IT MAY. A host holding a turn, a surface or
+// an unanswered question answers [ErrHostBusy] and stays where it is; anyway
+// asks for it regardless, which is one person's own `aforge engine --stop` and
+// nothing else. Either way the ending is the host's own shutdown — every
+// conversation closed, every journal flushed — and never a signal from outside.
+func Retire(workspace string, anyway bool) error {
+	self, err := Ask(workspace, remote.WhoIs{StandDown: true, Anyway: anyway})
+	if err != nil {
+		return err
+	}
+	if !self.Retiring {
+		if self.Busy {
+			return ErrHostBusy
+		}
+		return errors.New("engine host: the host did not agree to go")
+	}
+	return waitForGone(workspace, goneWait)
+}
+
+// waitForGone waits until nothing is holding this workspace: the socket answers
+// nobody AND the lock can be taken. BOTH HALVES ARE THE QUESTION — a host on
+// its way down has already dropped its listener and still holds the lock for a
+// moment, and a caller that spawned into that moment would watch its new host
+// find the lock busy and exit without a word.
+func waitForGone(workspace string, within time.Duration) error {
+	dir, err := Dir(workspace)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(within)
+	for {
+		conn, err := Dial(workspace)
+		if err == nil {
+			_ = conn.Close()
+		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
+			_ = releaseLock(held)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("engine host: the host is still holding this workspace")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// Stop is `aforge engine --stop`: whatever is holding this workspace on this
+// machine, stopped, whichever build it is.
+//
+// IT HAS TO WORK ON A BUILD THAT PREDATES THE EXCHANGE, because that is the
+// only build a person ever needs it for — the stale half in the middle, still
+// answering a socket after the binary under it was replaced. So a host that
+// cannot be asked anything is ended the one way the operating system offers:
+// the kernel names the process on the other end of the socket ([peerPID]) and
+// it is sent the signal every build of the host has always answered by flushing
+// its journals and exiting.
+//
+// It answers false when nothing was holding this workspace, which is not a
+// failure and is the ordinary case.
+func Stop(workspace string) (bool, error) {
+	conn, err := Dial(workspace)
+	if err != nil {
+		return false, nil
+	}
+	// The kernel is asked BEFORE the question is, because the answer to the
+	// question may be that this process cannot answer questions.
+	pid, pidErr := peerPID(conn)
+	_ = conn.SetDeadline(time.Now().Add(askTimeout))
+	self, askErr := remote.AskHost(conn, remote.WhoIs{StandDown: true, Anyway: true})
+	_ = conn.Close()
+
+	if askErr == nil && self.Retiring {
+		return true, waitForGone(workspace, goneWait)
+	}
+	if pidErr != nil {
+		if askErr != nil {
+			return false, fmt.Errorf("engine host: %w", askErr)
+		}
+		return false, errors.New("engine host: the host did not agree to go")
+	}
+	if err := signalHost(pid); err != nil {
+		return false, fmt.Errorf("engine host: %w", err)
+	}
+	return true, waitForGone(workspace, goneWait)
 }
 
 // Spawn starts a host process and lets go of it.

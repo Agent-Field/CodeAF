@@ -23,6 +23,14 @@ package main
 //     splice the ssh pipes to its socket. The conversation is already there,
 //     possibly mid-turn, and closing the lid does not end it. If no host is
 //     running, one is started and this connection waits a moment for it.
+//  1a. AND THE HOST IS ASKED WHICH BUILD IT IS FIRST. A host outlives the
+//     binary that started it, so `rm bin/aforge && make build` on this machine
+//     leaves the NEW aforge answering `aforge version` while the OLD one is
+//     still holding the socket — and a splice that copied bytes handed the new
+//     surface straight to it. What came back was the old host's own refusal
+//     about protocol versions, telling the person to update a machine they had
+//     just updated. So the socket is asked (internal/remote's whois.go) and a
+//     host of another build is retired and replaced rather than attached to.
 //  2. THE PIPE. If a host cannot be reached or started for ANY reason — no
 //     socket directory, a path too long for a unix socket, a spawn that failed,
 //     a machine that refuses all of it — this process serves the conversation
@@ -72,6 +80,10 @@ func runRemoteEngine(args []string) error {
 	// ask for is a fallback nobody can use when the host is the thing that is
 	// wrong. It serves the conversation on this pipe and never dials a socket.
 	alone := flags.Bool("no-host", false, "serve this conversation on the pipe instead of attaching to a session host")
+	// --stop is the one flag here a PERSON types, and it exists because the
+	// refusal below sends them to it: something older is holding this
+	// workspace and has to be let go of before a current build can hold it.
+	stop := flags.Bool("stop", false, "stop whatever is holding this workspace's conversations on this machine")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -80,18 +92,33 @@ func runRemoteEngine(args []string) error {
 		// and nothing a person accomplishes by typing it, so the usage line
 		// offers the two flags somebody might mean and stays quiet about the
 		// one they would only ever mean by accident.
-		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host]")
+		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host] [--stop]")
 	}
 
 	if *daemon {
 		return runEngineHost(*workspace, *file)
 	}
+	if *stop {
+		return runEngineStop(*workspace)
+	}
 	if !*alone {
-		if conn, err := attachEngineHost(*workspace); err == nil {
+		conn, err := attachEngineHost(*workspace)
+		if err == nil {
 			// From here this process reads and writes nothing but bytes: the
 			// handshake, the frames and every decision in them are between the
 			// surface and the engine on the other side of that socket.
 			return enginehost.Splice(os.Stdin, os.Stdout, conn)
+		}
+		var stale *staleHost
+		if errors.As(err, &stale) {
+			// THE ONE FAILURE ON THIS ROAD THAT IS NOT ANSWERED WITH THE PIPE,
+			// and the reason is the session file. Something older is holding
+			// this workspace's conversation, which means it is holding the
+			// journal's lock; an engine that fell back to the pipe here would
+			// try to open the same file, fail on that lock, and say so in a
+			// sentence about a path — burying the one fact the person needs.
+			// So the truth goes down the wire instead.
+			return quietRefusal(remote.Refuse(os.Stdout, stale.reason))
 		}
 	}
 	return quietRefusal(remote.Serve(os.Stdin, os.Stdout, remote.Options{
@@ -115,8 +142,17 @@ func quietRefusal(err error) error {
 	return err
 }
 
+// staleHost is an older aforge still holding this workspace, and it is the ONE
+// reason `aforge engine` refuses instead of falling back to the pipe. The
+// sentence has already been written for a person to read; the caller's whole
+// job is to put it on the wire.
+type staleHost struct{ reason string }
+
+func (s *staleHost) Error() string { return s.reason }
+
 // attachEngineHost is step one: a connection to this workspace's host, starting
-// one if nothing answers.
+// one if nothing answers — and, before any of that, a question about which
+// build is already there.
 //
 // THE WORKSPACE IS RESOLVED BEFORE THE HELLO IS READ, and it can be, because
 // the surface puts it on the ssh command line as well as in the frame
@@ -125,9 +161,26 @@ func quietRefusal(err error) error {
 // frame here. A hand-run `aforge engine` with no --workspace resolves to the
 // home directory, which is exactly what its hello would have meant.
 //
-// EVERY FAILURE ON THIS PATH IS ANSWERED THE SAME WAY, by the caller, with the
-// pipe. Nothing here is worth a sentence on stderr: a machine with no host is
-// not a machine with a problem.
+// ── THE THREE THINGS THE QUESTION CAN FIND ──────────────────────────────────
+//
+// A host of THIS build is spliced onto, which is the ordinary answer and the
+// only one that costs anything at all — one extra connection, on a unix socket,
+// asking one question.
+//
+// A host of ANOTHER build is asked to go, and goes if it is holding nothing.
+// The conversation it was holding is closed properly on the way out, its
+// journal flushed, and the next line of this function starts a fresh host from
+// the binary that is on disk now — so a rebuild simply works on the next
+// connection instead of trapping somebody.
+//
+// A host that will not go, or one so old it cannot be asked, is REFUSED with a
+// sentence naming the machine and the way out. Nothing here signals a process
+// it could not ask, and nothing here decides on somebody else's behalf that
+// their turn is over.
+//
+// EVERY OTHER FAILURE ON THIS PATH IS ANSWERED BY THE CALLER WITH THE PIPE, and
+// none of them is worth a sentence: a machine with no host is not a machine
+// with a problem.
 func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	workspace, err := engineWorkspace(workspaceFlag)
 	if err != nil {
@@ -137,9 +190,86 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := clearStaleEngineHost(workspace); err != nil {
+		return nil, err
+	}
 	return enginehost.Attach(workspace, func() error {
 		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", workspace)
 	})
+}
+
+// clearStaleEngineHost is the question and what is done with the answer. Nil
+// means "go ahead and attach": either nothing is holding this workspace, or
+// what is holding it is this build, or what was holding it has gone.
+func clearStaleEngineHost(workspace string) error {
+	host, err := enginehost.Ask(workspace, remote.WhoIs{})
+	switch {
+	case errors.Is(err, remote.ErrNoHostThere):
+		// The socket answered with a refusal, which is what EVERY BUILD FROM
+		// BEFORE THE EXCHANGE says to a question it has never heard of. It
+		// cannot be asked whether it is busy either, so it is never ended from
+		// here — a person is told, in words, what is true and what to type.
+		return &staleHost{reason: staleEngineHostSentence(false)}
+	case err != nil:
+		// Nothing answered at all: no host, or one that has stopped reading.
+		// Both are the ordinary road — Attach starts one.
+		return nil
+	case host.Version == remote.Version:
+		return nil
+	}
+	// Another build, and it is answering, so it can be asked to go.
+	if err := enginehost.Retire(workspace, false); err != nil {
+		if errors.Is(err, enginehost.ErrHostBusy) {
+			return &staleHost{reason: staleEngineHostSentence(true)}
+		}
+		return &staleHost{reason: staleEngineHostSentence(false)}
+	}
+	return nil
+}
+
+// staleEngineHostSentence is what the person reads, and it is written on the
+// far machine because the far machine is the one with the problem.
+//
+// IT NAMES THE MACHINE AND NOT "THE OTHER END". This sentence is printed on a
+// laptop by a surface that has three windows open onto three machines, and the
+// old version of this refusal — "update the older one" — failed precisely by
+// being unable to say WHICH half was old. The name is this machine's own
+// hostname, the same one every window in a shared conversation is labelled with
+// ([remote.MachineName]).
+func staleEngineHostSentence(busy bool) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "that machine"
+	}
+	if busy {
+		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on %s", name, name)
+	}
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run aforge engine --stop on %s", name, name)
+}
+
+// runEngineStop is `aforge engine --stop`: whatever is holding this workspace
+// on this machine, let go of.
+//
+// IT TALKS TO A PERSON, WHICH IS WHY IT IS THE ONE DOOR IN THIS FILE THAT
+// PRINTS. Every other shape of `aforge engine` owns stdout as the protocol and
+// a stray line there is a frame the surface cannot parse; this one is nobody's
+// engine, it is somebody typing on the machine itself and waiting to be told
+// what happened.
+func runEngineStop(workspaceFlag string) error {
+	workspace, err := engineWorkspace(workspaceFlag)
+	if err != nil {
+		return err
+	}
+	stopped, err := enginehost.Stop(workspace)
+	if err != nil {
+		return err
+	}
+	if !stopped {
+		fmt.Printf("nothing is holding %s here\n", workspace)
+		return nil
+	}
+	fmt.Printf("stopped holding %s — the next connection starts fresh from this build\n", workspace)
+	return nil
 }
 
 // runEngineHost is this process being the host: it moves into the workspace

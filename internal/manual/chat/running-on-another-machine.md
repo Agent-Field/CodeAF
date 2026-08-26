@@ -133,9 +133,54 @@ sentence rather than that one:
 error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
 ```
 
-Either way the fix is the same and it is one command: update aforge on the machine that is
-behind. Nothing is negotiated down — two builds that might disagree about a frame must not
-find that out three turns into a conversation.
+If something on that machine is still holding a conversation from the older build, that
+same sentence gains a clause naming it, because then the machine — not the binary — is
+what is behind:
+
+```
+error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+```
+
+Either way the fix is one command: update aforge on the machine that is behind. Nothing is
+negotiated down — two builds that might disagree about a frame must not find that out three
+turns into a conversation.
+
+## I updated aforge on that machine and it still says the versions differ
+
+It works on the next connection, and there is nothing left to clean up by hand.
+
+Something over there holds your conversation between connections. It is started by the
+first connection and outlives it, which is what lets a turn keep running after you close
+the lid — and it is a **running copy of the build that started it**, so replacing the
+binary does not replace it. `aforge version` on that machine reports the new build while
+the old one is still answering, which is how you can be told to update something you
+updated an hour ago.
+
+So before it hands your window over, `aforge engine` asks whatever is already holding that
+workspace which build it is. Three things can be true:
+
+- **It is this build.** Your window attaches to it exactly as before. This is the ordinary
+  case, and it costs one question on a local socket.
+- **It is another build, holding nothing** — no window attached, no turn running, no
+  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
+  and a fresh one starts from the binary that is on disk now. You see none of it.
+- **It is another build and something is still going in it.** Nobody's turn is ended for
+  you. The connection is refused instead, in these words:
+
+```
+engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on spark
+```
+
+A copy too old to answer the question at all is refused the same way and left alone,
+because a process that cannot say whether it is busy is not one to guess about:
+
+```
+engine: spark is still holding this conversation on an older aforge — run aforge engine --stop on spark
+```
+
+One nobody connects to again lets itself go on its own: it notices that the file it was
+started from has been removed or rebuilt, and retires the next time it is holding nothing.
+`aforge engine --stop` is on the *Staying on that machine* page.
 
 ## What runs on the far machine, and what stays local
 

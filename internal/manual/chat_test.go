@@ -802,6 +802,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
 
+		// The wave that stopped a rebuild on the far machine from trapping
+		// somebody. These are the words a person actually uses at the moment it
+		// happens: they updated aforge over there, `aforge version` agreed, and
+		// the connection still told them to update the older half.
+		{"I updated aforge on that machine and it still says the versions differ", "running-on-another-machine"},
+		{"I rebuilt aforge on my dev box and --host still refuses", "running-on-another-machine"},
+		{"it says the two halves have to be the same build but they are", "running-on-another-machine"},
+		{"it says spark is still running an older aforge", "running-on-another-machine"},
+		{"how do I stop the thing holding my session on that machine", "staying-on-that-machine"},
+		{"what does aforge engine --stop do", "staying-on-that-machine"},
+		{"does the session host notice when I rebuild aforge", "staying-on-that-machine"},
+
 		// The wave that made the files on the far machine things this one can
 		// open. These are the sentences somebody types with a hosted session in
 		// front of them: the click, the download, the drag, the picture they

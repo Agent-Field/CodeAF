@@ -217,6 +217,15 @@ type Options struct {
 // connections at once.
 type AttachOptions struct {
 	Open func(Hello) (*Session, error)
+
+	// Host answers the version exchange (whois.go): which build is holding this
+	// socket, whether it has work in flight, and whether it will retire.
+	//
+	// NIL IS "NOTHING IS HOLDING A CONVERSATION HERE" and it is the honest
+	// answer for a pipe engine, which is why [Serve] leaves it unset. A pipe's
+	// conversation cannot outlive its connection, so it can never be the stale
+	// middle half this exchange exists to find.
+	Host func(WhoIs) HostSelf
 }
 
 // frameCap is the most one line may weigh. It is the journal reader's bargain
@@ -272,7 +281,7 @@ func Serve(in io.Reader, out io.Writer, opts Options) error {
 // opens for its hello — a fresh one, or one that has been running since before
 // this surface existed.
 func ServeAttach(in io.Reader, out io.Writer, opts AttachOptions) error {
-	s := &server{out: out, open: opts.Open}
+	s := &server{out: out, open: opts.Open, host: opts.Host}
 	return s.serve(in)
 }
 
@@ -850,6 +859,13 @@ type server struct {
 
 	open    func(Hello) (*Session, error)
 	session *Session
+	// host answers a connection that asked which build this is, and asked it to
+	// go (whois.go). It is nil on a pipe engine, which is nobody's host.
+	host func(WhoIs) HostSelf
+	// asked records that this connection was the version exchange and nothing
+	// else: it opened no conversation, it has been answered, and the serve loop
+	// returns rather than waiting for a line that is not coming.
+	asked bool
 
 	// name is the machine this surface is running on, as its hello said and
 	// [machineLabel] made it safe to draw. arrived is its place in the order the
@@ -895,6 +911,11 @@ func (s *server) serve(in io.Reader) (err error) {
 	}
 	if err := s.handshake(scan.Bytes()); err != nil {
 		return err
+	}
+	if s.asked {
+		// THE QUESTION WAS THE WHOLE CONNECTION. It opened nothing, so there is
+		// nothing to flush and nothing to say about it in a log.
+		return nil
 	}
 
 	for scan.Scan() {
@@ -969,6 +990,13 @@ func (s *server) handshake(line []byte) error {
 	if err := json.Unmarshal(line, &frame); err != nil {
 		return s.refuse("engine: the first frame was not JSON")
 	}
+	if frame.Kind == "whois" {
+		// ASKED BEFORE THE VERSION IS CHECKED, ON PURPOSE. A build that would
+		// be refused for its protocol is exactly the build somebody needs an
+		// answer from, so this question is the one frame that outranks the
+		// door (whois.go states why).
+		return s.whois(frame)
+	}
 	if frame.Kind != "hello" {
 		return s.refuse(fmt.Sprintf("engine: the first frame was %q, not a hello", frame.Kind))
 	}
@@ -977,7 +1005,17 @@ func (s *server) handshake(line []byte) error {
 		return s.refuse("engine: the hello did not parse")
 	}
 	if hello.Version != Version {
-		return s.refuse(fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version))
+		reason := fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version)
+		if s.host != nil {
+			// THE CLAUSE THAT WAS MISSING THE DAY THIS SENTENCE LIED. A host
+			// outlives the connection, so the process saying this may be an
+			// older aforge that is still running on a machine whose binary was
+			// updated an hour ago — and the sentence above sent the person off
+			// to update something that was already updated. When there is a
+			// host behind this connection, say the other thing that is true.
+			reason += ", and this machine is still running the older one — run aforge engine --stop here to retire it"
+		}
+		return s.refuse(reason)
 	}
 	sess, err := s.open(hello)
 	if err != nil {
@@ -1024,6 +1062,22 @@ func (s *server) refuse(reason string) error {
 type Refusal struct{ Reason string }
 
 func (r *Refusal) Error() string { return r.Reason }
+
+// Refuse writes one refusal onto a wire nobody has said hello on yet and hands
+// back the same [Refusal] a handshake's own refusals do.
+//
+// IT EXISTS FOR THE ONE REFUSAL THAT COMES BEFORE THERE IS A SERVER. `aforge
+// engine` decides whether it may splice this connection onto a host before it
+// reads a byte of stdin (cmd/aforge's engine.go), and a reason found there has
+// the same audience and travels the same road as any other: the surface is
+// holding the terminal, it is waiting for a welcome, and a fatal frame is the
+// sentence it prints unchanged.
+func Refuse(out io.Writer, reason string) error {
+	if line, err := json.Marshal(Frame{Kind: "fatal", Error: reason}); err == nil {
+		_, _ = out.Write(append(line, '\n'))
+	}
+	return &Refusal{Reason: reason}
+}
 
 // readCall is the frame check every line after the handshake goes through.
 func readCall(line []byte) (Frame, error) {
