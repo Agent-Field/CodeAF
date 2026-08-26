@@ -11,7 +11,13 @@ import (
 
 // placeMoneyInk is the one semantic door onto money's ink, so a palette move
 // cannot leave one reading behind with the old meaning.
-func placeMoneyInk(pal palette) func(string) string { return pal.add }
+//
+// IT IS [palette.money] AND NO LONGER [palette.add]. The design's own preamble
+// spends green on money — "green = money" — and this file was reaching for the
+// tick's olive instead, which said that finishing and paying are one event.
+// styles.go's [hueMoneyPlace] is the mint the design names; the conversation's
+// own [hueMoney] is the same reading held inside its narrower signal band.
+func placeMoneyInk(pal palette) func(string) string { return pal.money }
 
 // ── the standing vocabulary ─────────────────────────────────────────────────
 //

@@ -1431,7 +1431,7 @@ func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string
 			if i > 0 {
 				mark = "  "
 			}
-			out = append(out, pal.accent(mark)+pal.ink(wrapped))
+			out = append(out, pal.muted(mark)+pal.ink(wrapped))
 		}
 	case exchangeReply:
 		for _, wrapped := range wrap(row.text, width) {
@@ -1792,7 +1792,11 @@ func exchangeTailInk(ex *homeExchange) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 

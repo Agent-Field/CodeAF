@@ -827,7 +827,7 @@ still works and is still the key.
   Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
   that cannot draw them they are `<` and `>`.
 - **One cell above the handle says what the work is doing**, while there is anything worth
-  saying: `▲` in the question colour when a task is waiting on you, `●` in the accent when
+  saying: `?` in the question colour when a task is waiting on you, `◐` in the accent when
   something is running. Nothing at all otherwise — a session with nothing running and
   nothing waiting leaves the edge silent, and so does one that has run no work.
 - The edge costs the conversation two columns, exactly as the column it stands for costs it

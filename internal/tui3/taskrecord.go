@@ -52,7 +52,7 @@ const (
 	// taskCardBackWord is the way out, in the head's right corner. It is `back`
 	// and not `close` because that is what the key does from here: the list is
 	// underneath, and a card that promised to close would be lying about the
-	// next keystroke — the same honesty [taskSheetFilterKeys] keeps.
+	// next keystroke — the same honesty [tasksClearFilterWord] keeps.
 	taskCardBackWord = "esc back"
 	// taskCardKeys is the foot: the way out, the scroll, and the one gesture
 	// this card carries that the row it came from used to.

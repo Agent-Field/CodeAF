@@ -233,17 +233,18 @@ func TestThePulseSaysWhatIsOnWatchAndWhatTodayCost(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(line), pulseName) {
 		t.Fatalf("the pulse does not lead with the program's name: %q", line)
 	}
-	if !strings.Contains(line, pulseWatchWord+" · 2 orders") {
-		t.Fatalf("the pulse does not say what is on watch: %q", line)
-	}
-	if !strings.Contains(line, "$1.10 today") {
+	// THE DAY'S SPEND, AND THE ALLOWANCE BESIDE IT. The design draws
+	// `$0.55 / $20.00` and FIDELITY.md item 2 is the owner's instruction to; the
+	// assertion that used to stand here was its opposite — `the pulse drew a quota
+	// fraction` — and pulse.go's own comment block carries that law's headstone.
+	if !strings.Contains(line, "$1.10") {
 		t.Fatalf("the pulse does not say what the day cost: %q", line)
+	}
+	if strings.Contains(line, "today") {
+		t.Fatalf("the pulse still says `today` where the design puts the allowance: %q", line)
 	}
 	if !strings.Contains(line, pulseClock(a.now())) {
 		t.Fatalf("the pulse has no clock on it: %q", line)
-	}
-	if strings.Contains(line, machineOfWord) {
-		t.Fatalf("the pulse drew a quota fraction: %q", line)
 	}
 	if ansi.StringWidth(a.pulseLine(90, a.pal)) > 90 {
 		t.Fatalf("the pulse is wider than its frame: %q", line)
@@ -253,7 +254,7 @@ func TestThePulseSaysWhatIsOnWatchAndWhatTodayCost(t *testing.T) {
 		t.Fatalf("the pulse and the card disagree about how many orders there are: %d", orders)
 	}
 	// AND IT IS ON THE SCREEN, at the top.
-	if head := strings.Split(homeText(a), "\n")[0]; !strings.Contains(head, pulseName) || !strings.Contains(head, pulseWatchWord) {
+	if head := strings.Split(homeText(a), "\n")[0]; !strings.Contains(head, pulseName) || !strings.Contains(head, pulseClock(now)) {
 		t.Fatalf("home's top line is not the pulse: %q", head)
 	}
 
@@ -317,8 +318,13 @@ func TestTheMachineCardPaintsMeaningAndNotMood(t *testing.T) {
 	if !strings.Contains(today, a.pal.warn("$0.90"+machineOfWord+"$1.00")) {
 		t.Fatalf("a day against its allowance is not the amber:\n%s", plain(today))
 	}
-	if !strings.Contains(a.pulseLine(90, a.pal), a.pal.warn("$0.90"+pulseTodayWord)) {
-		t.Fatalf("the pulse's spend is not the amber near the bound: %q", plain(a.pulseLine(90, a.pal)))
+	// THE PULSE'S OWN SPEND IS GREEN AND STAYS GREEN. The figure used to rise into
+	// the amber as the bound came close, which was a glance's way of saying what
+	// the line could not spell; the line spells it now — `$0.90 / $1.00` — so the
+	// colour says the one thing green says on a place, which is that this is money
+	// (pulse.go's fourth law, styles.go's [hueMoneyPlace]).
+	if !strings.Contains(a.pulseLine(90, a.pal), placeMoneyInk(a.pal)("$0.90"+pulseAllowanceGap+"$1.00")) {
+		t.Fatalf("the pulse's spend is not the money ink against its allowance: %q", plain(a.pulseLine(90, a.pal)))
 	}
 
 	// THE VIOLET IS RESERVED. Seeing it means a person is being waited on, and

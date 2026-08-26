@@ -284,6 +284,49 @@ agent is waiting for a person and on nothing else — its whole value is that
 seeing it anywhere means exactly one thing. It sits at L 73.5, comfortably in
 band, and nothing in this wave had a reason to go near it.
 
+## THE PLACE LADDER — a second, smaller table for home and its places
+
+**Owner-signed, 2026-08-25: "follow the exact design."** Home and the six places
+beside it — tasks, standing, memory, spend, search, settings — paint from the
+design's own table (`docs/design/home-rethink/SCREENS.txt`) and not from the one
+above. The conversation is untouched.
+
+| Role | Hex | 256 | What it paints on a place |
+| --- | --- | --- | --- |
+| tier 1 | `#E6E6F0` | 255 | the subject — the thing itself, and the only tier that goes bold |
+| tier 2 | `#A0A6BB` | 248 | what is true about it |
+| tier 3 | `#7C8296` | 102 | the margin — an age, a count, a hint |
+| amber | `#EECE96` | 222 | **needs a human**, and nothing else |
+| cyan | `#A4D7EA` | 152 | **alive** — in flight this instant |
+| green | `#A2E2BC` | 151 | **money**, only on a figure in dollars |
+| page | `#12121A` | 233 | the ground under every cell of the frame |
+| cursor | `#1D1D28` | 234 | the row the pointer is over |
+| band | `#262633` | 236 | the row the cursor is on |
+
+> **ONE ACCENT PER MEANING, AND THE DESIGN NAMES THE MEANINGS.** Amber for
+> waiting on a person, cyan for in flight, and nothing else on a place is in
+> colour. Green is a unit rather than a signal. Every hierarchy step past the
+> three greys is made with bold, case, indent or air.
+
+Three laws above are answered by place-scoped variants rather than repealed, and
+each carries the owner's name in its own comment:
+
+- `placeGlareCeiling = 15.5`. `#E6E6F0` is the exact white THE GLARE LAW was
+  written about and measures 15.03:1 against `#12121A`. Two facts make it an
+  exception rather than a hole: a place KNOWS its ground because it paints it, and
+  tier 1 on a place is a title rather than prose.
+- `placeSignalBand = 16.0`. The design's own three span **1.9** points; the whole
+  of the spread is the failure hue a place keeps and the design does not name.
+- **REST IS A COLOUR ON A PLACE.** THE GROUND LADDER's reason for refusing a page
+  ground was that the terminal's background is unknowable. The places answer it by
+  bringing their own, so the ladder gains a floor step there and the cursor and
+  band steps are measured against a real number. Nothing is painted below ANSI256.
+
+The one nudged index in the whole tree is here: `#262633`'s true neighbour is 235,
+which is `hueCursor`'s, so the band **states** 236 — its own runner-up on the same
+grey ramp. A collision is resolved by moving the index and never the authored
+colour.
+
 ## THE ACCENT BUDGET
 
 > **One lit element per screen.**

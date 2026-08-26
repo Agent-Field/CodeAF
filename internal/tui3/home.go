@@ -192,9 +192,37 @@ const homeGutter = 4
 // rail's own ✓ ([glyphDone]) — instead of the empty circle, which is the whole
 // of home's "while you were away": no notification, no banner, one cell of one
 // row saying something finished here (see [homeView.seen]).
+//
+// ── THE TWO MARKS THE DESIGN RE-SPELLED (owner-signed, FIDELITY.md item 4) ───
+//
+// `?` AND NOT `▲` FOR A ROW THAT HAS STOPPED ON YOU. The triangle was this
+// screen's own invention and it was the wrong shape twice over: a warning
+// triangle is what a machine draws when IT has a problem, and this row's problem
+// is that it is waiting for an answer. The design reaches for the slot
+// internal/tui2/tokens already holds for exactly this — [tokens.GlyphNeedsHuman],
+// whose own comment reads `"?" // always amber (5.16)` — so the mark, the hue and
+// the meaning were already agreed everywhere except here. It is `?` on every
+// place now, in the amber (styles.go's [hueAskPlace]), and SCREEN 2b, 2f, 3b and
+// 3c all draw it that way.
+//
+// `◐` AND NOT `●` FOR A ROW WITH WORK RUNNING. The filled circle said "there is
+// something here", which is true of every row on the list; the half-filled one
+// says "this is part way through", which is the fact. It is
+// [tokens.GlyphWorking], and the design draws it on every moving row of every
+// screen it drew.
+//
+// AND THE ONE SPINNER SURVIVES BOTH. homespinner.go's law is that EXACTLY ONE
+// ROW ANIMATES however many are moving, and it animates in braille
+// ([app.homeSpinGlyph]) rather than in this alphabet. So `◐` is the RESTING mark
+// — what every other moving row wears, and what the animating row goes back to
+// the moment it stops being the newest — and the braille cell is still the only
+// thing on this screen that moves. Two marks for one state is not a second
+// vocabulary: it is the difference between "this is running" and "this is what
+// the machine is doing at this instant", which is the distinction the one-spinner
+// law exists to draw.
 const (
-	homeAskGlyph   = "▲"
-	homeLiveGlyph  = "●"
+	homeAskGlyph   = "?"
+	homeLiveGlyph  = "◐"
 	homeStuckGlyph = "◌"
 	homeIdleGlyph  = "○"
 
@@ -3096,6 +3124,14 @@ func (a *app) homeHover(x, y int) {
 // hover both index what this returned, so a click cannot land on a row the
 // draw did not put there.
 func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
+	// HOME IS A PLACE, SO IT PAINTS FROM THE PLACE LADDER (styles.go's
+	// [palette.onPlaces]). The swap is made here as well as in pages.go's own
+	// frame because the phone tier below never reaches that frame — it is home's
+	// own shape at forty columns — and a home that changed colour when the window
+	// was narrowed would be two products.
+	was := a.pal
+	a.pal = was.onPlaces()
+	defer func() { a.pal = was }()
 	// phone lane: under sixty columns this screen is an inbox and a sheet
 	// (homephone.go). THE SHAPE IS SETTLED BEFORE THE FRAME IS DRAWN, so a
 	// terminal dragged across the breakpoint — a phone being rotated — is rebuilt
@@ -3112,7 +3148,11 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		a.home.build()
 	}
 	if a.home.phone {
-		return a.homePhoneFrame(width, height)
+		// The phone frame builds its own rows rather than going through
+		// [placeFrame], so it grounds them itself — the page is the frame's, and
+		// every tier of home owes the person the same page.
+		lines, hits, caretX, caretY := a.homePhoneFrame(width, height)
+		return a.pal.groundRows(lines, width), hits, caretX, caretY
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
 	// The pulse, the tab bar, the rule, the composer with its scope chip, the
@@ -3565,7 +3605,11 @@ func homeNoteInk(row session.SessionRow, shut bool) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 
@@ -3637,7 +3681,11 @@ func (h *homeView) projectInk(project session.Project) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 

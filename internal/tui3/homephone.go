@@ -502,7 +502,11 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 		a.caret = false
 	} else {
 		text := a.home.box.String()
-		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
+		// THE PERSON'S OWN GLYPH IS STRUCTURE ON A PLACE, NOT AN ACCENT. It is
+		// the same cell on every frame home has ever drawn, and the design spends
+		// colour on the two live states alone (styles.go's THE ONE-ACCENT LAW),
+		// so the prompt takes the second tier and the words keep the first.
+		add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1)
 		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
 		if caretX > width-1 {
 			caretX = width - 1

@@ -29,14 +29,14 @@ on it takes the keyboard back in.
 Every `ask here` is one row, marked `?`, named with the first line of what you asked:
 
 ```
- ? remind me at 6 to leave                          ▲ waiting on you
+ ? remind me at 6 to leave                          ? waiting on you
  ? what did we decide about pricing                 ⠹ working · 4s
  ? tell me when CI goes red                         ∙ stood
 ```
 
 - **`⠹ working · 4s`** — a turn is in flight. The spinner turns and the clock counts up.
-- **`▲ waiting on you`** — a card is up and nobody has answered it. It is the only tail
-  drawn in the bright ink, and it is the same `▲` a conversation stopped on a question
+- **`? waiting on you`** — a card is up and nobody has answered it. It is the only tail
+  drawn in the bright ink, and it is the same `?` a conversation stopped on a question
   wears, because it is the same fact: this row costs one keystroke to unblock.
 - **`∙ stood`** — something now stands because of it.
 - **`∙ answered`** — it finished and nothing standing came of it.
@@ -94,7 +94,7 @@ does opening another conversation, walking the list, looking at a different proj
 letting the card sit there overnight. There is **no clock on the card** and never was: it
 waits while you read it, and while you do anything else.
 
-Open home again and the row is where you left it, still `▲ waiting on you`, still
+Open home again and the row is where you left it, still `? waiting on you`, still
 answerable with `1`, `2` or `3`. The only two things that end an exchange are described
 under *When does an ask here exchange go away* below.
 
@@ -245,7 +245,7 @@ created until you answer it:
 
 Those four answers are the only four. There is no default: a card nobody answers creates
 nothing — and nothing answers it for you. **There is no clock on it.** It waits, and its row
-on home says `▲ waiting on you` for as long as it does.
+on home says `? waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
