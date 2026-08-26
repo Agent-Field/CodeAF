@@ -212,13 +212,31 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		}
 		a.home.cursor = i
 		a.homeEnter()
-		// THE DOOR WAS WALKED THROUGH AND THE PLACE ANSWERED. This window holds
-		// no agent with anything standing over it, so the standing place refuses
-		// in its own words and the router puts home back (pages.go's [app.showPage])
-		// — and that refusal is the proof the key reached the place at all.
-		if !strings.Contains(homeNotes(a), standNothingWord) {
-			t.Fatalf("the standing ledger line opened nothing: %q", homeNotes(a))
+		// THE DOOR WAS WALKED THROUGH AND THE PLACE ANSWERED — with the watch the
+		// line was about, on the shelf that holds it.
+		//
+		// This assertion used to be the OPPOSITE fact: this window holds no agent,
+		// so the standing place refused in its own words and the refusal was the
+		// proof the key had reached it. THE FOURTH SHELF ENDED THAT. A machine
+		// holding an order in another project now has a page to open, and the
+		// conversation seam coming back empty is no longer an answer about the
+		// machine (place_standing_test.go's [TestAnOrderInAnotherProjectReachesTheStandingPage]
+		// states the fault it repairs). The law under the old assertion is
+		// untouched — the line is a door — so it is asked for directly: the place
+		// is what the frame is now on, and the watch is on it. The refusal itself
+		// is still pinned where it is still true, over a machine holding nothing
+		// at all ([standNothingWord]'s own tests).
+		if a.page != pageStanding || !a.standPage.up {
+			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
+				a.page, homeNotes(a))
 		}
+		if screen := standPageScreen(a); !strings.Contains(screen, "the 6am repo watch") {
+			t.Fatalf("the door opened a place without the watch it was about:\n%s", screen)
+		}
+		// HOME IS PUT BACK before the walk goes on, because the rest of this test
+		// is about the ledger's other lines and a place left standing would have
+		// them pressed into the wrong keyboard.
+		a.showPage(pageHome)
 	}
 	if !doors["standing"] || !doors["tasks"] {
 		t.Fatalf("the ledger drew %v, and both the watch and the landed work happened", doors)
