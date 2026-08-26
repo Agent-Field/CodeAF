@@ -110,6 +110,12 @@ type Client struct {
 	// write must not be held up by a map lookup and vice versa.
 	writeMu sync.Mutex
 
+	// made counts every call this client has PUT ON THE WIRE, and it exists for
+	// the perf pins and for nothing else (PERF.md's doctrine: a law about a
+	// round trip is a count, never a stopwatch). One atomic add behind a door
+	// that already existed is the whole cost.
+	made atomic.Uint64
+
 	// seq mints call ids. The engine mints stream ids, so the two spaces never
 	// collide even though both are uint64.
 	seq atomic.Uint64
@@ -298,6 +304,14 @@ func (c *Client) Live() (uint64, <-chan session.Event) {
 	}
 	return id, c.stream(id).events()
 }
+
+// CallsMade is how many calls this client has put on the wire since it was
+// dialled, and it is here for ONE reason: the laws that say a frame and a
+// pointer cost nothing on the far machine are counts of round trips, and
+// PERF.md's doctrine forbids proving such a thing with a clock. It counts calls
+// and never stream frames, because a turn's events are the work a person asked
+// for and the getters are the work nobody did.
+func (c *Client) CallsMade() uint64 { return c.made.Load() }
 
 // LinkNote is the quiet true sentence about the connection right now, and the
 // empty string whenever there is nothing to say — which is almost always, and
@@ -575,6 +589,7 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		payload = encoded
 	}
 	id := c.seq.Add(1)
+	c.made.Add(1)
 	waiting := make(chan result, 1)
 
 	c.mu.Lock()

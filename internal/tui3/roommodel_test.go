@@ -134,6 +134,7 @@ func TestANodeWithNoPublishedModelNamesNoModelAtAll(t *testing.T) {
 func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	fake.levels = map[string]string{"deepseek/deepseek-v4-flash": "high"}
+	settleLevels(a, "deepseek/deepseek-v4-flash")
 
 	line := statusText(a)
 	if strings.Contains(line, ":high") {

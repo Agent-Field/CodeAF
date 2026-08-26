@@ -359,6 +359,11 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if agent != nil {
 		a.model = agent.Model()
 		a.title = strings.TrimSpace(agent.Title())
+		// THE DIAL BELONGS TO THE AGENT, so what was held about the last one is
+		// dropped and this one's current model is asked about directly — the
+		// third of the three seeded moments (reasoninglevel.go).
+		a.forgetLevels()
+		a.learnLevel(a.model)
 	}
 	a.hudStale = true
 	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
