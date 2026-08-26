@@ -407,7 +407,14 @@ const (
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
 	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
-	checkpointDigestSaid    = "THE LAST THING SAID"
+	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
+	// has come back since (novelty.go's [workClock]). It is the fact a reader of
+	// a ledger cannot get from the ledger — ninety lines of activity look the
+	// same whether the thing being made moved on step three or on step
+	// eighty-nine — and it is stated rather than judged, so the reader is left
+	// to decide what it means for the ask.
+	checkpointDigestMoved = "HOW THE WORK HAS MOVED"
+	checkpointDigestSaid  = "THE LAST THING SAID"
 )
 
 // checkpointResultArrow joins one call to what came back from it. It is a
@@ -1241,7 +1248,7 @@ const (
 // AN EMPTY DIGEST IS THE HONEST ANSWER TO AN EMPTY TURN, and [Agent.readMark]
 // spends nothing on one.
 func checkpointDigest(asked string, messages []ai.Message) string {
-	ledger, written, results := checkpointLedger(messages)
+	ledger, written, results, moved := checkpointLedger(messages)
 
 	var head strings.Builder
 	if asked = strings.TrimSpace(asked); asked != "" {
@@ -1260,6 +1267,15 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		tail.WriteString(checkpointDigestWritten)
 		tail.WriteString("\n")
 		tail.WriteString(strings.Join(written, "\n"))
+		tail.WriteString("\n\n")
+	}
+	// IT RIDES IN THE TAIL, which is the section fitted before the ledger, so the
+	// one line that says whether the work is moving cannot be squeezed out by
+	// ninety lines that say it was busy.
+	if line := moved.digestLine(); line != "" {
+		tail.WriteString(checkpointDigestMoved)
+		tail.WriteString("\n")
+		tail.WriteString(line)
 		tail.WriteString("\n\n")
 	}
 	if said := clip(checkpointLastSaid(messages), checkpointSaidBytes); said != "" {
@@ -1373,8 +1389,16 @@ func checkpointNewestThatFit(lines []string, room int) ([]string, int) {
 // names no call this walk has seen is dropped rather than attached to whichever
 // line happens to be beside it: a digest that credited one tool's output to
 // another tool's line would be evidence that is worse than none.
-func checkpointLedger(messages []ai.Message) (ledger, written, results []string) {
+func checkpointLedger(messages []ai.Message) (ledger, written, results []string, moved workClock) {
 	seen := make(map[string]bool)
+	// The clock is folded in on the same walk and for the same reason the other
+	// three are: it is the same facts read a fourth way — a call is a step, a
+	// writer's call is the work moving, a result is lines that were or were not
+	// new (novelty.go).
+	lines := newLineNovelty()
+	// The step each call took, by id, so a result that arrives after a later
+	// batch's write is not counted against it.
+	at := make(map[string]int)
 	// The line each call wrote, by id, so its result can be printed under the same
 	// words the ledger used and a reader can match the two.
 	calls := make(map[string]string)
@@ -1389,14 +1413,23 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string)
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
+			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
 				calls[id] = line
+				at[id] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
 			}
 			path := checkpointArgumentNamed(call.Function.Arguments, "path")
-			if path == "" || seen[path] {
+			if path == "" {
+				continue
+			}
+			// THE CLOCK MOVES ON EVERY WRITE AND THE LIST ONLY ON A NEW NAME. A
+			// file written for the third time is one entry under WHAT HAS BEEN
+			// WRITTEN and three separate moments at which the work changed.
+			moved.wrote()
+			if seen[path] {
 				continue
 			}
 			seen[path] = true
@@ -1405,7 +1438,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string)
 		if message.Role != "tool" {
 			continue
 		}
-		line, known := calls[strings.TrimSpace(message.ToolCallID)]
+		id := strings.TrimSpace(message.ToolCallID)
+		line, known := calls[id]
 		if !known {
 			continue
 		}
@@ -1413,11 +1447,15 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string)
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
+		if at[id] > moved.changedAt {
+			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
+			moved.read(fresh, weighed)
+		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
 		}
 	}
-	return ledger, written, results
+	return ledger, written, results, moved
 }
 
 // checkpointResultTail is the END of what one call returned, bounded by

@@ -407,17 +407,30 @@ the task's work. Job logs and stubbed tool results are not even there any more �
 kept with the conversation, under its own `logs/` — and the exclusion stays as the floor
 under everything else aforge may leave in a checkout.
 
-**It learned something.** A read-only call aimed at a target the task has not aimed at
-before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,
-`recall`, `view_image`, `manual`, `tasks`, `settings`, `list_harnesses`, `services`,
-`gmail_read`, `gmail_search`, `calendar_list` — or a `bash` running a command not run
-before. A failed one still counts as learning: finding out that something does not work is
-finding something out.
+**It learned something.** A read-only call — `read`, `read_document`, `ls`, `grep`, `find`,
+`web_search`, `web_fetch`, `jobs`, `recall`, `view_image`, `manual`, `tasks`, `settings`,
+`list_harnesses`, `services`, `gmail_read`, `gmail_search`, `calendar_list` — or a `bash`,
+**whose answer was more new than old**. A failed one still counts as learning: finding out
+that something does not work is finding something out.
 
-So what actually fires the counter is **the same call again, changing nothing and teaching
-nothing** — the same search six times, the same failing edit retried, a command already
-run. `note`, `forget`, `track`, `commit` and `change_setting` are deliberately not
-progress: a task writing its own memory again has not learned anything.
+That last part is measured **line by line, not result by result**. aforge remembers the
+lines a task has already been shown, and a result counts as teaching it something when
+more than half of its lines are ones it has never been given. Nothing is stripped out or
+excused first: a line is the same line, or it is not.
+
+The reason is a shape that looks like work and is not. A task re-runs its own check
+against something it has stopped changing; the check prints the time it started, so every
+run comes back with one new line in sixteen and fifteen the task already had. Counting
+whole results, that is six discoveries in a row and the task can spin for hours. Counting
+lines, it is what it is — six per cent new — and the counter fires. The other side of the
+same rule is that a check whose numbers actually moved is a discovery, however much of its
+output is boilerplate.
+
+So what actually fires the counter is **a step that changed nothing and brought back
+almost nothing new** — the same search six times, the same failing edit retried, a
+measurement re-run over work that has not moved. `note`, `forget`, `track`, `commit` and
+`change_setting` are deliberately not progress: a task writing its own memory again has not
+learned anything.
 
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
@@ -437,6 +450,16 @@ asked of the task, and its clock does not run: its row shows `waiting · its par
 next thing it is asked is the one turn that carries every part's report at once. The counter
 starts again from zero when the last report lands, so a task that spins over the *fold* is
 caught exactly as any other is.
+
+**A task that repeats itself is told what the work has been doing.** Before it is stopped it
+gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
+*the work has not changed since step 12; nine results since brought nothing new*. aforge
+knows which steps changed the deliverable — the files the task's own `write`, `edit` or
+generating hands saved — so it can say when that last happened and what the steps since
+brought back. The same line appears in the short account a checkpoint hands to whoever
+looks at the task: `work last changed: step 12 · results since: 9 · new lines since: 4%`.
+It is a description and not a rule: nothing is stopped for that fact alone, and the only
+threshold that ends anything is still the no-progress counter above.
 
 Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with

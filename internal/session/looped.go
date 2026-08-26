@@ -123,6 +123,10 @@ type nudge struct {
 	// nth is which nudge of this turn it is, 1-based. It is what the escalation
 	// law reads.
 	nth int
+	// fact is the structural sentence the turn's [workClock] can say about
+	// itself — when the work last changed, and how much the results since
+	// brought back (novelty.go). It is empty when there is nothing to say.
+	fact string
 }
 
 // loopWatch is one turn's memory of what it has been doing.
@@ -147,6 +151,14 @@ type loopWatch struct {
 	streak map[string]int
 	// nudges is how many nudges this turn has produced.
 	nudges int
+	// clock and lines are the turn's account of ITSELF rather than of its
+	// repetitions: when the work last changed, and how much of what has come
+	// back since was new (novelty.go). Nothing here fires a rule — the two
+	// rules above are the only things that nudge — but a note that says "you
+	// have repeated this three times" is much more useful beside "and the work
+	// has not changed since step 12".
+	clock workClock
+	lines *lineNovelty
 }
 
 func newLoopWatch() *loopWatch {
@@ -154,6 +166,7 @@ func newLoopWatch() *loopWatch {
 		errors: make(map[string]int, 4),
 		named:  make(map[string]bool, 2),
 		streak: make(map[string]int, 2),
+		lines:  newLineNovelty(),
 	}
 }
 
@@ -197,6 +210,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 		if index < len(results) && results[index].harness {
 			continue
 		}
+		w.count(call, results, index)
 		signature := callSignature(call)
 		w.recent = append(w.recent, signature)
 		if len(w.recent) > loopWindow {
@@ -220,7 +234,33 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 	}
 	w.nudges++
 	found.nth = w.nudges
+	found.fact = w.clock.note()
 	return found, true
+}
+
+// count folds one call and its result into the turn's clock: a step taken, what
+// the result brought back, and whether the work itself moved.
+//
+// THE WORK MOVING IS A SUCCESSFUL CALL TO A HAND THAT SAVES A FILE
+// ([savingTools], task_run.go) — the same rule the landing stages a node's
+// deliverable by ([stageTaskWork]), so the two cannot disagree about what the
+// work is. A failed edit changed nothing; a command that dirtied the directory
+// wrote droppings the landing would not take either.
+//
+// AND A HAND THAT SAVED SOMETHING IS INFORMATION BY CONSTRUCTION, whatever its
+// confirmation said. `wrote 12 lines` is boilerplate the second time, so its
+// bytes are weighed and then the clock is reset around them: what is being
+// counted since is what came back AFTER the world last changed.
+func (w *loopWatch) count(call ai.ToolCall, results []toolResult, index int) {
+	w.clock.step()
+	failed := index >= len(results) || results[index].isError
+	if index < len(results) {
+		fresh, lines := w.lines.measure(call.Function.Name, stripJobFooter(results[index].text))
+		w.clock.read(fresh, lines)
+	}
+	if savingTools[call.Function.Name] && !failed {
+		w.clock.wrote()
+	}
 }
 
 // speakAbout reports whether a signature that has just tipped a rule over is
@@ -313,10 +353,18 @@ func nudgeNote(n nudge) string {
 		what = n.tool
 		outcome = "and it has failed the same way each time"
 	}
-	return fmt.Sprintf("[stuck] You have repeated %s %d times %s. Rethink your approach: "+
-		"which assumption is wrong, and what is a different way to get this done? "+
-		"If there is no different way, say so and stop rather than trying again.",
-		what, n.count, outcome)
+	note := fmt.Sprintf("[stuck] You have repeated %s %d times %s.", what, n.count, outcome)
+	// AND THEN THE FACT ABOUT THE WORK, when there is one. The repetition is
+	// what the model did; this is what the work did, and it is the half a model
+	// in a measure→measure loop cannot see — every run of its script answered,
+	// every answer looked slightly different, and the thing being measured had
+	// not moved since it started (novelty.go's [workClock]).
+	if n.fact != "" {
+		note += " " + n.fact
+	}
+	return note + " Rethink your approach: " +
+		"which assumption is wrong, and what is a different way to get this done? " +
+		"If there is no different way, say so and stop rather than trying again."
 }
 
 // loopRule is how the escalated question names itself to the person, in the slot
