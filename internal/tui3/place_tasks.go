@@ -633,8 +633,6 @@ func (p *tasksPlace) window(a *app, key string) bool {
 	return true
 }
 
-func (a *app) tasksPlaceWindow(key string) bool { return a.taskSheet.window(a, key) }
-
 // ── the pointer ─────────────────────────────────────────────────────────────
 
 // taskSheetPress is a click inside the place: a row opens, and anything else

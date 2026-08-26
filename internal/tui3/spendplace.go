@@ -215,17 +215,6 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	return out, stops
 }
 
-func (r spendReading) windowHeader() string {
-	parts := []string{r.window.Label()}
-	if r.totals.USD > 0 {
-		parts = append(parts, spendMoneyWord(r.totals.USD))
-	}
-	if r.totals.Tokens > 0 {
-		parts = append(parts, tokenWord(r.totals.Tokens)+" tokens")
-	}
-	return strings.Join(parts, " · ")
-}
-
 func (r spendReading) windowHeaderRow(width int, pal palette) string {
 	var left strings.Builder
 	left.WriteString(pal.ink(r.window.Label()))
