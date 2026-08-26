@@ -16,6 +16,18 @@
 # sleep. Nothing in here is allowed to be fatal, which is why every step is
 # guarded and the whole script runs with errors non-fatal.
 #
+# IT COMPILES WITH THE AGENT'S COMPILER, NOT THE IMAGE'S. The agent may upgrade
+# its toolchain — legally, officially, and today almost unavoidably, since
+# lsp-types -> url 2.5.8 -> idna -> icu 2.3 needs rustc 1.88 and the image ships
+# 1.86.0 — and the real verifier inherits that upgrade because it runs in the
+# agent's own container. A scorer that always used the image's 1.86.0 would
+# report 0.0 for a workspace the benchmark scores properly: a curve that
+# UNDER-reads, which is the one failure mode a curve must not have. So every
+# snapshot asks the agent's container what its default toolchain is
+# (toolchain.sh detect) and installs it here first. The toolchains live in a
+# per-cell docker volume, so the first snapshot of a cell pays for the download
+# and no later one does, and the rustc actually used is written into the row.
+#
 # The curve is INDICATIVE, NOT THE VERDICT. It scores a fresh container's
 # pristine /workspace/java and /workspace/golden.jsonl, so a snapshot cannot show
 # the integrity or cached-golden failures that only the real verifier — which
@@ -38,6 +50,14 @@ CURVE="$CELL/curve.csv"
 # the same registry lock. It is the SNAPSHOT containers' cache only — the agent's
 # own container never sees it, so nothing is warmed for the run under test.
 VOL="oneroad-mar-cargo-$(basename "$CELL")"
+# The rustup store is a SECOND per-cell volume, mounted at the image's own
+# /root/.rustup. A named volume is populated from the image on first use, so the
+# scorer starts with the shipped 1.86.0 already there and only ever downloads the
+# delta the agent chose — once for the cell, not once an hour. Per-cell rather
+# than shared because two cells calling `rustup toolchain install` on one store
+# at the same second is a race nobody needs.
+TCVOL="oneroad-mar-rustup-$(basename "$CELL")"
+MAR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '[%s] snapshot: %s\n' "$(date +%H:%M:%S)" "$*"; }
 
@@ -55,7 +75,7 @@ with open(path, "a", newline="") as fh:
 PY
 }
 
-cleanup() { docker volume rm "$VOL" >/dev/null 2>&1; }
+cleanup() { docker volume rm "$VOL" "$TCVOL" >/dev/null 2>&1; }
 trap cleanup EXIT
 
 # THE ARMS ARE STAGGERED SO THEIR SCORERS NEVER PILE UP. Three cells launched
@@ -122,7 +142,7 @@ while :; do
   SC="oneroad-mar-snap-$(basename "$CELL")-$TAG"
   docker rm -f "$SC" >/dev/null 2>&1
   if ! docker run -d --name "$SC" --cpus "$SNAP_CPUS" --memory "$SNAP_MEM" \
-        -v "$DIR/logs:/logs" -v "$VOL:/root/.cargo/registry" \
+        -v "$DIR/logs:/logs" -v "$VOL:/root/.cargo/registry" -v "$TCVOL:/root/.rustup" \
         --entrypoint sleep "$IMAGE" infinity >/dev/null 2>"$DIR/run.err"; then
     log "$TAG scorer container failed to start"; row "$ELAPSED" 0 0 0 0 "scorer container failed to start"; continue
   fi
@@ -139,6 +159,22 @@ while :; do
   # the agent's arrangement arrives intact and is tested rather than assumed.
   docker exec "$SC" sh -c \
     "rm -rf '$PARENT' && tar xzf /opt/snap.tgz -C '$(dirname "$PARENT")' && rm -f /opt/snap.tgz" >/dev/null 2>&1
+
+  # THE AGENT'S COMPILER, ADOPTED. Detection is done fresh every hour because the
+  # agent can upgrade at any point in ten hours, and the curve has to follow it.
+  # A detection or install that fails is NOT fatal — the scorer falls back to
+  # whatever the volume already has, and the row says which rustc that was, so a
+  # reader can see the fallback rather than being silently told a lower number.
+  SNAP_TC="$(bash "$MAR/toolchain.sh" detect "$CONTAINER" 2>/dev/null | awk '{print $1}')"
+  if [ -n "$SNAP_TC" ]; then
+    SCORER_RUSTC="$(bash "$MAR/toolchain.sh" adopt "$SC" "$SNAP_TC" 2>>"$DIR/toolchain.log")"
+  else
+    SCORER_RUSTC=""
+  fi
+  if [ -z "$SCORER_RUSTC" ]; then
+    SCORER_RUSTC="$(docker exec "$SC" sh -c 'PATH=/root/.cargo/bin:$PATH rustc --version' 2>/dev/null)"
+    log "$TAG could not adopt '${SNAP_TC:-<undetected>}' — scoring with ${SCORER_RUSTC:-unknown}"
+  fi
 
   timeout "$CAP" docker exec "$SC" bash /tests/test.sh > "$DIR/verify.log" 2>&1
   VC=$?
@@ -179,8 +215,10 @@ PY
       NOTE="verifier scored nothing (no binary at the expected path)"
     fi
   fi
-  row "$ELAPSED" "$P" "$PA" "$TO" "$RW" "$NOTE"
-  log "$TAG partial=$P passed=$PA/$TO reward=$RW ${NOTE:+($NOTE)}"
+  # The compiler is part of the reading, not a footnote to it: two rows with the
+  # same elapsed time and different rustc are two different measurements.
+  row "$ELAPSED" "$P" "$PA" "$TO" "$RW" "${NOTE:+$NOTE — }${SCORER_RUSTC:-rustc unknown}"
+  log "$TAG partial=$P passed=$PA/$TO reward=$RW [${SCORER_RUSTC:-rustc unknown}] ${NOTE:+($NOTE)}"
   # The tarball is the bulky part and the agent's own files are what a reader
   # wants, so it is unpacked beside its own score and dropped. The corpus is left
   # out of the unpacked copy — java/ and golden.jsonl are thirty megabytes of the

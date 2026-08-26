@@ -81,8 +81,47 @@ docker exec "$CONTAINER" sh -c \
 sleep 2
 
 docker cp "$TASKDIR/tests" "$CONTAINER:/tests" >/dev/null || { say "could not stage /tests"; exit 1; }
+
+# ── WHAT THIS CELL ACTUALLY HAD, READ OFF THE CONTAINER ─────────────────────
+# finish.sh ends a cell that is ALREADY UP, and a cell that is already up may
+# have been launched before the egress allowlist and the toolchain fix existed —
+# the six seeds of 2026-08-25/26 were. So neither is assumed here: the network
+# policy is read from the container's own netns, and the toolchain split is read
+# from the filesystem. A cell whose agent installed its own rust into
+# /chome/.rustup is verified WITHOUT the pin, because 1.86.0 is not the compiler
+# that workspace was built with and the benchmark's own verifier would not have
+# had it either. Its 0.0 is a real reading about a real cell.
+if bash "$MAR/netlock.sh" show "$CONTAINER" 2>/dev/null | grep -q ONEROAD_ALLOW; then
+  NETWORK_DEVIATION="egress allowlist enforced in the container netns (host iptables via nsenter): task.toml's five hosts — crates.io, index.crates.io, static.crates.io, github.com, static.rust-lang.org — plus openrouter.ai for the model API, which the benchmark's own agent phase also adds. REMAINING DEVIATION: openrouter.ai is reachable, and the allowlist is by resolved address, so it cannot separate static.rust-lang.org from the crate registries (same Fastly address)"
+else
+  NETWORK_DEVIATION="default docker bridge, FULL EGRESS — this cell was started before the allowlist existed, or with NETLOCK=0"
+fi
+export NETWORK_DEVIATION
+say "$ARM/$TASK: network was — $NETWORK_DEVIATION"
+
+# ── THE COMPILER THIS CELL'S AGENT ENDED ON, WHEREVER IT PUT IT ─────────────
+# Officially the agent may upgrade its toolchain and the verifier, sharing
+# /root/.rustup in the same container, inherits it. Cells launched before the fix
+# upgraded into /chome/.rustup instead, where the verifier could not see it —
+# which is the runner's fault, not the agent's, and the official-equivalent state
+# is "the agent upgraded". So the verifier is pointed at whatever store this
+# cell's agent actually used. toolchain.sh looks at /chome first for exactly this
+# reason; for a cell run after the fix it answers /root/.rustup and these two
+# variables are the image's own defaults.
+read -r AGENT_TC AGENT_RUSTUP_HOME AGENT_CARGO_HOME <<<"$(bash "$MAR/toolchain.sh" detect "$CONTAINER" 2>/dev/null)"
+AGENT_RUSTUP_HOME="${AGENT_RUSTUP_HOME:-/root/.rustup}"; AGENT_CARGO_HOME="${AGENT_CARGO_HOME:-/root/.cargo}"
+IMAGE_TOOLCHAIN="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
+IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/dev/null' 2>/dev/null)"
+case "$AGENT_RUSTUP_HOME" in
+  /chome/*) say "$ARM/$TASK: SPLIT HOME cell — the agent's rustup store is $AGENT_RUSTUP_HOME (${AGENT_TC:-unknown}); the verifier is pointed at it, which is the state the official run would have had in /root/.rustup" ;;
+  *)        say "$ARM/$TASK: verifying with the agent's own toolchain — ${AGENT_TC:-unknown} from $AGENT_RUSTUP_HOME" ;;
+esac
+
 VSTART=$(date +%s)
-timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" "$CONTAINER" bash /oneroad-verify.sh \
+timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
+  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" \
+  -e "RUSTUP_HOME=$AGENT_RUSTUP_HOME" -e "CARGO_HOME=$AGENT_CARGO_HOME" \
+  "$CONTAINER" bash /oneroad-verify.sh \
   > "$CELL/verify.log" 2>&1
 VCODE=$?
 VWALL=$(( $(date +%s) - VSTART ))
@@ -92,6 +131,8 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
 AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
+AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="${CELL_SECONDS:-36000}" \
 python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCODE"
 
@@ -102,7 +143,21 @@ python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCO
 # runner directory has argv `bash cell.sh <arm> <task>` and one launched by
 # wave.sh has the absolute path. A pattern that assumed the second would silently
 # fail to release the first, leaving it polling a container that no longer exists.
-CELLPID="$(pgrep -f "cell\.sh $ARM $TASK" | head -1)"
+# THE PID IS THE CELL'S OWN, NEVER THE FIRST MATCH. `pgrep … | head -1` released the
+# oldest cell.sh of the arm and tore down two unrelated seeds (s4, s5 on
+# 2026-08-26). The cell writes its pid to $CELL/cell.pid at birth; a cell born
+# before that line is found by the SEED in its environment; nothing else is
+# acceptable, so with neither the cell is left running and this script says so.
+CELLPID="$(cat "$CELL/cell.pid" 2>/dev/null || true)"
+if [ -z "$CELLPID" ] || ! kill -0 "$CELLPID" 2>/dev/null; then
+  CELLPID=""
+  for pid in $(pgrep -f "cell\.sh $ARM $TASK"); do
+    if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "SEED=$SEED"; then CELLPID="$pid"; break; fi
+  done
+fi
+if [ -z "$CELLPID" ]; then
+  say "$ARM/$TASK/$SEED: no cell.sh pid belongs to this seed — container left as is; end it by hand"
+fi
 if [ -n "$CELLPID" ]; then
   say "$ARM/$TASK: releasing cell.sh pid $CELLPID (its EXIT trap tears the cell down)"
   kill "$CELLPID" 2>/dev/null

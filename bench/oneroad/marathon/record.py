@@ -139,8 +139,36 @@ meta = {
     "workspace_files": workspace_files,
     "timer_at_start": read(os.path.join(CELL, "timer-at-start.txt")).replace("\n", " "),
     "verifier_stages": load(os.path.join(V, "oneroad_stages.json"), {}),
-    "network_deviation": "default docker bridge, full egress — the task asks for a "
-                         "crates.io + model-endpoint allowlist and none was built",
+    # THE DEVIATION IS WHAT THE CELL DID, NOT WHAT THIS FILE ONCE BELIEVED. It
+    # used to be a frozen sentence saying "full egress", which stayed true only
+    # as long as nobody built the allowlist. cell.sh computes it from the run it
+    # actually performed and exports it; the fallback is the honest reading of a
+    # record.py invoked by hand, where nothing is known about the network.
+    "network_deviation": os.environ.get(
+        "NETWORK_DEVIATION",
+        "unknown: this record was written without NETWORK_DEVIATION set, so the "
+        "cell's egress policy was not recorded"),
+    # NOTHING IS PINNED. The agent may upgrade its compiler — officially it runs
+    # as root off /root/.rustup, task.toml allows static.rust-lang.org, and the
+    # verifier inherits whatever it chose because it runs in the same container.
+    # This block records which compiler that turned out to be and which store it
+    # came from, and flags the cells whose store our own split HOME misplaced.
+    "toolchain": {
+        "image_toolchain": os.environ.get("IMAGE_TOOLCHAIN", ""),
+        "image_rustc": os.environ.get("IMAGE_RUSTC", ""),
+        "agent_toolchain": os.environ.get("AGENT_TOOLCHAIN", ""),
+        "rustup_home": os.environ.get("AGENT_RUSTUP_HOME", ""),
+        "cargo_home": os.environ.get("AGENT_CARGO_HOME", ""),
+        "pinned": False,
+        "split_home": os.environ.get("AGENT_RUSTUP_HOME", "").startswith("/chome"),
+        "note": (
+            "cell run before the toolchain fix: HOME=/chome sent the agent's rustup store to "
+            "/chome/.rustup, where tests/test.sh could not see it. The agent upgraded there, "
+            "which is the official-equivalent state (officially the upgrade lands in /root/.rustup "
+            "and the verifier inherits it), so the verifier was pointed at that store."
+            if os.environ.get("AGENT_RUSTUP_HOME", "").startswith("/chome") else
+            "agent and verifier shared one rustup state on the image's own paths, as officially"),
+    },
     "loadavg_before": read(os.path.join(CELL, "loadavg-before")),
     "loadavg_after": read(os.path.join(CELL, "loadavg-after")),
 }
