@@ -24,11 +24,14 @@ package session
 //
 // A CHECK IS A FILE OR IT IS A COMMAND, and the two are not matched the same
 // way. A declared check that names a file the tree really holds is admitted
-// UNDER ANY SPELLING OF THAT FILE — the file on its own, the file with a
-// directory in front of it, the file with one program word before it — because
-// every one of those spellings starts the same file, and which of them a model
-// reaches for is a coin toss the work never had an opinion about. A check that
-// names no file keeps the field-by-field prefix match it always had.
+// UNDER THE SPELLINGS THAT REALLY START THAT FILE — the file on its own, the file
+// with a directory in front of it, the file behind THE INTERPRETER THE FILE
+// ITSELF NAMES — because which of those a model reaches for is a coin toss the
+// work never had an opinion about. Which word may stand in front is read OFF THE
+// FILE (its shebang line, its executable bit) and never off a list of launchers
+// this package keeps, which is why `rm <the check>` is not a spelling of the
+// check. A check that names no file keeps the field-by-field prefix match it
+// always had.
 //
 // ── THE MEASURED FAILURE THAT PUT IT HERE ──
 //
@@ -75,7 +78,8 @@ package session
 // the PATH; the name with a program word in front — refused; the name with a dot
 // and a slash in front — refused. FIVE SPELLINGS OF ONE FILE, and the file was
 // sitting in the tree the whole time. That is [auditDoor.admitsFile]: the door
-// asks WHICH FILE a command names, not how the model typed it.
+// asks WHICH FILE a command names, not how the model typed it — and then asks the
+// file itself which word is entitled to start it ([fileFacts]).
 //
 // The same run's receipts were every one of them `cd /workspace/rust-java-lsp &&
 // cargo build --release 2>&1 | tail -3`, so source (b) admitted NOTHING while the
@@ -89,6 +93,7 @@ package session
 // auditor may run.
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,16 +188,21 @@ type auditDoor struct {
 	files []fileCheck
 }
 
-// fileCheck is a declared check that turned out to NAME A FILE THE TREE HOLDS.
+// fileCheck is a check that turned out to NAME A FILE THE TREE HOLDS, together
+// with everything that decides which spellings of it open.
 //
-// It carries the two things the door needs to be useful about it: `written` is
-// the spelling the WORK used, which is the entry this check occupies in
-// [auditDoor.allowed] and the one the prefix walk must therefore skip; `path` is
-// the file itself, resolved and cleaned, which is the identity every spelling the
-// AUDITOR reaches for is compared against.
+// `written` is the spelling the WORK used — the entry this check occupies in
+// [auditDoor.allowed], the one the prefix walk must therefore skip, and a
+// spelling admitted exactly as it stands, because the work is the one citizen
+// entitled to say how its own check is run. `path` is the file itself, resolved
+// and cleaned, which is the identity every spelling the AUDITOR reaches for is
+// compared against. `interpreter` and `runnable` are what the FILE says about
+// being started, read off it by [fileFacts].
 type fileCheck struct {
-	written string
-	path    string
+	written     string
+	path        string
+	interpreter string
+	runnable    bool
 }
 
 // auditPlace is the two directories a door is read against, and they are two
@@ -247,27 +257,37 @@ func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 }
 
 // admitsFile is the identity half of the gate: does this command NAME A FILE THIS
-// DOOR HOLDS, whatever spelling it reached for?
+// DOOR HOLDS, and is it a spelling that really STARTS that file?
 //
-// TWO SHAPES ARE A FILE BEING RUN, and they are counted by their shape rather
-// than read for their words. One word IS the file — `run_tests.sh`,
-// `./run_tests.sh`, `/abs/path/run_tests.sh`, all of which start it. Two words
-// are a program and the file it is handed; this asks only that ONE word stands in
-// front, never which word, because a rule that knew which words launch a script
-// would be a launcher list, and a launcher list is the constant this whole file
-// replaced. Three words are not a spelling of the check — they are the check plus
-// arguments the work never declared, and this door speaks only for what the work
-// declared.
+// THE FIRST QUESTION IS WHICH FILE, and it is asked of the shape rather than of
+// the words. One word IS the file — `run_tests.sh`, `./run_tests.sh`,
+// `/abs/path/run_tests.sh`, all of which start it. Two words are a program and
+// the file it is handed. Three words are not a spelling of the check at all —
+// they are the check plus arguments the work never declared, and this door speaks
+// only for what the work declared.
 //
-// THE CRITICAL FLOOR STILL STANDS UNDER IT. The word in front is any word, so the
-// same question the work's own receipts are put to is asked of the line the
-// auditor typed: one simple command, and not one a gate told to allow everything
-// would still stop and put to a person.
+// THE SECOND QUESTION IS ASKED OF THE FILE ITSELF, and it is why `rm <the check>`
+// is refused while `<its interpreter> <the check>` is not. Three answers open a
+// spelling, and all three are facts rather than a list this package keeps:
+//
+//   - THE WORK'S OWN SPELLING, exactly as the work wrote or ran it. The one
+//     citizen entitled to say how a check is run is the work that declared it, and
+//     a receipt is the work saying it a second time, in the shell.
+//   - THE FILE ON ITS OWN, when the file is executable or carries a line saying
+//     what starts it. Both are the file stating that running it is a thing that
+//     happens; a file that states neither is data until the work says otherwise.
+//   - THE INTERPRETER THE FILE NAMES, in front of it. A script's first line names
+//     the program that runs it ([fileFacts]), so the file — not this package —
+//     answers which word may stand there. Any path to that program does, since the
+//     name at the end of it is the same program.
+//
+// THE CRITICAL FLOOR STILL STANDS UNDER ALL THREE: one simple command, and not one
+// a gate told to allow everything would still stop and put to a person.
 func (d auditDoor) admitsFile(fields []string) bool {
 	if len(d.files) == 0 {
 		return false
 	}
-	var word string
+	var program, word string
 	switch len(fields) {
 	case 1:
 		word = fields[0]
@@ -277,7 +297,7 @@ func (d auditDoor) admitsFile(fields []string) bool {
 		if strings.HasPrefix(fields[0], "-") {
 			return false
 		}
-		word = fields[1]
+		program, word = fields[0], fields[1]
 	default:
 		return false
 	}
@@ -290,7 +310,17 @@ func (d auditDoor) admitsFile(fields []string) bool {
 		return false
 	}
 	for _, file := range d.files {
-		if sameFile(path, file.path) {
+		if !sameFile(path, file.path) {
+			continue
+		}
+		switch {
+		case command == file.written:
+			return true
+		case program == "":
+			if file.runnable || file.interpreter != "" {
+				return true
+			}
+		case file.interpreter != "" && filepath.Base(program) == file.interpreter:
 			return true
 		}
 	}
@@ -313,16 +343,34 @@ func (d auditDoor) identified(entry string) bool {
 // spelling is how ONE entry of this door is written down for the model to read.
 //
 // A plain command is written as it stands. A FILE CHECK IS WRITTEN AS THE
-// SPELLINGS THAT OPEN IT, because the measured failure was a model reading a door
-// that named a file and then guessing wrong about it five times running. A door
-// that says which shapes it takes is a door walked through on the first try.
+// SPELLINGS THAT OPEN IT, NAMED, because the measured failure was a model reading
+// a door that named a file and then guessing wrong about it five times running. A
+// door that says `<the interpreter> <the file>` is a door walked through on the
+// first try, and a door that cannot say it says THAT instead — a file with no
+// line naming what starts it and no executable bit is run the way the work ran
+// it, or not at all, and a model told so stops guessing at launchers.
 func (d auditDoor) spelling(entry string) string {
 	var said []string
 	for _, file := range d.files {
 		if file.written != entry {
 			continue
 		}
-		said = append(said, "the check "+file.path+" — run it as `"+file.path+"` or `<one word> "+file.path+"`")
+		var ways []string
+		if file.runnable || file.interpreter != "" {
+			ways = append(ways, "`"+file.path+"`")
+		}
+		if file.interpreter != "" {
+			ways = append(ways, "`"+file.interpreter+" "+file.path+"`")
+		}
+		if !containsWord(ways, "`"+entry+"`") {
+			ways = append(ways, "`"+entry+"`")
+		}
+		if file.runnable || file.interpreter != "" {
+			said = append(said, "the check "+file.path+" — run it as "+strings.Join(ways, " or "))
+			continue
+		}
+		said = append(said, "the check "+file.path+" declares no interpreter; run it the way the work ran it, "+
+			strings.Join(ways, " or "))
 	}
 	if len(said) == 0 {
 		return entry
@@ -593,9 +641,75 @@ func fileChecksIn(ground, check string) []fileCheck {
 	}
 	var out []fileCheck
 	for _, path := range groundFiles(ground, word) {
-		out = append(out, fileCheck{written: check, path: path})
+		interpreter, runnable := fileFacts(path)
+		out = append(out, fileCheck{
+			written:     check,
+			path:        path,
+			interpreter: interpreter,
+			runnable:    runnable,
+		})
 	}
 	return out
+}
+
+// fileFacts asks the FILE the question this door is not allowed to answer out of
+// a list: which word starts it, and is starting it a thing this file says happens
+// at all.
+//
+// THE FIRST LINE OF A SCRIPT NAMES ITS OWN INTERPRETER. That is a convention of
+// the operating system rather than of any one language, which is exactly why it
+// is the one read here: the file is the authority on what runs it, so `rm` is not
+// a spelling of a check and the program the file names is, without this package
+// ever learning a launcher's name.
+//
+// THE LINE IS READ BY SHAPE. A hash and a bang, then words; options are skipped,
+// and THE LAST BARE WORD IS THE PROGRAM — a launcher that goes and finds another
+// program puts that program's name after its own, and a launcher that is itself
+// the interpreter is alone on the line, so the last bare word is the right answer
+// to both without either being named. What comes back is its base name, because a
+// program is the same program down every path that reaches it.
+//
+// THE EXECUTABLE BIT IS THE SECOND FACT, and it answers a different question: a
+// file with it set states that running it is a thing that happens, which is what
+// makes `./the-check` a spelling at all. A file with neither fact is data until
+// the work itself says otherwise.
+func fileFacts(path string) (interpreter string, runnable bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	runnable = info.Mode().Perm()&0o111 != 0
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", runnable
+	}
+	defer func() { _ = file.Close() }()
+	// Two hundred bytes is more first line than any shebang has ever needed, and
+	// it keeps this off the end of a file that turned out to be a gigabyte.
+	head := make([]byte, 200)
+	read, err := io.ReadFull(file, head)
+	if read == 0 || (err != nil && err != io.EOF && err != io.ErrUnexpectedEOF) {
+		return "", runnable
+	}
+	line := string(head[:read])
+	if cut := strings.IndexAny(line, "\r\n"); cut >= 0 {
+		line = line[:cut]
+	}
+	if !strings.HasPrefix(line, "#!") {
+		return "", runnable
+	}
+	var named string
+	for _, field := range strings.Fields(line[2:]) {
+		if strings.HasPrefix(field, "-") {
+			continue
+		}
+		named = field
+	}
+	if named == "" {
+		return "", runnable
+	}
+	return filepath.Base(named), runnable
 }
 
 // groundFiles resolves one word of a check to the files it names under the ground

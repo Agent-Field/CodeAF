@@ -477,24 +477,33 @@ of Go verbs plus git, so on a project that was not Go the checker could confirm 
 all, exhausted its five minutes on all six attempts, and every one of them landed the task
 needing your look.
 
-## How the check is spelled — one file, any way you name it
+## How the check is spelled — one file, and the ways that really start it
 
-**A check that names a file in your tree is allowed under every spelling of that file.** If
-your brief says the check is `bash verify.sh` and `verify.sh` is really there, the
-checker may run it as `verify.sh`, as `./verify.sh`, by its full path, or with one
-program word in front of it — `bash verify.sh`, `sh /full/path/verify.sh`,
-`python3 scripts/check.py`. **Which word is in front does not matter**: aforge holds no list
-of launchers, only the rule that exactly one word may precede the file. Spellings are resolved
+**A check that names a file in your tree is allowed under every spelling that really starts
+that file.** If your brief says the check is `bash verify.sh` and `verify.sh` is really there,
+the checker may run it as `verify.sh`, as `./verify.sh`, by its full path, or behind **the
+interpreter the file itself names** — the program on its `#!` first line, or the program that
+line hands to `/usr/bin/env`. So a file beginning `#!/usr/bin/env bash` is allowed
+`bash verify.sh`, one beginning `#!/usr/bin/python3` is allowed `python3 check.py`, and any
+path to that same program counts. **aforge holds no list of launchers**: the file answers the
+question, which is why `rm verify.sh` is not a spelling of your check. Paths are resolved
 against the directory the checker stands in and compared as files, so anything that starts the
-same file is the same check. A wildcard you wrote is resolved the same way — `verify.*`
+same file is the same check, and a wildcard you wrote is resolved the same way — `verify.*`
 names the file it actually matches on disk.
 
-**What is still refused:** a different file (`bash other.sh`), arguments your brief never
-declared (`bash verify.sh --flag` — one word, then the file, and nothing after it), an
-option where the program word should be (`bash -x verify.sh`), and anything composed
-(`cd x && bash verify.sh`). The refusal spells the check out for you, as
-"the check /path/verify.sh — run it as `/path/verify.sh` or `<one word> /path/verify.sh`",
-and the checker is told the same thing before it types anything.
+**A file that says nothing about being run** — no `#!` line and no executable bit — gets no
+program word at all. It is run **the way your work ran it**: the exact spelling your brief
+declared, or the exact command its worker issued. The refusal says so, as "the check
+/path/data.txt declares no interpreter; run it the way the work ran it". A file with the
+executable bit but no `#!` line is allowed its own bare spellings and nothing in front of them.
+
+**What is still refused:** a different file (`bash other.sh`), the wrong interpreter
+(`python3 verify.sh` for a bash script), arguments your brief never declared
+(`bash verify.sh --flag` — one word, then the file, and nothing after it), an option where the
+program word should be (`bash -x verify.sh`), and anything composed (`cd x && bash verify.sh`).
+Where a check can be spelled, the refusal spells it out — "the check /path/verify.sh — run it
+as `/path/verify.sh` or `bash /path/verify.sh`" — and the checker is told the same thing before
+it types anything.
 
 This was measured. On a Rust deliverable the checker was handed a door naming the project's own
 script and then had five spellings of that one file refused in a row — the directory stated
