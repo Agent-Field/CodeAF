@@ -1122,8 +1122,23 @@ func (placeTasks) cursorRow(a *app, rows []placeRow) int {
 	return found
 }
 
-func (placeTasks) enter(a *app) tea.Cmd                { return a.taskSheet.enter(a) }
-func (placeTasks) verbs(a *app) []verb                 { return a.taskSheet.verbs(a) }
+func (placeTasks) enter(a *app) tea.Cmd { return a.taskSheet.enter(a) }
+func (placeTasks) verbs(a *app) []verb  { return a.taskSheet.verbs(a) }
+
+// rowID is the piece of work under the cursor, named by the pair that
+// identifies a row of the project's record — the session that ran it and the
+// node's id inside that session, which is what [session.TaskIndexEntry.ID]'s
+// own header says is needed, ids being unique only within one conversation.
+//
+// The filter, the window and the beat all rebuild this list under the cursor,
+// so the row at index four is not the row that was there when `→` was pressed.
+func (placeTasks) rowID(a *app) string {
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		return ""
+	}
+	return item.entry.SessionID + "\x00" + item.entry.ID
+}
 func (placeTasks) window(a *app, key string) bool      { return a.taskSheet.window(a, key) }
 func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note(a, width) }
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }

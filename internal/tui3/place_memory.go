@@ -686,6 +686,21 @@ func (placeMemory) cursorRow(a *app, rows []placeRow) int {
 	return placeRowAtLine(rows, a.mem.cursor)
 }
 
+// rowID is the line or the shelf under the cursor (pages.go's [place.rowID]).
+// A shelf is named by its scope and a line by the memory's own id, and the two
+// are kept apart by a word in front so that a shelf and a memory that happened
+// to share a name are still two different rows.
+func (placeMemory) rowID(a *app) string {
+	p := &a.mem
+	if scope, ok := p.shelfUnder(); ok {
+		return "shelf\x00" + scope
+	}
+	if memory, ok := p.choice(); ok {
+		return "line\x00" + memory.ID
+	}
+	return ""
+}
+
 // enter opens a shelf, or the card behind one line.
 func (placeMemory) enter(a *app) tea.Cmd {
 	p := &a.mem

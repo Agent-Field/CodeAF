@@ -248,6 +248,14 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "home":
+		return tea.KeyPressMsg{Code: tea.KeyHome}
+	case "end":
+		// THE TWO ENDS OF A LIST, spelled out for the same reason as the two page
+		// keys below: the tasks place binds both to its cursor, and without a
+		// case here a test that "pressed end" pressed the zero key — which is how
+		// a strip that survived them went unnoticed.
+		return tea.KeyPressMsg{Code: tea.KeyEnd}
 	case "pgup":
 		return tea.KeyPressMsg{Code: tea.KeyPgUp}
 	case "pgdown":
