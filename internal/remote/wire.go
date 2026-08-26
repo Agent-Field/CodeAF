@@ -49,7 +49,24 @@ import (
 // version-1 engine would silently interrupt a turn the surface believed was
 // detached — but it does mean this file stayed a superset rather than becoming
 // a second protocol.
-const Version = 3
+//
+// VERSION 4 GIVES THE ROOM ONE KEYBOARD. Version 2 let several surfaces attach
+// to one conversation and version 3 left it at that: every one of them could
+// type, and the only arbiter was the engine's own "a turn is already running"
+// refusal — so two windows on one conversation raced, and neither screen said
+// the other existed. Version 4 names a DRIVER, and the whole delta is three
+// things:
+//
+//   - [Hello.Surface] carries the surface machine's short name, so a screen can
+//     say WHICH window has the keyboard rather than that some window does.
+//   - [Welcome.Driver] and the "driver" frame say who holds it, told to each
+//     surface as that surface should read it, and the engine is the only thing
+//     that decides.
+//   - [MethodTake] moves it here in one round trip, and [Hello.Back] is how a
+//     surface that merely lost its link says "I am not a new window" — because
+//     the keyboard follows the newest ARRIVAL, and a redial in the background
+//     must not steal it from a machine the person has actually walked to.
+const Version = 4
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -200,6 +217,24 @@ const (
 	// DISK, and the conversation learns of it only when a person mentions it.
 	// The lane for a person's own message with a file on it is still /attach.
 	MethodDepositFile = "Deposit.File" // WireFile → DepositedFile
+
+	// ── version 4 ───────────────────────────────────────────────────────────
+
+	// MethodTake is a surface asking for the keyboard back, and it is the whole
+	// of what a watcher can do besides watch.
+	//
+	// IT IS ONE ROUND TRIP AND NEVER A RECONNECT. A person who walked back to a
+	// machine and pressed enter must be typing a moment later, not waiting on a
+	// handshake — so taking the keyboard moves one field on the engine and fans
+	// one frame out to the room. The connection underneath it never moved.
+	//
+	// The ENGINE decides, and it is the only thing that does: it answers this,
+	// it tells every surface what changed ([Driver]), and it refuses a Submit
+	// from a surface that is not the driver. A surface that decided locally that
+	// it was now driving would be the second authority on a fact that can only
+	// have one, and the failure would be two windows both believing they had the
+	// keyboard.
+	MethodTake = "Take" // nothing → nothing
 )
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -235,6 +270,34 @@ type Hello struct {
 	// answered with nothing rather than with an error: the transcript is the
 	// authority on a finished turn, and the surface reads that anyway.
 	Resume []StreamCursor `json:"resume,omitempty"`
+
+	// ── version 4 ───────────────────────────────────────────────────────────
+
+	// Surface is this machine's short name — `macbook`, `spark` — as
+	// [MachineName] reads it off os.Hostname.
+	//
+	// IT EXISTS SO A SCREEN CAN NAME THE WINDOW THAT HAS THE KEYBOARD. "somebody
+	// else is typing" is a sentence that makes a person hunt; "typing from spark
+	// now" is one they can act on, because they know where spark is. Two windows
+	// on ONE machine send the same name, which is how the engine can tell the
+	// far desk from the forgotten terminal behind this one.
+	//
+	// IT IS A LABEL AND NEVER AN IDENTITY. Nothing is authorized by it — a
+	// connection is already whatever ssh or a pinned device key made it — and
+	// the engine sanitizes it before it is drawn ([machineLabel]) because it is
+	// text one machine sends for another machine's screen.
+	Surface string `json:"surface,omitempty"`
+
+	// Back says this surface has been in this conversation before and is coming
+	// back from a link that dropped, rather than arriving for the first time.
+	//
+	// IT IS THE ONE THING THAT KEEPS "THE NEWEST WINDOW DRIVES" HONEST. A redial
+	// is an attach the person did not make: they closed a laptop lid in one city
+	// and started typing in another, and the lid's machine reconnecting in the
+	// background half an hour later must not take the keyboard off the machine
+	// they are sitting at. So a returning surface drives only if the keyboard is
+	// going spare, and a NEW one always drives.
+	Back bool `json:"back,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
@@ -301,6 +364,44 @@ type Welcome struct {
 	// whether "close the lid, it keeps going" is true, both hang off this
 	// single fact, so it is stated rather than assumed from the transport.
 	Persistent bool `json:"persistent,omitempty"`
+
+	// ── version 4 ───────────────────────────────────────────────────────────
+
+	// Driver is who holds the keyboard the moment this surface arrived, told
+	// the way this surface should read it. A first attach is always the driver;
+	// a [Hello.Back] one may not be.
+	//
+	// IT IS CARRIED ON THE WELCOME AND NOT LEFT TO THE FIRST "driver" FRAME,
+	// because a frame is only sent when the answer CHANGES and a returning
+	// surface can arrive into an answer that did not. A surface that assumed it
+	// drove until told otherwise would draw a composer somebody's keystrokes
+	// would then be refused into.
+	Driver Driver `json:"driver,omitzero"`
+}
+
+// Driver is who holds the keyboard on one conversation, as told to ONE surface.
+//
+// IT CARRIES THE FACT AND THE READING, and that is why it is per-recipient
+// rather than one broadcast fact. "The driver is macbook" means two different
+// sentences depending on who hears it: to the window sitting on macbook beside
+// it, the honest word is the one aforge already uses at home — `another window`
+// — and to a surface on spark it is the machine's name. Only the engine knows
+// both names, so only the engine can answer that; and the SURFACE still owns
+// the words, because the rest of the line it goes in is about keys on this
+// keyboard (Decision 6: the engine machine is the authority, the surface owns
+// the screen).
+type Driver struct {
+	// Yours says the surface reading this frame is the one that drives. It is
+	// the ordinary case and the only one that draws nothing.
+	Yours bool `json:"yours,omitempty"`
+	// Machine is the driver's machine name as [Hello.Surface] gave it, empty
+	// when that surface sent none. It is sanitized ([machineLabel]) because it
+	// is drawn.
+	Machine string `json:"machine,omitempty"`
+	// Here says the driver is another window on THIS surface's own machine,
+	// which is the case a person reads as a window they forgot rather than as a
+	// machine they walked away from.
+	Here bool `json:"here,omitempty"`
 }
 
 // SubmitArgs carries Submit and FollowUp.
