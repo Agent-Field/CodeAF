@@ -532,6 +532,12 @@ type (
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
+	// pointerMsg is the POINTER's clock, and it is a second one on purpose: it
+	// spends the sweep that piled up while the last one was being answered and
+	// then stops, where [frameMsg] dirties the frame every time it fires. A
+	// pointer crossing a row it is already on must cost no frame at all, so the
+	// thing that wakes it up may not draw one (coalesce.go).
+	pointerMsg struct{}
 	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
 	// a message rather than a call because `git status` on a large tree is tens
 	// of milliseconds and the model loop is not a place to wait.
@@ -975,6 +981,20 @@ type app struct {
 	painting bool
 	paints   int
 	builds   int
+
+	// ptr is the pointer's fold: the sweep's newest position and the notches of
+	// a wheel run, kept so that a burst of them costs the surface one answer per
+	// frame instead of one per cell (coalesce.go).
+	ptr pointerFold
+
+	// shown is the last frame this surface declared and drawn says there is one.
+	// Bubble Tea calls [app.View] after EVERY message — the terminal WRITE is on
+	// its own 60Hz clock, but the frame is BUILT per message — so a message that
+	// provably changed nothing is a frame built for nothing and thrown away. A
+	// folded motion is exactly that message, and a sweep is six hundred of them
+	// (coalesce.go's `still`).
+	shown tea.View
+	drawn bool
 
 	// rows is the last laid-out screen list, and rowsWidth the width it was
 	// laid out for.
@@ -2054,18 +2074,20 @@ func (a *app) Init() tea.Cmd {
 	return tea.Batch(standing...)
 }
 
-// Update is the loop's one door, and it does exactly one thing of its own before
-// handing the message on: A SURFACE THAT OWES ITSELF A QUESTION KEEPS ITS CLOCK
-// TURNING UNTIL IT HAS ASKED IT.
+// Update is the loop's one door, and it does exactly two things of its own before
+// the switch sees anything: it FOLDS THE POINTER'S STORMS (coalesce.go's
+// [app.update]), and it keeps the clock turning while the surface owes itself a
+// question.
 //
-// The background asks are sent from the frame clock and from nowhere else, which
-// is what makes them debounced ([app.paint]) — and the clock stops itself the
-// moment nothing on screen is moving. So a list that queued a question while the
-// surface was still (the model picker opening on a keypress is exactly that)
-// would have queued it into a clock that was not turning, and the rows would have
-// been drawn without their answers until something unrelated woke it. Arming here
-// costs one tick on the frames where anything is owed and nothing at all on the
-// rest, because [app.wake] answers nil to a clock that is already running.
+// A SURFACE THAT OWES ITSELF A QUESTION KEEPS ITS CLOCK TURNING UNTIL IT HAS
+// ASKED IT. The background asks are sent from the frame clock and from nowhere
+// else, which is what makes them debounced ([app.paint]) — and the clock stops
+// itself the moment nothing on screen is moving. So a list that queued a question
+// while the surface was still (the model picker opening on a keypress is exactly
+// that) would have queued it into a clock that was not turning, and the rows would
+// have been drawn without their answers until something unrelated woke it. Arming
+// here costs one tick on the frames where anything is owed and nothing at all on
+// the rest, because [app.wake] answers nil to a clock that is already running.
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	model, cmd := a.update(msg)
 	if a.levelsWaiting() {
@@ -2074,7 +2096,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return model, cmd
 }
 
-func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// route is the message switch: every message this surface handles, handled once.
+// It is reached through [app.update], which folds the pointer's storms before the
+// switch ever sees them and hands on everything else untouched and in the order
+// it arrived (coalesce.go).
+func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
 	// The seam forgets the sentence as it hands it over, so a second caller
 	// would not show it twice — it would swallow it. This is the one place the

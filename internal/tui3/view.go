@@ -165,6 +165,15 @@ type chromeRow struct {
 // line is a thing you click and now a thing you hover — cell motion would
 // deliver the wheel and the press and nothing in between.
 func (a *app) View() tea.View {
+	// A MESSAGE THAT CHANGED NOTHING DRAWS THE FRAME BEFORE IT. Bubble Tea builds
+	// a frame per message and writes one per sixtieth of a second, so the frames
+	// it builds for a burst are mostly frames nobody is ever shown — and a sweep
+	// is six hundred messages that touched two integers and a stored position
+	// between them. [app.still] is the fold saying so, and it says so only about
+	// the paths that mutate nothing this function reads (coalesce.go).
+	if a.drawn && a.ptr.still {
+		return a.shown
+	}
 	frame, caretX, caretY := a.frame()
 	v := tea.NewView(frame)
 	v.AltScreen = true
@@ -212,6 +221,7 @@ func (a *app) View() tea.View {
 			Blink:    true,
 		}
 	}
+	a.shown, a.drawn = v, true
 	return v
 }
 
