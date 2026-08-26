@@ -66,6 +66,12 @@ import (
 //     surface that merely lost its link says "I am not a new window" — because
 //     the keyboard follows the newest ARRIVAL, and a redial in the background
 //     must not steal it from a machine the person has actually walked to.
+//
+// AND IT MAKES THE OTHER WINDOWS WINDOWS. [Turn] tells every surface that did
+// NOT start a turn that one has started, because a surface only draws a stream
+// it knows about: the events have fanned out to the whole room since version 2
+// and a watching window had nowhere to put them, so it sat on a still frame
+// while the work went on in front of somebody else.
 const Version = 4
 
 // Frame is one line on the wire, either direction.
@@ -617,6 +623,30 @@ type HeldQuestion struct {
 	// WAITED: a consent card from four hours ago is a different thing to answer
 	// than one from four seconds ago, and only the engine knows which it is.
 	Since time.Time `json:"since"`
+}
+
+// Turn is a turn that has just started in this conversation, told to every
+// surface that did NOT start it.
+//
+// IT IS WHAT MAKES A SECOND WINDOW A WINDOW ONTO THE WORK RATHER THAN A DEAD
+// FRAME. The events of a turn have always fanned out to everybody attached, but
+// a surface only draws a stream it knows about — the one its own Submit named,
+// or [Welcome.Live] at the door — so a turn started on ANOTHER machine after
+// this surface arrived went past it in silence. The room could not watch itself.
+//
+// IT IS SENT BY THE ENGINE AND NEVER INFERRED HERE, because the engine is the
+// only thing that knows who called Submit. A surface that guessed from "an event
+// on a stream I have not seen" would race its own submit's result and draw its
+// own turn twice.
+//
+// Said is the sentence that opened it, and it is carried for the one moment the
+// transcript cannot answer: a surface that has already read the transcript and
+// is sitting there watching. A turn already running when a surface ATTACHES
+// needs none of it — that message is in the journal the surface reads on its
+// way in — so [Welcome.Live] carries no sentence and this does.
+type Turn struct {
+	Stream uint64 `json:"stream"`
+	Said   string `json:"said,omitempty"`
 }
 
 // StreamRef is the result of the three stream-opening calls: the id every

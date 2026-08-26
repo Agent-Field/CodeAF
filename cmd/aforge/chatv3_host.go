@@ -551,6 +551,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			Driving:        hostDriving(seams),
 			DrivingChanged: seams.DrivingChanged,
 			Take:           seams.Take,
+			Follow:         hostFollow(seams),
 		},
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
@@ -688,12 +689,16 @@ type hostSeams struct {
 	Driving        func() remote.Driver
 	DrivingChanged func() <-chan struct{}
 	Take           func() error
+	// Follow is the turns started by another window on this conversation, so a
+	// window that is not typing is still a window onto the work.
+	Follow func() <-chan remote.Following
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
 	return hostSeams{
 		Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions,
 		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
+		Follow: client.Follow,
 	}
 }
 
@@ -701,6 +706,29 @@ func newHostSeams(client *remote.Client) hostSeams {
 // [hostHeld]'s reason: internal/tui3 does not import internal/remote, so the
 // one translation there is happens here, at the door, where both halves are
 // already in scope.
+// hostFollow is the same translation for the turns this window did not start.
+// The channel itself is remade, one element at a time, because the surface's
+// [tui3.Following] is its own type for [hostHeld]'s reason.
+func hostFollow(seams hostSeams) func() <-chan tui3.Following {
+	if seams.Follow == nil {
+		return nil
+	}
+	var once sync.Once
+	var out chan tui3.Following
+	return func() <-chan tui3.Following {
+		once.Do(func() {
+			out = make(chan tui3.Following)
+			go func() {
+				for turn := range seams.Follow() {
+					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
+				}
+				close(out)
+			}()
+		})
+		return out
+	}
+}
+
 func hostDriving(seams hostSeams) func() tui3.Driving {
 	if seams.Driving == nil {
 		return nil

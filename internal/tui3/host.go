@@ -161,6 +161,10 @@ import (
 //	                  round trip and the other window is told in the same
 //	                  instant. A window on THIS machine is called
 //	                  `another window`, which is the word home already uses.
+//	                  A WATCHER IS STILL A WINDOW ONTO THE WORK: a turn started
+//	                  on the other machine is drawn here as it happens, with the
+//	                  message that opened it above the reply, by the code that
+//	                  draws every turn (watching.go's [app.followTurn]).
 //	                  All of it is absent locally: a second window on one
 //	                  conversation here is refused at the journal instead
 //	                  ([sessionBusyWord]), so there is no room to share.

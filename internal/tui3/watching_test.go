@@ -13,6 +13,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // watched is a surface attached to a conversation another window is typing
@@ -145,18 +147,25 @@ func TestTypingAtAWatcherDoesNotFillAnInvisibleBox(t *testing.T) {
 func TestAWatcherCanStillWalkAwayToHome(t *testing.T) {
 	a, _ := watched(t, Driving{Machine: "spark"})
 
-	// The gesture is read at the very bottom of the router, so the character
-	// has to reach it: a watcher that swallowed the space would have the one
-	// door out of it quietly bricked.
-	if _, taken := a.watchKey(key(" ")); taken {
-		t.Fatal("a watcher swallowed the space the door home is made of")
+	// Nothing typed reaches the box, spaces included — this was driven over a
+	// real connection and `this should be swallowed` walked out of the
+	// conversation, because letters were swallowed and the spaces between them
+	// were not.
+	drive(t, a, key("t"), key("h"), key("i"), key("s"), key(" "), key("w"), key("a"), key("s"), key(" "))
+	if got := a.input.String(); got != "" {
+		t.Fatalf("typing a sentence at a watcher left %q in the box", got)
 	}
-	if _, taken := a.watchKey(key("h")); !taken {
-		t.Fatal("a watcher let an ordinary character into a box that is not drawn")
+	if a.at(pageHome) {
+		t.Fatal("the spaces inside a typed sentence opened home")
 	}
-	drive(t, a, key(" "))
-	if got := a.input.String(); got != " " {
-		t.Fatalf("the space did not reach the box the gesture reads: %q", got)
+
+	// And two CONSECUTIVE spaces are still the door, counted where the keys are.
+	if !a.homeDoorOpen() {
+		t.Skip("home is not reachable from this test surface")
+	}
+	drive(t, a, key(" "), key(" "))
+	if !a.at(pageHome) {
+		t.Fatal("two spaces at a watcher did not open home")
 	}
 }
 
@@ -184,5 +193,68 @@ func TestATakeBackThatFailedIsSaidAndNotSwallowed(t *testing.T) {
 	}
 	if !said {
 		t.Fatal("a take-back that failed said nothing")
+	}
+}
+
+// ── the turns this window did not start ─────────────────────────────────────
+
+// A WINDOW THAT IS NOT TYPING IS STILL A WINDOW ONTO THE WORK. Driven over a
+// real connection, a watcher sat on a still frame while the other machine's turn
+// ran to completion — attached, and showing nothing. The turn is drawn here by
+// the code that draws every turn, with the sentence that opened it above the
+// reply so the screen has not lost the thread.
+func TestAWatcherDrawsTheTurnAnotherWindowStarted(t *testing.T) {
+	a, _ := watched(t, Driving{Machine: "spark"})
+	events := make(chan session.Event, 4)
+	turns := make(chan Following, 1)
+	a.link.Follow = func() <-chan Following { return turns }
+	turns <- Following{Said: "count to three", Events: events}
+
+	events <- session.Event{Kind: session.EventTextDelta, Text: "one two three"}
+	drive(t, a, runCmd(a.watchFollowing())...)
+
+	got := plain(frame(a))
+	if !strings.Contains(got, "count to three") {
+		t.Fatalf("the message that opened the turn is not above the reply:\n%s", got)
+	}
+	if !strings.Contains(got, "one two three") {
+		t.Fatalf("the watcher did not draw the turn it was handed:\n%s", got)
+	}
+	// AND THE GREETING GOES. It is dismissed by a keystroke everywhere else and a
+	// watcher presses none, so the reply landed under it until this was fixed.
+	if a.welcome.open {
+		t.Fatalf("the greeting sat on top of the turn:\n%s", got)
+	}
+}
+
+// A turn already running when this window ARRIVED carries no sentence, because
+// the transcript this surface read on its way in already has that message. A
+// second copy of it would be the same question asked twice.
+func TestATurnAlreadyRunningAddsNoSecondCopyOfTheQuestion(t *testing.T) {
+	a, _ := watched(t, Driving{Machine: "spark"})
+	events := make(chan session.Event, 4)
+	turns := make(chan Following, 1)
+	a.link.Follow = func() <-chan Following { return turns }
+	turns <- Following{Events: events}
+
+	before := len(a.entries)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "carrying on"}
+	drive(t, a, runCmd(a.watchFollowing())...)
+
+	for _, e := range a.entries[min(before, len(a.entries)):] {
+		if e.kind == entryUser {
+			t.Fatalf("a turn with no sentence on it invented one: %q", e.text)
+		}
+	}
+	if got := plain(frame(a)); !strings.Contains(got, "carrying on") {
+		t.Fatalf("the turn in flight was not drawn:\n%s", got)
+	}
+}
+
+// AND A LOCAL SESSION FOLLOWS NOTHING: there is no other window to follow.
+func TestALocalSessionFollowsNoOtherWindowsTurn(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	if a.watchFollowing() != nil {
+		t.Fatal("a local session waited for a turn another window would start")
 	}
 }

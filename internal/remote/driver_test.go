@@ -358,6 +358,19 @@ func TestAWatcherKeepsReceivingTheTurnItCannotStart(t *testing.T) {
 	driverOf(desk)
 
 	ref := decode[StreamRef](t, away.ok(1, MethodSubmit, SubmitArgs{Text: "go"}).Payload)
+
+	// THE WATCHER IS TOLD THE TURN STARTED, BEFORE ITS FIRST EVENT. A surface
+	// only draws a stream it knows about, so without this the events below go
+	// past a watching window in silence — the whole promise of staying attached,
+	// unkept ([Turn]).
+	told := decode[Turn](t, desk.await(func(f Frame) bool { return f.Kind == "turn" }).Payload)
+	if told.Stream != ref.Stream {
+		t.Fatalf("the watcher was told about stream %d, want %d", told.Stream, ref.Stream)
+	}
+	if told.Said != "go" {
+		t.Fatalf("the watcher was told the turn opened on %q — a reply with no question above it", told.Said)
+	}
+
 	stream := agent.stream(0)
 	stream <- session.Event{Kind: session.EventTextDelta, Text: "hello"}
 
@@ -365,4 +378,64 @@ func TestAWatcherKeepsReceivingTheTurnItCannotStart(t *testing.T) {
 	if text := decode[EventWire](t, frame.Payload).Unwire().Text; text != "hello" {
 		t.Fatalf("the watcher was given %q", text)
 	}
+
+	// And the window that STARTED it is not told about it: it drew that turn the
+	// moment its own submit answered, and a second adoption would draw the reply
+	// twice.
+	for _, frame := range drain(away) {
+		if frame.Kind == "turn" {
+			t.Fatalf("the window that started the turn was told about its own turn")
+		}
+	}
+}
+
+// drain is every frame waiting on a link right now, without waiting for more.
+func drain(l *link) []Frame {
+	var seen []Frame
+	for {
+		select {
+		case frame, ok := <-l.frames:
+			if !ok {
+				return seen
+			}
+			seen = append(seen, frame)
+		default:
+			return seen
+		}
+	}
+}
+
+// The surface half of the same fact: a watcher is handed the turn on the same
+// kind of channel its own submit would have answered with.
+func TestAWatchingSurfaceIsHandedTheTurnItDidNotStart(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	watcher, err := loopSession(sess, Hello{Surface: "macbook"})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer watcher.Close()
+	driver, err := loopSession(sess, Hello{Surface: "spark"})
+	if err != nil {
+		t.Fatalf("second dial: %v", err)
+	}
+	defer driver.Close()
+
+	if _, err := driver.Client.Agent().Submit(t.Context(), "say something"); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	select {
+	case turn := <-watcher.Client.Follow():
+		if turn.Said != "say something" {
+			t.Fatalf("the watcher was handed a turn opened on %q", turn.Said)
+		}
+		agent.stream(0) <- session.Event{Kind: session.EventTextDelta, Text: "something"}
+		if ev := <-turn.Events; ev.Text != "something" {
+			t.Fatalf("the turn handed over carried %q", ev.Text)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watching surface was never handed the turn")
+	}
+	agent.finish(agent.stream(0))
 }

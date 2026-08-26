@@ -132,6 +132,13 @@ type Client struct {
 	// the wire calling into a draw.
 	driverWake chan struct{}
 
+	// following carries the turns this surface did not start, so the screen can
+	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
+	// never block, and a surface that is not draining this is one that does not
+	// want it — the events themselves are queued on the stream regardless, and
+	// the transcript is the authority on a turn that ended.
+	following chan Following
+
 	// dead is the reason this connection stopped, or nil while it is alive.
 	// Every method reads it first, so a surface driving a corpse gets an error
 	// per call rather than a hang per call. done is closed at the same moment,
@@ -189,6 +196,7 @@ func newClient(host string, hello Hello) *Client {
 
 		driver:     Driver{Yours: true},
 		driverWake: make(chan struct{}),
+		following:  make(chan Following, followingRoom),
 	}
 }
 
@@ -242,6 +250,13 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	c.mu.Lock()
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A TURN ALREADY RUNNING WHEN THIS SURFACE ARRIVED IS ONE IT DID NOT START
+	// EITHER, and it reaches the screen by the same road. It carries no sentence:
+	// the message that opened it is in the journal, which this surface reads on
+	// its way in ([Turn.Said] states which of the two moments needs one).
+	if welcome.Live != 0 {
+		c.follows(Following{Events: c.stream(welcome.Live).events()})
+	}
 	// The welcome's word on the keyboard is a driver frame by another road, and
 	// it goes through the same door so that a redial that came back as a watcher
 	// wakes the surface exactly as a live hand-over would.
@@ -331,6 +346,42 @@ func (c *Client) Live() (uint64, <-chan session.Event) {
 		return 0, nil
 	}
 	return id, c.stream(id).events()
+}
+
+// followingRoom is how many unclaimed turns this client will hold for a surface
+// that has not asked for them yet. A conversation runs one turn at a time, so
+// anything past a couple is a surface that has stopped reading.
+const followingRoom = 8
+
+// Following is a turn this surface did not start: the sentence that opened it,
+// where the engine sent one, and the channel its events arrive on.
+//
+// THE CHANNEL IS THE SAME KIND OF CHANNEL A SUBMIT ANSWERS WITH, on purpose and
+// for [Client.Live]'s reason: a window watching somebody else's turn should draw
+// it with the code that draws every turn, and the only thing it lacks is the
+// [StreamRef] it would have got from opening it.
+type Following struct {
+	// Said is the message that opened the turn, empty when the transcript
+	// already has it — see [Turn.Said].
+	Said string
+	// Events is that turn, arriving.
+	Events <-chan session.Event
+}
+
+// Follow is the turns started by some other window on this conversation.
+//
+// IT IS WHAT MAKES A SECOND WINDOW A WINDOW AND NOT A DEAD FRAME. A surface that
+// is not holding the keyboard is still watching the work, and the work is a turn
+// somebody started somewhere else.
+func (c *Client) Follow() <-chan Following { return c.following }
+
+// follows offers one turn to whoever is watching, and drops it when nobody is
+// keeping up. See [Client.following] for why dropping is the right failure.
+func (c *Client) follows(turn Following) {
+	select {
+	case c.following <- turn:
+	default:
+	}
 }
 
 // Driver is who holds the keyboard on this conversation right now, as the
@@ -571,6 +622,11 @@ func (c *Client) read() {
 			c.stream(frame.ID).push(frame.Seq, frame.Payload)
 		case "closed":
 			c.stream(frame.ID).finish()
+		case "turn":
+			var turn Turn
+			if err := json.Unmarshal(frame.Payload, &turn); err == nil && turn.Stream != 0 {
+				c.follows(Following{Said: turn.Said, Events: c.stream(turn.Stream).events()})
+			}
 		case "driver":
 			var note Driver
 			if err := json.Unmarshal(frame.Payload, &note); err == nil {

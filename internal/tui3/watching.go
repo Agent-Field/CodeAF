@@ -39,6 +39,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // Driving is who holds the keyboard on this conversation, as the machine
@@ -135,23 +137,48 @@ func (a *app) watchBar(width int) []string {
 // send keys, which become the take-back, and a character typed into a box that
 // is not on the frame.
 //
-// THE SPACE IS LET THROUGH ON PURPOSE. Two spaces in an empty box are the door
-// home ([app.homeGesture]) and it is read at the very bottom of the router, so
-// swallowing the character here would be the one door out of a watcher quietly
-// bricked. A space typed into an empty hidden box is a space, and the gesture
-// resets it.
+// THE DOOR HOME IS COUNTED HERE RATHER THAN LET THROUGH, and that is worth the
+// four lines it costs. [app.homeGesture] reads two consecutive spaces out of the
+// BOX, and this register has no box on the frame — so letting the space fall
+// through while swallowing the letters turned a typed sentence into a run of
+// spaces and opened home on the first word with two in it. Driven over a real
+// connection, `this should be swallowed` walked straight out of the
+// conversation. The gesture is the same gesture; it is simply counted where the
+// keys actually are, and any other key ends the run exactly as a letter in the
+// box would.
 func (a *app) watchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "enter", standMarkKey:
+		a.watchSpaces = 0
 		return a.takeKeyboard(), true
 	case "alt+enter", "ctrl+j":
 		// A newline into a box nobody can see is nothing at all.
+		a.watchSpaces = 0
 		return nil, true
 	}
-	if text := msg.Key().Text; text != "" && text != " " {
+	text := msg.Key().Text
+	if text == "" {
+		// Not a character: the arrows, the scroll keys, copy mode, the places.
+		// They are not this register's business and they end the run.
+		a.watchSpaces = 0
+		return nil, false
+	}
+	if text != " " {
+		a.watchSpaces = 0
 		return nil, true
 	}
-	return nil, false
+	// A SPACE ONLY COUNTS OVER AN EMPTY DRAFT, which is the condition the
+	// gesture has always had: a person with words already in the box meant a
+	// space in their sentence, and this window is still holding those words.
+	if !a.input.empty() {
+		return nil, true
+	}
+	a.watchSpaces++
+	if a.watchSpaces >= 2 && a.homeDoorOpen() {
+		a.watchSpaces = 0
+		return a.openHome(), true
+	}
+	return nil, true
 }
 
 // takeKeyboard asks the far machine for the keyboard back.
@@ -173,6 +200,75 @@ func (a *app) takeKeyboard() tea.Cmd {
 		}
 		return drivingMsg{}
 	}
+}
+
+// ── the turns this window did not start ─────────────────────────────────────
+
+// Following is a turn some other window on this conversation started, on its
+// way to be drawn here.
+type Following struct {
+	// Said is the message that opened it, and the empty string when the
+	// transcript this surface already read has that message in it — which is
+	// the case for a turn that was running before this window arrived.
+	Said string
+	// Events is that turn, arriving, on the same kind of channel a submit here
+	// answers with.
+	Events <-chan session.Event
+}
+
+// followingMsg is one of them reaching the loop.
+type followingMsg struct{ turn Following }
+
+// watchFollowing waits for the next turn started somewhere else.
+//
+// It is the pair of [app.watchDriving] and it exists for the same reason: the
+// thing that happened happened on ANOTHER MACHINE. Without it a window that is
+// not holding the keyboard would sit on a still frame while the work went on in
+// front of somebody else — a window, but not one onto anything.
+func (a *app) watchFollowing() tea.Cmd {
+	follow := a.link.Follow
+	if follow == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		turn, ok := <-follow()
+		if !ok {
+			return nil
+		}
+		return followingMsg{turn: turn}
+	}
+}
+
+// followTurn draws a turn this window did not start, and goes back to waiting.
+//
+// THE SENTENCE GOES IN FIRST WHERE THERE IS ONE. A reply with no question above
+// it is a screen that has lost the thread, and the message that opened this turn
+// was typed on another machine — so the engine sends it and this puts it where
+// the person's own message would have gone ([Turn.Said]).
+//
+// A TURN ALREADY BEING DRAWN WINS. If this window is somehow holding a stream —
+// it took the keyboard a moment ago and its own submit is in flight — the turn
+// it is drawing is the one it knows the whole of, and a second adoption would
+// draw the same reply twice.
+func (a *app) followTurn(msg followingMsg) tea.Cmd {
+	next := a.watchFollowing()
+	if msg.turn.Events == nil || a.stream != nil {
+		return next
+	}
+	// THE GREETING GOES WHEN THE CONVERSATION BEGINS, and a turn started on the
+	// other machine is the conversation beginning. Every other road to this
+	// (welcome.go's [app.dismissWelcome]) is a keystroke, and a watcher presses
+	// none — driven over a real connection, the reply landed in the transcript
+	// with the greeting still sitting on top of it.
+	a.dismissWelcome()
+	if said := strings.TrimSpace(msg.turn.Said); said != "" {
+		a.turn++
+		a.sel = -1
+		a.disarmQuit()
+		a.said(entry{kind: entryUser, text: said, turn: a.turn, began: a.now(), context: a.turnContext()})
+		a.follow()
+	}
+	return tea.Batch(a.takeStream(msg.turn.Events), next)
 }
 
 // ── learning that it moved, with nobody touching this keyboard ──────────────
