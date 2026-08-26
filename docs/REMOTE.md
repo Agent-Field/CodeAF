@@ -76,6 +76,42 @@ the person a question happens on a plain terminal: ssh's passphrase prompt, its
 unknown-host-key question, and this refusal. A TUI that came up first would
 either eat those questions or draw a frame over them.
 
+**The half in the middle, and the question that finds it.** A session host
+(Decision 5) outlives the binary that started it, so after `rm bin/aforge &&
+make build` on the far machine the *new* aforge answers `aforge version` while
+the *old* one still holds the socket — and `aforge engine` spliced the new
+surface straight onto it. The refusal that came back told the person to update a
+machine they had just updated. Two builds were the same build; the third was
+not.
+
+So the splice stopped being a blind copy of bytes. `internal/remote/whois.go`
+adds one exchange that is not about a conversation: a first frame of `whois`,
+answered with `whoami` carrying the host's own `Version`, whether it is `Busy`,
+and whether it is `Retiring`. It is asked **before** the version check, on a
+connection that never says hello, because the build that must be able to answer
+it is precisely the one the door would refuse.
+
+- Same build → splice, as before.
+- Another build, holding nothing → asked to stand down; it closes its
+  conversations, flushes their journals, drops the socket, and the next line
+  starts a fresh host from the binary on disk.
+- Another build, holding a turn, a surface or a held question → **refused**,
+  never killed. The host is the only process that can see the work, so the host
+  decides; the door only carries the sentence.
+- A build from before the exchange answers `the first frame was "whois", not a
+  hello`, which is read as "not this build" and refused the same way. It is
+  never signalled from a connection that could not ask it anything.
+
+The refusal does not fall back to the pipe, which is the one place on that road
+that does not. The stale host holds the session file's lock, so a pipe engine
+would fail on the journal and say so in a sentence about a path.
+
+Two things keep it from recurring: a host retires itself once it notices the
+file it was started from was removed or rebuilt and it is holding nothing
+(`internal/enginehost/binary.go`), and `aforge engine --stop` ends whatever
+holds a workspace on that machine — asking politely first, and naming the
+process through the socket's peer credentials when it is too old to be asked.
+
 ## Decision 4 — Version 2 separates a conversation's life from a pipe's
 
 **Decision.** In version 1 the engine *was* the ssh command: it read frames on
