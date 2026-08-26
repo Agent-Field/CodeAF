@@ -169,7 +169,7 @@ func TestTheOneFoldOpensAndClosesOnTheArrows(t *testing.T) {
 			}
 		}
 		t.Fatalf("the list drew no fold at all:\n%s", homeText(a))
-		return homeRest
+		return homeNoLine
 	}
 	a.home.cursor = foldAt()
 	if !strings.Contains(homeText(a), "more, quiet since") {
@@ -248,7 +248,7 @@ func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 		word string
 		by   int
 	}{{"↓", 1}, {"↑", -1}} {
-		a.home.cursor = homeRest
+		a.home.cursor = homeNoLine
 		for i := 0; i < len(a.home.lines)+4; i++ {
 			a.home.move(step.by)
 			at := a.home.cursor
@@ -448,13 +448,13 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 	a.home.seen = now.Add(-30 * time.Minute)
 	a.home.build()
 
-	at := homeRest
+	at := homeNoLine
 	for i, line := range a.home.lines {
 		if line.kind == homeLedger && line.project == "tasks" {
 			at = i
 		}
 	}
-	if at == homeRest {
+	if at == homeNoLine {
 		t.Fatalf("nothing on the ledger is about work that landed:\n%s", homeText(a))
 	}
 	// AND IT COUNTS IN A PERSON'S WORDS: one task landed, never `1 tasks`.
@@ -500,13 +500,13 @@ func TestAClickOnARowArrivesWhereEnterDoes(t *testing.T) {
 	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.openHome()
 
-	at := homeRest
+	at := homeNoLine
 	for i, line := range a.home.lines {
 		if line.kind == homeSession && line.row.Transcript == other {
 			at = i
 		}
 	}
-	if at == homeRest {
+	if at == homeNoLine {
 		t.Fatalf("the other conversation has no row to press:\n%s", homeText(a))
 	}
 	homeClickAt(t, a, at)

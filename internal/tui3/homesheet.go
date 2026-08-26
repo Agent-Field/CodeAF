@@ -778,9 +778,8 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+v":
 		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
 		// card's legend names works wherever the card is drawn (homeeffort.go).
-		// There is no machine card at this tier — the cursor has no rest to walk
-		// up into on a phone ([homeView.restable]) — so this is an item's key
-		// here and nothing else's.
+		// An item's rung is the only one this chord moves anywhere now, so there
+		// is nothing else it could mean here.
 		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
 			return a.cycleItemEffort(line.item), true
 		}

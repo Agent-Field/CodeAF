@@ -94,7 +94,7 @@ func standInList(t *testing.T, a *app, name string) int {
 		}
 	}
 	t.Fatalf("no conversation of %q is on the list:\n%s", name, homeText(a))
-	return homeRest
+	return homeNoLine
 }
 
 // sectionLab is a machine with two projects, something stopped, something
@@ -144,14 +144,14 @@ func TestACursorMarksTheHeadingOfTheSectionItIsIn(t *testing.T) {
 	// AND THE LEDGER IS A SECTION LIKE ANY OTHER. Its heading names what the
 	// lines under it are about — the time you were away — so a cursor on one of
 	// them marks it and neither project.
-	at := homeRest
+	at := homeNoLine
 	for i, line := range a.home.lines {
 		if line.kind == homeLedger {
 			at = i
 			break
 		}
 	}
-	if at == homeRest {
+	if at == homeNoLine {
 		t.Fatalf("the ledger has no lines under it:\n%s", homeText(a))
 	}
 	a.home.cursor = at
@@ -161,17 +161,21 @@ func TestACursorMarksTheHeadingOfTheSectionItIsIn(t *testing.T) {
 	}
 }
 
-// AT REST NOTHING IS MARKED. Rest is the morning glance — no row is chosen, so
-// no region is either, and a screen that marked one would be answering a
-// question nobody had asked yet.
-func TestHomeAtRestMarksNoHeading(t *testing.T) {
+// WITH THE CURSOR ON NO LINE NOTHING IS MARKED. The marked heading answers
+// "where is my keyboard on this list"; a list the keyboard is not on marks
+// nothing, and a screen that marked one anyway would be answering a question
+// nobody had asked.
+//
+// THE STATE THAT ASKED THIS IS RETIRED AND THE LAW IS NOT. Home used to have a
+// resting cursor — `↑` off the top row put it on no row at all — and this was
+// pinned about that. `↑` reaches the TAB BAR now (pages.go's [barCursor]), so
+// the only way home's own cursor is on no line is a list with no line to be on;
+// the marking rule is the same either way and is asserted the same way.
+func TestAHomeTheKeyboardIsNotOnMarksNoHeading(t *testing.T) {
 	a := sectionLab(t)
-	a.home.cursor = homeRest
-	if !a.home.resting() {
-		t.Fatal("home is not at rest with the cursor on homeRest")
-	}
+	a.home.cursor = homeNoLine
 	if got := markedHeadings(a); len(got) != 0 {
-		t.Fatalf("home at rest marks %v, want nothing:\n%s", got, homeText(a))
+		t.Fatalf("a home with the cursor on no line marks %v, want nothing:\n%s", got, homeText(a))
 	}
 }
 
@@ -204,7 +208,7 @@ func TestAHoverDoesNotMoveTheMarkedHeading(t *testing.T) {
 	// The pointer goes to a row in the OTHER block — a different section under a
 	// different heading.
 	hovered := standInList(t, a, "beta")
-	a.home.cursor = homeRest
+	a.home.cursor = homeNoLine
 	standInList(t, a, "alpha")
 	a.home.hover = hovered
 
@@ -242,14 +246,14 @@ func TestEveryCursorStopMarksExactlyOneHeadingOrNone(t *testing.T) {
 func TestTheMarkedHeadingBrightensAndWearsNoGround(t *testing.T) {
 	a := sectionLab(t)
 	at := standInList(t, a, "alpha")
-	heading := homeRest
+	heading := homeNoLine
 	for i := at; i >= 0; i-- {
 		if headingKind(a.home.lines[i].kind) {
 			heading = i
 			break
 		}
 	}
-	if heading == homeRest || headingWord(a.home.lines[heading]) != "alpha" {
+	if heading == homeNoLine || headingWord(a.home.lines[heading]) != "alpha" {
 		t.Fatalf("the alpha block has no heading of its own:\n%s", homeText(a))
 	}
 	if got := a.home.sectionInk(heading, a.pal)("alpha"); got != a.pal.ink("alpha") {

@@ -111,16 +111,17 @@ func (h *homeView) wide() bool { return h.tier >= homeTierCard }
 
 // ── where the line list starts ──────────────────────────────────────────────
 
-// placesTop is the first row of the list A CURSOR MAY STAND ON, and [homeRest]
-// on a list with no such row at all. Two things land on it and they must land on
-// the same line: [homeView.openAt] and the first `↓` off rest ([homeView.wake]).
+// placesTop is the first row of the list A CURSOR MAY STAND ON, and
+// [homeNoLine] on a list with no such row at all. It is where home opens
+// ([homeView.openAt]) and it is the row `↑` walks off to reach the tab bar
+// (pages.go's [app.barReach] asks the place for it as the first of its stops).
 func (h *homeView) placesTop() int {
 	for at := range h.lines {
 		if h.lines[at].stop() {
 			return at
 		}
 	}
-	return homeRest
+	return homeNoLine
 }
 
 // ── opening ─────────────────────────────────────────────────────────────────
@@ -131,29 +132,27 @@ func (h *homeView) placesTop() int {
 // back into — with the cursor visibly on it. It opened AT REST for a wave
 // (nothing highlighted, the machine's card on the right), and the resting frame
 // failed the first thing a person asks of any screen with a keyboard on it:
-// where am I. So the selection is on screen from the first frame — the cursor's
-// band on the row — and REST IS STILL A PLACE: one `↑` off the top of the list
-// walks up into it ([homeRest]).
+// where am I. So the selection is on screen from the first frame, and there is
+// no state left in which it is not: `↑` off the top row now walks onto the TAB
+// BAR (pages.go's [barCursor]) rather than onto no row at all.
 //
 // The row it lands on is this window's own conversation rather than the top of
 // the list, because the top row can be another window's — a selection that
 // opened on a refusal would make enter mean nothing on the first keystroke.
 // A window whose conversation is not on the list (a memory-only session, an
-// empty machine) falls to the first row a cursor may stand on, and to rest
-// only when there is nothing at all.
+// empty machine) falls to the first row a cursor may stand on, and to line zero
+// when the list has no such row at all — which is the sentence saying the
+// machine is empty, and is exactly where a person should be looking.
 func (h *homeView) openAt(file string) {
 	h.point(file)
 	if _, ok := h.focusedLine(); ok {
 		return
 	}
-	if at := h.placesTop(); at != homeRest {
+	if at := h.placesTop(); at != homeNoLine {
 		h.cursor = at
 		return
 	}
 	h.cursor = h.clamp(0)
-	if _, ok := h.focusedLine(); !ok {
-		h.cursor = homeRest
-	}
 }
 
 // ── the window ──────────────────────────────────────────────────────────────
@@ -176,11 +175,3 @@ func (a *app) homeWindow(room int) {
 func (a *app) homeLeft(width, room int, pal palette) []homeDrawn {
 	return a.homeList(width, room, pal)
 }
-
-// ── the first step down ─────────────────────────────────────────────────────
-
-// wake is where the cursor lands the first time a person presses `↓` from rest:
-// the top of the list. It is a function rather than a constant because rest is a
-// place and the row under it is not always line zero — the ledger's heading and
-// the section claim are both above the first row a cursor may stand on.
-func (h *homeView) wake() int { return h.placesTop() }

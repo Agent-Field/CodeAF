@@ -4,53 +4,46 @@ package tui3
 //
 //	thinking high
 //
-// One clause, on the two cards where a rung on the effort ladder is a fact about
-// the subject rather than about a conversation: THE MACHINE'S OWN CARD, where it
-// is the install's default (config's `effort` row, the last scope the resolver
-// consults), and A STANDING ITEM'S CARD, where it is that item's own rung.
+// One clause, on the one card where a rung on the effort ladder is a fact about
+// the subject rather than about a conversation: A STANDING ITEM'S CARD, where it
+// is that item's own rung.
+//
+// IT USED TO DRAW ON A SECOND CARD. Home had a resting state — the cursor walked
+// up off the top of the list onto no row at all and the column became a card
+// about the machine — and this band stated the install's own default there. That
+// state is retired: `↑` off the top row reaches the tab bar now (pages.go's
+// [barCursor]), so there is no card about the machine for a band to draw on. The
+// install's default is still a fact and is still moved from the one place that
+// has always owned it, the `thinking` row of the settings panel.
 //
 // ── WHY IT IS A BAND OF ITS OWN ──
 //
-// Every other band on the machine's card answers a question about what has
-// HAPPENED: `keeping an eye on` is what will wake, `agents` is the shape of the
-// last few minutes, `since you left` is what went on while you were away, and
-// `today` is the day summed. A setting is none of those, and putting it inside
-// one of them would have been a fact filed under a heading that does not cover
-// it — `today` in particular, whose emptiness law drops the whole band on a
-// machine nobody has worked on, which is exactly the morning this rung is most
-// worth reading.
-//
-// It sits ABOVE `today` deliberately. `today` is the card's closing arithmetic
-// and has been the last band on it since the card existed (homeband_spark.go
-// says the whole of why); a glance ends on the day's figures, and a setting
-// wedged under them would have moved what the card finishes on.
+// A card's other bands answer a question about what has HAPPENED — what a
+// standing item last did, when it will wake, what it has cost. A setting is none
+// of those, and putting it inside one of them would be a fact filed under a
+// heading that does not cover it.
 //
 // ── AND IT IS THE FACT, NEVER THE KEY ──
 //
-// `ctrl+v` moves this rung on both cards and is named in the card's own legend
+// `ctrl+v` moves this rung and is named in the card's own legend
 // (homeband_keys.go), where every other chord on this screen is named. This band
 // states what IS; the legend states what the keyboard does. Saying the key here
 // as well would be the card teaching one gesture twice, three rows apart.
 //
-// ── THE EMPTINESS LAW, BOTH WAYS ──
+// ── THE EMPTINESS LAW ──
 //
 // An item nobody has set a rung on draws NOTHING — its firings run on the
-// standing role's own floor and "nobody said" is not a rung to print. An install
-// whose `thinking` row says `off` draws nothing either, for the same reason and
-// with the same honesty: nothing extra is being asked of the model, so there is
-// no depth to state. In both cases the legend still names the key, because the
-// key still works — it is how a person gets OFF absence.
+// standing role's own floor and "nobody said" is not a rung to print. The legend
+// still names the key, because the key still works: it is how a person gets OFF
+// absence.
 
-import (
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-)
+import "github.com/Agent-Field/aforge-v2/internal/effort"
 
 func init() {
 	registerHomeBand(homeBand{
 		name:  "thinking",
 		order: bandOrderThinking,
-		kinds: []bandKind{bandKindMachine, bandKindItem},
+		kinds: []bandKind{bandKindItem},
 		draw:  drawThinkingBand,
 	})
 }
@@ -71,12 +64,6 @@ func drawThinkingBand(a *app, ctx bandContext) []string {
 // keys on. An empty name is a subject that has no rung to state.
 func (a *app) bandRung(subject bandSubject) (effort.Rung, string) {
 	switch subject.kind {
-	case bandKindMachine:
-		dir, ok := a.effortProfile()
-		if !ok {
-			return effort.None, ""
-		}
-		return config.DefaultEffortAt(dir), machineSubjectID
 	case bandKindItem:
 		item := subject.itemOrNil()
 		if item == nil {

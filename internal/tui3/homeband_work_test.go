@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // workLab is one conversation with `tasks` pieces of work behind it, the newest
@@ -471,49 +470,58 @@ func TestTheRightArrowOpensTheVerbStripAndLeavesTheCardAlone(t *testing.T) {
 	}
 }
 
-// AND THE ARROW IS STILL THE CARD'S WHERE THE STRIP HAS NOTHING TO SAY.
+// AND THE ARROW IS NOT SEIZED ON A ROW WITH NO VERBS.
 //
-// This is the other half of the law above, and it is the half that kept the
-// gesture alive: the strip only claims `→` on a row that HAS verbs
-// ([app.openStrip] answers false otherwise and the arrow keeps every meaning it
-// already had). The card nobody's row is on — the machine's own, at rest — folds
-// its news past [machineNewsShown], and `→` still opens all of it while `←`
-// folds it back.
-func TestTheRightArrowStillOpensACardNoRowIsOn(t *testing.T) {
+// THE LAW THAT DIED IS "→ IS STILL THE CARD'S WHERE THE STRIP HAS NOTHING TO
+// SAY". What stood here asked it of the machine's own card — the column when the
+// cursor was on no row at all — whose news list folded past four and whose folds
+// `→` opened and `←` shut. That state is retired: `↑` off the top row reaches the
+// TAB BAR now (pages.go's [barCursor]), and every row that still has a card
+// beside it also has verbs, so there is no row left on home where `→` means the
+// card's fold ladder.
+//
+// WHAT SURVIVES IS THE HALF THAT MADE IT POSSIBLE, and it is what this now pins:
+// [app.openStrip] answers FALSE on a row with no verbs, so the router does not
+// take the key and the arrow keeps whatever that row already meant by it. The
+// fold at the foot of the list is such a row — nothing on it can be paused,
+// stopped or copied, and `→` is how it shows what it is hiding.
+func TestTheRightArrowIsNotSeizedOnARowWithNoVerbs(t *testing.T) {
 	lab := newHomeLab(t)
-	now := middayNow()
+	now := time.Now()
 	work := lab.workspace("alpha")
-	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", work, now.Add(-time.Hour))
-	// One more piece of news than the band draws, so there is something folded.
-	for i := 0; i < machineNewsShown+1; i++ {
-		if err := standing.Deliver(filepath.Dir(mine), standing.Note{
-			At:    now.Add(-time.Duration(i+1) * time.Minute),
-			Words: "keep an eye on thing " + strconv.Itoa(i), Text: "it moved",
-		}); err != nil {
-			t.Fatal(err)
+	// MORE CONVERSATIONS THAN THE LIST DRAWS, so there is a fold at the foot.
+	for i := 0; i < switcherShown+4; i++ {
+		lab.session("-alpha", "aaaa"+strconv.Itoa(100000000000+i+1),
+			"chat "+strconv.Itoa(i), work, now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	a := lab.app(lab.session("-alpha", "zzzz000000000001", "mine", work, now))
+	a.width, a.height = 120, 30
+	a.openHome()
+	foldAt := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeSwitchFold {
+			foldAt = at
 		}
 	}
-	a := lab.app(mine)
-	a.width, a.height = homeCardWidest, 40
-	a.openHome()
-	// THE CURSOR ON NOTHING IS WHAT MAKES THIS CARD THE MACHINE'S ([app.homeDetail]),
-	// and a row nobody is on is a row with no verbs for the strip to take.
-	a.home.cursor, a.home.picked = homeRest, false
-	a.home.build()
-	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindMachine {
-		t.Fatalf("the cursor at rest is not on the machine's card: %+v", subject)
+	if foldAt < 0 {
+		t.Fatalf("the list drew no fold at all:\n%s", homeText(a))
 	}
+	a.home.cursor, a.home.picked = foldAt, true
 
+	// The row offers nothing, so the strip declines the arrow...
+	if verbs := a.homeRowVerbs(); len(verbs) != 0 {
+		t.Fatalf("the fold row offered verbs: %+v", verbs)
+	}
 	drive(t, a, key("right"))
 	if a.strip.open {
 		t.Fatalf("a row with no verbs still drew a strip:\n%s", homeText(a))
 	}
-	if !a.anyBandFoldOpen(subject) {
-		t.Fatalf("→ did not open the machine card's folds:\n%s", machineCardText(a, 48))
+	// ...and the key still does what it did on that row before the strip existed:
+	// the fold it was pressed on stands open, and the line says so.
+	if !a.home.moreOpen {
+		t.Fatalf("→ did not open the fold it was pressed on:\n%s", homeText(a))
 	}
-	drive(t, a, key("left"))
-	if a.anyBandFoldOpen(subject) {
-		t.Fatalf("← did not fold the machine card back:\n%s", machineCardText(a, 48))
+	if !strings.Contains(homeText(a), "fold them away") {
+		t.Fatalf("the foot does not offer to put the fold back:\n%s", homeText(a))
 	}
 }
