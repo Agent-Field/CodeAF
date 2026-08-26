@@ -28,11 +28,19 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
-- **`alt+1`** … **`alt+7`** — jump straight to one, **from a place or from a conversation**.
-  The numbers are the tab bar's own order, so `alt+1` is home and `alt+7` is settings. Hold
-  `alt` and press the digit. `tab` and the shift-arrows are not like them: in a conversation
-  those already belong to path completion and to the caret, so the digits are the one class
-  of place key that means the same thing wherever you are standing.
+- **`alt+1`** … **`alt+7`** (**`⌥1`** … **`⌥7`** on a Mac) — jump straight to one, **from a
+  place or from a conversation**. The numbers are the tab bar's own order, so `alt+1` is home
+  and `alt+7` is settings. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
+  because that is what the keycap says; Linux and Windows draw it `alt+`, and it is the same
+  chord either way. `tab` and the shift-arrows are not like them: in a conversation those
+  already belong to path completion and to the caret, so the digits are the one class of
+  place key that means the same thing wherever you are standing.
+- **`ctrl+1`** … **`ctrl+7`** — the same jump, on the terminals that can send it. `ctrl` and
+  a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
+  never the first: it works only where the terminal runs the kitty keyboard protocol and says
+  so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
+  map there too. Where the terminal has said nothing, these do nothing and are never drawn —
+  the map's own line names them exactly when they are live.
 - **type its name** — on home, typing `sta` offers the standing place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
@@ -172,7 +180,8 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+7` | jump straight to a place |
+| `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) | jump straight to a place |
+| `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
