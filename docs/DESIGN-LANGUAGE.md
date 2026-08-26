@@ -284,48 +284,53 @@ agent is waiting for a person and on nothing else — its whole value is that
 seeing it anywhere means exactly one thing. It sits at L 73.5, comfortably in
 band, and nothing in this wave had a reason to go near it.
 
-## THE PLACE LADDER — a second, smaller table for home and its places
+## THE PLACE LADDER — the same table, with three roles re-pointed
 
-**Owner-signed, 2026-08-25: "follow the exact design."** Home and the six places
-beside it — tasks, standing, memory, spend, search, settings — paint from the
-design's own table (`docs/design/home-rethink/SCREENS.txt`) and not from the one
-above. The conversation is untouched.
+**Owner-signed, 2026-08-25, and then reversed by the owner the same day.** The first
+order was "follow the exact design": home and the six places beside it — tasks,
+standing, memory, spend, search, settings — took the design's own nine hexes
+(`docs/design/home-rethink/SCREENS.txt`), painted `#12121A` over every cell of the
+frame, and carried place-scoped variants of the glare law, the isoluminant band and
+the ground ladder to admit them. It was built and shipped for testing. The owner ran
+it and said:
 
-| Role | Hex | 256 | What it paints on a place |
-| --- | --- | --- | --- |
-| tier 1 | `#E6E6F0` | 255 | the subject — the thing itself, and the only tier that goes bold |
-| tier 2 | `#A0A6BB` | 248 | what is true about it |
-| tier 3 | `#7C8296` | 102 | the margin — an age, a count, a hint |
-| amber | `#EECE96` | 222 | **needs a human**, and nothing else |
-| cyan | `#A4D7EA` | 152 | **alive** — in flight this instant |
-| green | `#A2E2BC` | 151 | **money**, only on a figure in dollars |
-| page | `#12121A` | 233 | the ground under every cell of the frame |
-| cursor | `#1D1D28` | 234 | the row the pointer is over |
-| band | `#262633` | 236 | the row the cursor is on |
+> "i want bg color and text color to be same as in inside chat please this new bg
+> looks weird i think we were taking user terminal stuff or something previously"
 
-> **ONE ACCENT PER MEANING, AND THE DESIGN NAMES THE MEANINGS.** Amber for
-> waiting on a person, cyan for in flight, and nothing else on a place is in
-> colour. Green is a unit rather than a signal. Every hierarchy step past the
-> three greys is made with bold, case, indent or air.
+**So a place paints from the table above and authors nothing of its own.** There is no
+second palette, no second ceiling, no second band, and no page ground on any surface —
+`placeSignalBand`, `placeGlareCeiling` and the place ground ladder are gone from
+`internal/tui3/designlanguage_test.go`, and REST IS NOT A COLOUR is one law again.
 
-Three laws above are answered by place-scoped variants rather than repealed, and
-each carries the owner's name in its own comment:
+| The design's role | What a place asks the palette for | The hue it gets |
+| --- | --- | --- |
+| tier 1, the subject | `p.ink`, bold where the design bolds | `hueInk` `#C6CDDA` |
+| tier 2, what is true of it | `p.muted` | `hueMuted` `#7FA6C9` |
+| a note about the subject | `p.narr` | `hueNarr` `#848FA6` |
+| tier 3, the margin | `p.dim` | `hueDim` `#6B7280` |
+| amber, **needs a human** | `p.warn` / `p.ask` | `hueWarn` `#EBCB8B` |
+| cyan, **alive** | `p.accent` | `hueAccent` `#9DC3E6` |
+| green, **money** | `p.money` | `hueMoney` `#90D0AA` |
+| the page | — | the terminal's own background |
+| the band | `p.selected` | `hueSelected`, THE GROUND LADDER's own step |
 
-- `placeGlareCeiling = 15.5`. `#E6E6F0` is the exact white THE GLARE LAW was
-  written about and measures 15.03:1 against `#12121A`. Two facts make it an
-  exception rather than a hole: a place KNOWS its ground because it paints it, and
-  tier 1 on a place is a title rather than prose.
-- `placeSignalBand = 16.0`. The design's own three span **1.9** points; the whole
-  of the spread is the failure hue a place keeps and the design does not name.
-- **REST IS A COLOUR ON A PLACE.** THE GROUND LADDER's reason for refusing a page
-  ground was that the terminal's background is unknowable. The places answer it by
-  bringing their own, so the ladder gains a floor step there and the cursor and
-  band steps are measured against a real number. Nothing is painted below ANSI256.
+> **ONE ACCENT PER MEANING SURVIVES THE REVERSAL, BECAUSE IT IS ARITHMETIC ABOUT HOW
+> MANY MEANINGS A SCREEN CARRIES rather than a claim about which hexes carry them.**
+> Amber for waiting on a person, the accent for in flight, and nothing else on a place
+> is in colour. Green is a unit rather than a signal. Every hierarchy step past the
+> greys is made with bold, case, indent or air.
 
-The one nudged index in the whole tree is here: `#262633`'s true neighbour is 235,
-which is `hueCursor`'s, so the band **states** 236 — its own runner-up on the same
-grey ramp. A collision is resolved by moving the index and never the authored
-colour.
+So `placeRampFrom` retires three of the conversation's roles and re-points nothing
+else: the question's violet onto the amber (home said one thing in two colours), the
+payload cyan onto the body ink (a datum lifts by being the subject), and the finished
+tick's olive onto the second voice (the `✓` already says it landed, and the one green
+on a place is money). It takes the ramp the palette is ALREADY HOLDING, so adaptive.go's
+measured derivation reaches the places exactly as it reaches a transcript.
+
+What the fidelity wave landed that was never a colour all stays: the `?` and `◐` marks,
+the design's feet word for word, the bold subject in the tab bar, `p.money` on every
+figure in dollars, and the four laws about the plain floor, private-use glyphs, the
+marks and italics.
 
 ## THE ACCENT BUDGET
 

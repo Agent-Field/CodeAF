@@ -1794,7 +1794,7 @@ func exchangeTailInk(ex *homeExchange) noteInk {
 		}
 		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
 		// colour on that reading everywhere it appears (styles.go's
-		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// [hueWarn]); this note used to take the accent, which on a place now
 		// means work in flight — the opposite fact.
 		return pal.warn(note)
 	}
