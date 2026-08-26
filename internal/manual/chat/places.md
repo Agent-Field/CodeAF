@@ -71,6 +71,65 @@ word, and the command that names it all open the same room on the same machine. 
 and a bare `/task` on a machine that has run nothing open the tasks place, and the page
 says what tasks are and ends `no tasks yet — /task <brief> starts one`.
 
+## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
+
+**Press `↑` from the first row of the page you are on.** The cursor leaves the list and
+lands on the **tab bar** — the row of seven words under the top line — and from there:
+
+| Key | What it does on the bar |
+| --- | --- |
+| `←` `→` | walk one word along, wrapping round from either end. Nothing opens |
+| `enter` | go into the place under the cursor |
+| `↓` | the same as `enter` — go in |
+| `esc` | back into the page, on the row you walked up from |
+| `↑` | nothing. There is nothing above the bar but the top line, which is a reading rather than a control |
+| `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
+| `alt+1` … `alt+7` | jump straight to one, exactly as everywhere else |
+| any printable key | goes to the composer, and the cursor comes back down into the page with it |
+
+**The word your cursor is on wears the cursor's band**, in place of the mark the word you
+are standing in usually wears. So while the cursor is up there the bar is saying "this is
+where your cursor is" rather than "this is the room you are in" — and the page underneath
+is still saying which room that is, on every one of its rows.
+
+**Walking the bar opens nothing.** That is the whole difference between this and `tab`:
+`tab` steps into each room as it passes, which closes the last one and throws away whatever
+you had typed into it, so looking along seven words used to cost seven openings. `←` and
+`→` move a cursor and nothing else; `enter` is what goes in.
+
+**`←` and `→` do not open a row's verbs while the cursor is on the bar**, and they do not
+open or close a fold either. Those are things you do to a **row**, and the bar is not a row
+of any page's list — see *What the right arrow does on a row*.
+
+**`↑` reaches the bar from every place**, and from the first row of every one of them.
+Where a page has no row to stand on at all — an almost-empty room saying what it is for —
+`↑` reaches the bar from there too. What it does **not** do is reach a bar that is not
+drawn: home on a phone-shaped frame and a task's record card put something else in those
+cells, and there `↑` is the walk it always was.
+
+**Pressing `esc` on the bar does not close the place.** It puts the cursor back in the
+page; a second `esc` is the page's own, and that one leaves.
+
+## Does the tab bar do anything when I hover over it — the pointer on the words
+
+**Yes: the word under your pointer lifts.** Resting the mouse on a place's word paints that
+word in the brighter ink the word you are standing in wears, without the band under it — so
+the bar says "this one is a door" without pretending you are already in it. Moving the
+pointer off the word puts the ink back, and moving it into the gap between two words lifts
+nothing, because the gap belongs to no room.
+
+**Hovering moves nothing else at all.** No cursor, no page, no window — the pointer
+previews and the cursor selects, which is the same law the rows underneath keep. If the
+keyboard cursor is standing on the bar as well you will see both marks at once: the band on
+the word the cursor is on, the lifted ink on the word the pointer is on.
+
+**The wheel over the bar walks the places**, one room a turn — `tab` and `shift+tab` under
+the hand that is already there. It is one room a notch and not three, because each step
+opens a room, and two rooms nobody asked to see is two filters thrown away.
+
+**Clicking still opens.** A press on a word goes there; a press in the gap does nothing;
+a press on the word you are already standing on does nothing.
+
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
 Three gestures, the same on all seven places:
@@ -85,6 +144,10 @@ Three gestures, the same on all seven places:
 - **the wheel walks the list**, three rows a turn, on every place. There is no separate
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.
+
+The **tab bar** answers all three too, and it answers them as itself rather than as a row of
+the list: the pointer lifts the word it is on, the wheel walks the places one room a turn,
+and a click opens. Its own section is above.
 
 ## The composer — typing on any place, and how to start a task from any page
 
@@ -177,7 +240,7 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 
 | | |
 | --- | --- |
-| `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place |
+| `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
 | `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) | jump straight to a place |

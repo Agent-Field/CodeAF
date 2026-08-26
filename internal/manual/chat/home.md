@@ -35,8 +35,10 @@ effect the launch is the launch you always had, with home already open on top of
 
 **The cursor starts on the conversation this window is holding** — the row `esc` drops
 back into, visibly selected, wearing the one band on the screen. So the first frame already
-answers "where am I". `↑` off the top of the list walks up to **rest** — no row at all (see
-*Where the cursor starts*); `esc` goes on with what you were doing.
+answers "where am I". `↑` off the top of the list walks up onto the **tab bar** — the row of
+seven words over the list, which the cursor can stand on and walk along (see *Where the
+cursor starts*, and *How do I move between the tabs with the arrow keys* on the `places`
+page); `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -425,8 +427,8 @@ spent $1.63 · 3.6M tokens · thinking high
 The old `keys` legend is gone from the card. Its last line names the strip instead —
 `→ verbs: …` — because a letter is a verb only while the strip naming it is on screen.
 
-**With the cursor on no row at all** the card is the machine's own (*The machine's own
-card*), at that same width and no other.
+**The cursor is always on a row of the list**, so there is no state in which this card is
+about something else (*Where did the machine's own card go*).
 
 ## How do I answer without opening the chat — the verb strip on a row
 
@@ -594,143 +596,65 @@ about money. The clock always draws. A quiet morning on an idle machine really i
 The counts on this line and the rows on the machine's card are **one reading**, taken once
 every three seconds: the top line cannot say `4 moving` over a list showing three.
 
-The allowance used to live only on the machine's card, and this line used to say `$1.10
-today` and change colour as the bound came close. It says the fraction now, which is what
-the colour change was standing in for.
+The allowance used to live on a card home drew when the cursor was on no row at all, and
+this line used to say `$1.10 today` and change colour as the bound came close. It says the
+fraction now, which is what the colour change was standing in for — and that card is gone
+(*Where did the machine's own card go*), so this line is the only place either figure
+appears.
 
-## Where the cursor starts — your own conversation, with rest one ↑ away
+## Where the cursor starts on home, and where the first down arrow goes
 
 **Home opens with the cursor visibly on the conversation this window is holding** — the
 row `esc` drops back into, wearing the quiet selection band, with the word `here` where its
 age would be. The first frame answers "where am I" before you press anything, and `enter`
-on the first keystroke means something safe: back into your own conversation. Home used
-to open **at rest** — on no row at all — and a frame with nothing lifted read as a screen
-that had lost its selection.
+on the first keystroke means something safe: back into your own conversation.
 
 A window whose own conversation is not on the list falls to the **first row the cursor can
-stand on**, and to rest only on a machine with nothing at all.
+stand on**.
 
-**Rest is still a place**: `↑` off the top row of the list walks up onto no row at all.
-Nothing is highlighted there, `enter` closes home and drops you back into the conversation
-you came from, and on a frame 160 columns or wider the right side becomes **the machine's
-own card** — what is keeping an eye on things, what happened since you left, what the day
-has come to. `↓` from rest lands on the first row the cursor can stand on, which is under
-the ledger and the section line, because neither of those is a row. The three-second rescan
-leaves the cursor wherever you put it, rest included.
+**`↑` off the top row of the list walks up onto the tab bar** — the row of seven words over
+the list. The word you are standing in wears the cursor's band there instead of its usual
+mark, `←` and `→` walk along the seven without opening anything, `enter` or `↓` goes into
+the one under the cursor, and `esc` puts the cursor back on the row it came from. The
+*places* page has the whole of it under *How do I move between the tabs with the arrow
+keys*.
+
+**Where the first `↓` goes on home**: back onto the row you walked up from, which is the
+first row of the list the cursor can stand on — under the `since you left` ledger and under
+the section line, because neither of those is a row. Walking up onto the bar does not move
+home's own cursor, so `↑` and then `↓` costs nothing.
+
+**The cursor never leaves the list for nothing.** It is on a row of home at every moment,
+so the card beside it always has something to be about, and the three-second rescan leaves
+it wherever you put it.
 
 `esc` does what `esc` always does here: back to the conversation you came from — and it
 is the same conversation the cursor opened on.
 
-## The machine's own card — what the right side shows with the cursor on no row
+## Where did the machine's own card go — the cursor walks up to the tab bar now
 
-This is the card you reach by pressing `↑` off the top row of the list **on a frame 160
-columns or wider**, which is the only width home draws a card at at all: the cursor
-**leaves the list**, nothing is highlighted, and the right side is **the machine's own
-card** — the morning glance. `↓` walks straight back into the first row. The card stays put
-while you read it — the three-second rescan leaves the cursor off the list. Below 160
-columns there is no right-hand column, so rest is simply a cursor on no row.
+**It is gone, and `↑` off the top row reaches the tab bar instead.**
 
-It is five bands and a legend, each drawn only if it has anything to say:
+Home used to have a state called *rest*: `↑` off the top of the list put the cursor on **no
+row at all**, and on a frame 160 columns or wider the right-hand side became a card about
+the machine — `keeping an eye on`, an `agents` chart, `since you left`, `thinking`, and a
+`today` line. The whole state existed so that card had somewhere to be reached from.
 
-```
-keeping an eye on
-◦ tests sweep                in 2h
-◦ weekly review            mon 8am
+The tab bar is a better thing to find above the list, because every word on it is a room
+you can open. So `↑` now lands there, and each of the things the card said has a place of
+its own that says it in full:
 
-agents · in flight, the last few minutes
-▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
+| What the card said | Where it is now |
+|---|---|
+| `keeping an eye on` | the **standing** place — `alt+3`, or type `standing` |
+| `since you left` | the **`since you left` ledger** at the top of home's own list, where each line is a door into the place it happened in (*What is since you left*) |
+| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $20.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
+| `agents` — the little chart | the pulse line's `4 moving`, which is the figure the chart was the shape of |
+| `thinking` — the install's rung | the `thinking` row of `/settings`, which is where that setting has always been written |
 
-since you left
-◆ 2 tasks landed             aforge
-◆ the cert expires in 9 days hax-sdk
-
-thinking high
-
-today
-  3 chats · 5 tasks · $1.10 of $5.00
-
-ctrl+v think harder
-```
-
-- **`keeping an eye on`** — every active standing order on **every** project, soonest
-  first, each with its next due time (`in 2h`) or the cadence you asked for
-  (`mon 8am`). Anything **waiting on you** is deliberately not here: that is a job for you
-  rather than a thing being watched, and it belongs with the rest of what needs you. Paused
-  and stopped things are not here either. Past four, the rest fold to
-  `▸ …3 more keeping an eye`.
-- **`agents`** — a small **chart**, one row of bars, of how many things this machine has
-  had running over the last few minutes, oldest on the left and **newest on the right**.
-  The heading says what it is — `agents · in flight, the last few minutes` — and the chart
-  itself prints no number: the figure is on the pulse line at the top of the screen
-  (`4 moving`) and this is the shape it came from. See below for the whole of how it
-  behaves.
-- **`since you left`** — everything that happened across all your projects while you were
-  not looking: news a standing thing left in a conversation or a project, and work that
-  landed after you last spoke there. It is the same list the phone-shaped home shows under
-  the same words. **Every row is a door**: click one and the conversation it names opens,
-  exactly as clicking that conversation on the left would. Past four rows, `▸ …N more
-  things`.
-- **`thinking`** — how hard this machine thinks about anything nobody has said anything
-  more specific about: `thinking high`. It is the same `thinking` row that is in
-  `/settings` among the model rows, said where you are already looking, and **`ctrl+v`
-  moves it** one rung each press — `low`, `medium`, `high`, `xhigh`, `max`, and back round
-  to `low`. A machine whose row says `off` draws no band, because nothing extra is being
-  asked for. The card's last line, `ctrl+v think harder`, is the only key this card takes.
-- **`today`** — the local day: `3 chats · 5 tasks · $1.10 of $5.00`. Chats are the
-  conversations you spoke in today, tasks the work that ran today, and the money is what
-  that work cost. `of $5.00` is your **daily allowance** — the same budget everything
-  standing is held to — and this is the only place on the screen it appears.
-
-`→` on the machine's card opens every fold on it, and `←` closes them again, exactly as
-they do on any other card here.
-
-**Nothing that is zero is drawn.** A day with no work in it says `2 chats` and stops; a
-machine nobody has touched today has no `today` band at all — never `0 chats · 0 tasks ·
-$0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
-side, which is the good news said with space.
-
-## The little chart on home — the agents band, and what the bars mean
-
-The `agents` band on the machine's own card is the one **chart** anywhere in aforge: one row
-of bars tracing how many things this machine has had running over the last few minutes.
-
-```
-agents · in flight, the last few minutes
-▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
-```
-
-- **The heading says what the shape is.** `agents · in flight, the last few minutes` — the
-  chart is a mark and the clause beside it is the word that says what the mark is about.
-  There is no figure in that clause, on purpose: this band prints no numbers at all.
-- **One bar is one reading**, taken every three seconds — the same beat home rescans the
-  disk on. Sixty readings fit, so the chart is about **three minutes** wide. Oldest on the
-  left, **newest at the right**.
-- **The bars fade backwards in time.** The newest bars, on the right, are drawn in the same
-  quiet colour aforge paints everything that is working right now; older bars step back
-  through fainter shades toward the background. That gradient is the only thing the colour
-  means here — it tells you which end is which. It never changes colour with the count, and
-  on a terminal with no colours to spend the whole row is drawn in one shade.
-- **The tallest bar is the busiest moment in that window** and the shortest is nothing at
-  all. There is no fixed ceiling on how many things a machine may run, so it scales to its
-  own peak: the chart is about **change**, not about size. The size is the pulse line's
-  `4 moving`, said once, at the top of the screen.
-- **It moves because the work moves.** There is no animation in it. While something runs
-  the readings differ and the line slides one bar every three seconds; while the machine is
-  quiet the readings are all the same and the line lies **flat and still** along the floor.
-- **It disappears when it has nothing to show.** A machine that has run nothing for the
-  whole window draws no `agents` band at all — not a heading over a flat line on the floor.
-  The first thing that runs brings it back.
-- **And it does not draw half a chart.** The readings are kept only in memory, so for the
-  first half-minute of a fresh aforge there are two or three of them — which is a smudge
-  rather than a shape. The band stays away until it has enough readings to draw a line you
-  can read, and then it appears.
-- **The readings live only in this run of aforge.** Nothing is written to disk and no
-  history is kept between runs: quit and start again and the chart is absent until the next
-  few beats fill it in.
-- **It needs the room to be a chart.** On a frame too narrow for a card at all (under 160
-  columns) there is no `agents` band, and the count on the pulse line is what you keep. In
-  plain-text mode and with fancy glyphs turned off it is not drawn either — a row of bars
-  read aloud is a row of noise — and again the count is what stays.
+**`ctrl+v` on home is now the standing item's key and nothing else's.** It raises how hard
+one `◦` row thinks (*Make a reminder think harder*). To move what the whole machine thinks
+by default, open `/settings` and walk to the `thinking` row.
 
 ## The pane on the right of home — the card under the cursor or pointer
 
@@ -763,16 +687,14 @@ read top to bottom as bands separated by blank lines — no rules and no borders
 where it is, because a card is assembled downward from its title and lifting it would take
 the facts off the bottom rather than move it down the screen.
 
-**It follows the cursor through a search as well**, and there it is the fuller preview the
-card has always been — what the conversation is doing, the last thing said in it, what is
-next up, what came in while you were away. On the resting list it is the five bands above,
-because at that width the card has to be worth more than the row beside it rather than
-being a second reading of it.
+**It follows the cursor through a search as well**, and there it is the same preview — what
+the conversation is doing, the last thing said in it, what is next up, what came in while
+you were away.
 
 It goes **empty** — nothing drawn at all — on a row that is not a thing: a fold line, or the
 `start a new conversation` row, which has nothing to preview because that chat does not
-exist yet. With the cursor on **no row at all** it is the machine's own card instead (its
-own section, above).
+exist yet. There is no state in which it is about something other than a row of the list:
+the cursor cannot leave the list any more (*Where did the machine's own card go*).
 
 A frame too short for all of that drops bands from the bottom — the facts go first — and
 never touches the name.
@@ -1626,9 +1548,8 @@ running, and `=` when it is paused. The note is what it is asking or what it is 
 and a watch due on Monday wants nothing. Three places have those:
 
 - **the standing place** (`alt+3`, `/standing`), which is every promise this machine has
-  made, with how much rope each has;
-- **the machine's own card**, at 160 columns and wider with the cursor on no row: a
-  `keeping an eye on` band, soonest first, each with `in 2h` or `mon 8am`;
+  made, with how much rope each has — and which is where the `keeping an eye on` list lives
+  in full;
 - **the `since you left` ledger**, on the morning one of them has actually fired.
 
 The `◦` mark itself belongs to those readings and to the `next up` band, where a line says
@@ -1995,7 +1916,7 @@ the row under your pointer when there is one, the cursor's row otherwise.
 | `ctrl+y` | copies the workspace path |
 | `ctrl+e` | puts the conversation away, or pauses a standing item |
 | `ctrl+x` | stops a standing item for good |
-| `ctrl+v` | raises how hard a standing item thinks, or the machine's own default at rest |
+| `ctrl+v` | raises how hard a standing item thinks. It does nothing on a conversation row: that rung belongs to the window that conversation is open in, and the machine's own default is the `thinking` row of `/settings` |
 
 A row whose folder is no longer on this disk says `that folder is gone · <path>` and starts
 nothing — `enter`, `ctrl+t` and `ctrl+o` all need that directory. A failed folder open says
@@ -2011,11 +1932,10 @@ two at a time. Rows look like `◦ leave for the train · in 4m`, `◦ draft the
 Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are present the card adds
 a dim `▸ …N more items` door. Paused, stopped and absent items draw nothing.
 
-**It is not on the resting card.** The card beside the flat list is the five bands that act
+**It is not on the resting card.** The card beside the flat list is the bands that act
 (*Why is there no preview on the right*); `next up` is drawn on the **phone sheet** and on
-the card **while you are searching**. What is coming up across the whole machine is on the
-machine's own card at rest, under `keeping an eye on`, and the whole of it is the standing
-place.
+the card **while you are searching**. What is coming up across the whole machine is the
+**standing** place — `alt+3`, or type `standing`.
 
 ## What has this conversation cost — the spend band on home
 

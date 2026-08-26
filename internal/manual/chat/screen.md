@@ -1743,7 +1743,7 @@ question hue inside a conversation**.
 running, selected, hovered, or waiting on you takes the accent — the row under the
 cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
 Headings and section labels do not: the `openaf` wordmark in the welcome box, the name on
-home's top line, and every band heading on the machine's card are **structure**, and
+home's top line, and every band heading on a card are **structure**, and
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
 
