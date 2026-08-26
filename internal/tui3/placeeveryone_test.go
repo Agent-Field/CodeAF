@@ -73,16 +73,16 @@ func everyPlaceTable() []everyPlace {
 		{
 			id:     pageStanding,
 			open:   func(t *testing.T) *app { return standPlaceLab(t) },
-			cursor: func(a *app) int { return a.standPage.cursor },
+			cursor: func(a *app) int { return a.orders.cursor },
 			hits: func(a *app) []int {
-				_, hits, _, _ := a.standPageFrame(a.width, a.height)
+				_, hits, _, _ := a.standingPlaceFrame(a.width, a.height)
 				return hits
 			},
 		},
 		{
 			id:     pageMemory,
 			open:   memoryPlaceLab,
-			cursor: func(a *app) int { return a.memPanel.cursor },
+			cursor: func(a *app) int { return a.mem.cursor },
 			hits: func(a *app) []int {
 				_, hits, _, _ := a.memoryFrame(a.width, a.height)
 				return hits
@@ -165,7 +165,7 @@ func memoryPlaceLab(t *testing.T) *app {
 			Status: store.MemoryActive, UpdatedAt: time.Now().Add(-time.Duration(i) * time.Hour),
 		})
 	}
-	a, _ := memoryPanelApp(t, rows)
+	a, _ := memoryPlaceApp(t, rows)
 	a.width, a.height = 120, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	if cmd := a.showPage(pageMemory); cmd != nil {

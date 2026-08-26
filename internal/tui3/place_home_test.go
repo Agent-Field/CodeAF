@@ -230,7 +230,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
 				a.page, homeNotes(a))
 		}
-		if screen := standPageScreen(a); !strings.Contains(screen, "the 6am repo watch") {
+		if screen := standingPlaceScreen(a); !strings.Contains(screen, "the 6am repo watch") {
 			t.Fatalf("the door opened a place without the watch it was about:\n%s", screen)
 		}
 		// HOME IS PUT BACK before the walk goes on, because the rest of this test

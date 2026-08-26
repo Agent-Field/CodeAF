@@ -253,7 +253,7 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		return a.placeTalk()
 	}
 	if box := a.placeBox(); box != nil {
-		listNavigate(msg, box, a.moveSpend, func() {}, memoryPanelRows)
+		listNavigate(msg, box, a.moveSpend, func() {}, memoryPlaceRows)
 		a.touch()
 	}
 	return nil

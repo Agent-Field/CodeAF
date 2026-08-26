@@ -34,7 +34,7 @@ func searchPlaceWithHits(t *testing.T) *app {
 // standPlaceLab is the standing place standing over three orders.
 func standPlaceLab(t *testing.T) *app {
 	t.Helper()
-	a, _ := standPageApp(t, []standing.Item{
+	a, _ := standingPlaceApp(t, []standing.Item{
 		standOrder("one", "watch the filings", standing.AltitudeMachine),
 		standOrder("two", "sweep the inbox", standing.AltitudeProject),
 		standOrder("three", "price the crew", standing.AltitudeConversation),
@@ -175,9 +175,9 @@ func TestTheWheelWalksThePlacesCursor(t *testing.T) {
 // other promoted list.
 func TestTheWheelWalksTheStandingPlacesCursor(t *testing.T) {
 	a := standPlaceLab(t)
-	was := a.standPage.cursor
+	was := a.orders.cursor
 	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
-	if a.standPage.cursor == was {
+	if a.orders.cursor == was {
 		t.Fatalf("the wheel did not move the standing place's cursor from %d", was)
 	}
 }
@@ -224,10 +224,10 @@ func TestHoveringARowOfAPlaceLightsItAndLeavesTheCursor(t *testing.T) {
 // pointer crossing it lit nothing at all.
 func TestHoveringARowOfTheStandingPlaceLightsIt(t *testing.T) {
 	a := standPlaceLab(t)
-	_, hits, _, _ := a.standPageFrame(a.width, a.height)
+	_, hits, _, _ := a.standingPlaceFrame(a.width, a.height)
 	other := -1
 	for _, at := range hits {
-		if at >= 0 && at != a.standPage.cursor {
+		if at >= 0 && at != a.orders.cursor {
 			other = at
 			break
 		}
@@ -236,19 +236,19 @@ func TestHoveringARowOfTheStandingPlaceLightsIt(t *testing.T) {
 		t.Fatal("the standing place drew no row that is not the cursor")
 	}
 	y := placeBodyRowOf(t, hits, other)
-	cursor := a.standPage.cursor
-	before, _, _, _ := a.standPageFrame(a.width, a.height)
+	cursor := a.orders.cursor
+	before, _, _, _ := a.standingPlaceFrame(a.width, a.height)
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-	if a.standPage.cursor != cursor {
-		t.Fatalf("the pointer moved the standing cursor from %d to %d", cursor, a.standPage.cursor)
+	if a.orders.cursor != cursor {
+		t.Fatalf("the pointer moved the standing cursor from %d to %d", cursor, a.orders.cursor)
 	}
-	after, _, _, _ := a.standPageFrame(a.width, a.height)
+	after, _, _, _ := a.standingPlaceFrame(a.width, a.height)
 	if before[y] == after[y] {
 		t.Fatalf("the hovered standing row is painted exactly as it was: %q", plain(after[y]))
 	}
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
-	if a.standPage.cursor != other {
-		t.Fatalf("clicking standing row %d left the cursor on %d", other, a.standPage.cursor)
+	if a.orders.cursor != other {
+		t.Fatalf("clicking standing row %d left the cursor on %d", other, a.orders.cursor)
 	}
 }
 

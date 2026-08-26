@@ -45,16 +45,16 @@ import (
 // IT WAS THE PAGE'S CEILING and it is not one any more: the list was an overlay
 // under the draft, twelve rows at most, and a place takes the whole terminal —
 // so the window a cursor is followed within is what the last paint had room for
-// ([standPage.visible]) and never a constant. What a constant is still honest for
+// ([standingPlace.visible]) and never a constant. What a constant is still honest for
 // is the one moment there is no paint to ask: a page key pressed before the
 // first frame, which cannot happen on the surface and can in a test. Twelve is
 // the number the overlay used, kept so that gesture moves by the same amount it
 // always did.
 const standRowsMax = 12
 
-// standPage is the standing place's whole state, and the ONLY state it keeps.
+// standingPlace is the standing place's whole state, and the ONLY state it keeps.
 // The zero value is closed.
-type standPage struct {
+type standingPlace struct {
 	// rows is the last reading, held between frames because NOTHING READS THE
 	// DISK ON A DRAW: the walk of every project's documents happens on the open
 	// and after a write, and a keystroke rebuilds lines from this slice.
@@ -65,7 +65,7 @@ type standPage struct {
 	cursor int
 	top    int
 	// shown is how many rows the LAST PAINT had room for, and it is how far the
-	// cursor is followed ([standPage.visible]). It is not [standPage.win], which
+	// cursor is followed ([standingPlace.visible]). It is not [standingPlace.win], which
 	// is the TIME window this place is listing.
 	//
 	// IT IS WRITTEN BY THE PAINT because this is a place: the body is however
@@ -122,7 +122,7 @@ type standPage struct {
 // PREAMBLE IS THE LAW: an almost-empty place is the best teacher on the machine,
 // so the sentence that used to be the refusal ([standNothingWord]) is the first
 // line of the body instead ([standingTeach]).
-func (p *standPage) open(a *app) tea.Cmd {
+func (p *standingPlace) open(a *app) tea.Cmd {
 	rows, win := a.standingPlaceReading()
 	// WHETHER THE MACHINE HOLDS ANYTHING IS ASKED OF THE UNSCOPED PARTS, because
 	// the window the reading measured holds every firing there is: rows can only
@@ -130,7 +130,7 @@ func (p *standPage) open(a *app) tea.Cmd {
 	// says so without depending on that being true.
 	stand, excepted, elsewhere := a.standingPageParts()
 	held := len(standingShelves(stand, excepted, elsewhere)) > 0
-	*p = standPage{rows: rows, win: win, held: held, hover: -1}
+	*p = standingPlace{rows: rows, win: win, held: held, hover: -1}
 	p.cursor = p.settle(0)
 	a.closeLists()
 	a.dismissWelcome()
@@ -145,21 +145,21 @@ func (p *standPage) open(a *app) tea.Cmd {
 // close writes the look stamp and forgets the reading. The stamp is what the
 // tab bar's count is measured against, so it is written where a place is LEFT
 // and never where one is entered (placecounts.go's [app.leavePage]).
-func (p *standPage) close(a *app) {
+func (p *standingPlace) close(a *app) {
 	a.leavePage(pageStanding)
-	*p = standPage{}
+	*p = standingPlace{}
 }
 
 // body is the rows and the hit map, painted into exactly the room the frame
 // reserved. It reads the cached rows and never a seam — that is the whole of
 // "nothing reads the disk on a draw".
-func (p *standPage) body(a *app, width, room int) []placeRow {
+func (p *standingPlace) body(a *app, width, room int) []placeRow {
 	if !p.held {
 		// THE TEACHING PROSE IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
 		// header row rather than under it: the header carries the time window
 		// ([standingHeaderRow]), and a control naming a span of days on a machine
 		// that has never held a standing order is a control about nothing. A list
-		// emptied by the window keeps its header ([standPage.held] says why).
+		// emptied by the window keeps its header ([standingPlace.held] says why).
 		rows := make([]placeRow, 0, room)
 		for _, line := range standingTeach(a.pal) {
 			if len(rows) >= room {
@@ -198,7 +198,7 @@ func (p *standPage) body(a *app, width, room int) []placeRow {
 // It is the reading of the `owner` map and nothing else, because the arithmetic
 // that turns a row of the TERMINAL into a line of a body is the same on every
 // place and lives once (placemouse.go, pages.go's [app.placeBodyPress]).
-func (p *standPage) rowAt(line int) (int, bool) {
+func (p *standingPlace) rowAt(line int) (int, bool) {
 	if line < 0 || line >= len(p.owner) || p.owner[line] < 0 {
 		return 0, false
 	}
@@ -206,14 +206,14 @@ func (p *standPage) rowAt(line int) (int, bool) {
 }
 
 // stops is the cursor-legal rows of the last reading.
-func (p *standPage) stops() []int { return standRowStops(p.rows) }
+func (p *standingPlace) stops() []int { return standRowStops(p.rows) }
 
 // enter is the provenance door, and it is home's road walked from the other end
 // ([app.homeItemEnter]): "why is this true here?" must open the conversation
 // that made it, an order made at home that never became a conversation SAYS SO
 // rather than offering a door onto nothing, and an order this very conversation
 // asked for says that too.
-func (p *standPage) enter(a *app) tea.Cmd {
+func (p *standingPlace) enter(a *app) tea.Cmd {
 	item, ok := p.current()
 	if !ok {
 		return nil
@@ -258,7 +258,7 @@ func (p *standPage) enter(a *app) tea.Cmd {
 // THE LETTERS ARE THE ONES A PERSON ALREADY LEARNED. `p` pauses and `s` stops on
 // home, on the three shelves and here; a shelf that spelled the same two verbs
 // `r` and `x` would be one page teaching two keyboards.
-func (p *standPage) verbs(a *app) []verb {
+func (p *standingPlace) verbs(a *app) []verb {
 	row, ok := p.choice()
 	if !ok {
 		return nil
@@ -297,7 +297,7 @@ func (p *standPage) verbs(a *app) []verb {
 // predicate answers the paint and the keys ([standingWindowRoom]), so the arrows
 // are never bound where they are not drawn — a capability that cannot be seen is
 // absent rather than silently working.
-func (p *standPage) window(a *app, key string) bool {
+func (p *standingPlace) window(a *app, key string) bool {
 	width, _ := a.size()
 	if !standingWindowRoom(width, p.win) {
 		return false
@@ -321,7 +321,7 @@ func (p *standPage) window(a *app, key string) bool {
 // above the composer. This place says nothing there: every fact it has is about
 // one order, which is what the row and the strip are for, and a count of what a
 // person can already see is the emptiness law broken from the other end.
-func (p *standPage) note(a *app, width int) []string { return nil }
+func (p *standingPlace) note(a *app, width int) []string { return nil }
 
 // hint is the line under the box: what enter does, what `→` reaches, and the way
 // out.
@@ -332,7 +332,7 @@ func (p *standPage) note(a *app, width int) []string { return nil }
 // has, and a line promising `not here` over a row that cannot make an exception
 // would be this surface advertising a key that does nothing — the exact fault
 // the verb strip was built to end (verbstrip.go's header).
-func (p *standPage) hint(a *app) string {
+func (p *standingPlace) hint(a *app) string {
 	verbs := p.verbs(a)
 	words := make([]string, 0, len(verbs))
 	for _, v := range verbs {
@@ -347,7 +347,7 @@ func (p *standPage) hint(a *app) string {
 
 // changed is the tab's count: how many orders on this machine have fired since
 // the person last looked at this place.
-func (p *standPage) changed(a *app, since time.Time) int {
+func (p *standingPlace) changed(a *app, since time.Time) int {
 	n := 0
 	for _, view := range a.standingPlaceViews() {
 		if !view.Item.LastFired.IsZero() && view.Item.LastFired.After(since) {
@@ -362,7 +362,7 @@ func (p *standPage) changed(a *app, since time.Time) int {
 // land puts the cursor on one order by id, and leaves it where it was when
 // nothing on the page is that order — the page opened from the margin on a row
 // another window has since stood down is still the page a person asked for.
-func (p *standPage) land(id string) {
+func (p *standingPlace) land(id string) {
 	if id == "" {
 		return
 	}
@@ -386,7 +386,7 @@ func (p *standPage) land(id string) {
 // the receipt for what was just stopped is in the conversation behind this list,
 // and a page that closed itself out from under a person would look like the
 // keystroke had done something else.
-func (p *standPage) adopt(rows []standRow) {
+func (p *standingPlace) adopt(rows []standRow) {
 	p.rows = rows
 	p.cursor = p.settle(p.cursor)
 	p.follow()
@@ -394,7 +394,7 @@ func (p *standPage) adopt(rows []standRow) {
 
 // settle is the nearest row a cursor may rest on, searching forward first
 // because a row that went away is followed by whatever took its place.
-func (p *standPage) settle(from int) int {
+func (p *standingPlace) settle(from int) int {
 	if from < 0 {
 		from = 0
 	}
@@ -418,7 +418,7 @@ func (p *standPage) settle(from int) int {
 // It stops at the ends rather than wrapping, which is [moveCursor]'s own law and
 // its reason: a cursor that reappeared at the far end would put a stop key under
 // a hand that was walking away from one.
-func (p *standPage) move(delta int) {
+func (p *standingPlace) move(delta int) {
 	step := 1
 	if delta < 0 {
 		step, delta = -1, -delta
@@ -446,7 +446,7 @@ func (p *standPage) move(delta int) {
 // stop at four rows behind a `▸ N more` line no key answered; a place takes the
 // whole terminal, so there is nothing for a fold to save and nothing behind it a
 // person could get to.
-func (p *standPage) follow() {
+func (p *standingPlace) follow() {
 	p.top = listTop(p.cursor, p.top, len(p.rows), p.visible())
 }
 
@@ -455,11 +455,11 @@ func (p *standPage) follow() {
 // been a paint to ask.
 //
 // It is NOT called `window`, and the difference matters on this place more than
-// anywhere: [standPage.window] is screen 3d's TIME window — which firings the
+// anywhere: [standingPlace.window] is screen 3d's TIME window — which firings the
 // page is listing — while this is how much of the list the terminal can show at
 // once. Two senses of one word on one struct is how a keystroke ends up
 // scrolling the calendar.
-func (p *standPage) visible() int {
+func (p *standingPlace) visible() int {
 	if p.shown > 0 {
 		return p.shown
 	}
@@ -467,7 +467,7 @@ func (p *standPage) visible() int {
 }
 
 // at resolves one line.
-func (p *standPage) at(index int) (standRow, bool) {
+func (p *standingPlace) at(index int) (standRow, bool) {
 	if index < 0 || index >= len(p.rows) {
 		return standRow{}, false
 	}
@@ -478,7 +478,7 @@ func (p *standPage) at(index int) (standRow, bool) {
 // verb can act on. It answers the row and not merely the order on it because
 // which SHELF a row is filed under decides what may be done to it
 // ([standRow.elsewhere]).
-func (p *standPage) choice() (standRow, bool) {
+func (p *standingPlace) choice() (standRow, bool) {
 	row, ok := p.at(p.cursor)
 	if !ok || row.kind != standRowItem {
 		return standRow{}, false
@@ -488,7 +488,7 @@ func (p *standPage) choice() (standRow, bool) {
 
 // current is the order under the cursor, and false when there is none — a verb
 // pressed on a page with nothing to act on must do nothing at all.
-func (p *standPage) current() (standing.Item, bool) {
+func (p *standingPlace) current() (standing.Item, bool) {
 	row, ok := p.choice()
 	return row.view.Item, ok
 }
@@ -500,7 +500,7 @@ func (p *standPage) current() (standing.Item, bool) {
 // drops, so a mis-aimed click there costs a second press; every verb here is a
 // key, and enter takes a person out of the conversation they are sitting in — a
 // click that did that would be a gesture nobody could aim.
-func (p *standPage) press(a *app, y int) tea.Cmd {
+func (p *standingPlace) press(a *app, y int) tea.Cmd {
 	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
 	// and the head is one number for every place ([placeHeadRows]). It used to
 	// resolve against the chrome's overlay marks, which is what an overlay had
@@ -541,7 +541,7 @@ const (
 // seam is a sentence written for a person ("standing orders are not built yet"),
 // so it is said as it stands rather than being wrapped in a second sentence
 // about a key that did not work.
-func (p *standPage) ask(a *app, which standVerb) tea.Cmd {
+func (p *standingPlace) ask(a *app, which standVerb) tea.Cmd {
 	row, ok := p.choice()
 	if !ok {
 		return nil
@@ -604,7 +604,7 @@ func (p *standPage) ask(a *app, which standVerb) tea.Cmd {
 // person sees is what the disk says. A refusal is said in the store's own words,
 // because that sentence was written for a person and wrapping it in a second one
 // about a key that did not work would be the surface talking over the machine.
-func (p *standPage) write(a *app, item standing.Item, status standing.Status) tea.Cmd {
+func (p *standingPlace) write(a *app, item standing.Item, status standing.Status) tea.Cmd {
 	if a.stands.Save == nil {
 		a.note(homeItemNoStore)
 		return nil
@@ -629,7 +629,7 @@ func (p *standPage) write(a *app, item standing.Item, status standing.Status) te
 	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
 	a.readStandingElsewhere()
 	// THE UNSCOPED READING IS TAKEN TOO, because stopping the last order is how a
-	// machine gets back to holding none and the page has to notice ([standPage.held]).
+	// machine gets back to holding none and the page has to notice ([standingPlace.held]).
 	p.held = len(a.standingPageRows(session.UsageWindow{})) > 0
 	p.adopt(a.standingPageRows(p.win))
 	return nil
@@ -656,16 +656,16 @@ func (a *app) openStandingAt(id string) tea.Cmd {
 	// answer to "which place is up".
 	cmd := a.showPage(pageStanding)
 	// A CLOSED PAGE LANDS NOWHERE, which is what makes this two lines rather than
-	// a condition: [standPage.land] walks the rows it has, and a page that did
+	// a condition: [standingPlace.land] walks the rows it has, and a page that did
 	// not open has none.
-	a.standPage.land(id)
+	a.orders.land(id)
 	a.touch()
 	return cmd
 }
 
-// standPageKey routes one keypress while this place owns the keyboard.
-func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
-	p := &a.standPage
+// standingPlaceKey routes one keypress while this place owns the keyboard.
+func (a *app) standingPlaceKey(msg tea.KeyPressMsg) tea.Cmd {
+	p := &a.orders
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
@@ -821,13 +821,13 @@ func (a *app) standingPlaceViews() []StandingItemView {
 
 // standingChangedSince is the tab bar's count, asked of the place that owns it.
 func (a *app) standingChangedSince(seen time.Time) int {
-	return a.standPage.changed(a, seen)
+	return a.orders.changed(a, seen)
 }
 
 // ── the place ───────────────────────────────────────────────────────────────
 
 // placeStanding is this place's handle on the registry. Every method is
-// [standPage]'s own, one line each: the state struct next door has carried this
+// [standingPlace]'s own, one line each: the state struct next door has carried this
 // shape since before the interface existed (pages.go's [place] states the
 // contract and why the handle holds no state itself).
 type placeStanding struct{ placeBase }
@@ -838,29 +838,29 @@ func (placeStanding) id() page      { return pageStanding }
 func (placeStanding) word() string  { return "standing" }
 func (placeStanding) counted() bool { return true }
 
-func (placeStanding) open(a *app) tea.Cmd { return a.standPage.open(a) }
-func (placeStanding) close(a *app)        { a.standPage.close(a) }
+func (placeStanding) open(a *app) tea.Cmd { return a.orders.open(a) }
+func (placeStanding) close(a *app)        { a.orders.close(a) }
 func (placeStanding) body(a *app, width, room int) []placeRow {
-	return a.standPage.body(a, width, room)
+	return a.orders.body(a, width, room)
 }
-func (placeStanding) stops(a *app) []int { return a.standPage.stops() }
+func (placeStanding) stops(a *app) []int { return a.orders.stops() }
 
-// standPageFrame is this place, drawn: the shared frame with this place's body
+// standingPlaceFrame is this place, drawn: the shared frame with this place's body
 // in it, and the hit map cast back into the body lines this place answers with
 // (pages.go's [app.placeDraw] and [placeLineHits]).
-func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
+func (a *app) standingPlaceFrame(width, height int) ([]string, []int, int, int) {
 	lines, hits, caretX, caretY := a.placeDraw(placeStanding{}, width, height)
 	return lines, placeLineHits(hits), caretX, caretY
 }
-func (placeStanding) enter(a *app) tea.Cmd                { return a.standPage.enter(a) }
-func (placeStanding) verbs(a *app) []verb                 { return a.standPage.verbs(a) }
-func (placeStanding) window(a *app, key string) bool      { return a.standPage.window(a, key) }
-func (placeStanding) note(a *app, width int) []string     { return a.standPage.note(a, width) }
-func (placeStanding) hint(a *app) string                  { return a.standPage.hint(a) }
-func (placeStanding) changed(a *app, since time.Time) int { return a.standPage.changed(a, since) }
+func (placeStanding) enter(a *app) tea.Cmd                { return a.orders.enter(a) }
+func (placeStanding) verbs(a *app) []verb                 { return a.orders.verbs(a) }
+func (placeStanding) window(a *app, key string) bool      { return a.orders.window(a, key) }
+func (placeStanding) note(a *app, width int) []string     { return a.orders.note(a, width) }
+func (placeStanding) hint(a *app) string                  { return a.orders.hint(a) }
+func (placeStanding) changed(a *app, since time.Time) int { return a.orders.changed(a, since) }
 
 func (placeStanding) press(a *app, y int) bool {
-	a.standPage.press(a, y)
+	a.orders.press(a, y)
 	return true
 }
 
@@ -869,18 +869,18 @@ func (placeStanding) press(a *app, y int) bool {
 // a two-line row is hovered by either of its lines.
 func (placeStanding) hover(a *app, y int) bool {
 	next := -1
-	if at := y - placeHeadRows; at >= 0 && at < len(a.standPage.owner) && a.standPage.owner[at] >= 0 {
+	if at := y - placeHeadRows; at >= 0 && at < len(a.orders.owner) && a.orders.owner[at] >= 0 {
 		next = at
 	}
-	return placeHoverMoved(&a.standPage.hover, next, a)
+	return placeHoverMoved(&a.orders.hover, next, a)
 }
 
 func (placeStanding) wheel(a *app, delta int) bool {
-	a.standPage.move(delta)
+	a.orders.move(delta)
 	a.touch()
 	return true
 }
 
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
-func (placeStanding) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.standPageKey(msg) }
+func (placeStanding) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.standingPlaceKey(msg) }

@@ -49,7 +49,7 @@ func standFarItem(id, title, workspace string) standing.Item {
 // different tail ([homeLab.workspace] states that law).
 type standFarLab struct {
 	a     *app
-	agent *standPageFake
+	agent *standingPlaceFake
 	band  *standBand
 	lab   *homeLab
 	// far is the workspace the machine's own orders live in, and it has a
@@ -71,7 +71,7 @@ func newStandFarLab(t *testing.T, here []standing.Item, far ...standing.Item) *s
 			far[i].Workspace = dir
 		}
 	}
-	a, agent := standPageApp(t, here, nil)
+	a, agent := standingPlaceApp(t, here, nil)
 	a.homeRoot = lab.root
 	a.width, a.height = 100, 30
 	band := &standBand{items: far}
@@ -99,7 +99,7 @@ func (l *standFarLab) open(t *testing.T) string {
 	if !l.a.at(pageStanding) {
 		t.Fatal("/standing opened nothing")
 	}
-	return standPageScreen(l.a)
+	return standingPlaceScreen(l.a)
 }
 
 // ── 1. the machine reaches the page ─────────────────────────────────────────
@@ -138,7 +138,7 @@ func TestAnOrderInAnotherProjectReachesTheStandingPage(t *testing.T) {
 	}
 	// The cursor is on the first order of the only shelf there is, so the strip
 	// has something to act on the moment the page opens.
-	item, ok := lab.a.standPage.current()
+	item, ok := lab.a.orders.current()
 	if !ok || item.ID != "f1" {
 		t.Fatalf("the cursor is on %q (%v), not on the first order", item.ID, ok)
 	}
@@ -232,14 +232,14 @@ func TestTheCursorWalksPastTheFifthOrderAndTheWindowFollows(t *testing.T) {
 	for range 6 {
 		drive(t, lab.a, key("down"))
 	}
-	item, ok := lab.a.standPage.current()
+	item, ok := lab.a.orders.current()
 	if !ok || item.ID != "seventh" {
 		t.Fatalf("six downs reached %q (%v), not the seventh order", item.ID, ok)
 	}
 	// AND WHAT THE CURSOR IS ON IS ON THE SCREEN. A cursor that walked past the
 	// bottom edge is a cursor nobody can see, which is the fold again wearing
 	// different clothes.
-	screen := standPageScreen(lab.a)
+	screen := standingPlaceScreen(lab.a)
 	if !strings.Contains(screen, "watch the seventh thing") {
 		t.Fatalf("the row under the cursor is not drawn:\n%s", screen)
 	}
@@ -259,12 +259,12 @@ func TestAPageKeyStepsByTheWindowTheFrameGave(t *testing.T) {
 	lab := newStandFarLab(t, nil, far...)
 	lab.open(t)
 	drive(t, lab.a, key("pgdown"))
-	item, ok := lab.a.standPage.current()
+	item, ok := lab.a.orders.current()
 	if !ok || item.ID != "h" {
 		t.Fatalf("pgdown on a thirty-row frame reached %q (%v), not the last order", item.ID, ok)
 	}
 	drive(t, lab.a, key("pgup"))
-	if item, _ := lab.a.standPage.current(); item.ID != "a" {
+	if item, _ := lab.a.orders.current(); item.ID != "a" {
 		t.Fatalf("pgup came back to %q, not the first order", item.ID)
 	}
 }
@@ -279,7 +279,7 @@ func TestTheStandingCursorStopsOnlyOnOrders(t *testing.T) {
 	lab.open(t)
 	seen := map[string]bool{}
 	for range 8 {
-		row, ok := lab.a.standPage.choice()
+		row, ok := lab.a.orders.choice()
 		if !ok {
 			t.Fatal("the cursor came to rest on nothing")
 		}
@@ -302,7 +302,7 @@ func TestPressingARowOfTheMachinesShelfLandsOnThatRow(t *testing.T) {
 		standFarItem("f1", "watch the release feed", ""),
 		standFarItem("f2", "keep the changelog index fresh", ""))
 	lab.open(t)
-	lines, _, _, _ := lab.a.standPageFrame(lab.a.width, lab.a.height)
+	lines, _, _, _ := lab.a.standingPlaceFrame(lab.a.width, lab.a.height)
 	found := -1
 	for y, line := range lines {
 		if strings.Contains(plain(line), "keep the changelog index fresh") {
@@ -313,18 +313,18 @@ func TestPressingARowOfTheMachinesShelfLandsOnThatRow(t *testing.T) {
 	if found < 0 {
 		t.Fatal("the second order is not on the frame")
 	}
-	lab.a.standPage.press(lab.a, found)
-	if item, ok := lab.a.standPage.current(); !ok || item.ID != "f2" {
+	lab.a.orders.press(lab.a, found)
+	if item, ok := lab.a.orders.current(); !ok || item.ID != "f2" {
 		t.Fatalf("the press landed on %q (%v), not on the row it was aimed at", item.ID, ok)
 	}
 	// A heading answers to no row, so pressing one moves nothing at all.
 	for y, line := range lines {
 		if strings.TrimSpace(plain(line)) == standOtherWord {
-			lab.a.standPage.press(lab.a, y)
+			lab.a.orders.press(lab.a, y)
 			break
 		}
 	}
-	if item, _ := lab.a.standPage.current(); item.ID != "f2" {
+	if item, _ := lab.a.orders.current(); item.ID != "f2" {
 		t.Fatalf("pressing a heading moved the cursor to %q", item.ID)
 	}
 }
@@ -435,7 +435,7 @@ func TestTheLastLookFollowsTheCursorAndIsSilentWhenUnknown(t *testing.T) {
 	// AND AN ORDER THAT WAS NEVER LOOKED AT DRAWS NO PARAGRAPH AT ALL — not a
 	// heading, not a blank line, not "never run".
 	drive(t, lab.a, key("down"))
-	screen = standPageScreen(lab.a)
+	screen = standingPlaceScreen(lab.a)
 	if strings.Contains(screen, "last look") {
 		t.Fatalf("an order that has never been looked at drew a last look:\n%s", screen)
 	}
@@ -483,7 +483,7 @@ func TestTheMachinesShelfOffersOnlyTheStoresOwnWrites(t *testing.T) {
 	}
 	// AND THE HINT NAMES EXACTLY THOSE. Nothing is named that is not bound, so
 	// the line over a row that cannot make an exception does not promise one.
-	hint := lab.a.standPage.hint(lab.a)
+	hint := lab.a.orders.hint(lab.a)
 	if !strings.Contains(hint, standResumeWord) || strings.Contains(hint, standNotHereWord) {
 		t.Fatalf("the hint over a paused order in another project says %q", hint)
 	}
@@ -499,7 +499,7 @@ func TestAWindowThatCannotWriteOffersNoVerbsOnTheMachinesShelf(t *testing.T) {
 	if verbs := lab.a.rowVerbs(); len(verbs) != 0 {
 		t.Fatalf("a window that cannot write offered %d verbs", len(verbs))
 	}
-	if hint := lab.a.standPage.hint(lab.a); strings.Contains(hint, "→") {
+	if hint := lab.a.orders.hint(lab.a); strings.Contains(hint, "→") {
 		t.Fatalf("the hint named a strip with nothing on it: %q", hint)
 	}
 }
@@ -517,7 +517,7 @@ func TestPausingAnOrderInAnotherProjectGoesThroughTheStore(t *testing.T) {
 	if text := strings.Join(plainRows(lab.a), "\n"); !strings.Contains(text, homeItemPaused+" · watch the release feed") {
 		t.Fatalf("no receipt for the pause:\n%s", text)
 	}
-	if screen := standPageScreen(lab.a); !strings.Contains(screen, standOffGlyph+" watch the release feed") {
+	if screen := standingPlaceScreen(lab.a); !strings.Contains(screen, standOffGlyph+" watch the release feed") {
 		t.Fatalf("the paused order kept its old mark:\n%s", screen)
 	}
 	// AND STARTING IT AGAIN SAYS THE WORD THE TRANSCRIPT ALREADY USES.
@@ -537,7 +537,7 @@ func TestStoppingAnOrderInAnotherProjectTakesItOffThePage(t *testing.T) {
 	if len(lab.band.saved) != 1 || lab.band.saved[0].RetiredWhy != homeStoppedWhy {
 		t.Fatalf("s wrote %+v", lab.band.saved)
 	}
-	screen := standPageScreen(lab.a)
+	screen := standingPlaceScreen(lab.a)
 	if strings.Contains(screen, "watch the release feed") {
 		t.Fatalf("a stopped order is still on the page:\n%s", screen)
 	}
@@ -556,7 +556,7 @@ func TestARefusedStoreWriteSaysTheStoresOwnSentence(t *testing.T) {
 	if text := strings.Join(plainRows(lab.a), "\n"); !strings.Contains(text, "the standing folder is read-only") {
 		t.Fatalf("the refusal was not said:\n%s", text)
 	}
-	if screen := standPageScreen(lab.a); !strings.Contains(screen, standWaitGlyph+" watch the release feed") {
+	if screen := standingPlaceScreen(lab.a); !strings.Contains(screen, standWaitGlyph+" watch the release feed") {
 		t.Fatalf("a refused pause repainted the row anyway:\n%s", screen)
 	}
 }
@@ -573,7 +573,7 @@ func TestTheMachinesShelfHoldsAtEveryWidth(t *testing.T) {
 			standFarItem("f2", "keep the changelog index fresh", ""))
 		lab.a.width, lab.a.height = width, 30
 		lab.open(t)
-		frame, _, _, _ := lab.a.standPageFrame(width, lab.a.height)
+		frame, _, _, _ := lab.a.standingPlaceFrame(width, lab.a.height)
 		if len(frame) != lab.a.height {
 			t.Fatalf("at %d the place drew %d lines into %d rows", width, len(frame), lab.a.height)
 		}
@@ -605,7 +605,7 @@ func TestAStandingRowFitsAuthoredUnicodeAndAnUnboundedCadence(t *testing.T) {
 		lab := newStandFarLab(t, nil, wide)
 		lab.a.width, lab.a.height = width, 30
 		lab.open(t)
-		frame, _, _, _ := lab.a.standPageFrame(width, lab.a.height)
+		frame, _, _, _ := lab.a.standingPlaceFrame(width, lab.a.height)
 		for _, line := range frame {
 			if got := ansi.StringWidth(plain(line)); got > width {
 				t.Fatalf("width %d drew %d cells: %q", width, got, plain(line))
@@ -632,7 +632,7 @@ func TestTheStandingPageObeysTheEmptinessLaw(t *testing.T) {
 	if !bare.a.at(pageStanding) {
 		t.Fatal("a machine nothing stands on opened no page")
 	}
-	empty := standPageScreen(bare.a)
+	empty := standingPlaceScreen(bare.a)
 	if !strings.Contains(empty, standNothingWord) {
 		t.Fatalf("the empty place does not say what it is for:\n%s", empty)
 	}
@@ -658,7 +658,7 @@ func TestTheStandingPageReadsTheStoreOnlyWhenItOpens(t *testing.T) {
 	}
 	after := asked
 	for range 3 {
-		lab.a.standPageFrame(lab.a.width, lab.a.height)
+		lab.a.standingPlaceFrame(lab.a.width, lab.a.height)
 		drive(t, lab.a, key("down"))
 	}
 	if asked != after {
@@ -700,12 +700,12 @@ func TestThePlaceOffersTheSameStopsItsCursorWalks(t *testing.T) {
 		[]standing.Item{standOrder("p1", "draft the weekly update", standing.AltitudeProject)},
 		standFarItem("f1", "watch the release feed", ""))
 	lab.open(t)
-	walked := map[int]bool{lab.a.standPage.cursor: true}
+	walked := map[int]bool{lab.a.orders.cursor: true}
 	for range 6 {
 		drive(t, lab.a, key("down"))
-		walked[lab.a.standPage.cursor] = true
+		walked[lab.a.orders.cursor] = true
 	}
-	stops := lab.a.standPage.stops()
+	stops := lab.a.orders.stops()
 	if len(stops) != len(walked) {
 		t.Fatalf("the place offers %d stops and the cursor walked %d", len(stops), len(walked))
 	}
@@ -724,7 +724,7 @@ func TestThePlaceOffersTheSameStopsItsCursorWalks(t *testing.T) {
 func TestTheStandingPlaceSaysNothingInTheNoteSlot(t *testing.T) {
 	lab := newStandFarLab(t, nil, standFarItem("f1", "watch the release feed", ""))
 	lab.open(t)
-	if note := lab.a.standPage.note(lab.a, lab.a.width); len(note) != 0 {
+	if note := lab.a.orders.note(lab.a, lab.a.width); len(note) != 0 {
 		t.Fatalf("the place wrote %q into the note slot", note)
 	}
 }
@@ -736,7 +736,7 @@ func TestTheStandingPlaceSaysNothingInTheNoteSlot(t *testing.T) {
 func TestAConversationVerbOnAnotherProjectsOrderSaysSo(t *testing.T) {
 	lab := newStandFarLab(t, nil, standFarItem("f1", "watch the release feed", ""))
 	lab.open(t)
-	lab.a.standPage.ask(lab.a, standExcept)
+	lab.a.orders.ask(lab.a, standExcept)
 	if text := strings.Join(plainRows(lab.a), "\n"); !strings.Contains(text, standNotOursWord) {
 		t.Fatalf("the refusal was not said:\n%s", text)
 	}
@@ -765,10 +765,10 @@ func TestTheWindowKeyMovesTheLabelWithoutTouchingTheStore(t *testing.T) {
 	}
 	lab.open(t)
 	after := asked
-	before := lab.a.standPage.win
+	before := lab.a.orders.win
 
 	head := func() string {
-		frame, _, _, _ := lab.a.standPageFrame(lab.a.width, lab.a.height)
+		frame, _, _, _ := lab.a.standingPlaceFrame(lab.a.width, lab.a.height)
 		for _, line := range frame {
 			if strings.Contains(plain(line), standHeading) {
 				return plain(line)
@@ -783,7 +783,7 @@ func TestTheWindowKeyMovesTheLabelWithoutTouchingTheStore(t *testing.T) {
 	}
 
 	drive(t, lab.a, key("shift+left"))
-	if lab.a.standPage.win == before {
+	if lab.a.orders.win == before {
 		t.Fatal("shift+left moved nothing")
 	}
 	if now := head(); now == was {
@@ -792,14 +792,14 @@ func TestTheWindowKeyMovesTheLabelWithoutTouchingTheStore(t *testing.T) {
 	// AND BACK AGAIN LANDS WHERE IT STARTED, which is what makes the arrows a
 	// pair rather than two separate gestures.
 	drive(t, lab.a, key("shift+right"))
-	if lab.a.standPage.win != before {
+	if lab.a.orders.win != before {
 		t.Fatalf("shift+right came back to %q, not to %q",
-			lab.a.standPage.win.Label(), before.Label())
+			lab.a.orders.win.Label(), before.Label())
 	}
 	// The grain zoom is the other axis, and it is the same four keys everywhere.
 	drive(t, lab.a, key("shift+up"))
-	if lab.a.standPage.win.Grain == before.Grain {
-		t.Fatalf("shift+up did not zoom the grain: %v", lab.a.standPage.win.Grain)
+	if lab.a.orders.win.Grain == before.Grain {
+		t.Fatalf("shift+up did not zoom the grain: %v", lab.a.orders.win.Grain)
 	}
 	if asked != after {
 		t.Fatalf("moving the window asked the store %d more times", asked-after)
@@ -823,7 +823,7 @@ func TestNarrowingTheWindowScopesWhatFiredAndKeepsWhatNeverDid(t *testing.T) {
 	// Walk the window back off the old firing. Its span reaches from May to
 	// today, so one step back is a window with nothing that fired in it.
 	drive(t, lab.a, key("shift+left"))
-	screen = standPageScreen(lab.a)
+	screen = standingPlaceScreen(lab.a)
 	if strings.Contains(screen, "watch the release feed") {
 		t.Fatalf("an order that fired outside the window is still listed:\n%s", screen)
 	}
@@ -832,7 +832,7 @@ func TestNarrowingTheWindowScopesWhatFiredAndKeepsWhatNeverDid(t *testing.T) {
 	}
 	// AND THE CURSOR IS BACK ON A ROW THAT EXISTS. A list that lost rows under a
 	// cursor left where it was would put a verb on whatever slid into its line.
-	item, ok := lab.a.standPage.current()
+	item, ok := lab.a.orders.current()
 	if !ok || item.ID != "never" {
 		t.Fatalf("the cursor is on %q (%v) after the list changed under it", item.ID, ok)
 	}
@@ -847,12 +847,12 @@ func TestTheWindowKeysAreUnboundOnAFrameTooNarrowToDrawThem(t *testing.T) {
 	lab := newStandFarLab(t, nil, fired)
 	lab.a.width, lab.a.height = 44, 30
 	lab.open(t)
-	before := lab.a.standPage.win
+	before := lab.a.orders.win
 	drive(t, lab.a, key("shift+left"))
-	if lab.a.standPage.win != before {
+	if lab.a.orders.win != before {
 		t.Fatal("a phone frame moved a window it never drew")
 	}
-	if screen := standPageScreen(lab.a); strings.Contains(screen, "shift+") {
+	if screen := standingPlaceScreen(lab.a); strings.Contains(screen, "shift+") {
 		t.Fatalf("a phone frame drew the control:\n%s", screen)
 	}
 }

@@ -10,19 +10,25 @@ import (
 
 // ── THE PLACES ──────────────────────────────────────────────────────────────
 //
-// A person reads the word PLACE. The code writes the word `page`, and the two
-// vocabularies are deliberate: `place` is already spoken for in this repository
-// and means something else entirely — [session.PlacesRoot], [app.placesRoot],
-// `placesDirName`, `SweepPlaces`, `homePlacesCol` and a hundred more identifiers
-// all mean THE DIRECTORY OF CONVERSATIONS AND PROJECTS ON THIS DISK. A router
-// that reused the word would have `place` meaning a folder in one file and a
-// screen in the next, which is how a codebase stops being readable. So the Go
-// identifier is `page` everywhere, the manual and every string a person sees say
-// *place*, and this comment is the bridge between them.
+// A person reads the word PLACE, and so does this file. The word carries two
+// other meanings in this repository, and both of them are one letter away:
+//
+//   - [session.PlacesRoot], [app.placesRoot], `placesDirName`, `SweepPlaces`,
+//     `homePlacesCol` — the PLURAL, always, and always THE DIRECTORY OF
+//     CONVERSATIONS AND PROJECTS ON THIS DISK;
+//   - `page`, the identifier for WHICH ROOM, kept because a `page` is what the
+//     surface has always called a screen that takes the frame and because
+//     `place` on its own is now the interface below.
+//
+// So: `page` is the id, `place` is the contract, `places` is the disk, and the
+// manual and every string a person sees say *place* for the room. This comment
+// is the bridge between the three, and it used to say the Go identifier was
+// `page` everywhere — which was true until ARCHITECTURE.md named the interface
+// and the owner signed it.
 //
 // THE SEVEN ARE A LIST AND NOT A SWITCH. The tab bar's order, the numbers
 // `alt+1`…`alt+7` jump to, and the order `tab` walks are ONE fact, held in
-// [pages], so a place added later is a row in that slice and nothing else.
+// [placeOrder], so a place added later is a row in that slice and a file.
 //
 // The rewind timeline is NOT one of them. It is still a page reached by
 // `/rewind`, because it is a thing you do to this conversation rather than a
@@ -59,7 +65,7 @@ const (
 // A PLACE IS A STATELESS HANDLE AND THE STATE LIVES ON THE APP. The registry is
 // package-level and one window's cursor is not another's, so what is registered
 // is a value with no fields whose methods reach the app's own field for that
-// place — `a.taskSheet`, `a.standPage`, `a.memPanel` and the rest, each declared
+// place — `a.taskSheet`, `a.orders`, `a.mem` and the rest, each declared
 // in the same `place_<word>.go` as the handle that reads it. That is what
 // "per-place state owned by the place" means here: one file owns the struct, the
 // handle and every method the frame can ask of it.

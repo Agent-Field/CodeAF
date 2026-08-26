@@ -1002,9 +1002,9 @@ type app struct {
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
 	wait preflight
-	// memPanel is the memory place: the snapshot it is drawing, the shelves that
-	// are unrolled, and the filter (memorypanel.go).
-	memPanel memoryPanel
+	// mem is the memory place's state: the snapshot it is drawing, the shelves that
+	// are unrolled, and the filter (place_memory.go).
+	mem memoryPlace
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
@@ -1508,11 +1508,12 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
-	// standPage is the list /standing opens over what stands here — this
-	// conversation's orders, this project's and the machine's (standingpage.go).
+	// orders is the standing place's state: the shelves of what stands here — this
+	// conversation's orders, this project's and the machine's (place_standing.go).
 	// It reads the engine's own seam, so a surface whose agent has no ambient
-	// side opens nothing at all; closed, it costs the frame nothing.
-	standPage standPage
+	// side opens on the three sentences saying what a standing order IS; closed,
+	// it costs the frame nothing.
+	orders standingPlace
 
 	// subPage is /subharness: the list of programs this conversation can run,
 	// and the intake card that starts one (subharness.go). It reads the engine's
@@ -5963,11 +5964,11 @@ func (a *app) paste(text string) tea.Cmd {
 	}
 	if a.at(pageMemory) {
 		flat := strings.ReplaceAll(text, "\n", " ")
-		if a.memPanel.edit != nil {
-			a.memPanel.edit.insert(flat)
+		if a.mem.edit != nil {
+			a.mem.edit.insert(flat)
 		} else {
-			a.memPanel.filter.insert(flat)
-			a.memPanel.rank()
+			a.mem.filter.insert(flat)
+			a.mem.rank()
 		}
 		a.touch()
 		return nil

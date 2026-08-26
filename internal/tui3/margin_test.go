@@ -15,15 +15,15 @@ import (
 //
 // Every test here asserts what is on the column and what a press on it does,
 // rather than the shape of the code under it. The fixture is the standing
-// page's own scripted session ([standPageFake]) at a frame wide enough for the
+// page's own scripted session ([standingPlaceFake]) at a frame wide enough for the
 // full column, because the two surfaces are two readings of one engine seam and
 // a second fake would be a second answer to what stands here.
 
 // marginApp is a surface with orders over it and a frame that lends the full
 // column ([railFloor]).
-func marginApp(t *testing.T, stand ...standing.Item) (*app, *standPageFake) {
+func marginApp(t *testing.T, stand ...standing.Item) (*app, *standingPlaceFake) {
 	t.Helper()
-	a, agent := standPageApp(t, stand, nil)
+	a, agent := standingPlaceApp(t, stand, nil)
 	a.width, a.height = 140, 24
 	return a, agent
 }
@@ -241,7 +241,7 @@ func TestPressingAStandingRowOpensThePageOnThatOrder(t *testing.T) {
 	if !a.at(pageStanding) {
 		t.Fatal("the row opened no page")
 	}
-	item, ok := a.standPage.current()
+	item, ok := a.orders.current()
 	if !ok || item.ID != "p2" {
 		t.Fatalf("the page landed on %+v rather than on the row that was pressed", item)
 	}
