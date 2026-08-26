@@ -1033,6 +1033,12 @@ type app struct {
 	// and an empty ledger draws the spend place's own teaching.
 	searchStore SearchStore
 	usageLedger string
+	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
+	// state root it was walked under. Nil and empty are this process's own disk,
+	// which is every local launch; over --host the door fills both and the places
+	// stop listing the laptop (tui3.go's [Options.World], [app.worldRoot]).
+	world     func() (session.World, bool)
+	farPlaces string
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1768,6 +1774,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		memory:           opts.Memory,
 		searchStore:      opts.Search,
 		usageLedger:      opts.UsageLedger,
+		world:            opts.World,
+		farPlaces:        opts.WorldRoot,
 		live:             -1,
 		sel:              -1,
 		think:            -1,

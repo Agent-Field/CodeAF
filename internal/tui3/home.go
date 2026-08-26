@@ -256,15 +256,6 @@ const (
 	homeEmptyWord = "nothing here yet — say something and this fills up"
 	// homeNoMatchWord is a filter that matched nothing.
 	homeNoMatchWord = "no conversation matches"
-	// homeRemoteWord is the one line home draws over --host: the projects under
-	// ~/.aforge/v3 are THIS machine's, and the session is on another one.
-	//
-	// IT USED TO BE A REFUSAL AND IT IS A BODY NOW. Every place opens (pages.go's
-	// [app.showPage] states the law), so the sentence goes where the list would
-	// have gone — one dim row in the column, in the same slot and the same
-	// register as [homeEmptyWord] — and the head, the tab bar and the composer
-	// are all still there for the person to walk on with.
-	homeRemoteWord = "home shows this machine's projects, and this session is on another"
 	// homeOpenWord is what a conversation THIS PROCESS holds says when it has
 	// nothing more urgent to say. It goes where `another window` goes — below
 	// the states, above `N landed` — and it is the word [session.SessionRow]
@@ -507,12 +498,26 @@ type homeBare struct {
 // what every surface starts as — and closing is assigning the zero value, so
 // there is no field that can be left behind from the last time it was up.
 type homeView struct {
-	// why is the one line drawn where the rows would be when there CANNOT be any
-	// — over --host, where this process's ~/.aforge/v3 is the wrong machine's
-	// ([homeRemoteWord]). It is empty on every machine home can read, because a
-	// machine that has simply not been used yet already has a sentence of its own
-	// ([homeEmptyWord]) and does not need a reason on top of it.
+	// why is the one line drawn where the rows would be when there CANNOT be any.
+	// It is EMPTY EVERYWHERE TODAY: the one state that filled it was --host,
+	// where this process's ~/.aforge/v3 belonged to the wrong machine, and the
+	// world comes from the machine that owns the work now ([app.readWorld]). The
+	// field is kept because the state it names is real — a home that cannot read
+	// its rows at all is a screen that owes a sentence, not a blank — and because
+	// a machine that has simply not been used yet is NOT that state and has a
+	// sentence of its own ([homeEmptyWord]).
 	why string
+	// known is whether the world above is an ANSWER. Over --host it arrives from
+	// the other machine and the first frames are drawn before it has, and a
+	// screen that could not tell "that machine has nothing on it" from "that
+	// machine has not said yet" would greet somebody with `nothing here yet` over
+	// a machine full of work ([app.worldKnown]).
+	known bool
+	// far is whether that world belongs to ANOTHER MACHINE — the one the session
+	// runs on, over --host. It is what stops this screen answering questions
+	// about the far machine's disk with a syscall on this one
+	// ([homeView.readGone]).
+	far bool
 	// world is the reading the rows were built from, replaced whole on every
 	// rescan.
 	world session.World
@@ -719,12 +724,14 @@ func (h *homeView) say(msg, path string) {
 // A MACHINE THAT HAS SIMPLY NOT BEEN USED YET IS NOT AN EXPLANATION, which is
 // why this answers "" for it: [homeEmptyWord] already says that, in the person's
 // own terms, and a second sentence about it would be the screen apologising.
-func (a *app) homeWhyEmpty() string {
-	if a.hosted() {
-		return homeRemoteWord
-	}
-	return ""
-}
+//
+// IT USED TO ANSWER FOR --host AND IT DOES NOT ANY MORE. Home over a connection
+// said `home shows this machine's projects, and this session is on another`,
+// which was honest and was also the whole screen. The world now comes from the
+// machine that owns the work (internal/remote's Places.World), so there is
+// nothing left to explain: the rows on it are the server's rows, and the head
+// says whose machine they are ([app.placeHostWord]).
+func (a *app) homeWhyEmpty() string { return "" }
 
 // openHome is /home, and it is THE ROUTER'S DOOR like every other way into a
 // place: what was standing is closed, its look stamp is written, and home opens
@@ -734,19 +741,20 @@ func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
 // raiseHome builds the screen. It is [placeHome]'s `open` and nothing else calls
 // it, which is what makes the router the one road in.
 //
-// OVER --host THE LIST IS THE LIE AND THE PLACE IS NOT. The state root under
-// this process belongs to the wrong machine, so a screen full of the laptop's
-// projects while the session runs on the server would be drawn confidently and
-// be false. What that costs is the ROWS, and nothing else: the place still
-// opens, and [homeRemoteWord] stands where the rows would have been — which is
-// the same bargain every other place makes with an empty world.
+// OVER --host THE LIST IS THE ENGINE MACHINE'S. It used to be this laptop's and
+// was therefore drawn as no list at all; the world crosses the wire now
+// ([app.worldOf]), so what a person sees here is the projects on the machine
+// their conversation is actually running on, and the head says which machine
+// that is ([app.placeHostWord]).
 func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
 		why:          a.homeWhyEmpty(),
 		world:        a.readWorld(),
-		seen:         session.LastLook(a.placesRoot()),
+		known:        a.worldKnown(),
+		far:          a.hosted(),
+		seen:         session.LastLook(a.looksRoot()),
 		bucket:       homeBucketOf(a.file),
 		here:         homeSessionDirOf(a.file),
 		tier:         a.homeTierNow(),
@@ -834,6 +842,13 @@ func (a *app) raiseHome() tea.Cmd {
 // themselves; a switch would be a third answer that has to be kept in step with
 // two facts that are already true.
 func (a *app) landHome() {
+	// AND A REMOTE LAUNCH IS STILL NOT GREETED, THOUGH ITS HOME NOW HAS ROWS.
+	// This runs inside [newApp], before bubbletea exists and before the first
+	// call down the wire has come back, so the world here is not an answer yet
+	// ([app.worldKnown]) — there is nothing to decide "is there work elsewhere"
+	// from, and a greeting that waited on a round trip would be a launch that
+	// waited on a round trip. `space space` opens the same screen a moment later,
+	// with the far machine's rows on it.
 	if a.hosted() || !a.canOpen() {
 		return
 	}
@@ -921,15 +936,21 @@ func worldHasElsewhere(world session.World, here string) bool {
 // walk under the places root, with the conversation THIS WINDOW IS SITTING IN
 // put back if the walk was too early to see it.
 //
-// AND IT IS EMPTY OVER --host. The walk reads ~/.aforge/v3 under THIS process,
-// which over --host is the laptop's disk while the session runs on the server.
-// The gate used to stand one function further up, on home's own reading, and
-// home was never the only place that took this walk: the tasks place read the
-// laptop's `world.Projects[].Sessions[].Tasks.Rows` and drew them — eight rows
-// and a total in dollars — under a conversation living on a server. So the gate
-// is HERE, on the reading, and every place that asks for the world is answered
-// the same way at the same moment. Each of them says so in its own words where
-// its rows would have been ([place.remote], host.go's places section).
+// AND OVER --host IT IS THE OTHER MACHINE'S WALK. The reading is one seam
+// ([app.worldOf]) with two fillings: this process's own places root on a local
+// session, and — over a connection — the answer the ENGINE gave to the same
+// question about its own disk (internal/remote's Places.World). It is one
+// function because home was never the only place that takes this walk: the tasks
+// place reads its rows out of `world.Projects[].Sessions[].Tasks.Rows`, standing
+// walks the projects to ask what else keeps an eye on that machine, spend joins
+// its titles onto the ledger, and search opens a hit's conversation out of it.
+// So there is ONE answer to which machine the places are describing, taken at
+// one moment, and five screens cannot disagree about it.
+//
+// THE ANSWER MAY BE THAT THERE IS NO ANSWER YET. Over a wire the far machine has
+// not always replied by the first frame, and a world nobody has answered is not
+// an empty world — see [app.worldKnown], which is what stops `nothing here yet`
+// being drawn over a machine full of work.
 //
 // A fresh launch's folder has a meta.json nobody has spoken into, and the walk
 // skips that shape on purpose ([session.World.Adopt] carries the whole of why).
@@ -940,16 +961,65 @@ func worldHasElsewhere(world session.World, here string) bool {
 // The surface hands over what it knows about itself — the title the session
 // gave itself, the workspace, the model — and the folder adds the rest.
 func (a *app) readWorld() session.World {
-	if a.hosted() {
+	world, known := a.worldOf()
+	if !known {
 		return session.World{}
 	}
-	world := session.ReadWorld(a.placesRoot())
 	if file := strings.TrimSpace(a.file); file != "" {
-		world.Adopt(a.placesRoot(), session.SessionRow{
+		world.Adopt(a.worldRoot(), session.SessionRow{
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
 	return world
+}
+
+// worldOf is THE SEAM: the walk, and whether it is an answer.
+//
+// Nil is this process's own disk, which is every local launch and every test —
+// the surface reads the places root itself and the reading is always an answer.
+// Over --host the door hands a function that reads a cache the connection keeps
+// warm behind itself, and that cache says false until the far machine has
+// replied once (cmd/aforge's [hostWorld], tui3.go's [Options.World]).
+func (a *app) worldOf() (session.World, bool) {
+	if a.world != nil {
+		return a.world()
+	}
+	if a.hosted() {
+		// AND A HOSTED SURFACE WITH NO SEAM READS NOTHING AT ALL. This is the
+		// safety net rather than a state any door produces: the --host door wires
+		// the seam, and a build that forgot to would otherwise fall straight back
+		// to the line above — which is a walk of THIS laptop's projects presented
+		// as the machine the conversation is on, and is exactly the fault the
+		// whole lane exists to end. An engine too old to answer Places.World
+		// arrives here the same way, through a cache that never becomes known
+		// (cmd/aforge's [hostWorld]), and the places draw nothing rather than
+		// somebody else's disk.
+		return session.World{}, false
+	}
+	return session.ReadWorld(a.placesRoot()), true
+}
+
+// worldKnown is whether the reading behind the places is an ANSWER rather than
+// the absence of one.
+//
+// IT IS NOT "IS THE WORLD EMPTY". A machine with nothing on it has answered, and
+// what a person should read there is [homeEmptyWord]. A machine that has not
+// answered yet has said nothing, and the emptiness law says unknown renders as
+// nothing — so home draws its zones, its tab bar and its composer with no rows
+// and no sentence at all, for the fraction of a second before the wire replies.
+func (a *app) worldKnown() bool {
+	_, known := a.worldOf()
+	return known
+}
+
+// worldRoot is the state root the world was walked under, on the disk it was
+// walked on: this process's places root locally, and the ENGINE's own over a
+// connection (tui3.go's [Options.WorldRoot] holds the argument).
+func (a *app) worldRoot() string {
+	if root := strings.TrimSpace(a.farPlaces); root != "" {
+		return root
+	}
+	return a.placesRoot()
 }
 
 // THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
@@ -973,7 +1043,7 @@ func (a *app) dropHome() {
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
 	// nothing but a repeat of the same news.
-	session.NoteLook(a.placesRoot(), a.now())
+	session.NoteLook(a.looksRoot(), a.now())
 	// AN ERRAND DOES NOT DIE WITH THE SCREEN IT WAS ASKED ON, and that is the
 	// repair this whole wave is about. It used to: closing home closed the
 	// agent, so opening another conversation to check something ended the errand
@@ -1001,7 +1071,9 @@ func (a *app) dropHome() {
 func (a *app) newHomeView(world session.World) homeView {
 	return homeView{
 		world: world,
-		seen:  session.LastLook(a.placesRoot()),
+		known: a.worldKnown(),
+		far:   a.hosted(),
+		seen:  session.LastLook(a.looksRoot()),
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
 		// whether a row's door can open at all; the session is the one row that
 		// wears `here` instead of an age (place_home.go).
@@ -1037,6 +1109,69 @@ func (a *app) placesRoot() string {
 	return session.PlacesRoot()
 }
 
+// looksRoot is where the LOOK STAMPS live: the record of when this person last
+// stood in front of each place, which is the origin every tab's number is
+// measured from (placecounts.go, internal/session's look.go).
+//
+// IT IS THIS MACHINE'S DISK EVEN WHEN THE PLACES ARE NOT, AND IT IS KEYED BY THE
+// MACHINE THEY ARE ABOUT. A look is something a person did at THIS terminal, so
+// it is written here — the far machine has no idea anybody glanced at a tab bar.
+// But "what has changed in tasks since I last looked" is a question about the
+// machine the tasks are on, and one stamp answering for two machines is a stamp
+// that gets both wrong: glancing at the server's list would clear the badge over
+// the laptop's, and the laptop's own windows would go on writing over an origin
+// that was never about them. So a connection gets a folder of its own, named
+// after the machine — `~/.aforge/v3/looks/<machine>` — and a local session keeps
+// its stamps exactly where they have always been.
+//
+// THE FOLDER IS MADE HERE AND NOWHERE ELSE. [session.NoteLookAt] refuses to
+// write into a root that does not exist — deliberately, so that a places root is
+// never brought into being for a stamp alone and then walked as though it held
+// conversations. This root holds nothing but stamps and nothing walks it, so
+// there is no such state to invent and the directory is simply made.
+func (a *app) looksRoot() string {
+	if !a.hosted() {
+		return a.placesRoot()
+	}
+	// `looks` AND NOT `hosts`: internal/enginehost already owns `v3/hosts`, where
+	// it keeps one unix socket per workspace under a hashed name (enginehost.go).
+	// Two unrelated things under one directory is a directory neither of them can
+	// be swept safely.
+	root := filepath.Join(filepath.Dir(a.placesRoot()), "looks", looksHostFolder(a.host))
+	// The error is dropped for [session.NoteLookAt]'s reason: a stamp is a
+	// convenience over a surface that works without it, and a read-only disk must
+	// not turn walking out of a place into a fault. A root that could not be made
+	// is a root the stamp write then finds missing and declines, which is the
+	// same harmless direction.
+	_ = os.MkdirAll(root, 0o700)
+	return root
+}
+
+// looksHostFolder is a machine's name as a directory name. An ssh destination
+// can carry a user, a port and — in this surface's own spelling — a path
+// (`someone@box`, `box:code/app`), and every one of those is a character a
+// directory name should not have to survive. Anything that is not a letter, a
+// digit or one of the three quiet punctuation marks becomes a dash, so two
+// machines can only collide by being spelled almost identically, and a person
+// reading `~/.aforge/v3/looks/` still recognises which is which.
+func looksHostFolder(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "elsewhere"
+	}
+	var b strings.Builder
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
+
 // refreshHome is the slow tick: the same walk again, with the cursor kept on
 // the conversation it was on rather than on the line number it was on.
 //
@@ -1048,7 +1183,7 @@ func (a *app) refreshHome() {
 	if !a.at(pageHome) {
 		return
 	}
-	a.home.world = a.readWorld()
+	a.home.world, a.home.known = a.readWorld(), a.worldKnown()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
@@ -2623,6 +2758,19 @@ func folderThere(where string) bool {
 // a project carries the same recorded directory, so a project with eleven
 // conversations is still one syscall.
 func (h *homeView) readGone() {
+	if h.far {
+		// AND IT ASKS THIS PROCESS'S DISK, WHICH OVER --host IS THE WRONG ONE.
+		// The paths in the world are the engine machine's now, and `/srv/code/api`
+		// almost certainly is not on the laptop — so every row on a remote home
+		// would wear `folder gone`, a refusal invented by statting a path on a
+		// machine it was never on. A path the map has not heard of is not gone,
+		// so answering nothing is the emptiness law: unknown renders as nothing,
+		// and the day the wire grows a batched stat for the far side
+		// (internal/remote's Stat.Paths already does exactly this for the links
+		// in a reply) this is where it lands.
+		h.gone = nil
+		return
+	}
 	gone := map[string]bool{}
 	look := func(where string) {
 		if where = strings.TrimSpace(where); where == "" {
@@ -2931,11 +3079,11 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 // a disk to read ([app.canOpen]).
 //
 // --host USED TO BE A SECOND CONDITION AND IS NOT ONE ANY MORE. Home refused
-// over --host, so a door onto a refusal was correctly kept shut; home opens over
-// --host now and draws [homeRemoteWord] where its rows would be, so the gesture
-// leads somewhere a person can read and walk on from — and a gesture that worked
-// from `alt+1` and not from two spaces would be the surface teaching two
-// different answers to one question.
+// over --host, so a door onto a refusal was correctly kept shut; then it opened
+// with one sentence where its rows would be; and it now opens on THE FAR
+// MACHINE'S OWN PROJECTS ([app.readWorld]) with that machine's name at the right
+// end of the tab bar. A gesture that worked from `alt+1` and not from two spaces
+// would be the surface teaching two different answers to one question.
 func (a *app) homeDoorOpen() bool {
 	return a.canOpen() && !a.at(pageHome)
 }
@@ -3409,8 +3557,16 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 	h := &a.home
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
-		if h.searching() {
+		switch {
+		case h.searching():
 			word = homeNoMatchWord
+		case !h.known:
+			// A WORLD THAT HAS NOT ANSWERED IS NOT AN EMPTY MACHINE. Over --host
+			// the rows come from the other machine and the first frames are drawn
+			// before they have arrived; `nothing here yet` over a server full of
+			// work is the one wrong sentence this screen can say about somebody
+			// else's disk. Unknown renders as nothing ([homeView.known]).
+			return nil
 		}
 		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1}}
 	}

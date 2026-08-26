@@ -49,7 +49,14 @@ import (
 // version-1 engine would silently interrupt a turn the surface believed was
 // detached — but it does mean this file stayed a superset rather than becoming
 // a second protocol.
-const Version = 3
+// VERSION 4 IS THE PLACES FOLLOWING THE SESSION'S MACHINE. A place is a
+// listing of one machine's disk — the conversations, the work they ran, what
+// was learned, what it cost — and every one of them was read under the SURFACE's
+// process, which over a connection is the laptop while the conversation lives on
+// the server. Version 4 adds the doors that let the surface ask the machine that
+// owns the work instead ([MethodPlacesWorld] and its neighbours), and one field
+// on the welcome saying which state root those answers were read under.
+const Version = 4
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -132,6 +139,28 @@ const (
 	// exactly where they were.
 	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
 	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
+
+	// The PLACES doors, and they are in the Session group for the reason
+	// Sessions.Recent and Standing.Items are: each one is a reading of THE
+	// ENGINE MACHINE'S DISK rather than of the conversation. A local surface
+	// walks its own state root and reads its own ledger; a remote one has no
+	// way to, and every screen it drew off this laptop's copy was a confident
+	// answer about the wrong machine.
+	//
+	// ONE METHOD PER READING, NEVER ONE THAT ANSWERS EVERYTHING. A single
+	// "Places.All" would tie a place that wants the world on the beat to a
+	// full-text search nobody asked for, and would have to grow a shape of its
+	// own — where these carry internal/session's and internal/store's own types
+	// unchanged, which is Decision 1.
+
+	// MethodPlacesWorld is the walk of the engine machine's places root: every
+	// project, every conversation in it, and the work each of those ran
+	// ([session.ReadWorld]). It is the reading FIVE of the surface's seven
+	// places are built from — home lists it, tasks reads the task rows inside
+	// it, standing walks its projects to ask what else keeps an eye on that
+	// machine, spend joins its titles onto the ledger's ids, and search opens
+	// the conversation behind a hit out of it — so one door answers all five.
+	MethodPlacesWorld = "Places.World" // nothing → session.World
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
@@ -263,6 +292,18 @@ type Welcome struct {
 	// the surface's own settings would be a safety claim about a machine
 	// nobody consulted.
 	ApprovalMode string `json:"approvalMode,omitempty"`
+
+	// PlacesRoot is the engine machine's own state root — the directory
+	// [MethodPlacesWorld] walked, on the disk it walked it on.
+	//
+	// IT TRAVELS BECAUSE A WORLD IS A SET OF PATHS AND A PATH NEEDS ITS DISK.
+	// [session.World.Adopt] puts the conversation THIS WINDOW is sitting in back
+	// into a walk that was taken too early to see it, and it needs the root that
+	// walk was taken under to work out which bucket the conversation belongs to.
+	// Handing it this laptop's root would file a session that lives on the server
+	// under a project on the laptop. Empty is an engine that answers no world,
+	// which is version 3 and every build before it.
+	PlacesRoot string `json:"placesRoot,omitempty"`
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
