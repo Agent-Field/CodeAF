@@ -394,6 +394,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it stopped answering and started a task instead", "tasks"},
 		{"my answer was moved to a task", "tasks"},
 		{"how long can one answer go before it hands the work over", "tasks"},
+		// And the version of it where almost nothing went with the work: the
+		// second model could not write the brief, so the task started on the
+		// person's own message alone and the line said so.
+		{"why did my task start with just my message and nothing else", "tasks"},
+		{"the brief could not be written for my task", "tasks"},
 
 		// And the other end of the same meter: a reply that STOPPED before the
 		// question was finished. People meet this as the dim line that said the ask

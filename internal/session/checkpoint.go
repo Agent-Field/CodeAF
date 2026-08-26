@@ -114,6 +114,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -1196,6 +1197,166 @@ const (
 	checkpointCeilingNoBrief = "dropped:no-brief"
 )
 
+// ── the carry ladder ────────────────────────────────────────────────────────
+//
+// THE LAW: A FALLBACK THAT CHANGES WHAT A WORKER IS STARTED ON IS AN EVENT, NOT
+// A DEFAULT.
+//
+// THE MEASURED FAILURE. SWE-Marathon s4, 00:01:54Z. The round-40 ceiling ran this
+// ladder. The running model's draft came back as seven tokens nobody could work
+// from; the mastermind that writes the real brief was asked and never answered,
+// and its call was cut by [checkpointHandoffWindow] exactly ninety seconds later.
+// Both upper rungs returned "", the task opened on the person's raw request, and
+// the worker then spent twelve minutes and seventy calls re-deriving what the
+// chat already held. The same run's s2 twin ran the same ladder in 1.5 s and its
+// task opened on a 3.5 KB account of what had been learned.
+//
+// AND NOTHING WHATEVER WAS WRITTEN DOWN. The two runs left IDENTICAL journals at
+// that moment — one ceiling line reading `moved` — so the difference between a
+// worker that knew everything and a worker that knew nothing existed in no file.
+// The failure itself was silent twice over: [Agent.writeHandoff] answered "" for
+// six different reasons with one spelling, and the errand underneath returned on
+// its own dead deadline before the row that would have named it was written
+// (auxiliary.go's [Agent.callRole]).
+//
+// So EVERY RUNG SAYS WHAT IT DID, on its own journal line ([journalCarry]), and
+// the ceiling line names the rung that supplied the brief. A move that can carry
+// nothing but the ask is still allowed to proceed — a blind worker beats a
+// stalled chat — but it says so, in the file and to the person.
+const (
+	// The three rungs, in the order they are tried: the document a second mind
+	// wrote out of the turn, the draft the running model managed, and the
+	// person's own sentence, which is the floor and is never written by anybody.
+	carryRungHandoff = "handoff"
+	carryRungDraft   = "draft"
+	carryRungAsk     = "ask"
+
+	// What one rung DID. `written` is words somebody could work from;
+	// `degenerate` is words that were not words, or words that had stopped
+	// saying new things; `failed` is a rung whose call did not come back, and
+	// its reason is the provider's own sentence; `skipped` is a rung that was
+	// never asked, and its reason says why; `nothing-left` is the remains
+	// contract answered instead of a brief; `empty` is a rung with nothing on
+	// it at all.
+	carryWritten     = "written"
+	carryDegenerate  = "degenerate"
+	carryFailed      = "failed"
+	carrySkipped     = "skipped"
+	carryNothingLeft = "nothing-left"
+	carryEmpty       = "empty"
+)
+
+// What the JOURNAL is told when the reason is the harness's own and not a
+// provider's. A provider that refused says so in its own words and those are
+// written instead ([carryFault]).
+const (
+	carryNoPage      = "no ask, no account and no draft to write from"
+	carryNotProse    = "what came back was not words anybody could work from"
+	carryStillLoops  = "the writer was asked twice and looped both times"
+	carryNoSentence  = "the person's own words were empty"
+	carryDraftLooped = "the draft had stopped saying new things"
+)
+
+// And what the PERSON is told, which is the same fact in the register every dim
+// one-liner this harness writes is held to (CLAUDE.md's vocabulary law). The
+// provider's sentence goes in the journal and never here: a person owed one
+// short reason is not owed an upstream's error body.
+const (
+	carrySaidTooSlow     = "the second model did not answer in time"
+	carrySaidUnreachable = "the second model could not be reached"
+	carrySaidNothingNew  = "the second model had nothing new to say"
+	carrySaidNoMaterial  = "there was nothing to write it from"
+)
+
+// carryAskOnlyNote is what is added to the line a person reads when the move
+// carried NOTHING BUT THEIR OWN SENTENCE.
+//
+// It is a suffix rather than a line of its own because it is the same event: the
+// person is being told their turn was moved, and how much went with it is part of
+// that sentence and not a second announcement. It keeps the register of the line
+// it extends — lowercase, middle dot, no full stop — and it names no machinery:
+// "the second model" is what the manual already calls the reader on this road.
+const carryAskOnlyNote = " · carrying the ask only — the brief could not be written: "
+
+// carryStep is what ONE rung of the ladder did, on its way to a journal line.
+//
+// It carries TWO reasons on purpose. reason is for the file and is as specific as
+// the failure allows — a provider's own sentence where there was one — because
+// the question an autopsy asks is why THIS rung produced nothing. said is for the
+// person and is one of a fixed few plain phrases, because the question they are
+// answering is whether their work went somewhere knowing anything.
+type carryStep struct {
+	rung    string
+	outcome string
+	reason  string
+	said    string
+	chars   int
+	used    bool
+}
+
+// carryFault turns one failed call into the two reasons a rung owes.
+//
+// THE PROVIDER'S WORDS WHERE THERE ARE ANY, exactly as a failed call's own
+// journal row takes them (loop.go's [Agent.journalFailedCall]). A DEADLINE IS
+// TOLD APART FROM A REFUSAL because on the measured run it was the deadline —
+// [checkpointHandoffWindow] elapsed with no answer — and "could not be reached"
+// would have sent whoever read the line looking at the wrong thing.
+func carryFault(err error) (reason, said string) {
+	if err == nil {
+		return carryNotProse, carrySaidNothingNew
+	}
+	said = carrySaidUnreachable
+	if errors.Is(err, context.DeadlineExceeded) {
+		said = carrySaidTooSlow
+	}
+	reason = err.Error()
+	if refusal, ok := provider.RefusalFrom(err); ok {
+		if words := strings.TrimSpace(refusal.Message); words != "" {
+			reason = words
+		}
+	}
+	return clip(reason, errorRowMessage), said
+}
+
+// journalCarryLadder writes the whole ladder down, in the order it was tried.
+//
+// ONE LINE PER RUNG AND NEVER A SUMMARY, because the rungs are separate facts: a
+// handoff that faulted and a draft that looped are two different things to fix,
+// and a single line naming only the winner would say neither. The rung that
+// supplied the brief carries `used`, which is how a mark's split — the other door
+// into [Agent.handOverRunningTurn], and one that writes no ceiling line — still
+// records what its worker opened on.
+func (a *Agent) journalCarryLadder(ladder []carryStep) {
+	for _, step := range ladder {
+		a.file.appendCarry(journalCarry{
+			Rung:    step.rung,
+			Outcome: step.outcome,
+			Reason:  step.reason,
+			Chars:   step.chars,
+			Used:    step.used,
+		})
+	}
+}
+
+// carryLine is the line the person reads, with the truth about how much went with
+// their work on the end of it when that truth is "almost nothing".
+//
+// IT SAYS SOMETHING ONLY WHEN THE ASK IS ALL THERE IS. A brief written by the
+// second model and a draft written by the first are both a worker that starts
+// knowing what the turn found out, and a person does not need to be told which of
+// two documents it was. A worker starting on their bare sentence is a different
+// event and reads as one.
+func carryLine(line, carried string, top carryStep) string {
+	if carried != carryRungAsk {
+		return line
+	}
+	said := top.said
+	if strings.TrimSpace(said) == "" {
+		said = carrySaidNoMaterial
+	}
+	return line + carryAskOnlyNote + said
+}
+
 // ── the digest ──────────────────────────────────────────────────────────────
 
 // checkpointDigest is what the mark's reader is shown: A SHORT ACCOUNT OF THE
@@ -1957,7 +2118,9 @@ func endsAskingThePerson(said string) bool {
 func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead) bool {
 	verdict.Wide = true
 	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, read)
-	a.file.appendCeiling(journalCeiling{Rounds: rounds, Decision: over.decision, TaskID: over.taskID})
+	a.file.appendCeiling(journalCeiling{
+		Rounds: rounds, Decision: over.decision, TaskID: over.taskID, Carry: over.carry,
+	})
 	return over.moved
 }
 
@@ -2027,12 +2190,15 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
 	sketch := read.sketch
 	asked := a.taskRequest()
-	draft, remains := a.checkpointBrief(ctx, turn, model)
+	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
 	if !remains {
 		if sketch.saysDone() {
-			// NOTHING HAPPENS, and that includes the line. A person told their answer
-			// was being moved and then left watching it finish where it was would have
-			// been told something that did not happen.
+			// NOTHING HAPPENS, and that includes the line AND the ladder's own lines.
+			// A person told their answer was being moved and then left watching it
+			// finish where it was would have been told something that did not happen,
+			// and a file carrying a ladder for a handover that never happened would
+			// say the same thing to whoever reads it afterwards. The ceiling line
+			// written a moment later says the drop and why.
 			return checkpointHandover{decision: checkpointCeilingNothing}
 		}
 		// UNCORROBORATED, so the work moves — and the continuation spent its answer
@@ -2055,18 +2221,42 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// sentence — which is what this road used to reach SECOND and now reaches LAST,
 	// because a bare ask hands a worker everything the turn found out except the
 	// findings.
-	goal := a.writeHandoff(ctx, asked, read.digest, draft)
-	if goal == "" {
-		goal = draft
+	//
+	// AND EVERY RUNG OF IT IS AN EVENT. Which rung answered is the difference
+	// between a worker that opens on an account of the turn and a worker that
+	// opens on the person's raw sentence, and on the measured run that difference
+	// was twelve minutes of a cold worker re-deriving what the chat already knew —
+	// with nothing in any file saying it had happened. So the ladder is walked
+	// with its outcomes in hand, written down rung by rung, and the rung that
+	// supplied the brief rides the ceiling's own line (see the carry ladder above).
+	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	goal, carried := written, carryRungHandoff
+	if strings.TrimSpace(goal) == "" {
+		goal, carried = draft, carryRungDraft
 	}
 	if strings.TrimSpace(goal) == "" {
-		goal = asked
+		goal, carried = asked, carryRungAsk
 	}
+	stood := carryStep{rung: carryRungAsk, outcome: carryWritten, chars: len(strings.TrimSpace(asked))}
+	if strings.TrimSpace(asked) == "" {
+		stood = carryStep{rung: carryRungAsk, outcome: carryEmpty, reason: carryNoSentence}
+	}
+	ladder := []carryStep{wrote, drafted, stood}
+	for index := range ladder {
+		ladder[index].used = ladder[index].rung == carried && strings.TrimSpace(goal) != ""
+	}
+	a.journalCarryLadder(ladder)
 	if strings.TrimSpace(goal) == "" {
 		// AND THERE IS THE ONE OTHER WAY THIS ENDS WITH NO TASK: nothing to write
 		// down for anybody. No dowry and no sentence of the person's own is not a
 		// narrow brief, it is no brief — and a task admitted on it would be a worker
-		// started on a blank page.
+		// started on a blank page. The ladder above is written down first: this is
+		// the outcome whose reasons matter most, and it is the one that used to
+		// leave the file saying only that a ceiling had dropped.
+		//
+		// AND THE CEILING LINE NAMES NO RUNG, because none of them supplied
+		// anything — the emptiness law, and the decision beside it already says
+		// what happened.
 		return checkpointHandover{decision: checkpointCeilingNoBrief}
 	}
 	verdict.Work = true
@@ -2112,6 +2302,13 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// over the card it explains (task.go). It is [EventNotice] for that line's
 	// reason: the dim one-liner a surface already draws for something the harness
 	// did without stopping to ask.
+	//
+	// AND IT SAYS SO WHEN THE WORK IS GOING WITH NOTHING BUT THE ASK. A move that
+	// could carry no state beyond the person's own sentence is still allowed to
+	// proceed — a blind worker beats a stalled chat — but a person watching their
+	// turn move is owed the difference, because it is the difference between a task
+	// that starts where the turn got to and a task that starts over ([carryLine]).
+	line = carryLine(line, carried, wrote)
 	hub.send(Event{Kind: EventNotice, Text: line})
 	// AND THE TASK IS NAMED FROM THE PERSON'S OWN WORDS AND NEVER FROM THE DOWRY.
 	// The other door into [Agent.launchRouteTask] cuts its title off the front of a
@@ -2142,7 +2339,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
-	return checkpointHandover{moved: true, decision: checkpointCeilingMoved, taskID: id}
+	return checkpointHandover{moved: true, decision: checkpointCeilingMoved, taskID: id, carry: carried}
 }
 
 // checkpointHandover is what one handover actually DID, and it is a struct rather
@@ -2156,6 +2353,11 @@ type checkpointHandover struct {
 	moved    bool
 	decision string
 	taskID   uint64
+	// carry names the rung of the brief ladder that supplied what the worker
+	// opened on, and it is the field the measured failure needed: two handovers
+	// that both read `moved` are not the same event when one of them carried the
+	// person's bare sentence (see the carry ladder above).
+	carry string
 }
 
 // checkpointBrief is the DRAFT of the dowry: what this turn found out, written
@@ -2239,7 +2441,7 @@ type checkpointHandover struct {
 // So it reports the brief AND whether there is anything to hand over, which are
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
-func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool) {
+func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep) {
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -2249,7 +2451,12 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	response, err := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
 		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
 	if err != nil || response == nil {
-		return "", true
+		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
+		// rung answering "" used to be indistinguishable from a rung that answered
+		// machine markup, and the caller's journal cannot tell a fault from a
+		// degeneration it was never told about.
+		reason, said := carryFault(err)
+		return "", true, carryStep{rung: carryRungDraft, outcome: carryFailed, reason: reason, said: said}
 	}
 	// The person pays for it on the turn it belongs to rather than out of the
 	// auxiliary pocket, because this is the conversation's own model reading the
@@ -2262,7 +2469,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that
 	// is about the WORK rather than about the document.
 	if declaresNothingLeft(brief) {
-		return "", false
+		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft}
 	}
 	// An empty reply, a whitespace one and a sentinel are all the same failure to
 	// this line: nothing came back that anybody could work from.
@@ -2272,14 +2479,20 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// things is not findings this turn holds — it is a tired model filling its
 	// token budget — and the writer below is better off with the digest alone than
 	// with a document that will drag its own repetition into the spec.
-	if !briefIsProse(brief) || briefRepeats(brief) {
-		return "", true
+	if !briefIsProse(brief) {
+		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
+			reason: carryNotProse, said: carrySaidNothingNew}
+	}
+	if briefRepeats(brief) {
+		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
+			reason: carryDraftLooped, said: carrySaidNothingNew}
 	}
 	// THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, and that constant rather
 	// than a second number of this file's own (task_shape.go's
 	// taskShapeBriefLimit): two spellings of one bound are two answers to the
 	// question of how long a worker's instruction may be.
-	return clip(brief, taskShapeBriefLimit), true
+	brief = clip(brief, taskShapeBriefLimit)
+	return brief, true, carryStep{rung: carryRungDraft, outcome: carryWritten, chars: len(brief)}
 }
 
 // writeHandoff is the OTHER HALF of the dowry: the mastermind that turns what the
@@ -2329,7 +2542,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 // that the person did not ask for, and a journal that could not name it would
 // leave a mastermind-priced line on the bill with nothing beside it saying what
 // it bought.
-func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) string {
+func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (string, carryStep) {
 	if strings.TrimSpace(digest) == "" {
 		digest = checkpointDigest(asked, a.snapshot())
 	}
@@ -2338,7 +2551,12 @@ func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) s
 		// NOTHING TO WRITE FROM IS NOT A DOCUMENT. A turn with no ask, no account
 		// and no draft has nothing a second mind could compose out of, and a call
 		// made on an empty page is a mastermind asked to invent an instruction.
-		return ""
+		//
+		// AND A RUNG NOBODY EVEN ASKED IS STILL A RUNG THAT SAYS SO. `skipped` with
+		// its reason is a different fact from a writer that faulted, and reading the
+		// two as one silence is what the measured failure cost.
+		return "", carryStep{rung: carryRungHandoff, outcome: carrySkipped,
+			reason: carryNoPage, said: carrySaidNoMaterial}
 	}
 	ctx, done := context.WithTimeout(ctx, checkpointHandoffWindow)
 	defer done()
@@ -2350,18 +2568,26 @@ func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) s
 			ai.WithMaxTokens(checkpointBriefTokens),
 			ai.WithTemperature(checkpointSketchTemp))
 		if err != nil || response == nil {
-			return ""
+			// THE PROVIDER'S OWN WORDS COME OUT WITH THE FAILURE. On the measured run
+			// this rung died on [checkpointHandoffWindow] — ninety seconds, to the
+			// millisecond, with no answer — and the file said nothing at all, because
+			// "" is the same answer this returns for five other reasons.
+			reason, said := carryFault(err)
+			return "", carryStep{rung: carryRungHandoff, outcome: carryFailed, reason: reason, said: said}
 		}
 		a.addAuxiliaryUsageAs(response, writer, 1, auxRoleHandoff)
 		brief := strings.TrimSpace(response.Text())
 		if !briefIsProse(brief) {
-			return ""
+			return "", carryStep{rung: carryRungHandoff, outcome: carryDegenerate,
+				reason: carryNotProse, said: carrySaidNothingNew}
 		}
 		if !briefRepeats(brief) {
-			return clip(brief, taskShapeBriefLimit)
+			brief = clip(brief, taskShapeBriefLimit)
+			return brief, carryStep{rung: carryRungHandoff, outcome: carryWritten, chars: len(brief)}
 		}
 	}
-	return ""
+	return "", carryStep{rung: carryRungHandoff, outcome: carryDegenerate,
+		reason: carryStillLoops, said: carrySaidNothingNew}
 }
 
 // checkpointHandoffPage lays out what the writer is shown. It is a function of

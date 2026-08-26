@@ -350,7 +350,7 @@ the way every other proposal is offered — `yes`, `redirect`, `no`, and a count
 silence starts it. You are told, and it opens; what the card gives you on top of that is
 the window to redirect it before it spends anything.
 
-## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long
+## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long, carrying the ask only
 
 **When one answer keeps going, aforge prices it.** A long answer costs a little more with
 every round of tool calls and never stops costing; handing the same work to a task costs one
@@ -429,6 +429,25 @@ account of the work with what came back in it, and the draft. If what comes back
 or is a document that has stopped saying new things, it is asked once more and then given up
 on — and then the draft stands, and if there is no draft either, your own sentence alone. A
 task always starts; the only question is how much it starts knowing.
+
+**And when the brief cannot be written at all, you are told so on the line.** The second
+model can fault, be out of capacity, or simply not answer inside the minute and a half it is
+given — and the draft can come back as nothing usable at the same time, which is exactly what
+happened on a measured run. The move still goes ahead: a task that starts knowing only what
+you typed is better than an answer left grinding where nobody is watching it. But it is a
+different event and it reads as one, with the reason on the end of the same dim line:
+
+```
+this is running long · moving it to a task that is watched and can split · carrying the ask only — the brief could not be written: the second model did not answer in time
+```
+
+The reasons you can see there are **did not answer in time**, **could not be reached**, **had
+nothing new to say** — a document that went round in circles twice — and **there was nothing
+to write it from**. When either the written brief or the draft survives, the line says nothing
+of the kind and the extra sentence is simply absent: your work went with everything the turn
+found out. Every rung of that ladder is also written into the session's own record, with what
+it produced or what the model that refused actually said, so a run where a worker started
+blind can never again read the same as one where it started knowing everything.
 
 **And the task is finished against your question, not against the brief.** The brief says
 what is left of the work right now; the thing the independent reader at the end checks
