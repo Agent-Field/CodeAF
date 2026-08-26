@@ -271,17 +271,27 @@ func doorRefusal(command string, door auditDoor) (string, bool) {
 	return refuseOutsideDoor(command, door, auditShell)
 }
 
-// checkedTree writes the files a declared check might name and hands back the
-// directory the auditor would be standing in.
+// checkedTree writes the files a declared check might name — scripts that say
+// what starts them and are marked runnable, which is the ordinary case — and
+// hands back the directory the auditor would be standing in.
 func checkedTree(t *testing.T, names ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-			t.Fatalf("writing %s: %v", name, err)
-		}
+		writeCheckFile(t, dir, name, "#!/usr/bin/env bash\nexit 0\n", 0o755)
 	}
 	return dir
+}
+
+// writeCheckFile writes one file with the first line and the mode that decide
+// which spellings of it a door will open.
+func writeCheckFile(t *testing.T, dir, name, body string, mode os.FileMode) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(body), mode); err != nil {
+		t.Fatalf("writing %s: %v", name, err)
+	}
+	return path
 }
 
 // ONE FILE IS ONE CHECK, HOWEVER THE CHECKER SPELLS IT.
@@ -305,9 +315,8 @@ func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 		filepath.Join(dir, "run_tests.sh"),
 		"bash run_tests.sh",
 		"bash " + filepath.Join(dir, "run_tests.sh"),
-		// ANY ONE WORD, because which programs launch a script is exactly the
-		// list this door is not allowed to hold.
-		"python3 ./run_tests.sh",
+		// THE INTERPRETER THE FILE ITSELF NAMES, down any path that reaches it.
+		"/usr/bin/bash ./run_tests.sh",
 	} {
 		if refusal, ok := doorRefusal(spelling, door); !ok {
 			t.Fatalf("the checker may not run the work's own check spelled %q: %s", spelling, refusal)
@@ -321,6 +330,11 @@ func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 		// Arguments after the file are not the check the work declared.
 		"bash run_tests.sh --flag",
 		"./run_tests.sh --flag",
+		// A WORD IN FRONT IS NOT ANY WORD. It is the one the file itself names,
+		// so a program that would rewrite the check instead of running it is not
+		// a spelling of the check, and neither is the wrong interpreter.
+		"rm run_tests.sh",
+		"python3 run_tests.sh",
 		// And the shape is still one command with one word in front of it.
 		"bash -x run_tests.sh",
 		"bash run_tests.sh && rm -rf .",
@@ -333,7 +347,8 @@ func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 		// AND THE REFUSAL SAYS HOW THE CHECK IS SPELLED. A no that names a file
 		// without saying which shapes start it is the no that was guessed at five
 		// times running.
-		if !strings.Contains(refusal, filepath.Join(dir, "run_tests.sh")) || !strings.Contains(refusal, "<one word>") {
+		if !strings.Contains(refusal, "run it as") ||
+			!strings.Contains(refusal, "`bash "+filepath.Join(dir, "run_tests.sh")+"`") {
 			t.Fatalf("the refusal of %q does not say how to run the check:\n%s", refused, refusal)
 		}
 	}
@@ -415,5 +430,119 @@ func TestTheCheckerRerunsTheCommandInsideAWorkersLine(t *testing.T) {
 	), auditPlace{ground: dir, ran: dir})
 	if len(critical.checks) != 0 {
 		t.Fatalf("a derived command nobody would allow became a check: %q", critical.checks)
+	}
+}
+
+// A WORD IN FRONT OF THE CHECK IS THE ONE THE FILE ITSELF NAMES.
+//
+// The door admits a program word before the file because a script is usually
+// started that way, not because any word may stand there: `rm <the check>` names
+// the same file and does not run it. The file answers the question — its first
+// line names its own interpreter — so the harness still holds no list of
+// launchers and still learns no language.
+func TestATwoWordSpellingMustNameTheFilesOwnInterpreter(t *testing.T) {
+	dir := t.TempDir()
+	writeCheckFile(t, dir, "direct.py", "#!/usr/bin/python3\nprint(1)\n", 0o755)
+	writeCheckFile(t, dir, "found.sh", "#!/usr/bin/env bash\nexit 0\n", 0o755)
+	writeCheckFile(t, dir, "flagged.py", "#!/usr/bin/env -S python3 -u\nprint(1)\n", 0o755)
+	node := checkedNode("check it with `direct.py`, `found.sh` and `flagged.py`", "they pass")
+	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
+
+	for _, spelling := range []string{
+		// The program the line names, and any path that reaches that program.
+		"python3 direct.py",
+		"/usr/bin/python3 ./direct.py",
+		// A line that goes and finds the program names it last, so that is the
+		// word — read by shape, with no knowledge of what does the finding.
+		"bash found.sh",
+		"python3 flagged.py",
+		// And the file on its own, which the executable bit already vouched for.
+		"./direct.py",
+		"found.sh",
+	} {
+		if refusal, ok := doorRefusal(spelling, door); !ok {
+			t.Fatalf("the file names its own interpreter and %q was still refused: %s", spelling, refusal)
+		}
+	}
+
+	for _, refused := range []string{
+		// The wrong interpreter is not the interpreter.
+		"bash direct.py",
+		"python3 found.sh",
+		// And a program that would change the check instead of running it is not
+		// a spelling of the check at all.
+		"rm direct.py",
+		"rm ./found.sh",
+		"truncate found.sh",
+	} {
+		refusal, ok := doorRefusal(refused, door)
+		if ok {
+			t.Fatalf("%q was admitted as a way of running the check", refused)
+		}
+		if !strings.Contains(refusal, "run it as") {
+			t.Fatalf("the refusal of %q never says how the check is run:\n%s", refused, refusal)
+		}
+	}
+	// AND THE DOOR NAMES THE INTERPRETER RATHER THAN A SHAPE. A model that is
+	// told the word does not have to guess it.
+	if line := door.line(); !strings.Contains(line, "`python3 "+filepath.Join(dir, "direct.py")+"`") {
+		t.Fatalf("the door never names the check's own interpreter:\n%s", line)
+	}
+}
+
+// A FILE THAT DECLARES NO INTERPRETER IS RUN THE WAY THE WORK RAN IT.
+//
+// A file with no first line naming a program and no executable bit says nothing
+// about being started, so nothing is invented for it: the only spellings that open
+// are the ones the work itself wrote or ran, and the refusal SAYS SO rather than
+// leaving a model to guess at launchers it will never be allowed.
+func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
+	dir := t.TempDir()
+	writeCheckFile(t, dir, "plain.sh", "exit 0\n", 0o755)
+	writeCheckFile(t, dir, "data.txt", "cases: 4\n", 0o644)
+	writeCheckFile(t, dir, "ranonly.sh", "exit 0\n", 0o644)
+
+	// The executable bit alone is a file saying that running it happens, which is
+	// what makes the bare spellings work — but it names no program, so no word
+	// may stand in front of it.
+	marked := auditDoorFor(checkedNode("check it with `plain.sh`", "it passes"),
+		auditPlace{ground: dir, ran: dir})
+	for _, spelling := range []string{"plain.sh", "./plain.sh", filepath.Join(dir, "plain.sh")} {
+		if refusal, ok := doorRefusal(spelling, marked); !ok {
+			t.Fatalf("an executable check refused its own bare spelling %q: %s", spelling, refusal)
+		}
+	}
+	if _, ok := doorRefusal("bash plain.sh", marked); ok {
+		t.Fatal("a file that names no interpreter was handed one anyway")
+	}
+
+	// A file with neither fact is data until the work says otherwise — and when
+	// the work says otherwise, that spelling and no other is the door.
+	declared := auditDoorFor(checkedNode("score it with `bash data.txt`", "it scores"),
+		auditPlace{ground: dir, ran: dir})
+	if refusal, ok := doorRefusal("bash data.txt", declared); !ok {
+		t.Fatalf("the work's own spelling of its own check was refused: %s", refusal)
+	}
+	for _, refused := range []string{"data.txt", "./data.txt", "python3 data.txt", "rm data.txt"} {
+		if _, ok := doorRefusal(refused, declared); ok {
+			t.Fatalf("%q opened a file that declares nothing about being run", refused)
+		}
+	}
+	if refusal, _ := doorRefusal("data.txt", declared); !strings.Contains(refusal, "declares no interpreter") {
+		t.Fatalf("the refusal never says the file declares no interpreter:\n%s", refusal)
+	}
+
+	// AND WHAT THE WORKER ITSELF RAN COUNTS AS THE WORK SAYING SO, read out of a
+	// composed line the same way any other receipt is.
+	ran := auditDoorFor(checkedNode("build it", "it builds",
+		toolReceipt{tool: "bash", command: "cd " + dir + " && bash ranonly.sh 2>&1 | tail -1"},
+	), auditPlace{ground: dir, ran: dir})
+	if refusal, ok := doorRefusal("bash ranonly.sh", ran); !ok {
+		t.Fatalf("the checker may not re-run the file the way the work ran it: %s", refusal)
+	}
+	for _, refused := range []string{"ranonly.sh", "bash ranonly.sh --flag", "rm ranonly.sh"} {
+		if _, ok := doorRefusal(refused, ran); ok {
+			t.Fatalf("%q was admitted, and the work never ran it that way", refused)
+		}
 	}
 }
