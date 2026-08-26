@@ -84,6 +84,15 @@ type spendPage struct {
 	// and again on the beat. It is what `what it was for` joins its ids against
 	// ([app.spendNames] says why it is not home's).
 	world session.World
+	// names is that join, ALREADY MADE: an id against the word a person calls
+	// that thing, built once where the world is read and held here.
+	//
+	// IT IS A FIELD BECAUSE THE JOIN TOUCHES SEAMS AND MOVING THE WINDOW MUST
+	// NOT. [app.rebuildSpend] runs on every `shift+←` — at key-repeat rate,
+	// which is what makes holding the arrow down a design promise — and it used
+	// to build this map on the spot, walking the standing store once per
+	// project each time. The lines are already in memory and so, now, is this.
+	names map[string]string
 }
 
 // spendWindowDays is the window this place opens on: a fortnight, by the day.
@@ -189,6 +198,11 @@ func (a *app) readSpendLines(now time.Time) {
 	// bands and the world are read together on home: a ledger line minted by work
 	// that started ten seconds ago has a title only in a scan taken after it.
 	a.spend.world = a.readWorld()
+	// AND THE JOIN IS MADE HERE, WITH THE WORLD IT IS MADE FROM. This is the one
+	// moment the seams behind it may be touched — the open and the beat — so
+	// that every keystroke after it, the window arrows included, is arithmetic
+	// over what these two lines left behind.
+	a.spend.names = a.spendNames(a.spend.world)
 	a.spend.held = false
 	for _, line := range lines {
 		if line.USD > 0 {
@@ -203,7 +217,7 @@ func (a *app) readSpendLines(now time.Time) {
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
-	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames(p.world)).crewed(a.spendCrewNow())
+	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow())
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -231,12 +245,19 @@ func (a *app) rebuildSpend() {
 // which is what every other place pays for its own reading.
 //
 // AND THE PROMISES ARE ASKED OF EVERY PROJECT, not of this window's. A firing
-// costs money in the workspace it fires in, and the seam answers by workspace, so
-// a page asking only about the project the window happens to be in cannot name a
-// promise in any other one.
+// costs money in the workspace it fires in, so a page asking only about the
+// project the window happens to be in cannot name a promise in any other one.
+//
+// IT IS ASKED ONCE, AND ONLY WHERE THE WORLD IS READ ([app.readSpendLines]).
+// The orders came through [StandingSeam.Items], which is the store's List
+// filtered to one workspace — so asking it per project walked the standing root
+// once per project and parsed every document on the machine each time, to build
+// one map. [StandingSeam.All] is the same answer for one read. A surface with no
+// way to ask it at all — a connection, whose door answers by workspace — names
+// no promise rather than fanning out into N reads, and those rows keep their
+// ids, which the header above says is the poorer row and not the wrong one.
 func (a *app) spendNames(world session.World) map[string]string {
 	names := map[string]string{}
-	seen := map[string]bool{}
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			if title := strings.TrimSpace(row.Title); title != "" {
@@ -248,21 +269,13 @@ func (a *app) spendNames(world session.World) map[string]string {
 				}
 			}
 		}
-		if a.stands.Items == nil || seen[project.Path] {
-			continue
-		}
-		seen[project.Path] = true
-		for _, item := range a.stands.Items(project.Path) {
-			if title := strings.TrimSpace(item.Title()); title != "" {
-				names[session.SubjectStanding+"\x00"+item.ID] = title
-			}
-		}
 	}
-	if a.stands.Items != nil && !seen[a.workspace] {
-		for _, item := range a.stands.Items(a.workspace) {
-			if title := strings.TrimSpace(item.Title()); title != "" {
-				names[session.SubjectStanding+"\x00"+item.ID] = title
-			}
+	if a.stands.All == nil {
+		return names
+	}
+	for _, item := range a.stands.All() {
+		if title := strings.TrimSpace(item.Title()); title != "" {
+			names[session.SubjectStanding+"\x00"+item.ID] = title
 		}
 	}
 	return names

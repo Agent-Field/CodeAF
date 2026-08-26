@@ -239,13 +239,23 @@ func TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth(t *testing.T) {
 	}
 }
 
-// LAW 4 · A PLACE NEVER READS THE DISK ON A DRAW.
+// LAW 4 · A PLACE NEVER READS THE DISK ON A DRAW — OR ON A KEYSTROKE.
 //
 // Every fact a place shows was read on the way in or on the three-second beat
 // and is held in that place's own cache; a body builds rows out of what those
 // left behind. A draw that reached a seam would reach it on every keystroke, on
 // every resize and on every frame of an animation — which is how a still page
 // ends up walking a directory sixty times a second.
+//
+// AND THE LAW'S OWN ARGUMENT IS WHY IT COVERS MORE THAN THE BODY NOW. "A draw
+// that reached a seam would reach it on every keystroke" is a sentence about
+// keystrokes, and for one wave the test only walked `body`, `note` and `hint` —
+// so the spend place's window arrows walked the standing store N+1 times per
+// press, at key-repeat rate, with a law written against exactly that defect
+// passing green. Everything a hand can do without asking for anything to happen
+// is fenced here: the window arrows, the alt letters, the verbs a row offers,
+// and the three things a pointer does. What is NOT fenced is `enter`, which is
+// a person asking for something and is allowed to pay for it.
 //
 // THE SEAMS ARE MADE TO PANIC RATHER THAN COUNTED. A counter says "it read the
 // disk twice" and leaves somebody to argue about whether twice is fine; a panic
@@ -271,11 +281,20 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 			// full-text index: each is a file or a database, and none of them may
 			// be touched between one frame and the next.
 			a.memory = panicMemory{t: t, place: place.id.word()}
-			if a.stands.Items != nil {
-				a.stands.Items = func(string) []standing.Item {
-					t.Fatalf("the %s place read the standing store while drawing its body", place.id.word())
-					return nil
-				}
+			// THE STANDING SEAM IS WIRED WHETHER THE LAB WIRED IT OR NOT. A fence
+			// that was installed only where the lab had already put a seam asked
+			// nothing at all of the labs that leave it nil — which is how the spend
+			// place came to walk the whole standing store on every window
+			// keystroke with this test green. A place reads `nil` as "there is no
+			// store to ask", so a nil seam does not exercise the question; this
+			// hands every place a store that is a fault to touch.
+			a.stands.Items = func(string) []standing.Item {
+				t.Fatalf("the %s place read the standing store on a draw or a keystroke", place.id.word())
+				return nil
+			}
+			a.stands.All = func() []standing.Item {
+				t.Fatalf("the %s place walked the standing store on a draw or a keystroke", place.id.word())
+				return nil
 			}
 			a.searchStore = panicSearch{t: t, place: place.id.word()}
 
@@ -287,6 +306,31 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 				pl.note(a, width)
 				pl.hint(a)
 			}
+
+			// AND EVERY KEY AND GESTURE THAT ONLY MOVES OR RE-GROUPS WHAT IS
+			// ALREADY HELD. Each of these repeats — an arrow held down, a wheel
+			// spun, a pointer dragged across the rows — so a seam reached from one
+			// of them is a seam reached at the speed of a hand.
+			for _, key := range []string{"shift+left", "shift+right", "shift+up", "shift+down"} {
+				pl.window(a, key)
+			}
+			for letter := 'a'; letter <= 'z'; letter++ {
+				pl.alt(a, letter)
+			}
+			// The verbs are what `→` draws, and they are asked for on the frame
+			// that draws the strip.
+			pl.verbs(a)
+			pl.rowID(a)
+			for y := 0; y < 12; y++ {
+				pl.press(a, y)
+				pl.hover(a, y)
+			}
+			pl.wheel(a, 1)
+			pl.wheel(a, -1)
+			// AND THE ROWS ARE BUILT ONCE MORE AFTERWARDS, because a keystroke
+			// that only marked something dirty would otherwise pay for the seam on
+			// the next draw instead — which is the same read, one frame later.
+			pl.body(a, a.width, 12)
 		})
 	}
 }

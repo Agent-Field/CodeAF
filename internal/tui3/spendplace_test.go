@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -395,5 +396,50 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 	}
 	if seen != spendSubjectCap {
 		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
+	}
+}
+
+// THE WINDOW IS ARITHMETIC OVER WHAT IS ALREADY HELD, AND THE STORE IS READ ON
+// THE BEAT AND NOWHERE ELSE.
+//
+// place_spend.go promises this in as many words — "the lines are already in
+// memory, so moving the window is arithmetic and never a read … which is what
+// lets a person hold the arrow down" — and for one wave it was false: the
+// rebuild every window keystroke ends with joined ids against titles, and the
+// standing half of that join asked the seam once per project, each ask being a
+// walk of the standing root and a parse of every document under it. Held down,
+// that is a directory walk per repeat.
+//
+// The count here is what makes the promise checkable: one read on the way in,
+// none for any number of arrows, and one more when the three-second beat says
+// the world may have moved.
+func TestTheSpendWindowMovesWithoutTouchingTheStandingStore(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	reads := 0
+	a.stands.All = func() []standing.Item {
+		reads++
+		return []standing.Item{standOrder("watch-1", "watch the filings", standing.AltitudeMachine)}
+	}
+	a.stands.Items = func(string) []standing.Item {
+		t.Fatal("the spend place asked for one project's orders, which is the seam it walked N+1 times")
+		return nil
+	}
+	// The open is where the join is made, and it is made once.
+	a.showPage(pageSpend)
+	if reads != 1 {
+		t.Fatalf("walking in read the standing store %d times, want one", reads)
+	}
+	for i := 0; i < 20; i++ {
+		drive(t, a, key("shift+left"))
+		drive(t, a, key("shift+right"))
+	}
+	if reads != 1 {
+		t.Fatalf("forty window keystrokes read the standing store %d times, want the one from the open", reads)
+	}
+	// AND THE BEAT IS WHERE IT IS ALLOWED TO COST SOMETHING. A page that never
+	// re-read would name a promise made in another window by its id forever.
+	a.placeBeat(a.placeGen)
+	if reads != 2 {
+		t.Fatalf("the beat left the standing store read %d times, want a second read", reads)
 	}
 }

@@ -697,6 +697,25 @@ type StandingSeam struct {
 	// Nil is a home with no item band, which is the ambient side switched off.
 	Items func(workspace string) []standing.Item
 
+	// All answers EVERY standing item this machine holds, in the store's own
+	// order, and each item carries the workspace it belongs to.
+	//
+	// IT EXISTS BECAUSE A PAGE THAT WANTS THE WHOLE SET WAS ASKING Items ONCE
+	// PER PROJECT. Items is the store's List filtered down to one workspace, so
+	// a page joining ids against titles across five projects paid five walks of
+	// the standing root and five parses of every document on the machine to
+	// build one map — a cost that grows as projects × orders, which PERF.md
+	// does not allow of anything a keystroke or a beat can reach. One question
+	// asked once is the same answer.
+	//
+	// Like [StandingSeam.Items] it must NOT block: the spend place asks it on
+	// the way in and on the three-second beat.
+	//
+	// Nil is a surface with no way to ask the question at all — a connection,
+	// whose door answers by workspace and has no "every workspace" on the wire
+	// — and a caller then names nothing rather than fanning out into N reads.
+	All func() []standing.Item
+
 	// Save writes one item back — the pause and the stop keys on a home row, and
 	// nothing else on this surface. It returns the write's error and home says
 	// so on its own message line rather than swallowing it: a row that redrew as

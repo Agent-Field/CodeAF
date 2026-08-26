@@ -312,6 +312,17 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			}
 			return items
 		},
+		// AND EVERY ORDER ON THE MACHINE IN ONE READ, which is the store's own
+		// List and is what Items is a filtered copy of. A page wanting the whole
+		// set asks this once rather than asking Items once per project, which
+		// walked the standing root once per project to build one map.
+		All: func() []standing.Item {
+			items, err := store.List()
+			if err != nil {
+				return nil
+			}
+			return items
+		},
 		Save: store.Save,
 		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
 		// through Save above: the rung is a read-modify-write under the item's
