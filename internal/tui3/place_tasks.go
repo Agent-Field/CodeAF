@@ -36,7 +36,6 @@ import (
 // cursor is a line of that walk rather than a count of items the frame would
 // have to re-derive.
 type tasksPlace struct {
-	open   bool
 	cursor int
 	top    int
 	// query is the type-to-filter box, and it is the [editor] every other box on
@@ -121,8 +120,6 @@ func (a *app) raiseTaskPlace(sheet tasksPlace) {
 	// ([app.standDownFullscreen] states the law). Only one of the three may
 	// believe it owns the frame: view.go draws them in a fixed order, so a page
 	// opened under another would take the keyboard and never be seen.
-	a.standDownFullscreen()
-	a.page = pageTasks
 	a.taskSheet = sheet
 	a.taskSheet.cursor = a.tasksSettle(0)
 	a.noticeEvent(eventTaskPageOpened)
@@ -142,7 +139,6 @@ func (a *app) takeTaskReading() tasksPlace {
 	world := a.readWorld()
 	mine := a.taskSheetMine()
 	return tasksPlace{
-		open:   true,
 		world:  world,
 		mine:   mine,
 		awayAt: a.elsewhere().Read,
@@ -166,9 +162,6 @@ func (a *app) takeTaskReading() tasksPlace {
 // It is ONE COMPARISON on the common frame: the reading's own stamp against the
 // held one. Nothing is re-walked and no clock is read unless the answer changed.
 func (p *tasksPlace) regroup(a *app) {
-	if !p.open {
-		return
-	}
 	at := a.elsewhere().Read
 	if at.Equal(p.awayAt) {
 		return
@@ -321,17 +314,18 @@ func (a *app) openTaskPage() tea.Cmd {
 }
 
 // close writes the look stamp and drops the state. What a person saw is a fact
-// about the moment they left, so it is written on the way out.
+// about the moment they left, so it is written on the way out
+// (placecounts.go's [app.leavePage]).
 func (p *tasksPlace) close(a *app) {
-	if p.open {
-		session.NoteLookAt(a.placesRoot(), pageTasks.word(), a.now())
-	}
+	a.leavePage(pageTasks)
 	*p = tasksPlace{}
 }
 
+// closeTaskSheet is the DOOR out of this place, and it goes through the router.
 func (a *app) closeTaskSheet() {
-	a.taskSheet.close(a)
-	a.touch()
+	if a.at(pageTasks) {
+		a.leavePlace()
+	}
 }
 
 // ── the reading, as the place walks it ──────────────────────────────────────
@@ -453,7 +447,7 @@ func (a *app) taskSheetTyped() {
 // outrank a page of work. ctrl+c is read above this and stays the door.
 func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		if key != taskSheetKey {
 			return nil, false
 		}
@@ -500,13 +494,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.taskSheetTyped()
 			return nil, true
 		}
-		a.closeTaskSheet()
+		a.leavePlace()
 		return nil, true
 	case taskSheetKey:
 		// The chord that opened this is the chord that closes it — the roster's own
 		// bargain with ctrl+t — and it closes it from inside a filter as well,
 		// because a chord is not a layer a person is standing in.
-		a.closeTaskSheet()
+		a.leavePlace()
 		return nil, true
 	case "up", "ctrl+p":
 		a.taskSheetMove(-1)
@@ -628,9 +622,6 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 // starting a second walk of the disk — which is the law this place is built on
 // (tasksplace.go's header) restated where it would be easiest to break.
 func (p *tasksPlace) window(a *app, key string) bool {
-	if !p.open {
-		return false
-	}
 	before := p.reading.win
 	next := p.reading.step(before, key)
 	if next == before {
@@ -755,22 +746,7 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	// It answers NO HITS OF ITS OWN. The card's rows are resolved against the
 	// card's own frame ([app.taskCardPress]), and a list hit reported for a row
 	// the list did not draw is exactly how a click opens the wrong task.
-	if a.taskSheet.detailOn {
-		lines, _, caretX, caretY := a.taskCardFrame(width, height)
-		return lines, nil, caretX, caretY
-	}
-	lines, hits, caretX, caretY := placeFrameWithBar(a, width, height,
-		func(width, room int) []placeRow { return a.taskSheet.body(a, width, room) },
-		// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
-		// (taskphone.go). The count above it stays — a bar is the way out, and the
-		// tally is what the place is holding.
-		func(width int) (string, placeHit, bool) {
-			if layoutTier(width) != tierPhone {
-				return "", nil, false
-			}
-			line, _ := a.taskSheetBar(width)
-			return line, taskSheetHit{kind: taskSheetHitBar}, true
-		})
+	lines, hits, caretX, caretY := a.placeDraw(placeTasks{}, width, height)
 	return lines, placeHitsOf(hits, taskSheetHit{}), caretX, caretY
 }
 
@@ -917,7 +893,7 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 // and a count beside that prose would be the surface saying both "there is
 // nothing here" and "here is how much of it there is" on one screen.
 func (p *tasksPlace) note(a *app, width int) []string {
-	if !p.open || p.detailOn || p.reading.held == 0 {
+	if p.detailOn || p.reading.held == 0 {
 		return nil
 	}
 	r := a.tasksFiltered()
@@ -1065,8 +1041,11 @@ func (a *app) tasksStop(target stopTarget) tea.Cmd {
 // IT ANSWERS FROM THE LATEST CACHED WORLD READING, because the tab bar is a
 // paint path and must never turn into a directory walk.
 func (p *tasksPlace) changed(a *app, since time.Time) int {
+	// THE PLACE'S OWN WORLD WHILE IT IS STANDING, AND HOME'S OTHERWISE. The count
+	// is asked of a place that is usually closed — that is the whole point of a
+	// tab bar — so what it reads then is the scan home keeps on its own beat.
 	world := a.home.world
-	if p.open {
+	if a.at(pageTasks) {
 		world = p.world
 	}
 	count := 0
@@ -1083,3 +1062,96 @@ func (p *tasksPlace) changed(a *app, since time.Time) int {
 }
 
 func (a *app) tasksChangedSince(seen time.Time) int { return a.taskSheet.changed(a, seen) }
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+// placeTasks is this place's handle on the registry. Every method is
+// [tasksPlace]'s own, one line each: the state struct at the top of this file
+// has carried this shape since before the interface existed (pages.go's [place]
+// states the contract and why the handle holds no state itself).
+type placeTasks struct{ placeBase }
+
+func init() { registerPlace(placeTasks{}) }
+
+func (placeTasks) id() page      { return pageTasks }
+func (placeTasks) word() string  { return "tasks" }
+func (placeTasks) counted() bool { return true }
+
+func (placeTasks) open(a *app) tea.Cmd { return a.showTaskPlace() }
+func (placeTasks) close(a *app)        { a.taskSheet.close(a) }
+
+// tick keeps the record current while somebody stands on it: work that landed in
+// the next terminal is on this frame within three seconds.
+func (placeTasks) tick(a *app, now time.Time) { a.taskSheet.regroup(a) }
+
+func (placeTasks) body(a *app, width, room int) []placeRow {
+	return a.taskSheet.body(a, width, room)
+}
+func (placeTasks) stops(a *app) []int                  { return a.taskSheet.stops(a) }
+func (placeTasks) enter(a *app) tea.Cmd                { return a.taskSheet.enter(a) }
+func (placeTasks) verbs(a *app) []verb                 { return a.taskSheet.verbs(a) }
+func (placeTasks) window(a *app, key string) bool      { return a.taskSheet.window(a, key) }
+func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note(a, width) }
+func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
+func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
+
+// box is the type-to-filter box: every printable key is the filter, which is the
+// one thing this page can do with a letter.
+func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
+
+// bar is the phone lane's foot: the key legend becomes a `‹ back` band a thumb
+// leaves by (taskphone.go). The count above it stays — a bar is the way out, and
+// the tally is what the place is holding.
+func (placeTasks) bar(a *app, width int) (string, placeHit, bool) {
+	if layoutTier(width) != tierPhone {
+		return "", nil, false
+	}
+	line, _ := a.taskSheetBar(width)
+	return line, taskSheetHit{kind: taskSheetHitBar}, true
+}
+
+// ownFrame is the record CARD, drawn INSTEAD of the list and not over the top of
+// it. It is a mode of this place and it takes the whole of the frame, so the
+// rows below are not built at all while it is up (taskrecord.go).
+//
+// It answers NO HITS OF ITS OWN. The card's rows are resolved against the card's
+// own frame ([app.taskCardPress]), and a list hit reported for a row the list did
+// not draw is exactly how a click opens the wrong task.
+func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
+	if !a.taskSheet.detailOn {
+		return nil, nil, 0, 0, false
+	}
+	lines, _, caretX, caretY := a.taskCardFrame(width, height)
+	return lines, nil, caretX, caretY, true
+}
+
+// press, hover and wheel are this place's own: it resolves the pointer against
+// the hit map its frame wrote ([app.taskSheetPress]) rather than against a body
+// line, because a row of this list can be two screen lines tall at [tierPhone].
+func (placeTasks) press(a *app, y int) bool {
+	width, height := a.size()
+	_, hits, _, _ := a.taskSheetFrame(width, height)
+	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
+		a.taskSheet.cursor = hits[y].index
+		a.touch()
+	}
+	return true
+}
+
+func (placeTasks) hover(a *app, y int) bool {
+	a.taskSheetHover(y)
+	return true
+}
+
+func (placeTasks) wheel(a *app, delta int) bool {
+	a.taskSheetScroll(delta)
+	a.touch()
+	return true
+}
+
+// key is this place's own reading of a key the router did not take
+// (pages.go's [place] states the split).
+func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	cmd, _ := a.taskSheetKeyPress(msg)
+	return cmd
+}

@@ -238,7 +238,7 @@ func (a *app) answerKey(key string) (tea.Cmd, bool) {
 // is recorded at draw time, which is the point: the only thing that could go
 // wrong with a remembered span is that it is a frame out of date.
 func (a *app) answerPress(x, y int) (tea.Cmd, bool) {
-	if !a.home.open || y < 0 {
+	if !a.at(pageHome) || y < 0 {
 		return nil, false
 	}
 	subject, ok := a.homeSubject()

@@ -153,7 +153,7 @@ type homePhoneNote struct {
 // home takes the whole frame, so there is no body region to be narrower than
 // it.
 func (a *app) homePhone() bool {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return false
 	}
 	width, _ := a.size()

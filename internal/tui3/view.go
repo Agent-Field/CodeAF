@@ -228,31 +228,23 @@ func (a *app) frame() (string, int, int) {
 		lines, caretX, caretY := a.setupFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// The settings panel is the first thing on this surface that takes the whole
-	// frame, and it takes it WHOLE: no conversation above it, no input line
-	// under it, nothing of the frame below showing through at the edges
-	// (settings.go). A sheet drawn into a viewport is a sheet you read past.
-	if a.sheet.open {
-		lines, _, caretX, caretY := a.sheetFrame(width, height)
+	// AND THEN WHATEVER PLACE IS STANDING, in ONE call and never seven
+	// (pages.go's [app.placeFrameNow]). Each of the seven takes the frame WHOLE:
+	// no conversation above it, no input line under it, nothing of the frame
+	// below showing through at the edges — a sheet drawn into a viewport is a
+	// sheet you read past. Which one is up is [app.page]; what rows it has is the
+	// registry's answer, so this file never knows a place by name.
+	//
+	// THEY CANNOT BE UP TOGETHER, and that is one field rather than an invariant
+	// now: [app.showPage] closes what was standing before it opens what is asked
+	// for, so the frame that used to ask seven `open` flags in a fixed order —
+	// with a written-down note that an order only true while nobody makes a
+	// mistake is an order that draws a blank frame the day somebody does — asks
+	// one.
+	if lines, _, caretX, caretY, up := a.placeFrameNow(width, height); up {
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND THE TASK PAGE TAKES IT THE SAME WAY, at every width, and for the same
-	// reason: it is the project's whole record of its own work — the running tree
-	// and the flat list of everything before it — and a record read past a
-	// conversation is a record nobody finishes reading (taskview.go).
-	if a.taskSheet.open {
-		lines, _, caretX, caretY := a.taskSheetFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	// AND HOME TAKES IT ON THE SAME TERMS (home.go). It is the whole machine's
-	// work rather than this conversation's, so there is nothing of this window
-	// worth showing around the edges of it — and the conversation is exactly
-	// where esc puts you back.
-	if a.home.open {
-		lines, _, caretX, caretY := a.homeFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	// AND THE REWIND TIMELINE IS THE FOURTH, on the same terms again
+	// AND THE REWIND TIMELINE, on the same terms and outside the bar
 	// (rewindsheet.go). It is the whole conversation, laid out as the list a
 	// person picks a point out of, and a picker read past the very conversation it
 	// is picking from would be the page arguing with itself — which is also why
@@ -261,32 +253,6 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.rewindSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND THE THREE THE ROUTER ADDED, on exactly the same terms (pages.go). The
-	// standing list and the memory list were overlays drawn under the draft until
-	// they became places; a place that has no body of its own yet draws what it
-	// is FOR (teachplace.go). All three go through [placeFrame], so what differs
-	// between them is a body and nothing else.
-	if a.standPage.up {
-		lines, _, caretX, caretY := a.standPageFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	if a.memPanel.open {
-		lines, _, caretX, caretY := a.memoryFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	if a.teach.open {
-		lines, _, caretX, caretY := a.teachFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	// THE ORDER OF THOSE FOUR IS SETTINGS, THEN THE TASK PAGE, THEN HOME, THEN
-	// THE REWIND TIMELINE — oldest surface first, which is also the order
-	// settings.go tells the story in. No two of them can actually be open at once:
-	// opening any one closes the other three ([app.openSettings],
-	// [app.showTaskPlace], [app.openHome], [app.openRewindSheet], all through
-	// [app.standDownFullscreen]). The order is written down anyway, because an
-	// invariant that is only true while nobody makes a mistake is an invariant
-	// that draws a blank frame the day somebody does.
-	//
 	// AND THE STATUS SHEET IS THE FIFTH, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame

@@ -511,7 +511,7 @@ func TestAClickOnARowArrivesWhereEnterDoes(t *testing.T) {
 	}
 	homeClickAt(t, a, at)
 	homeClickAt(t, a, at)
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatalf("two presses left home up saying %q", a.home.msg)
 	}
 	if a.file != other {
@@ -542,7 +542,7 @@ func TestARowOpensItsConversationAndRaisesNothingOverIt(t *testing.T) {
 	if a.file != quiet {
 		t.Fatalf("the row opened %q, want %q (%q)", a.file, quiet, a.home.msg)
 	}
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("a row that stands for a whole conversation raised a record page over it")
 	}
 }

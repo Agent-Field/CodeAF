@@ -50,7 +50,8 @@ func (a *app) refreshPlaceCounts(now time.Time) {
 	root := a.placesRoot()
 	tally := placeTally{}
 	for _, id := range pages() {
-		if !id.counted() {
+		pl := placeFor(id)
+		if pl == nil || !pl.counted() {
 			// Spend is a sum, search is something you do, and settings is how this
 			// machine is set. A number in front of any of them would be a number
 			// about nothing (pages.go's [page.counted]).
@@ -60,26 +61,11 @@ func (a *app) refreshPlaceCounts(now time.Time) {
 		if seen.IsZero() {
 			continue
 		}
-		// TODO(the refactor lane): this switch is the one place that knows all the
-		// places, and it becomes `place.changed(a, since)` on the interface
-		// ARCHITECTURE.md states — the registry walking itself, with each arm
-		// living beside the place it counts. It is written as a switch here only
-		// because the interface does not exist yet, and it is a switch in ONE
-		// function rather than one per place, which is the shape that lifts.
-		switch id {
-		case pageTasks:
-			tally[id.word()] = a.tasksChangedSince(seen)
-		case pageStanding:
-			tally[id.word()] = a.standingChangedSince(seen)
-		case pageMemory:
-			tally[id.word()] = a.memoryChangedSince(seen)
-		case pageHome:
-			// HOME'S OWN NUMBER IS ZERO AND THAT IS THE DESIGN. Home is where the
-			// "since you left" ledger is DRAWN, in sentences that say what happened
-			// and open the place it happened in — so a digit on its tab would be the
-			// same news said twice, once uselessly.
-			tally[id.word()] = 0
-		}
+		// EACH ARM LIVES BESIDE THE PLACE IT COUNTS. This was one switch that knew
+		// all the places, with a TODO on it naming the day the interface would
+		// land; the registry walks itself now, and a place added later is counted
+		// by having been registered.
+		tally[id.word()] = pl.changed(a, seen)
 	}
 	a.places = tally
 	_ = now
@@ -145,13 +131,17 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 	if gen != a.placeGen {
 		return nil
 	}
-	standing := a.page != pageHome && a.pageShowing()
-	if !standing {
+	// HOME RUNS ITS OWN BEAT AND ALWAYS HAS (home.go's [homeEvery]); this clock is
+	// for every OTHER place, and it stops the moment there is no place to keep
+	// current. A place answers the beat itself — the registry walking itself
+	// again — so a room added later is refreshed by having a `tick`.
+	pl := a.showing()
+	if pl == nil || pl.id() == pageHome {
 		return nil
 	}
-	a.refreshMemory()
-	a.refreshSpend()
-	a.refreshPlaceCounts(a.now())
+	now := a.now()
+	pl.tick(a, now)
+	a.refreshPlaceCounts(now)
 	a.touch()
 	return placeTick(a.placeGen)
 }

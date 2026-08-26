@@ -78,7 +78,9 @@ func sectionEnd(kind homeRowKind) bool {
 // markedSection is the line number of THE ONE HEADING THIS FRAME MARKS, and
 // [homeRest] when it marks none.
 func (h *homeView) markedSection() int {
-	if !h.open || h.searching() || h.cursor < 0 || h.cursor >= len(h.lines) {
+	// A CLOSED VIEW MARKS NOTHING, and that falls out of having no lines rather
+	// than out of a flag: the cursor is then never inside the list.
+	if h.searching() || h.cursor < 0 || h.cursor >= len(h.lines) {
 		return homeRest
 	}
 	for at := h.cursor - 1; at >= 0; at-- {

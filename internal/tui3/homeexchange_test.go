@@ -489,7 +489,7 @@ func TestContinueAsAConversationMovesTheFolderIntoTheBucket(t *testing.T) {
 	}
 	// AND HOME CLOSED INTO IT, which is what promoting means: the conversation
 	// is on screen and the screen it was asked from is gone.
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home is still open after the exchange became a conversation")
 	}
 	if a.file != filepath.Join(moved, "transcript.jsonl") {
@@ -961,7 +961,7 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(moved, "transcript.jsonl")); err != nil {
 		t.Fatalf("a click on the offer row did not promote the exchange: %v", err)
 	}
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home is still open after the exchange became a conversation")
 	}
 }
@@ -1256,7 +1256,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 		}
 	}
 	drive(t, a, key("esc"), key("enter"))
-	if a.home.open {
+	if a.at(pageHome) {
 		a.closeHome()
 	}
 

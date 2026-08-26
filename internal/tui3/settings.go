@@ -684,8 +684,7 @@ func (i sheetItem) heading() bool { return i.head != "" }
 // sheet is the panel's whole state. The zero value is closed and costs the
 // frame nothing.
 type sheet struct {
-	open bool
-	tab  int
+	tab int
 
 	registry *config.Settings
 	// conns is the door onto the accounts, for the Connections tab. It is the
@@ -885,8 +884,13 @@ func (a *app) slotRefusal() error {
 	return fmt.Errorf("that model is chosen where its session is opened")
 }
 
-// openSettings is /settings and ctrl+,.
-func (a *app) openSettings() {
+// openSettings is /settings and ctrl+,, and it is THE ROUTER'S DOOR like every
+// other way into a place (pages.go's [app.showPage]).
+func (a *app) openSettings() { a.showPage(pageSettings) }
+
+// raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
+// else calls it, which is what makes the router the one road in.
+func (a *app) raiseSettings() {
 	// THE PANEL OPENS AND SAYS WHOSE ROWS THESE ARE. Over --host it edits this
 	// machine's profile, and only some of these rows are about this machine: the
 	// mouse, the timestamps, the draft and the history are the surface's own and
@@ -897,10 +901,7 @@ func (a *app) openSettings() {
 	if a.hosted() {
 		a.note(settingsRemoteWord)
 	}
-	a.standDownFullscreen()
-	a.page = pageSettings
 	a.sheet = sheet{
-		open:         true,
 		registry:     a.registry(),
 		conns:        a.conns,
 		defaults:     settingDefaults(),
@@ -911,7 +912,15 @@ func (a *app) openSettings() {
 	a.touch()
 }
 
+// closeSettings is the DOOR out of the panel, and it goes through the router.
 func (a *app) closeSettings() {
+	if a.at(pageSettings) {
+		a.leavePlace()
+	}
+}
+
+// dropSettings is [placeSettings]'s `close`. Nothing but the router calls it.
+func (a *app) dropSettings() {
 	a.sheet = sheet{}
 	a.touch()
 }
@@ -919,55 +928,36 @@ func (a *app) closeSettings() {
 // standDownFullscreen closes every page that takes the frame at every width, so
 // that the one about to open is alone in believing it owns it.
 //
-// THE LAW IS THAT THEY ARE MUTUALLY EXCLUSIVE: the settings panel, the task
-// page (taskview.go), home (home.go), the rewind timeline (rewindsheet.go), the
-// standing place and the memory place (both promoted out of being overlays by
-// the router, placebodies.go) and the two places that draw only their own
-// explanation (teachplace.go) each take the frame WHOLE — keyboard and pointer with it — and view.go's
-// [app.frame] can only draw one, so a second one opened underneath would take the
-// keys of a page nobody can see. Every open path calls this FIRST and none of
-// them tests for the others itself, because four pages each remembering to close
-// three others is twelve places for the rule to be forgotten in, and the day one
-// is is the day a person stacks home over the task page and finds esc goes to the
-// wrong screen.
+// THE LAW IS THAT THEY ARE MUTUALLY EXCLUSIVE: the seven places (pages.go) and
+// the rewind timeline (rewindsheet.go) each take the frame WHOLE — keyboard and
+// pointer with it — and view.go's [app.frame] can only draw one, so a second one
+// opened underneath would take the keys of a page nobody can see. Every open
+// path calls this FIRST and none of them tests for the others itself, because
+// four pages each remembering to close three others is twelve places for the
+// rule to be forgotten in, and the day one is is the day a person stacks home
+// over the task page and finds esc goes to the wrong screen.
+//
+// IT USED TO NAME SEVEN PAGES AND ASK EACH ONE'S `open` FLAG. There is one flag
+// now — [app.page] — so the places close through the router in one line, and
+// what is left to name here is the one fullscreen page that is not a place.
 //
 // The phone tier's status deck and tool detail are deliberately not here: they
 // take the frame only at [tierPhone] and are dismissed by their own keys, and a
 // panel opened over one of them is a panel a person asked for while it was up.
-func (a *app) standDownFullscreen() {
-	if a.sheet.open {
-		a.closeSettings()
-	}
-	if a.taskSheet.open {
-		a.closeTaskSheet()
-	}
-	if a.home.open {
-		a.closeHome()
-	}
-	// AND THE REWIND TIMELINE, which joined the law rather than being an exception
-	// to it (rewindsheet.go). It goes RESTORING the draft it is holding, because
-	// the sentence it stashed on the way in belongs to the person and not to the
-	// page that took it.
+func (a *app) standDownFullscreen() { a.showPage(pageNone) }
+
+// standDownRest is every fullscreen page that is NOT one of the places, closed
+// on the way into one. It is called by [app.showPage] rather than the other way
+// round, which is what keeps the two out of a loop.
+//
+// THE REWIND TIMELINE IS THE WHOLE OF IT, and it is not a place on purpose: it
+// is a thing you do to THIS conversation rather than a room in the machine, and
+// putting it in the tab bar would put a knife in the cutlery drawer (pages.go).
+// It goes RESTORING the draft it is holding, because the sentence it stashed on
+// the way in belongs to the person and not to the page that took it.
+func (a *app) standDownRest() {
 	if a.rewSheet.open {
 		a.closeRewindSheet(true)
-	}
-	// AND THE THREE THE ROUTER ADDED. The standing list and the memory list used
-	// to be overlays and were therefore not in this law at all; they take the
-	// frame now, so they join it, and a place that draws only its own explanation
-	// joins it for the same reason (pages.go).
-	if a.standPage.up {
-		a.standPage.close(a)
-	}
-	if a.memPanel.open {
-		a.memPanel.close()
-	}
-	if a.teach.open {
-		a.teach.close()
-		// AND THE TWO PLACES BEHIND THAT FLAG GO WITH IT. Spend holds a parsed
-		// ledger and search holds a world scan and a query in flight; a place left
-		// `open` behind a closed frame would go on being re-read on the clock while
-		// somebody stands somewhere else entirely (spendpage.go, searchpage.go).
-		a.spend, a.search = spendPage{}, searchPage{}
 	}
 }
 
@@ -1476,32 +1466,16 @@ func formatModelRoles(pins map[string]string) string {
 // yet starts the same browser trip /connect starts, and a sign-in is a thing
 // that reaches the network (connectcaps.go).
 func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		return nil, false
 	}
 	s := &a.sheet
 	defer a.touch()
-	switch {
-	case s.edit != nil:
-		a.sheetEditKey(msg)
-		return nil, true
-	case s.sel != nil:
-		a.sheetSelectKey(msg)
-		return nil, true
-	case s.conn.entry != nil && s.onConnections():
-		// AND THE KEY BOX ON THE ACCOUNTS TAB, on the same terms as the two
-		// above it: a box that has the keyboard has ALL of it. Every other key
-		// on this sheet types into the search box, and a surface that let a
-		// pasted key narrow a list would be a surface putting half a secret in
-		// the title bar (connectcaps.go).
-		return a.connEntryKey(msg), true
-	}
-
-	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
-	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing and hands everything else straight back, so what follows keeps
-	// its right of first refusal over its own keys.
-	if cmd, took := a.placeKey(msg); took {
+	// THE THREE BOXES THAT TAKE THE WHOLE KEYBOARD ARE READ BEFORE THE ROUTER AND
+	// ARE NOT HERE. They are [placeSettings.owns], because a layer inside a place
+	// that has claimed every key outranks even the six classes — and the router
+	// reads them in that order for every place at once (place_settings.go).
+	if cmd, took := (placeSettings{}).owns(a, msg); took {
 		return cmd, true
 	}
 

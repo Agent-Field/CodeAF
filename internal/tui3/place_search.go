@@ -41,7 +41,6 @@ import (
 // searchPage is the whole search place: what has been asked, what came back,
 // and the world those results are joined against.
 type searchPage struct {
-	open bool
 	// ask is the query the surface is currently answering FOR, with the
 	// generation every guard compares against. It is bumped on every change to
 	// the box, so a stale tick or a slow read can be recognised and dropped.
@@ -73,7 +72,7 @@ type searchPage struct {
 // openSearch walks into the search place.
 func (a *app) openSearch() tea.Cmd {
 	now := a.now()
-	a.search = searchPage{open: true, world: a.readWorld(), read: now, hover: -1}
+	a.search = searchPage{world: a.readWorld(), read: now, hover: -1}
 	a.rebuildSearch()
 	return tea.Batch(a.armPlaceClock(), a.searchAsked())
 }
@@ -83,7 +82,7 @@ func (a *app) openSearch() tea.Cmd {
 // themselves are left alone — re-running somebody's query behind their back
 // every three seconds would make a still page move under them.
 func (a *app) refreshSearch() {
-	if !a.search.open {
+	if !a.at(pageSearch) {
 		return
 	}
 	a.search.world = a.readWorld()
@@ -122,7 +121,7 @@ func (a *app) searchAsked() tea.Cmd {
 // searchTick is the quiet interval arriving. It sends the read only when the
 // words have not moved on since the interval was armed.
 func (a *app) searchTick(msg searchTickMsg) tea.Cmd {
-	if !a.search.open || !searchTickAccepted(a.search.ask, msg) {
+	if !a.at(pageSearch) || !searchTickAccepted(a.search.ask, msg) {
 		return nil
 	}
 	if a.searchStore == nil {
@@ -138,7 +137,7 @@ func (a *app) searchTick(msg searchTickMsg) tea.Cmd {
 // searchDone is the read landing. A result for words already replaced is
 // dropped, which is the whole of what the generation is for.
 func (a *app) searchDone(msg searchDoneMsg) {
-	if !a.search.open || !searchDoneAccepted(a.search.ask, msg) {
+	if !a.at(pageSearch) || !searchDoneAccepted(a.search.ask, msg) {
 		return
 	}
 	a.search.waiting = false
@@ -163,31 +162,11 @@ func (a *app) searchDone(msg searchDoneMsg) {
 	a.touch()
 }
 
-// ── the frame ───────────────────────────────────────────────────────────────
-
+// searchFrame is this place, drawn: the shared frame with this place's body in
+// it, and the hit map cast back into the body lines this place answers with
+// (pages.go's [app.placeDraw] and [placeLineHits]).
 func (a *app) searchFrame(width, height int) ([]string, []int, int, int) {
-	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
-		body := a.search.reading.rows(width, a.pal)
-		// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
-		// visible result scroll rather than walking the selection off the screen.
-		a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
-		rows := make([]placeRow, 0, room)
-		for i := a.search.top; i < len(body); i++ {
-			if len(rows) >= room {
-				break
-			}
-			text := body[i]
-			if _, ok := a.search.reading.at(i); ok && (i == a.search.cursor || i == a.search.hover) {
-				text = a.pal.selected(text, width)
-			}
-			rows = append(rows, placeRow{text: text, hit: i})
-		}
-		a.search.shown = len(rows)
-		for len(rows) < room {
-			rows = append(rows, placeRow{text: "", hit: -1})
-		}
-		return rows
-	})
+	lines, hits, caretX, caretY := a.placeDraw(placeSearch{}, width, height)
 	return lines, placeLineHits(hits), caretX, caretY
 }
 
@@ -228,9 +207,6 @@ func (a *app) moveSearch(delta int) {
 // ── the keys ────────────────────────────────────────────────────────────────
 
 func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
-	if cmd, took := a.placeKey(msg); took {
-		return cmd
-	}
 	switch msg.String() {
 	case "esc":
 		if box := a.placeBox(); box != nil && !box.empty() {
@@ -238,10 +214,7 @@ func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return a.searchAsked()
 		}
-		a.leavePage(pageSearch)
-		a.search = searchPage{}
-		a.teach.close()
-		a.touch()
+		a.leavePlace()
 		return nil
 	case "up", "ctrl+p":
 		a.moveSearch(-1)
@@ -354,3 +327,102 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 	a.touch()
 	return cmd
 }
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+// placeSearch is this place's handle on the registry (pages.go's [place] states
+// the contract and why the handle holds no state of its own).
+type placeSearch struct{ placeBase }
+
+func init() { registerPlace(placeSearch{}) }
+
+func (placeSearch) id() page     { return pageSearch }
+func (placeSearch) word() string { return "search" }
+
+func (placeSearch) open(a *app) tea.Cmd { return a.openSearch() }
+
+// close writes the look stamp and drops the query in flight with the world it
+// was joined against.
+func (placeSearch) close(a *app) {
+	a.leavePage(pageSearch)
+	a.search = searchPage{}
+}
+
+func (placeSearch) tick(a *app, now time.Time) { a.refreshSearch() }
+
+// body is the results, or — while the box is empty — this place's own three
+// sentences ([searchTeach]). It ALWAYS has something to say, which is why it is
+// never the teaching frame's business: a search with no words in it is a page
+// about searching, not a page that is missing.
+func (placeSearch) body(a *app, width, room int) []placeRow {
+	body := a.search.reading.rows(width, a.pal)
+	// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
+	// visible result scroll rather than walking the selection off the screen.
+	a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
+	rows := make([]placeRow, 0, room)
+	for i := a.search.top; i < len(body); i++ {
+		if len(rows) >= room {
+			break
+		}
+		text := body[i]
+		if _, ok := a.search.reading.at(i); ok && (i == a.search.cursor || i == a.search.hover) {
+			text = a.pal.selected(text, width)
+		}
+		rows = append(rows, placeRow{text: text, hit: i})
+	}
+	a.search.shown = len(rows)
+	for len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return rows
+}
+
+// stops is every row of the reading that is a conversation. The facet legend and
+// the folded count are context rather than doors ([searchReading.at] holds that
+// law), so nothing stops on them.
+func (placeSearch) stops(a *app) []int {
+	var doors []int
+	for i := 0; i < len(a.search.reading.hits)+2; i++ {
+		if _, ok := a.search.reading.at(i); ok {
+			doors = append(doors, i)
+		}
+	}
+	return doors
+}
+
+func (placeSearch) enter(a *app) tea.Cmd {
+	if hit, ok := a.search.reading.at(a.search.cursor); ok {
+		return a.openSearchHit(hit)
+	}
+	return nil
+}
+
+func (placeSearch) press(a *app, y int) bool {
+	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+		if _, stop := a.search.reading.at(at); stop {
+			a.search.cursor = at
+			a.touch()
+		}
+	}
+	return true
+}
+
+func (placeSearch) hover(a *app, y int) bool {
+	next := -1
+	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+		if _, stop := a.search.reading.at(at); stop {
+			next = at
+		}
+	}
+	return placeHoverMoved(&a.search.hover, next, a)
+}
+
+func (placeSearch) wheel(a *app, delta int) bool {
+	a.moveSearch(delta)
+	a.touch()
+	return true
+}
+
+// key is this place's own reading of a key the router did not take
+// (pages.go's [place] states the split).
+func (placeSearch) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.searchKey(msg) }

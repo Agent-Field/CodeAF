@@ -254,14 +254,14 @@ func TestClearingTheSearchBoxTakesTheResultsWithIt(t *testing.T) {
 	}
 	asked := fake.got
 	drive(t, a, key("esc"))
-	if len(a.search.hits) != 0 || !a.search.open {
-		t.Fatalf("esc left %d hits, open %v — the first esc clears the box", len(a.search.hits), a.search.open)
+	if len(a.search.hits) != 0 || !a.at(pageSearch) {
+		t.Fatalf("esc left %d hits, open %v — the first esc clears the box", len(a.search.hits), a.at(pageSearch))
 	}
 	if fake.got != asked {
 		t.Fatalf("clearing the box read the store for %q", fake.got)
 	}
 	drive(t, a, key("esc"))
-	if a.search.open {
+	if a.at(pageSearch) {
 		t.Fatal("the second esc did not leave the place")
 	}
 }

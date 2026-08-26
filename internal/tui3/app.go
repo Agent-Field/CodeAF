@@ -1350,13 +1350,15 @@ type app struct {
 	home homeView
 	// ── THE ROUTER ──────────────────────────────────────────────────────────
 	//
-	// page is WHICH PLACE the person is standing in (pages.go). It is a LABEL on
-	// the `open bool`s above and not a replacement for them: [app.showPage] still
-	// goes through [app.standDownFullscreen], every page still carries its own
-	// flag, and view.go's frame still asks those flags in the same order — so the
-	// two page-stack laws in chrome_test.go hold on exactly the state they always
-	// held on, and this field is what the tab bar's band and `alt+1`…`alt+7`
-	// read.
+	// page is WHICH PLACE the person is standing in, and [pageNone] — the zero
+	// value — is the conversation (pages.go).
+	//
+	// IT IS THE ONE ANSWER AND NOT A LABEL ON SIX OTHERS. Every place used to
+	// carry an `open bool` of its own with this field beside them, which is two
+	// answers to "which page is up" and therefore an invariant somebody has to
+	// keep; [app.showPage] closes what was standing and opens what was asked for,
+	// so the flags are gone and the frame, the keyboard, the pointer and the tab
+	// bar all read this.
 	page page
 	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
 	// that survived the width ladder, and the row of the terminal the bar landed
@@ -1367,12 +1369,6 @@ type app struct {
 	// was drawn.
 	tabs   []placeTabSpan
 	tabRow int
-	// teach says WHICH of spend and search is standing, and draws what that place
-	// is for on the days it has nothing of its own to draw (teachplace.go). It
-	// stayed the open flag for both after they grew bodies, because it is what
-	// [app.pageShowing] and the exclusion law already ask: one field, one answer
-	// to "is a place up", rather than three that can disagree.
-	teach teachPlace
 	// spend and search are those two places' own state: the ledger window and
 	// the lines it is over (spendpage.go), and the query in flight with the
 	// results it is answering for (searchpage.go). Closed, both cost the frame
@@ -1935,7 +1931,7 @@ func (a *app) Init() tea.Cmd {
 	// clock — home is a still page and asks for a beat every few seconds rather
 	// than thirty a second (home.go's [homeEvery]) — so it is started here
 	// beside the standing lanes rather than folded into the wake above.
-	if a.home.open {
+	if a.at(pageHome) {
 		standing = append(standing, homeTick(a.homeGen))
 		// A landing that greets over running work starts with its spinner
 		// already turning — the paint clock's ninth reason ([app.paint]).
@@ -2164,7 +2160,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// The settings panel is modal for the pointer too: it is the whole
 		// screen, so there is no conversation under it for a wheel to reach.
-		if a.sheet.open {
+		if a.at(pageSettings) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.sheet.move(-3)
@@ -2177,7 +2173,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// And the task page, which is the same claim about the same kind of page:
 		// it is the whole screen, and its window follows its cursor rather than an
 		// offset of its own, so the wheel walks the cursor (taskview.go).
-		if a.taskSheet.open {
+		if a.at(pageTasks) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.taskSheetScroll(-3)
@@ -2191,7 +2187,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// conversation from a screen drawn over the top of it would scroll
 		// something nobody can see — and put them back on a transcript that has
 		// silently moved when esc gives the frame back.
-		if a.home.open {
+		if a.at(pageHome) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.home.move(-3)
@@ -2316,19 +2312,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-			if a.sheet.open {
+			if a.at(pageSettings) {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// The task page and home are modal for the pointer at the same rung and
 			// for the same reason: each is the whole screen, so a press that fell
 			// through to the conversation underneath would open a tool call nobody
 			// can see (taskview.go, home.go).
-			if a.taskSheet.open {
+			if a.at(pageTasks) {
 				// phone lane: the record card's foot is two bands, so the press
 				// needs the column as well as the row (taskphone.go).
 				return a, a.taskSheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
-			if a.home.open {
+			if a.at(pageHome) {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
@@ -2600,15 +2596,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
-		if a.sheet.open {
+		if a.at(pageSettings) {
 			a.sheetHover(msg.Mouse().Y)
 			return a, nil
 		}
-		if a.taskSheet.open {
+		if a.at(pageTasks) {
 			a.taskSheetHover(msg.Mouse().Y)
 			return a, nil
 		}
-		if a.home.open {
+		if a.at(pageHome) {
 			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
@@ -2741,7 +2737,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// per-place look stamps and of the records behind each place, so they
 		// belong on the clock that already reads the disk rather than on a second
 		// one (placecounts.go).
-		if a.home.open {
+		if a.at(pageHome) {
 			a.refreshPlaceCounts(a.now())
 		}
 		return a, a.homeBeat(msg.gen)
@@ -2965,7 +2961,7 @@ func (a *app) paint() tea.Cmd {
 	// `incomplete` off that reading, and the history page draws a row per piece
 	// of work another window is holding (taskview.go's [app.refreshElsewhere],
 	// which keeps its own short window so this clock cannot outpace the disk).
-	if a.railStanding() || a.taskSheet.open {
+	if a.railStanding() || a.at(pageTasks) {
 		a.refreshElsewhere()
 	}
 	a.promoteMarkdown()
@@ -4868,7 +4864,7 @@ func (a *app) linkHoverAt(x int, r row) int {
 // the mouse turned off (config's ui.mouse): /model with no argument opens the
 // same picker, and the help sheet says so.
 func (a *app) statusPress(x, y int) bool {
-	if a.copy.on || a.sheet.open || a.pick.open {
+	if a.copy.on || a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing:
@@ -5959,7 +5955,7 @@ func (a *app) paste(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	if a.memPanel.open {
+	if a.at(pageMemory) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		if a.memPanel.edit != nil {
 			a.memPanel.edit.insert(flat)
@@ -5975,7 +5971,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// is the paste this path exists for), into the select row's filter next,
 	// into the search box otherwise. All three are one-line boxes — newlines
 	// flatten to spaces.
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		switch {
 		case a.sheet.edit != nil:
@@ -5995,7 +5991,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// see until home was closed. It goes into the box the caret is actually in
 	// — the exchange pane's while that holds the keyboard, home's own otherwise
 	// — and home's list re-filters exactly as it does for a typed character.
-	if a.home.open {
+	if a.at(pageHome) {
 		if ex := a.paneExchange(); ex != nil && ex.focused {
 			ex.box.insert(text)
 		} else {

@@ -186,7 +186,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 			a, ev, _ := tc.start(t)
 			a.openHome()
 			drive(t, a, streamOf(a, ev))
-			if a.home.open {
+			if a.at(pageHome) {
 				t.Fatal("home stayed up over a question the session is waiting on")
 			}
 

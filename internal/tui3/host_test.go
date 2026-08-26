@@ -214,7 +214,7 @@ func TestSettingsSaysWhoseRowsTheseAre(t *testing.T) {
 	if !strings.Contains(said, "this machine's") {
 		t.Fatalf("the settings panel opened without saying whose rows it edits: %s", said)
 	}
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("the panel refused to open, taking the rows that DO work with it")
 	}
 }

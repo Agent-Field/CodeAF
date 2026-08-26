@@ -419,7 +419,7 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 	// token for a row whose tail is already redrawn every frame.
 	rank := exchangeRank(ex)
 	defer func() {
-		if a.home.open && exchangeRank(ex) != rank {
+		if a.at(pageHome) && exchangeRank(ex) != rank {
 			a.home.build()
 		}
 	}()
@@ -452,7 +452,7 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 // because an errand is working. It is what keeps the frame clock running while
 // the conversation underneath is idle ([app.paint] names it among the ten).
 func (a *app) exchangeAnimating() bool {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return false
 	}
 	for _, ex := range a.exchanges {
@@ -958,7 +958,7 @@ func (a *app) forgetExchange(ex *homeExchange) {
 // wherever the list itself changes rather than on every frame.
 func (a *app) showExchanges() {
 	a.home.exchanges = a.exchanges
-	if a.home.open {
+	if a.at(pageHome) {
 		a.home.build()
 	}
 }

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -30,7 +31,12 @@ import (
 type page uint8
 
 const (
-	pageHome page = iota
+	// pageNone is THE CONVERSATION — no place at all. It is the zero value on
+	// purpose: a window that has just opened is sitting in a chat, and every
+	// question this file asks of [app.page] then answers "nothing is up" without
+	// a second flag to keep in step.
+	pageNone page = iota
+	pageHome
 	pageTasks
 	pageStanding
 	pageMemory
@@ -39,36 +45,217 @@ const (
 	pageSettings
 )
 
-// pages is the whole set, in the one order that matters: left to right along
-// the tab bar, `alt+1` through `alt+7`, and the circle `tab` walks.
+// ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
+//
+// place is what a page of the switcher must be able to do, and [placeRegistry]
+// is the one thing that knows all of them: NOTHING SWITCHES ON A PAGE ID
+// OUTSIDE THIS FILE. Before this contract existed the seven rooms were spelled
+// out as arms of eleven switches across five files — the frame, the note line,
+// the hint, the composer, the alt letters, the time window, the verbs, the
+// counts, and the three pointer gestures — so a place added later was eleven
+// edits, and a place that answered ten of them was a room with no pointer or a
+// tab that never wore its number. Both happened.
+//
+// A PLACE IS A STATELESS HANDLE AND THE STATE LIVES ON THE APP. The registry is
+// package-level and one window's cursor is not another's, so what is registered
+// is a value with no fields whose methods reach the app's own field for that
+// place — `a.taskSheet`, `a.standPage`, `a.memPanel` and the rest, each declared
+// in the same `place_<word>.go` as the handle that reads it. That is what
+// "per-place state owned by the place" means here: one file owns the struct, the
+// handle and every method the frame can ask of it.
+//
+// Every method is given the app because a place is a reading of the machine and
+// the machine is what the app holds. What no method may do is READ THE DISK ON A
+// DRAW: `open` and `tick` are the two that may, and `body` builds rows out of
+// what they left behind (ARCHITECTURE.md's three layers).
+type place interface {
+	// id is which place this is, and it is the key the registry files it under.
+	id() page
+	// word is the one lowercase word this place is called, on the tab bar and in
+	// the manual. It is the whole of a place's name: a tab bar of two-word labels
+	// is a menu, and this is a bar.
+	word() string
+	// counted answers whether a number in front of this place would mean
+	// anything — see [page.counted].
+	counted() bool
+	// open primes this place's caches and lays it out, once, on entry. The
+	// command it answers is the place's own clock, where it keeps one.
+	open(a *app) tea.Cmd
+	// close writes the look stamp and drops what the place was holding. Folds
+	// and views that outlive the screen live on the app and survive it.
+	close(a *app)
+	// tick is the three-second beat: the cached reading is taken again, so a
+	// memory learned in the next terminal is on this frame within three seconds.
+	tick(a *app, now time.Time)
+	// body is the rows and the hit map, painted into exactly the room the frame
+	// reserved. It reads caches and never a seam.
+	body(a *app, width, room int) []placeRow
+	// bar is a foot A THUMB CAN PRESS in place of the hint line's legend, and
+	// false where the place has none. At [tierPhone] a line naming four keys is a
+	// line naming four keys nobody has, so the way out has to be a target rather
+	// than a legend.
+	bar(a *app, width int) (string, placeHit, bool)
+	// ownFrame is the ONE ESCAPE from [placeFrame], and exactly two places take
+	// it. Home unpacks a second hit map — the pane a row shares with an errand —
+	// and below sixty columns is an inbox and a sheet rather than a list
+	// (homephone.go); the tasks place draws a record CARD over its list, with a
+	// head and a foot of its own (taskrecord.go). Both are modes that take the
+	// terminal whole, so a body handed to the shared frame would be drawn inside
+	// chrome that is not theirs. Everything else answers false and is drawn in
+	// the one frame.
+	ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool)
+	// stops is the cursor-legal rows of the last body, in order.
+	stops(a *app) []int
+	// owns is A LAYER INSIDE THIS PLACE THAT HAS TAKEN THE WHOLE KEYBOARD, and it
+	// is read BEFORE the router's own six classes. Home's focused errand pane and
+	// its phone sheet, and the settings panel's value editor, model picker and
+	// key box, are all of them: each has deliberately claimed every key, `tab`
+	// included, and a router that took a chord over the top of one would be
+	// lifting a key out of a box a person is typing in.
+	//
+	// THAT IS NOT AN EXCEPTION TO ONE GRAMMAR. It is the same arbitration the
+	// manual already states about `tab`: everything else that wants it gets it
+	// first, and the router is the LAST claimant rather than the first
+	// (placekeys.go's header).
+	owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool)
+	// key is this place's own reading of a key THE ROUTER DID NOT TAKE. The six
+	// classes are [app.placeKey]'s and are read first on every place, so what
+	// arrives here is the cursor, `enter`, `esc` and whatever the place types
+	// into its box — a place has no claim on a chord, and no place may see one.
+	key(a *app, msg tea.KeyPressMsg) tea.Cmd
+	// enter is the row under the cursor, opened.
+	enter(a *app) tea.Cmd
+	// verbs is the `→` strip for the row under the cursor (verbstrip.go).
+	verbs(a *app) []verb
+	// alt is "show this place differently": what one place does with one letter,
+	// and false where the place has nothing to change.
+	alt(a *app, letter rune) bool
+	// window is `shift+←→↑↓`, the stretch of time this place is showing and how
+	// coarse. False is "this place has no window", and the key then does nothing
+	// rather than something undrawn (SCREEN 3d).
+	window(a *app, key string) bool
+	// box is the composer this place types into — the shared one by default.
+	box(a *app) *editor
+	// note is the one line a place may say about what it is HOLDING, drawn under
+	// the rule and above the composer.
+	note(a *app, width int) []string
+	// hint is the line under the composer: what the row under the cursor can be
+	// asked for, and how to leave.
+	hint(a *app) string
+	// changed is the tab's count: how many things in here have moved since the
+	// person last looked at this place.
+	changed(a *app, since time.Time) int
+	// press is a press on one of this place's body rows. It moves the cursor and
+	// never acts, which is the law every place keeps: every verb on these lists
+	// is a key, and `enter` leaves the conversation a person is sitting in, so a
+	// click that did either would be a gesture nobody can aim.
+	press(a *app, y int) bool
+	// hover is the pointer resting over a body row: the row is previewed and the
+	// cursor is left where it is.
+	hover(a *app, y int) bool
+	// wheel walks this place's cursor, by [placeWheelRows] rows a tick.
+	wheel(a *app, delta int) bool
+}
+
+// placeBase is the defaults, so that a place file is only what is PARTICULAR to
+// that place. A room with no time window, no alt letters, no count and no note
+// says none of those words at all, and the four it does say sit together on the
+// screen rather than in a list of eleven overrides.
+//
+// It cannot default `id` or `word`: those are the two facts that make a place a
+// place, and a handle that forgot them would register under the zero page and
+// silently displace home.
+type placeBase struct{}
+
+func (placeBase) counted() bool                           { return false }
+func (placeBase) open(a *app) tea.Cmd                     { return nil }
+func (placeBase) close(a *app)                            {}
+func (placeBase) tick(a *app, now time.Time)              {}
+func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
+	return "", nil, false
+}
+func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
+	return nil, nil, 0, 0, false
+}
+func (placeBase) stops(a *app) []int                      { return nil }
+func (placeBase) enter(a *app) tea.Cmd                    { return nil }
+func (placeBase) verbs(a *app) []verb                     { return nil }
+func (placeBase) alt(a *app, letter rune) bool            { return false }
+func (placeBase) window(a *app, key string) bool          { return false }
+func (placeBase) note(a *app, width int) []string         { return nil }
+func (placeBase) changed(a *app, since time.Time) int     { return 0 }
+func (placeBase) press(a *app, y int) bool                { return false }
+func (placeBase) hover(a *app, y int) bool                { return false }
+func (placeBase) wheel(a *app, delta int) bool            { return false }
+func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
+func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	return nil, false
+}
+
+// box is the SHARED composer, which is what a place types into unless it holds a
+// box of its own. A sentence half typed on one place is still there after `tab`,
+// which is what makes a permanent bottom line a composer rather than seven boxes
+// that each forget ([app.compose]).
+func (placeBase) box(a *app) *editor { return &a.compose }
+
+// hint is the router's own line, named here rather than in six place files so
+// that a hint and the router can never disagree about which keys exist.
+func (placeBase) hint(a *app) string { return placeHintWords }
+
+// placeRegistry is every place, by id, filled by each `place_<word>.go`'s `init`
+// exactly as `registerHomeBand` fills the bands. A place added later is a file
+// and a row of [placeOrder], and nothing else anywhere.
+var placeRegistry = map[page]place{}
+
+// placeOrder is the whole set, in the one order that matters: left to right
+// along the tab bar, `alt+1` through `alt+7`, and the circle `tab` walks.
 //
 // THE ORDER IS THE READING ORDER OF A DAY. What wants you (home), what ran
 // (tasks), what runs without being asked (standing), what was learned (memory),
 // what it cost (spend), then the two that are asked for rather than looked at —
 // finding something, and changing something.
-func pages() []page {
-	return []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch, pageSettings}
+//
+// IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
+// filename order, so a registry that took its order from them would put the tab
+// bar's reading order at the mercy of what a file happens to be called — and
+// `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
+// and every number on it.
+var placeOrder = []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch, pageSettings}
+
+// registerPlace files one place under its own id. A second registration for one
+// id is a bug this would hide, so it panics at start-up rather than letting one
+// room quietly replace another.
+func registerPlace(p place) {
+	if _, twice := placeRegistry[p.id()]; twice {
+		panic("tui3: two places registered as " + p.word())
+	}
+	placeRegistry[p.id()] = p
 }
 
-// word is the one lowercase word a place is called, on the tab bar and in the
-// manual. It is the whole of a place's name: a tab bar of two-word labels is a
-// menu, and this is a bar.
+// pages is the tab bar's order, read from the registry's order table.
+func pages() []page { return placeOrder }
+
+// placeFor is the place one id names, and nil for the conversation or for an id
+// nothing answers to. It is THE registry lookup, and every question this file
+// asks about a place goes through it.
+func placeFor(id page) place { return placeRegistry[id] }
+
+// showing is the place the person is standing in, and nil when they are in the
+// conversation. It is THE ONE ANSWER to "what is up": there are no `open` flags
+// left anywhere to disagree with it.
+func (a *app) showing() place { return placeRegistry[a.page] }
+
+// at reports whether the person is standing in one named place. It is a
+// PREDICATE and never a dispatch — a place's own file asking "am I up" is one
+// fact read once, where a switch over the ids would be this file's job done
+// somewhere else.
+func (a *app) at(id page) bool { return a.page == id }
+
+// word is the one lowercase word a place is called.
 func (p page) word() string {
-	switch p {
-	case pageHome:
-		return "home"
-	case pageTasks:
-		return "tasks"
-	case pageStanding:
-		return "standing"
-	case pageMemory:
-		return "memory"
-	case pageSpend:
-		return "spend"
-	case pageSearch:
-		return "search"
-	case pageSettings:
-		return "settings"
+	if pl := placeFor(p); pl != nil {
+		return pl.word()
 	}
 	return ""
 }
@@ -81,34 +268,8 @@ func (p page) word() string {
 // this machine is set — a number in front of any of the three would be a number
 // about nothing, and the tab bar would be teaching a lie about what is in there.
 func (p page) counted() bool {
-	switch p {
-	case pageHome, pageTasks, pageStanding, pageMemory:
-		return true
-	}
-	return false
-}
-
-// explain is what a place says when it has nothing of its own to draw yet: three
-// sentences telling a person what the place is for.
-//
-// AN ALMOST-EMPTY PAGE IS THE BEST TEACHER ON THE MACHINE. It can spend the
-// whole screen saying what it is for, and a person only ever arrives at one of
-// these by walking into it, which is exactly the moment the explanation is
-// wanted. A place that HAS a body returns nothing here — a teaching paragraph
-// over a list is a page talking over itself.
-func (p page) explain() string {
-	switch p {
-	case pageSpend:
-		return "What this machine has cost, by the day, by the model, and by what it was for. " +
-			"Every model call writes a line, so the figures here are the bill and not an estimate. " +
-			"There is nothing to set here — the allowance is edited on the status line that shows it."
-	}
-	// SEARCH IS NOT HERE ANY MORE, because it has a body: its own three
-	// sentences while the box is empty, and results the moment anything is typed
-	// into it (searchplace.go's [searchTeach]). A place that HAS a body returns
-	// nothing here — a teaching paragraph over a list is a page talking over
-	// itself, which is this function's own rule applied to itself.
-	return ""
+	pl := placeFor(p)
+	return pl != nil && pl.counted()
 }
 
 // parsePageWord is the typed surface's half of the tab bar: a person who types
@@ -297,6 +458,32 @@ type placeHit = any
 type placeRow struct {
 	text string
 	hit  placeHit
+}
+
+// placeDraw draws ONE place: its own frame where it has one, and the shared
+// frame otherwise. It is the only door onto a place's rows — a place's own
+// `<word>Frame` function is a two-line shim over this that casts the hit map
+// back into that place's vocabulary.
+func (a *app) placeDraw(pl place, width, height int) ([]string, []placeHit, int, int) {
+	if lines, hits, caretX, caretY, own := pl.ownFrame(a, width, height); own {
+		return lines, hits, caretX, caretY
+	}
+	return placeFrameWithBar(a, width, height,
+		func(width, room int) []placeRow { return pl.body(a, width, room) },
+		func(width int) (string, placeHit, bool) { return pl.bar(a, width) })
+}
+
+// placeFrameNow draws whatever place is standing, and nothing at all in the
+// conversation. It is what view.go's frame reaches for, so THE FRAME NEVER
+// KNOWS A PLACE BY NAME: which room is up is [app.page], and which rows that
+// room has is the registry's answer.
+func (a *app) placeFrameNow(width, height int) ([]string, []placeHit, int, int, bool) {
+	pl := a.showing()
+	if pl == nil {
+		return nil, nil, 0, 0, false
+	}
+	lines, hits, caretX, caretY := a.placeDraw(pl, width, height)
+	return lines, hits, caretX, caretY, true
 }
 
 // placeHitsOf reads one place's hit map back in that place's own vocabulary.
@@ -516,7 +703,7 @@ func (a *app) placeChipped(row, chip string, width int, pal palette) string {
 // phone's status sheet prints as its `place` row). A person who typed a path
 // outranks both, and that is the composer's business rather than the chip's.
 func (a *app) scopeChip() string {
-	if a.page == pageHome && a.home.open {
+	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
 			// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS
 			// ([shortPath], and [app.placePath] below applies it to this window's
@@ -595,34 +782,11 @@ func (a *app) placeHint() string {
 	// person is standing on, which is knowledge this file does not have — and the
 	// two keys that are true everywhere are appended rather than written into
 	// seven sentences.
-	switch a.page {
-	case pageHome:
-		// HOME OWNS ITS WHOLE LINE, the router's own keys included. At rest that
-		// line is the design's sentence word for word and names four keys exactly
-		// (SCREEN 1a, home.go's [app.homeHint]); a tail appended here would make it
-		// five.
-		return a.homeHint()
-	case pageTasks:
-		if a.taskSheet.open {
-			return placeTailed(a.taskSheetKeysLine())
-		}
-	case pageStanding:
-		if a.standPage.up {
-			return placeTailed(a.standPage.hint(a))
-		}
-	case pageMemory:
-		if a.memPanel.open {
-			if a.memPanel.edit != nil {
-				return placeTailed(memoryEditHint)
-			}
-			return placeTailed(memoryFilterHint)
-		}
-	case pageSettings:
-		if a.sheet.open {
-			return placeTailed(a.sheet.keysLine())
-		}
+	pl := a.showing()
+	if pl == nil {
+		return placeHintWords
 	}
-	return placeHintWords
+	return placeTailed(pl.hint(a))
 }
 
 // placeTailed puts the router's own keys on a place's sentence, and puts them
@@ -656,7 +820,7 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// home, where the sentence a person needs is the one about the door they
 	// just tried. Home's own is read when the router has nothing to say.
 	msg, path := a.pageMsg, ""
-	if msg == "" && a.page == pageHome {
+	if msg == "" {
 		msg, path = a.home.msg, a.home.msgPath
 	}
 	if msg == "" {
@@ -696,79 +860,58 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // dim line in the place's body ([homeRemoteWord]), which is still the place
 // being open and saying why it is empty.
 func (a *app) showPage(id page) tea.Cmd {
-	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the place that
-	// was actually being looked at is the one whose look stamp is written.
-	was, standing := a.page, a.pageShowing()
-	// LEAVING A PLACE IS THE LOOK. The stamp the next count is measured from is
-	// written HERE and where a place is closed by `esc`, and never on the way in:
-	// a stamp taken on arrival would declare everything seen the instant it
-	// appeared (placecounts.go's [app.leavePage] and session's look.go both hold
-	// the argument). It is written before the stand-down so that it is the place
-	// that was actually being looked at which gets stamped, and it is one call for
-	// EVERY counted place rather than a list of them here — a list would be a
-	// second answer to which places can wear a number.
-	if standing && was != id {
-		a.leavePage(was)
+	// LEAVING A PLACE IS THE LOOK, and it is the place's own `close` that writes
+	// the stamp — one call for EVERY place rather than a list of them here, which
+	// would be a second answer to which places can wear a number
+	// (placecounts.go's [app.leavePage] and session's look.go both hold the
+	// argument).
+	if was := a.showing(); was != nil {
+		was.close(a)
 	}
-	a.standDownFullscreen()
+	a.page = pageNone
+	// AND THE PAGES THAT TAKE THE FRAME AND ARE NOT PLACES STAND DOWN WITH IT
+	// ([app.standDownRest] names them and says why they are not in the bar).
+	a.standDownRest()
 	a.closeStrip()
 	a.mapShowing = false
 	a.pageMsg = ""
+	next := placeFor(id)
+	if next == nil {
+		// THE CONVERSATION IS A PAGE ID LIKE ANY OTHER, and it is the one with no
+		// place behind it: `esc` out of a room lands here, and what is on the
+		// frame is then whatever view.go draws under the places.
+		return nil
+	}
 	a.page = id
-	return a.openPage(id)
+	return next.open(a)
 }
 
-// pageShowing is whether the place the router is pointing at is actually up. It
-// asks the pages' own `open` flags rather than [app.page], because that field is
-// a label on them and a label is not evidence.
-func (a *app) pageShowing() bool {
-	switch a.page {
-	case pageHome:
-		return a.home.open
-	case pageTasks:
-		return a.taskSheet.open
-	case pageStanding:
-		return a.standPage.up
-	case pageMemory:
-		return a.memPanel.open
-	case pageSpend, pageSearch:
-		return a.teach.open && a.teach.at == a.page
-	case pageSettings:
-		return a.sheet.open
-	}
-	return false
-}
-
-// openPage opens the one place's own state.
+// raisePlace says where the person is standing for a place that has ALREADY
+// built its own state, and opens nothing.
 //
-// EVERY ARM OF THIS SWITCH TAKES THE FRAME. It used to answer a second value —
-// whether the place had actually gone up — and the caller used that to put back
-// what it had just closed. Nothing answers false any more, so nothing is put
-// back: a place with nothing in it opens on its own teaching prose, which is the
-// state a person on a fresh machine spends their first ten minutes in.
-func (a *app) openPage(id page) tea.Cmd {
-	switch id {
-	case pageHome:
-		return a.openHome()
-	case pageTasks:
-		return a.showTaskPlace()
-	case pageStanding:
-		a.openStanding()
-		return nil
-	case pageMemory:
-		return a.openMemory()
-	case pageSpend:
-		a.teach.open, a.teach.at = true, pageSpend
-		return a.openSpend()
-	case pageSearch:
-		a.teach.open, a.teach.at = true, pageSearch
-		return a.openSearch()
-	case pageSettings:
-		a.openSettings()
-		return nil
-	}
-	return nil
+// IT HAS EXACTLY ONE CALLER and it is meant to keep it: the launch home, made
+// inside [newApp] before bubbletea exists and therefore before any command can
+// be answered (home.go's [app.landHome]). Every other road in is
+// [app.showPage], which closes what was standing, writes its look stamp and
+// asks the next place to open itself.
+func (a *app) raisePlace(id page) { a.page = id }
+
+// leavePlace is `esc` out of the room a person is standing in: the place closes,
+// its look stamp is written, and the conversation is underneath again.
+//
+// IT IS [app.showPage] WITH NOWHERE TO GO, said as its own verb because every
+// place's `esc` arm reaches for it and a place that spelled the four statements
+// itself would be a place that forgot one of them.
+func (a *app) leavePlace() {
+	a.showPage(pageNone)
+	a.touch()
 }
+
+// pageShowing is whether a place is up at all. It is ONE FIELD now: the six
+// `open bool`s this used to ask are retired, because a label on a flag and the
+// flag are two answers to one question and the day they disagree is the day a
+// key goes to a page nobody can see.
+func (a *app) pageShowing() bool { return a.showing() != nil }
 
 // ── the pointer, one place at a time ────────────────────────────────────────
 //
@@ -786,104 +929,21 @@ func (a *app) openPage(id page) tea.Cmd {
 // conversation a person is sitting in, so a click that did either would be a
 // gesture nobody can aim.
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
-	switch a.page {
-	case pageStanding:
-		if !a.standPage.up {
-			return nil, false
-		}
-		if at, ok := a.standPage.rowAt(y - placeHeadRows); ok {
-			a.standPage.cursor = at
-			a.touch()
-		}
-		return nil, true
-	case pageMemory:
-		if !a.memPanel.open {
-			return nil, false
-		}
-		if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
-			if _, stop := a.memPanel.reading.at(at); stop {
-				a.memPanel.cursor = at
-				a.touch()
-			}
-		}
-		return nil, true
-	case pageSpend:
-		if !a.spend.open {
-			return nil, false
-		}
-		if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
-			a.spend.cursor = at
-			a.touch()
-		}
-		return nil, true
-	case pageSearch:
-		if !a.search.open {
-			return nil, false
-		}
-		if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
-			if _, stop := a.search.reading.at(at); stop {
-				a.search.cursor = at
-				a.touch()
-			}
-		}
-		return nil, true
+	pl := a.showing()
+	if pl == nil {
+		return nil, false
 	}
-	return nil, false
+	return nil, pl.press(a, y)
 }
 
 // placeBodyHover is the pointer resting over one place's rows: THE POINTER
 // PREVIEWS AND THE CURSOR SELECTS, which is home's own law owed to every place
-// the router promoted. It repaints only when the row under the pointer actually
-// changed, exactly as [app.setHover] does, because motion is the commonest
-// message this surface gets.
+// the router promoted. A place repaints only when the row under the pointer
+// actually changed, exactly as [app.setHover] does, because motion is the
+// commonest message this surface gets.
 func (a *app) placeBodyHover(y int) bool {
-	switch a.page {
-	case pageStanding:
-		if !a.standPage.up {
-			return false
-		}
-		// THE STANDING PLACE'S HOVER IS A SCREEN LINE OF ITS BLOCK and not a row
-		// index, because that is what the fill it is drawn with compares against
-		// ([overlayFill.addTinted]) — a two-line row is hovered by either of its
-		// lines.
-		next := -1
-		if at := y - placeHeadRows; at >= 0 && at < len(a.standPage.owner) && a.standPage.owner[at] >= 0 {
-			next = at
-		}
-		return placeHoverMoved(&a.standPage.hover, next, a)
-	case pageMemory:
-		if !a.memPanel.open {
-			return false
-		}
-		next := -1
-		if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
-			if _, stop := a.memPanel.reading.at(at); stop {
-				next = at
-			}
-		}
-		return placeHoverMoved(&a.memPanel.hover, next, a)
-	case pageSpend:
-		if !a.spend.open {
-			return false
-		}
-		next := -1
-		if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
-			next = at
-		}
-		return placeHoverMoved(&a.spend.hover, next, a)
-	case pageSearch:
-		if !a.search.open {
-			return false
-		}
-		next := -1
-		if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
-			if _, stop := a.search.reading.at(at); stop {
-				next = at
-			}
-		}
-		return placeHoverMoved(&a.search.hover, next, a)
-	}
-	return false
+	pl := a.showing()
+	return pl != nil && pl.hover(a, y)
 }
 
 // placeBodyWheel is the wheel over one place: it walks that place's cursor, by
@@ -892,37 +952,8 @@ func (a *app) placeBodyHover(y int) bool {
 // has no offset of its own to move, so a scroll and a selection are one gesture
 // here — the bargain the task page and home both already struck.
 func (a *app) placeBodyWheel(delta int) bool {
-	switch a.page {
-	case pageStanding:
-		if !a.standPage.up {
-			return false
-		}
-		a.standPage.move(delta)
-		a.touch()
-		return true
-	case pageMemory:
-		if !a.memPanel.open {
-			return false
-		}
-		a.memPanel.move(delta)
-		a.touch()
-		return true
-	case pageSpend:
-		if !a.spend.open {
-			return false
-		}
-		a.moveSpend(delta)
-		a.touch()
-		return true
-	case pageSearch:
-		if !a.search.open {
-			return false
-		}
-		a.moveSearch(delta)
-		a.touch()
-		return true
-	}
-	return false
+	pl := a.showing()
+	return pl != nil && pl.wheel(a, delta)
 }
 
 // nextPage is `tab`: the place after this one, and round again from the last.
@@ -938,5 +969,8 @@ func nextPage(at page, back bool) page {
 		}
 		return all[(i+1)%len(all)]
 	}
-	return pageHome
+	// `tab` FROM THE CONVERSATION IS THE FIRST PLACE ON THE BAR, which is home.
+	// It is also what an id nothing answers to gets, and that is the same
+	// sentence: the bar's first word is where a walk with no origin begins.
+	return all[0]
 }

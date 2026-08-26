@@ -238,7 +238,7 @@ func TestPressingAStandingRowOpensThePageOnThatOrder(t *testing.T) {
 	)
 	_, y := marginLine(t, a, func(l railLine) bool { return l.stand == "p2" })
 	pressMargin(t, a, y)
-	if !a.standPage.up {
+	if !a.at(pageStanding) {
 		t.Fatal("the row opened no page")
 	}
 	item, ok := a.standPage.current()
@@ -265,7 +265,7 @@ func TestStandingWithWordsGoesThroughTheMarkedDoor(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != agent.marked[0] {
 		t.Fatalf("the journal did not get the person's own words: %v", agent.sent)
 	}
-	if a.standPage.up {
+	if a.at(pageStanding) {
 		t.Fatal("a sentence opened the page as well as standing")
 	}
 }
@@ -295,7 +295,7 @@ func TestTheStandingDoorsSentenceReachesTheMarkedDoor(t *testing.T) {
 func TestBareStandingStillOpensThePage(t *testing.T) {
 	a, agent := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
 	typeLine(t, a, "/standing")
-	if !a.standPage.up {
+	if !a.at(pageStanding) {
 		t.Fatal("/standing did not open the page")
 	}
 	if len(agent.marked) != 0 {
@@ -331,7 +331,7 @@ func TestABareTaskOpensTheTaskPage(t *testing.T) {
 			drive(t, a, msg)
 		}
 	}
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatalf("a bare /task opened no page:\n%s", plain(frame(a)))
 	}
 }
@@ -349,7 +349,7 @@ func TestTheTaskBriefFormsStillStartWork(t *testing.T) {
 	if msg := cmd(); msg != nil {
 		_, _ = a.Update(msg)
 	}
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("a brief opened the page instead of starting work")
 	}
 	if f.singleCalls != 1 || f.brief != "write the guard" {

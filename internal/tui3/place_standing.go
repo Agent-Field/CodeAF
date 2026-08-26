@@ -55,10 +55,6 @@ const standRowsMax = 12
 // standPage is the standing place's whole state, and the ONLY state it keeps.
 // The zero value is closed.
 type standPage struct {
-	// up is whether this place is showing. It is the field the registry retires
-	// when `a.page` becomes the one answer to which place is up; until then it
-	// is what every reader of "is the standing page open" asks.
-	up bool
 	// rows is the last reading, held between frames because NOTHING READS THE
 	// DISK ON A DRAW: the walk of every project's documents happens on the open
 	// and after a write, and a keystroke rebuilds lines from this slice.
@@ -134,25 +130,23 @@ func (p *standPage) open(a *app) tea.Cmd {
 	// says so without depending on that being true.
 	stand, excepted, elsewhere := a.standingPageParts()
 	held := len(standingShelves(stand, excepted, elsewhere)) > 0
-	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
-	// stood under the draft and could sit beneath any page; as a place it owns
-	// the whole screen, so a page left open under it would take keys nobody can
-	// see ([app.standDownFullscreen] holds the law and the reason).
-	a.standDownFullscreen()
-	*p = standPage{up: true, rows: rows, win: win, held: held, hover: -1}
+	*p = standPage{rows: rows, win: win, held: held, hover: -1}
 	p.cursor = p.settle(0)
-	a.page = pageStanding
 	a.closeLists()
 	a.dismissWelcome()
+	// THE BOARD IS TOLD HERE AND NOT AT A DOOR, because there are four doors —
+	// `/standing`, `alt+3`, the tab bar, and the status row's own segment — and
+	// the notice that retires on "you have seen this place" retired on exactly
+	// one of them while this line sat in [app.openStandingAt].
+	a.noticeEvent(eventStandingOpened)
 	return nil
 }
 
 // close writes the look stamp and forgets the reading. The stamp is what the
-// tab bar's count is measured against, so it is written HERE and nowhere else.
+// tab bar's count is measured against, so it is written where a place is LEFT
+// and never where one is entered (placecounts.go's [app.leavePage]).
 func (p *standPage) close(a *app) {
-	if p.up {
-		session.NoteLookAt(a.placesRoot(), pageStanding.word(), a.now())
-	}
+	a.leavePage(pageStanding)
 	*p = standPage{}
 }
 
@@ -224,13 +218,16 @@ func (p *standPage) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	// LEAVING IS THE ROUTER'S, on both roads out below ([app.leavePlace]): the
+	// page closes, its look stamp is written, and the conversation this door
+	// opened is underneath.
 	transcript := strings.TrimSpace(item.Origin.Transcript)
 	switch {
 	case transcript == "":
 		a.note(homeItemNoDoor)
 		return nil
 	case transcript == a.file:
-		p.close(a)
+		a.leavePlace()
 		a.note(standHereWord)
 		return nil
 	}
@@ -242,7 +239,7 @@ func (p *standPage) enter(a *app) tea.Cmd {
 		a.note(refusal)
 		return nil
 	}
-	p.close(a)
+	a.leavePlace()
 	return cmd
 }
 
@@ -301,9 +298,6 @@ func (p *standPage) verbs(a *app) []verb {
 // are never bound where they are not drawn — a capability that cannot be seen is
 // absent rather than silently working.
 func (p *standPage) window(a *app, key string) bool {
-	if !p.up {
-		return false
-	}
 	width, _ := a.size()
 	if !standingWindowRoom(width, p.win) {
 		return false
@@ -644,7 +638,7 @@ func (p *standPage) write(a *app, item standing.Item, status standing.Status) te
 // ── the app's side: the doors, and the two seams ────────────────────────────
 
 // openStanding is /standing.
-func (a *app) openStanding() { a.openStandingAt("") }
+func (a *app) openStanding() tea.Cmd { return a.openStandingAt("") }
 
 // openStandingAt is /standing opened ON one order: the same place, with the
 // cursor already standing where the person pressed.
@@ -655,31 +649,28 @@ func (a *app) openStanding() { a.openStandingAt("") }
 // not merely open a list for the person to find it again in. An id nothing on
 // the page answers to leaves the cursor where the open put it, which is the
 // honest answer to an order that has just been stood down in another window.
-func (a *app) openStandingAt(id string) {
-	a.noticeEvent(eventStandingOpened)
-	a.standPage.open(a)
+func (a *app) openStandingAt(id string) tea.Cmd {
+	// IT GOES THROUGH THE ROUTER LIKE EVERY OTHER DOOR (pages.go's
+	// [app.showPage]): what was standing is closed, its look stamp is written,
+	// and this place opens. A door that raised the page itself would be a second
+	// answer to "which place is up".
+	cmd := a.showPage(pageStanding)
 	// A CLOSED PAGE LANDS NOWHERE, which is what makes this two lines rather than
 	// a condition: [standPage.land] walks the rows it has, and a page that did
 	// not open has none.
 	a.standPage.land(id)
 	a.touch()
+	return cmd
 }
 
 // standPageKey routes one keypress while this place owns the keyboard.
 func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
-	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
-	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
-	// when the row has verbs — and hands everything else straight back, so this
-	// handler keeps its right of first refusal over its own keys.
-	if cmd, took := a.placeKey(msg); took {
-		return cmd
-	}
 	p := &a.standPage
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
-		p.close(a)
+		a.leavePlace()
+		return nil
 	// THE CURSOR WALKS THE ROWS THE BODY WAS PAINTED FROM, and there is one such
 	// list ([app.standingPageRows]). Three arithmetics over three lists — one
 	// clamping into the orders, one resolving against a shorter fold, one
@@ -832,3 +823,64 @@ func (a *app) standingPlaceViews() []StandingItemView {
 func (a *app) standingChangedSince(seen time.Time) int {
 	return a.standPage.changed(a, seen)
 }
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+// placeStanding is this place's handle on the registry. Every method is
+// [standPage]'s own, one line each: the state struct next door has carried this
+// shape since before the interface existed (pages.go's [place] states the
+// contract and why the handle holds no state itself).
+type placeStanding struct{ placeBase }
+
+func init() { registerPlace(placeStanding{}) }
+
+func (placeStanding) id() page      { return pageStanding }
+func (placeStanding) word() string  { return "standing" }
+func (placeStanding) counted() bool { return true }
+
+func (placeStanding) open(a *app) tea.Cmd { return a.standPage.open(a) }
+func (placeStanding) close(a *app)        { a.standPage.close(a) }
+func (placeStanding) body(a *app, width, room int) []placeRow {
+	return a.standPage.body(a, width, room)
+}
+func (placeStanding) stops(a *app) []int { return a.standPage.stops() }
+
+// standPageFrame is this place, drawn: the shared frame with this place's body
+// in it, and the hit map cast back into the body lines this place answers with
+// (pages.go's [app.placeDraw] and [placeLineHits]).
+func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
+	lines, hits, caretX, caretY := a.placeDraw(placeStanding{}, width, height)
+	return lines, placeLineHits(hits), caretX, caretY
+}
+func (placeStanding) enter(a *app) tea.Cmd                { return a.standPage.enter(a) }
+func (placeStanding) verbs(a *app) []verb                 { return a.standPage.verbs(a) }
+func (placeStanding) window(a *app, key string) bool      { return a.standPage.window(a, key) }
+func (placeStanding) note(a *app, width int) []string     { return a.standPage.note(a, width) }
+func (placeStanding) hint(a *app) string                  { return a.standPage.hint(a) }
+func (placeStanding) changed(a *app, since time.Time) int { return a.standPage.changed(a, since) }
+
+func (placeStanding) press(a *app, y int) bool {
+	a.standPage.press(a, y)
+	return true
+}
+
+// hover is A SCREEN LINE OF THE BLOCK and not a row index, because that is what
+// the fill this list is drawn with compares against ([overlayFill.addTinted]) —
+// a two-line row is hovered by either of its lines.
+func (placeStanding) hover(a *app, y int) bool {
+	next := -1
+	if at := y - placeHeadRows; at >= 0 && at < len(a.standPage.owner) && a.standPage.owner[at] >= 0 {
+		next = at
+	}
+	return placeHoverMoved(&a.standPage.hover, next, a)
+}
+
+func (placeStanding) wheel(a *app, delta int) bool {
+	a.standPage.move(delta)
+	a.touch()
+	return true
+}
+
+// key is this place's own reading of a key the router did not take
+// (pages.go's [place] states the split).
+func (placeStanding) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.standPageKey(msg) }

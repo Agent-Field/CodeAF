@@ -568,7 +568,7 @@ func (a *app) noticeHint() string {
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {
 	return a.input.empty() && a.state != stateWorking &&
-		!a.rew.on && !a.rewSheet.open && !a.sheet.open && !a.taskSheet.open && !a.home.open &&
+		!a.rew.on && !a.rewSheet.open && !a.at(pageSettings) && !a.at(pageTasks) && !a.at(pageHome) &&
 		!a.copy.on && !a.menu.open && !a.comp.open && !a.pick.open && !a.roster.open &&
 		!a.asking() && !a.roomOpen()
 }

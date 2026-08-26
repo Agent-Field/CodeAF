@@ -322,15 +322,15 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	a, _ := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
 	a.slash("/memory")
-	if !a.memPanel.open {
+	if !a.at(pageMemory) {
 		t.Fatal("bare /memory did not open the panel")
 	}
 	if got := plain(frame(a)); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("panel did not list memory:\n%s", got)
 	}
-	a.memPanel.close()
+	a.leavePlace()
 	a.slash("/memory vim")
-	if a.memPanel.open {
+	if a.at(pageMemory) {
 		t.Fatal("/memory <query> opened the panel")
 	}
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
@@ -347,7 +347,7 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	// With a query BOTH spellings still print, because a query is a question
 	// rather than a door.
 	a.slash("/memories")
-	if !a.memPanel.open {
+	if !a.at(pageMemory) {
 		t.Fatal("bare /memories did not open the memory place")
 	}
 }
@@ -376,14 +376,14 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 		t.Fatalf("a heading was drawn over no shelves:\n%s", got)
 	}
 	drive(t, a, key("esc"))
-	if a.memPanel.open {
+	if a.at(pageMemory) {
 		t.Fatal("esc did not close the memory place")
 	}
 
 	off := newTestApp(&rememberingAgent{off: true})
 	off.width, off.height = 100, 30
 	off.slash("/memory")
-	if !off.memPanel.open {
+	if !off.at(pageMemory) {
 		t.Fatal("a build with no store behind it opened no memory place")
 	}
 	offScreen := plain(frame(off))

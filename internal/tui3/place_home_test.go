@@ -226,7 +226,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// is what the frame is now on, and the watch is on it. The refusal itself
 		// is still pinned where it is still true, over a machine holding nothing
 		// at all ([standNothingWord]'s own tests).
-		if a.page != pageStanding || !a.standPage.up {
+		if a.page != pageStanding || !a.at(pageStanding) {
 			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
 				a.page, homeNotes(a))
 		}

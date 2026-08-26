@@ -95,7 +95,7 @@ func TestARowClaimingToRunMovesWhenNobodyIsBehindIt(t *testing.T) {
 			ID: "3", Title: "Port the parser", State: string(session.TaskRunning)}))
 
 	a.slash("/history")
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("/history did not open over another window's running work")
 	}
 	row := awayRowWith(t, taskSheetText(a), "Port the parser")

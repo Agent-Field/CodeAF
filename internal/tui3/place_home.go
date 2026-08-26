@@ -3,6 +3,7 @@ package tui3
 import (
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -246,7 +247,7 @@ func (a *app) readSwitchLedger() {
 // to maintain. So the two flags live on the app — which closing home does not
 // clear — and nothing writes them to a disk.
 func (a *app) homeAlt(letter rune) bool {
-	if !a.home.open || a.home.phone || a.home.searching() {
+	if !a.at(pageHome) || a.home.phone || a.home.searching() {
 		// A QUERY HAS NO GROUPING TO TOGGLE. While something is typed the column
 		// is the drop-up of matches ([homeView.buildWorld]), and a key that
 		// silently changed a list that is not on the screen would be the worst
@@ -722,4 +723,140 @@ func (a *app) homeCardVerbs(width int, pal palette) []string {
 		words = append(words, v.word)
 	}
 	return bandClauses(width, 0, pal.dim, homeVerbsWord+": "+strings.Join(words, ", "))
+}
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+// placeHome is this place's handle on the registry (pages.go's [place] states
+// the contract and why the handle holds no state of its own). Home's state is
+// [homeView], which is home.go's, because home is the oldest surface here and
+// the one every other place borrowed its laws from.
+type placeHome struct{ placeBase }
+
+func init() { registerPlace(placeHome{}) }
+
+func (placeHome) id() page      { return pageHome }
+func (placeHome) word() string  { return "home" }
+func (placeHome) counted() bool { return true }
+
+func (placeHome) open(a *app) tea.Cmd { return a.raiseHome() }
+func (placeHome) close(a *app)        { a.dropHome() }
+
+// tick is home's own three-second beat, and home arms and reads it itself
+// ([app.refreshHome], home.go's [homeEvery]) — the clock every other place
+// borrowed. There is nothing for the router's beat to do here.
+
+// body is home's own column, and the pane map beside it: two facts per row, so
+// the hit is a [homeMark] rather than a line number.
+func (placeHome) body(a *app, width, room int) []placeRow {
+	left, right := homeColumns(width)
+	a.homeWindow(room)
+	body := a.homeBody(left, right, room, a.pal)
+	rows := make([]placeRow, 0, len(body))
+	for _, drawn := range body {
+		rows = append(rows, placeRow{
+			text: drawn.text,
+			hit:  homeMark{line: drawn.hit, pane: drawn.pane},
+		})
+	}
+	return rows
+}
+
+// ownFrame is home's own, for two reasons and not one. Below sixty columns this
+// screen is an inbox and a sheet rather than a list (homephone.go), and at every
+// width home unpacks a SECOND hit map — the pane each row shares with an errand
+// drawn beside it — which has to be taken off the frame AFTER the clamp that
+// cuts rows, so that both maps are cut the same way.
+func (placeHome) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
+	lines, hits, caretX, caretY := a.homeFrame(width, height)
+	marks := make([]placeHit, len(hits))
+	for i, at := range hits {
+		marks[i] = at
+	}
+	return lines, marks, caretX, caretY, true
+}
+
+// stops is every line of home's column the cursor may rest on: the walk
+// [homeView.move] takes, said as a list ([homeLine.stop] is the one rule).
+func (placeHome) stops(a *app) []int {
+	out := make([]int, 0, len(a.home.lines))
+	for i, line := range a.home.lines {
+		if line.stop() {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+func (placeHome) enter(a *app) tea.Cmd { return a.homeEnter() }
+
+func (placeHome) verbs(a *app) []verb { return a.homeRowVerbs() }
+
+// alt is `alt+g` and `alt+q`: the two views home can actually be shown in
+// ([app.homeAlt] holds the argument for why there are only two).
+func (placeHome) alt(a *app, letter rune) bool { return a.homeAlt(letter) }
+
+// box is home's own one foot box — new message AND live query at once, no mode —
+// or a focused errand's line, because THE FOOT BELONGS TO WHOEVER HOLDS THE
+// KEYBOARD (homeexchange.go).
+func (placeHome) box(a *app) *editor {
+	if ex := a.paneExchange(); ex != nil && ex.focused {
+		return &ex.box
+	}
+	return &a.home.box
+}
+
+// hint is HOME'S WHOLE LINE, the router's own keys included. At rest that line is
+// the design's sentence word for word and names four keys exactly (SCREEN 1a,
+// home.go's [app.homeHint]); the router's tail appended here would make it five.
+func (placeHome) hint(a *app) string { return a.homeHint() }
+
+// changed is ZERO AND THAT IS THE DESIGN. Home is where the "since you left"
+// ledger is DRAWN, in sentences that say what happened and open the place it
+// happened in — so a digit on its tab would be the same news said twice, once
+// uselessly.
+func (placeHome) changed(a *app, since time.Time) int { return 0 }
+
+// press, hover and wheel are home's own, because home resolves the pointer
+// against two maps and a column boundary rather than against a body line
+// (homemouse.go). The router hands the gesture straight over.
+func (placeHome) press(a *app, y int) bool     { return false }
+func (placeHome) hover(a *app, y int) bool     { return false }
+func (placeHome) wheel(a *app, delta int) bool { return false }
+
+// key is home's whole grammar, which is the oldest on this surface and the one
+// every other place borrowed from (home.go's [app.homeKey]). The router is read
+// before it, exactly as it is before every other place's.
+func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.homeKey(msg) }
+
+// owns is the two layers of home that take the WHOLE keyboard, `tab` included,
+// and it is read before the router claims a single chord (pages.go's
+// [place.owns] holds the argument).
+//
+// The phone tier's sheet over the inbox is the first (homesheet.go). The second
+// is a FOCUSED ERRAND: while it holds the keyboard, `tab` hands it back to the
+// list and `esc` clears a half-typed follow-up before it does, which is the two-
+// zone law homeexchange.go states in full — and a `tab` the router took first
+// would walk the person out of home mid-sentence.
+//
+// THE KEYBOARD IS SETTLED BEFORE THE KEY IS READ. An exchange holds it only
+// while the cursor is on that exchange's row, so walking away can never leave
+// the arrows moving a pane nobody is looking at ([app.settleExchangeFocus]).
+func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if cmd, took := a.homeSheetKeyFirst(msg); took {
+		return cmd, true
+	}
+	a.settleExchangeFocus()
+	ex := a.paneExchange()
+	if ex == nil || !ex.focused {
+		return nil, false
+	}
+	a.home.say("", "")
+	cmd := a.exchangeKey(ex, msg)
+	// AND THE SWEEP RUNS AFTER THE KEY, for [app.homeKey]'s reason: what a key
+	// does is move the cursor, and "have they moved off it" is a question only
+	// answerable once they have.
+	a.sweepExchanges()
+	a.touch()
+	return cmd, true
 }

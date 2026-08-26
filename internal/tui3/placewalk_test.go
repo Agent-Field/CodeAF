@@ -70,7 +70,7 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 		t.Skip("this surface has memories to show, so there is nothing to say about a missing store")
 	}
 	drive(t, a, key("alt+4"))
-	if a.page != pageMemory || !a.memPanel.open {
+	if a.page != pageMemory || !a.at(pageMemory) {
 		t.Fatalf("alt+4 left the router on %q", a.page.word())
 	}
 	screen := placeFrameText(a)
@@ -95,7 +95,7 @@ func TestTheTasksPlaceOpensOnAMachineThatHasRunNothing(t *testing.T) {
 		t.Skip("this surface has work to show, so the empty place is not what is drawn")
 	}
 	drive(t, a, key("alt+2"))
-	if a.page != pageTasks || !a.taskSheet.open {
+	if a.page != pageTasks || !a.at(pageTasks) {
 		t.Fatalf("alt+2 over an empty machine left the router on %q", a.page.word())
 	}
 	screen := placeFrameText(a)
@@ -169,7 +169,7 @@ func TestTheLaunchHomeMarksTheConversationYouAreIn(t *testing.T) {
 	lab.session("-beta", "bbbb000000000001", "pricing research",
 		lab.workspace("beta"), now.Add(-3*time.Hour))
 	a := lab.launch(mine, true)
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the greeting did not land on home")
 	}
 	if a.home.here == "" {

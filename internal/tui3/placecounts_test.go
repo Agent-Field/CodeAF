@@ -108,7 +108,7 @@ func TestLeavingAPlaceWritesItsLookStampAndClearsItsNumber(t *testing.T) {
 		t.Fatalf("a place nobody has been in already has a stamp: %v", before)
 	}
 	a.showPage(pageMemory)
-	if !a.memPanel.open {
+	if !a.at(pageMemory) {
 		t.Fatal("the memory place did not open")
 	}
 	a.showPage(pageHome)
