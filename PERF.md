@@ -72,6 +72,37 @@ memo's bytes are the direct path's bytes, `attach_test.go` proves the fold spell
 the whole answer. Those tests say the fast path is *right*; the ones above say it
 is still *fast*.
 
+## The --host laws: intent up, facts down
+
+A surface over `aforge chat --host devbox` must never wait on the wire for
+anything a frame or a keystroke reads. The engine STATES its facts — the model,
+the session's name, what has been spent, what the conversation weighs, the
+effort level held per model — in the welcome and again on a `facts` frame
+whenever one of them moves; the surface keeps a replica and reads it from
+memory (`internal/remote/replica.go`). What travels UP is intent, and only
+intent.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **A View over `--host` issues zero far calls.** Sixty frames of a status line naming the model, its effort rung, the weight and the cost. | `internal/tui3/hostperf_test.go` |
+| **A key over `--host` issues zero far calls.** Thirty-six keystrokes, typing and moving. | `internal/tui3/hostperf_test.go` |
+| **A submit over `--host` issues exactly one.** The sentence goes up; nothing else does. The update that echoes the line issues zero — the call happens on the command. | `internal/tui3/hostperf_test.go` |
+| The five getters a frame draws answer from the replica and never from the wire. | `internal/remote/replica_test.go` |
+
+The reading is `remote.Client.FarCalls()`: one atomic counter incremented in
+`Client.call`, which is the one place a round trip can happen. It is a count and
+not a stopwatch for this file's own doctrine — the loopback these tests drive is
+an in-memory pipe, so a timing would measure this machine's scheduler while the
+count is the same fact over an ssh pipe to another continent. **Any lane wanting
+a second reading of the same traffic reads this counter rather than wrapping the
+client**: a wrapper counts what it is handed, and this counts what actually left.
+
+The law that keeps them true as the surface grows is the one about WHERE, not
+about how many: a fact a frame reads belongs in `session.Facts` and is stated,
+and a question that must be ASKED belongs on a door a person opened on purpose
+(the transcript, the rewind points, a file fetched from that machine). Adding a
+frame-path read that takes the wire is the regression these three catch.
+
 ## The launch-path pins
 
 Two costs can hold a terminal dark before anything is drawn in it, and neither

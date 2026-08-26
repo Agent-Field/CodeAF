@@ -183,6 +183,49 @@ path you may want to copy.
 The `~` collapse still runs against **this** machine's home directory, so it rarely fires
 on a remote path — expect to see the full path.
 
+## What happens when you press enter over --host — your message appears at once
+
+**Your sentence goes onto the page the moment you press enter**, in the exact place it
+will keep, and it is drawn **a shade quieter than usual** until the far machine has
+taken it.
+
+That quiet shade is the only thing the wait changes. The `›` mark, the column and the
+wrapping are already final, so nothing moves when the line settles — it simply comes up
+to its normal brightness. There is no spinner, no badge and no "sending" word: on a
+healthy connection the settling happens in a few frames and you will most likely never
+notice it.
+
+If the far machine **refuses** the message, the line is **taken back off the page** and
+that machine's own reason is printed where it was. A message that was refused never
+reached the model, so it is not left in the transcript looking as though it did — the
+record of the conversation only ever shows what was actually asked. Your words are still
+in the box, so you can send them again.
+
+At this machine there is no such wait, so nothing is ever drawn quietly: your message
+appears at full brightness straight away, exactly as it always has.
+
+## Why the status line keeps moving over --host without asking that machine anything
+
+**The far machine tells this one what changed; this one never asks.** The model, the
+conversation's name, what has been spent, what the conversation weighs and the effort
+level are all sent down when the connection opens and again whenever any of them moves —
+at the end of a turn, when the session names itself, after a compaction, and when you
+change the model or the effort.
+
+So drawing a frame and typing a key reach across the connection **zero times**. The only
+things that travel when you are working are the things that machine cannot know on its
+own: the message you sent, the answer you gave a question, the key you pressed to stop
+something. Pressing enter is exactly **one** trip across.
+
+This is why the bottom of the screen keeps ticking over a slow link while an answer
+streams in, and why the composer does not stutter as you type: nothing you can see is
+waiting on the network.
+
+If the link drops, those figures **stop moving and stay where they were** rather than
+emptying out — which is the truth, because the conversation is not moving either. The
+`connection` segment says what is happening, and everything comes back up to date the
+moment the link does.
+
 ## What does not work over --host
 
 This is the first half of the whole list, so you know before you rely on it, with the
