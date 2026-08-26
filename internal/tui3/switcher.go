@@ -804,7 +804,7 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 		}
 		// ONE SPELLING FOR ONE VERB. `pause` is what an item's own card and the
 		// standing place both call this act (homestanding.go's [homeItemActions],
-		// verbstrip.go's [app.standRowVerbs]), and a strip that said it a second
+		// place_standing.go's [placeStanding.verbs]), and a strip that said it a second
 		// way would be two words for one thing on one screen.
 		return append(verbs, switcherVerb{key: 'p', word: homeItemPauseWord})
 	}

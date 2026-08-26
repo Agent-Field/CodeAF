@@ -40,7 +40,7 @@ func standPlaceLab(t *testing.T) *app {
 		standOrder("three", "price the crew", standing.AltitudeConversation),
 	}, nil)
 	a.openStanding()
-	if !a.standPage.up {
+	if !a.at(pageStanding) {
 		t.Fatal("the standing place did not open over three orders")
 	}
 	return a

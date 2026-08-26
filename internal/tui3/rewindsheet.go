@@ -195,7 +195,7 @@ type rewindSheet struct {
 // reached from inside the inline mode, which is why that state is handled by the
 // lift below instead of being refused here.
 func (a *app) openRewindSheet() tea.Cmd {
-	if a.rewSheet.open || a.rew.on || a.copy.on || a.roomOpen() || a.sheet.open || a.railFull() {
+	if a.rewSheet.open || a.rew.on || a.copy.on || a.roomOpen() || a.at(pageSettings) || a.railFull() {
 		return nil
 	}
 	agent, ok := a.rewinder()

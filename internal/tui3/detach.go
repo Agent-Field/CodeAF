@@ -328,13 +328,13 @@ func (a *app) closeForSwitch() {
 	a.shelf.close()
 	a.closeLists()
 	a.closeExpand()
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		a.closeSettings()
 	}
 	if a.deck.open {
 		a.closeStatusSheet()
 	}
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		a.closeTaskSheet()
 	}
 	if a.rewSheet.open {

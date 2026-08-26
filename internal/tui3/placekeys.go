@@ -51,6 +51,29 @@ import (
 // task page's "every printable key is the filter" law untouched: `alt+` and
 // `shift+` chords carry no text and never reach a default arm.
 
+// placeKeyPress is every key on whatever place is standing: the router's own six
+// classes first, and then that place's own reading of whatever is left.
+//
+// IT IS THE ONE DOOR, and that is what makes the grammar one grammar. Each place
+// used to open its own handler with a call to [app.placeKey], which worked and
+// was five copies of the same two lines — a place added later that forgot them
+// would be a room `tab` could not leave.
+func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
+	pl := a.showing()
+	if pl == nil {
+		return nil
+	}
+	// A LAYER INSIDE THE PLACE THAT HAS THE WHOLE KEYBOARD IS READ FIRST, before
+	// the router claims a single chord ([place.owns] holds the argument).
+	if cmd, took := pl.owns(a, msg); took {
+		return cmd
+	}
+	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
+	return pl.key(a, msg)
+}
+
 // placeKey is the router's claim on one keypress. It reports whether it took it;
 // when it did not, the place's own handler carries on exactly as it did before.
 func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
@@ -206,22 +229,8 @@ func placeAltLetter(key string) (rune, bool) {
 // would put keys on the map that do nothing, which is this design's own worst
 // failure mode.
 func (a *app) placeAlt(letter rune) bool {
-	switch a.page {
-	case pageHome:
-		// `alt+g` GROUPS THE LIST BY PROJECT AND `alt+q` HIDES THE QUIET ONES —
-		// the two views SCREEN 3b names for home, and the two this place can
-		// actually be shown in (place_home.go).
-		return a.homeAlt(letter)
-	case pageMemory:
-		if letter == 's' && a.memPanel.open {
-			// WHICH SHELF THIS PLACE IS SHOWING. It was `tab` while memory was a
-			// modal overlay; `tab` is the way between places now, so the view key
-			// moved into the class views belong to ([memoryPanel.cycleShelf]).
-			a.memPanel.cycleShelf()
-			return true
-		}
-	}
-	return false
+	pl := a.showing()
+	return pl != nil && pl.alt(a, letter)
 }
 
 // placeWindow is the time-window hook: which stretch of time a place is showing,
@@ -233,15 +242,8 @@ func (a *app) placeAlt(letter rune) bool {
 // place that has no window answers false, and the key then does nothing rather
 // than doing something undrawn.
 func (a *app) placeWindow(key string) bool {
-	switch a.page {
-	case pageTasks:
-		return a.taskSheet.window(a, key)
-	case pageStanding:
-		return a.standPage.window(a, key)
-	case pageSpend:
-		return a.spendWindowKey(key)
-	}
-	return false
+	pl := a.showing()
+	return pl != nil && pl.window(a, key)
 }
 
 // placeBox is the composer: the one box this place types into.
@@ -253,46 +255,11 @@ func (a *app) placeWindow(key string) bool {
 // filters: it IS them, on every place, and `alt+enter` is what tells the two
 // readings apart at the moment it matters.
 func (a *app) placeBox() *editor {
-	switch a.page {
-	case pageHome:
-		if !a.home.open {
-			return nil
-		}
-		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD: a focused errand brings
-		// its own line and the caret sits in it (homeexchange.go).
-		if ex := a.paneExchange(); ex != nil && ex.focused {
-			return &ex.box
-		}
-		return &a.home.box
-	case pageTasks:
-		if a.taskSheet.open {
-			return &a.taskSheet.query
-		}
-	case pageSettings:
-		if a.sheet.open {
-			// A SUBMENU'S OWN BOX OUTRANKS THE PANEL'S SEARCH, in the order the
-			// panel already claims the keyboard in ([app.sheetKey]): the value
-			// being edited, then the model picker's filter, then the search that
-			// crosses every section.
-			if a.sheet.edit != nil {
-				return &a.sheet.edit.box
-			}
-			if a.sheet.sel != nil {
-				return &a.sheet.sel.pick.filter
-			}
-			return &a.sheet.query
-		}
-	case pageMemory:
-		if a.memPanel.open {
-			if a.memPanel.edit != nil {
-				return a.memPanel.edit
-			}
-			return &a.memPanel.filter
-		}
-	case pageStanding, pageSpend, pageSearch:
-		return &a.compose
+	pl := a.showing()
+	if pl == nil {
+		return nil
 	}
-	return nil
+	return pl.box(a)
 }
 
 // placeSend is `alt+enter`: what is in the composer leaves as a task.
@@ -313,15 +280,11 @@ func (a *app) placeSend() tea.Cmd {
 	if text == "" {
 		return nil
 	}
-	if a.page == pageHome {
+	if a.at(pageHome) {
 		return a.askHere(text)
 	}
 	box.reset()
-	open := a.showPage(pageHome)
-	if !a.home.open {
-		return open
-	}
-	return tea.Batch(open, a.askHere(text))
+	return tea.Batch(a.showPage(pageHome), a.askHere(text))
 }
 
 // placeTalk is `enter` on a place with something in the composer and no row to
@@ -345,6 +308,7 @@ func (a *app) placeTalk() tea.Cmd {
 		return nil
 	}
 	box.reset()
+	a.leavePlace()
 	a.standDownFullscreen()
 	renewed := a.renew()
 	return tea.Batch(renewed, a.submit(text))

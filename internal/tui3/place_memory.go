@@ -84,7 +84,6 @@ type memoryOrigin struct {
 // this file opens the store on a draw, and nothing but `enter` on a line opens
 // it on a keypress.
 type memoryPanel struct {
-	open bool
 	// shelves is the snapshot the body is drawn from, and read is the instant it
 	// was taken. Every age on the page is measured from that instant rather than
 	// from a fresh clock, so two rows drawn in one frame cannot disagree about
@@ -130,7 +129,7 @@ func (p *memoryPanel) close() { *p = memoryPanel{} }
 // start takes one snapshot and makes it the page.
 func (p *memoryPanel) start(shelves store.MemoryShelves, now time.Time) {
 	*p = memoryPanel{
-		open: true, shelves: shelves, read: now, hover: -1,
+		shelves: shelves, read: now, hover: -1,
 		shelfOpen: map[string]bool{}, origins: map[string]memoryOrigin{},
 	}
 	// THE BIGGEST SHELF OPENS ITSELF AND THE REST STAY ROLLED UP (SCREEN 2d).
@@ -149,9 +148,6 @@ func (p *memoryPanel) start(shelves store.MemoryShelves, now time.Time) {
 // refresh replaces the snapshot under a page that is already up, keeping the
 // filter, the folds and — where it can — the line the cursor was on.
 func (p *memoryPanel) refresh(shelves store.MemoryShelves, now time.Time) {
-	if !p.open {
-		return
-	}
 	was, _ := p.reading.at(p.cursor)
 	p.shelves, p.read = shelves, now
 	p.rank()
@@ -419,50 +415,11 @@ func wrapText(text string, width int) []string {
 	return lines
 }
 
-// ── the frame ───────────────────────────────────────────────────────────────
-
-// memoryFrame draws the memory place: the shelves, or the one line whose card
-// is open.
-//
-// THE BODY IS A READING AND THE READING IS PURE (memoryplace.go's [readMemory]).
-// Nothing here opens the store, and the reading itself was built when the
-// snapshot, the filter or a fold last changed — so a resize is a re-measure of
-// words already decided rather than five hundred rows re-ranked.
+// memoryFrame is this place, drawn: the shared frame with this place's body in
+// it, and the hit map cast back into the body lines this place answers with
+// (pages.go's [app.placeDraw] and [placeLineHits]).
 func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
-	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
-		p := &a.memPanel
-		var body []string
-		switch {
-		case p.expanded != "":
-			body = p.card(width, a.pal)
-		default:
-			body = p.reading.rows(width, a.pal)
-		}
-		// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
-		// it is one line's provenance, drawn from its top, so it has no cursor to
-		// follow and starts where it starts.
-		if p.expanded != "" {
-			p.top = 0
-		} else {
-			p.top = placeTop(p.top, p.cursor, len(body), room)
-		}
-		rows := make([]placeRow, 0, room)
-		for i := p.top; i < len(body); i++ {
-			if len(rows) >= room {
-				break
-			}
-			text := body[i]
-			if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
-				text = a.pal.selected(text, width)
-			}
-			rows = append(rows, placeRow{text: text, hit: i})
-		}
-		p.shown = len(rows)
-		for len(rows) < room {
-			rows = append(rows, placeRow{text: "", hit: -1})
-		}
-		return rows
-	})
+	lines, hits, caretX, caretY := a.placeDraw(placeMemory{}, width, height)
 	return lines, placeLineHits(hits), caretX, caretY
 }
 
@@ -541,7 +498,7 @@ const memoryUnreadableWord = "what is remembered could not be read just now"
 // refreshMemory is the place clock's beat on this page: the same two statements
 // again, with the filter, the folds and the line under the cursor kept.
 func (a *app) refreshMemory() {
-	if !a.memPanel.open || !a.memoryReady() {
+	if !a.at(pageMemory) || !a.memoryReady() {
 		return
 	}
 	shelves, err := a.memory.Snapshot(memorySnapshotRows)
@@ -555,14 +512,6 @@ func (a *app) refreshMemory() {
 }
 
 func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
-	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
-	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
-	// when the row has verbs — and hands everything else straight back, so this
-	// handler keeps its right of first refusal over its own keys.
-	if cmd, took := a.placeKey(msg); took {
-		return cmd
-	}
 	p := &a.memPanel
 	if p.edit != nil {
 		switch msg.String() {
@@ -608,8 +557,8 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		a.leavePage(pageMemory)
-		p.close()
+		a.leavePlace()
+		return nil
 	case "enter":
 		if scope, ok := p.shelfUnder(); ok {
 			p.toggleShelf(scope)
@@ -642,7 +591,7 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 	// — so the letter could not be TYPED into the filter at all, and a search for
 	// a word with a `u` in it silently restored something instead. It is a verb
 	// on the row's `→` strip now, offered only while there is something to put
-	// back (verbstrip.go's [app.memoryRowVerbs]).
+	// back ([placeMemory.verbs]).
 	//
 	// `tab` cycled which shelf this place shows. `tab` is the way to the next
 	// place now, so the view moved to `alt+s` — the class a view belongs to
@@ -666,3 +615,211 @@ func (p *memoryPanel) setText(id, text string) {
 		}
 	}
 }
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+// placeMemory is this place's handle on the registry (pages.go's [place] states
+// the contract and why the handle holds no state of its own).
+type placeMemory struct{ placeBase }
+
+func init() { registerPlace(placeMemory{}) }
+
+func (placeMemory) id() page      { return pageMemory }
+func (placeMemory) word() string  { return "memory" }
+func (placeMemory) counted() bool { return true }
+
+func (placeMemory) open(a *app) tea.Cmd { return a.openMemory() }
+
+func (placeMemory) close(a *app) {
+	a.leavePage(pageMemory)
+	a.memPanel.close()
+}
+
+func (placeMemory) tick(a *app, now time.Time) { a.refreshMemory() }
+
+// body is the shelves, or the one line whose card is open.
+//
+// THE BODY IS A READING AND THE READING IS PURE (memoryplace.go's [readMemory]).
+// Nothing here opens the store, and the reading itself was built when the
+// snapshot, the filter or a fold last changed — so a resize is a re-measure of
+// words already decided rather than five hundred rows re-ranked.
+func (placeMemory) body(a *app, width, room int) []placeRow {
+	p := &a.memPanel
+	var body []string
+	switch {
+	case p.expanded != "":
+		body = p.card(width, a.pal)
+	default:
+		body = p.reading.rows(width, a.pal)
+	}
+	// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
+	// it is one line's provenance, drawn from its top, so it has no cursor to
+	// follow and starts where it starts.
+	if p.expanded != "" {
+		p.top = 0
+	} else {
+		p.top = placeTop(p.top, p.cursor, len(body), room)
+	}
+	rows := make([]placeRow, 0, room)
+	for i := p.top; i < len(body); i++ {
+		if len(rows) >= room {
+			break
+		}
+		text := body[i]
+		if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
+			text = a.pal.selected(text, width)
+		}
+		rows = append(rows, placeRow{text: text, hit: i})
+	}
+	p.shown = len(rows)
+	for len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return rows
+}
+
+func (placeMemory) stops(a *app) []int { return a.memPanel.stops() }
+
+// enter opens a shelf, or the card behind one line.
+func (placeMemory) enter(a *app) tea.Cmd {
+	p := &a.memPanel
+	if scope, ok := p.shelfUnder(); ok {
+		p.toggleShelf(scope)
+		return nil
+	}
+	memory, ok := p.choice()
+	if !ok {
+		return nil
+	}
+	p.expanded = memory.ID
+	// ONE QUERY, FOR ONE LINE, ON THE KEYSTROKE THAT ASKED FOR IT. The overlay
+	// asked this of every memory it had just listed; a door asks it of the one
+	// thing behind the door.
+	if _, held := p.origins[memory.ID]; !held && a.memory != nil {
+		if _, title, at, err := a.memory.MemoryProvenance(memory.ID); err == nil {
+			p.origins[memory.ID] = memoryOrigin{title: title, at: at}
+		}
+	}
+	return nil
+}
+
+// verbs is this place's `→` strip, and it closes a real bug: `u` (undo a forget)
+// was matched ahead of the filter's default arm, so a person could not type a
+// `u` into the filter box at all — a search for "must" lost its second letter
+// and put a memory back instead. On the strip the letter is a verb only while
+// the strip is drawn, and the filter gets every letter of the alphabet back.
+func (placeMemory) verbs(a *app) []verb {
+	p := &a.memPanel
+	var verbs []verb
+	// THE TWO THAT ACT ON A LINE ARE OFFERED ONLY WHILE THERE IS A LINE. A shelf
+	// heading, a section line, the prose at the top of a nearly-empty page — the
+	// cursor stands on all of them and none of them has wording to fix or
+	// anything to forget ([memoryPanel.choice] answers only on a line).
+	if memory, ok := p.choice(); ok {
+		verbs = append(verbs,
+			verb{key: 'e', word: memoryFixWord, do: func() tea.Cmd {
+				box := editor{}
+				box.setText(memory.Text)
+				p.edit, p.editID = &box, memory.ID
+				return nil
+			}},
+			verb{key: 'f', word: memoryForgetWord, do: func() tea.Cmd {
+				if a.memory != nil && a.memory.ForgetMemory(memory.ID) == nil {
+					p.undoID, p.undoName = memory.ID, memory.Title
+					p.footer = "forgot '" + memory.Title + "' · → " + memoryUndoWord
+					p.forget(memory.ID)
+				}
+				return nil
+			}})
+	}
+	// AND THE UNDO WHENEVER THERE IS SOMETHING TO PUT BACK, WITH OR WITHOUT A ROW
+	// UNDER THE CURSOR. It is the one verb here that is about the PLACE and not
+	// about a line — the line it would put back is, by definition, not on the
+	// screen — and forgetting the last thing on a shelf must not be the one
+	// forget that cannot be taken back.
+	if p.undoID != "" {
+		verbs = append(verbs, verb{key: 'u', word: memoryUndoWord, do: func() tea.Cmd {
+			if a.memory == nil || a.memory.RestoreMemory(p.undoID) != nil {
+				return nil
+			}
+			// AND THE PAGE IS RE-READ RATHER THAN PATCHED. Every other change this
+			// place makes is one field this process just wrote and can therefore
+			// correct in the held snapshot; a restore puts back a row that was
+			// REMOVED from it, with counts and a shelf and a status the store owns,
+			// so the honest redraw is the store's own answer ([app.refreshMemory]
+			// is the same two statements the clock runs).
+			a.refreshMemory()
+			p.footer = "put '" + p.undoName + "' back"
+			p.undoID, p.undoName = "", ""
+			return nil
+		}})
+	}
+	return verbs
+}
+
+// alt is `alt+s`: WHICH SHELF THIS PLACE IS SHOWING. It was `tab` while memory
+// was a modal overlay; `tab` is the way between places now, so the view key
+// moved into the class views belong to ([memoryPanel.cycleShelf]).
+func (placeMemory) alt(a *app, letter rune) bool {
+	if letter != 's' {
+		return false
+	}
+	a.memPanel.cycleShelf()
+	return true
+}
+
+// box is the filter, or the wording being fixed when a card's editor is open.
+func (placeMemory) box(a *app) *editor {
+	if a.memPanel.edit != nil {
+		return a.memPanel.edit
+	}
+	return &a.memPanel.filter
+}
+
+// note is the receipt line — what was just forgotten and how to put it back, or
+// the one sentence saying this build remembers nothing at all.
+func (placeMemory) note(a *app, width int) []string {
+	if a.memPanel.footer == "" {
+		return nil
+	}
+	return []string{" " + a.pal.dim(fit(a.memPanel.footer, width-2))}
+}
+
+func (placeMemory) hint(a *app) string {
+	if a.memPanel.edit != nil {
+		return memoryEditHint
+	}
+	return memoryFilterHint
+}
+
+func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }
+
+func (placeMemory) press(a *app, y int) bool {
+	if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
+		if _, stop := a.memPanel.reading.at(at); stop {
+			a.memPanel.cursor = at
+			a.touch()
+		}
+	}
+	return true
+}
+
+func (placeMemory) hover(a *app, y int) bool {
+	next := -1
+	if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
+		if _, stop := a.memPanel.reading.at(at); stop {
+			next = at
+		}
+	}
+	return placeHoverMoved(&a.memPanel.hover, next, a)
+}
+
+func (placeMemory) wheel(a *app, delta int) bool {
+	a.memPanel.move(delta)
+	a.touch()
+	return true
+}
+
+// key is this place's own reading of a key the router did not take
+// (pages.go's [place] states the split).
+func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.memoryKey(msg) }

@@ -291,20 +291,24 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.takeRoomPump()
 	}
 
-	// The settings panel is the fullscreen overlay, and it is modal for the same
-	// reason the picker is and one more: there is nothing else on the screen to
-	// send a key to (settings.go).
-	if a.sheet.open && msg.String() != "ctrl+c" {
-		cmd, _ := a.sheetKey(msg)
-		return cmd
-	}
-
-	// And home is modal at the same rung and for the same reason: it takes the
-	// whole frame, so there is nothing under it a key could mean anything to.
-	// Every printable key belongs to it — typing on home is how a conversation
-	// starts (home.go).
-	if a.home.open && msg.String() != "ctrl+c" {
-		return a.homeKey(msg)
+	// AND WHATEVER PLACE IS STANDING IS MODAL AT THIS RUNG, in ONE arm and never
+	// five (pages.go). Each of the seven takes the whole frame, so there is
+	// nothing under it a key could mean anything to — and the six classes of the
+	// grammar are read before the place's own keys, on every place, which is what
+	// makes `tab`, `alt+1…7` and `→` mean one thing wherever a person is standing
+	// ([app.placeKeyPress]).
+	//
+	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
+	// home were read here; the memory place, the two teaching places and the
+	// standing place were read below the model picker, the resume picker and four
+	// command panels — so a letter pressed on the standing place with a picker
+	// somewhere underneath went to a list that is not on the screen. A place is
+	// modal at the highest rung of them all, because a place is the screen.
+	//
+	// ctrl+c is the one exception, for the reason it is everywhere on this file:
+	// leaving is never modal.
+	if a.pageShowing() && msg.String() != "ctrl+c" {
+		return a.placeKeyPress(msg)
 	}
 
 	// And the phone tier's status sheet is modal at the same rung and for the
@@ -344,17 +348,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.effPick.open && msg.String() != "ctrl+c" {
 		return a.effortMenuKey(msg)
 	}
-	if a.memPanel.open && msg.String() != "ctrl+c" {
-		return a.memoryKey(msg)
-	}
-
-	// And a place that draws only its own explanation — spend, search — at the
-	// same rung and for the same reason: it takes the whole frame, so there is
-	// nothing under it a key could mean anything to (teachplace.go).
-	if a.teach.open && msg.String() != "ctrl+c" {
-		return a.teachKey(msg)
-	}
-
 	// And the session picker is modal at the same rung, for the same reasons: it
 	// takes the input line's place, it holds its own filter, and esc leaves the
 	// conversation exactly as it was (resume.go). The two are never up together —
@@ -392,14 +385,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// draft is under this one for a letter to fall through into.
 	if a.permPanel.open && msg.String() != "ctrl+c" {
 		return a.permPanelKey(msg)
-	}
-
-	// And the standing page, which is that panel's twin in every respect that
-	// matters here: opened by a command, nothing being typed under it, and esc
-	// leaving the conversation exactly as it was (standingpage.go). Being modal
-	// is what frees a bare p, s and n to mean pause, stop and not here.
-	if a.standPage.up && msg.String() != "ctrl+c" {
-		return a.standPageKey(msg)
 	}
 
 	// And /subharness, which is those panels' twin in every respect that matters
@@ -1015,8 +1000,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	switch tagDoor {
 	case sendDoorStanding:
 		if tagWords == "" {
-			a.openStanding()
-			return nil
+			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
 	case sendDoorTask:
@@ -1097,7 +1081,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.pick.open {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint, "")
 	}
-	if a.memPanel.open {
+	if a.at(pageMemory) {
 		if a.memPanel.edit != nil {
 			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint, "")
 		}

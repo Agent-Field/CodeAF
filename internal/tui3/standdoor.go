@@ -71,7 +71,7 @@ func (a *app) keepingPress(x, y int) bool {
 // answer, and laying it out is what writes the span — read the other way round,
 // this would be testing a column from the frame before this one.
 func (a *app) keepingDoorAt(x, y int) bool {
-	if a.copy.on || a.sheet.open || a.pick.open || a.standPage.up {
+	if a.copy.on || a.at(pageSettings) || a.pick.open || a.at(pageStanding) {
 		return false
 	}
 	mark, ok := a.chromeAt(y)

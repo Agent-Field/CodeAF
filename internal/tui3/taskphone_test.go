@@ -70,7 +70,7 @@ func TestThePhoneStripIsOneTasksDoorThatOpensTheRoster(t *testing.T) {
 	// in one gesture.
 	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("a tap on the phone door did not open the roster page")
 	}
 	if a.railFull() {
@@ -221,7 +221,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("tapping `‹ back` did not return to the conversation")
 	}
 }
@@ -247,8 +247,8 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if !a.taskSheet.open || !a.taskSheet.detailOn {
-		t.Fatalf("the card did not open the record: open=%v detail=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || !a.taskSheet.detailOn {
+		t.Fatalf("the card did not open the record: open=%v detail=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 
 	// The record card's foot is its own two-band bar, and its `‹ back` backs out
@@ -259,8 +259,8 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: yBack, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: yBack, Button: tea.MouseLeft})
-	if !a.taskSheet.open || a.taskSheet.detailOn {
-		t.Fatalf("`‹ back` on the record did not return to the list: open=%v detail=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || a.taskSheet.detailOn {
+		t.Fatalf("`‹ back` on the record did not return to the list: open=%v detail=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 }
 

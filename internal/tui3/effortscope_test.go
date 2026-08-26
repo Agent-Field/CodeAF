@@ -420,7 +420,7 @@ func TestCtrlVWithNoTaskUnderTheCursorAsksTheEngineNothing(t *testing.T) {
 func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 	t.Run("the settings panel over home", func(t *testing.T) {
 		a, dir := restingHome(t)
-		a.sheet.open = true
+		a.raisePlace(pageSettings)
 		drive(t, a, key("ctrl+v"))
 		if got := config.DefaultEffortAt(dir); got != effort.Ship {
 			t.Fatalf("a chord under an open settings panel moved the install's rung to %q", got)
@@ -442,7 +442,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 		drive(t, a, key("enter"))
 		a.railTake(true)
 		a.railWhere = railSpot{id: 7}
-		a.taskSheet.open = true
+		a.raisePlace(pageTasks)
 		drive(t, a, key("ctrl+v"))
 		if len(agent.asked) != 0 {
 			t.Fatalf("a chord under the task page reached the work behind it: %v", agent.asked)

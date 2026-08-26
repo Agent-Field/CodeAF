@@ -244,7 +244,7 @@ func TestHomeListsEveryProjectAndItsConversations(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("/home did not open")
 	}
 	text := homeText(a)
@@ -283,7 +283,7 @@ func TestHomeEscGoesBackToTheConversation(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc did not close home")
 	}
 }
@@ -298,14 +298,14 @@ func TestHomeEscClearsTheBoxBeforeItLeaves(t *testing.T) {
 	a.homeKey(key("@"))
 	a.homeKey(key("x"))
 	a.homeKey(key("esc"))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the first esc left home instead of clearing the box")
 	}
 	if !a.home.box.empty() {
 		t.Fatalf("the box still holds %q", a.home.box.String())
 	}
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("the second esc did not close home")
 	}
 }
@@ -685,7 +685,7 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 		t.Fatal("the query matched nothing, so this proves nothing")
 	}
 	runCmd(a.homeEnter())
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("enter on the action row left home open")
 	}
 	if len(next.sent) != 1 || next.sent[0] != "pricing" {
@@ -1003,7 +1003,7 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// ESC STILL WORKS, which is why losing the clause is a wording change and
 	// not a capability going quiet.
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc did not close home")
 	}
 
@@ -1640,14 +1640,14 @@ func TestEscPeelsTheQueryThenCloses(t *testing.T) {
 		a.homeKey(key(string(r)))
 	}
 	a.homeKey(key("esc"))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the first esc left home instead of clearing the query")
 	}
 	if !a.home.box.empty() {
 		t.Fatalf("the box still holds %q", a.home.box.String())
 	}
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("the second esc did not close home")
 	}
 }
@@ -1787,7 +1787,7 @@ func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	a.home.point(other)
 	a.homeEnter()
 
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatalf("opening another project left home up saying %q", a.home.msg)
 	}
 	if a.file != other {
@@ -1856,7 +1856,7 @@ func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
 	a.home.point(gone)
 	a.homeEnter()
 
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("a refused open closed home")
 	}
 	if a.file != mine {
@@ -2047,7 +2047,7 @@ func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	// [runCmd] walks into the batch rather than stopping at the message that
 	// stands for one.
 	runCmd(cmd)
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("starting a conversation left home on the screen")
 	}
 	if a.agent != Agent(next) {
@@ -2107,7 +2107,7 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
 
 	a := lab.launch(mine, true)
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("a bare launch did not open on home")
 	}
 	// THE FRAME IS RECOGNISED BY HOME'S OWN FOOT, WHICH IS NOW THE DESIGN'S
@@ -2141,7 +2141,7 @@ func TestAFirstRunGoesStraightToTheChat(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
 
 	a := lab.launch(mine, true)
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home greeted a machine with nowhere else to go")
 	}
 	// And the welcome box is untouched: a first run gets the greeting it always
@@ -2159,7 +2159,7 @@ func TestAFirstRunGoesStraightToTheChat(t *testing.T) {
 func TestAnEmptyMachineGoesStraightToTheChat(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.launch("", true)
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home greeted a machine with nothing on it")
 	}
 }
@@ -2173,7 +2173,7 @@ func TestALaunchThatNamedASessionIsNotGreeted(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "some other chat", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.launch(mine, false)
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home greeted a launch that named its conversation")
 	}
 
@@ -2181,7 +2181,7 @@ func TestALaunchThatNamedASessionIsNotGreeted(t *testing.T) {
 	a = lab.app(mine)
 	a.landing, a.pickSession = true, true
 	a.landHome()
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home opened behind the resume picker — a launch gets one greeting")
 	}
 }
@@ -2202,7 +2202,7 @@ func TestTheWelcomeBoxRetiresWhenHomeLands(t *testing.T) {
 		t.Fatal("the welcome box was hidden rather than retired, so it can come back")
 	}
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc did not leave home")
 	}
 	if a.welcome.open {
@@ -2222,7 +2222,7 @@ func TestEscFromTheLandingLandsInTheSession(t *testing.T) {
 
 	a := lab.launch(mine, true)
 	a.homeKey(key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc did not close the landing")
 	}
 	if a.file != mine {
@@ -2244,7 +2244,7 @@ func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
 	a.home.point(mine)
 	before := len(a.entries)
 	a.homeEnter()
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("enter on the conversation this window is in did not close home")
 	}
 	if a.file != mine {
@@ -2287,7 +2287,7 @@ func TestHomeOverHostOpensWithoutItsRows(t *testing.T) {
 		t.Fatal("the door to home is shut over --host")
 	}
 	a.openHome()
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("home did not open over --host")
 	}
 	text := homeText(a)
@@ -2385,11 +2385,11 @@ func TestDoubleSpaceInAnEmptyBoxGoesHome(t *testing.T) {
 	if got := a.input.String(); got != " " {
 		t.Fatalf("the first space did not type itself: %q", got)
 	}
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("one space opened home")
 	}
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home")
 	}
 	if got := a.input.String(); got != "" {
@@ -2411,13 +2411,13 @@ func TestASingleSpaceThenALetterTypesNormally(t *testing.T) {
 	if got := a.input.String(); got != " x" {
 		t.Fatalf("the box holds %q, want %q", got, " x")
 	}
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("typing a space and a letter opened home")
 	}
 	// And a space in a box that already has words in it is just a space.
 	a.key(key(" "))
 	a.key(key(" "))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("the gesture fired in a box that had text in it")
 	}
 	if got := a.input.String(); got != " x  " {
@@ -2435,7 +2435,7 @@ func TestAPasteThatStartsWithTwoSpacesDoesNotGoHome(t *testing.T) {
 
 	a := lab.door(mine)
 	runCmd(a.paste("  indented like code"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("a paste beginning with two spaces opened home")
 	}
 	if got := a.input.String(); got != "  indented like code" {
@@ -2456,7 +2456,7 @@ func TestAPasteWhileHomeIsOpenLandsInHomesBox(t *testing.T) {
 	a := lab.door(mine)
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("home did not open")
 	}
 	runCmd(a.paste("find the pricing thread"))
@@ -2480,7 +2480,7 @@ func TestHomesBoxWrapsALongDraftInsteadOfTruncatingIt(t *testing.T) {
 	a := lab.door(mine)
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("home did not open")
 	}
 	long := "please research " + strings.Repeat("the market and ", 12) + "REPORTBACK"
@@ -2508,7 +2508,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home with only this conversation")
 	}
 	if got := a.input.String(); got != "" {
@@ -2543,7 +2543,7 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home on an empty machine")
 	}
 	for _, part := range homeEmptyLines() {
@@ -2716,7 +2716,7 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the gesture did not open home")
 	}
 }
@@ -2745,7 +2745,7 @@ func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the gesture did not open home")
 	}
 }
@@ -2775,7 +2775,7 @@ func TestALaunchThatIsNotGreetedNeverWalksTheDiskForTheDoor(t *testing.T) {
 	// AND A GREETED LAUNCH TAKES THE WALK EXACTLY ONCE, because the frame it is
 	// about to draw IS home and every row on it comes out of that reading.
 	greeted := lab.launch(mine, true)
-	if !greeted.home.open {
+	if !greeted.at(pageHome) {
 		t.Fatal("the landing launch was not greeted, so this proves nothing")
 	}
 	if len(greeted.home.world.Projects) == 0 {
@@ -2838,7 +2838,7 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 	if _, took := a.homeDoorPress(a.homeDoor.from, row); !took {
 		t.Fatal("a click on the door did nothing")
 	}
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the click did not open home")
 	}
 
@@ -2858,14 +2858,14 @@ func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.launch(mine, true)
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the launch did not land on home")
 	}
 	// The landing opens at rest and enter has nothing to open there, so the trip
 	// starts where the first ↓ would leave it: on this window's own row.
 	a.home.point(mine)
 	a.homeEnter()
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("enter did not step into the conversation")
 	}
 	if a.file != mine {
@@ -2873,11 +2873,11 @@ func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the gesture did not go back home")
 	}
 	a.homeKey(key("esc"))
-	if a.home.open || a.file != mine {
+	if a.at(pageHome) || a.file != mine {
 		t.Fatal("esc did not come back to the conversation")
 	}
 }
@@ -2893,7 +2893,7 @@ func TestTheGestureWorksWhileATurnIsRunning(t *testing.T) {
 	a.state = stateWorking
 	a.key(key(" "))
 	a.key(key(" "))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the gesture did not work with a turn running")
 	}
 	if a.state != stateWorking {
@@ -2983,7 +2983,7 @@ func TestEnterOnALockedRowRefusesInHomesOwnVoice(t *testing.T) {
 	if asked != 0 {
 		t.Fatalf("home tried the door it already knew was locked (%d times)", asked)
 	}
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("the refusal closed home")
 	}
 	if a.file != mine {
@@ -3051,7 +3051,7 @@ func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
 	before := len(a.entries)
 
 	a.homeKey(key("enter"))
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("losing the race closed home")
 	}
 	if a.home.msg != sessionBusyWord {
@@ -3106,7 +3106,7 @@ func TestAnUnlockedRowStillOpens(t *testing.T) {
 		t.Fatalf("an unheld row was drawn as held:\n%s", homeText(a))
 	}
 	a.homeKey(key("enter"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("opening a free conversation left home up")
 	}
 	if a.file != free {

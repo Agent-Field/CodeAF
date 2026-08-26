@@ -124,7 +124,7 @@ func (a *app) placeStrip(width int) []string {
 	if a.strip.open {
 		return a.verbStripRow(width)
 	}
-	if a.page == pageHome && a.home.open {
+	if a.at(pageHome) {
 		return a.answerStrip(width, time.Now())
 	}
 	return nil
@@ -165,88 +165,11 @@ const verbGap = "   "
 // the same law the answer chips already follow, and it is what makes a letter
 // safe: the strip cannot offer a verb the row has no way to perform.
 func (a *app) rowVerbs() []verb {
-	switch a.page {
-	case pageHome:
-		// Home's own half is place_home.go's; this file knows the mechanism and
-		// never a place's verbs.
-		return a.homeRowVerbs()
-	case pageTasks:
-		return a.tasksRowVerbs()
-	case pageStanding:
-		return a.standRowVerbs()
-	case pageMemory:
-		return a.memoryRowVerbs()
+	pl := a.showing()
+	if pl == nil {
+		return nil
 	}
-	return nil
-}
-
-// tasksRowVerbs is the tasks place's strip, and it is that place's own answer
-// ([tasksPlace.verbs]) — this file invents no verb for it, as its header says.
-// SCREEN 1e names two; exactly one of them has a seam behind it, and the place
-// says which and why.
-func (a *app) tasksRowVerbs() []verb { return a.taskSheet.verbs(a) }
-
-// standRowVerbs is the standing place's strip, and it is that place's own answer
-// ([standPage.verbs]) — this file invents no verb for it, as its header says.
-// The three letters were bare while it was a modal overlay with no box under
-// them; as a PLACE it has a composer, so they moved onto the strip, which is the
-// trade the promotion makes and the reason the strip had to exist before the
-// promotion could.
-func (a *app) standRowVerbs() []verb { return a.standPage.verbs(a) }
-
-// memoryRowVerbs is the memory place's strip, and it closes a real bug: `u`
-// (undo a forget) was matched ahead of the filter's default arm, so a person
-// could not type a `u` into the filter box at all — a search for "must" lost its
-// second letter and put a memory back instead. On the strip the letter is a verb
-// only while the strip is drawn, and the filter gets every letter of the
-// alphabet back.
-func (a *app) memoryRowVerbs() []verb {
-	p := &a.memPanel
-	var verbs []verb
-	// THE TWO THAT ACT ON A LINE ARE OFFERED ONLY WHILE THERE IS A LINE. A shelf
-	// heading, a section line, the prose at the top of a nearly-empty page — the
-	// cursor stands on all of them and none of them has wording to fix or
-	// anything to forget ([memoryPanel.choice] answers only on a line).
-	if memory, ok := p.choice(); ok {
-		verbs = append(verbs,
-			verb{key: 'e', word: memoryFixWord, do: func() tea.Cmd {
-				box := editor{}
-				box.setText(memory.Text)
-				p.edit, p.editID = &box, memory.ID
-				return nil
-			}},
-			verb{key: 'f', word: memoryForgetWord, do: func() tea.Cmd {
-				if a.memory != nil && a.memory.ForgetMemory(memory.ID) == nil {
-					p.undoID, p.undoName = memory.ID, memory.Title
-					p.footer = "forgot '" + memory.Title + "' · → " + memoryUndoWord
-					p.forget(memory.ID)
-				}
-				return nil
-			}})
-	}
-	// AND THE UNDO WHENEVER THERE IS SOMETHING TO PUT BACK, WITH OR WITHOUT A ROW
-	// UNDER THE CURSOR. It is the one verb here that is about the PLACE and not
-	// about a line — the line it would put back is, by definition, not on the
-	// screen — and forgetting the last thing on a shelf must not be the one
-	// forget that cannot be taken back.
-	if p.undoID != "" {
-		verbs = append(verbs, verb{key: 'u', word: memoryUndoWord, do: func() tea.Cmd {
-			if a.memory == nil || a.memory.RestoreMemory(p.undoID) != nil {
-				return nil
-			}
-			// AND THE PAGE IS RE-READ RATHER THAN PATCHED. Every other change this
-			// place makes is one field this process just wrote and can therefore
-			// correct in the held snapshot; a restore puts back a row that was
-			// REMOVED from it, with counts and a shelf and a status the store owns,
-			// so the honest redraw is the store's own answer ([app.refreshMemory]
-			// is the same two statements the clock runs).
-			a.refreshMemory()
-			p.footer = "put '" + p.undoName + "' back"
-			p.undoID, p.undoName = "", ""
-			return nil
-		}})
-	}
-	return verbs
+	return pl.verbs(a)
 }
 
 // The words the strips say. Each is quoted in the manual exactly as it is

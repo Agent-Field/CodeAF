@@ -133,16 +133,14 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	if entry == nil {
 		return nil
 	}
-	// THE OTHER FULLSCREEN PAGES STAND DOWN. This is an open path onto the page,
-	// so it owes the same law every other one does ([app.standDownFullscreen],
-	// settings.go) — and it is stated here rather than left to [app.showTaskPlace]
-	// because this one does not go through it.
-	a.standDownFullscreen()
-	// THE LIST UNDERNEATH IS A REAL LIST. This door does not go through
-	// [app.showTaskPlace], so it takes the same snapshot that one does — a card
-	// opened from home used to leave an EMPTY place behind it, and esc dropped
-	// the person onto a page with nothing on it.
-	a.taskSheet = a.takeTaskReading()
+	// IT GOES THROUGH THE ROUTER, exactly as every other door onto a place does
+	// (pages.go's [app.showPage]): what was standing is closed, its look stamp is
+	// written, and the tasks place opens on the same snapshot every other road in
+	// takes. It used to stand the other pages down and build the reading itself,
+	// which is a second answer to what this place is holding — and before that it
+	// built NO reading at all, so a card opened from home left an EMPTY place
+	// behind it and esc dropped the person onto a page with nothing on it.
+	raised := a.showPage(pageTasks)
 	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
 	// The list underneath is parked on the row that was pressed, so esc comes
 	// back to it rather than to the top of a list somebody scrolled a long way
@@ -150,7 +148,7 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	// the row's position is only knowable while the entry is in hand.
 	a.taskSheetPointAt(*entry)
 	a.touch()
-	return a.readTaskTail(*entry)
+	return tea.Batch(raised, a.readTaskTail(*entry))
 }
 
 // taskSheetPointAt puts the LIST's cursor on the row naming this piece of work,

@@ -118,16 +118,16 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	a, _ := sheetApp(t)
 
 	drive(t, a, tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl})
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("ctrl+, did not open the settings panel")
 	}
 	drive(t, a, key("esc"))
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		t.Fatal("esc did not close the settings panel")
 	}
 
 	typeLine(t, a, "/settings")
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("/settings did not open the settings panel")
 	}
 	// It is fullscreen: the input line and the HUD are not under it. The
@@ -233,7 +233,7 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 
 	// esc backs out the search before it backs out of the panel.
 	drive(t, a, key("esc"))
-	if !a.sheet.open || a.sheet.searching() {
+	if !a.at(pageSettings) || a.sheet.searching() {
 		t.Fatal("esc did not drop the search first")
 	}
 }
@@ -1278,11 +1278,11 @@ func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
 		"the search place":   func(a *app) { a.showPage(pageSearch) },
 	}
 	up := map[string]func(*app) bool{
-		"the settings panel": func(a *app) bool { return a.sheet.open },
-		"the task page":      func(a *app) bool { return a.taskSheet.open },
-		"home":               func(a *app) bool { return a.home.open },
-		"the spend place":    func(a *app) bool { return a.teach.open && a.teach.at == pageSpend },
-		"the search place":   func(a *app) bool { return a.teach.open && a.teach.at == pageSearch },
+		"the settings panel": func(a *app) bool { return a.at(pageSettings) },
+		"the task page":      func(a *app) bool { return a.at(pageTasks) },
+		"home":               func(a *app) bool { return a.at(pageHome) },
+		"the spend place":    func(a *app) bool { return a.at(pageSpend) },
+		"the search place":   func(a *app) bool { return a.at(pageSearch) },
 	}
 	for first := range open {
 		for second := range open {

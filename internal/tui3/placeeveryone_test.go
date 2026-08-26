@@ -165,7 +165,7 @@ func memoryPlaceLab(t *testing.T) *app {
 	if cmd := a.showPage(pageMemory); cmd != nil {
 		runCmd(cmd)
 	}
-	if !a.memPanel.open {
+	if !a.at(pageMemory) {
 		t.Fatal("the memory place did not open over forty lines")
 	}
 	return a
@@ -214,7 +214,7 @@ func settingsPlaceLab(t *testing.T) *app {
 	a := placeApp(t)
 	a.width, a.height = 120, 20
 	a.showPage(pageSettings)
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("the settings place did not open")
 	}
 	return a

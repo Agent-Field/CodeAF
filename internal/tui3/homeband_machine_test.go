@@ -149,7 +149,7 @@ func TestSinceYouLeftGathersEveryProjectAndEveryRowIsADoor(t *testing.T) {
 	if cmd != nil {
 		cmd()
 	}
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("the door did not open the conversation the news named")
 	}
 	if a.file != theirs {

@@ -2821,7 +2821,7 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
-	case a.standPage.up:
+	case a.at(pageStanding):
 		// The standing page names its verbs here because they are the half of it
 		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
 		// actually has: one of them stops a thing for good, and an order in

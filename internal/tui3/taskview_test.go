@@ -62,7 +62,7 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	railRun(a)
 
 	drive(t, a, ctrlDot())
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("ctrl+. did not open the task page")
 	}
 	frame, _, _ := a.frame()
@@ -98,7 +98,7 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	}
 
 	drive(t, a, key("esc"))
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("esc did not close the task page")
 	}
 }
@@ -118,7 +118,7 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	a, _, _ := taskApp(t)
 
 	drive(t, a, ctrlDot())
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("ctrl+. opened nothing on a project that has run nothing")
 	}
 	if text := taskSheetText(a); !strings.Contains(text, taskSheetEmpty) {
@@ -127,7 +127,7 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	drive(t, a, key("esc"))
 
 	a.slash("/history")
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("/history opened nothing on a project that has run nothing")
 	}
 	if text := taskSheetText(a); !strings.Contains(text, "tasks is the history of work") {
@@ -148,7 +148,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// Nothing anywhere: the tab bar still walks in, the body teaches, and the
 	// note says NOTHING — a count beside that prose is the pair the law forbids.
 	a.showPage(pageTasks)
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("the tab bar did not walk into an empty tasks place")
 	}
 	if note := a.placeNote(a.width); len(note) != 0 {
@@ -208,7 +208,7 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	a.slash("/history")
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("/history did not open the task page")
 	}
 	// And the place names itself on the tab bar, with the word the tab bar and
@@ -334,12 +334,12 @@ func TestTheTwoFullscreenPagesAreNeverBothOpen(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the task page refused to open over the settings panel")
 	}
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		t.Fatal("opening the task page left the settings panel open under it")
 	}
 
 	a.openSettings()
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("opening the settings panel left the task page open under it")
 	}
 }
@@ -393,7 +393,7 @@ func TestEnterOnTheTaskPageOpensThatTasksRoom(t *testing.T) {
 	}
 
 	drive(t, a, key("enter"))
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("opening a room left the page standing over it")
 	}
 	if a.room == nil || a.room.id != 7 {
@@ -428,8 +428,8 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 	}
 
 	drive(t, a, key("enter"))
-	if !a.taskSheet.open || !a.taskSheet.detailOn {
-		t.Fatalf("enter did not go inside: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || !a.taskSheet.detailOn {
+		t.Fatalf("enter did not go inside: open=%v inside=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 	card := taskSheetText(a)
 	for _, want := range []string{"Port the parser", "done", "it came home clean", taskCardKeys} {
@@ -440,11 +440,11 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 
 	// esc BACKS OUT ONE LAYER: the list, not the conversation.
 	drive(t, a, key("esc"))
-	if !a.taskSheet.open || a.taskSheet.detailOn {
-		t.Fatalf("esc did not come back to the list: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || a.taskSheet.detailOn {
+		t.Fatalf("esc did not come back to the list: open=%v inside=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 	drive(t, a, key("esc"))
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("the second esc did not close the page")
 	}
 }
@@ -467,7 +467,7 @@ func TestMFromInsideAnOldTaskStillWritesTheMention(t *testing.T) {
 	// is where the person was part-way through saying what the name was for.
 	a.input.setText("what happened in")
 	drive(t, a, key("m"))
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("writing the mention left the page up")
 	}
 	if got := string(a.input.value); got != "what happened in @port-the-parser " {
@@ -695,7 +695,7 @@ func TestPressingViewMoreOpensTheTaskPage(t *testing.T) {
 	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
 		t.Fatal("the press fell through the column")
 	}
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("pressing the door did not open the task page")
 	}
 	// The column is left exactly as it was: the page is somewhere you go and come
@@ -839,14 +839,14 @@ func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 	}
 
 	drive(t, a, key("esc"))
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("the first esc closed the page instead of the filter")
 	}
 	if a.taskSheetFiltering() {
 		t.Fatalf("the first esc left the filter %q", a.taskSheetFilter())
 	}
 	drive(t, a, key("esc"))
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("the second esc did not close the page")
 	}
 
@@ -856,7 +856,7 @@ func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 	}
 	drive(t, a, key("t"))
 	drive(t, a, ctrlDot())
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("ctrl+. did not close a filtered page")
 	}
 	// And a page opened again opens unfiltered: the query goes with the page.

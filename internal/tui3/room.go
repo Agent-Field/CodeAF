@@ -1726,7 +1726,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// scope, and the nearest surface is the one on top.
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.taskSheet.open, a.home.open, a.deckShowing(), a.pick.open,
+		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
 		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.effPick.open:
 		return nil, false

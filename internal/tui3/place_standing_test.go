@@ -96,7 +96,7 @@ func (l *standFarLab) bare(t *testing.T, items ...standing.Item) {
 func (l *standFarLab) open(t *testing.T) string {
 	t.Helper()
 	typeLine(t, l.a, "/standing")
-	if !l.a.standPage.up {
+	if !l.a.at(pageStanding) {
 		t.Fatal("/standing opened nothing")
 	}
 	return standPageScreen(l.a)
@@ -459,7 +459,7 @@ func TestTheMachinesShelfOffersOnlyTheStoresOwnWrites(t *testing.T) {
 	}, standFarItem("f1", "watch the release feed", ""), paused)
 
 	words := func() string {
-		verbs := lab.a.standRowVerbs()
+		verbs := lab.a.rowVerbs()
 		parts := make([]string, 0, len(verbs))
 		for _, v := range verbs {
 			if v.do == nil {
@@ -496,7 +496,7 @@ func TestAWindowThatCannotWriteOffersNoVerbsOnTheMachinesShelf(t *testing.T) {
 	lab := newStandFarLab(t, nil, standFarItem("f1", "watch the release feed", ""))
 	lab.a.stands.Save = nil
 	lab.open(t)
-	if verbs := lab.a.standRowVerbs(); len(verbs) != 0 {
+	if verbs := lab.a.rowVerbs(); len(verbs) != 0 {
 		t.Fatalf("a window that cannot write offered %d verbs", len(verbs))
 	}
 	if hint := lab.a.standPage.hint(lab.a); strings.Contains(hint, "→") {
@@ -629,7 +629,7 @@ func TestTheStandingPageObeysTheEmptinessLaw(t *testing.T) {
 	// span of days that holds nothing, and no count.
 	bare := newStandFarLab(t, nil)
 	typeLine(t, bare.a, "/standing")
-	if !bare.a.standPage.up {
+	if !bare.a.at(pageStanding) {
 		t.Fatal("a machine nothing stands on opened no page")
 	}
 	empty := standPageScreen(bare.a)

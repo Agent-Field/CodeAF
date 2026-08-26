@@ -614,7 +614,7 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	if a.home.msg != homeItemNoDoor {
 		t.Fatalf("an item made at home said %q, want %q", a.home.msg, homeItemNoDoor)
 	}
-	if !a.home.open {
+	if !a.at(pageHome) {
 		t.Fatal("home closed on a door that goes nowhere")
 	}
 }

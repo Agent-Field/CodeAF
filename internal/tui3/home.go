@@ -126,7 +126,7 @@ func homeTick(gen int) tea.Cmd {
 // been closed and reopened re-arms nothing either, which is how there stays one
 // clock.
 func (a *app) homeBeat(gen int) tea.Cmd {
-	if !a.home.open || gen != a.homeGen {
+	if !a.at(pageHome) || gen != a.homeGen {
 		return nil
 	}
 	a.refreshHome()
@@ -156,7 +156,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 // twenty things out wakes it exactly as often — and costs the wire exactly as
 // much — as a machine with one.
 func (a *app) homeAnimating() bool {
-	return a.home.open && a.homeSpins(a.home.spin)
+	return a.at(pageHome) && a.homeSpins(a.home.spin)
 }
 
 // homeGutter is the empty space between the two columns, and it is the ONLY
@@ -501,8 +501,6 @@ type homeBare struct {
 // what every surface starts as — and closing is assigning the zero value, so
 // there is no field that can be left behind from the last time it was up.
 type homeView struct {
-	open bool
-
 	// why is the one line drawn where the rows would be when there CANNOT be any
 	// — over --host, where this process's ~/.aforge/v3 is the wrong machine's
 	// ([homeRemoteWord]). It is empty on every machine home can read, because a
@@ -735,28 +733,24 @@ func (a *app) homeWhyEmpty() string {
 	return ""
 }
 
-func (a *app) openHome() tea.Cmd {
-	// OVER --host THE LIST IS THE LIE AND THE PLACE IS NOT. The state root under
-	// this process belongs to the wrong machine, so a screen full of the laptop's
-	// projects while the session runs on the server would be drawn confidently
-	// and be false. What that costs is the ROWS, and nothing else: the place
-	// still opens, and [homeRemoteWord] stands where the rows would have been —
-	// which is the same bargain every other place makes with an empty world
-	// (pages.go's [app.showPage]).
-	//
-	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and the task
-	// page both ([app.standDownFullscreen] states the law). It happens BEFORE the
-	// screen below is built, because standing down closes home too and a call the
-	// other way round would sweep away the view this line is about to make.
-	a.standDownFullscreen()
-	// AND THE ROUTER IS TOLD WHERE IT IS STANDING (pages.go). The field is a
-	// label on the `open` flag below and never a second source of truth for it,
-	// which is why it is written beside the flag rather than instead of it.
-	a.page = pageHome
+// openHome is /home, and it is THE ROUTER'S DOOR like every other way into a
+// place: what was standing is closed, its look stamp is written, and home opens
+// (pages.go's [app.showPage]). What home does on the way in is [app.raiseHome].
+func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
+
+// raiseHome builds the screen. It is [placeHome]'s `open` and nothing else calls
+// it, which is what makes the router the one road in.
+//
+// OVER --host THE LIST IS THE LIE AND THE PLACE IS NOT. The state root under
+// this process belongs to the wrong machine, so a screen full of the laptop's
+// projects while the session runs on the server would be drawn confidently and
+// be false. What that costs is the ROWS, and nothing else: the place still
+// opens, and [homeRemoteWord] stands where the rows would have been — which is
+// the same bargain every other place makes with an empty world.
+func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
-		open:         true,
 		why:          a.homeWhyEmpty(),
 		world:        a.homeWorld(),
 		seen:         session.LastLook(a.placesRoot()),
@@ -874,6 +868,11 @@ func (a *app) landHome() {
 	// bubbletea exists — and the world it hands in, which was already read above
 	// to answer whether there is anywhere else to go.
 	a.home = a.newHomeView(world)
+	// AND THE ROUTER IS TOLD WHERE THIS WINDOW IS STANDING. This is the one door
+	// that does not go through [app.showPage], because it runs inside [newApp]
+	// before bubbletea exists and the room it is raising is already furnished by
+	// the four lines below ([app.raisePlace] states the whole exception).
+	a.raisePlace(pageHome)
 	a.readStandBands()
 	a.home.readGone()
 	a.home.build()
@@ -948,15 +947,26 @@ func (a *app) readWorld() session.World {
 
 // THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
 // this home from re-arming itself into the next one ([homeTickMsg]).
+// closeHome is the DOOR out of home, and it goes through the router: `esc` and
+// every surface that has to take the frame back land here.
 func (a *app) closeHome() {
+	if a.at(pageHome) {
+		a.leavePlace()
+	}
+}
+
+// dropHome is [placeHome]'s `close`: the screen goes and the look stamp is
+// written. Nothing but the router calls it.
+//
+// THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
+// this home from re-arming itself into the next one ([homeTickMsg]).
+func (a *app) dropHome() {
 	a.homeGen++
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
 	// nothing but a repeat of the same news.
-	if a.home.open {
-		session.NoteLook(a.placesRoot(), a.now())
-	}
+	session.NoteLook(a.placesRoot(), a.now())
 	// AN ERRAND DOES NOT DIE WITH THE SCREEN IT WAS ASKED ON, and that is the
 	// repair this whole wave is about. It used to: closing home closed the
 	// agent, so opening another conversation to check something ended the errand
@@ -983,7 +993,6 @@ func (a *app) closeHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World) homeView {
 	return homeView{
-		open:  true,
 		world: world,
 		seen:  session.LastLook(a.placesRoot()),
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
@@ -1029,7 +1038,7 @@ func (a *app) placesRoot() string {
 // re-sorts the column — and a cursor that stayed at line seven would land the
 // person on somebody else's conversation between two glances.
 func (a *app) refreshHome() {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return
 	}
 	a.home.world = a.homeWorld()
@@ -1740,7 +1749,12 @@ func homeRecency(at, now time.Time) int {
 const homeRest = -1
 
 // resting reports that the cursor is at rest.
-func (h *homeView) resting() bool { return h.open && h.cursor == homeRest }
+//
+// A CLOSED VIEW IS NEVER RESTING, and that falls out of the zero value rather
+// than being asked: a homeView nobody has built has cursor 0 and [homeRest] is
+// -1. It used to ask an `open` flag of its own, which the router retired
+// (pages.go's [app.page] is the one answer to which place is up).
+func (h *homeView) resting() bool { return h.cursor == homeRest }
 
 // restable reports whether this shape of home HAS a rest to walk up into.
 //
@@ -1923,7 +1937,7 @@ func (h *homeView) move(delta int) {
 // for a key to mean anything to. Only ctrl+c is read before it (input.go),
 // because leaving is never modal.
 func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return nil
 	}
 	h := &a.home
@@ -2934,7 +2948,7 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 // from `alt+1` and not from two spaces would be the surface teaching two
 // different answers to one question.
 func (a *app) homeDoorOpen() bool {
-	return a.canOpen() && !a.home.open
+	return a.canOpen() && !a.at(pageHome)
 }
 
 // homeDoorShowing reports whether the foot of the conversation should advertise
@@ -2975,7 +2989,7 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 // answer the next keystroke is the pointer and the keyboard disagreeing about
 // where somebody is.
 func (a *app) homePress(x, y int) tea.Cmd {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return nil
 	}
 	// phone lane: the inbox and the sheet resolve their own presses, in one
@@ -3157,7 +3171,7 @@ func (a *app) homeStacked() (*homeExchange, bool) {
 // answer changed. It reads BOTH columns: the list's rows, and the one row in the
 // pane a pointer can act on (homeexchange.go's [app.exchangeHover]).
 func (a *app) homeHover(x, y int) {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return
 	}
 	// phone lane: there is no hover on glass, so motion is dropped rather than
@@ -3244,19 +3258,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// 0 and the last rows, and the caret rides the clamp. What is left here is
 	// home's own body and the three hit maps it answers the pointer with.
 	lines, hits, caretX, caretY := placeFrame(a, width, height,
-		func(width, room int) []placeRow {
-			left, right := homeColumns(width)
-			a.homeWindow(room)
-			body := a.homeBody(left, right, room, a.pal)
-			rows := make([]placeRow, 0, len(body))
-			for _, drawn := range body {
-				rows = append(rows, placeRow{
-					text: drawn.text,
-					hit:  homeMark{line: drawn.hit, pane: drawn.pane},
-				})
-			}
-			return rows
-		})
+		func(width, room int) []placeRow { return placeHome{}.body(a, width, room) })
 	// THE HIT MAPS ARE KEPT WHERE THE POINTER CAN FIND THEM, and they are written
 	// by the draw for the reason [standingCard.choiceRow] is: the press and the
 	// hover resolve against what this frame actually drew, so a stale map is a

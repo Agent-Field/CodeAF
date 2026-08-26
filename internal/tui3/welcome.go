@@ -573,7 +573,7 @@ func (a *app) welcomeHolds() bool {
 	if !a.welcomeFits() {
 		return false
 	}
-	if a.rew.on || a.pick.open || a.memPanel.open || a.roster.open || a.subPage.open ||
+	if a.rew.on || a.pick.open || a.at(pageMemory) || a.roster.open || a.subPage.open ||
 		a.shelf.open || a.connPanel.open {
 		return false
 	}

@@ -233,5 +233,5 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 // still need, and it is asked here once rather than in forty places.
 func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
-	return a.taskSheet.open && len(a.taskSheet.reading.items) > 0
+	return a.at(pageTasks) && len(a.taskSheet.reading.items) > 0
 }

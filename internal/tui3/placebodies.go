@@ -35,17 +35,6 @@ package tui3
 // nothing else.
 const placeHeadRows = 4
 
-// standPageFrame draws the standing place: the list it always drew, in the frame
-// every place is drawn in. The frame knows nothing about standing orders — it
-// asks the place for its body and the place answers rows and a hit map
-// (place_standing.go).
-func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
-	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
-		return a.standPage.body(a, width, room)
-	})
-	return lines, placeLineHits(hits), caretX, caretY
-}
-
 // placeNote is the one line a place says about what it is holding, drawn under
 // the rule and above the composer (pages.go's [placeFrame] states the law).
 //
@@ -53,31 +42,55 @@ func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
 // facts that are about the WHOLE body rather than about the row under the
 // cursor, and that would be a lie if they scrolled with it.
 func (a *app) placeNote(width int) []string {
-	pal := a.pal
-	switch a.page {
-	case pageTasks:
-		return a.taskSheet.note(a, width)
-	case pageSettings:
-		if !a.sheet.open {
-			return nil
-		}
-		switch {
-		case a.sheet.sel != nil:
-			return []string{" " + pal.dim(fit(a.sheet.sel.label, width-2))}
-		case a.sheet.edit != nil:
-			// THE LABEL IS THE NOTE AND THE VALUE IS THE COMPOSER. The panel used
-			// to draw both on one line of its own foot; under the router the box a
-			// person is typing in is THE composer, so what is left here is the one
-			// thing the box cannot say — which setting this is.
-			return []string{" " + pal.dim(fit(a.sheet.edit.label, width-2))}
-		case a.sheet.msg != "":
-			return []string{" " + pal.bad(fit(a.sheet.msg, width-2))}
-		}
-		return []string{" " + pal.dim(fit(a.sheet.footNote(), width-2))}
-	case pageMemory:
-		if a.memPanel.open && a.memPanel.footer != "" {
-			return []string{" " + pal.dim(fit(a.memPanel.footer, width-2))}
-		}
+	pl := a.showing()
+	if pl == nil {
+		return nil
 	}
-	return nil
+	return pl.note(a, width)
+}
+
+// ── a place with nothing of its own to draw ─────────────────────────────────
+
+// teachMeasure is how wide a paragraph of this surface's own prose may run. It
+// is the same measure the welcome box and the refusal blocks read at — a line
+// long enough to hold a whole clause and short enough that the eye finds the
+// next one without hunting.
+const teachMeasure = 76
+
+// placeTeachProse wraps one paragraph of a place's own explanation to the
+// reading measure and dims it.
+//
+// THE PROSE IS NARROWER THAN THE FRAME. A sentence run out to two hundred
+// columns is a sentence nobody's eye can return from, so the paragraph is held
+// to a reading measure and the rest of the width is left as air. It takes the
+// reading ladder's DIM tier — it is the surface talking about itself, which is
+// the whole of what dim means here.
+func placeTeachProse(text string, width int, pal palette) []string {
+	measure := width - 2
+	if measure > teachMeasure {
+		measure = teachMeasure
+	}
+	lines := wrap(text, measure)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, pal.dim(line))
+	}
+	return out
+}
+
+// placeTeachRows puts a place's teaching prose in the body's own column and pads
+// it out to the room the frame reserved. The prose hangs from the top the way
+// every list on this surface does, and answers the pointer with nothing.
+func placeTeachRows(lines []string, room int) []placeRow {
+	rows := make([]placeRow, 0, room)
+	for _, line := range lines {
+		if len(rows) >= room {
+			break
+		}
+		rows = append(rows, placeRow{text: " " + line, hit: -1})
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return rows
 }

@@ -376,7 +376,8 @@ func TestATapOnATaskRowOfThePhoneSheetOpensItsRecord(t *testing.T) {
 func TestTheTaskRecordsFootIsBandsOnAPhone(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 50, 24
-	a.taskSheet = tasksPlace{open: true, detailOn: true, detail: session.TaskIndexEntry{
+	a.raisePlace(pageTasks)
+	a.taskSheet = tasksPlace{detailOn: true, detail: session.TaskIndexEntry{
 		ID: "1", Title: "port the roster", Label: "port the roster",
 		Status: string(session.TaskDone),
 	}}

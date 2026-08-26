@@ -167,7 +167,7 @@ func TestAHeldRosterDoesNotTakeNarrowHomesKeys(t *testing.T) {
 	}
 	// And esc is home's own way out rather than the roster's.
 	drive(t, a, key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc handed the keyboard back to a roster instead of closing home")
 	}
 }

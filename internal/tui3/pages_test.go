@@ -126,8 +126,8 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	}
 	// alt+5 IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
 	drive(t, a, key("alt+5"))
-	if a.page != pageSpend || !a.teach.open {
-		t.Fatalf("alt+5 did not open the spend place (page %q, teach %v)", a.page.word(), a.teach.open)
+	if a.page != pageSpend {
+		t.Fatalf("alt+5 did not open the spend place: the router is standing on %q", a.page.word())
 	}
 	if text := placeFrameText(a); !strings.Contains(text, "What this machine has cost") {
 		t.Fatalf("the spend place does not say what it is for:\n%s", text)
@@ -197,7 +197,7 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 		if a.page == was && was != id {
 			t.Fatalf("%s put back %q", id.word(), was.word())
 		}
-		if a.home.open && id != pageHome {
+		if a.at(pageHome) && id != pageHome {
 			t.Fatalf("%s left home standing under it", id.word())
 		}
 	}
@@ -532,23 +532,23 @@ func placeAt(id page) int {
 func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	a := placeApp(t)
 	drive(t, a, key("esc"))
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("esc did not put the conversation back")
 	}
 	drive(t, a, key("alt+2"))
-	if a.page != pageTasks || !a.taskSheet.open {
-		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.taskSheet.open)
+	if a.page != pageTasks || !a.at(pageTasks) {
+		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
 	drive(t, a, key("alt+3"))
-	if a.page != pageStanding || !a.standPage.up {
+	if a.page != pageStanding || !a.at(pageStanding) {
 		t.Fatalf("alt+3 from the conversation landed on %q", a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
 	drive(t, a, key("esc"))
 	page := a.page
 	drive(t, a, key("tab"))
-	if a.page != page || a.taskSheet.open || a.standPage.up {
+	if a.page != page || a.at(pageTasks) || a.at(pageStanding) {
 		t.Fatal("tab in the conversation opened a place")
 	}
 }

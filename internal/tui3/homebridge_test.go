@@ -246,7 +246,7 @@ func TestEnterAtRestReturnsToTheConversationYouAreHolding(t *testing.T) {
 		t.Fatal("rest is no longer a state this screen can hold")
 	}
 	a.homeEnter()
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatalf("enter at rest left home up saying %q", a.home.msg)
 	}
 	if a.file != was {
