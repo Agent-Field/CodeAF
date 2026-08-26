@@ -1876,12 +1876,12 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 	// same geometry and read as one object at two scales.
 	s := &a.sheet
 	pal := a.pal
-	return placeFrame(a, width, height, sheetHit{},
-		func(width, room int) []placeRow[sheetHit] {
-			rows := make([]placeRow[sheetHit], 0, room)
-			rows = append(rows, placeRow[sheetHit]{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
-			rows = append(rows, placeRow[sheetHit]{text: pal.dim(rule(width))})
-			rows = append(rows, placeRow[sheetHit]{})
+	lines, hits, caretX, caretY := placeFrame(a, width, height,
+		func(width, room int) []placeRow {
+			rows := make([]placeRow, 0, room)
+			rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+			rows = append(rows, placeRow{text: pal.dim(rule(width))})
+			rows = append(rows, placeRow{})
 			room -= len(rows)
 			if room < 1 {
 				room = 1
@@ -1893,7 +1893,7 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 					if at[i] >= 0 {
 						hit = sheetHit{kind: sheetHitOption, index: at[i]}
 					}
-					rows = append(rows, placeRow[sheetHit]{text: line, hit: hit})
+					rows = append(rows, placeRow{text: line, hit: hit})
 				}
 				return rows
 			}
@@ -1912,17 +1912,18 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 			for i := 0; i < room; i++ {
 				index := s.top + i
 				if index >= len(body) {
-					rows = append(rows, placeRow[sheetHit]{})
+					rows = append(rows, placeRow{})
 					continue
 				}
 				hit := sheetHit{}
 				if owner[index] >= 0 {
 					hit = sheetHit{kind: sheetHitRow, index: owner[index]}
 				}
-				rows = append(rows, placeRow[sheetHit]{text: body[index], hit: hit})
+				rows = append(rows, placeRow{text: body[index], hit: hit})
 			}
 			return rows
 		})
+	return lines, placeHitsOf(hits, sheetHit{}), caretX, caretY
 }
 
 func rule(width int) string {

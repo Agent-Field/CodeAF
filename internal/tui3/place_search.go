@@ -166,12 +166,12 @@ func (a *app) searchDone(msg searchDoneMsg) {
 // ── the frame ───────────────────────────────────────────────────────────────
 
 func (a *app) searchFrame(width, height int) ([]string, []int, int, int) {
-	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
 		body := a.search.reading.rows(width, a.pal)
 		// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
 		// visible result scroll rather than walking the selection off the screen.
 		a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
-		rows := make([]placeRow[int], 0, room)
+		rows := make([]placeRow, 0, room)
 		for i := a.search.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
@@ -180,14 +180,15 @@ func (a *app) searchFrame(width, height int) ([]string, []int, int, int) {
 			if _, ok := a.search.reading.at(i); ok && (i == a.search.cursor || i == a.search.hover) {
 				text = a.pal.selected(text, width)
 			}
-			rows = append(rows, placeRow[int]{text: text, hit: i})
+			rows = append(rows, placeRow{text: text, hit: i})
 		}
 		a.search.shown = len(rows)
 		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
+			rows = append(rows, placeRow{text: "", hit: -1})
 		}
 		return rows
 	})
+	return lines, placeLineHits(hits), caretX, caretY
 }
 
 func (a *app) nearestSearchStop(from int) int {

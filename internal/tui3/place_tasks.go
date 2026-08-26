@@ -759,18 +759,19 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 		lines, _, caretX, caretY := a.taskCardFrame(width, height)
 		return lines, nil, caretX, caretY
 	}
-	return placeFrameWithBar(a, width, height, taskSheetHit{},
-		func(width, room int) []placeRow[taskSheetHit] { return a.taskSheet.body(a, width, room) },
+	lines, hits, caretX, caretY := placeFrameWithBar(a, width, height,
+		func(width, room int) []placeRow { return a.taskSheet.body(a, width, room) },
 		// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
 		// (taskphone.go). The count above it stays — a bar is the way out, and the
 		// tally is what the place is holding.
-		func(width int) (string, taskSheetHit, bool) {
+		func(width int) (string, placeHit, bool) {
 			if layoutTier(width) != tierPhone {
-				return "", taskSheetHit{}, false
+				return "", nil, false
 			}
 			line, _ := a.taskSheetBar(width)
 			return line, taskSheetHit{kind: taskSheetHitBar}, true
 		})
+	return lines, placeHitsOf(hits, taskSheetHit{}), caretX, caretY
 }
 
 // body is the place's own rows and the hit map the frame stores beside them.
@@ -780,7 +781,7 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 // a list that stopped short of the window has nothing below it to point at. And
 // it is never applied to the row the cursor or the pointer is on, which is why
 // each row reports whether it came back BARE rather than being asked afterwards.
-func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
+func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	r := a.tasksFiltered()
 	lines := r.lay(width)
 	if len(lines) == 0 {
@@ -793,24 +794,24 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
 		// would be answering a question nobody asked. What that frame says is on
 		// the note line — `filter · zzz · nothing matches` — and the body stays
 		// blank under it.
-		rows := make([]placeRow[taskSheetHit], 0, room)
+		rows := make([]placeRow, 0, room)
 		if p.reading.held == 0 {
 			for _, line := range tasksTeach(a.pal) {
 				if len(rows) >= room {
 					break
 				}
-				rows = append(rows, placeRow[taskSheetHit]{text: " " + line})
+				rows = append(rows, placeRow{text: " " + line})
 			}
 		}
 		for len(rows) < room {
-			rows = append(rows, placeRow[taskSheetHit]{})
+			rows = append(rows, placeRow{})
 		}
 		return rows
 	}
 	p.cursor = a.tasksSettle(p.cursor)
 	p.top = tasksTop(lines, p.cursor, p.top, room)
 
-	rows := make([]placeRow[taskSheetHit], 0, room)
+	rows := make([]placeRow, 0, room)
 	// bare records, per drawn line, whether that line is wearing neither the
 	// cursor's band nor the pointer's — which is the one thing the depth fade
 	// needs to know and the one thing it cannot ask a finished string. It is
@@ -854,7 +855,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
 		if lit {
 			text = a.pal.cursor(text, width)
 		}
-		rows = append(rows, placeRow[taskSheetHit]{text: text, hit: hit})
+		rows = append(rows, placeRow{text: text, hit: hit})
 		bare = append(bare, !lit)
 	}
 	for i := range bare {
@@ -866,7 +867,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
 		}
 	}
 	for len(rows) < room {
-		rows = append(rows, placeRow[taskSheetHit]{})
+		rows = append(rows, placeRow{})
 	}
 	return rows
 }

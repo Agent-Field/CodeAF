@@ -429,7 +429,7 @@ func wrapText(text string, width int) []string {
 // snapshot, the filter or a fold last changed — so a resize is a re-measure of
 // words already decided rather than five hundred rows re-ranked.
 func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
-	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
 		p := &a.memPanel
 		var body []string
 		switch {
@@ -446,7 +446,7 @@ func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
 		} else {
 			p.top = placeTop(p.top, p.cursor, len(body), room)
 		}
-		rows := make([]placeRow[int], 0, room)
+		rows := make([]placeRow, 0, room)
 		for i := p.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
@@ -455,14 +455,15 @@ func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
 			if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
 				text = a.pal.selected(text, width)
 			}
-			rows = append(rows, placeRow[int]{text: text, hit: i})
+			rows = append(rows, placeRow{text: text, hit: i})
 		}
 		p.shown = len(rows)
 		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
+			rows = append(rows, placeRow{text: "", hit: -1})
 		}
 		return rows
 	})
+	return lines, placeLineHits(hits), caretX, caretY
 }
 
 // memoryReady is whether the memory place has a store behind it.
