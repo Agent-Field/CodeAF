@@ -35,7 +35,13 @@ Four ways, and they all reach the same seven rooms:
   of place key that means the same thing wherever you are standing.
 - **type its name** — on home, typing `sta` offers the standing place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
-  right margin.
+  right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
+  into — so ranking first means the offered place sits **below every conversation the same
+  words matched**, one row above `ask here` and `start a new conversation`, which is the
+  nearest row to your hand.
+  Where the place can say what is behind it without going to the disk for it, the margin
+  says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
+  to count, or nothing in it, says `a place` alone.
 - **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
   place it names.
 - **click the word** — the tab bar itself is the control. A press on a place's word goes

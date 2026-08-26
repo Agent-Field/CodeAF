@@ -859,6 +859,15 @@ func (placeStanding) note(a *app, width int) []string     { return a.orders.note
 func (placeStanding) hint(a *app) string                  { return a.orders.hint(a) }
 func (placeStanding) changed(a *app, since time.Time) int { return a.orders.changed(a, since) }
 
+// summary is what home's typed drop-up says is behind this place, and it is
+// READ OFF HOME'S OWN CACHED BANDS rather than off the store. The bands are
+// taken on home's three-second beat ([app.readStandBands]), so the clause costs
+// a walk of a slice already in memory — which is the only kind of answer a row
+// drawn while somebody is typing may be built from (pages.go's [place.summary]).
+func (placeStanding) summary(a *app) string {
+	return standingSummary(a.standingPlaceViews(), a.now())
+}
+
 func (placeStanding) press(a *app, y int) bool {
 	a.orders.press(a, y)
 	return true

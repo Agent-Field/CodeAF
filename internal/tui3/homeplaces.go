@@ -27,10 +27,17 @@ import "strings"
 // merge conflict with every lane that also added one.
 const homePlace homeRowKind = 240
 
-// placeRowWord is the right margin of an offered place, and it is the whole of
-// what that margin has to say: WHAT KIND OF THING THIS ROW IS. A count beside it
-// would be a second claim the row cannot keep — the places' counts are the tab
-// bar's, and they are about what CHANGED rather than about what is in there.
+// placeRowWord is the FIRST thing the right margin of an offered place says:
+// what kind of thing this row is, so a row that is not a conversation never has
+// to be guessed at.
+//
+// AND THE CLAUSE AFTER IT IS WHAT IS BEHIND THE PLACE — `a place · 6 orders, 1
+// fired today`, which is 1g's own row. It is deliberately NOT the tab bar's
+// number: that one counts what CHANGED since somebody last looked, and this one
+// says what is in there at all, which is the question a person typing the name
+// of a room is asking. A place that cannot answer it off a reading home already
+// holds says nothing, and the margin is then the kind word alone
+// (pages.go's [place.summary]).
 const placeRowWord = "a place"
 
 // placeMatches is which places what was typed offers, best first.
@@ -62,6 +69,12 @@ func placeMatches(query string) []page {
 
 // placeLines is the offered places as rows of the column, in drop-up order: the
 // best match LAST, so it lands nearest the box.
+//
+// THE CLAUSE EACH ROW CARRIES IS TAKEN HERE, WHERE THE LINE IS BUILT, and never
+// where it is painted. [homeView.buildWorld] runs on home's three-second beat and
+// on the keystroke that changed the box; a draw that asked a place what it was
+// holding would be a seam read on a frame, which is the one thing no place may
+// do (ARCHITECTURE.md's fourth law).
 func (h *homeView) placeLines(query string) []homeLine {
 	found := placeMatches(query)
 	if len(found) == 0 {
@@ -72,9 +85,31 @@ func (h *homeView) placeLines(query string) []homeLine {
 	// a prefix walk keeps it, so the earliest place in the bar is the best match;
 	// the drop-up reads upward, so it is appended last.
 	for i := len(found) - 1; i >= 0; i-- {
-		lines = append(lines, homeLine{kind: homePlace, project: found[i].word()})
+		lines = append(lines, homeLine{
+			kind: homePlace, project: found[i].word(), says: h.says[found[i]],
+		})
 	}
 	return lines
+}
+
+// readPlaceSummaries asks every place what is behind it and keeps the answers
+// where the drop-up can reach them without a seam.
+//
+// IT RUNS ON THE BEAT THE BANDS ARE READ ON and nowhere else ([app.refreshHome],
+// [app.raiseHome]). A place answers off a reading this surface already holds, so
+// the whole walk is arithmetic over slices in memory; a place that would have to
+// go to the disk for its clause answers nothing instead, and its row says only
+// what kind of thing it is.
+func (a *app) readPlaceSummaries() {
+	says := make(map[page]string, len(pages()))
+	for _, id := range pages() {
+		if pl := placeFor(id); pl != nil {
+			if clause := strings.TrimSpace(pl.summary(a)); clause != "" {
+				says[id] = clause
+			}
+		}
+	}
+	a.home.says = says
 }
 
 // placeOf is which place a row is offering, and whether it is offering one.
@@ -95,5 +130,9 @@ func placeOf(line homeLine) (page, bool) {
 func (a *app) homePlaceRow(line homeLine, at, width int, pal palette) string {
 	h := &a.home
 	label := bandFoldGlyph + " " + line.project
-	return overlayRow(label, placeRowWord, at == h.cursor, false, at == h.hover, width, pal)
+	margin := placeRowWord
+	if says := strings.TrimSpace(line.says); says != "" {
+		margin += " · " + says
+	}
+	return overlayRow(label, margin, at == h.cursor, false, at == h.hover, width, pal)
 }

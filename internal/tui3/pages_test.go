@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -361,6 +362,130 @@ func TestTypingOffersAPlaceBesideTheConversations(t *testing.T) {
 	drive(t, a, key("enter"))
 	if a.page != pageStanding && a.page != pageHome {
 		t.Fatalf("enter on the standing place landed on %q", a.page.word())
+	}
+}
+
+// A PLACE OUTRANKS EVERY CONVERSATION THE SAME WORDS MATCH (SCREEN 1g:
+// "Places rank first when the words match").
+//
+// FIRST MEANS NEAREST THE BOX, because this column is a DROP-UP: home.go's own
+// law over [homeView.buildWorld] says a ranked list read upward out of a box has
+// to put its best answer last, or the row somebody wants is the furthest one
+// from the key they reach for. So the assertion is a position — the offered
+// place is below every conversation row on the screen and above the two rows
+// that do something with the SENTENCE — and it is written as a position rather
+// than as a line index so that a project heading or a blank appearing between
+// them cannot make it pass for the wrong reason.
+func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	// Both conversations match `sta` on their own titles, so the place is not
+	// winning by being the only row on the list.
+	mine := lab.session("-alpha", "aaaa000000000001", "standup notes",
+		lab.workspace("alpha"), now.Add(-2*time.Minute))
+	lab.session("-beta", "bbbb000000000001", "stacking the deck",
+		lab.workspace("beta"), now.Add(-3*time.Hour))
+	a := lab.app(mine)
+	a.width, a.height = 120, 30
+	a.openHome()
+	for _, r := range "sta" {
+		drive(t, a, key(string(r)))
+	}
+	place, lastChat, ask, action := -1, -1, -1, -1
+	for i, line := range a.home.lines {
+		switch line.kind {
+		case homePlace:
+			place = i
+		case homeSession:
+			lastChat = i
+		case homeAskHere:
+			ask = i
+		case homeAction:
+			action = i
+		}
+	}
+	if place < 0 || lastChat < 0 {
+		t.Fatalf("the drop-up offered %d place rows and %d conversation rows", place, lastChat)
+	}
+	if place < lastChat {
+		t.Fatalf("the place is drawn above a conversation it outranks: place at %d, last chat at %d\n%s",
+			place, lastChat, placeFrameText(a))
+	}
+	// AND THE TWO ROWS THAT ACT ON THE SENTENCE STAY UNDER IT. They are one
+	// cluster against the box and are not results at all ([homeAction]).
+	if ask < place || action < ask {
+		t.Fatalf("the sentence cluster moved: place %d, ask here %d, start %d", place, ask, action)
+	}
+	// AND THE ROW SAYS WHAT IS BEHIND IT, not just what kind of thing it is.
+	if !strings.Contains(placeFrameText(a), placeRowWord) {
+		t.Fatalf("the offered place does not say what kind of thing it is:\n%s", placeFrameText(a))
+	}
+}
+
+// AND WITH NO PLACE MATCHED THE CONVERSATIONS KEEP THE LIST TO THEMSELVES. A
+// drop-up that grew a place row for words no place answers to would be the
+// surface answering a question nobody asked.
+func TestWordsNoPlaceAnswersToOfferNoPlaceRow(t *testing.T) {
+	a := placeApp(t)
+	for _, r := range "pick" {
+		drive(t, a, key(string(r)))
+	}
+	for _, line := range a.home.lines {
+		if line.kind == homePlace {
+			t.Fatalf("`pick` offered the %q place", line.project)
+		}
+	}
+	if !strings.Contains(placeFrameText(a), "Porting the Picker") {
+		t.Fatalf("the conversation the words match is not on the list:\n%s", placeFrameText(a))
+	}
+}
+
+// AND THE OFFERED PLACE SAYS WHAT IS BEHIND IT — `a place · 2 orders, 1 fired
+// today`, which is 1g's own row.
+//
+// THE CLAUSE IS THE PLACE'S OWN ANSWER and this test asks the place for it as
+// well as reading the screen, so a row that drew the words by accident — out of
+// a title, out of the tab bar — cannot pass. And the firing half is ABSENT on a
+// day nothing fired, which is the emptiness law on a margin four cells wide.
+func TestAnOfferedPlaceSaysWhatIsBehindIt(t *testing.T) {
+	band := &standBand{}
+	lab := newHomeLab(t)
+	now := time.Now()
+	dir := lab.workspace("alpha")
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", dir, now.Add(-2*time.Minute))
+	fired := bandItem("one", "tell me when CI goes red", dir, standing.WhenEvery, "every twenty minutes")
+	// TODAY IS THE DAY THE TEST RUNS ON, so the firing is stamped at the instant
+	// the fixture is built rather than an hour back — an hour back is yesterday
+	// on a run that starts just after midnight, and a test that fails once a day
+	// is a test nobody believes.
+	fired.LastFired = now
+	quiet := bandItem("two", "check the release feed", dir, standing.WhenEvery, "every morning at nine")
+	band.items = []standing.Item{fired, quiet}
+	a := lab.app(mine)
+	band.wire(a)
+	a.width, a.height = 120, 30
+	a.openHome()
+	for _, r := range "sta" {
+		drive(t, a, key(string(r)))
+	}
+	if got := (placeStanding{}).summary(a); got != "2 orders, 1 fired today" {
+		t.Fatalf("the standing place says %q is behind it", got)
+	}
+	text := placeFrameText(a)
+	if !strings.Contains(text, placeRowWord+" · 2 orders, 1 fired today") {
+		t.Fatalf("the offered place does not say what is behind it:\n%s", text)
+	}
+	// AND A DAY NOTHING FIRED ON SAYS ONLY WHAT IS THERE.
+	band.items = []standing.Item{quiet}
+	a.refreshHome()
+	if got := (placeStanding{}).summary(a); got != "1 order" {
+		t.Fatalf("a place with one quiet order says %q", got)
+	}
+	// AND A MACHINE WITH NOTHING STANDING ON IT SAYS NOTHING AT ALL.
+	band.items = nil
+	a.refreshHome()
+	if got := (placeStanding{}).summary(a); got != "" {
+		t.Fatalf("a place with nothing in it says %q", got)
 	}
 }
 
