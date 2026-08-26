@@ -383,8 +383,9 @@ func TestASecondSurfaceIsToldItIsNotAlone(t *testing.T) {
 		t.Fatalf("the second surface was told %d others were attached, want 1", welcome.Attached)
 	}
 
-	// And a turn's events reach both of them.
-	ref := decode[StreamRef](t, first.ok(1, MethodSubmit, SubmitArgs{Text: "go"}).Payload)
+	// And a turn's events reach both of them — started by the SECOND, because
+	// the newest window is the one holding the keyboard (driver.go).
+	ref := decode[StreamRef](t, second.ok(1, MethodSubmit, SubmitArgs{Text: "go"}).Payload)
 	stream := agent.stream(0)
 	stream <- session.Event{Kind: session.EventTextDelta, Text: "hello"}
 	for _, l := range []*link{first, second} {

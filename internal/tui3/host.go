@@ -149,6 +149,26 @@ import (
 //	                  the segment exists only in the seconds where that stops
 //	                  being true. There is still no badge, no icon and no
 //	                  "connected" word (hostlink.go).
+//	another window typing
+//	                  THE KEYBOARD FOLLOWS THE NEWEST WINDOW. More than one
+//	                  surface can be attached to one conversation over there,
+//	                  and the machine holding it names exactly one of them as
+//	                  the one that may type (internal/remote's driver.go). A
+//	                  window that is not it becomes a WATCHER: its transcript
+//	                  keeps arriving live, its composer is replaced by one dim
+//	                  line reading `typing from spark now` and
+//	                  `enter takes it back`, and its draft is KEPT — not
+//	                  cleared, not sent. Enter takes the keyboard back in one
+//	                  round trip and the other window is told in the same
+//	                  instant. A window on THIS machine is called
+//	                  `another window`, which is the word home already uses.
+//	                  A WATCHER IS STILL A WINDOW ONTO THE WORK: a turn started
+//	                  on the other machine is drawn here as it happens, with the
+//	                  message that opened it above the reply, by the code that
+//	                  draws every turn (watching.go's [app.followTurn]).
+//	                  All of it is absent locally: a second window on one
+//	                  conversation here is refused at the journal instead
+//	                  ([sessionBusyWord]), so there is no room to share.
 //	news from a redial
 //	                  an ordinary note in the transcript, once: the engine did
 //	                  not keep the turn, or it came back with a different

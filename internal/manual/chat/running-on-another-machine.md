@@ -126,6 +126,17 @@ side says:
 <dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
 ```
 
+When the **far** machine is the older one it refuses first, and what you see is its own
+sentence rather than that one:
+
+```
+error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
+```
+
+Either way the fix is the same and it is one command: update aforge on the machine that is
+behind. Nothing is negotiated down — two builds that might disagree about a frame must not
+find that out three turns into a conversation.
+
 ## What runs on the far machine, and what stays local
 
 The **far** machine owns the conversation and everything it touches:
@@ -182,6 +193,12 @@ folder: `devbox · porting the parser`.
 
 `/status` also names the session file with its machine in front of it, because that is a
 path you may want to copy.
+
+**And if another window is on the same conversation, you can tell from the input box.** A
+window that does not hold the keyboard draws one dim line where its box was —
+`typing from spark now` on the left, `enter takes it back` on the right — and nothing else
+about the screen changes. A window that does hold it says nothing at all. See *Staying on
+that machine* for the whole of how two terminals on one chat behave.
 
 The `~` collapse still runs against **this** machine's home directory, so it rarely fires
 on a remote path — expect to see the full path.

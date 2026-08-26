@@ -125,6 +125,26 @@ type Client struct {
 	calls   map[uint64]chan result
 	streams map[uint64]*stream
 
+	// driver is who holds the keyboard, as the engine last told this surface.
+	// It is set from the welcome and moved by every "driver" frame, and it is
+	// the ONLY thing on this side that answers the question — a client that
+	// worked it out for itself would be a second authority on a fact that can
+	// only have one (driver.go).
+	driver Driver
+	// driverWake is closed and replaced whenever [Client.driver] changes, which
+	// is how a surface drawing on a frame clock learns that an answer arrived
+	// on the wire with no keystroke behind it. It is a channel rather than a
+	// callback because the surface's loop is a select and a callback would be
+	// the wire calling into a draw.
+	driverWake chan struct{}
+
+	// following carries the turns this surface did not start, so the screen can
+	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
+	// never block, and a surface that is not draining this is one that does not
+	// want it — the events themselves are queued on the stream regardless, and
+	// the transcript is the authority on a turn that ended.
+	following chan Following
+
 	// dead is the reason this connection stopped, or nil while it is alive.
 	// Every method reads it first, so a surface driving a corpse gets an error
 	// per call rather than a hang per call. done is closed at the same moment,
@@ -164,6 +184,14 @@ func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
 // anything has been said on a pipe.
 func newClient(host string, hello Hello) *Client {
 	hello.Version = Version
+	// THIS MACHINE'S NAME IS FILLED IN HERE AND NOT AT THE DOOR, so that no
+	// door can forget it: --host, --at and every test all reach this one
+	// constructor, and a hello without a name is a screen on the far side
+	// saying `another window` about a machine in another building. A door that
+	// wants to say something else still can — a name already set is kept.
+	if strings.TrimSpace(hello.Surface) == "" {
+		hello.Surface = MachineName()
+	}
 	return &Client{
 		host:    strings.TrimSpace(host),
 		hello:   hello,
@@ -171,6 +199,10 @@ func newClient(host string, hello Hello) *Client {
 		streams: map[uint64]*stream{},
 		done:    make(chan struct{}),
 		stop:    make(chan struct{}),
+
+		driver:     Driver{Yours: true},
+		driverWake: make(chan struct{}),
+		following:  make(chan Following, followingRoom),
 	}
 }
 
@@ -224,6 +256,17 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	c.mu.Lock()
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A TURN ALREADY RUNNING WHEN THIS SURFACE ARRIVED IS ONE IT DID NOT START
+	// EITHER, and it reaches the screen by the same road. It carries no sentence:
+	// the message that opened it is in the journal, which this surface reads on
+	// its way in ([Turn.Said] states which of the two moments needs one).
+	if welcome.Live != 0 {
+		c.follows(Following{Events: c.stream(welcome.Live).events()})
+	}
+	// The welcome's word on the keyboard is a driver frame by another road, and
+	// it goes through the same door so that a redial that came back as a watcher
+	// wakes the surface exactly as a live hand-over would.
+	c.drives(welcome.Driver)
 	return welcome, nil
 }
 
@@ -239,8 +282,14 @@ func (c *Client) helloNow() Hello {
 	// The session file the engine last told us about beats the one the door
 	// asked for: /new and /resume both move it, and a redial that asked for the
 	// launch's file would reopen the conversation the person left behind.
+	//
+	// AND IT IS ALSO HOW THIS SURFACE KNOWS IT HAS BEEN HERE BEFORE. A welcome
+	// already in hand is exactly "I have attached to this conversation once",
+	// which is what [Hello.Back] means: do not move the keyboard onto me, I am
+	// a link coming back and not a person arriving.
 	if strings.TrimSpace(open) != "" {
 		hello.Session = open
+		hello.Back = true
 	}
 	if cursors := c.cursors(); len(cursors) > 0 {
 		hello.Resume = cursors
@@ -312,6 +361,110 @@ func (c *Client) Live() (uint64, <-chan session.Event) {
 // and never stream frames, because a turn's events are the work a person asked
 // for and the getters are the work nobody did.
 func (c *Client) CallsMade() uint64 { return c.made.Load() }
+
+// followingRoom is how many unclaimed turns this client will hold for a surface
+// that has not asked for them yet. A conversation runs one turn at a time, so
+// anything past a couple is a surface that has stopped reading.
+const followingRoom = 8
+
+// Following is a turn this surface did not start: the sentence that opened it,
+// where the engine sent one, and the channel its events arrive on.
+//
+// THE CHANNEL IS THE SAME KIND OF CHANNEL A SUBMIT ANSWERS WITH, on purpose and
+// for [Client.Live]'s reason: a window watching somebody else's turn should draw
+// it with the code that draws every turn, and the only thing it lacks is the
+// [StreamRef] it would have got from opening it.
+type Following struct {
+	// Said is the message that opened the turn, empty when the transcript
+	// already has it — see [Turn.Said].
+	Said string
+	// Events is that turn, arriving.
+	Events <-chan session.Event
+}
+
+// Follow is the turns started by some other window on this conversation.
+//
+// IT IS WHAT MAKES A SECOND WINDOW A WINDOW AND NOT A DEAD FRAME. A surface that
+// is not holding the keyboard is still watching the work, and the work is a turn
+// somebody started somewhere else.
+func (c *Client) Follow() <-chan Following { return c.following }
+
+// follows offers one turn to whoever is watching, and drops it when nobody is
+// keeping up. See [Client.following] for why dropping is the right failure.
+func (c *Client) follows(turn Following) {
+	select {
+	case c.following <- turn:
+	default:
+	}
+}
+
+// Driver is who holds the keyboard on this conversation right now, as the
+// engine last said. It answers from memory with nothing on the wire behind it,
+// because the surface asks it on the draw path (internal/tui3's watcher line).
+//
+// A CLIENT WITH NO ENGINE BEHIND IT YET SAYS `Yours`. That is the honest
+// default for the one instant it covers — before the first welcome there is no
+// room to be a watcher in — and every road after it is an answer the engine
+// gave.
+func (c *Client) Driver() Driver {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.driver
+}
+
+// DriverChanged is closed the next time the answer to [Client.Driver] moves.
+//
+// IT IS HOW A HAND-OVER REACHES A SCREEN WITH NOBODY TOUCHING THE KEYBOARD. The
+// other machine took the keyboard; nothing happened on this one; and the surface
+// still has to stop drawing a composer this instant. So the wait is a channel
+// the surface can sit in a select on, replaced rather than reused so a waiter
+// that arrives late gets the NEXT change and never a stale one.
+func (c *Client) DriverChanged() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.driverWake
+}
+
+// drives records who the engine says is driving and wakes whoever is waiting on
+// it. An answer that did not change wakes nobody — a surface repainting on every
+// restatement of the same fact would be a terminal blinking at a frame nobody
+// sent.
+func (c *Client) drives(note Driver) {
+	c.mu.Lock()
+	if c.driver == note {
+		c.mu.Unlock()
+		return
+	}
+	c.driver = note
+	// The waiters are woken by the CLOSE of the channel they are holding, and
+	// the next ones wait on a fresh one. A channel that was sent on instead
+	// would wake exactly one waiter, and there is no rule saying only one thing
+	// ever watches this.
+	woken := c.driverWake
+	c.driverWake = make(chan struct{})
+	c.mu.Unlock()
+	close(woken)
+}
+
+// Take asks for the keyboard. It is one round trip and it does not refuse —
+// see [MethodTake] for why a person pressing enter on their own work is not a
+// thing the engine weighs.
+func (c *Client) Take() error {
+	payload, err := c.call(nil, MethodTake, nil)
+	if err != nil {
+		return err
+	}
+	// The answer is the ENGINE'S word on who drives now, taken from the call
+	// this surface made rather than raced against the frame the rest of the room
+	// gets. A client that set the field itself would be the second authority
+	// this whole lane exists to avoid.
+	var note Driver
+	if err := json.Unmarshal(payload, &note); err != nil {
+		return err
+	}
+	c.drives(note)
+	return nil
+}
 
 // LinkNote is the quiet true sentence about the connection right now, and the
 // empty string whenever there is nothing to say — which is almost always, and
@@ -483,6 +636,16 @@ func (c *Client) read() {
 			c.stream(frame.ID).push(frame.Seq, frame.Payload)
 		case "closed":
 			c.stream(frame.ID).finish()
+		case "turn":
+			var turn Turn
+			if err := json.Unmarshal(frame.Payload, &turn); err == nil && turn.Stream != 0 {
+				c.follows(Following{Said: turn.Said, Events: c.stream(turn.Stream).events()})
+			}
+		case "driver":
+			var note Driver
+			if err := json.Unmarshal(frame.Payload, &note); err == nil {
+				c.drives(note)
+			}
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
 			return
@@ -559,12 +722,21 @@ func (c *Client) bury(cause error) {
 	dead := c.dead
 	calls, streams := c.calls, c.streams
 	c.calls, c.streams = map[uint64]chan result{}, map[uint64]*stream{}
+	// AND THE KEYBOARD COMES BACK TO A SURFACE WHOSE CONNECTION DIED. There is
+	// no room left to be a watcher in, the screen is about to say the connection
+	// is gone, and a composer replaced by a line about another machine would be
+	// a second, wronger sentence in front of the first. Whoever was waiting on
+	// the change is woken so the frame that says it is drawn now.
+	c.driver = Driver{Yours: true}
+	woken := c.driverWake
+	c.driverWake = make(chan struct{})
 	close(c.done)
 	c.mu.Unlock()
 	// Nothing is roaming any more either: this is the end, and a backoff still
 	// counting down behind it would dial a machine whose conversation has
 	// already been declared gone on the screen.
 	c.stopOnce.Do(func() { close(c.stop) })
+	close(woken)
 
 	for _, waiting := range calls {
 		waiting <- result{err: dead}
@@ -782,6 +954,10 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 	c.mu.Lock()
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A SWAP DOES NOT MOVE THE KEYBOARD, and the fresh welcome says who has it
+	// so that a surface reading this one does not forget what the last one told
+	// it. It goes through the same door a live hand-over does.
+	c.drives(welcome.Driver)
 	return welcome, nil
 }
 

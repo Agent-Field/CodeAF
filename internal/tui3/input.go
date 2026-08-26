@@ -555,6 +555,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// A WATCHER'S KEYBOARD DIFFERS IN TWO KEYS AND NOT IN A MODE (watching.go).
+	// It is read here, under every overlay and card above — all of which a
+	// watcher may still use — and over the plain switch, which is where the send
+	// keys and the character keys are.
+	if a.watching() {
+		if cmd, taken := a.watchKey(msg); taken {
+			return cmd
+		}
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc during a recall is the recall's: it puts the person's own draft
@@ -983,6 +993,15 @@ func (a *app) enter() tea.Cmd { return a.enterLine(false) }
 // recall history, the draft file, the slash, the mentions — and it is one
 // function so it stays that way.
 func (a *app) enterLine(marked bool) tea.Cmd {
+	// A WATCHER'S SEND KEY IS THE TAKE-BACK, and nothing below it runs
+	// (watching.go). The router already turns enter into this, so reaching here
+	// means some other road did — the path completion's own enter, a paste that
+	// arrived as a keystroke — and every one of them means the same thing on a
+	// window that is not holding the keyboard. The draft is untouched: not
+	// cleared, not sent, exactly where it was.
+	if a.watching() {
+		return a.takeKeyboard()
+	}
 	line := strings.TrimSpace(a.input.String())
 	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
 	// empty message — "what is this?" is often the picture itself — so the two
@@ -1170,6 +1189,15 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
 		}
+	}
+	// AND WHERE THE DRAFT ITSELF WOULD BE, ONE DIM LINE WHEN ANOTHER WINDOW HAS
+	// THE KEYBOARD (watching.go). It is read HERE, under every overlay above and
+	// over the draft below, because that is exactly what it is: a stand-in for
+	// the main box and for nothing that has taken the box's position — a picker's
+	// filter still belongs to the person sitting here, whoever is typing into the
+	// conversation.
+	if a.watching() {
+		return a.watchBar(width), 0, 0
 	}
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to

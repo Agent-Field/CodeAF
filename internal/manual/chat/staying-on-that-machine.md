@@ -113,12 +113,18 @@ Two things are worth knowing. A question that was **on your screen** when you wa
 is kept too, and comes back the next time you attach. And a question waiting for you keeps
 that conversation open — the machine does not let go of a conversation that is holding one.
 
-## Two windows on one conversation
+## Two windows on one conversation — two terminals on the same chat
 
 More than one window can be attached to the same conversation at once — a desk machine and
-a laptop, or you and somebody else. Every window sees the same turn as it happens.
+a laptop, two terminals on the same chat, or you and somebody else. Every window sees the
+same turn as it happens.
 
-What you should know about sharing one:
+**The keyboard follows the newest window.** Exactly one of them can type at a time, and it
+is the one that opened the conversation most recently. Nothing is closed and nothing is
+refused: the others stay attached, keep drawing every reply as it arrives, and get their
+composer back the moment they ask for it. See *Someone else is typing — why can't I type*.
+
+The rest of what you should know about sharing one:
 
 - **A question is answered once.** Say yes to a permission card on the phone and the
   conversation has its answer. A second window may still have that card drawn, but
@@ -129,7 +135,111 @@ What you should know about sharing one:
   than about your window. Simply closing a window — or losing its connection — leaves
   everything running for the others.
 - **Only the machine holding the session knows how many of you there are**, so the count
-  in the entry notice comes from over there.
+  in the entry notice comes from over there. Opening the conversation here says, as you
+  come in:
+
+  ```
+  another window is on this conversation — typing is here now
+  ```
+
+  or, for more than one, `2 other windows are on this conversation — typing is here now`.
+  When you are alone — the ordinary case — nothing is said at all.
+
+## What typing from spark now means, and why my input box is one line
+
+It means another window on this conversation has the keyboard, and this one is watching.
+Where your input box was, there is one dim line instead:
+
+```
+typing from spark now                                     enter takes it back
+```
+
+`spark` is the machine the other window is on — the name that machine calls itself, with
+any domain trimmed off it. A second window on **this** machine reads as `another window`
+instead, which is what aforge calls a conversation open somewhere else everywhere. A
+machine that could not say its own name gets `another window` too.
+
+The line is the whole of the change. The transcript above it, the status line below it and
+every other key on the screen are exactly as they were.
+
+## Someone else is typing — why can't I type
+
+Because another window on this conversation has the keyboard, and yours is watching. What
+you are looking at is the line above.
+
+**Nothing is lost and nothing is closed.** The window is still attached: replies arrive
+live, the transcript is complete, you can scroll it, copy out of it, answer a permission
+card, press `esc` to interrupt, and walk to any other place with the usual keys. What you
+cannot do is send a message — and typing characters does nothing at all, because there is
+no box on the screen to put them in.
+
+**Your unsent draft is kept.** It is not cleared, not sent and not lost. It is exactly
+where you left it when the box comes back.
+
+## Take over the keyboard — enter takes it back
+
+Press `enter`. The keyboard is yours in one round trip on the connection that is already
+open — nothing reconnects, nothing restarts — and the other window becomes the watcher in
+the same instant, told by the machine holding the session rather than finding out when
+somebody types.
+
+Why `enter` and not the first letter you type: taking the keyboard off another machine is
+a thing to mean, and asking for it is one round trip, so the first letter of every sentence
+would be racing a call over the wire. `enter` is already the key that means "my turn to
+speak", and the line on screen says so.
+
+There is no lock and nothing to release. Whoever pressed `enter` most recently has it, and
+the window that lost it keeps its own draft, its own scroll position and the whole
+conversation.
+
+**Walking away instead:** two spaces in an empty box still open home, exactly as they do
+when you are typing, so you can leave the conversation running in front of the other
+window and get on with something else on this machine.
+
+## If I type into the wrong window
+
+You get one sentence back from the machine holding the conversation:
+
+```
+the keyboard is on spark right now — press enter here to take it back
+```
+
+or, for a window on this same machine, `the keyboard is in another window right now — press
+enter here to take it back`.
+
+**A message is never dropped in silence.** It either lands or it is answered — this is the
+answer. It only comes up in the seconds where the keyboard moved while your message was
+already on the wire, because a window that is watching has no send key to press: `enter`
+there asks for the keyboard instead.
+
+## Does the other window see the turn I started
+
+Yes, as it happens. The message you send is drawn in the watching window above the reply,
+and the reply arrives there token by token exactly as it does here — not on a refresh, not
+when somebody touches it. That is the whole point of leaving the other window open: it
+goes on showing the work.
+
+A turn that was already running when a window attaches is picked up part-way through in the
+same way, with the part it missed drawn in first.
+
+## Does my window come back and steal the keyboard after my wifi drops
+
+No. A connection coming back is not somebody arriving.
+
+If your link drops and the surface redials itself, it rejoins as it left — and if you have
+walked to another machine and started typing there in the meantime, the returning window
+comes back as the **watcher**. It takes the keyboard only if nothing else has it.
+
+That is the one place "the newest window drives" is deliberately not literal, and the
+reason is that a lid you closed in one city reconnecting half an hour later is not a person
+sitting down.
+
+## What happens to the keyboard when a window closes
+
+It goes to the newest window still attached, so whoever is left can always type. Nobody has
+to ask for it and no line appears — the watcher's line simply goes and the box comes back.
+
+If the window that closed was the watcher, nothing moves at all.
 
 ## Nothing to set up on that machine
 

@@ -310,6 +310,12 @@ type Session struct {
 	surfaces map[*server]struct{}
 	pumps    sync.WaitGroup
 
+	// driver is the one surface that may put words into this conversation, and
+	// arrivals is what "newest" means when the keyboard has to find one. Both
+	// are driver.go's, and that file is the whole of the rule.
+	driver   *server
+	arrivals uint64
+
 	// closed is the conversation deliberately ended — [MethodClose], or the
 	// pipe dying on an engine whose life this pipe was.
 	closed bool
@@ -473,8 +479,18 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked()
 	welcome.Attached = len(sess.surfaces)
+	s.name = machineLabel(hello.Surface)
+	sess.arrivals++
+	s.arrived = sess.arrivals
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
+	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
+	// new one (driver.go states the whole rule, [Hello.Back] states why the
+	// difference is load-bearing).
+	if !hello.Back || sess.driver == nil {
+		sess.takeLocked(s)
+	}
+	welcome.Driver = sess.driverForLocked(s)
 	replay := sess.replayLocked(hello.Resume)
 	sess.mu.Unlock()
 
@@ -494,11 +510,22 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // question nobody is looking at.
 func (sess *Session) detach(s *server) {
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 	delete(sess.surfaces, s)
+	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
+	// newest surface still here, so the last window standing can always type
+	// (driver.go's handOnLocked).
+	moved := false
+	if sess.driver == s {
+		sess.handOnLocked()
+		moved = true
+	}
 	if len(sess.surfaces) == 0 {
 		sess.empty = time.Now()
 		sess.held.roomEmptied()
+	}
+	sess.mu.Unlock()
+	if moved {
+		sess.tellDriver(s)
 	}
 }
 
@@ -682,7 +709,7 @@ func (sess *Session) watchingLocked() []*server {
 // about to see their channels close have already gone quiet — and the rings and
 // the waiting questions go with it, because both belong to a conversation that
 // no surface is being shown any more.
-func (sess *Session) swap(build func() (WrappedAgent, string, bool, error)) (json.RawMessage, error) {
+func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, bool, error)) (json.RawMessage, error) {
 	next, file, resumed, err := build()
 	if err != nil {
 		return nil, err
@@ -706,6 +733,10 @@ func (sess *Session) swap(build func() (WrappedAgent, string, bool, error)) (jso
 	if welcome.Attached < 0 {
 		welcome.Attached = 0
 	}
+	// A SWAP DOES NOT MOVE THE KEYBOARD. The conversation behind the room
+	// changed; who is holding the keys to it did not, and the fresh welcome has
+	// to say so or the surface reading it would forget.
+	welcome.Driver = sess.driverForLocked(asked)
 	sess.mu.Unlock()
 
 	if previous != nil {
@@ -729,6 +760,12 @@ type server struct {
 
 	open    func(Hello) (*Session, error)
 	session *Session
+
+	// name is the machine this surface is running on, as its hello said and
+	// [machineLabel] made it safe to draw. arrived is its place in the order the
+	// room filled up, which is how "the newest" is decided (driver.go).
+	name    string
+	arrived uint64
 
 	// pending is the stream a call has just opened and dispatch has not yet let
 	// speak. It is one slot rather than a queue because one reader makes one
@@ -863,8 +900,19 @@ func (s *server) handshake(line []byte) error {
 	// The arrival is one act: attached, welcomed, and caught up, with this
 	// connection's writer held throughout so nothing overtakes the welcome.
 	s.write.Lock()
-	defer s.write.Unlock()
-	return sess.attach(s, hello)
+	arrived := sess.attach(s, hello)
+	s.write.Unlock()
+	if arrived != nil {
+		return arrived
+	}
+	// AND ONLY THEN IS THE REST OF THE ROOM TOLD who has the keyboard now. It
+	// happens outside this connection's writer because telling means writing to
+	// the OTHER connections and a surface that had just been handed the welcome
+	// would deadlock on its own lock; and it happens after the welcome because
+	// an older window learning it is a watcher is news about the window that has
+	// arrived, which had better have arrived first.
+	sess.tellDriver(s)
+	return nil
 }
 
 // refuse says why on the wire and then hands the same sentence back as the
@@ -932,7 +980,24 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	if agent == nil {
 		return nil, errors.New("engine: no conversation is open")
 	}
+	// THE FOUR DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
+	// the check is here rather than in each of them so that a door added later
+	// cannot forget it. Everything else — reading the transcript, answering a
+	// card, switching a model, interrupting a turn — stays open to every surface
+	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
+	case MethodSubmit, MethodFollowUp, MethodSubmitImage, MethodSubmitFiles:
+		if err := s.mayDrive(); err != nil {
+			return nil, err
+		}
+	}
+
+	switch call.Method {
+	case MethodTake:
+		// The keyboard comes here, and the room is told in the same breath
+		// (driver.go's take).
+		return json.Marshal(s.take())
+
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
@@ -942,16 +1007,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// is the instruction the engine puts in front of the sentence, which
 		// lives on this side of the wire (internal/session's standing_mark.go).
 		if args.Standing {
-			return s.stream(agent.SubmitStanding(context.Background(), args.Text))
+			events, err := agent.SubmitStanding(context.Background(), args.Text)
+			return s.stream(args.Text, events, err)
 		}
-		return s.stream(agent.Submit(context.Background(), args.Text))
+		events, err := agent.Submit(context.Background(), args.Text)
+		return s.stream(args.Text, events, err)
 
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
 			return nil, err
 		}
-		return s.stream(agent.FollowUp(args.Text))
+		events, err := agent.FollowUp(args.Text)
+		return s.stream(args.Text, events, err)
 
 	case MethodSubmitImage:
 		args, err := arg[SubmitImageArgs](call)
@@ -962,7 +1030,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		return s.stream(agent.SubmitImage(context.Background(), args.Text, images))
+		events, err := agent.SubmitImage(context.Background(), args.Text, images)
+		return s.stream(args.Text, events, err)
 
 	// The other two doors a person's own files come through, both in file.go:
 	// what they attached on the way out, and what they asked for on the way
@@ -1207,7 +1276,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if fresh == nil {
 			return nil, errors.New("engine: this engine cannot start a new session")
 		}
-		return sess.swap(func() (WrappedAgent, string, bool, error) {
+		return sess.swap(s, func() (WrappedAgent, string, bool, error) {
 			next, file, err := fresh()
 			return next, file, false, err
 		})
@@ -1223,7 +1292,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if open == nil {
 			return nil, errors.New("engine: this engine cannot open another session")
 		}
-		return sess.swap(func() (WrappedAgent, string, bool, error) {
+		return sess.swap(s, func() (WrappedAgent, string, bool, error) {
 			next, resumed, err := open(file)
 			return next, file, resumed, err
 		})
@@ -1265,7 +1334,7 @@ func arg[T any](call Frame) (T, error) {
 // the result naming it would be events about a stream the surface has never
 // heard of — the one ordering this protocol cannot recover from, and a race that
 // would show up as a lost first token on a fast turn and never in a test.
-func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage, error) {
+func (s *server) stream(said string, events <-chan session.Event, err error) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -1278,7 +1347,7 @@ func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage
 		events = empty
 	}
 	id, generation := s.session.mint()
-	s.pending = &pending{id: id, generation: generation, events: events}
+	s.pending = &pending{id: id, generation: generation, said: said, events: events}
 	return json.Marshal(StreamRef{Stream: id})
 }
 
@@ -1286,7 +1355,10 @@ func (s *server) stream(events <-chan session.Event, err error) (json.RawMessage
 type pending struct {
 	id         uint64
 	generation uint64
-	events     <-chan session.Event
+	// said is the sentence that opened this turn, carried so the rest of the
+	// room can draw it above the reply ([Turn.Said]).
+	said   string
+	events <-chan session.Event
 }
 
 // release starts whatever the call just opened. It runs on the reader
@@ -1303,6 +1375,10 @@ func (s *server) release() {
 		return
 	}
 	sess := s.session
+	// THE ROOM IS TOLD BEFORE THE FIRST EVENT OF IT MOVES. Every other surface
+	// is about to receive this turn's events and would otherwise have nowhere to
+	// put them, because a surface draws the streams it knows about ([Turn]).
+	sess.tellTurn(Turn{Stream: waiting.id, Said: waiting.said}, s)
 	sess.pumps.Add(1)
 	go sess.pump(waiting.id, waiting.generation, waiting.events)
 }
