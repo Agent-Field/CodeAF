@@ -1081,15 +1081,22 @@ func TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed(t *testing
 		t.Fatalf("the launch landed on line %d, want the first standable row at %d:\n%s",
 			a.home.cursor, a.home.placesTop(), homeText(a))
 	}
-	// Rest is still one ↑ away, machine card and all.
-	a.home.move(-1)
-	if !a.home.resting() {
-		t.Fatalf("↑ off the top row did not reach rest:\n%s", homeText(a))
+	// AND `↑` OFF THE TOP ROW LEAVES THE LIST'S OWN CURSOR ALONE. It reaches the
+	// TAB BAR, which is a row of the frame rather than of this list (pages.go's
+	// [barCursor]); the row a person walked up off is still the row `↓` puts them
+	// back on, and home's card never stops being about it.
+	a.frame()
+	drive(t, a, key("up"))
+	if !a.bar.on {
+		t.Fatalf("↑ off the top row did not reach the tab bar:\n%s", homeText(a))
 	}
-	if subject, ok := a.homeSubject(); !ok || subject.kind != bandKindMachine {
-		t.Fatalf("the card at rest is %v (ok=%v), want the machine's", subject.kind, ok)
+	if a.home.cursor != a.home.placesTop() {
+		t.Fatalf("↑ onto the bar moved home's own cursor to line %d", a.home.cursor)
 	}
-	a.home.move(1)
+	drive(t, a, key("down"))
+	if a.bar.on {
+		t.Fatal("↓ from the bar left the cursor on it")
+	}
 	line, ok = a.home.focusedLine()
 	if !ok || line.kind != homeSession {
 		t.Fatalf("the first ↓ landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
@@ -2126,7 +2133,7 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
 	// with the selection on screen — the row esc drops back into — so the first
 	// frame answers "where am I" before a key is pressed (homebridge.go's
-	// [homeView.openAt]). Rest is still a place, one ↑ off the top of the list.
+	// [homeView.openAt]). One ↑ off the top of the list reaches the tab bar.
 	if got := homeName(a.home.focused()); got != "The One the Door Picked" {
 		t.Fatalf("a greeted launch opened on %q, want the door's own conversation", got)
 	}
@@ -2591,8 +2598,13 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		if !a.home.resting() && a.home.wide() {
-			t.Fatalf("at %d columns an empty home opened on line %d rather than at rest", tc.width, a.home.cursor)
+		// AND AN EMPTY HOME HAS NO ROW TO STAND ON, which is the emptiness law
+		// rather than a broken cursor: the one line it draws is the sentence
+		// saying the machine is empty, and that names an absence rather than a
+		// thing to open ([homeEmptyRow]). `↑` from there reaches the tab bar,
+		// which is the whole of what this screen has to offer onward.
+		if len(placeHome{}.stops(a)) != 0 {
+			t.Fatalf("at %d columns an empty home offered a row to stand on", tc.width)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))

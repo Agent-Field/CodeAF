@@ -2,7 +2,7 @@ package tui3
 
 func init() {
 	registerHomeBand(homeBand{name: "keys", order: bandOrderKeys,
-		kinds: []bandKind{bandKindSession, bandKindItem, bandKindMachine}, draw: drawKeysBand})
+		kinds: []bandKind{bandKindSession, bandKindItem}, draw: drawKeysBand})
 }
 
 // drawKeysBand is the quiet legend at the foot of every actionable card.
@@ -43,22 +43,6 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 			clauses = append(clauses, effortKeyClause)
 		}
 		clauses = append(clauses, "→ more")
-	case bandKindMachine:
-		// THE MACHINE'S CARD HAD NO LEGEND UNTIL IT HAD A KEY. Every other card
-		// here is about a row, and at rest there is no row: enter opens nothing,
-		// ctrl+t has no folder to start in, and a legend naming them would have
-		// been five invitations the screen has already decided against. ctrl+v is
-		// the first key this card answers — it moves the install's own rung, the
-		// one the `thinking` band above states (homeband_thinking.go) — so the
-		// legend appears now, with the one key that works on it and no others.
-		//
-		// AND ONLY WHERE THERE IS A PROFILE TO WRITE IT INTO. A window with none
-		// draws no rung and names no key, which is the same absence stated twice
-		// rather than a legend advertising a keystroke that would refuse.
-		if _, ok := a.effortProfile(); !ok {
-			return nil
-		}
-		clauses = []string{effortKeyClause}
 	default:
 		return nil
 	}

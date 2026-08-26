@@ -76,12 +76,12 @@ func sectionEnd(kind homeRowKind) bool {
 }
 
 // markedSection is the line number of THE ONE HEADING THIS FRAME MARKS, and
-// [homeRest] when it marks none.
+// [homeNoLine] when it marks none.
 func (h *homeView) markedSection() int {
 	// A CLOSED VIEW MARKS NOTHING, and that falls out of having no lines rather
 	// than out of a flag: the cursor is then never inside the list.
 	if h.searching() || h.cursor < 0 || h.cursor >= len(h.lines) {
-		return homeRest
+		return homeNoLine
 	}
 	for at := h.cursor - 1; at >= 0; at-- {
 		kind := h.lines[at].kind
@@ -89,10 +89,10 @@ func (h *homeView) markedSection() int {
 			return at
 		}
 		if sectionEnd(kind) {
-			return homeRest
+			return homeNoLine
 		}
 	}
-	return homeRest
+	return homeNoLine
 }
 
 // marksSection reports that the line at `at` is that one heading.

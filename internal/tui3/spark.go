@@ -2,17 +2,18 @@ package tui3
 
 // THE SPARKLINE MACHINERY — ONE PLACE THAT TURNS A RUN OF READINGS INTO A SHAPE.
 //
-// Two surfaces on this program draw a spark and they draw it in ONE alphabet.
 // The status line's context spark ([app.ctxSpark]) stands inside a sentence
-// beside the figure it belongs to; the machine card's `hands` band
-// (homeband_spark.go) stands on its own row. Both are a row of block bars, and
-// what they share is the arithmetic — a reading, a ceiling and a number of steps
-// become a height.
+// beside the figure it belongs to: a row of block bars, and the arithmetic that
+// turns a reading, a ceiling and a number of steps into a height.
 //
-// It is one function rather than two loops for the reason [bandClauses] is one
-// function: a second quantizer is a second answer to "how tall is this sample",
-// and the day the two rounded differently would be the day two sparks on one
-// screen disagreed about the same number.
+// IT HAD A SECOND CALLER AND THE SURFACE IT DREW ON IS GONE. Home's machine card
+// carried a `hands` chart — the shape of what this machine had had in flight over
+// the last few minutes — and that card was reached by walking the cursor up off
+// the top of home's list onto no row at all. `↑` off the top row reaches the TAB
+// BAR now (pages.go's [barCursor]), so the card and its chart went with the state
+// that opened them. This stays one function because it is still the ONE answer to
+// "how tall is this sample", and the day a second one rounded differently would be
+// the day two sparks on one screen disagreed about the same number.
 //
 // ── WHY BLOCK BARS AND NOT BRAILLE ──
 //

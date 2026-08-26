@@ -251,9 +251,8 @@ const (
 	// time, so the box's prompt and the foot can never drift apart.
 	homeRestHint = homeFootWord + " · tab next place"
 	// homeEmptyWord is a machine that has not held a conversation yet. It is
-	// drawn where the first project's rows will be, under the zones and beside
-	// the machine's card ([homeEmptyRow]), so an empty home keeps the shape of
-	// a full one.
+	// drawn where the first project's rows will be, under the zones
+	// ([homeEmptyRow]), so an empty home keeps the shape of a full one.
 	homeEmptyWord = "nothing here yet — say something and this fills up"
 	// homeNoMatchWord is a filter that matched nothing.
 	homeNoMatchWord = "no conversation matches"
@@ -345,9 +344,10 @@ type homeRowKind uint8
 
 // homeEmptyRow is THE DIM SENTENCE UNDER THE ZONES ON A MACHINE THAT HOLDS
 // NOTHING YET — [homeEmptyWord], a clause to a row ([homeEmptyLines]), standing
-// where the first project's rows will be. It is not a cursor stop, for [homeHeading]'s reason: it names an absence
-// rather than a thing to open, and the cursor rests on the machine's card
-// above a list with nothing to walk into. It is numbered outside the iota
+// where the first project's rows will be. It is not a cursor stop, for
+// [homeHeading]'s reason: it names an absence rather than a thing to open, so a
+// list with nothing else in it has nothing to walk into and `↑` from it reaches
+// the tab bar (pages.go's [app.barReach]). It is numbered outside the iota
 // block for [homeAttentionZone]'s reason — that block is edited by other lanes
 // in the same wave, and a constant appended to it would be a conflict over a
 // line that says nothing.
@@ -653,7 +653,7 @@ type homeView struct {
 	// ledger is what the `since you left` block was told about memory, taken with
 	// the world rather than at the draw ([app.readSwitchLedger]).
 	ledger switcherLedgerInput
-	// spin is the ONE line on this page that animates, and [homeRest] when
+	// spin is the ONE line on this page that animates, and [homeNoLine] when
 	// nothing on it is moving (homespinner.go).
 	spin int
 
@@ -677,14 +677,11 @@ type homeView struct {
 	foldLines []bandFoldLine
 	repos     map[string]homeRepoReading
 	// machine is what this machine has to say about ITSELF — the reading the
-	// machine card's three bands and the pulse line at the top of the screen
-	// both draw from, taken at most once per [homeEvery] (homemachine.go's
-	// [app.machineFactsAt]) — and machineAt when it was taken. machineDoors is
-	// the news rows that card painted this frame, so a press can find the thing
-	// one names; it is rewritten on every paint of the card.
-	machine      machineFacts
-	machineAt    time.Time
-	machineDoors []machineDoor
+	// pulse line at the top of the screen draws from, taken at most once per
+	// [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt when
+	// it was taken.
+	machine   machineFacts
+	machineAt time.Time
 	// week is what the standing ledger says about the last seven days, by item
 	// id, and weekAt when it was read. ONE READING SERVES EVERY CARD on the
 	// screen (homestanding.go's [app.standWeek]): the ledger is a file per day,
@@ -887,10 +884,10 @@ func (a *app) landHome() {
 	a.readStandBands()
 	a.home.readGone()
 	a.home.build()
-	// AND THE CURSOR OPENS ON NOTHING, which is the greeting's own law said one
-	// way further ([homeView.openAt]): the first thing on the screen is the
-	// machine's card rather than a row, and esc still means what it always meant
-	// here — go on with what I was doing.
+	// AND THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS HOLDING, which is
+	// the greeting's own law said one way further ([homeView.openAt]): the
+	// selection is on screen from the first frame, and esc still means what it
+	// always meant here — go on with what I was doing.
 	a.home.openAt(a.file)
 	// AND THE WELCOME BOX RETIRES WITHOUT EVER DRAWING. Its right column is the
 	// four most recent conversations in this directory, and home's left column
@@ -1064,10 +1061,10 @@ func (a *app) refreshHome() {
 	// typing may not go to a seam for its own margin (homeplaces.go).
 	a.readPlaceSummaries()
 	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO, for the
-	// reason above it: the pulse line's count and the machine card's rows are
-	// derived from these bands, and a reading taken on its own clock would be a
-	// top line describing a machine the column below it had already moved past
-	// (homemachine.go's [app.machineFactsAt] takes it again on the next paint).
+	// reason above it: the pulse line's counts are derived from these bands, and
+	// a reading taken on its own clock would be a top line describing a machine
+	// the column below it had already moved past (homemachine.go's
+	// [app.machineFactsAt] takes it again on the next paint).
 	a.home.machineAt = time.Time{}
 	// AND THE FOLDERS ARE RE-STATTED ON THIS BEAT AND ONLY ON IT. A repository
 	// deleted in another terminal while home is up shows up here, three seconds
@@ -1081,11 +1078,6 @@ func (a *app) refreshHome() {
 
 // build turns the world into lines, applying the filter when one is typed.
 func (h *homeView) build() {
-	// AND REST IS FOLLOWED LIKE ANY OTHER PLACE THE CURSOR WAS. It is a place and
-	// not an accident ([homeRest]), so a rescan three seconds later must not walk
-	// somebody back onto row one and take the machine's card off the screen while
-	// they are reading it.
-	resting := h.resting() && h.restable()
 	previous := h.focused()
 	// AND THE ITEM UNDER THE CURSOR IS FOLLOWED THE SAME WAY. A band re-sorts
 	// when something starts firing, exactly as the conversations above it do, and
@@ -1122,10 +1114,6 @@ func (h *homeView) build() {
 	// walked off it — so type-and-enter still starts a chat, exactly as it did
 	// before this box could also search (see [homeAction]).
 	h.cursor, h.top = h.clamp(0), 0
-	if resting {
-		h.cursor = homeRest
-		return
-	}
 	if h.searching() {
 		h.picked = h.picked && h.pointable(previous.Transcript)
 		if !h.picked {
@@ -1748,37 +1736,22 @@ func homeRecency(at, now time.Time) int {
 	return int(int64(homeRecencyBoost) * (int64(homeRecencySpan) - int64(old)) / int64(homeRecencySpan))
 }
 
-// homeRest is where the cursor sits when it is ON NO ROW AT ALL, which is a
-// real place on this screen and not a broken index.
+// homeNoLine is the number that means NO LINE OF THIS COLUMN AT ALL, and every
+// reader of a line number here already treats a negative index as that
+// ([homeView.focusedLine], [homeView.focused], [homeView.previewLine]). The one
+// spinner uses it for a page with nothing moving on it (homespinner.go) and the
+// section walk for a list with no heading over the cursor (homesection.go).
 //
-// THE CARD IS ALWAYS ABOUT SOMETHING, AND AT REST IT IS ABOUT THE MACHINE
-// (docs/HOME-BRIDGE.md). A person who has walked up off the top of the list is
-// not pointing at any conversation, and the honest card for that is the
-// machine's own — what is keeping an eye on things, what happened since they
-// left, what the day has come to (homemachine.go).
-//
-// Every reader of the cursor already treats a negative index as "not on a row"
-// ([homeView.focusedLine], [homeView.focused], [homeView.previewLine]), so this
-// state costs the rest of the screen nothing: the list draws no highlight, enter
-// has nothing to open, and the pane answers for the machine instead.
-const homeRest = -1
-
-// resting reports that the cursor is at rest.
-//
-// A CLOSED VIEW IS NEVER RESTING, and that falls out of the zero value rather
-// than being asked: a homeView nobody has built has cursor 0 and [homeRest] is
-// -1. It used to ask an `open` flag of its own, which the router retired
-// (pages.go's [app.page] is the one answer to which place is up).
-func (h *homeView) resting() bool { return h.cursor == homeRest }
-
-// restable reports whether this shape of home HAS a rest to walk up into.
-//
-// NOT WHILE SOMETHING IS TYPED. With a query in the box the column is a drop-up
-// whose rows are matches and whose last row is the action row ([homeView.dropUp]);
-// walking up off the top of a search into a card about the whole machine would
-// be the screen changing the subject under somebody mid-word. And not at the
-// phone tier, whose column is an inbox with its own shape (homephone.go).
-func (h *homeView) restable() bool { return !h.searching() && !h.phone }
+// IT USED TO BE A PLACE THE CURSOR COULD STAND. Walking up off the top row put
+// the cursor here — on no row — and the right-hand column became a card about
+// the machine: what was keeping an eye on things, what had happened since you
+// left, what the day had come to. That state is retired. `↑` off the top row
+// reaches the TAB BAR now (pages.go's [barCursor]), which is a row a person can
+// walk along and open a room from, and each of those three questions has a room
+// of its own on that bar. So the cursor is always on a row of this list while
+// home is up, and this constant is an absent line rather than a second place to
+// be.
+const homeNoLine = -1
 
 // focused is the conversation under the cursor, and the zero row when the
 // cursor is not on one.
@@ -1903,32 +1876,19 @@ func (h *homeView) move(delta int) {
 		step, delta = -1, -delta
 	}
 	at := h.cursor
-	// bridge lane: FOCUS WAKES AT THE CENTER OF MASS. The first step down off
-	// rest at the three-column tier is spent entering the middle column — the one
-	// the layout declares primary — rather than walking into the flank the line
-	// list happens to begin with ([homeView.wake] holds the whole law). Every
-	// further step is the ordinary walk from there, so `pgdown` off rest is that
-	// landing and then three more rows, exactly as it is from anywhere else.
-	if at == homeRest && step > 0 {
-		if land := h.wake(); land != homeRest {
-			at, delta = land, delta-1
-		}
-	}
 	for ; delta > 0; delta-- {
 		next := at + step
 		for next >= 0 && next < len(h.lines) && !h.lines[next].stop() {
 			next += step
 		}
 		if next < 0 {
-			// WALKING UP OFF THE TOP ROW IS HOW A PERSON REACHES REST, and it is
-			// the smallest true version of it: the cursor leaves the list, the
-			// pane becomes the machine's own card ([homeRest]), and ↓ walks back
-			// into the first row. Walking down off the bottom still clamps, for
-			// the reason every list here clamps — there is nothing under the last
-			// row to be about.
-			if h.restable() {
-				at = homeRest
-			}
+			// WALKING UP OFF THE TOP ROW CLAMPS HERE AND IS ANSWERED ABOVE. The
+			// cursor used to leave the list at this step and stand on no row at
+			// all, with the right-hand column becoming a card about the machine;
+			// `↑` from the first row reaches the TAB BAR now, and the router
+			// claims the key before this function is ever called (pages.go's
+			// [app.barReach]). So both ends of the list clamp, which is what every
+			// other list on this surface does ([moveCursor]).
 			break
 		}
 		if next >= len(h.lines) {
@@ -2447,16 +2407,13 @@ func (a *app) homeEnter() tea.Cmd {
 	}
 	line, ok := h.focusedLine()
 	if !ok {
-		// ENTER AT REST STILL MEANS "TAKE ME IN". Home opens with the cursor on
-		// no row at all ([homeRest]) so the card can speak for the machine — but
-		// a person who opens the screen and presses enter is not asking about
-		// the machine, they are going back to work, and the nearest work is the
-		// conversation this terminal is already holding: the same door esc is,
-		// said with the key a hand reaches for first. A rest that turned enter
-		// into a dead key would be the screen charging a keystroke for its own
-		// furniture. The first list row is NOT the target — it can be another
-		// window's conversation, and enter at rest must never open a refusal.
-		if h.resting() && strings.TrimSpace(h.box.String()) == "" {
+		// THE CURSOR IS ON NOTHING THIS LIST CAN OPEN — a machine with no
+		// conversations on it yet, where the only row is the sentence saying so.
+		// enter is not a dead key there: a person pressing it is going back to
+		// work, and the nearest work is the conversation this terminal is already
+		// holding, which is the same door `esc` is said with the key a hand
+		// reaches for first.
+		if strings.TrimSpace(h.box.String()) == "" {
 			a.closeHome()
 		}
 		return nil
@@ -3045,14 +3002,6 @@ func (a *app) homePress(x, y int) tea.Cmd {
 			a.toggleBandFold(fold.band, fold.subject)
 			a.touch()
 			return nil
-		}
-		// AND EVERY NEWS ROW OF THE MACHINE'S CARD IS A DOOR (homemachine.go's
-		// [app.machinePress]). It is the one other thing on this column a pointer
-		// can act on, and it is read here for the fold line's own reason: the
-		// press resolves against the text this frame actually drew.
-		if cmd, took := a.machinePress(ansi.Strip(lines[y])); took {
-			a.touch()
-			return cmd
 		}
 	}
 	if row, column, ok := a.homePane(x, y); ok {
@@ -4010,13 +3959,6 @@ func homeName(row session.SessionRow) string {
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	a.resetBandFoldLines()
 	line, ok := a.home.previewLine()
-	if !ok && a.home.resting() {
-		// THE CURSOR IS ON NOTHING, SO THE CARD IS ABOUT THE MACHINE. It is the
-		// same column and the same registry, with a fourth kind of subject
-		// (homemachine.go's [app.machineCard]) — the morning glance, which is
-		// what this screen is for when a person is not yet pointing at anything.
-		return a.machineCard(width, room, pal)
-	}
 	if ok && line.kind == homeExchangeRow && line.ex != nil {
 		// THE ERRAND UNDER THE CURSOR, drawn where every other row's card is
 		// drawn. It used to take this column for as long as an exchange existed
@@ -4420,11 +4362,6 @@ func sinceAt(at, now time.Time) string {
 func (a *app) homeSubject() (bandSubject, bool) {
 	line, ok := a.home.previewLine()
 	if !ok {
-		// AT REST THE SUBJECT IS THE MACHINE (homemachine.go), so `m` and a click
-		// on one of the card's fold lines act on the card that is actually drawn.
-		if a.home.resting() {
-			return a.machineSubject(), true
-		}
 		return bandSubject{}, false
 	}
 	switch line.kind {

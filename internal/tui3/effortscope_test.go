@@ -59,67 +59,52 @@ func TestAScopeNobodyHasSetStatesNoRung(t *testing.T) {
 	}
 }
 
-// ── home, the cursor at rest: the install's own rung ─────────────────────────
+// ── home has no card about the machine, and no third scope ──────────────────
 
-// restingHome is home open with the cursor on no row at all — the state whose
-// card is the machine's own (homemachine.go) — and a profile to write into.
-func restingHome(t *testing.T) (*app, string) {
-	t.Helper()
+// THE THIRD SCOPE IS RETIRED AND THIS IS THE LAW THAT REPLACED IT.
+//
+// What used to be pinned here was "home at rest states the install's rung and
+// ctrl+v moves it": the cursor walked up off the top row onto no row at all, the
+// right-hand column became a card about the machine, and the chord wrote
+// `config.WriteDefaultEffort`. That state is retired — `↑` off the top row
+// reaches the TAB BAR now (pages.go's [barCursor]) — so the law it protected is
+// restated as the thing that is still true: THE INSTALL'S RUNG HAS ONE WRITER ON
+// THIS SURFACE, and home is not it.
+//
+// The invariant: home's cursor is on a row of its list at every moment, `ctrl+v`
+// on a conversation row writes nothing to the profile, and the profile is left
+// exactly where the settings panel put it.
+func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) {
 	lab := newHomeLab(t)
 	transcript := lab.session("alpha", "aaaa000000000001", "one", lab.workspace("alpha"), time.Now())
 	a := lab.app(transcript)
 	a.profileDir = t.TempDir()
 	a.openHome()
-	a.home.cursor, a.home.picked = homeRest, false
-	a.home.build()
-	if !a.home.resting() {
-		t.Fatal("the cursor is not at rest, so the card is not the machine's")
-	}
-	return a, a.profileDir
-}
+	a.width, a.height = 200, 30
 
-// THE MACHINE'S CARD STATES THE INSTALL'S RUNG AND CTRL+V MOVES IT, and the
-// write goes to the profile rather than to anything this window holds.
-func TestHomeAtRestStatesTheInstallsRungAndCtrlVMovesIt(t *testing.T) {
-	a, dir := restingHome(t)
-
-	// An install nobody has touched reads at the shipped rung, and the card says
-	// so as a quiet clause.
-	card := machineCardText(a, 40)
-	if !strings.Contains(card, "thinking "+effort.Ship.String()) {
-		t.Fatalf("the machine card does not state the install's rung:\n%s", card)
+	// THE CURSOR IS ON A ROW, AND WALKING UP OFF THE TOP DOES NOT TAKE IT OFF
+	// ONE. It reaches the bar, which is a row of the FRAME rather than of the
+	// list, and home's own cursor stays exactly where it was.
+	a.frame()
+	for i := 0; i < len(a.home.lines)+2; i++ {
+		drive(t, a, key("up"))
 	}
-	// AND THE CARD NAMES THE KEY, because a chord with no visible door beside it
-	// is the one thing docs/DESIGN-LANGUAGE.md refuses outright.
-	if !strings.Contains(card, effortKeyClause) {
-		t.Fatalf("the machine card names no way to move it:\n%s", card)
+	if !a.bar.on {
+		t.Fatal("walking up off the top row did not reach the tab bar")
+	}
+	if _, ok := a.home.focusedLine(); !ok {
+		t.Fatal("home's own cursor came off its list, which is the state this wave retired")
+	}
+	if subject, ok := a.homeSubject(); !ok || subject.kind == bandKindItem {
+		t.Fatalf("the card is not about the row under the cursor (ok=%v)", ok)
 	}
 
-	drive(t, a, key("ctrl+v"))
-	if got := config.DefaultEffortAt(dir); got != effort.XHigh {
-		t.Fatalf("ctrl+v wrote %q to the profile, want the next rung up from %q", got, effort.Ship)
-	}
-	if card := machineCardText(a, 40); !strings.Contains(card, "thinking xhigh") {
-		t.Fatalf("the card did not follow the write:\n%s", card)
-	}
-	if !strings.Contains(a.home.msg, "thinking xhigh") {
-		t.Fatalf("home said %q about the change", a.home.msg)
-	}
-}
-
-// A WINDOW WITH NO PROFILE DRAWS NO RUNG AND NAMES NO KEY. A capability that
-// cannot work is absent, not broken — and a legend advertising a keystroke that
-// would refuse is the broken half.
-func TestAWindowWithNoProfileSaysNothingAboutThinking(t *testing.T) {
-	a, _ := restingHome(t)
-	a.profileDir = ""
-	card := machineCardText(a, 40)
-	if strings.Contains(card, "thinking") || strings.Contains(card, "ctrl+v") {
-		t.Fatalf("a window with nowhere to write still drew the rung:\n%s", card)
-	}
-	drive(t, a, key("ctrl+v"))
-	if a.home.msg != homeEffortNoProfile {
-		t.Fatalf("home said %q, want %q", a.home.msg, homeEffortNoProfile)
+	// AND THE CHORD WRITES NOTHING. The profile is untouched — no rung row is
+	// created at all — because there is no machine card for the key to act on.
+	before := config.DefaultEffortAt(a.profileDir)
+	drive(t, a, key("esc"), key("ctrl+v"))
+	if got := config.DefaultEffortAt(a.profileDir); got != before {
+		t.Fatalf("ctrl+v on home moved the install's rung from %q to %q", before, got)
 	}
 }
 
@@ -358,10 +343,14 @@ func TestATaskSurfaceWithNoDoorNamesNoKeyAndSaysSo(t *testing.T) {
 // A CONVERSATION'S ROW ON HOME IS NOT ONE OF THE THREE SCOPES. Its rung belongs
 // to the window that session is open in, and a list must not reach into it.
 func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
-	a, dir := restingHome(t)
+	lab := newHomeLab(t)
+	transcript := lab.session("alpha", "aaaa000000000001", "one", lab.workspace("alpha"), time.Now())
+	a := lab.app(transcript)
+	dir := t.TempDir()
+	a.profileDir = dir
 	band := &effortBand{standBand: &standBand{}}
 	band.wire(a)
-	drive(t, a, key("down"))
+	a.openHome()
 	line, ok := a.home.previewLine()
 	if !ok || line.kind != homeSession {
 		t.Fatalf("the cursor is not on a conversation row: %+v", line)
@@ -419,7 +408,12 @@ func TestCtrlVWithNoTaskUnderTheCursorAsksTheEngineNothing(t *testing.T) {
 // the reading of it (inputguard_test.go's rule).
 func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 	t.Run("the settings panel over home", func(t *testing.T) {
-		a, dir := restingHome(t)
+		lab := newHomeLab(t)
+		transcript := lab.session("alpha", "aaaa000000000001", "one", lab.workspace("alpha"), time.Now())
+		a := lab.app(transcript)
+		dir := t.TempDir()
+		a.profileDir = dir
+		a.openHome()
 		a.raisePlace(pageSettings)
 		drive(t, a, key("ctrl+v"))
 		if got := config.DefaultEffortAt(dir); got != effort.Ship {

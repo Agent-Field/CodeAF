@@ -10,10 +10,16 @@ package tui3
 // `ctrl+v` means the SAME VERB everywhere and a DIFFERENT SCOPE everywhere:
 //
 //	the cursor on a task        the task's own rung   (session's SetTaskEffort)
-//	home, the cursor at rest    the install's rung    (config's WriteDefaultEffort)
 //	a standing item's card      that item's rung      (standing's SetStandingEffort)
 //
-// One chord and three scopes is not three bindings that happen to share a key.
+// A THIRD SCOPE USED TO BE HERE AND ITS SURFACE IS GONE. Home had a resting
+// state — the cursor on no row at all, the column a card about the machine — and
+// `ctrl+v` moved the INSTALL'S default from it. `↑` off the top row reaches the
+// tab bar now (pages.go's [barCursor]), so there is no such card; the install's
+// rung is moved from the `thinking` row of the settings panel, which is the
+// writer that road went through anyway (config's WriteDefaultEffort).
+//
+// One chord and two scopes is not two bindings that happen to share a key.
 // It is the same binding: the rung this screen is showing is the rung the chord
 // moves, and a person who learns it once on a task knows it on home and on a
 // standing item without being told. A second chord per scope would have been
@@ -112,16 +118,17 @@ func effortClause(rung effort.Rung) string {
 // would be two answers to "what just changed".
 type effortMoved struct {
 	// where is the surface's own name for the scope, so a clause can ask whether
-	// the emphasis is ITS: [machineSubjectID] for the install, a standing item's
-	// id for an item, and [effortScopeConversation] for the chip above the message
-	// box (effortchip.go). They cannot collide — the two sentinels lead with a NUL
-	// no id can carry (homebands.go).
+	// the emphasis is ITS: a standing item's id for an item, and
+	// [effortScopeConversation] for the chip above the message box
+	// (effortchip.go). They cannot collide — the sentinel leads with a NUL no id
+	// can carry.
 	where string
 	at    time.Time
 }
 
-// effortScopeConversation is the chip's name in that namespace, spelled like
-// [machineSubjectID] and for its reason.
+// effortScopeConversation is the chip's name in that namespace: a word no id
+// can be, so a scope with a real id and this one can never be mistaken for one
+// another.
 //
 // THE CONVERSATION'S CHIP SHARES THE FIELD AND NOT THE TIMING. It records its
 // move here so that only ONE rung on this window can be the newest fact — moving
@@ -166,9 +173,8 @@ func (a *app) effortInk(where string, pal palette) func(string) string {
 // for a window that has none.
 //
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A surface with no profile
-// — the hosted door and every test that never named one — draws no rung on the
-// machine's card and names no key in its legend, rather than drawing a rung it
-// could not move and a chord that would refuse.
+// — the hosted door and every test that never named one — draws no rung at all,
+// rather than drawing one it could not move.
 func (a *app) effortProfile() (string, bool) {
 	dir := strings.TrimSpace(a.profileDir)
 	return dir, dir != ""

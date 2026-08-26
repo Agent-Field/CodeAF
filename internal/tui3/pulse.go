@@ -39,7 +39,9 @@ package tui3
 //     "NEVER A QUOTA FRACTION HERE. What the day has spent belongs on the pulse;
 //     what the day is ALLOWED to spend is the machine card's `today` band and
 //     nowhere else. A ceiling on this line would turn a glance into an arithmetic
-//     problem." The design draws `$0.55 / $20.00`, the owner said "follow the
+//     problem." (That band is retired with home's resting state and this line is
+//     the only one left that draws either figure.) The design draws
+//     `$0.55 / $20.00`, the owner said "follow the
 //     exact design" on 2026-08-25, and the old law is retired rather than quietly
 //     dropped — this paragraph is its headstone. The argument it lost is worth
 //     keeping: the fraction is two figures where one would do. The argument that

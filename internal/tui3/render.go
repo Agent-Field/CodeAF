@@ -2048,12 +2048,10 @@ func (a *app) ctxSpark() string {
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
-	// THE SHAPE IS THE SPARK MACHINERY'S AND NOT THIS FUNCTION'S (spark.go). The
-	// machine card's `hands` chart draws in the same alphabet off the same
-	// quantizer, and one rounding rule is what keeps two sparks on one screen
-	// from disagreeing about the same reading. The ceiling is STATED here —
-	// a context bar means the same thing from one turn to the next — where the
-	// chart on the card has no scale but its own window.
+	// THE SHAPE IS THE SPARK MACHINERY'S AND NOT THIS FUNCTION'S (spark.go), so
+	// that one rounding rule answers "how tall is this sample" for every spark on
+	// this surface. The ceiling is STATED here, because a context bar has to mean
+	// the same thing from one turn to the next.
 	return barSpark(a.ctxRing, threshold, len(a.ctxRing))
 }
 

@@ -36,7 +36,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// spinAt is the line THE ONE SPINNER belongs to, or [homeRest] for a page with
+// spinAt is the line THE ONE SPINNER belongs to, or [homeNoLine] for a page with
 // nothing moving on it at all.
 //
 // It is settled with the lines themselves ([homeView.buildFor]) rather than at
@@ -47,7 +47,7 @@ func (h *homeView) spinAt() int { return h.newestMoving() }
 
 // newestMoving is the freshest moving row on the column.
 func (h *homeView) newestMoving() int {
-	best, when := homeRest, time.Time{}
+	best, when := homeNoLine, time.Time{}
 	for at, line := range h.lines {
 		stamp, moving := homeMovingAt(line)
 		if !moving {
