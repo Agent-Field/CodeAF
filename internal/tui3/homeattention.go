@@ -102,8 +102,8 @@ func attentionMovingSince(row session.SessionRow) time.Time {
 	if row.Tasks.Running > 0 {
 		// Nodes are out and none of them recorded a start — a session under a
 		// build older than the stamp. It draws no age rather than borrowing the
-		// conversation's, which is [app.homeTaskTail]'s own choice about the same
-		// missing fact.
+		// conversation's, which is the emptiness law applied to a clock: an age
+		// nobody recorded is drawn as nothing rather than as somebody else's.
 		return time.Time{}
 	}
 	return row.At
