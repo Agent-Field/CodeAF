@@ -130,12 +130,10 @@ import (
 //	                  right machine. The rows answer from a cache that refreshes
 //	                  behind itself (cmd/aforge's [hostStanding]), because this
 //	                  seam is asked on the frame and a wire call is not.
-//	`keeping watch`   NO LINE. The OS timer is the far machine's and its status
-//	                  is derived from a definition file on that disk, so the door
-//	                  hands no Watch over rather than reading this laptop's
-//	                  launchd — a status about the wrong machine. [StandingSeam]
-//	                  already calls a false the honest third state, and the
-//	                  emptiness law draws it as nothing.
+//	`keeping watch`   WORKS. Standing.Watch crosses the wire and reads the far
+//	                  machine's scheduler, so /status says installed, absent, or
+//	                  nothing when that engine has no scheduler to ask. It never
+//	                  consults this laptop's timer.
 //	the ● glyph       never worn, and for the reason the field states rather than
 //	                  for a remote one: a firing is in flight inside whichever
 //	                  process holds the tick lock, nothing on disk says so, and
@@ -178,6 +176,12 @@ import (
 //	                  up to 5 minutes` takes the segment and no ping is sent.
 //	                  There is still no badge, icon or "connected" word
 //	                  (hostlink.go).
+//	the model catalog SPLIT BY RESPONSIBILITY. The laptop's catalog supplies the
+//	                  picker rows and their display facts. The engine's catalog
+//	                  owns execution facts: SetModel resolves the context window
+//	                  there, and the remote handle ignores the laptop's later
+//	                  SetContextWindow hint, so compaction follows the machine
+//	                  doing the work even when the two caches differ.
 //	news from a redial
 //	                  an ordinary note in the transcript, once: the engine did
 //	                  not keep the turn, or it came back with a different

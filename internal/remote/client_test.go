@@ -330,13 +330,16 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	}
 
 	for _, method := range []string{
-		MethodSetModel, MethodSetContext, MethodSetReasoningFor, MethodInterrupt,
+		MethodSetModel, MethodSetReasoningFor, MethodInterrupt,
 		MethodConsent, MethodConsentRemember, MethodHarness, MethodConnect,
 		MethodConnectKey, MethodNoteConnected, MethodCompact, MethodClose,
 	} {
 		if len(e.calls(method)) != 1 {
 			t.Fatalf("%s did not travel exactly once", method)
 		}
+	}
+	if len(e.calls(MethodSetContext)) != 0 {
+		t.Fatal("the laptop's context window crossed to the engine")
 	}
 	// The arguments are the method's own struct, not a guess.
 	var consent ConsentArgs
