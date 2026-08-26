@@ -1719,68 +1719,51 @@ Violet is spent on the moment aforge is waiting for you **inside this conversati
 on nothing else: the consent question, its glyph, its choices, the status word, and the
 legend while one is up. Its whole value is that seeing it anywhere means one thing.
 
-## Home and the places have their own, smaller palette — three greys and three colours
+## Home and the places use the same colours as the chat — and their own background, none
 
-**The conversation and the places are painted from two different tables**, on purpose. What
-you read above is the conversation's. Home and the six places beside it — tasks, standing,
-memory, spend, search, settings — paint from the design's own, and it is deliberately
-smaller: three tiers of grey and three colours, and nothing else.
+**Home and the six places beside it — tasks, standing, memory, spend, search, settings —
+paint from the table you just read.** Same inks, same three background steps, same
+terminal background showing through. A place is the chat's palette applied to a list.
 
-| Role | Colour | Where it lands on a 256-colour terminal | What wears it |
-| --- | --- | --- | --- |
-| tier 1 | `#E6E6F0` | 255 | the subject: a conversation's title, a belief's sentence, a model's id, the place you are standing in on the tab bar |
-| tier 2 | `#A0A6BB` | 248 | what is true about the subject: the note beside it, a section heading, a settled tick |
-| tier 3 | `#7C8296` | 102 | the margin: an age, a count, the hint line, everything the surface says about itself |
-| amber | `#EECE96` | 222 | **needs a human**, and nothing else |
-| cyan | `#A4D7EA` | 152 | **alive** — work in flight this instant |
-| green | `#A2E2BC` | 151 | **money**, and only ever on a figure in dollars |
-| the page | `#12121A` | 233 | the ground under every cell of a place |
-| the band | `#262633` | 236 | the row your cursor is on |
+For a while they were not. A wave painted a page of their own — a near-black `#12121A`
+under every cell, with the design's own brighter greys on top of it — and the owner tried
+it and asked for it back: *"i want bg color and text color to be same as in inside chat…
+this new bg looks weird."* So there is one palette again.
 
-**Amber means a person is being waited on. Cyan means something is moving. Nothing else on
-a place is in colour at all** — a green figure is a unit rather than a signal, and every
-hierarchy step past the three greys is made with **bold, case, indent or a blank line**.
-Bold marks tier 1 and nothing else. **Nothing on a place is ever italic.**
+| What a place is saying | The colour it uses | Where you have seen it |
+| --- | --- | --- |
+| the subject — a conversation's title, a belief's sentence, a model's id, the place you are standing in on the tab bar | ink, **bold** for the subject | the reply's body |
+| what is true about the subject — the note beside it, a section heading | muted | tool names, headings |
+| the reply's working prose on a card | the narration grey | a reply's grey working-out |
+| the margin — an age, a count, the hint line | dim | the status line |
+| **needs a human** | **amber** | a bound about to be reached |
+| **alive** — work in flight this instant | **the accent** | the one live or chosen thing |
+| **money** | **mint green** | a figure in dollars anywhere |
 
-**Home and the places paint their own page.** The `#12121A` ground goes under every cell of
-the frame, blank rows included, and the band is drawn on the row your cursor is on. The
-conversation does **not** — a reply is read over the background your own terminal theme
-chose, and aforge does not repaint it. Below 256 colours, and with `NO_COLOR` set, no page
-is painted anywhere and the layout does not depend on one.
+**The background is your terminal's, on a place exactly as in a conversation.** Nothing
+paints a page. The only rows lifted off your own background are the row your pointer is
+over, the row your cursor is on, and a span you have selected to copy — the same three
+steps, the same shades, everywhere in aforge.
 
-**The two surfaces disagree about "waiting on you" on purpose.** In a conversation it is
-violet — the consent block, its glyph, its choices. On a place it is the amber above. Home
-used to say the one thing in two colours; it no longer does. Whether the chat should follow
-is the owner's call rather than a bug.
+**A place spends colour on two meanings and no more: amber means a person is being waited
+on, the accent means something is moving.** Green is a unit rather than a signal. Every
+hierarchy step past that is made with **bold, case, indent or a blank line** — bold marks
+the subject and nothing else, and **nothing on a place is ever italic**.
 
-**And they disagree about money and about what is alive.** In a conversation a figure in
-dollars is a mint green held one step quieter, and the accent is a soft blue. On a place
-the green is the design's own and the accent IS the cyan. In both, money's green is never
-the green of a finished tick: landing and paying are two different events, and a table
-where they share a colour is a table that says they are one.
+**Three of the chat's colours do not appear on a place**, and that is the one thing about
+a place's palette that is not simply the chat's:
 
-**The one colour a place keeps from the conversation is the failure hue** — the soft
-orange-red of `✕`, `exit 2`, a branch that did not merge. The design's palette does not name
-it; a failed row with no colour at all would be carrying its whole meaning on one cell of
-punctuation, so it stays until that is settled.
+- **The question's violet.** In a conversation, violet means aforge is waiting on you —
+  the consent block, its glyph, its choices. On a place that reading is the amber, so a
+  list says "this stopped on somebody" in one colour rather than two.
+- **The payload cyan** that lifts a model id or a figure out of a quiet line. On a place
+  a datum lifts by being the subject: it takes the body ink.
+- **The finished tick's olive green.** The `✓` already says the work landed; a place draws
+  it in muted so the one green on the screen stays money.
 
-Hue carries identity; weight carries markdown. Your message is the soft muted blue
-behind its accent `› ` glyph — a quiet colour of your own, a full step calmer than the
-accent, so a question and the answer under it never read as one voice — and nothing the
-model's prose ever wears is muted or accent: its narration is the neutral grey, its
-answer is ink. On a 16-colour terminal the glyph's accent degrades to bold, which is the
-only marker left there.
-
-One thing inside your own words is painted differently: a slash command at the start, or
-a live `/task`, `/standing`, or `/orders` tag later in the sentence, wears a **chip** —
-the selection band's tint behind its letters. The chip promises Enter will act on that
-word. Other mid-sentence commands and tags made plain with backspace have no chip.
-Nothing the model writes is ever chipped.
-
-Six mid-tone hues form a separate identity ring, spent on exactly one cell: the glyph at
-the head of a task row. No role ever paints that column, so a ring hue cannot be misread
-as a state. The ring has no 16-colour tier — below the 256 rung the glyph alphabet
-carries identity alone.
+In both surfaces money's green is never the green of a finished tick: landing and paying
+are two different events, and a table where they share a colour is a table that says they
+are one.
 
 ## What the task column looks like: quiet rows, its footer lines and its one door
 

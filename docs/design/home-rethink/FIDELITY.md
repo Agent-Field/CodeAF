@@ -8,14 +8,33 @@ listed at the bottom and stays flagged to the owner.
 
 ## The checklist a fidelity lane executes
 
-1. **Palette — the exact tokens hexes on home and every place.** The design quotes
+1. **Palette — the exact tokens hexes on home and every place.** ~~The design quotes
    `internal/tui2/tokens/palette.go`: text tiers `#E6E6F0` / `#A0A6BB` / `#7C8296`; amber `#EECE96`
    = needs a human; cyan `#A4D7EA` = alive; green `#A2E2BC` = money; selection band `#262633`;
-   ground `#12121A` as the painted page ground of these surfaces (the chat's own conversation
-   surface is untouched). The tui3-local laws in `designlanguage_test.go` (glare ceiling,
-   isoluminant band, ground-ladder bands) are ADJUSTED DELIBERATELY for the place surfaces in the
-   same commit — the owner signed this; the test comments say so. `hueMoney` becomes exactly
-   `#A2E2BC`; needs-a-human on places becomes exactly `#EECE96`.
+   ground `#12121A` as the painted page ground of these surfaces. The tui3-local laws in
+   `designlanguage_test.go` are ADJUSTED DELIBERATELY for the place surfaces in the same commit.
+   `hueMoney` becomes exactly `#A2E2BC`; needs-a-human on places becomes exactly `#EECE96`.~~
+
+   > **REVERSED by the owner after testing, 2026-08-25.** Built as written above, shipped, run,
+   > and reversed in one sentence: *"i want bg color and text color to be same as in inside chat
+   > please this new bg looks weird i think we were taking user terminal stuff or something
+   > previously."*
+   >
+   > **The rule now: the places paint from the conversation's own table and author nothing.** The
+   > inks map BY ROLE — the subject is `hueInk` (bold where the design bolds), what is true of it
+   > is `hueMuted`, a note about it is `hueNarr`, the margin is `hueDim`, and the three grounds are
+   > `hueCursor` / `hueSelected` / `hueMark`. `hueMoney` goes back to `#90D0AA`, its value inside
+   > the conversation's own signal band, and `hueTier1/2/3`, `hueAskPlace`, `hueLivePlace`,
+   > `hueMoneyPlace`, `huePlaceGround`, `huePlaceCursor`, `huePlaceBand` and `mustHueAt` are gone.
+   >
+   > **The design's semantics are kept and only its hexes are not: amber = needs a human
+   > (`hueWarn`, which is what home already used for that mark), the accent = alive (`hueAccent`),
+   > green = money (`hueMoney`).** So `placeRampFrom` still retires the question's violet onto the
+   > amber, the payload cyan onto the body ink, and the finished tick's olive onto the second
+   > voice — one accent per MEANING is arithmetic about a screen, not a claim about a hex.
+   >
+   > `placeSignalBand` and `placeGlareCeiling` are deleted and the five laws in
+   > `designlanguage_test.go` walk the two authored ladders again.
 2. **The pulse, exactly screen 2b/3b:** `aforge` left; right: `2 want you · 4 moving ·
    $0.55 / $20.00 · tue 1:11pm` — the words `want you` and `moving`, the allowance as a fraction,
    each clause absent at zero (1c: a quiet morning is `aforge` and the clock alone).
@@ -75,16 +94,29 @@ height; the small 11.5px runs are the canvas's own captions, not screen content.
     design uses none); no third weight exists, so emphasis beyond bold is brightness, case, indent
     or air (screen 2a) — never underline (links/OSC 8 excepted where the codebase already does).
     One font size: the 11.5px captions map to the dim tier, not to a smaller face.
-13. **Ground — paint it, exactly, scoped.** Home and the places paint `#12121A` as their page
+13. **Ground — paint it, exactly, scoped.** ~~Home and the places paint `#12121A` as their page
     ground and `#262633` as the selection band, at TrueColor as authored and at ANSI256 as the
-    nearest cube indexes (stated in the table, not computed at the call site); the NoColor/plain
-    profile paints no ground at all and the layout must not depend on one. The conversation surface
-    keeps the terminal's own ground — the painted ground begins and ends with the switcher and its
-    places. `styles.go`'s "rest is not a colour" comment block and the
-    `TestOnlyTheGroundLadderPaintsABackground` law are UPDATED DELIBERATELY (owner-signed): the
-    place ground joins the ladder as its floor step, cursor and selection derive from it at the
-    stated ratios, and the reason the old comment gave (an unknowable terminal background) is
-    answered by not needing to know it — the places bring their own.
+    nearest cube indexes; the NoColor/plain profile paints no ground at all. `styles.go`'s "rest is
+    not a colour" comment block and the `TestOnlyTheGroundLadderPaintsABackground` law are UPDATED
+    DELIBERATELY: the place ground joins the ladder as its floor step.~~
+
+    > **REVERSED by the owner after testing, 2026-08-25** — the same sentence that reversed item 1,
+    > and the background is the half of it the owner named first.
+    >
+    > **The rule now: NO PAINTED PAGE ANYWHERE. The terminal's own background shows through on
+    > home and on every place, exactly as it does behind a conversation.** `palette.pageGround`,
+    > `palette.groundRows` and the `palette.places` flag that gated them are deleted;
+    > `placeFrameWithBar` and `homeFrame` return the rows they built, unpadded and unpainted. The
+    > only lifted cells on a place are the ones a person put a pointer or a cursor on, and they are
+    > THE GROUND LADDER's own three steps (`hueCursor` / `hueSelected` / `hueMark`).
+    >
+    > The reason the original law gave for itself turns out to be the reading a person actually
+    > has: a ground this program authors is a ground laid over somebody's theme, and it looks like
+    > one. `TestOnlyTheGroundLadderPaintsABackground` goes back to its single ladder, and the
+    > NoColor/plain path needs no special case at all — there is nothing to suppress.
+    >
+    > What stays from this item: the layout still may not depend on a ground, which is what
+    > `TestEveryPlaceHoldsAtThePlainFloor` walks.
 14. **Terminal adaptation checks:** the first-run note (and `screen.md`) carries the design's own
     open item — macOS terminals need "use option as meta" for the `alt` class; say which setting,
     per terminal, and what `esc`-prefix behaviour looks like when it is off.
