@@ -47,7 +47,8 @@ session has tasks to come back to.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-jump straight to one from wherever you are standing — a place or a conversation — and each
+(`⌥1` … `⌥7` on a Mac) jump straight to one from wherever you are standing — a place or a
+conversation — and each
 has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven — it is something you do to this conversation rather than
@@ -1663,13 +1664,38 @@ If characters come out as boxes or as `?`, the font is missing those ranges — 
 monospace, or start aforge with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
 back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 
-## alt on macOS — "use option as meta", and what happens when it is off
+## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
 
-Every chord aforge binds is `alt`: `alt+enter` sends what you typed off as a task,
-`alt+1`…`alt+7` jump straight to a place, `alt+.` draws the map. **On macOS, most terminals
-send Option as an accent-composing key rather than as meta unless you turn that on**, and
-until you do, those chords do nothing — or worse, insert `≠`, `…` and `¯` into what you
-were typing.
+**It is one key and two spellings, and aforge picks the spelling from the platform it is
+running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
+`⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
+else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
+line, the key map, the composer layer's rows and the `/keys` sheet read that one spelling, so
+what is on your screen is what is on your keyboard.
+
+The manual names both spellings together — `alt+1` (`⌥1` on a Mac) — because it is one book
+for both platforms. If a page here says `alt+` and your screen says `⌥`, they are the same
+chord.
+
+**On Windows and on Linux, Alt is already meta and there is nothing to set.** Windows
+Terminal, conhost, the WSL consoles and every Linux terminal send `alt`+key the way aforge
+expects. There is no `option` key and no setting; the chords simply work.
+
+## Why my option key types ¡ ™ £ instead of jumping — "use option as meta" on macOS
+
+**On macOS most terminals send Option as an accent-composing key rather than as meta until
+you turn that on.** Until you do, `⌥1` types `¡`, `⌥2` types `™`, `⌥.` types `≥` and
+`⌥enter` opens a line in the box instead of sending a task off.
+
+aforge notices. The first time one of those characters arrives on a place, one dim line
+appears under the list:
+
+    your terminal sends ⌥ as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+
+
+It names the terminal you are actually in, it is said once, and the first real chord that
+arrives retires it for the rest of the session. The first-run setup says the same thing ahead
+of time, as a condition rather than a diagnosis: `the seven places answer ⌥1…⌥7 · if ⌥ types
+a character instead, turn on "use option as meta" in …`.
 
 Where the setting lives:
 
@@ -1680,18 +1706,24 @@ Where the setting lives:
 | kitty | `macos_option_as_alt yes` in `~/.config/kitty/kitty.conf` |
 | alacritty | `[keyboard] option_as_alt = "Both"` in `~/.config/alacritty/alacritty.toml` |
 | ghostty | `macos-option-as-alt = true` in `~/.config/ghostty/config` |
+| WezTerm | `send_composed_key_when_left_alt_is_pressed = false` in `~/.wezterm.lua` |
 
-**What "on" looks like:** `alt+1` arrives as the escape character followed by `1` — which is
-how meta has been sent for forty years, and is why aforge binds `alt+1` and not `ctrl+1`
-(`ctrl+1` has no encoding to send at all; most terminals drop it entirely).
+**What "on" looks like:** `⌥1` arrives as the escape character followed by `1` — which is how
+meta has been sent for forty years, and is why aforge puts the place numbers on Option rather
+than on Control.
 
-**What "off" looks like:** the chord either does nothing or types a symbol. `alt+.` on a
-Mac with Option unset produces `≥`; `alt+enter` produces a newline in the box instead of
-sending a task. Nothing is broken and nothing is lost — every chord has a drawn way to the
-same place: `tab` walks the places in order, and the composer's own foot line names what
-`enter` does. But the map and the jump keys are worth the one setting.
+**What "off" looks like:** the chord either does nothing or types a symbol. Nothing is broken
+and nothing is lost — every chord has a drawn way to the same place: `tab` walks the places in
+order, and the composer's own foot line names what `enter` does. But the map and the jump keys
+are worth the one setting.
 
-On Linux and on Windows terminals, Alt is already meta and there is nothing to set.
+**And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
+terminals run the kitty keyboard protocol and report it, and where that report arrives aforge
+binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
+live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
+why it can only ever be the second spelling and never the first — a terminal that has said
+nothing is never promised it.
 
 ## What each colour means
 

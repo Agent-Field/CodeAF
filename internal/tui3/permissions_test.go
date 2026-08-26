@@ -59,7 +59,7 @@ func TestPermissionsIsOnTheCommandListAndInHelp(t *testing.T) {
 	if !found {
 		t.Fatal("/permissions is not on the command list")
 	}
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, want := range []string{"/permissions", permHeading, "also /perms"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help is missing %q:\n%s", want, help)

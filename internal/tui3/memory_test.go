@@ -172,7 +172,7 @@ func memoryPlaceApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore)
 // ── the table ───────────────────────────────────────────────────────────────
 
 func TestTheThreeMemoryCommandsAreOnTheList(t *testing.T) {
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, name := range []string{"memory", "remember", "forget"} {
 		var found bool
 		for _, c := range commands {

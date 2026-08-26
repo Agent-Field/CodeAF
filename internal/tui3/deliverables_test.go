@@ -85,7 +85,7 @@ func TestFilesIsOnTheCommandListAndInHelp(t *testing.T) {
 	if !found {
 		t.Fatal("/files is not on the command list")
 	}
-	if !strings.Contains(helpText(""), "/files") {
+	if !strings.Contains(helpText("", chordSpelling{}), "/files") {
 		t.Fatal("/files is not in /help")
 	}
 	if err := checkCommands(commands); err != nil {

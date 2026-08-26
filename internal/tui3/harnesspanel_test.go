@@ -246,7 +246,7 @@ func TestHarnessIsOnTheCommandList(t *testing.T) {
 	if !found {
 		t.Fatal("/harness is not on the command list")
 	}
-	if !strings.Contains(helpText(""), "/harness") {
+	if !strings.Contains(helpText("", chordSpelling{}), "/harness") {
 		t.Fatal("/harness is not in /help")
 	}
 }

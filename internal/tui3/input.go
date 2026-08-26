@@ -232,6 +232,15 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// THE OPTION-AS-META CHECK READS EVERY KEY AND CLAIMS NONE OF THEM. It is
+	// here, above the pointer handover and above every modal, because both of the
+	// things it watches for can arrive anywhere: a real `alt+` chord settles the
+	// question for the life of the process wherever it lands, and the character a
+	// Mac produces instead of one is only worth a note while a place is standing
+	// (chords.go). It returns nothing and takes nothing, so the key below does
+	// exactly what it was always going to do.
+	a.chordWatch(msg)
+
 	// THE POINTER COMES BACK FIRST, ABOVE EVERYTHING, and then the key does
 	// whatever it was always going to do. A hand back on the keyboard is a hand
 	// that has finished selecting (copymode.go), so this is the whole of the exit
