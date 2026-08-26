@@ -36,7 +36,8 @@ type fakeAgent struct {
 	packs   int
 	failing error
 	// past is what a resumed session already holds — what [app.replay] draws.
-	past []session.DisplayEntry
+	past            []session.DisplayEntry
+	transcriptReads int
 	// earlier is what sits above its latest compaction — the region the
 	// scrollback reaches through the seam — and earlierFloor is how much of
 	// `past` that region replaces.
@@ -112,8 +113,11 @@ func (f *fakeAgent) SetReasoningFor(model, level string) {
 	}
 	f.levels[model] = level
 }
-func (f *fakeAgent) Usage() session.Usage               { return f.usage }
-func (f *fakeAgent) Transcript() []session.DisplayEntry { return f.past }
+func (f *fakeAgent) Usage() session.Usage { return f.usage }
+func (f *fakeAgent) Transcript() []session.DisplayEntry {
+	f.transcriptReads++
+	return f.past
+}
 
 // EarlierHistory is what the journal holds ABOVE the session's latest
 // compaction, and how much of `past` is the pass's rewritten copy of it. Both
