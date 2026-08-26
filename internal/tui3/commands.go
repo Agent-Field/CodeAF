@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // THE COMMAND LIST: type "/" and what you can type appears.
@@ -727,7 +728,28 @@ func (a *app) runMenu() tea.Cmd {
 
 // helpText renders the same table the list draws, plus the two keys that have
 // no slash and the session file. One source, two renderings.
-func helpText(file string) string {
+// helpKeyRow is one hand-written row of the key sheet: the chord, then the
+// sentence at [helpKeyColumn]. A chord wider than the column keeps one space, so
+// a Mac's spelling can never run into the words beside it.
+func helpKeyRow(key, note string) string {
+	gap := helpKeyColumn - ansi.StringWidth(key)
+	if gap < 1 {
+		gap = 1
+	}
+	return key + strings.Repeat(" ", gap) + note
+}
+
+// helpKeyColumn is where the sentence starts on every hand-written row of the
+// key sheet below — five for `@path` plus its ten spaces, six for `ctrl+c` plus
+// its nine. It is named because ONE of those rows is spelled for the terminal
+// rather than typed out (chords.go), and a padded literal cannot be padded twice.
+//
+// IT IS NOT THE COMMAND ROWS' COLUMN, which is measured off the longest command
+// on the list and sits further right. The two blocks have always been two
+// columns; this constant states the second one rather than changing it.
+const helpKeyColumn = 15
+
+func helpText(file string, chords chordSpelling) string {
 	width := 0
 	for _, c := range commands {
 		if n := len(c.typed()); n > width {
@@ -755,7 +777,11 @@ func helpText(file string) string {
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
 		"tab            go back to the last conversation, with an empty box",
-		"alt+enter      open a line · enter sends",
+		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
+		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
+		// literal padded to the ASCII spelling would put this one row's sentence
+		// out of the column every other row on the sheet sits in (chords.go).
+		helpKeyRow(chords.say("alt+enter"), "open a line · enter sends"),
 		// THE MARKED SEND (standmark.go). It is on this sheet because it is the
 		// one key here that changes what a sentence MEANS rather than where it
 		// goes, and nothing else on the screen names it until a draft happens to

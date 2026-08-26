@@ -153,6 +153,20 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	if !config.APIKeyConfigured(dir) {
 		a.noteFacts(setupNoKeyWord, "/settings")
 	}
+	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. Every
+	// chord this surface binds is `⌥`, and most macOS terminals send Option as an
+	// accent-composing key until a setting is turned on — so the first minute is
+	// where that is worth saying, while a person is being told how the program
+	// works rather than after a chord has silently typed `¡` into their sentence.
+	//
+	// IT IS WRITTEN AS A CONDITION AND NOT AS A DIAGNOSIS. Nothing has been
+	// pressed yet, so nothing here knows which way the profile is set; what this
+	// can honestly say is what the keys are and what to do if they type a
+	// character instead. The places' own note says it the other way round, after
+	// the character has actually arrived (chords.go's [app.chordNote]).
+	if words := a.chords.chordSetupWords(); words != "" {
+		a.note(words)
+	}
 	a.touch()
 	if a.welcome.open {
 		a.welcome.step = 0

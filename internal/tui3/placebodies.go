@@ -52,7 +52,17 @@ func (a *app) placeNote(width int) []string {
 	if pl == nil {
 		return nil
 	}
-	return pl.note(a, width)
+	rows := pl.note(a, width)
+	// AND THE ONE LINE THE FRAME ITSELF MAY ADD, under the place's own: a Mac
+	// whose Option key is composing accents instead of sending meta, caught by the
+	// character that arrived where a chord was aimed (chords.go). It goes in the
+	// note slot because it is a fact about the whole frame rather than about the
+	// row under the cursor, and it is the frame's rather than any one place's
+	// because every place binds the same chords.
+	if line := a.chordNote(width); line != "" {
+		rows = append(rows, line)
+	}
+	return rows
 }
 
 // ── a place with nothing of its own to draw ─────────────────────────────────

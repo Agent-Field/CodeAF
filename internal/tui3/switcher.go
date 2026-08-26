@@ -607,6 +607,13 @@ type switcherPaint struct {
 	// many things are running, exactly one row animates (homespinner.go), so the
 	// moving mark gives way to the turning cell on that row alone.
 	spin string
+	// chords is HOW THIS TERMINAL SPELLS A CHORD, which is the fourth fact the
+	// drawing surface holds and the reading cannot ask for: the section line names
+	// two of home's own keys, and on a Mac they are called `⌥g` and `⌥q` rather
+	// than `alt+g` and `alt+q` (chords.go). It is a plain value and not an *app,
+	// so this file stays as pure as the three above it — and its zero value is the
+	// `alt+` spelling, which is what the constants already say.
+	chords chordSpelling
 }
 
 // paint is one line of the reading, with the band on the row the keyboard or the
@@ -627,9 +634,14 @@ func (r switcherReading) paint(line switcherLine, width int, pal palette, p swit
 		if r.chatCount > 0 {
 			left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
 		}
-		right := switcherGroupWord
-		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+switcherQuietWord)+3 <= width {
-			right += " · " + switcherQuietWord
+		// AND THE KEYS ARE SPELLED BEFORE THEY ARE MEASURED. `⌥g` is three cells
+		// narrower than `alt+g`, so a line that fitted the ASCII spelling and drew
+		// the Mac one would leave the section heading's right end short of the
+		// margin it was measured against.
+		right := p.chords.say(switcherGroupWord)
+		quiet := p.chords.say(switcherQuietWord)
+		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+quiet)+3 <= width {
+			right += " · " + quiet
 		}
 		leftInk := pal.dim
 		if p.head != nil {

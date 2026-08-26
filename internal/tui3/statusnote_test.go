@@ -14,7 +14,7 @@ import (
 // (commands.go), and neither of them brought a word that already meant
 // something else.
 func TestStatusAndCostAreOnTheCommandList(t *testing.T) {
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, name := range []string{"status", "cost"} {
 		found := false
 		for _, c := range commands {

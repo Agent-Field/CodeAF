@@ -3510,6 +3510,9 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			// is standing under (homesection.go), and which single row this frame
 			// gave the spinner to (homespinner.go).
 			head: h.sectionInk(at, pal), spin: a.homeSpinCell(at),
+			// AND HOW THIS TERMINAL SPELLS A CHORD, for the section line's own two
+			// keys (chords.go).
+			chords: a.chords,
 		})
 	}
 	switch line.kind {
