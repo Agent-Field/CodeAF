@@ -81,6 +81,13 @@ func (a *app) statusText() string {
 		if a.hosted() && item.label == "place" {
 			item.value = a.hostedPath(a.workspace)
 		}
+		// THE ROW IS COMPACT AND THE NOTE IS A SENTENCE. On a healthy hosted
+		// link the row says `devbox · 3ms`; /status has room to say what that
+		// number is. While redialling, the existing sentence is already whole
+		// and is kept verbatim instead.
+		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatency > 0 && a.linkNote() == "" {
+			item.value = "the round trip to " + a.host + " is about " + latencyWord(a.linkLatency)
+		}
 		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.
 		// The frame calls it "aforge" because the path is bookkeeping a person
 		// did not ask to read (host.go's [ownedWord]) — but this note is the one

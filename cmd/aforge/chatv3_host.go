@@ -606,14 +606,16 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		},
 		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
 		//
-		// The three facts only a connection has: the sentence to draw while a
-		// dropped link is being redialled, the one-off news a redial discovered,
-		// and the questions this conversation raised while nobody was attached.
+		// The four facts only a connection has: the sentence to draw while a
+		// dropped link is being redialled, the measured round trip, the one-off
+		// news a redial discovered, and the questions this conversation raised
+		// while nobody was attached.
 		// Each lands somewhere different on the screen and internal/tui3's
 		// hostlink.go says where; what this door owes is the answer, and the
-		// client has answered all three since the wire grew them.
+		// client answers all four.
 		Link: tui3.LinkSeam{
 			Note:           seams.Link,
+			Ping:           seams.Ping,
 			Notice:         seams.Notice,
 			Held:           hostHeld(seams),
 			Driving:        hostDriving(seams),
@@ -730,16 +732,19 @@ func hostAttachedNote(attached int, driving bool) string {
 // rather than passed inline so that the door has ONE list of what a connection
 // knows about itself and the option assembly has one line per fact.
 //
-// ALL THREE ARE WIRED NOW. They were written before internal/tui3 had anywhere
+// ALL FOUR ARE WIRED NOW. Three were written before internal/tui3 had anywhere
 // to put them and sat unwired for a wave, which is why this type reads as a list
 // of facts rather than as an argument: the surface has grown
-// [tui3.LinkSeam] and hostOptions hands these three straight into it.
+// [tui3.LinkSeam] and hostOptions hands all four straight into it.
 type hostSeams struct {
 	// Link is the quiet sentence about the connection right now — empty
 	// whenever there is nothing to say, which is what a status-line segment
 	// draws as nothing at all. It reads `reconnecting to devbox — trying for up
 	// to 5 minutes` while a dropped link is being redialled.
 	Link func() string
+	// Ping measures one empty call and back. The surface owns its cadence and
+	// rolling estimate; this door only hands over the wire's typed method.
+	Ping func() (time.Duration, error)
 	// Notice is one sentence to show once and then forget: the two things a
 	// redial can discover — the engine did not keep the turn, and the engine
 	// came back with a different conversation open.
@@ -764,7 +769,7 @@ type hostSeams struct {
 
 func newHostSeams(client *remote.Client) hostSeams {
 	return hostSeams{
-		Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions,
+		Link: client.LinkNote, Ping: client.Ping, Notice: client.TakeNotice, Held: client.HeldQuestions,
 		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
 		Follow: client.Follow,
 	}

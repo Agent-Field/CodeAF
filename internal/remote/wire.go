@@ -103,6 +103,11 @@ import (
 // still refuses a mismatch: a version-3 engine states nothing, so a version-4
 // surface reading a replica off it would draw a status line frozen at whatever
 // the welcome said.
+//
+// VERSION 4 ADDS [MethodPing]. It changes no session state and carries no
+// payload in either direction; the version still moves because a method one
+// half may send and the other half cannot answer is a protocol difference, and
+// Decision 3 in docs/REMOTE.md says those differences are refused at the door.
 const Version = 4
 
 // Frame is one line on the wire, either direction.
@@ -222,6 +227,11 @@ const (
 	// machine, spend joins its titles onto the ledger's ids, and search opens
 	// the conversation behind a hit out of it — so one door answers all five.
 	MethodPlacesWorld = "Places.World" // nothing → session.World
+	// MethodPing is one empty frame out and one empty frame back. The surface
+	// times that round trip on its own machine; a timestamp carried between two
+	// machines would mix clocks that need not agree and would not measure the
+	// path the person is actually waiting on.
+	MethodPing = "Ping" // nothing → nothing
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
