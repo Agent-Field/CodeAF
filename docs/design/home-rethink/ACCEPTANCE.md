@@ -25,22 +25,36 @@ One thing the fixture had to learn: **a project under `/tmp` is litter to the la
 conversations and the failed task with them. The projects live under the fake HOME instead.
 That is a fact about writing fixtures, not a defect.
 
+## The second walk — lane FIDELITY-2, 2026-08-26
+
+The five screens the first walk marked **differs** were walked again against a fixture of
+their own, built the same way and holding the two things the first one had nothing behind:
+a conversation whose `presence.json` carries an **answerable question** another window is
+holding, and a **file a conversation left behind** in the artifacts index. Their blocks
+below are that walk's captures and replace the first walk's; every other screen's block is
+the first walk's, untouched.
+
+A second thing that fixture had to learn: **the projects root is `<aforge home>/v3/projects`**
+(`internal/session/sweep.go`'s `placesDirName`), not `v3/places`. A fixture written to the
+wrong folder opens on a home with one row on it — the conversation the launch itself made —
+and looks exactly like a surface that cannot read the disk.
+
 ## The verdict table
 
 | Screen | What it is | Verdict |
 | --- | --- | --- |
 | 1a | the flat list at 120 columns | **matches** |
 | 1c | 80 columns, quiet morning | **matches** |
-| 1d | 200 columns, the card acts | **differs** — the card draws four of the design's five bands; `it is stopped on you` with `y yes · n no` is not drawn for a question another window is holding, and `made for you` needs a deliverable the fixture has none of |
+| 1d | 200 columns, the card acts | **matches** — all five bands, in the design's order, over a fixture holding an answerable question and a file |
 | 1e | tasks | **matches**, with two wording differences noted below |
-| 1g | typing offers places | **differs** — the place is offered and says `a place`, but it ranks LAST rather than first |
+| 1g | typing offers places | **matches** — the place ranks first (nearest the box in an inverted column) and its margin says what is behind it |
 | 2b | home on the scale, seven places, global composer | **matches** |
-| 2c | spend | **differs** — the role column is the role each CALL named, not the crew binding (FIDELITY item 7); model ids are drawn raw; the `what it was for` block is absent because no ledger line in the fixture carries a task, session or standing id |
+| 2c | spend | **matches** — the role column is the crew binding, models wear the word a person says, and `what it was for` names what it was for. One deviation stays and is flagged below: only the conversation slot can be asked about on this surface, so no `unbound` row is drawn |
 | 2d | memory at scale | **matches** at this scale; the design's `wants your eye` and `gaps it knows it has` blocks are **not built** (FIDELITY has no mechanism behind either) |
 | 2f | standing, and how much rope | **matches** — three rope states, the design's mechanism, the word `trust` per FIDELITY's flagged deviation |
 | 3b | the map | **matches**, as `alt+.` rather than a held modifier — FIDELITY's first flagged deviation |
-| 3c | the verb strip | **differs** — the strip is drawn at the FOOT, under the composer, rather than pushing the list down at the row |
-| 3d | the time window on the arrow axis | **matches** on spend and standing; on tasks the keys work and **no control is drawn** — see the last section |
+| 3c | the verb strip | **matches** — the strip is drawn under the row it acts on and pushes the list down by its own height |
+| 3d | the time window on the arrow axis | **matches** on all three — one head row, drawn by one helper, with the label between the arrows |
 
 ## 1a · the flat list, 120 columns
 
@@ -104,41 +118,55 @@ is absent and the line is `aforge` and the clock, which is what 1c draws.
 ## 1d · 200 columns, the card
 
 ```
- aforge                                                                                                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:48pm
+ aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-10 chats · what wants you first                                                                   alt+g group by project · alt+q hide the quiet ones    The Tab Bar's Counts
-? The Tab Bar's Counts                                                                  aforge-v2 asks: which of the two folds should stay open? 41m
-⠇ The Certificate Rotation                                                                                                  infra 1 task running 21m    …ge-v2 · open in another window · waiting on you
-○ Porting the Picker                                                                                                                    aforge-v2 3m
-○ Why the Frame Jumps                                                                                                                   aforge-v2 3h    work
-○ Pricing Research                                                                                                                   pricing-site 3h    ✓ count the tabs                           $0.42
-○ The Annual Toggle                                                                                                                  pricing-site 5h
-○ Reading the Ledger                                                                                                                    aforge-v2 1d    touched 3 files · spent $0.84 · 440k tokens
-○ What the Discount Means                                                                                                            pricing-site 1d    last active 41m
-▸ 2 more, quiet since aug 23
-                                                                                                                                                        → verbs: put it away, new chat here, open folde…
-        … 27 blank rows …
+11 chats · what wants you first                                                                   alt+g group by project · alt+q hide the quiet ones    The Tab Bar's Counts
+? The Tab Bar's Counts                 aforge-v2 wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
+⠙ The Certificate Rotation                                                                                                  infra 1 task running 20m    …ge-v2 · open in another window · waiting on you
+○ Porting the Picker                                                                                                                    aforge-v2 2m
+○ Why the Frame Jumps                                                                                                                   aforge-v2 3h    it is stopped on you
+○ Pricing Research                                                                                                                   pricing-site 3h    Add a --report-only mode so the report can be
+○ Standing Up the Watches                                                                                                               aforge-v2 5h    regenerated without re-running the sweep?
+○ The Annual Toggle                                                                                                                  pricing-site 5h    1 allow once · 2 always · 3 deny
+○ Reading the Ledger                                                                                                                    aforge-v2 1d    enter open and talk
+▸ 3 more, quiet since aug 24
+                                                                                                                                                        work
+                                                                                                                                                        ✓ count the tabs                           $0.42
+
+                                                                                                                                                        made for you
+                                                                                                                                                        swarm-decomposition.md                      · 2h
+
+                                                                                                                                                        touched 3 files · spent $0.42 · last active 40m
+
+                                                                                                                                                        → verbs: allow once, always, put it away, new c…
+        … 18 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                              here ~/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+› Add a --report-only mode so the report can be regenerated without re-running the sweep?                                                                               1 allow once · 2 always · 3 deny
  type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
-**Differs.** Four of the design's five bands are there — the title, the place line
-(`…ge-v2 · open in another window · waiting on you`), `work` with `✓ count the tabs $0.42`,
-the facts line (`touched 3 files · spent $0.84 · 440k tokens`), and `→ verbs: …`.
+**Matches.** All five bands of the design, in the design's order: the title, the place line
+(`…ge-v2 · open in another window · waiting on you`), `it is stopped on you` with the
+question in its own words and the keys that answer it, `work` with `✓ count the tabs $0.42`,
+`made for you` with the file, the facts line, and `→ verbs: …`.
 
-Two are not:
+Two of those the first walk could not see, and neither was a gap in the surface — the
+fixture had nothing behind them. The question belongs to a conversation ANOTHER window is
+holding, which is exactly the case this band exists for: the presence file carries an
+answerable question, this window has somewhere to leave an answer, and the chips are the
+ones that session said it would take. `made for you` needs a row in the artifacts index.
+Both are now in the fixture and both draw.
 
-- **`it is stopped on you`, the question, and `y yes · n no`.** The row IS asking — the card
-  says `waiting on you` — but the question belongs to a conversation ANOTHER window is
-  holding, and this window cannot answer somebody else's askback. The design draws a card
-  that can. Not built; it needs a seam that carries an answer to another process.
-- **`made for you` with the path.** No conversation in the fixture produced a deliverable,
-  so under the emptiness law the band is absent. Correct, and untested here.
+**Fixed in this lane:** the design's answer row is `y yes · n no · enter open and talk`, and
+the card drew the chips alone — so the third thing a person can do with a question they are
+looking at was on no surface at all. It reads `1 allow once · 2 always · 3 deny · enter open
+and talk` now, with the way out dim and the answers amber, because they are two different
+offers.
 
-The card column is also narrower than the design's, so its lines cut with `…`.
+The card column is narrower than the design's, so its longest lines cut with `…`.
 
 ## 1e · tasks
 
@@ -201,6 +229,12 @@ earlier
 head sentence is 1e's (`work aforge ran on its own. 7 since aug 12, $2.98 of it.`) and the
 count line sits just above the composer.
 
+> **The head line changed under 3d.** The window's edge is now said ONCE per frame: where the
+> frame has room for the control, the span sits between its arrows and the sentence reads
+> `work aforge ran on its own. 7, $2.98 of it.`; where it does not, the sentence keeps its
+> `since aug 12` clause. The capture above is the first walk's and predates it — 3d's block
+> has the current one.
+
 Two wording differences, both deliberate in the code: the foot says `enter go inside it`
 where the design says `enter open its room` (the row under the cursor is work this
 conversation is not holding, so there is no room to open), and `→ verbs: run it again, stop
@@ -210,35 +244,50 @@ conversation holds, and a foot may not name a key that does nothing.
 ## 1g · typing offers places
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:47pm
+ aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-        … 19 blank rows …
-  aforge-v2
-  ? The Tab Bar's Counts                                                                            waiting on you · 40m
-
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        … 23 blank rows …
   pricing-site
-  ○ The Annual Toggle                                                                                        1 task · 5h
-  ○ Pricing Research                                                                                         1 task · 3h
-  ○ What the Discount Means                                                                                           1d
+  ○ The Annual Toggle                                                                                                                    1 task · 5h
+  ○ Pricing Research                                                                                                                     1 task · 3h
+  ○ What the Discount Means                                                                                                                       1d
 
   infra
-  ⠧ The Certificate Rotation                                                                             1 running · 20m
+  ⠦ The Certificate Rotation                                                                                                         1 running · 20m
 
-  ▸ standing                                                                                                     a place
+  aforge-v2
+  ? The Tab Bar's Counts                                                                                                        waiting on you · 40m
+  ○ Standing Up the Watches                                                                                                                       5h
+
+  ▸ standing                                                                                                       a place · 4 orders, 1 fired today
   ? ask here: "sta"
 › + start a new conversation: "sta"
 
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › sta                                                                                                 here ~/aforge-v2
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › sta                                                                                                                                                                             here ~/a/w/aforge-v2
  enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · tab next place · esc clear
 ```
 
-**Differs in one respect.** The place is offered, wears `▸`, and says `a place` at the right
-margin exactly as 1g draws it — but it is the LAST row of the drop-up, under the matching
-conversations, and the design says "Places rank first when the words match". Not fixed here:
-the ranking is `switcher.go`'s and changing it is a reading-layer change with its own tests,
-not a wrong word.
+**Matches.** The place is offered, wears `▸`, and says `a place · 4 orders, 1 fired today`
+at the right margin.
+
+**The first walk read the ranking wrong, and its own capture says so.** Home's column is a
+DROP-UP: it is read UPWARD out of the box the words were typed into, and `home.go`'s law
+over `buildWorld` states it in as many words — "a ranked list read UPWARD out of a box has
+to put its best answer LAST, or the row somebody wants is the furthest one from the key they
+reach for". The offered place sits BELOW every conversation the same three letters matched
+and directly above `ask here`, which is the row nearest the reader's hand. That is the
+design's "places rank first". Nothing about the ranking needed changing; what it needed was
+a test, and `TestAPlaceOutranksEveryConversationTheWordsAlsoMatch` is it.
+
+**Fixed in this lane:** the design's row is `▸ standing   a place · 6 promises, 1 fired
+today` and the build stopped at `a place`. The clause is the place's own answer to "what is
+behind you" (`place.summary`), taken on home's three-second beat and cached, never on a
+draw. The noun is `orders` and not the design's `promises`: this place calls itself
+`standing orders` on its own heading and the manual says it that way, and a second noun for
+one thing is the drift the one-source-of-truth law is about. A machine with nothing standing
+on it draws no clause at all, and a day nothing fired drops the firing half.
 
 ## 2b · the composer and the scope chip, on every place
 
@@ -277,6 +326,11 @@ what ran it · by the model, and the role it named
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
+> **The spend capture above is the first walk's and its head row has changed under 3d.** The
+> figures lead the left field and the span sits between the arrows; 2c's block has the
+> current one. What this block is about — the composer and its chip on a place that is not
+> home — is unchanged.
+
 **Matches.** **Fixed in this lane:** home's chip drew the raw absolute path
 (`here /home/santosh/af-acc-home/aforge-v2`) while every other place drew the short form, so
 one fact was spelled two ways on two frames a `tab` apart. Home now shortens it the way
@@ -292,47 +346,67 @@ rather than `alt+enter send it off · enter talk about it first · esc back to s
 ## 2c · spend
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ aforge                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-aug 12 – aug 25 · $5.94 · 1.1M tokens                                                  shift+←→ window · shift+↑ coarser
-⣦⣄⣿⣷⣦⣄⣿⣷⣦⣄⣿⣷⣦⣄
-aug 12                                                                                                       today $0.18
-aug 14 was the loudest day — $0.72
+$3.19 · 810.2k tokens                                                                                                                                         shift+← aug 13 – aug 26 →  shift+↑ coarser
+⣦⣦⣦⣶⣶⣶⣷⣷⣷⣷⣿⣿⣿⣿
+aug 13                                                                                                                                                                                       today $0.31
+aug 26 was the loudest day — $0.31, porting the picker
 
-what ran it · by the model, and the role it named
-· anthropic/claude-opus-4-1 · standing ████████████ 9 calls · 116.1k                                               $0.66
-· anthropic/claude-sonnet-4-5 · task ███████████ 9 calls · 116.1k                                                  $0.60
-· anthropic/claude-opus-4-1 · chat ██████████ 7 calls · 90.3k                                                      $0.57
-· anthropic/claude-sonnet-4-5 · chat ██████████ 6 calls · 77.4k                                                    $0.54
-· deepseek/deepseek-v4-flash-latest · chat ██████████ 6 calls · 77.4k                                              $0.54
-· deepseek/deepseek-v4-flash-latest · title █████████ 11 calls · 141.9k                                            $0.51
-· anthropic/claude-opus-4-1 · task █████████ 6 calls · 77.4k                                                       $0.48
-· anthropic/claude-sonnet-4-5 · standing █████████ 6 calls · 77.4k                                                 $0.48
-· deepseek/deepseek-v4-flash-latest · standing █████████ 6 calls · 77.4k                                           $0.48
-· deepseek/deepseek-v4-flash-latest · task █████████ 6 calls · 77.4k                                               $0.48
-· anthropic/claude-opus-4-1 · title █████ 6 calls · 77.4k                                                          $0.30
-· anthropic/claude-sonnet-4-5 · title █████ 6 calls · 77.4k                                                        $0.30
-        … 15 blank rows …
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+what ran it · by the model, and the role it was bound to
+· deepseek-v4-flash · conversation ████████████ 57 calls · 270.1k                                                                                                                                  $1.08
+· claude-opus-4-1 ████████████ 56 calls · 270.1k                                                                                                                                                   $1.06
+· claude-sonnet-4-5 ████████████ 55 calls · 270k                                                                                                                                                   $1.04
+
+what it was for
+· check the release feed every morning · standing · 45 firings                                                                                                                                     $0.85
+· price-the-tiers · pricing-site · a task                                                                                                                                                          $0.82
+· porting the picker · aforge-v2 · a conversation                                                                                                                                                  $0.79
+▸ 1 more
+        … 23 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
-**Differs in three ways, and the third is FIDELITY's.**
+**Matches, with one deviation flagged below.**
 
-1. **The role column is per-call, not the binding.** The caption reads `by the model, and the
-   role it named` and each row is one (model, role) pair out of the ledger. FIDELITY item 7
-   asks for the CURRENT crew binding — one row per model, joined against
-   `config.ModelSlots`, with `planning` drawing `unbound · follows execution`. Not built.
-2. **Model ids are raw** (`anthropic/claude-opus-4-1`), where the design draws `opus 4.1`.
-3. **`what it was for` is absent.** The block exists in the reading; no line in this
-   fixture's ledger carries a task, session or standing id, so under the emptiness law there
-   is nothing to draw. Untested here rather than missing.
+1. **The role column is the crew binding** (FIDELITY item 7). The caption is the design's —
+   `by the model, and the role it was bound to` — and the column now says it: each model is
+   joined against `config.ModelSlots` as the settings stand right now, never against the
+   auxiliary word one call gave itself. `session.UsageByModel` groups by the MODEL alone, so
+   three opus lines, one of which named itself `title`, are one row. A model bound to
+   nothing draws no role word at all.
+2. **Model ids are gone.** A row is headed with the word a person says out loud —
+   `claude-opus-4-1`, `deepseek-v4-flash` — through `modelui.ModelWord`, which is the
+   spelling `/model`, the crew chips and the status line already use. The catalog's own
+   display name was tried and dropped: it publishes `DeepSeek V4 Flash Latest` and
+   `Google: Gemini 3.6 Flash`, so preferring it would make this the one surface on the
+   machine calling a model something no other surface does.
+3. **`what it was for` names what it was for.** The block was absent on the first walk
+   because that fixture's ledger carried no ids; the engine's one ledger door stamps the
+   conversation on every line it writes, so it is present whenever anything was spent. Two
+   things had to be fixed for the names to arrive: the join read HOME'S cached world, which
+   is dropped the moment home is left — and leaving home is how a person gets here, so every
+   row wore a raw id — and the promises were asked of this window's project only. The place
+   reads its own world on the way in and asks every project for its promises.
+4. **A promise's row said `standing` twice** — `· release · standing · 45 firings ·
+   standing` — because the tag already names the kind. The second one is gone.
+
+**The deviation, flagged to the owner.** The design draws `· planning · unbound · follows
+execution` for a slot with nothing bound to it, and the machinery for that row is built and
+tested. It does not appear here, and the reason is not that planning is bound: **this window
+holds a client for one of the five slots and answers the other four with the sentence
+`app.slotRefusal` says** — "that model is chosen where its session is opened". So it cannot
+tell "nothing is bound to planning" from "I have no way to ask", and the emptiness law says
+an unknown is drawn as nothing rather than guessed at. The row appears the moment a door
+wires `config.SettingsOptions.RoleModel`.
 
 The window header, the sparkline, the `today $…` right-flush and the loudest-day line are
-all there. The sparkline is braille rather than the design's block ramp.
+all there. The sparkline is braille rather than the design's block ramp. The head row's own
+change is under 3d below.
 
 ## 2d · memory
 
@@ -430,103 +504,178 @@ their digits in the cells they were already in, and the hint line becomes the ch
 ## 3c · the verb strip
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-10 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
-? The Tab Bar's Counts                                      aforge-v2 asks: which of the two folds should stay open? 40m
-⠸ The Certificate Rotation                                                                      infra 1 task running 20m
-○ Porting the Picker                                                                                        aforge-v2 2m
-○ Why the Frame Jumps                                                                                       aforge-v2 3h
-○ Pricing Research                                                                                       pricing-site 3h
-○ The Annual Toggle                                                                                      pricing-site 5h
-○ Reading the Ledger                                                                                        aforge-v2 1d
-○ What the Discount Means                                                                                pricing-site 1d
-▸ 2 more, quiet since aug 23
-        … 22 blank rows …
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+11 chats · what wants you first                                                                   alt+g group by project · alt+q hide the quiet ones    The Certificate Rotation
+? The Tab Bar's Counts                 aforge-v2 wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
+⠦ The Certificate Rotation                                                                                                  infra 1 task running 20m    …e/work/infra · open in another window · working
  a put it away   t new chat here   o open folder   c copy path
+○ Porting the Picker                                                                                                                    aforge-v2 2m
+○ Why the Frame Jumps                                                                                                                   aforge-v2 3h    work
+○ Pricing Research                                                                                                                   pricing-site 3h    ⠦ rotate the staging certificate
+○ Standing Up the Watches                                                                                                               aforge-v2 5h      ◐ running
+○ The Annual Toggle                                                                                                                  pricing-site 5h
+○ Reading the Ledger                                                                                                                    aforge-v2 1d    last active 20m
+▸ 3 more, quiet since aug 24
+                                                                                                                                                        → verbs: put it away, new chat here, open folde…
+        … 26 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                              here ~/a/w/infra
  esc or ← to leave · enter opens it instead
 ```
 
-**Differs in where it is drawn.** The verbs are the row's own — this row has a folder, so it
-offers all four — and every letter on the strip is a verb only while the strip is on screen,
-which is the clause the whole key law turns on. But the strip is at the FOOT, under the
-composer, where the design draws it inline at the row and pushes the list down by two rows.
-The design's argument for the displacement is that it is what makes bare letters safe; the
-foot's is that a place has one composer and the strip has to be beside it. Left as built.
+**Matches.** `→` on the row draws the strip DIRECTLY UNDER IT and pushes the rest of the
+list down by its own height; the frame is exactly as tall as it was, so the composer does
+not move. That displacement is the whole argument for bare letters — "the strip pushes the
+list down and takes the letters with it" — and a strip under the composer displaced nothing
+at all, which is where the first walk found it.
+
+It is drawn this way on every place that has verbs, through the interface and with no place
+named anywhere: `place.cursorRow` answers which of the rows just built the cursor is on, and
+`placeStripInline` splices the strip in after it. The body is built into `room` minus the
+strip's own rows, so the arithmetic is exact; a frame with no room to give does not draw the
+strip and does not bind its letters.
+
+Home's ANSWER chips stay at the foot. They are not a row's verbs — they are what a
+conversation another window is holding is waiting for — and they belong beside the box that
+can answer them.
+
+**One word is not the design's.** The foot says `esc or ← to leave · enter opens it instead`
+where the design says `enter opens the chat instead`. The design's sentence is true on home,
+on standing and on memory, and false on the tasks place, where `enter` opens the work's own
+record; one sentence true everywhere beats a sentence naming a door a key does not open,
+which is the defect this whole file exists to end.
 
 ## 3d · the time window
 
-`shift+←` on spend pages the window back a fortnight, which on this fixture is a window
-nothing was spent in — so the place says what it is for, which is the correct empty state:
+**Matches on all three, and the three now draw ONE control.** They answered this question
+three ways: standing drew `shift+← aug 25 →` on its header, spend drew a legend that named
+the keys and never the span, and the tasks place drew nothing at all while binding all four
+keys — which is exactly the defect `verbstrip.go`'s law is written against, and what the
+first walk found by pressing `shift+←` and watching the page look wiped. `placeprose.go`'s
+`placeHeadRow` is the one head row all three ask for now: what the place is on the left, the
+window on the right as the design draws it, and the grain clause beside it where the line
+has room.
+
+The tasks place, with its control:
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ aforge                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
- What this machine has cost, by the day, by the model, and by what it was
- for. Every model call writes a line, so the figures here are the bill and
- not an estimate. There is nothing to set here — the allowance is edited on
- the status line that shows it.
-        … 29 blank rows …
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
- enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
+work aforge ran on its own. 7, $2.98 of it.                                                                                                                   shift+← aug 13 – aug 26 →  shift+↑ coarser
+
+done today
+› ✓ port the picker                                                                                                             porting the picker 7 files · the picker reads the registry now $1.63 30m
+
+earlier
+  ✓ count the tabs                                                                                                                   the tab bar's counts 3 files · each tab wears what changed $0.42 3h
+  ✕ the fold spike                                                                                                                                        why the frame jumps gave up, said why $0.05 8d
+  · rotate the staging certificate                                                                                                                               the certificate rotation incomplete now
+  ✓ move the runner pool                                                                                                              an old dns wobble 4 files · eight runners on the new pool $0.21 1d
+  ✓ price the tiers                                                                                                          pricing research 2 files · three tiers, with the middle one marked $0.55 4h
+  ✓ the annual toggle                                                                                                                      the annual toggle 1 file · annual is the default now $0.12 1d
+        … 25 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1 done today · 6 earlier
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ enter go inside it · type to filter · tab next place
 ```
 
-`shift+←` on standing pages back one day and the order that fired today leaves the list. The
-header — which is the control AND the reading — stays:
+`shift+←` there pages back a fortnight, and the head line keeps its place:
 
 ```
- aforge                                                                                                     tue 10:46pm
+ aforge                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  standing orders                                                                                       shift+← aug 24 →
-  for this project
-› ◦ tell me when CI goes red on aforge-v2                                              asks first · every twenty minutes
-  everywhere
-  ◦ always run gofmt before you say a change is done                                                               holds
-  in other projects
-  ∙ remind me to write the weekly update                                                             asks first · paused
-        … 26 blank rows …
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
- enter open where it was asked · → pause · stop · not here · tab next place · esc
-```
-
-`shift+←` on tasks pages back a fortnight:
-
-```
- aforge                                                                                                     tue 10:46pm
-  home   tasks   standing   memory   spend   search   settings
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-work aforge ran on its own. nothing since jul 29.
-        … 32 blank rows …
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+work aforge ran on its own. nothing.                                                                                                                          shift+← jul 30 – aug 12 →  shift+↑ coarser
+        … 37 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
  type to filter · tab next place
 ```
 
-**Fixed in this lane.** Before it, tasks answered an empty WINDOW with the teaching prose
-that belongs to an empty MACHINE — the count line went with it, and the count line is the
-only thing on that frame naming the window the arrows move, so `shift+←` looked like the
-page had been wiped and there was nothing on screen saying how to get back. The place now
-tells the two apart (`tasksReading.held`) and keeps its head line, which says
-`nothing since jul 29.` — in words, because the emptiness law forbids the `0` that sentence
-used to draw.
+Spend, with the span between the arrows and the figures on the left — `aug 12 – aug 25` used
+to lead BOTH halves of this row, so the label a person moves and the label they read were
+two runs of one line:
 
-**Still differs:** tasks has a window and draws **no control for it**. Standing and spend
-each draw `shift+← <span> →` on their own header; tasks draws its head sentence with no
-arrows, so four keys are bound and nothing on screen names them — which is the exact defect
-`verbstrip.go`'s law was written against. Not fixed here: the head line is a reading-layer
-sentence with its own tests and the fix belongs beside FIDELITY item 10, which also asks
-memory for a window it does not have.
+```
+ aforge                                                                                                                                                                                      wed 2:08am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+$3.19 · 810.2k tokens                                                                                                                                         shift+← aug 13 – aug 26 →  shift+↑ coarser
+⣦⣦⣦⣶⣶⣶⣷⣷⣷⣷⣿⣿⣿⣿
+aug 13                                                                                                                                                                                       today $0.31
+aug 26 was the loudest day — $0.31, porting the picker
+
+what ran it · by the model, and the role it was bound to
+· deepseek-v4-flash · conversation ████████████ 57 calls · 270.1k                                                                                                                                  $1.08
+· claude-opus-4-1 ████████████ 56 calls · 270.1k                                                                                                                                                   $1.06
+· claude-sonnet-4-5 ████████████ 55 calls · 270k                                                                                                                                                   $1.04
+
+what it was for
+· check the release feed every morning · standing · 45 firings                                                                                                                                     $0.85
+· price-the-tiers · pricing-site · a task                                                                                                                                                          $0.82
+· porting the picker · aforge-v2 · a conversation                                                                                                                                                  $0.79
+▸ 1 more
+        … 23 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
+```
+
+`shift+←` on spend pages onto a fortnight nothing was spent in. **Fixed in this lane:** that
+frame drew the three sentences saying what the spend place is for — the empty MACHINE's
+lesson, over an empty WINDOW — and took the header with them, so the only control that could
+page back was off the screen. The place tells the two apart now (`spendPage.held`), exactly
+as the tasks place already did:
+
+```
+ aforge                                                                                                                                                                                      wed 2:08am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+nothing spent                                                                                                                                                 shift+← jul 30 – aug 12 →  shift+↑ coarser
+        … 37 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
+```
+
+And standing, whose header is the one this helper was generalised from:
+
+```
+ aforge                                                                                                                                                                     $1.63 / $20.00 · wed 2:08am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  standing orders                                                                                                                                                      shift+← aug 26 →  shift+↑ coarser
+  for this project
+› ◦ tell me when CI goes red on aforge-v2                                                                                                                              asks first · every twenty minutes
+  everywhere
+  ◦ always run gofmt before you say a change is done                                                                                                                                               holds
+  in other projects
+  ◦ check the release feed every morning                                                                                                                    asks first · every morning at nine · last 5m
+  ∙ remind me to write the weekly update                                                                                                                                             asks first · paused
+        … 30 blank rows …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ enter open where it was asked · → pause · stop · not here · tab next place · esc
+```
+
+**One predicate answers the paint and the keys**, per half: a frame too narrow for the
+arrows has no window at all, and one with room for the arrows but not for `shift+↑ coarser`
+beside them has no zoom. Standing had that law for its arrows; spend and tasks have it now
+too, and the grain half is gated on all three.
+
+**Memory still has no time window**, and FIDELITY item 10 asks for one. There is nothing
+behind `shift+←` there to draw, so nothing is drawn and the keys do nothing — a lane of its
+own, and `places.md` says so.
 
 ## The tab bar, at every width
 
@@ -629,17 +778,41 @@ not fold — never a redesign:
 
 Left, with the reason:
 
-- **The tasks place has a window and draws no control for it.** Four keys bound, nothing on
-  screen naming them. The fix belongs beside FIDELITY item 10, which also owes memory a
-  window it does not have; the head line is a reading-layer sentence with its own tests.
 - **SCREEN 2e, the composer layer, is not built at all** — no dimmed page behind, no lead
   line, none of the three facts, and not its foot. It is a screen's worth of work.
-- **SCREEN 2c's role column is per-call, not the crew binding** (FIDELITY item 7), and model
-  ids are drawn raw where the design draws `opus 4.1`.
-- **A place ranks last in home's typed drop-up** where 1g ranks it first. It is
-  `switcher.go`'s ranking, with its own tests.
-- **1d's `it is stopped on you` band** needs a seam that answers another window's askback.
 - **2d's `wants your eye` and `gaps it knows it has`** have no mechanism behind them, and
   under the emptiness law a page may not draw the furniture of a feature it does not have.
 - **A search hit from an archived conversation carries no project tag**, because the project
   is resolved from the resting list the archive line has left.
+- **memory has no time window**, which is the other half of FIDELITY item 10.
+
+## What the SECOND walk fixed, and what it left
+
+Lane FIDELITY-2 closed every row the table above marked **differs**. What changed, screen by
+screen, is in each block; what is worth having in one place is the list of things that were
+wrong rather than merely absent:
+
+| Where | What it was | What it is |
+| --- | --- | --- |
+| `place_home.go` `homeCardAnswer` | 1d's answer row drew the chips alone, so `enter open and talk` — the third thing a person can do with a question — was on no surface | the row reads `1 allow once · 2 always · 3 deny · enter open and talk`, the way out dim and the answers amber |
+| `homeplaces.go`, `place_standing.go` | an offered place said `a place` and stopped, where 1g's row says what is behind it | `a place · 4 orders, 1 fired today`, taken on home's beat and cached, never on a draw |
+| `session/usage_spend.go`, `spendplace.go` | 2c's role column was the word one CALL gave itself, not the crew binding the caption promised; model ids were drawn raw | one row per model, joined against `config.ModelSlots`, headed with the word a person says out loud |
+| `place_spend.go` `spendNames` | the `what it was for` join read HOME's cached world, which is dropped the moment home is left — and leaving home is how you get here, so every row wore a raw id | the place reads its own world on the way in and on the beat, and asks every project for its promises |
+| `spendplace.go` `spendSubjectRow` | a promise's row said `standing` twice, because its tag already names the kind | the label after the tag is gone |
+| `place_spend.go` | an empty spend WINDOW drew the empty MACHINE's lesson and took the header — the only control that pages back — with it; the same defect the first walk fixed on tasks | `spendPage.held` tells them apart; the head row stays and says `nothing spent` |
+| `pages.go`, `verbstrip.go` | the verb strip was drawn under the composer, where it displaced nothing — and the displacement is the whole argument for bare letters | the strip is spliced into the body under the row it acts on, and the body is built into the room it leaves |
+| `placeprose.go`, `tasksplace.go` | three places with a time window drew it three ways, and one of them drew nothing while binding all four keys | one `placeHeadRow`, one `placeWindowFits` answering the paint and the keys, on all three |
+
+And one row of the first table was not a defect at all: **a place ranks first in home's typed
+drop-up and always did.** The column is a drop-up and is read upward; the first walk read it
+downward. It is pinned by a test now rather than left to be re-derived.
+
+Left, and flagged to the owner:
+
+- **The `planning · unbound · follows execution` row does not appear on this build.** The
+  machinery is there and tested; this window can only be asked about the conversation's own
+  model, so it cannot tell an unbound slot from one it has no way to ask about. See 2c.
+- **The verb strip's foot says `enter opens it instead`** where the design says `enter opens
+  the chat instead`, because on the tasks place `enter` opens a record and not a chat.
+- **`standing` and not `promises`** on 1g's margin, for the reason FIDELITY's `tenure`
+  deviation gives: one thing gets one noun on this surface.

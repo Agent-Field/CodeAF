@@ -1534,11 +1534,7 @@ func v3Models(models v3Catalog) []tui3.Model {
 	out := make([]tui3.Model, 0, len(rows))
 	for _, row := range rows {
 		model := tui3.Model{
-			ID: row.ID,
-			// What the catalog CALLS this model, so the spend place can head a
-			// row with a name rather than with a provider's slug. Empty where the
-			// catalog publishes none, which the surface reads as absence.
-			Name:          row.Name,
+			ID:            row.ID,
 			ContextLength: row.ContextLength,
 			ArenaElo:      row.ArenaElo,
 			Output:        row.OutputModalities,

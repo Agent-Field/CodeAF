@@ -569,6 +569,16 @@ func TestAnOfferedPlaceSaysWhatIsBehindIt(t *testing.T) {
 	if !strings.Contains(text, placeRowWord+" · 2 orders, 1 fired today") {
 		t.Fatalf("the offered place does not say what is behind it:\n%s", text)
 	}
+	// AND AN ORDER THAT REACHES THE WHOLE MACHINE IS COUNTED ONCE. It stands over
+	// every project, so the bands hold it under each of them; a clause that added
+	// those up would say six on a machine holding four.
+	everywhere := bandItem("three", "always run gofmt", dir, standing.WhenEvery, "before a change lands")
+	everywhere.Altitude = standing.AltitudeMachine
+	band.items = []standing.Item{fired, quiet, everywhere}
+	a.refreshHome()
+	if got := (placeStanding{}).summary(a); got != "3 orders, 1 fired today" {
+		t.Fatalf("a machine-wide order was counted more than once: %q", got)
+	}
 	// AND A DAY NOTHING FIRED ON SAYS ONLY WHAT IS THERE.
 	band.items = []standing.Item{quiet}
 	a.refreshHome()

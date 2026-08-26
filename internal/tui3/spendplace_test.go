@@ -107,7 +107,6 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 			"haiku 4.5":  "naming",
 			"sonnet 4.5": "execution",
 		},
-		name: map[string]string{"sonnet 4.5": "Claude Sonnet 4.5"},
 	}
 	if slot, ok := config.ModelSlotFor("plan"); ok {
 		crew.unbound = append(crew.unbound, slot)
@@ -122,9 +121,14 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if strings.Contains(text, "opus 4.1 · execution") {
 		t.Fatalf("opus wears the word its calls named themselves:\n%s", text)
 	}
-	// AND THE CATALOG'S OWN NAME HEADS THE ROW WHERE THIS MACHINE HAS ONE.
-	if !strings.Contains(text, "Claude Sonnet 4.5 · execution") {
-		t.Fatalf("the catalog's display name is not on the row:\n%s", text)
+	// AND A MODEL IS DRAWN BY THE WORD A PERSON SAYS, not by the provider's slug:
+	// the vendor prefix, the alias marker and the release stamp come off, exactly
+	// as /model and the crew chips spell the same model.
+	if got := (spendReading{}).modelName("anthropic/claude-opus-4-1-20260114"); got != "claude-opus-4-1" {
+		t.Fatalf("a provider slug is drawn as %q", got)
+	}
+	if got := (spendReading{}).modelName("~deepseek/deepseek-v4-flash-latest"); got != "deepseek-v4-flash" {
+		t.Fatalf("an aliased slug is drawn as %q", got)
 	}
 	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL.
 	if !strings.Contains(text, "gemini 2.5 pro █") {
@@ -317,6 +321,41 @@ func TestWhatItWasForIsDrawnForAConversationTheLedgerOnlyHasAnIdFor(t *testing.T
 	}
 	if !strings.Contains(strings.ToLower(text), "porting the picker") {
 		t.Fatalf("the conversation kept its id where the world knows its title:\n%s", text)
+	}
+}
+
+// AN EMPTY WINDOW IS NOT AN EMPTY MACHINE, and only one of the two is taught at.
+//
+// Paging back a fortnight on a machine that HAS spent money drew the three
+// sentences saying what the spend place is for — and took the header with them,
+// which is the only thing on that frame naming the window the four arrow keys
+// move. `shift+←` looked like the page had been wiped with no way back on
+// screen. It is the same defect the tasks place had, told apart the same way
+// ([spendPage.held]).
+func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	if !strings.Contains(placeFrameText(a), "what ran it") {
+		t.Fatalf("the lab did not open on the ledger:\n%s", placeFrameText(a))
+	}
+	// A fortnight back, where this fixture spent nothing.
+	drive(t, a, key("shift+left"))
+	text := placeFrameText(a)
+	if strings.Contains(text, "There is nothing to set here") {
+		t.Fatalf("an empty window drew the empty machine's lesson:\n%s", text)
+	}
+	if !strings.Contains(text, spendNothingWord) {
+		t.Fatalf("an empty window does not say so in words:\n%s", text)
+	}
+	if !strings.Contains(text, "shift+←") {
+		t.Fatalf("an empty window lost the control that pages it back:\n%s", text)
+	}
+	if strings.Contains(text, "$0.00") {
+		t.Fatalf("an empty window drew the figure the emptiness law forbids:\n%s", text)
+	}
+	// AND A MACHINE THAT HAS SPENT NOTHING IS STILL TAUGHT AT.
+	b := spendLab(t, nil)
+	if !strings.Contains(placeFrameText(b), "There is nothing to set here") {
+		t.Fatalf("an empty machine was not taught:\n%s", placeFrameText(b))
 	}
 }
 
