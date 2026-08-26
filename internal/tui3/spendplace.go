@@ -67,9 +67,6 @@ type spendCrew struct {
 	// `verification`, `naming`, `planning` — by model id, lower-cased, because
 	// a model id is matched case-insensitively everywhere else on this surface.
 	role map[string]string
-	// name is what to CALL a model, by the same key. Empty for a model this
-	// machine's catalog has never listed, and the id is then drawn as it is.
-	name map[string]string
 	// unbound is every role slot with nothing bound to it, in the ladder's own
 	// order. Each becomes a row of its own under the models — `planning ·
 	// unbound · follows execution` — because a slot nothing answers for is a
@@ -84,23 +81,25 @@ func (r spendReading) crewed(crew spendCrew) spendReading {
 	return r
 }
 
-// modelName is what to call one model on a row: the name the catalog published
-// where this machine has it, and otherwise the word a person says out loud.
+// modelName is what to call one model on a row: THE WORD A PERSON SAYS OUT LOUD,
+// which is the one this whole tree already spells a model with.
 //
-// THE FALLBACK IS THE PRODUCT'S OWN SHORTENER AND NOT THE RAW SLUG.
 // [modelui.ModelWord] takes off the four runs that are provably provenance — the
 // vendor prefix, the alias marker, the variant suffix, the release date — and
-// hands back anything it does not recognise WHOLE, so a slug this build has
-// never seen is still drawn exactly as the provider spells it. That is the same
-// spelling /model and the crew chips use, which is what stops one model wearing
-// two names on two screens a `tab` apart.
+// hands back anything it does not recognise WHOLE, so a slug this build has never
+// seen is still drawn exactly as the provider spells it.
+//
+// THE CATALOG'S OWN DISPLAY NAME IS DELIBERATELY NOT USED, and it was, for one
+// build. What the catalog publishes is `DeepSeek V4 Flash Latest` and
+// `Google: Gemini 3.6 Flash` — Title Case, with the vendor back on the front and
+// the release pointer back on the end — so a page that preferred it would be the
+// ONE surface on this machine calling a model something the status line, /model
+// and the crew chips do not. That is the same defect as the scope chip spelled
+// two ways, and the design's own `opus 4.1` is nearer this word than that one.
 func (r spendReading) modelName(id string) string {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return ""
-	}
-	if name := strings.TrimSpace(r.crew.name[strings.ToLower(id)]); name != "" {
-		return name
 	}
 	if word := modelui.ModelWord(id); word != "" {
 		return word
@@ -113,7 +112,19 @@ func (r spendReading) modelName(id string) string {
 // or a guess. A model can be on the bill for a hundred reasons and be nobody's
 // crew today; saying so is the emptiness law.
 func (r spendReading) modelRole(id string) string {
-	return r.crew.role[strings.ToLower(strings.TrimSpace(id))]
+	return r.crew.role[spendModelKey(id)]
+}
+
+// spendModelKey is the ONE SPELLING OF A MODEL'S IDENTITY on this page, so the
+// map the place fills and the row that reads it cannot key it two ways.
+//
+// IT TAKES THE ALIAS MARKER OFF. A binding a person made through the picker
+// carries OpenRouter's leading `~` — the status line draws it, and the crew reads
+// it back — while the ledger's own line records the id the request actually went
+// out on, without it. Keyed raw, the conversation's own model matched nothing and
+// the busiest row on the page wore no role word at all.
+func spendModelKey(id string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(id), "~"))
 }
 
 // spendStop is what one drawn row is ABOUT, so that `enter` opens the thing the
@@ -329,10 +340,26 @@ func spendHeadWords(totals session.DaySpend) string {
 	if totals.Tokens > 0 {
 		parts = append(parts, tokenWord(totals.Tokens)+" tokens")
 	}
+	if len(parts) == 0 {
+		// A WINDOW THAT CAME TO NOTHING SAYS SO IN WORDS AND NOT AS A ZERO, which
+		// is the same edge the tasks place's own head line has: `$0.00` is exactly
+		// the figure the emptiness law forbids, and the control beside this
+		// sentence already names the fortnight it is about.
+		return spendNothingWord
+	}
 	return strings.Join(parts, " · ")
 }
 
+// spendNothingWord is the head line over a window nothing was spent in. It is
+// NOT [spendTeach]: a machine that has spent nothing is being taught what this
+// place is for, and a machine that has simply been paged onto a quiet fortnight
+// wants the control that pages it back (place_spend.go's [spendPage.held]).
+const spendNothingWord = "nothing spent"
+
 func (r spendReading) paintedHead(pal palette) string {
+	if r.totals.USD <= 0 && r.totals.Tokens <= 0 {
+		return pal.dim(spendNothingWord)
+	}
 	var left strings.Builder
 	if r.totals.USD > 0 {
 		left.WriteString(placeMoneyInk(pal)(spendMoneyWord(r.totals.USD)))
@@ -475,8 +502,15 @@ func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal p
 		tag = fmt.Sprintf("standing · %d firings", subject.Calls)
 	}
 	kind := subject.Label
-	if subject.Kind == session.SubjectStanding && subject.Calls > 0 && subject.USD/float64(subject.Calls) < 0.005 {
+	switch {
+	case subject.Kind == session.SubjectStanding && subject.Calls > 0 && subject.USD/float64(subject.Calls) < 0.005:
 		kind = "under a cent a run"
+	case subject.Kind == session.SubjectStanding && strings.HasPrefix(tag, subject.Label):
+		// A PROMISE'S TAG ALREADY SAYS WHAT KIND OF THING IT IS — `standing · 14
+		// firings` — so the label after it is that word a second time on one row,
+		// which is the drift the one-source-of-truth law is about. The design's own
+		// row spends that field on something a person did not already know.
+		kind = ""
 	}
 	var left strings.Builder
 	left.WriteString(pal.dim(tokens.GlyphProseBullet + " "))

@@ -785,13 +785,17 @@ same three-second beat every place runs on, and it draws three things:
   stand right now, and never the auxiliary word one call gave itself. That is the point of
   the column: seeing that execution is most of the bill sends you to the one row that
   changes it. A model that is on the bill and is bound to nothing today draws **no role word
-  at all**, and a model bound to two slots says both. A model's name is the one the catalog
-  publishes where this machine has it, and otherwise the model word — `claude-opus-4-1`
-  rather than `anthropic/claude-opus-4-1`;
+  at all**, and a model bound to two slots says both. A model is drawn by the word you say
+  out loud — `claude-opus-4-1`, not `anthropic/claude-opus-4-1` — which is the spelling
+  `/model`, the crew chips and the status line all use;
 - **a role slot with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
-  row: no line in the ledger names a slot, so there is nothing measured to put there;
+  row: no line in the ledger names a slot, so there is nothing measured to put there.
+  **Today only the conversation slot is drawn at all.** A window holds a client for the
+  model you are talking to and for no other; the four crew slots are answered where their
+  own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
+  and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
   shown and the rest fold into one line.
@@ -809,8 +813,11 @@ below. A cap on **one task** is a different figure and is set where that task is
 on the composer layer's third line, before you send it (the tasks page, *a task started from
 the composer carries a cap*).
 
-Until the ledger has a priced line inside the window, the place says what it is for and
-nothing else, which is what every place with nothing to draw does.
+**An empty window is not an empty machine.** Until the ledger has a priced line at all, the
+place says what it is for and nothing else, which is what every place with nothing to draw
+does. Paged onto a fortnight nothing was spent in, it keeps its head row — `nothing spent`
+on the left and the control on the right — because that control is the only thing on the
+frame naming the window the arrows move.
 
 ## Moving the spend window — the time keys
 

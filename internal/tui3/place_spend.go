@@ -69,11 +69,21 @@ type spendPage struct {
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
-	// names is the catalog's display name per model id, lower-cased, TAKEN ONCE
-	// WHEN THE PLACE OPENS. The catalog is a file this surface caches; a table
-	// that re-read it on every beat would be reading six hundred rows every three
-	// seconds to spell a dozen words that do not change while a window is open.
-	names map[string]string
+	// held is whether the ledger holds ANY priced line at all, in any window, and
+	// it is what tells the two empty pages apart — the same fact and the same
+	// argument as the standing and tasks places' own ([standingPlace.held]).
+	//
+	// A WINDOW EMPTIED BY THE ARROWS IS NOT AN EMPTY MACHINE. Both draw no rows,
+	// and the right answer to each is the opposite of the other: a machine that
+	// has spent nothing wants the frame spent saying what this place is for
+	// ([spendTeach]), while a window paged onto a quiet fortnight wants the
+	// HEADER — the control that pages it back — above nothing at all. Drawing the
+	// teaching in both cases swallowed the only way out of the second.
+	held bool
+	// world is THIS PLACE'S OWN SCAN of the projects root, taken on the way in
+	// and again on the beat. It is what `what it was for` joins its ids against
+	// ([app.spendNames] says why it is not home's).
+	world session.World
 }
 
 // spendWindowDays is the window this place opens on: a fortnight, by the day.
@@ -87,27 +97,9 @@ func (a *app) openSpend() tea.Cmd {
 	now := a.now()
 	a.spend = spendPage{cache: session.UsageCache{Path: a.usageLedger},
 		win: session.LastDays(now, spendWindowDays), hover: -1,
-		names: a.modelDisplayNames()}
+		world: a.readWorld()}
 	a.readSpendLines(now)
 	return a.armPlaceClock()
-}
-
-// modelDisplayNames is what this machine's catalog CALLS each model, by id.
-//
-// IT IS THE PICKER'S OWN LADDER and not a second reading of the catalog: the
-// live list the door hands over, then the cache on disk, then the built-ins
-// ([app.modelsFor] states the order and why). A model the catalog has never
-// listed is simply absent, and the row that wanted it falls back to the
-// product's own shortener (spendplace.go's [spendReading.modelName]).
-func (a *app) modelDisplayNames() map[string]string {
-	names := map[string]string{}
-	for _, model := range a.modelsFor(func(Model) bool { return true }) {
-		id := strings.TrimSpace(model.ID)
-		if name := strings.TrimSpace(model.Name); id != "" && name != "" {
-			names[strings.ToLower(id)] = name
-		}
-	}
-	return names
 }
 
 // spendCrewNow is WHO IS BOUND TO WHAT RIGHT NOW: the crew as the settings
@@ -124,7 +116,7 @@ func (a *app) modelDisplayNames() map[string]string {
 // (settings.go's [app.registry]) — the conversation's own model, and whatever
 // the door answers for the rest — so this costs no disk and may run on the beat.
 func (a *app) spendCrewNow() spendCrew {
-	crew := spendCrew{role: map[string]string{}, name: a.spend.names}
+	crew := spendCrew{role: map[string]string{}}
 	bound := a.registry().ModelSlotBindings()
 	for _, slot := range config.ModelSlots() {
 		if slot.Role == "" {
@@ -132,14 +124,26 @@ func (a *app) spendCrewNow() spendCrew {
 		}
 		model := strings.TrimSpace(bound[slot.Slot])
 		if model == "" {
-			crew.unbound = append(crew.unbound, slot)
+			// AN EMPTY READING IS NOT THE SAME AS AN EMPTY BINDING, and only one
+			// of the two may be drawn. This surface holds a client for ONE of the
+			// five slots — the conversation it is sitting in — and answers every
+			// other with the sentence [app.slotRefusal] says: "that model is
+			// chosen where its session is opened". So a slot this window cannot
+			// ask about is UNKNOWN, the emptiness law renders unknown as nothing,
+			// and the row is left off. The moment a door wires the role seam
+			// ([config.SettingsOptions.RoleModel]) the slot answers here and the
+			// `planning · unbound · follows execution` row the design draws
+			// appears with it.
+			if a.answersForSlot(slot) {
+				crew.unbound = append(crew.unbound, slot)
+			}
 			continue
 		}
 		// TWO SLOTS ON ONE MODEL SAY BOTH, in the ladder's order, because the
 		// same model answering the conversation and the work is the ordinary
 		// arrangement and a row that named only the first would be telling
 		// somebody the other slot is somewhere else.
-		key := strings.ToLower(model)
+		key := spendModelKey(model)
 		if was := crew.role[key]; was != "" {
 			crew.role[key] = was + " · " + slot.Label
 			continue
@@ -147,6 +151,19 @@ func (a *app) spendCrewNow() spendCrew {
 		crew.role[key] = slot.Label
 	}
 	return crew
+}
+
+// answersForSlot is whether this window can say anything at all about one model
+// slot — which is the same question [app.slotRefusal] answers from the writing
+// end, asked here so the spend page draws a slot's absence only where the
+// absence is a fact rather than a silence.
+//
+// THE CONVERSATION IS THE ONE IT HOLDS. The registry's reader for the other four
+// answers nothing on this surface (settings.go's [app.registry] says so in as
+// many words), and a page that turned that silence into `unbound` would be
+// telling somebody nothing runs their work.
+func (a *app) answersForSlot(slot config.ModelSlot) bool {
+	return slot.Slot == talkSlot
 }
 
 // refreshSpend is the place clock's beat on this page: the cache reads only
@@ -168,6 +185,17 @@ func (a *app) refreshSpend() {
 func (a *app) readSpendLines(now time.Time) {
 	lines, _ := a.spend.cache.Read(time.Time{})
 	a.spend.lines, a.spend.read = lines, now
+	// AND THE WORLD WITH THE LINES, on the same beat and for the same reason the
+	// bands and the world are read together on home: a ledger line minted by work
+	// that started ten seconds ago has a title only in a scan taken after it.
+	a.spend.world = a.readWorld()
+	a.spend.held = false
+	for _, line := range lines {
+		if line.USD > 0 {
+			a.spend.held = true
+			break
+		}
+	}
 	a.rebuildSpend()
 }
 
@@ -175,7 +203,7 @@ func (a *app) readSpendLines(now time.Time) {
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
-	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames()).crewed(a.spendCrewNow())
+	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames(p.world)).crewed(a.spendCrewNow())
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -195,13 +223,21 @@ func (a *app) rebuildSpend() {
 // keeps the id: a row headed by an id is a poorer row than one headed by a
 // title, and a far better one than a blank.
 //
-// IT IS BUILT FROM READINGS THIS SURFACE ALREADY HOLDS. The world is home's own
-// scan and the items are the standing seam's, both already paid for on the same
-// three-second beat; a join that opened a project index of its own would be a
-// second walk of the disk for a column of words.
-func (a *app) spendNames() map[string]string {
+// IT IS BUILT FROM A WORLD THIS PLACE READ ITSELF, ON THE WAY IN. It used to read
+// home's cached world — which is nil the moment home is left, and leaving home is
+// exactly how a person gets here (`tab`, `alt+5`, the tab bar). Every row of
+// `what it was for` then wore a raw id: `1`, `aaaa000000000002`, `release`. The
+// scan is one walk of the places root on `open` and on the place clock's beat,
+// which is what every other place pays for its own reading.
+//
+// AND THE PROMISES ARE ASKED OF EVERY PROJECT, not of this window's. A firing
+// costs money in the workspace it fires in, and the seam answers by workspace, so
+// a page asking only about the project the window happens to be in cannot name a
+// promise in any other one.
+func (a *app) spendNames(world session.World) map[string]string {
 	names := map[string]string{}
-	for _, project := range a.home.world.Projects {
+	seen := map[string]bool{}
+	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			if title := strings.TrimSpace(row.Title); title != "" {
 				names[session.SubjectConversation+"\x00"+row.ID] = title
@@ -212,8 +248,17 @@ func (a *app) spendNames() map[string]string {
 				}
 			}
 		}
+		if a.stands.Items == nil || seen[project.Path] {
+			continue
+		}
+		seen[project.Path] = true
+		for _, item := range a.stands.Items(project.Path) {
+			if title := strings.TrimSpace(item.Title()); title != "" {
+				names[session.SubjectStanding+"\x00"+item.ID] = title
+			}
+		}
 	}
-	if a.stands.Items != nil {
+	if a.stands.Items != nil && !seen[a.workspace] {
 		for _, item := range a.stands.Items(a.workspace) {
 			if title := strings.TrimSpace(item.Title()); title != "" {
 				names[session.SubjectStanding+"\x00"+item.ID] = title
@@ -433,7 +478,18 @@ const spendTeach = "What this machine has cost, by the day, by the model, and by
 // still page does not notice until it is on a clock.
 func (placeSpend) body(a *app, width, room int) []placeRow {
 	if a.spend.reading.totals.USD <= 0 {
-		return placeTeachRows(placeTeachProse(spendTeach, width, a.pal), room)
+		if !a.spend.held {
+			return placeTeachRows(placeTeachProse(spendTeach, width, a.pal), room)
+		}
+		// THE HEADER STAYS, because it is the only thing on this frame naming the
+		// window the four arrow keys move ([spendPage.held] holds the argument).
+		rows := make([]placeRow, 0, room)
+		rows = append(rows, placeRow{text: a.spend.reading.windowHeaderRow(width, a.pal), hit: -1})
+		for len(rows) < room {
+			rows = append(rows, placeRow{text: "", hit: -1})
+		}
+		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
+		return rows
 	}
 	body, stops := a.spend.reading.body(width, a.pal)
 	a.spend.stops = stops

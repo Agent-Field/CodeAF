@@ -475,18 +475,27 @@ func standingTeach(pal palette) []string {
 // clause at all — the row then says only what kind of thing it is — and the
 // firing clause is absent on a day nothing fired, rather than drawn as a nought.
 func standingSummary(views []StandingItemView, now time.Time) string {
-	if len(views) == 0 {
-		return ""
-	}
-	fired := 0
+	// ONE ORDER IS COUNTED ONCE, and it is counted by ID. An order that reaches
+	// the whole machine stands over every project, so the bands this list is
+	// built from hold it under each of them ([app.standingPlaceViews] walks the
+	// keys of both maps) — and a clause that added those up would tell somebody
+	// they had six promises on a machine holding four.
+	held, fired := map[string]bool{}, map[string]bool{}
 	for _, view := range views {
+		if held[view.Item.ID] {
+			continue
+		}
+		held[view.Item.ID] = true
 		if sameDay(view.Item.LastFired, now) {
-			fired++
+			fired[view.Item.ID] = true
 		}
 	}
-	clause := groupedInt(len(views)) + " " + plural("order", len(views))
-	if fired > 0 {
-		clause += ", " + groupedInt(fired) + " fired today"
+	if len(held) == 0 {
+		return ""
+	}
+	clause := groupedInt(len(held)) + " " + plural("order", len(held))
+	if len(fired) > 0 {
+		clause += ", " + groupedInt(len(fired)) + " fired today"
 	}
 	return clause
 }
