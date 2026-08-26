@@ -3022,7 +3022,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	var (
 		changed  []string
 		seen     = map[string]bool{}
-		seenInfo = map[string]bool{}
+		seenInfo = newLineNovelty()
 		lastDirt string
 		failure  error
 		stopped  string
@@ -3485,7 +3485,8 @@ var knowledgeTools = map[string]bool{
 }
 
 // taughtSomething reports whether one call advanced the node's KNOWLEDGE: a
-// knowledge tool, or a bash, whose RESULT the node has not been told before.
+// knowledge tool, or a bash, whose RESULT was MORE NEW THAN OLD to this node —
+// measured line by line, over the lines it has already been shown (novelty.go).
 //
 // ── PROGRESS IS INFORMATION, NEVER ACTIVITY ──
 //
@@ -3520,7 +3521,17 @@ var knowledgeTools = map[string]bool{
 // THE TOOL NAME STAYS IN THE KEY. Two different hands that happen to answer the
 // same bytes — an `ls` and a `bash ls` — are two ways of learning the same
 // thing, and only the second of them is a spin.
-func taughtSomething(event Event, seen map[string]bool) bool {
+//
+// AND A RESULT THE HARNESS WROTE IS NOT THE WORLD ANSWERING. A withdrawn hand
+// and a refused door (withdrawn.go's [Event.HarnessMade]) are neither progress
+// nor a spin, which the caller's own reading already has right — this returns
+// early so that those bytes are not remembered EITHER, because a sentence this
+// side of the wall wrote must not be able to make a later, real result look
+// like something the node had already been told.
+func taughtSomething(event Event, seen *lineNovelty) bool {
+	if event.HarnessMade {
+		return false
+	}
 	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
 		return false
 	}
@@ -3542,13 +3553,15 @@ func taughtSomething(event Event, seen map[string]bool) bool {
 // time — so it differs on every single call, and a hash taken over it would
 // report novelty for a result that had not changed a byte. That is exactly the
 // defect above, with the counter's one honest signal inverted into noise.
-func freshAnswer(event Event, seen map[string]bool) bool {
-	key := event.Tool + "\x00" + stripJobFooter(event.Output)
-	if seen[key] {
-		return false
-	}
-	seen[key] = true
-	return true
+//
+// AND THE NOVELTY IS MEASURED AT THE LINE (novelty.go). Stripping the footer
+// answers the one line the harness itself appends; it cannot answer the clock
+// the WORLD prints, and every long-running command has one. So the question is
+// not "have I seen this result" but "how much of this result have I seen" —
+// more new than old ([taughtLineThreshold]) is a step that taught the node
+// something, and one changed line in sixteen is not.
+func freshAnswer(event Event, seen *lineNovelty) bool {
+	return seen.informative(event.Tool, stripJobFooter(event.Output))
 }
 
 // argField reads one string field out of a tool call's display args. The args
