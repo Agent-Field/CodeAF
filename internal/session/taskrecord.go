@@ -1,7 +1,9 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -45,6 +47,23 @@ type TaskRecord struct {
 	// transcript is not on this disk any more" about a file that is sitting
 	// perfectly well on the other one.
 	Kept bool `json:"kept,omitempty"`
+	// Journal is the END of the node's own transcript, whole lines, and nil
+	// whenever the caller did not ask for any.
+	//
+	// IT IS BYTES AND NOT A PARSED PAGE. The journal's framing is one JSON object
+	// per line and the surface already has the reader for it (internal/tui3's
+	// readJournalLines), so a shape invented here would be a second parser that
+	// has to agree with that one for ever — and Decision 1's whole bargain is
+	// that a payload is the thing itself rather than a translation of it.
+	//
+	// IT IS A TAIL AND NEVER THE FILE. A node's transcript is megabytes and the
+	// page that draws it keeps the last screenful of blocks anyway
+	// ([tui3.readRoomJournalTail]), so sending the whole of one would be paying a
+	// connection for lines nothing will draw. The cut is made at a LINE BOUNDARY
+	// — the first newline after it is dropped along with the partial line before
+	// it — because a torn first line is a line the reader throws away and a
+	// caller cannot tell that from a line that was never written.
+	Journal []byte `json:"journal,omitempty"`
 }
 
 // TaskRecordPath is the LOCAL FILE a row's URI names, or "" for a URI that names
@@ -77,7 +96,13 @@ func TaskRecordPath(uri string) string {
 // connection applies its own boundary first ([ReadTaskRecordUnder]), which is
 // the same division internal/remote keeps everywhere else — the reading is one
 // function and the permission is the engine's to make.
-func ReadTaskRecord(uri string) TaskRecord {
+//
+// TAIL IS HOW MANY BYTES OF THE JOURNAL'S END TO CARRY BACK, and zero — the
+// card's own answer — carries none. A room wants the transcript and a card wants
+// one paragraph of it, and the difference between the two is a megabyte on a
+// wire, so the caller says which it is asking for rather than every caller
+// paying for the larger.
+func ReadTaskRecord(uri string, tail int) TaskRecord {
 	path := TaskRecordPath(uri)
 	if path == "" {
 		return TaskRecord{}
@@ -87,7 +112,54 @@ func ReadTaskRecord(uri string) TaskRecord {
 		return TaskRecord{}
 	}
 	report, _ := PeekReport(path)
-	return TaskRecord{Report: report, Kept: true}
+	return TaskRecord{Report: report, Kept: true, Journal: readTail(path, info.Size(), tail)}
+}
+
+// TaskJournalTail is what a ROOM asks for: the last of a node's transcript, in
+// bytes.
+//
+// HALF A MEGABYTE IS THE SCREENFUL WITH ROOM TO SPARE. The page keeps the last
+// [tui3.roomTail] blocks and throws the rest away, and a block is a message —
+// so what is actually drawn is tens of kilobytes even on a node that ran for an
+// hour. The margin is for the one line a journal is allowed to be enormous on: a
+// tool result, capped at 4k by the display but not by the file.
+const TaskJournalTail = 512 << 10
+
+// readTail is the last n bytes of a file, cut back to a whole line, or nil for a
+// caller that asked for none.
+func readTail(path string, size int64, n int) []byte {
+	if n <= 0 || size <= 0 {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	from := size - int64(n)
+	if from < 0 {
+		from = 0
+	}
+	if from > 0 {
+		if _, err := file.Seek(from, io.SeekStart); err != nil {
+			return nil
+		}
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil
+	}
+	if from > 0 {
+		// THE FIRST LINE IS TORN AND IS DROPPED WITH THE CUT. A reader cannot tell
+		// half a JSON object from one this build does not understand, and both are
+		// skipped — but only one of them is a line somebody wrote.
+		if at := bytes.IndexByte(data, '\n'); at >= 0 {
+			data = data[at+1:]
+		} else {
+			data = nil
+		}
+	}
+	return data
 }
 
 // ReadTaskRecordUnder is that reading with the one boundary an ENGINE has to
@@ -100,7 +172,7 @@ func ReadTaskRecord(uri string) TaskRecord {
 // the strength of what the other end says, so the root is checked here, on the
 // machine that owns it. It is internal/remote's two-roots law restated for the
 // one directory this door answers about.
-func ReadTaskRecordUnder(root, uri string) (TaskRecord, error) {
+func ReadTaskRecordUnder(root, uri string, tail int) (TaskRecord, error) {
 	path := TaskRecordPath(uri)
 	if path == "" {
 		return TaskRecord{}, fmt.Errorf("engine: %s does not name a file on this machine", strings.TrimSpace(uri))
@@ -119,7 +191,7 @@ func ReadTaskRecordUnder(root, uri string) (TaskRecord, error) {
 	if !underRoot(root, real) {
 		return TaskRecord{}, outsideTheRecord(uri)
 	}
-	return ReadTaskRecord("file://" + real), nil
+	return ReadTaskRecord("file://"+real, tail), nil
 }
 
 func outsideTheRecord(uri string) error {

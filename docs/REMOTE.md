@@ -282,6 +282,16 @@ what changed belongs to the far machine, when you last looked belongs to this
 terminal, and one stamp answering for both would let a glance at the server clear
 the badge over the laptop's own tab.
 
+**The task roster and its rooms follow the same rule.** The far world already
+carries each conversation's task rows, so the surface selects the row whose
+transcript matches `Welcome.SessionFile` and builds the roster without another
+round trip. A landed row's room asks `Places.Task` for a bounded, whole-line
+journal tail and draws it asynchronously; while that call is in flight the room
+says it is bringing the transcript from the other machine. The remote agent
+still offers no local room-action interfaces, so steering, stopping, and model
+changes are absent rather than sent to the wrong disk or exposed as broken.
+This completes protocol version 5 without another version move.
+
 ## Decision 11 — The room has one keyboard, and the engine says whose
 
 **Decision.** A `Session` names one attached surface the **driver**. The

@@ -334,8 +334,14 @@ The second half of the list, with the exact sentence each one says.
    `harnesses are unavailable here`
    rather than listing this machine's and offering to run them there.
 
-9. **The task rail is absent by construction.** The remote session does not carry it, so
-   there is no rail and no room. It says nothing; there is nothing to draw.
+## Why is the task roster empty over host, and can I open a remote task room?
+
+The task roster lists this far conversation's work. Its rows come from the far
+   machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
+   you would see while sitting at that machine. Opening one first says
+   `bringing this task's transcript from the other machine…`, then draws the task's own
+   transcript when it arrives. That hosted room is for reading: steering, stopping, and
+   changing its model are absent because those actions do not cross this connection yet.
 
 10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes

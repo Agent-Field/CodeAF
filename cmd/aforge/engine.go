@@ -425,8 +425,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// instead, under this machine's own places root, which is the boundary
 		// [session.ReadTaskRecordUnder] applies rather than trusting the URI the
 		// other end handed back.
-		TaskRecord: func(uri string) (session.TaskRecord, error) {
-			return session.ReadTaskRecordUnder(session.PlacesRoot(), uri)
+		TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+			return session.ReadTaskRecordUnder(session.PlacesRoot(), uri, tail)
 		},
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them

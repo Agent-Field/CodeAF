@@ -227,7 +227,7 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 	// [homeView.readGone] refuses to do with a stat.
 	if read := a.farRecord; read != nil {
 		return func() tea.Msg {
-			record, err := read(entry.TranscriptURI)
+			record, err := read(entry.TranscriptURI, 0)
 			if err != nil {
 				return taskTailMsg{path: path, unread: true}
 			}
@@ -243,7 +243,7 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 		return func() tea.Msg { return taskTailMsg{path: path, unread: true} }
 	}
 	return func() tea.Msg {
-		record := session.ReadTaskRecord(entry.TranscriptURI)
+		record := session.ReadTaskRecord(entry.TranscriptURI, 0)
 		return taskTailMsg{path: path, tail: record.Report, kept: record.Kept}
 	}
 }
