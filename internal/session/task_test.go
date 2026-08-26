@@ -1767,7 +1767,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 // build it started, recalls its own state, or runs a command that only inspects
 // is working; what the counter kills is the same ANSWER again, learning nothing.
 func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
-	seen := map[string]bool{}
+	seen := newLineNovelty()
 	step := func(tool, args, output string) bool {
 		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args, Output: output}, seen)
 	}
