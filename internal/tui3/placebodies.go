@@ -40,9 +40,10 @@ const placeHeadRows = 4
 // asks the place for its body and the place answers rows and a hit map
 // (place_standing.go).
 func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
-	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
 		return a.standPage.body(a, width, room)
 	})
+	return lines, placeLineHits(hits), caretX, caretY
 }
 
 // placeNote is the one line a place says about what it is holding, drawn under

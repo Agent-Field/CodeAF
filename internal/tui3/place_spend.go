@@ -165,14 +165,14 @@ func (a *app) spendNames() map[string]string {
 // spendFrame draws the spend place in the frame every place is drawn in, with
 // the row under the cursor wearing the ladder's selected step.
 func (a *app) spendFrame(width, height int) ([]string, []int, int, int) {
-	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+	lines, hits, caretX, caretY := placeFrame(a, width, height, func(width, room int) []placeRow {
 		body, stops := a.spend.reading.body(width, a.pal)
 		a.spend.stops = stops
 		// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
 		// loses the cursor off the bottom of the screen the moment the ledger is
 		// longer than the terminal, which is the one thing a list may never do.
 		a.spend.top = placeTop(a.spend.top, a.spend.cursor, len(body), room)
-		rows := make([]placeRow[int], 0, room)
+		rows := make([]placeRow, 0, room)
 		for i := a.spend.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
@@ -181,14 +181,15 @@ func (a *app) spendFrame(width, height int) ([]string, []int, int, int) {
 			if (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok {
 				text = a.pal.selected(text, width)
 			}
-			rows = append(rows, placeRow[int]{text: text, hit: i})
+			rows = append(rows, placeRow{text: text, hit: i})
 		}
 		a.spend.shown = len(rows)
 		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
+			rows = append(rows, placeRow{text: "", hit: -1})
 		}
 		return rows
 	})
+	return lines, placeLineHits(hits), caretX, caretY
 }
 
 func (a *app) spendStopAt(i int) spendStop {

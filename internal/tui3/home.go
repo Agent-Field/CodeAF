@@ -3243,14 +3243,14 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// the body, the frame is exactly the whole terminal, the tail-clamp keeps row
 	// 0 and the last rows, and the caret rides the clamp. What is left here is
 	// home's own body and the three hit maps it answers the pointer with.
-	lines, hits, caretX, caretY := placeFrame(a, width, height, homeMark{-1, -1},
-		func(width, room int) []placeRow[homeMark] {
+	lines, hits, caretX, caretY := placeFrame(a, width, height,
+		func(width, room int) []placeRow {
 			left, right := homeColumns(width)
 			a.homeWindow(room)
 			body := a.homeBody(left, right, room, a.pal)
-			rows := make([]placeRow[homeMark], 0, len(body))
+			rows := make([]placeRow, 0, len(body))
 			for _, drawn := range body {
-				rows = append(rows, placeRow[homeMark]{
+				rows = append(rows, placeRow{
 					text: drawn.text,
 					hit:  homeMark{line: drawn.hit, pane: drawn.pane},
 				})
@@ -3262,8 +3262,9 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// hover resolve against what this frame actually drew, so a stale map is a
 	// click answering for a row that has moved. They are unpacked AFTER the frame
 	// so the clamp that cuts rows cuts both of them the same way.
-	rows, panes := make([]int, len(hits)), make([]int, len(hits))
-	for i, mark := range hits {
+	marks := placeHitsOf(hits, homeMark{line: -1, pane: -1})
+	rows, panes := make([]int, len(marks)), make([]int, len(marks))
+	for i, mark := range marks {
 		rows[i], panes[i] = mark.line, mark.pane
 	}
 	a.home.pane = panes

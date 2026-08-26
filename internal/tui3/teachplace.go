@@ -53,9 +53,9 @@ func (a *app) teachFrame(width, height int) ([]string, []int, int, int) {
 			return a.spendFrame(width, height)
 		}
 	}
-	lines, hits, caretX, caretY := placeFrame(a, width, height, -1,
-		func(width, room int) []placeRow[int] {
-			rows := make([]placeRow[int], 0, room)
+	lines, hits, caretX, caretY := placeFrame(a, width, height,
+		func(width, room int) []placeRow {
+			rows := make([]placeRow, 0, room)
 			// THE PROSE IS NARROWER THAN THE FRAME. A sentence run out to two
 			// hundred columns is a sentence nobody's eye can return from, so the
 			// paragraph is held to a reading measure and the rest of the width is
@@ -68,14 +68,14 @@ func (a *app) teachFrame(width, height int) ([]string, []int, int, int) {
 				if len(rows) >= room {
 					break
 				}
-				rows = append(rows, placeRow[int]{text: " " + a.pal.dim(line), hit: -1})
+				rows = append(rows, placeRow{text: " " + a.pal.dim(line), hit: -1})
 			}
 			for len(rows) < room {
-				rows = append(rows, placeRow[int]{text: "", hit: -1})
+				rows = append(rows, placeRow{text: "", hit: -1})
 			}
 			return rows
 		})
-	return lines, hits, caretX, caretY
+	return lines, placeLineHits(hits), caretX, caretY
 }
 
 // teachMeasure is how wide a paragraph of this surface's own prose may run. It

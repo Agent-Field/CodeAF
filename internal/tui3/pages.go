@@ -276,16 +276,53 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 
 // ── the frame every place is drawn in ───────────────────────────────────────
 
-// placeRow is one row of a place's body: the text, and whatever that place
-// resolves a pointer against. The hit is a type parameter because the places
-// answer the pointer in their own words — the task page in `taskSheetHit`, the
-// settings panel in `sheetHit`, home in a line number and two column maps — and
-// a router that flattened all of them into one int would be a router that lets a
-// click land on a row the draw did not put there.
-type placeRow[H any] struct {
+// placeHit is whatever ONE place resolves a pointer against, in that place's own
+// vocabulary: the task page answers in `taskSheetHit`, the settings panel in
+// `sheetHit`, home in a `homeMark` of a line and a pane, and the four list places
+// in a line number. A router that flattened all of them into one int would be a
+// router that lets a click land on a row the draw did not put there.
+//
+// IT IS `any` BECAUSE THE FRAME IS ONE FUNCTION AND GO METHODS TAKE NO TYPE
+// PARAMETERS. The rows used to carry the hit as a type parameter, which worked
+// while each place had a frame function of its own; the [place] interface below
+// is the one contract every place answers, and an interface method cannot be
+// generic. So the frame carries the hits opaquely and hands them straight back,
+// and the ONE file that knows what a hit means for a place is that place's own —
+// each casts its own map back with a `hit.(taskSheetHit)` beside the body that
+// wrote it. Nothing between the two ever looks inside.
+type placeHit = any
+
+// placeRow is one row of a place's body: the text, and what that row answers to
+// the pointer.
+type placeRow struct {
 	text string
-	hit  H
+	hit  placeHit
 }
+
+// placeHitsOf reads one place's hit map back in that place's own vocabulary.
+//
+// IT IS CALLED FROM THE PLACE THAT WROTE THE MAP AND FROM NOWHERE ELSE. The
+// frame carries the hits opaquely ([placeHit] says why); this is the one step
+// back across that boundary, and it is deliberately a plain function rather than
+// anything the interface exposes — a row of the frame's own chrome (the pulse,
+// the tab bar, the composer) carries no hit at all, and `blank` is what that row
+// means to the place asking.
+func placeHitsOf[H any](hits []placeHit, blank H) []H {
+	out := make([]H, len(hits))
+	for i, hit := range hits {
+		if got, ok := hit.(H); ok {
+			out[i] = got
+			continue
+		}
+		out[i] = blank
+	}
+	return out
+}
+
+// placeLineHits is [placeHitsOf] for the places whose rows answer with a LINE OF
+// THEIR OWN BODY — the standing list, memory, spend and search all do — where a
+// row that answers to nothing is -1.
+func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 
 // placeFrame is THE frame. Every place is drawn in it, and the head, the foot
 // and the clamp below belong to the router rather than to any place:
@@ -309,8 +346,8 @@ type placeRow[H any] struct {
 // no viewport. A frame too short for its own contents keeps row 0 and the last
 // `height-1` rows, AND THE CARET RIDES THAT CLAMP: coordinates computed before
 // the cut would leave the terminal's cursor standing a row below the box.
-func placeFrame[H any](a *app, width, height int, blank H, body func(width, room int) []placeRow[H]) ([]string, []H, int, int) {
-	return placeFrameWithBar(a, width, height, blank, body, nil)
+func placeFrame(a *app, width, height int, body func(width, room int) []placeRow) ([]string, []placeHit, int, int) {
+	return placeFrameWithBar(a, width, height, body, nil)
 }
 
 // placeFrameWithBar is [placeFrame] with the hint line replaced by a BAR a thumb
@@ -321,8 +358,8 @@ func placeFrame[H any](a *app, width, height int, blank H, body func(width, room
 // the task page and home's own phone sheet both already followed with their own
 // feet. The bar carries the place's own hit so the press resolves against the
 // row that was actually drawn, exactly as every other row on the frame does.
-func placeFrameWithBar[H any](a *app, width, height int, blank H,
-	body func(width, room int) []placeRow[H], bar func(width int) (string, H, bool)) ([]string, []H, int, int) {
+func placeFrameWithBar(a *app, width, height int,
+	body func(width, room int) []placeRow, bar func(width int) (string, placeHit, bool)) ([]string, []placeHit, int, int) {
 	// THE PLACE LADDER IS IN FORCE FOR THE WHOLE OF THIS FRAME, and it is put back
 	// before this function returns (styles.go's [palette.onPlaces]). Every row
 	// below — the pulse, the tab bar, the body the place itself builds, the
@@ -335,22 +372,22 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	defer func() { a.pal = was }()
 	pal := a.pal
 	lines := make([]string, 0, height)
-	hits := make([]H, 0, height)
-	add := func(text string, hit H) {
+	hits := make([]placeHit, 0, height)
+	add := func(text string, hit placeHit) {
 		lines = append(lines, text)
 		hits = append(hits, hit)
 	}
 
-	add(a.pulseLine(width, pal), blank)
+	add(a.pulseLine(width, pal), nil)
 	// THE BAR IS ROW ONE AND THE POINTER IS TOLD SO HERE. A press arrives as a
 	// row of the terminal, and the only honest way to know which row the bar
 	// ended up on is to record it where it was drawn — the clamp below can cut
 	// it off a frame too short for its own contents, and a press resolved
 	// against a constant would then open a place for a click on a body row.
 	a.tabRow = placeTabRow
-	add(a.placeTabBar(width, a.mapShowing, pal), blank)
-	add(pal.dim(rule(width)), blank)
-	add("", blank)
+	add(a.placeTabBar(width, a.mapShowing, pal), nil)
+	add(pal.dim(rule(width)), nil)
+	add("", nil)
 
 	box := a.placeBox()
 	var draftRows []string
@@ -373,8 +410,8 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	for _, row := range body(width, room) {
 		add(row.text, row.hit)
 	}
-	add("", blank)
-	add(pal.dim(rule(width)), blank)
+	add("", nil)
+	add(pal.dim(rule(width)), nil)
 	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it here:
 	// under the rule and above the composer, where every place's own count,
 	// filter line or open editor's label goes. It is the router's one concession
@@ -382,7 +419,7 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	// a foot: a place that wanted three rows here would be a place drawing a
 	// second frame inside this one.
 	for _, row := range note {
-		add(row, blank)
+		add(row, nil)
 	}
 
 	caretX, caretY := 0, 0
@@ -392,7 +429,7 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	// otherwise "start a task from anywhere" is "start a task somewhere".
 	chip := a.scopeChip()
 	if len(draftRows) == 0 {
-		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), blank)
+		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
 		// than left blinking at the frame's origin. The moment a character lands
 		// the box stops being empty and the caret comes back, in the box.
@@ -400,10 +437,10 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	} else {
 		for i, row := range draftRows {
 			if i == 0 {
-				add(a.placeChipped(" "+row, chip, width, pal), blank)
+				add(a.placeChipped(" "+row, chip, width, pal), nil)
 				continue
 			}
-			add(" "+row, blank)
+			add(" "+row, nil)
 		}
 		caretX, caretY = 1+draftCX, len(lines)-len(draftRows)+draftCY
 	}
@@ -411,9 +448,9 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 		caretX = width - 1
 	}
 	for _, row := range strip {
-		add(row, blank)
+		add(row, nil)
 	}
-	switch line, hit, ok := "", blank, false; {
+	switch line, hit, ok := "", placeHit(nil), false; {
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -422,9 +459,9 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 		fallthrough
 	default:
 		if msg, ok := a.placeMsgLine(width); ok {
-			add(msg, blank)
+			add(msg, nil)
 		} else {
-			add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), blank)
+			add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
 		}
 	}
 
@@ -446,7 +483,7 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 		}
 	}
 	for len(lines) < height {
-		add("", blank)
+		add("", nil)
 	}
 	// AND NO GROUND GOES ON AT ALL. A place paints the rows it built and nothing
 	// under them: the terminal's own background shows through every cell this

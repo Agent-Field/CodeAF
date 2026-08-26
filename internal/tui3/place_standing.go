@@ -159,22 +159,22 @@ func (p *standPage) close(a *app) {
 // body is the rows and the hit map, painted into exactly the room the frame
 // reserved. It reads the cached rows and never a seam — that is the whole of
 // "nothing reads the disk on a draw".
-func (p *standPage) body(a *app, width, room int) []placeRow[int] {
+func (p *standPage) body(a *app, width, room int) []placeRow {
 	if !p.held {
 		// THE TEACHING PROSE IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
 		// header row rather than under it: the header carries the time window
 		// ([standingHeaderRow]), and a control naming a span of days on a machine
 		// that has never held a standing order is a control about nothing. A list
 		// emptied by the window keeps its header ([standPage.held] says why).
-		rows := make([]placeRow[int], 0, room)
+		rows := make([]placeRow, 0, room)
 		for _, line := range standingTeach(a.pal) {
 			if len(rows) >= room {
 				break
 			}
-			rows = append(rows, placeRow[int]{text: " " + line, hit: -1})
+			rows = append(rows, placeRow{text: " " + line, hit: -1})
 		}
 		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
+			rows = append(rows, placeRow{text: "", hit: -1})
 		}
 		p.top, p.shown, p.owner = 0, 0, nil
 		return rows
@@ -182,16 +182,16 @@ func (p *standPage) body(a *app, width, room int) []placeRow[int] {
 	lines, owner, top, shown := standingLines(
 		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())
 	p.top, p.shown, p.owner = top, shown, owner
-	rows := make([]placeRow[int], 0, room)
+	rows := make([]placeRow, 0, room)
 	for i, text := range lines {
 		at := -1
 		if i < len(owner) {
 			at = owner[i]
 		}
-		rows = append(rows, placeRow[int]{text: text, hit: at})
+		rows = append(rows, placeRow{text: text, hit: at})
 	}
 	for len(rows) < room {
-		rows = append(rows, placeRow[int]{text: "", hit: -1})
+		rows = append(rows, placeRow{text: "", hit: -1})
 	}
 	return rows
 }
