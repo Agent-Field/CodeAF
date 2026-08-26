@@ -389,7 +389,7 @@ Swarm Task Splitting Ideation
 it is stopped on you
 Add a --report-only mode so the report can be
 regenerated without re-running the sweep?
-1 do it   2 leave it
+1 do it · 2 leave it · enter open and talk
 
 work
 ✓ toy-scale validation of decomposition             $1.63
@@ -408,11 +408,16 @@ spent $1.63 · 3.6M tokens · thinking high
   directory is not there any more — then the door word: `here` for the conversation this
   window is holding, `open in another window` for one somebody else has;
 - **`it is stopped on you`**, the question in its own words, and the keys that answer it
-  from here. A digit sends the answer without opening anything;
+  from here. A digit sends the answer without opening anything, and `enter open and talk`
+  on the end of that row is the third thing you can do with it — open the conversation that
+  asked and answer it there, which is what you want when one line is not the whole story.
+  The answer keys are amber, the way out is dim, because they are two different offers.
+  The band is absent entirely for a conversation nobody is asking anything of;
 - **`work`** — each task with its mark and what it cost, a run that is not done keeping its
   outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
   the tasks place** rather than unfolding: a card is not the place that holds them;
-- **`made for you`** — the files it left behind;
+- **`made for you`** — the files it left behind, each a door you can click, with what it is
+  called and how long ago it landed. A conversation that made nothing has no band at all;
 - **one facts line** — what it cost, the tokens, and the rung work started here would think
   at (`thinking high`); `ctrl+v` still does not move a conversation's own rung from here;
 - and **`→ verbs: …`**, which names what can be done and never the letters.
