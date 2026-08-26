@@ -1442,6 +1442,12 @@ type app struct {
 	// process does, and nothing writes them to a disk.
 	switchGrouped bool
 	switchQuiet   bool
+	// composer is the COMPOSER LAYER: `alt+enter` over a composer with something
+	// in it, on any place (composerlayer.go, SCREEN 2e). It is the router's own
+	// layer rather than any one place's, which is why it is here beside `page`
+	// and not on a place's state — the three facts it settles are the same three
+	// wherever a person typed the sentence.
+	composer composerLayer
 	// errand builds the agent behind `ask here` and standingRoot is where its
 	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a

@@ -601,13 +601,40 @@ func placeFrameWithBar(a *app, width, height int,
 	}
 	strip := a.placeStrip(width)
 	note := a.placeNote(width)
-	foot := 2 + len(note) + draftHeight + len(strip)
+	// THE COMPOSER LAYER'S ROWS ARE PART OF THE FOOT AND ARE MEASURED WITH IT.
+	// The layer's whole claim is that the box does not move (composerlayer.go),
+	// which is only true if its three lines are taken from the BODY's room the
+	// same way a draft's second and third rows already are — a foot measured
+	// after the body would push the box down by three cells the moment the chord
+	// was pressed.
+	layer := a.composerRows(width, pal)
+	foot := 2 + len(note) + draftHeight + len(strip) + len(layer)
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
 	}
 
-	for _, row := range body(width, room) {
+	// AND THE PAGE BEHIND DIMS RATHER THAN BEING COVERED. While the layer is up
+	// the place's own rows are repainted at the faintest stop of the depth ladder
+	// — you never lose your place, and the layer is plainly a layer rather than a
+	// new screen (SCREEN 2e). The rows are still the place's own: the frame asks
+	// for exactly the body it would have asked for and paints it differently,
+	// which is why no place has a word to say about being underneath one.
+	drawn := body(width, room)
+	if a.composer.open {
+		// The model list `alt+o` opens is drawn in the body's room and not over
+		// the page, because a place takes the frame whole and the bottom-anchored
+		// overlay has nothing under it to sit on (composerlayer.go's
+		// [app.composerPickRows], which is the settings panel's own move).
+		if a.composer.pick.open {
+			drawn = a.composerPickRows(width, room, pal)
+		} else {
+			for i := range drawn {
+				drawn[i].text = composerFade(drawn[i].text, pal)
+			}
+		}
+	}
+	for _, row := range drawn {
 		add(row.text, row.hit)
 	}
 	add("", nil)
@@ -647,10 +674,19 @@ func placeFrameWithBar(a *app, width, height int,
 	if caretX > width-1 {
 		caretX = width - 1
 	}
+	for _, row := range layer {
+		add(row, nil)
+	}
 	for _, row := range strip {
 		add(row, nil)
 	}
 	switch line, hit, ok := "", placeHit(nil), false; {
+	case a.composer.open:
+		// AND THE THUMB BAR STANDS DOWN UNDER THE LAYER. A bar is a place's own way
+		// out drawn as a target; the layer has taken the keyboard and has a way out
+		// of its own, and two feet arguing about what `esc` does is worse at every
+		// width than one foot naming the keys that are live.
+		add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -716,23 +752,41 @@ func (a *app) placeChipped(row, chip string, width int, pal palette) string {
 // phone's status sheet prints as its `place` row). A person who typed a path
 // outranks both, and that is the composer's business rather than the chip's.
 func (a *app) scopeChip() string {
+	// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS ([shortPath],
+	// and [app.placePath] applies it to this window's own project). A raw
+	// `/home/santosh/work/aforge-v2` in this chip while the very next place drew
+	// `aforge` would be one fact spelled two ways on two frames a `tab` apart,
+	// and the design draws the short form (SCREEN 2b's `here ~/aforge-v2`).
+	//
+	// AND THE CHIP'S OWN DECORATIONS GO ON TOP OF THAT ONE FACT: a session opened
+	// over `--host` says whose disk the path is on, and an owned place says the
+	// word it is called instead of a path at all (host.go). Both are about how
+	// this row READS and neither is about where the sentence goes.
+	if where := a.hostedPath(a.placeWord(shortPath(a.scopeWorkspace(), a.tilde, 0))); where != "" {
+		return placeScopeWord + " " + where
+	}
+	return ""
+}
+
+// scopeWorkspace is the chip's answer as a REAL PATH: the project the cursor is
+// standing on, then this window's own.
+//
+// IT IS ONE ANSWER BECAUSE IT IS ON ONE FRAME TWICE. The chip says where what
+// you type will land, and the composer layer's first line says where the task
+// will run (composerlayer.go) — one row apart, on the same screen. Two readings
+// of "where" that could disagree is exactly the drift the ONE SOURCE OF TRUTH
+// law exists for, and they did: the chip drew this window's project on a place
+// that is not home while the errand door fell through to the person's home
+// directory, so a person read `here ~/aforge-v2` and started a task in `~`.
+func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
-			// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS
-			// ([shortPath], and [app.placePath] below applies it to this window's
-			// own project). A raw `/home/santosh/work/aforge-v2` in this chip while
-			// the very next place drew `aforge` would be one fact spelled two ways
-			// on two frames a `tab` apart, and the design draws the short form
-			// (SCREEN 2b's `here ~/aforge-v2`).
-			if where := shortPath(homeWhere(line), a.tilde, 0); where != "" {
-				return placeScopeWord + " " + where
+			if where := strings.TrimSpace(homeWhere(line)); where != "" {
+				return where
 			}
 		}
 	}
-	if at := a.placePath(0); at != "" {
-		return placeScopeWord + " " + at
-	}
-	return ""
+	return strings.TrimSpace(a.workspace)
 }
 
 // The sentences the router says. Each is quoted in the manual exactly as it is
@@ -784,6 +838,14 @@ func (a *app) placeRestWord() string {
 // every row it can stand on ([app.homeHint]) and gains the router's tail; every
 // other place says the router's own line.
 func (a *app) placeHint() string {
+	// THE COMPOSER LAYER'S FOOT OUTRANKS EVERY OTHER SENTENCE ON THIS LINE. While
+	// it is up the only keys that do anything are its own, and SCREEN 3a's clause
+	// — no key does anything that is not drawn on screen right now — cuts both
+	// ways: a foot still naming `tab next place` would be naming a key the layer
+	// has taken (composerlayer.go's [app.composerFoot]).
+	if a.composer.open {
+		return a.composerFoot()
+	}
 	if a.mapShowing {
 		return placeMapWords
 	}
@@ -887,6 +949,11 @@ func (a *app) showPage(id page) tea.Cmd {
 	a.standDownRest()
 	a.closeStrip()
 	a.mapShowing = false
+	// AND THE COMPOSER LAYER GOES WITH THE PLACE IT WAS OPENED ON. It names that
+	// place in its own foot and dims that place's rows behind it; carried onto the
+	// next room it would be a decision drawn over a page it was never about
+	// (composerlayer.go).
+	a.closeComposerLayer()
 	a.pageMsg = ""
 	next := placeFor(id)
 	if next == nil {
@@ -943,7 +1010,11 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 // gesture nobody can aim.
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	pl := a.showing()
-	if pl == nil {
+	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
+	// drawn at the faintest tier precisely to say they are not the subject any
+	// more, and a cursor that moved under a layer would move a selection nobody
+	// can see they are changing.
+	if pl == nil || a.composer.open {
 		return nil, false
 	}
 	return nil, pl.press(a, y)
@@ -956,7 +1027,7 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 // commonest message this surface gets.
 func (a *app) placeBodyHover(y int) bool {
 	pl := a.showing()
-	return pl != nil && pl.hover(a, y)
+	return pl != nil && !a.composer.open && pl.hover(a, y)
 }
 
 // placeBodyWheel is the wheel over one place: it walks that place's cursor, by
@@ -966,7 +1037,7 @@ func (a *app) placeBodyHover(y int) bool {
 // here — the bargain the task page and home both already struck.
 func (a *app) placeBodyWheel(delta int) bool {
 	pl := a.showing()
-	return pl != nil && pl.wheel(a, delta)
+	return pl != nil && !a.composer.open && pl.wheel(a, delta)
 }
 
 // nextPage is `tab`: the place after this one, and round again from the last.
