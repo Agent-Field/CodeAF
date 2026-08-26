@@ -4265,33 +4265,6 @@ func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow
 	return pal.muted(mark)
 }
 
-// homeTaskTail is the right edge of a task's row: a count-up while it runs,
-// taken from when the session's presence says the node started, and the age it
-// landed at otherwise. A running node whose start nobody recorded shows nothing
-// — the emptiness law applied to a clock.
-func (a *app) homeTaskTail(entry session.TaskIndexEntry, row session.SessionRow) string {
-	if row.Runs(entry) && entry.Status == string(session.TaskRunning) {
-		if started := homeStarted(row, entry.ID); !started.IsZero() {
-			return countUpWord(a.now().Sub(started))
-		}
-		return ""
-	}
-	return sinceAt(entry.EndedAt, a.home.world.Read)
-}
-
-// homeStarted is when one running node began, from the presence file the
-// session itself refreshes — the same file whose naming of the node is what let
-// the row spin at all.
-func homeStarted(row session.SessionRow, id string) time.Time {
-	id = strings.TrimSpace(id)
-	for _, out := range row.Presence.RunningTasks {
-		if strings.TrimSpace(out.ID) == id {
-			return out.StartedAt
-		}
-	}
-	return time.Time{}
-}
-
 // homeFilesTouched is how many files this conversation's work wrote, summed
 // across its rows. The list of which files is the transcript's; the count is
 // the card's one physical fact about the work.
@@ -4301,25 +4274,6 @@ func homeFilesTouched(row session.SessionRow) int {
 		total += entry.FilesChanged
 	}
 	return total
-}
-
-// homeLast is the last thing said in a conversation, read once per conversation
-// and remembered.
-//
-// The read is a forward scan of the journal ([session.Peek]) with no lock and
-// no replay, which is cheap enough on the keystroke that moves the cursor and
-// far too expensive on every frame — hence the cache, which lives and dies with
-// the screen.
-func (a *app) homeLast(row session.SessionRow) string {
-	if a.home.last == nil {
-		a.home.last = map[string]session.Summary{}
-	}
-	summary, read := a.home.last[row.Transcript]
-	if !read {
-		summary, _ = session.Peek(row.Transcript)
-		a.home.last[row.Transcript] = summary
-	}
-	return strings.TrimSpace(summary.Last)
 }
 
 // homeHint is the whole line under the foot — the router's keys included, which

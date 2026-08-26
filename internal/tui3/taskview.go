@@ -457,24 +457,6 @@ type taskSheetHit struct {
 // naming itself twice (pages.go). [taskSheetWord] survives because it is still
 // what the COMMAND is called — `/history` — and the manual quotes it.
 
-// taskRecordNote is the dim tail on a record row: one word about a live-looking
-// claim, and the age for everything that landed.
-//
-// THE AGE IS NOT DRAWN FOR EITHER LIVE CASE, and that is the emptiness law
-// rather than a shortage of room. [taskNoteWord] measures a live row by
-// [session.TaskIndexEntry.DurationMS], which is written when the work LANDS —
-// so it is zero on every row that has not, and a tail reading `0s` beside a task
-// that has been going for an hour is a number worse than no number.
-func taskRecordNote(entry session.TaskIndexEntry, runs bool) string {
-	switch {
-	case entry.Live() && runs:
-		return taskRecordRunsWord
-	case entry.Live():
-		return taskRecordStoppedWord
-	}
-	return taskNoteWord(entry)
-}
-
 // taskStateWord is WHAT ONE ROW OF THE RECORD IS, in a person's words: the
 // state the work came home in, or the judgement about a claim of running.
 //

@@ -1907,32 +1907,6 @@ func rule(width int) string {
 	return strings.Repeat("─", width)
 }
 
-// sheetTitle is the head: what this is on the left, how to leave on the right,
-// and — while a search is on — what was typed, because a filtered list with no
-// visible query is a list that lost rows for no reason a reader can see.
-func sheetTitle(width int, s *sheet, pal palette) string {
-	left := " " + pal.bold(pal.ink("settings"))
-	plainLeft := " settings"
-	if query := strings.TrimSpace(s.query.String()); query != "" {
-		// THE BOX IS NAMED FOR WHAT IT DOES ON THE PAGE YOU ARE ON. Everywhere
-		// else it searches the registry across the tabs; on the accounts tab it
-		// narrows the catalog in front of you (connectcaps.go), and a heading
-		// that called that a search would be promising a jump it will not make.
-		word := "search · "
-		if s.onConnections() {
-			word = "filter · "
-		}
-		left += pal.dim("  " + word + query)
-		plainLeft += "  " + word + query
-	}
-	right := "esc close"
-	gap := width - ansi.StringWidth(plainLeft) - len(right) - 1
-	if gap < 1 {
-		return fit(left, width)
-	}
-	return left + strings.Repeat(" ", gap) + pal.dim(right)
-}
-
 // tabSpan is where one tab's CHIP sits on the bar, so the render and the click
 // agree about it. It covers the chip's padding as well as its word: the cell
 // beside "Context" is part of Context, because a one-cell miss between two words
@@ -2170,14 +2144,6 @@ func (s *sheet) editLine(width int, pal palette) (string, int) {
 	lead := " " + edit.label + " "
 	line := " " + pal.dim(edit.label) + " " + pal.accent(prompt) + pal.ink(fit(shown, width-len(lead)-3))
 	return line, ansi.StringWidth(lead+prompt) + ansi.StringWidth(shown)
-}
-
-// filterLine is the picker's filter box, drawn where the panel's foot line is.
-func (s *sheet) filterLine(width int, pal palette) (string, int) {
-	text := s.sel.pick.filter.String()
-	lead := " " + s.sel.label + " "
-	line := " " + pal.dim(s.sel.label) + " " + pal.accent(prompt) + pal.ink(fit(text, width-len(lead)-3))
-	return line, ansi.StringWidth(lead+prompt) + ansi.StringWidth(text)
 }
 
 // footNote is what the panel says when it has nothing to complain about: where
