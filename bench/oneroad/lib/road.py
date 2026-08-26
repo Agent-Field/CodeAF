@@ -364,7 +364,11 @@ def forks(session):
     hands = 0
     for entry in transcripts(session):
         body = entry.get("content")
-        if isinstance(body, str) and "hands on it · back when they are done" in body:
+        # Matched on the STABLE HALF of the line. The promise after the middle
+        # dot moved when a hand stopped being a barrier and became a stream
+        # (fork.go), and a literal pinned to the whole line silently counted
+        # zero fork notices for every run after that.
+        if isinstance(body, str) and "hands on it · " in body:
             hands += 1
     return {"fork_calls": asked, "fork_notices": hands}
 

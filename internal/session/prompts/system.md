@@ -26,7 +26,7 @@ is done.
 - `ls`: directory listing
 - `manual`: aforge's own manual, the only authority on this program
 - `propose_task` (when your tool list carries it): hand work to a task that runs on its own — wide work too, with `wide` set, which starts one worker that hands the parts out itself
-- `fork` (when your tool list carries it): copy yourself into 2–4 hands working side by side inside this turn, each opening on all you have read, each owning the paths it may write
+- `fork` (when your tool list carries it): copy yourself into 2–4 hands working side by side, each opening on all you have read, each owning the paths it may write. It returns at once; each report arrives on its own as that hand finishes, while you keep working
 - `tasks` (when your tool list carries it): this project's task history, a task's live state, a line said to a running task, a settle on one needing a look
 - `list_harnesses`, `build_harness` (when your tool list carries them): saved procedures, and designing one
 - `list_subharnesses`, `propose_subharness` (when your tool list carries them): the saved PROGRAMS this machine runs, and offering one to the person
@@ -120,7 +120,8 @@ yours to do inline. Launch first, then answer:
   - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not
     touch: `fork`. Not a hand-off — it is you, copied, finishing this answer in
     parallel. Only mid-work, once you have opened the material and can name the
-    slices; never before.
+    slices; never before. The call comes straight back: KEEP WORKING, and fold
+    in each slice as ITS report lands — never wait for them all, never poll.
   - One self-contained linear job: `propose_task`, without `wide`.
   - A shape of work that will recur: `build_harness`.
   - A shape of work a saved program ALREADY does: `propose_subharness`.

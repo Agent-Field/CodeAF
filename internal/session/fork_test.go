@@ -38,10 +38,20 @@ type forkCompleter struct {
 
 	// caller is what the conversation is answered with, by request number.
 	caller []step
+	// callerTail answers every caller request past the end of the script, over
+	// and over. It is what a caller that KEEPS WORKING WHILE ITS HANDS ARE OUT
+	// looks like from the provider's side, and every test below that needs its
+	// hands to actually run uses [keepWorking] for it: a fork returns in the
+	// time it takes to spawn, so a script that says its piece and stops is a
+	// turn that ended before a single hand made a request.
+	callerTail step
 	// callerSeen counts the requests that were NOT a hand's.
 	callerSeen int
 	// callerRequests keeps them, so a test can read what the caller was sent.
 	callerRequests [][]ai.Message
+	// agent is what these steps are driving, so a tail step can ask whether the
+	// hands are home. It is set after construction; read it under the lock.
+	agent *Agent
 
 	// hand answers one hand's nth request. turn is 1 for its first.
 	hand func(index, turn int, messages []ai.Message) (*ai.Response, error)
@@ -111,8 +121,11 @@ func (c *forkCompleter) CompleteWithMessages(ctx context.Context, messages []ai.
 		c.callerSeen++
 		c.callerRequests = append(c.callerRequests, snapshot)
 		var next step
-		if at < len(c.caller) {
+		switch {
+		case at < len(c.caller):
 			next = c.caller[at]
+		default:
+			next = c.callerTail
 		}
 		c.mu.Unlock()
 		if next == nil {
@@ -186,6 +199,58 @@ func newForkCompleter(want int) *forkCompleter {
 	}
 }
 
+// drive is the completer told which agent its steps are driving.
+func (c *forkCompleter) drive(agent *Agent) *Agent {
+	c.mu.Lock()
+	c.agent = agent
+	c.mu.Unlock()
+	return agent
+}
+
+func (c *forkCompleter) driven() *Agent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.agent
+}
+
+// keepWorking is the caller doing what this whole change exists to let it do:
+// working while its hands are out. It answers every request with a cheap look at
+// the tree — one more tool round, one more step boundary, one more chance for a
+// finished hand's report to land in the turn — and says its closing piece only
+// once every hand has reported.
+//
+// It is also, incidentally, the proof of the fifth claim: a caller that could
+// not call anything between hand completions would be a caller still inside a
+// barrier.
+func keepWorking(completer *forkCompleter, closing string) step {
+	turn := 0
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		turn++
+		agent := completer.driven()
+		if agent != nil && agent.jobs.handsOutstanding() && turn < 400 {
+			time.Sleep(2 * time.Millisecond)
+			// The argument moves every time so what ends this loop is the hands
+			// coming home and never the loop detector (looped.go).
+			return toolResponse(fmt.Sprintf("look-%d", turn), "ls",
+				fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
+		}
+		return textResponse(closing), nil
+	}
+}
+
+// handsAreHome waits for every hand to have reported, and fails rather than
+// hanging. It reads the same count a node's landing reads.
+func handsAreHome(t *testing.T, agent *Agent) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for agent.jobs.handsOutstanding() {
+		if time.Now().After(deadline) {
+			t.Fatal("hands were still out ten seconds after the turn ended")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // forkCall is the arguments of one fork, spelled the way a model spells them.
 func forkCall(parts ...string) string {
 	return `{"parts":[` + strings.Join(parts, ",") + `]}`
@@ -199,30 +264,62 @@ func forkPartJSON(role string, scope ...string) string {
 	return `{"role":"` + role + `","scope":[` + strings.Join(quoted, ",") + `]}`
 }
 
-// theForkResult is the fork call's own tool result, read off the caller's LAST
-// request — the one assembled after the burst joined.
-func theForkResult(t *testing.T, completer *forkCompleter) string {
+// theForkRoster is the fork CALL's own tool result — the roster it answers
+// with, read off the caller's last request.
+func theForkRoster(t *testing.T, completer *forkCompleter) string {
 	t.Helper()
 	completer.mu.Lock()
 	defer completer.mu.Unlock()
 	for at := len(completer.callerRequests) - 1; at >= 0; at-- {
 		for _, message := range completer.callerRequests[at] {
 			if strings.EqualFold(message.Role, "tool") {
-				if text := messageContentText(message); strings.Contains(text, "hands, all back") {
+				if text := messageContentText(message); strings.Contains(text, forkOutLead) {
 					return text
 				}
 			}
 		}
 	}
-	t.Fatalf("no fork result reached the caller; it made %d requests", len(completer.callerRequests))
+	t.Fatalf("no fork roster reached the caller; it made %d requests", len(completer.callerRequests))
 	return ""
+}
+
+// theHandReports is every hand's report as it reached the caller: user-role
+// messages on the steering lane, IN THE ORDER THEY LANDED, read off the last
+// request the caller was sent.
+//
+// It reads the transcript rather than the events for the reason every assertion
+// in this file reads it: the claim is about what a MODEL is answered with, and a
+// report that reached a surface and not the next request would satisfy an event
+// assertion perfectly while being invisible to the mind it was written for.
+func theHandReports(t *testing.T, completer *forkCompleter) []string {
+	t.Helper()
+	completer.mu.Lock()
+	defer completer.mu.Unlock()
+	if len(completer.callerRequests) == 0 {
+		t.Fatal("the caller never made a request")
+	}
+	var reports []string
+	for _, message := range completer.callerRequests[len(completer.callerRequests)-1] {
+		if !strings.EqualFold(message.Role, "user") {
+			continue
+		}
+		text := messageContentText(message)
+		if strings.HasPrefix(text, handReportLead) || strings.HasPrefix(text, strings.ToUpper(forkOutOf)) {
+			reports = append(reports, text)
+		}
+	}
+	return reports
 }
 
 // ── the fork itself ─────────────────────────────────────────────────────────
 
-// THREE HANDS, THREE SLICES, AT THE SAME TIME — and the caller gets one block
-// per hand, in the order it declared them and never in the order they finished.
-func TestForkRunsItsHandsAtOnceAndReportsThemInPartOrder(t *testing.T) {
+// THREE HANDS, THREE SLICES, AT THE SAME TIME — and the CALL COMES BACK BEFORE
+// ANY OF THEM DOES, naming them.
+//
+// This is the whole change. The old verb answered "three hands, all back" after
+// the slowest one landed; this one answers a roster while every hand is still
+// working, and the caller's next thought is its own.
+func TestForkReturnsBeforeItsHandsDoAndNamesThem(t *testing.T) {
 	completer := newForkCompleter(3)
 	completer.caller = []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -232,21 +329,18 @@ func TestForkRunsItsHandsAtOnceAndReportsThemInPartOrder(t *testing.T) {
 				forkPartJSON("the fixtures", "fixtures"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("stitched"), nil
-		},
 	}
-	// Hand 3 answers immediately and hands 1 and 2 take a step first, so the
-	// order they FINISH in is not the order they were declared in.
-	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
-		if index != 3 && turn == 1 {
-			return toolResponse(fmt.Sprintf("h%d-ls", index), "ls", `{"path":"."}`), nil
-		}
+	completer.callerTail = keepWorking(completer, "stitched")
+	// Every hand is held at the gather until all three have arrived, so NONE of
+	// them can have finished when the fork call answers.
+	completer.hand = func(index, _ int, _ []ai.Message) (*ai.Response, error) {
 		return textResponse(fmt.Sprintf("hand %d says its piece", index)), nil
 	}
 
 	agent, _ := newTestAgent(t, completer, nil)
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "do the wide thing"))
+	handsAreHome(t, agent)
 
 	completer.mu.Lock()
 	peak := completer.peak
@@ -255,31 +349,269 @@ func TestForkRunsItsHandsAtOnceAndReportsThemInPartOrder(t *testing.T) {
 		t.Fatalf("at most %d hands were ever in flight at once, so they ran in sequence", peak)
 	}
 
-	result := theForkResult(t, completer)
-	if !strings.HasPrefix(result, "three hands, all back:") {
-		t.Fatalf("the join does not open on the count:\n%s", result)
+	roster := theForkRoster(t, completer)
+	if !strings.HasPrefix(roster, "three "+forkOutLead) {
+		t.Fatalf("the call does not answer with a roster:\n%s", roster)
 	}
 	for hand, role := range []string{"the adapters", "the docs", "the fixtures"} {
 		want := fmt.Sprintf("hand %d — %s", hand+1, role)
-		if !strings.Contains(result, want) {
-			t.Fatalf("no block for %q:\n%s", want, result)
+		if !strings.Contains(roster, want) {
+			t.Fatalf("the roster does not name %q:\n%s", want, roster)
 		}
 	}
-	// Declared order, whatever order they came home in.
-	first := strings.Index(result, "hand 1 —")
-	second := strings.Index(result, "hand 2 —")
-	third := strings.Index(result, "hand 3 —")
-	if !(first < second && second < third) {
-		t.Fatalf("the blocks are not in part order:\n%s", result)
+	// THE ROSTER IS NOT A RESULT. Nothing a hand said can be in it, because no
+	// hand had said anything when it was written.
+	for hand := 1; hand <= 3; hand++ {
+		if strings.Contains(roster, fmt.Sprintf("hand %d says its piece", hand)) {
+			t.Fatalf("the call waited for hand %d before answering:\n%s", hand, roster)
+		}
+	}
+	// And it tells the caller the two things it would otherwise get wrong.
+	for _, want := range []string{"ON ITS OWN", "KEEP WORKING"} {
+		if !strings.Contains(roster, want) {
+			t.Errorf("the roster does not say %q:\n%s", want, roster)
+		}
+	}
+
+	// Every hand's report then arrives on its own, and each one carries that
+	// hand's own words.
+	reports := theHandReports(t, completer)
+	if len(reports) != 3 {
+		t.Fatalf("%d hand reports reached the caller, want 3:\n%s", len(reports), strings.Join(reports, "\n--\n"))
 	}
 	for hand := 1; hand <= 3; hand++ {
-		if !strings.Contains(result, fmt.Sprintf("hand %d says its piece", hand)) {
-			t.Errorf("hand %d's own words did not reach the caller:\n%s", hand, result)
+		want := fmt.Sprintf("hand %d says its piece", hand)
+		if !anyContains(reports, want) {
+			t.Errorf("no report carries %q:\n%s", want, strings.Join(reports, "\n--\n"))
 		}
 	}
-	if strings.Count(result, "\n  "+forkDone) != 3 {
-		t.Errorf("not every hand came back done:\n%s", result)
+}
+
+// AND THEY ARRIVE IN THE ORDER THEY FINISHED, NOT THE ORDER THEY WERE ASKED FOR.
+//
+// That is the difference between a stream and a join said in one assertion. A
+// caller reading its hands in declaration order is a caller that waited for the
+// declaration to complete; a caller reading hand 3 first is a caller that was
+// handed hand 3's slice the moment it existed.
+func TestEachHandsReportArrivesWhenThatHandFinishes(t *testing.T) {
+	completer := newForkCompleter(0)
+	// Hand 3 answers at once; hand 2 takes a step first; hand 1 takes two. So
+	// they come home 3, 2, 1 — the exact reverse of how they were declared.
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				forkPartJSON("the slow one", "adapters"),
+				forkPartJSON("the middling one", "docs"),
+				forkPartJSON("the quick one", "fixtures"),
+			)), nil
+		},
 	}
+	completer.callerTail = keepWorking(completer, "stitched")
+	steps := map[int]int{1: 3, 2: 2, 3: 0}
+	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
+		if turn <= steps[index] {
+			time.Sleep(15 * time.Millisecond)
+			return toolResponse(fmt.Sprintf("h%d-%d", index, turn), "ls",
+				fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
+		}
+		return textResponse(fmt.Sprintf("hand %d is finished", index)), nil
+	}
+
+	agent, _ := newTestAgent(t, completer, nil)
+	completer.drive(agent)
+	collect(t, mustSubmit(t, agent, "split it"))
+	handsAreHome(t, agent)
+
+	reports := theHandReports(t, completer)
+	if len(reports) != 3 {
+		t.Fatalf("%d hand reports reached the caller, want 3:\n%s", len(reports), strings.Join(reports, "\n--\n"))
+	}
+	var order []int
+	for _, report := range reports {
+		var hand, of int
+		if _, err := fmt.Sscanf(report, "hand %d of %d", &hand, &of); err != nil {
+			t.Fatalf("a report does not open on which hand it is:\n%s", report)
+		}
+		order = append(order, hand)
+	}
+	if want := []int{3, 2, 1}; !sameOrder(order, want) {
+		t.Fatalf("the reports landed in order %v, want %v — that is submission order, not completion order",
+			order, want)
+	}
+}
+
+// AND EVERY HAND STILL OUT IS AT THE FOOT OF EVERY RESULT THE CALLER READS.
+//
+// It is the shell's `[1]+ Running` and it is the reason the caller never has to
+// poll: three facts, one line, on every result — which hand, how old, what it
+// last did.
+func TestTheRunningFooterListsTheHandsStillOut(t *testing.T) {
+	completer := newForkCompleter(0)
+	var (
+		mu      sync.Mutex
+		footers []string
+		once    sync.Once
+	)
+	release := make(chan struct{})
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				forkPartJSON("the adapters", "adapters"),
+				forkPartJSON("the docs", "docs"),
+			)), nil
+		},
+	}
+	completer.callerTail = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		// What the caller was last answered with, footer and all.
+		for at := len(messages) - 1; at >= 0; at-- {
+			if strings.EqualFold(messages[at].Role, "tool") {
+				mu.Lock()
+				footers = append(footers, messageContentText(messages[at]))
+				mu.Unlock()
+				break
+			}
+		}
+		mu.Lock()
+		looked := len(footers)
+		mu.Unlock()
+		if looked < 8 {
+			time.Sleep(2 * time.Millisecond)
+			return toolResponse(fmt.Sprintf("look-%d", looked), "ls",
+				fmt.Sprintf(`{"path":".","limit":%d}`, looked+1)), nil
+		}
+		once.Do(func() { close(release) })
+		return textResponse("stitched"), nil
+	}
+	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
+		if turn == 1 {
+			// Something for the footer to quote as this hand's last line.
+			return toolResponse(fmt.Sprintf("h%d-look", index), "ls", `{"path":"."}`), nil
+		}
+		<-release
+		return textResponse(fmt.Sprintf("hand %d done", index)), nil
+	}
+
+	agent, _ := newTestAgent(t, completer, nil)
+	completer.drive(agent)
+	collect(t, mustSubmit(t, agent, "split it"))
+	handsAreHome(t, agent)
+
+	// THE FOOTER IS WHAT THE STRIP TAKES OFF, and reading it that way is the
+	// assertion that it IS a footer rather than prose that happens to name a
+	// hand — the roster the fork call answered with names both hands too, and it
+	// is a result body and must survive the strip untouched.
+	mu.Lock()
+	read := append([]string(nil), footers...)
+	mu.Unlock()
+	var footer string
+	for _, result := range read {
+		cut := strings.TrimPrefix(result, stripJobFooter(result))
+		if strings.Contains(cut, "hand 1") && strings.Contains(cut, "hand 2") && strings.Contains(cut, "· last: ") {
+			footer = cut
+			break
+		}
+	}
+	if footer == "" {
+		t.Fatalf("no result the caller read carried both hands in its job footer:\n%s",
+			strings.Join(read, "\n--\n"))
+	}
+	for _, want := range []string{jobFooterLead, jobFooterRunning, "hand 1 — the adapters", "hand 2 — the docs"} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("the footer is missing %q:\n%s", want, footer)
+		}
+	}
+}
+
+// AND THE CALLER CAN WORK BETWEEN THEM. The measured defect was a mind that sat
+// inside a tool call for thirty-nine minutes with a finished slice in front of
+// it; this asserts the opposite in the plainest terms — real tool calls made,
+// and answered, while the hands were out.
+func TestTheCallerWorksWhileItsHandsAreOut(t *testing.T) {
+	completer := newForkCompleter(0)
+	release := make(chan struct{})
+	var mu sync.Mutex
+	worked := 0
+
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				forkPartJSON("the adapters", "adapters"),
+				forkPartJSON("the docs", "docs"),
+			)), nil
+		},
+	}
+	var once sync.Once
+	completer.callerTail = func(context.Context, []ai.Message) (*ai.Response, error) {
+		mu.Lock()
+		worked++
+		at := worked
+		mu.Unlock()
+		if at <= 4 {
+			return toolResponse(fmt.Sprintf("build-%d", at), "bash",
+				fmt.Sprintf(`{"command":"echo built %d","timeout":5}`, at)), nil
+		}
+		once.Do(func() { close(release) })
+		return textResponse("stitched"), nil
+	}
+	// The hands do not come home until the caller has done four rounds of its
+	// own, so the four rounds cannot be the hands' aftermath.
+	completer.hand = func(index, _ int, _ []ai.Message) (*ai.Response, error) {
+		<-release
+		return textResponse(fmt.Sprintf("hand %d done", index)), nil
+	}
+
+	agent, _ := newTestAgent(t, completer, nil)
+	completer.drive(agent)
+	collect(t, mustSubmit(t, agent, "split it"))
+	handsAreHome(t, agent)
+
+	mu.Lock()
+	did := worked
+	mu.Unlock()
+	if did < 5 {
+		t.Fatalf("the caller only got %d requests in while its hands were out", did)
+	}
+	if !agentSaid(t, completer, "built 4") {
+		t.Fatal("the caller's own bash never ran while its hands were out")
+	}
+}
+
+// anyContains reports whether any of the blocks carries want.
+func anyContains(blocks []string, want string) bool {
+	for _, block := range blocks {
+		if strings.Contains(block, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameOrder(got, want []int) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for index := range got {
+		if got[index] != want[index] {
+			return false
+		}
+	}
+	return true
+}
+
+// agentSaid reports whether any tool result the caller was ever answered with
+// carries want.
+func agentSaid(t *testing.T, completer *forkCompleter, want string) bool {
+	t.Helper()
+	completer.mu.Lock()
+	defer completer.mu.Unlock()
+	for _, request := range completer.callerRequests {
+		for _, message := range request {
+			if strings.EqualFold(message.Role, "tool") && strings.Contains(messageContentText(message), want) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // A HAND OPENS ON WHAT THE CALLER HAS ALREADY LEARNED. This is the whole
@@ -304,13 +636,14 @@ func TestAHandIsSeededWithTheCallersOwnToolResults(t *testing.T) {
 				forkPartJSON("two", "b"),
 			), "splitting this up"), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, _ int, _ []ai.Message) (*ai.Response, error) {
 		return textResponse(fmt.Sprintf("hand %d saw it", index)), nil
 	}
 
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "read the note then split up"))
 
 	for hand := 1; hand <= 2; hand++ {
@@ -401,8 +734,8 @@ func TestAHandIsRefusedOutsideItsScopeAndIsToldWhatItOwns(t *testing.T) {
 				forkPartJSON("the docs", "docs"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		if index != 1 {
 			return textResponse("nothing to do"), nil
@@ -419,6 +752,7 @@ func TestAHandIsRefusedOutsideItsScopeAndIsToldWhatItOwns(t *testing.T) {
 	}
 
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split it"))
 
 	if _, err := os.Stat(filepath.Join(workspace, "docs", "stolen.md")); err == nil {
@@ -436,12 +770,13 @@ func TestAHandIsRefusedOutsideItsScopeAndIsToldWhatItOwns(t *testing.T) {
 		t.Fatalf("hand 1 stopped after %d requests, so it never read the refusal", turns)
 	}
 
-	result := theForkResult(t, completer)
-	if !strings.Contains(result, "wrote adapters/mine.md") {
-		t.Errorf("the join does not name what hand 1 actually wrote:\n%s", result)
+	handsAreHome(t, agent)
+	reports := theHandReports(t, completer)
+	if !anyContains(reports, "wrote adapters/mine.md") {
+		t.Errorf("no report names what hand 1 actually wrote:\n%s", strings.Join(reports, "\n--\n"))
 	}
-	if strings.Contains(result, "docs/stolen.md") {
-		t.Errorf("the join counts a refused write as a change:\n%s", result)
+	if anyContains(reports, "docs/stolen.md") {
+		t.Errorf("a report counts a refused write as a change:\n%s", strings.Join(reports, "\n--\n"))
 	}
 }
 
@@ -464,8 +799,8 @@ func TestAnAbsoluteScopeUnderTheWorkspaceIsTheSameScope(t *testing.T) {
 				forkPartJSON("the docs", jsonPath(filepath.Join(workspace, "docs"))),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		if index != 1 || turn != 1 {
 			return textResponse("nothing to do"), nil
@@ -475,14 +810,15 @@ func TestAnAbsoluteScopeUnderTheWorkspaceIsTheSameScope(t *testing.T) {
 	}
 
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split it"))
 
 	if _, err := os.Stat(filepath.Join(workspace, "adapters", "mine.md")); err != nil {
 		t.Fatalf("a hand whose scope was declared in full could not write inside it: %v", err)
 	}
-	result := theForkResult(t, completer)
-	if !strings.Contains(result, "wrote adapters/mine.md") {
-		t.Errorf("the join does not name the write that landed:\n%s", result)
+	handsAreHome(t, agent)
+	if reports := theHandReports(t, completer); !anyContains(reports, "wrote adapters/mine.md") {
+		t.Errorf("no report names the write that landed:\n%s", strings.Join(reports, "\n--\n"))
 	}
 	// AND THE CHARGE SAYS THE SCOPE IN THE FORM THE GUARD READS IT. A hand told
 	// it owns "/workspace/adapters" while the guard is matching "adapters" has
@@ -567,13 +903,14 @@ func TestARefusedScopeOpensNoHands(t *testing.T) {
 				forkPartJSON("two", "docs"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(int, int, []ai.Message) (*ai.Response, error) {
 		return textResponse("a hand ran"), nil
 	}
 
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split it"))
 
 	for hand := 1; hand <= forkFanLimit; hand++ {
@@ -768,10 +1105,19 @@ func TestTheSharedShellGateStillSpeaksInTheAuditorsVoice(t *testing.T) {
 
 // ── the budget, the interrupt, and the price of a burst ─────────────────────
 
-// A HAND THAT NEVER STOPS IS STOPPED, and the block says so rather than reading
-// as finished — the caller has to know the part was left half-done.
-func TestAHandOutOfRoundsComesBackSayingSo(t *testing.T) {
+// A HAND THAT RUNS OUT OF ROUNDS REPORTS WHAT IT LEFT UNFINISHED, and the report
+// LEADS with that fact.
+//
+// This is the second half of the measured failure. Hand 2 hit its cap at 01:11
+// with the sentence "Now let me fix the file range end column" still on its lips
+// — a change begun and not finished, in a file the caller was about to build.
+// The report has to open on the bad news, name the files, and quote that
+// sentence back verbatim, because that sentence is the only description in
+// existence of what may be half made.
+func TestAHandOutOfRoundsLeadsWithItAndQuotesWhatItWasDoing(t *testing.T) {
+	const intent = "Now let me fix the file range end column"
 	completer := newForkCompleter(0)
+	workspace := t.TempDir()
 	completer.caller = []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponse("call-1", "fork", forkCall(
@@ -779,21 +1125,27 @@ func TestAHandOutOfRoundsComesBackSayingSo(t *testing.T) {
 				forkPartJSON("the quick one", "b"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		if index == 2 {
 			return textResponse("hand 2 finished"), nil
 		}
-		// Hand 1 never answers in words. Each call is DIFFERENT so that what
+		// Hand 1 writes once, then narrates what it is about to do next and
+		// grinds until its budget ends. Each call is DIFFERENT so that what
 		// stops it is the budget and not the loop detector (looped.go), which
 		// would make this test pass for the wrong reason.
-		return toolResponse(fmt.Sprintf("grind-%d", turn), "ls",
-			fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
+		if turn == 1 {
+			return toolResponse("grind-write", "write", `{"path":"a/parser.rs","content":"x"}`), nil
+		}
+		return toolResponseWithText(fmt.Sprintf("grind-%d", turn), "ls",
+			fmt.Sprintf(`{"path":".","limit":%d}`, turn), intent), nil
 	}
 
-	agent, _ := newTestAgent(t, completer, nil)
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split it"))
+	handsAreHome(t, agent)
 
 	// One request per round plus the one whose batch spends the last of them:
 	// the leash cancels at the step boundary, so the turn ends before asking
@@ -801,17 +1153,42 @@ func TestAHandOutOfRoundsComesBackSayingSo(t *testing.T) {
 	if turns := completer.handTurns(1); turns > forkRounds+1 || turns < forkRounds {
 		t.Fatalf("the grinding hand made %d requests against a budget of %d rounds", turns, forkRounds)
 	}
-	result := theForkResult(t, completer)
-	if !strings.Contains(result, forkOutOf) {
-		t.Fatalf("the grinding hand did not come back %q:\n%s", forkOutOf, result)
+
+	reports := theHandReports(t, completer)
+	if len(reports) != 2 {
+		t.Fatalf("%d reports reached the caller, want 2:\n%s", len(reports), strings.Join(reports, "\n--\n"))
 	}
-	if !strings.Contains(result, "hand 2 finished") {
-		t.Errorf("the hand that DID finish was lost with it:\n%s", result)
+	var unfinished string
+	for _, report := range reports {
+		if strings.Contains(report, "hand 1 of 2") {
+			unfinished = report
+		}
 	}
-	// AND THE CALLER IS TOLD WHAT THAT MEANS, because a block it reads as done
-	// is a part nobody finishes.
-	if !strings.Contains(result, "out of rounds left its part unfinished") {
-		t.Errorf("the join does not say what an out-of-rounds hand costs:\n%s", result)
+	if unfinished == "" {
+		t.Fatalf("the grinding hand sent no report at all:\n%s", strings.Join(reports, "\n--\n"))
+	}
+	// IT LEADS WITH IT. Not four lines down, where a caller reads a block as done.
+	if !strings.HasPrefix(unfinished, strings.ToUpper(forkOutOf)) {
+		t.Fatalf("the report does not lead with %q:\n%s", forkOutOf, unfinished)
+	}
+	// IT NAMES THE WRITES.
+	if !strings.Contains(unfinished, "wrote a/parser.rs") {
+		t.Errorf("the report does not name what the hand wrote:\n%s", unfinished)
+	}
+	// AND IT QUOTES THE LAST STATED INTENT, VERBATIM.
+	if !strings.Contains(unfinished, "\u201c"+intent+"\u201d") {
+		t.Errorf("the report does not quote the hand's last intent verbatim:\n%s", unfinished)
+	}
+	// AND IT SAYS WHAT THAT COSTS, in the vocabulary a landing already has for
+	// work nothing looked at (withdrawn.go).
+	for _, want := range []string{"UNVERIFIED", "half made", "This part is NOT done"} {
+		if !strings.Contains(unfinished, want) {
+			t.Errorf("the report does not say %q:\n%s", want, unfinished)
+		}
+	}
+	// And the hand that DID finish was not lost with it.
+	if !anyContains(reports, "hand 2 finished") {
+		t.Errorf("the hand that finished was lost:\n%s", strings.Join(reports, "\n--\n"))
 	}
 }
 
@@ -834,44 +1211,47 @@ func TestTheHandLeashCountsRoundsAndThenEndsTheTurn(t *testing.T) {
 	}
 }
 
-// A BURST IS ONE ROUND OF THE PERSON'S WAITING. The meter prices a turn in
-// FINISHED TOOL ROUNDS ([checkpointMeter.round], counted once per batch at the
-// step boundary), and a fork is one call in one batch however much work happens
-// inside it — which is right, because the meter measures the person's wait and a
-// burst is one wait.
-func TestAForkBurstIsOneRoundOfTheCallersOwnPrice(t *testing.T) {
+// THE FORK CALL ITSELF IS ONE ROUND AND IT IS A CHEAP ONE. The meter prices a
+// turn in FINISHED TOOL ROUNDS ([checkpointMeter.round], counted once per batch
+// at the step boundary), and `fork` is one call in one batch that returns in the
+// time it takes to spawn — so the hands' own sixty rounds of work are not the
+// caller's rounds, and the caller does not stop being able to spend its own.
+func TestTheForkCallIsOneCheapRoundOfTheCallersOwnPrice(t *testing.T) {
 	completer := newForkCompleter(0)
+	release := make(chan struct{})
 	completer.caller = []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponse("call-1", "fork", forkCall(
 				forkPartJSON("one", "a"), forkPartJSON("two", "b"), forkPartJSON("three", "c"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("stitched"), nil },
+		// THE SECOND REQUEST IS ASSEMBLED WHILE EVERY HAND IS STILL WORKING, and
+		// this step is what proves it: the hands cannot finish until it runs.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(release)
+			return textResponse("stitched"), nil
+		},
 	}
+	completer.callerTail = keepWorking(completer, "stitched")
 	// Every hand takes three rounds of its own, so nine rounds of tool work
-	// happen inside the caller's one.
+	// happen beside the caller's one.
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		if turn <= 3 {
 			return toolResponse(fmt.Sprintf("h%d-%d", index, turn), "ls",
 				fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
 		}
+		<-release
 		return textResponse(fmt.Sprintf("hand %d done", index)), nil
 	}
 
 	agent, _ := newTestAgent(t, completer, nil)
+	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split it"))
+	handsAreHome(t, agent)
 
 	completer.mu.Lock()
-	callerRequests := completer.callerSeen
 	handRequests := completer.turns[1] + completer.turns[2] + completer.turns[3]
 	completer.mu.Unlock()
-
-	// Two requests: the one that asked for the fork, and the one that read the
-	// join. Exactly one finished tool round, which is one mark on the meter.
-	if callerRequests != 2 {
-		t.Fatalf("the caller made %d requests, so the burst cost it more than one round", callerRequests)
-	}
 	if handRequests < 9 {
 		t.Fatalf("the hands only made %d requests between them, so the test proved nothing", handRequests)
 	}
@@ -883,12 +1263,15 @@ func TestAForkBurstIsOneRoundOfTheCallersOwnPrice(t *testing.T) {
 	}
 }
 
-// NO HAND OUTLIVES THE TURN THAT OPENED IT. The nursery law, and it costs
-// nothing to keep because the hands run on the tool's own context.
-func TestTheCallersInterruptKillsItsHands(t *testing.T) {
+// A HAND OUTLIVES THE TURN, AND THE PERSON'S INTERRUPT IS WHAT ENDS IT.
+//
+// The two halves belong together. A hand is a stream now, so the turn ending is
+// NOT what stops it — that is the whole point, and a hand bound to the turn's
+// context would be dead one line after `fork` returned. What still stops it is
+// the person: a background job is a command somebody asked to be left running,
+// and a hand is this mind finishing a reply nobody is waiting for any more.
+func TestTheCallersInterruptStopsItsHands(t *testing.T) {
 	completer := newForkCompleter(0)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var (
 		mu      sync.Mutex
@@ -901,21 +1284,22 @@ func TestTheCallersInterruptKillsItsHands(t *testing.T) {
 			)), nil
 		},
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		mu.Lock()
 		reached++
 		mu.Unlock()
-		// The person interrupts while the hands are working.
-		cancel()
-		return textResponse("never read"), nil
+		// The person interrupts while the hands are working. The hand keeps
+		// answering; what stops it is the interrupt reaching its context.
+		completer.driven().Interrupt()
+		time.Sleep(5 * time.Millisecond)
+		return toolResponse(fmt.Sprintf("h%d-%d", index, turn), "ls",
+			fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
 	}
 
 	agent, _ := newTestAgent(t, completer, nil)
-	events, err := agent.Submit(ctx, "split it")
-	if err != nil {
-		t.Fatal(err)
-	}
-	collect(t, events)
+	completer.drive(agent)
+	collect(t, mustSubmit(t, agent, "split it"))
 
 	mu.Lock()
 	saw := reached
@@ -923,8 +1307,13 @@ func TestTheCallersInterruptKillsItsHands(t *testing.T) {
 	if saw == 0 {
 		t.Fatal("no hand ever started, so the interrupt proved nothing")
 	}
-	// The turn is over and nothing is still running. A hand that outlived it
-	// would still be holding the agent open.
+	// The hands are stopped rather than grinding to their round cap.
+	handsAreHome(t, agent)
+	if completer.handTurns(1) >= forkRounds {
+		t.Fatalf("hand 1 made %d requests, so the interrupt did not reach it", completer.handTurns(1))
+	}
+	// And nothing is still running: a hand that survived would hold the agent
+	// open.
 	if err := agent.Close(); err != nil {
 		t.Fatalf("closing after the interrupt: %v", err)
 	}
@@ -936,7 +1325,7 @@ func TestTheCallersInterruptKillsItsHands(t *testing.T) {
 // read on a turn nobody asked to be interrupted on, and the wording IS the
 // feature.
 func TestTheForkLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
-	const want = "three hands on it · back when they are done"
+	const want = "three hands on it · each one folds in as it lands"
 	if got := forkNote(3); got != want {
 		t.Fatalf("the fork line reads %q, want %q", got, want)
 	}
@@ -963,8 +1352,8 @@ func TestThePersonIsToldOnceThatHandsAreOut(t *testing.T) {
 				forkPartJSON("one", "a"), forkPartJSON("two", "b"),
 			)), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}
+	completer.callerTail = keepWorking(completer, "done")
 	completer.hand = func(index, _ int, _ []ai.Message) (*ai.Response, error) {
 		return textResponse("done"), nil
 	}
@@ -1022,5 +1411,77 @@ func TestTheChargeNamesThePartTheScopeAndTheSiblings(t *testing.T) {
 	// And a fork with no note says nothing about one.
 	if strings.Contains(forkCharge(0, forkArguments{Parts: parsed.Parts}), "FOR EVERY HAND") {
 		t.Error("an empty note still wrote a heading, which is the emptiness law")
+	}
+}
+
+// ── what happens to a hand still out when the work ends ─────────────────────
+
+// THE LANDING WAITS FOR A HAND, exactly as it waits for a part.
+//
+// A hand is a stream now, so a node CAN reach the end of its turn with hands
+// still working — and the question the old barrier never had to answer is what
+// the landing does about it. It does what this session already does with every
+// other piece of work it handed out and has not heard about: it parks. The node
+// does not land, the reports arrive, the model reads them, and THEN it lands.
+//
+// The alternative — landing on top of a hand — would throw away the very writes
+// the fork was for, which is the failure this whole change is about, made worse.
+func TestANodeDoesNotLandWhileAHandIsStillOut(t *testing.T) {
+	completer := newForkCompleter(0)
+	release := make(chan struct{})
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				forkPartJSON("the adapters", "adapters"),
+				forkPartJSON("the docs", "docs"),
+			)), nil
+		},
+		// AND THE NODE STOPS TALKING WHILE THEY ARE STILL OUT. This is the shape
+		// the wait exists for: nothing left to say, two hands still working.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the hands are out; nothing more from me until they report"), nil
+		},
+	}
+	// The turn that reads their reports is the one the last report starts.
+	completer.callerTail = func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("folded both slices into one"), nil
+	}
+	completer.hand = func(index, _ int, _ []ai.Message) (*ai.Response, error) {
+		<-release
+		return textResponse(fmt.Sprintf("hand %d done", index)), nil
+	}
+
+	nest := newNest(t, completer, nil)
+	completer.drive(nest.node)
+	done, _ := runParent(t, nest, taskLimits{maxSteps: 200, noProgress: 20})
+
+	// The node's first turn has ended and the node has NOT landed.
+	select {
+	case <-done:
+		t.Fatal("the node landed while its hands were still out")
+	case <-time.After(400 * time.Millisecond):
+	}
+	if !nest.node.childrenOutstanding() {
+		t.Fatal("a hand still out does not count as outstanding work, so nothing is holding the landing")
+	}
+
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the node never landed after its hands reported")
+	}
+
+	// AND THE REPORTS REACHED THE MODEL rather than merely reaching the queue. A
+	// landing held open for reports nobody read would be the wait without the
+	// point of it.
+	reports := theHandReports(t, completer)
+	if len(reports) != 2 {
+		t.Fatalf("%d hand reports reached the node, want 2:\n%s", len(reports), strings.Join(reports, "\n--\n"))
+	}
+	for hand := 1; hand <= 2; hand++ {
+		if !anyContains(reports, fmt.Sprintf("hand %d done", hand)) {
+			t.Errorf("hand %d's own words never reached the node:\n%s", hand, strings.Join(reports, "\n--\n"))
+		}
 	}
 }

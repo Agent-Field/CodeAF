@@ -50,13 +50,74 @@ package session
 //
 // No hand may fork: the verb is absent from a hand's belt, not present and
 // refusing, so the depth is one and a model in a hand never plans around a road
-// it does not have. No hand outlives the caller's turn: they run on the turn's
-// own context, so an interrupt kills the nursery. And nothing is built or
-// tested inside a hand — three hands editing one tree means every build reads a
-// half-written repository, so a green one proves nothing and a red one is a
-// sibling's unfinished work that this hand would then "fix". The caller builds,
-// tests and stitches after the join, which is the same law divide_work keeps:
-// the parent stays the integrator.
+// it does not have. And nothing is built or tested inside a hand — three hands
+// editing one tree means every build reads a half-written repository, so a green
+// one proves nothing and a red one is a sibling's unfinished work that this hand
+// would then "fix". The caller builds, tests and stitches, which is the same law
+// divide_work keeps: the parent stays the integrator.
+//
+// ── A HAND IS A STREAM, NOT A BARRIER ───────────────────────────────────────
+//
+// This verb used to JOIN. `fork` ran its hands on goroutines and waited on all
+// of them, so the caller's tool call blocked until the SLOWEST hand came home.
+// Here is what that cost, measured, on one task of a Rust benchmark run:
+//
+//	00:53:52  the worker forks three scope-guarded hands
+//	00:55:19  hand 1 is finished — eleven calls, ninety seconds
+//	01:11:28  hand 2 hits its round cap mid-fix
+//	01:33:05  hand 3 hits its round cap; the fork call finally returns
+//	          the worker rebuilds, runs the check, and gains 29 passes
+//
+// Forty minutes for work that was ready after two. The worker did NOTHING for
+// thirty-nine of them — it could not build, could not measure, could not even
+// look, because it was inside a tool call — while hand 1's finished slice sat in
+// the working copy unbuilt and unmeasured. THE BARRIER WAS THE DEFECT, not the
+// round cap and not the hands.
+//
+// So a hand is now a STREAM, which is already this session's law for every other
+// piece of work it starts (tools_jobs.go, jobs.go, jobfooter.go): every command
+// is a stream, completions arrive on their own, and the model never polls.
+// Concretely, and reusing that seam rather than a second one beside it:
+//
+//   - `fork` RETURNS AS SOON AS THE HANDS ARE OUT, naming them. The caller's
+//     next thought is its own, not a wait.
+//   - EACH HAND IS A JOB (jobs.go's [jobKindHand]): one id space, one log file,
+//     one row, one `jobs kill`, one death at Close.
+//   - EACH HAND'S REPORT ARRIVES ON THE STEERING LANE the moment that hand
+//     finishes — the same lane a background job's exit rides in on, landing in
+//     the caller's conversation as its own message at the next step boundary, in
+//     the order the hands COME HOME rather than the order they were declared.
+//   - EVERY HAND STILL OUT RIDES AT THE FOOT OF EVERY TOOL RESULT the caller
+//     reads (jobfooter.go), with its age and its last line, so the caller can
+//     never lose track of one and never has to ask.
+//
+// The caller keeps working. It may build and measure hand 1's slice while hands
+// 2 and 3 are still out, which is the whole of the forty minutes back.
+//
+// Nothing about the SAFETY changed: the scopes are still declared, still
+// normalized at the door, still refused when they overlap, still enforced by the
+// guard, and a hand's bash still reads and never writes.
+//
+// ── WHAT HAPPENS TO A HAND STILL OUT WHEN THE WORK ENDS ──
+//
+// THE LANDING WAITS. A hand is outstanding work this agent handed to itself, so
+// it is counted where a sub-task's unread report is counted
+// ([Agent.childrenOutstanding]) and a task node's runner parks on it exactly as
+// it parks on a part it divided out (task_run.go's [runTaskChild] tail loop):
+// the node does not land until every hand has reported and the model has read
+// what came back. That is the same answer this session already gives for every
+// other piece of work it handed out and has not heard about, and the alternative
+// — landing on top of a hand — would throw away the very writes the fork was for.
+//
+// In a CONVERSATION the same thing happens through the same lane with no waiting
+// at all: a report that lands after the turn has ended WAKES the session, which
+// is what a background job's exit already does ([Agent.enqueueSteering]).
+//
+// The person's INTERRUPT is the one thing that ends a hand where it stands, and
+// that is a difference from a background job on purpose: a job is a command
+// somebody asked to be left running, and a hand is this mind finishing an answer
+// nobody is waiting for any more ([jobRegistry.stopHands]). So is Close, which
+// stops every job this session started.
 
 import (
 	"context"
@@ -137,7 +198,7 @@ var forkShell = shellLeash{
 	who:     "a hand",
 	forWhat: "orientation",
 	hint: "For looking around, use read, grep, find and ls — that is what they are for. " +
-		"Builds and tests are the caller's after you are all back, never yours.",
+		"Builds and tests belong to whoever forked you, never to you.",
 }
 
 // ── the verb ────────────────────────────────────────────────────────────────
@@ -157,8 +218,9 @@ var forkDescription = "Copy yourself into " + strconv.Itoa(forkHandFloor) + "–
 	"siblings. Reach for it the moment you can name slices of what you are ALREADY doing that could proceed on " +
 	"what you already know; work you would have to explain from scratch is a task instead. Each hand may write " +
 	"only the paths it declares, so the slices must be genuinely separate. A hand reads, edits and writes; it " +
-	"cannot build, test or fork again, and gets " + strconv.Itoa(forkRounds) + " tool rounds. Returns when every " +
-	"hand is back with what it did; you then build, test and make one thing of it."
+	"cannot build, test or fork again, and gets " + strconv.Itoa(forkRounds) + " tool rounds. RETURNS AT ONCE, " +
+	"naming them; each report arrives on its own as that hand finishes, and hands still out ride at the foot of " +
+	"every result you read. Never wait or poll — keep working, and build and test each slice as its report lands."
 
 // forkSchemaJSON is the wire schema. It is a literal for the reason every other
 // schema in this package is one — the bytes go on the wire and a test can pin
@@ -213,13 +275,20 @@ type forkArguments struct {
 // ── the call ────────────────────────────────────────────────────────────────
 
 // forkHands is the verb's whole life: read the parts, refuse what cannot be
-// made safe, copy the transcript, run the hands together, and hand back one
-// block each.
+// made safe, copy the transcript, PUT THE HANDS OUT, and hand back their names.
 //
-// IT IS SYNCHRONOUS, and that is the join. The caller's next thought is written
-// with every hand's report already in front of it, which is what makes the
-// caller the integrator — the same law divide_work keeps for the same reason.
-func (a *Agent) forkHands(ctx context.Context, args json.RawMessage) (string, bool, error) {
+// IT IS ASYNCHRONOUS, and that is the point (see this file's head). What the
+// caller gets back is a roster, not a result; the results arrive one at a time
+// on the steering lane as the hands come home. The caller is still the
+// integrator — it is the only thing that can build, test and stitch — but it is
+// an integrator that works while its hands do, instead of one parked inside a
+// tool call for as long as its slowest hand takes.
+//
+// The ctx here is the TOOL CALL'S and is deliberately used for nothing but the
+// parse: a hand that ran on it would die the instant this call returned, which
+// is one line after it starts. A hand's own context comes from its job
+// ([jobRegistry.startHand]) and its life is the session's.
+func (a *Agent) forkHands(_ context.Context, args json.RawMessage) (string, bool, error) {
 	// THE WORKSPACE IS PASSED IN BECAUSE THE SCOPE IS READ AGAINST IT. A scope is
 	// a slice of this directory, and the door cannot say whether a path is inside
 	// it without knowing which directory it is (see [normalizeScopePath]).
@@ -237,9 +306,10 @@ func (a *Agent) forkHands(ctx context.Context, args json.RawMessage) (string, bo
 		return "fork found nothing to copy: there is no conversation behind this call yet.", true, nil
 	}
 
-	// THE PERSON HEARS ONCE, BEFORE THE WAIT AND NOT AFTER IT. The hands are
-	// inside this turn and draw no rows of their own; what a person is owed is
-	// the one line that explains why the answer has gone quiet.
+	// THE PERSON HEARS ONCE, AT THE MOMENT THE HANDS GO OUT. It is the one line
+	// that says why several things are about to happen at once, and it is said
+	// here rather than per hand because a person is being told about a decision,
+	// not given a status board.
 	a.mu.Lock()
 	hub := a.hub
 	a.mu.Unlock()
@@ -247,22 +317,84 @@ func (a *Agent) forkHands(ctx context.Context, args json.RawMessage) (string, bo
 		hub.send(Event{Kind: EventNotice, Text: forkNote(len(parsed.Parts))})
 	}
 
-	results := make([]forkResult, len(parsed.Parts))
-	var wait sync.WaitGroup
+	out := make([]handOut, 0, len(parsed.Parts))
 	for index := range parsed.Parts {
-		wait.Add(1)
-		go func(index int) {
-			defer wait.Done()
+		listed, handCtx, err := a.startHand(index, parsed.Parts[index])
+		if err != nil {
+			// A hand that could not even be registered is reported in its own
+			// block right here, because it will never send one of its own.
+			out = append(out, handOut{index: index, failed: err.Error()})
+			continue
+		}
+		out = append(out, handOut{index: index, id: listed.id})
+		go func(index int, listed *job, handCtx context.Context) {
 			// A panic in one hand is not the caller's turn. The recovery is the
-			// package's own (internal/guard), and the block this hand leaves
-			// behind says it failed rather than silently going missing.
+			// package's own (internal/guard), and because the delivery below is
+			// registered AFTER it — so it runs BEFORE it, while the goroutine is
+			// still panicking — a hand that died still sends a report saying so
+			// rather than silently going missing and holding the landing open
+			// for ever.
 			defer guard.Recover("fork hand")
-			results[index] = a.runHand(ctx, index, parsed, seed, system)
-		}(index)
+			result := forkResult{outcome: fmt.Sprintf(forkFailedFmt, "it did not come back")}
+			defer func() { a.handIsHome(listed, index, parsed, result) }()
+			result = a.runHand(handCtx, index, parsed, seed, system, listed)
+		}(index, listed, handCtx)
 	}
-	wait.Wait()
 
-	return forkReport(parsed.Parts, results), false, nil
+	return forkOut(parsed, out), false, nil
+}
+
+// handOut is one hand as the caller is told about it: which part it is, and the
+// job id the footer, `jobs list` and `jobs kill` all address it by.
+type handOut struct {
+	index  int
+	id     int
+	failed string
+}
+
+// startHand registers one hand with the job registry and hands back the job and
+// the context its turn runs under.
+//
+// AN AGENT WITH NO REGISTRY IS ANSWERED RATHER THAN CRASHED ON. Nothing in this
+// package builds one without a registry ([newAgent], standing_run.go), but a
+// hand-made Config is a real case and a verb that panicked on a field nobody
+// sets would be a verb whose behaviour depended on it. The hand is a job here in
+// every sense that matters — its context, its log, its row, its kill — so there
+// is nothing to fall back to, and saying so is the honest answer.
+func (a *Agent) startHand(index int, part forkPart) (*job, context.Context, error) {
+	label := fmt.Sprintf("hand %d", index+1)
+	if a.jobs == nil {
+		return nil, nil, errors.New("this session keeps no background work, so a hand cannot be put out")
+	}
+	return a.jobs.startHand(label, strings.TrimSpace(part.Role))
+}
+
+// handIsHome is the delivery, and THE ORDER OF THESE FOUR IS THE WHOLE OF ITS
+// CORRECTNESS.
+//
+//  1. The job SETTLES, which takes the hand off the running footer and ends its
+//     row. Doing it first is what stops the caller reading "still running" beside
+//     a report that is already in front of it.
+//  2. The report goes on the STEERING LANE — the same lane a background job's
+//     exit rides, so it lands in the caller's conversation at the next step
+//     boundary and WAKES an idle session exactly as a job's exit does. A kill
+//     this session ASKED for says nothing, for [jobRegistry.finish]'s reason:
+//     the caller already knows, and it is the one case where no report is owed.
+//  3. Only then is the hand counted home ([jobRegistry.handHome]), because that
+//     count is what a node's landing waits on and lowering it before the report
+//     was queued would let the node land on top of it.
+//  4. And whoever is PARKED on it is released ([Agent.postTaskNews]), which is
+//     the same release a divided part's report makes.
+func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result forkResult) {
+	if listed == nil {
+		return
+	}
+	requested := a.jobs.settled(listed, 0)
+	if !requested {
+		a.enqueueSteering(handReport(index, parsed, result))
+	}
+	a.jobs.handHome()
+	a.postTaskNews()
 }
 
 // forkSeed is the copy each hand opens with: the caller's transcript up to this
@@ -535,12 +667,20 @@ type forkResult struct {
 // runHand builds one hand, gives it its charge, and stays until it is finished
 // or out of budget.
 //
-// THE HAND RUNS ON THE CALLER'S OWN CONTEXT, one cancel deeper. That is the
-// nursery law and it costs nothing to keep: an interrupt on the person's turn
-// reaches the tool's context (loop.go's toolCtx), which reaches here, which
-// reaches the hand's turn — so no hand outlives the turn that opened it, and
-// nothing has to remember to kill anything.
-func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, seed []ai.Message, system string) forkResult {
+// THE HAND RUNS ON ITS JOB'S OWN CONTEXT, one cancel deeper. It used to run on
+// the TOOL CALL's, which was the nursery law and was free while the tool call
+// lasted as long as the hands did; now that the call returns in the time it
+// takes to spawn them, that context is dead one line later and a hand on it
+// would be stopped before its first request. So the hand's life is its job's —
+// the session's — and the three things that end it are its round budget, the
+// person's interrupt ([jobRegistry.stopHands]) and Close.
+//
+// It also WRITES ITS PROGRESS INTO THE JOB'S LOG as it goes. That log is what
+// makes a running hand legible from outside: `jobs output` reads it, the running
+// footer quotes its last line at the foot of every result the caller reads
+// (jobfooter.go), and a hand the person interrupts leaves it behind on disk as
+// the only account of what it had been doing.
+func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, seed []ai.Message, system string, listed *job) forkResult {
 	part := parsed.Parts[index]
 
 	// The leash is minted before the context so the context's own cancel can be
@@ -572,9 +712,22 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 		wrote   []string
 		seen    = map[string]bool{}
 		failure error
+		said    strings.Builder
 	)
 	for event := range events {
 		switch event.Kind {
+		case EventTextDelta:
+			// THE HAND'S OWN WORDS, LINE BY LINE, INTO THE LOG. A hand narrates
+			// what it is about to do before it does it, and that sentence — "now
+			// let me fix the file range end column" — is the most useful thing
+			// the footer can quote about a hand that has been out for twelve
+			// minutes. Whole lines only: half a sentence in a footer is worse
+			// than none.
+			said.WriteString(event.Text)
+			flushHandLines(listed, &said)
+		case EventToolBegin:
+			// And what it is DOING, in the same words the person's own row uses.
+			writeHandLine(listed, event.Hint)
 		case EventToolEnd:
 			// The same reading the task runner takes of the same events
 			// ([changedPath]): the path is in the CALL's arguments, because that
@@ -588,7 +741,7 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 		}
 	}
 
-	return forkResult{
+	result := forkResult{
 		say:   clip(strings.TrimSpace(lastSaid(hand)), forkSayLimit),
 		wrote: wrote,
 		// THE ORDER OF THESE THREE IS THE TRUTH. A spent leash cancels the hand,
@@ -597,6 +750,39 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 		// so it is read before a failure that is only the shape that cancel took.
 		outcome: forkOutcome(ctx, leash, failure),
 	}
+	// AND THE REPORT ITSELF GOES INTO THE LOG, whether or not anybody is left to
+	// read it on the lane. A hand the person interrupted, or one still out when
+	// the session closed, sends no report — the log is then the only place its
+	// account of itself exists, and it is a file on disk that outlives all of it.
+	writeHandLine(listed, handReport(index, parsed, result))
+	return result
+}
+
+// writeHandLine puts one line in a hand's log, and does nothing at all when
+// there is no job behind the hand (see [Agent.startHand]).
+func writeHandLine(listed *job, line string) {
+	if listed == nil || listed.sink == nil {
+		return
+	}
+	if line = strings.TrimRight(line, "\n"); strings.TrimSpace(line) == "" {
+		return
+	}
+	_, _ = listed.sink.Write([]byte(line + "\n"))
+}
+
+// flushHandLines drains every COMPLETE line out of a hand's streaming reply into
+// its log and leaves the unfinished tail in the builder.
+func flushHandLines(listed *job, said *strings.Builder) {
+	text := said.String()
+	cut := strings.LastIndex(text, "\n")
+	if cut < 0 {
+		return
+	}
+	for _, line := range strings.Split(text[:cut], "\n") {
+		writeHandLine(listed, line)
+	}
+	said.Reset()
+	said.WriteString(text[cut+1:])
 }
 
 // forkOutcome reads the three ways a hand can stop being one.
@@ -780,7 +966,7 @@ func forkBelt(belt []bare.Tool, dir string) []bare.Tool {
 				strings.Join(forkCommands, ", ") + ". Every other command is refused, including anything that " +
 				"edits, installs, fetches, or chains a second command onto one of these. THERE IS NO BUILD AND NO " +
 				"TEST HERE — the other hands are writing this same working copy right now, so neither would mean " +
-				"anything; both happen after you are all back. " + forkShell.hint + " " + tool.Description
+				"anything; both belong to whoever forked you. " + forkShell.hint + " " + tool.Description
 			out = append(out, readingOnlyBash(tool, plainDoor(forkCommands), forkShell))
 		}
 	}
@@ -905,42 +1091,154 @@ func forkCharge(index int, parsed forkArguments) string {
 		fmt.Fprintf(&out, "\nFOR EVERY HAND: %s\n", note)
 	}
 
-	fmt.Fprintf(&out, "\nYou have %d tool rounds. Do not build and do not run tests — the tree is being written by "+
-		"all of you at once, so neither would mean anything; that happens after you are all back. When you are "+
+	fmt.Fprintf(&out, "\nYou have %d tool rounds, and NOBODY IS WAITING FOR THE OTHERS BEFORE READING YOU: your "+
+		"report goes to whoever forked you the moment you finish, on its own, while your siblings are still "+
+		"working. So finish YOUR part and stop — do not stretch the errand to fill the budget, and do not wait "+
+		"on anything.\n\nDo not build and do not run tests: the tree is being written by all of you at once, so "+
+		"neither would mean anything, and the one who forked you does both as your report lands. When you are "+
 		"done, say what you did, what you found, and anything the others' work depends on. That last message is "+
-		"the only thing that reaches whoever is stitching this together.", forkRounds)
+		"the only thing that reaches whoever is stitching this together.\n\nIF YOU RUN OUT OF ROUNDS your report "+
+		"says so and quotes your last words back, so whoever reads it knows a change may be half made. That "+
+		"makes it worth SAYING WHAT YOU ARE ABOUT TO DO before you do it, in one line, every time.", forkRounds)
 	return out.String()
 }
 
-// forkReport is the join, as the caller reads it: one block per hand, in the
-// order the parts were declared rather than the order they finished, because
-// what came back is a narrative and the caller wrote the numbering.
-func forkReport(parts []forkPart, results []forkResult) string {
-	var out strings.Builder
-	fmt.Fprintf(&out, "%s hands, all back:\n", forkCountWord(len(parts)))
-	for index, part := range parts {
-		result := results[index]
-		fmt.Fprintf(&out, "\nhand %d — %s\n", index+1, strings.TrimSpace(part.Role))
-		if len(result.wrote) > 0 {
-			fmt.Fprintf(&out, "  wrote %s\n", strings.Join(result.wrote, ", "))
-		}
-		outcome := result.outcome
-		if outcome == "" {
-			// A block with no outcome is a hand whose goroutine died before it
-			// could write one. Saying so is the honest answer; leaving it blank
-			// would read as done.
-			outcome = fmt.Sprintf(forkFailedFmt, "it did not come back")
-		}
-		fmt.Fprintf(&out, "  %s\n", outcome)
-		if say := strings.TrimSpace(result.say); say != "" {
-			out.WriteString(indentLines(say, "  "))
-			out.WriteString("\n")
+// forkOutLead opens the call's own answer and opens nothing else. It is the
+// marker a test and a reader both recognise the roster by.
+const forkOutLead = "hands are out"
+
+// forkOut is what the CALL answers with: a roster, not a result.
+//
+// It says three things and each one is a thing the caller would otherwise get
+// wrong. WHO IS OUT, with the job id every other verb addresses them by, so a
+// caller that wants to end one can. THAT THE REPORTS COME ON THEIR OWN, in the
+// same sentence the jobs tool uses for the same fact, because a model that is
+// not told this spends its next call asking. And THAT IT SHOULD KEEP WORKING,
+// because the whole forty minutes this change is about were spent by a mind that
+// believed it had nothing to do until its hands were back.
+func forkOut(parsed forkArguments, out []handOut) string {
+	started := 0
+	for _, one := range out {
+		if one.failed == "" {
+			started++
 		}
 	}
-	out.WriteString("\nTheir work is in your working copy now. NOTHING HAS BEEN BUILT OR TESTED and nothing has " +
-		"been reviewed: that is yours, and so is making one thing out of what came back. A hand that came back " +
-		"out of rounds left its part unfinished — finish it or fork again for it, and do not assume it landed.")
-	return out.String()
+	if started == 0 {
+		// NOTHING IS OUT, so nothing may say it is. The roster's opening line is
+		// what the caller reasons from for the rest of the turn, and one that
+		// claimed hands nobody has would leave it waiting for reports that are
+		// never coming.
+		var refusal strings.Builder
+		refusal.WriteString("not forked: no hand could be started.\n")
+		for _, one := range out {
+			fmt.Fprintf(&refusal, "\n  hand %d — %s: %s\n",
+				one.index+1, strings.TrimSpace(parsed.Parts[one.index].Role), one.failed)
+		}
+		refusal.WriteString("\nThe work is still yours and nothing has been touched. Do it in your own hands.")
+		return refusal.String()
+	}
+
+	var report strings.Builder
+	fmt.Fprintf(&report, "%s %s.\n", forkCountWord(started), forkOutLead)
+	for _, one := range out {
+		part := parsed.Parts[one.index]
+		if one.failed != "" {
+			fmt.Fprintf(&report, "\n  hand %d — %s · DID NOT START: %s\n",
+				one.index+1, strings.TrimSpace(part.Role), one.failed)
+			continue
+		}
+		fmt.Fprintf(&report, "\n  hand %d — %s · job %d · writes %s\n",
+			one.index+1, strings.TrimSpace(part.Role), one.id, strings.Join(part.Scope, ", "))
+	}
+	report.WriteString("\nEach hand's report arrives here ON ITS OWN the moment it finishes, in the order they " +
+		"come home — no call from you, so never sleep, poll or ask `jobs output` to wait for one. Every hand " +
+		"still out rides at the foot of every result you read, with how long it has been out and what it last " +
+		"did.\n\nKEEP WORKING. A slice is ready when ITS report lands, not when they are all back: build it, " +
+		"test it, measure it then. Nothing has been built, run or reviewed — that is yours, hand by hand.")
+	return report.String()
+}
+
+// handReportLead opens EVERY hand's report, whatever became of the hand. It is
+// one marker so the caller can recognise one of these at a glance in a
+// conversation that also carries jobs, watches and landings.
+const handReportLead = "hand "
+
+// handReport is ONE hand's report, as it arrives in the caller's conversation.
+//
+// IT LEADS WITH THE OUTCOME WHEN THE OUTCOME IS BAD, and that is not formatting.
+// A hand that ran out of rounds stopped MID-ERRAND: it was told to do a thing,
+// it was three quarters through doing it, and its budget ended between one edit
+// and the next. A report that opened with its name and its writes and mentioned
+// the budget four lines down is a report a caller reads as done — which is
+// exactly what a caller did, and it built on a half-made change.
+//
+// So an unfinished hand's report opens on the words "out of rounds", names the
+// files it wrote, and QUOTES ITS LAST STATED INTENT VERBATIM, because that
+// sentence is the only description in existence of the change that may be half
+// made. And it borrows the vocabulary a landing already has for work nothing
+// looked at ([unverifiedEdits]) rather than inventing a state.
+func handReport(index int, parsed forkArguments, result forkResult) string {
+	part := parsed.Parts[index]
+	role := strings.TrimSpace(part.Role)
+	outcome := result.outcome
+	if outcome == "" {
+		// A report with no outcome is a hand whose goroutine died before it
+		// could write one. Saying so is the honest answer; leaving it blank
+		// would read as done.
+		outcome = fmt.Sprintf(forkFailedFmt, "it did not come back")
+	}
+
+	var report strings.Builder
+	if outcome == forkOutOf {
+		fmt.Fprintf(&report, "%s · %s%d of %d — %s\n", strings.ToUpper(forkOutOf), handReportLead,
+			index+1, len(parsed.Parts), role)
+	} else {
+		fmt.Fprintf(&report, "%s%d of %d — %s · %s\n", handReportLead, index+1, len(parsed.Parts), role, outcome)
+	}
+	if len(result.wrote) > 0 {
+		fmt.Fprintf(&report, "  wrote %s\n", strings.Join(result.wrote, ", "))
+	} else {
+		report.WriteString("  wrote nothing\n")
+	}
+	if say := strings.TrimSpace(result.say); say != "" {
+		report.WriteString(indentLines(say, "  "))
+		report.WriteString("\n")
+	}
+
+	switch outcome {
+	case forkOutOf:
+		report.WriteString("\n  It stopped mid-errand: its budget ended between one edit and the next. " +
+			"What it last said it was about to do, in its own words:\n")
+		if intent := strings.TrimSpace(lastLine(result.say)); intent != "" {
+			fmt.Fprintf(&report, "    \u201c%s\u201d\n", intent)
+		} else {
+			report.WriteString("    (it said nothing before its budget ended — its log is the only account)\n")
+		}
+		if len(result.wrote) > 0 {
+			report.WriteString("  Those files are UNVERIFIED: nothing built or ran them, and the change it was " +
+				"in the middle of may be half made. Read them before you build on them.\n")
+		}
+		report.WriteString("  This part is NOT done. Finish it yourself or fork again for it — do not assume it landed.\n")
+	case forkStopped:
+		report.WriteString("\n  It was stopped before it finished. Anything it had already written is still in " +
+			"your working copy and is UNVERIFIED — nothing built or ran it, and it may be half made.\n")
+	case forkDone:
+		report.WriteString("\n  Its slice is in your working copy and NOTHING HAS BEEN BUILT, RUN OR REVIEWED. " +
+			"That is yours, and you can do it now — the other hands are working elsewhere in the tree.\n")
+	}
+	return strings.TrimRight(report.String(), "\n")
+}
+
+// lastLine is the last non-empty line of a block — a hand's last stated intent,
+// which is the sentence before the edit its budget cut short.
+func lastLine(text string) string {
+	lines := strings.Split(text, "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if line := strings.TrimSpace(lines[index]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // indentLines puts a prefix on every line of a block so a hand's own words
@@ -962,9 +1260,15 @@ func indentLines(text, prefix string) string {
 //
 // It says HANDS rather than anything about forks, copies or scopes, because the
 // person is not being asked to understand the mechanism — they are being told
-// why the answer has gone quiet and when it comes back.
+// why several things are about to happen at once.
+//
+// AND THE PROMISE CHANGED WITH THE MECHANISM. It used to say "back when they are
+// done", which was true of a join and is a lie about a stream: the answer does
+// not go quiet and wait for all of them any more, it carries on and folds each
+// hand in as that hand lands. A dim line that promises the old behaviour would
+// have a person reading a working answer as a stuck one.
 func forkNote(hands int) string {
-	return forkCountWord(hands) + " hands on it · back when they are done"
+	return forkCountWord(hands) + " hands on it · each one folds in as it lands"
 }
 
 // forkCountWord is the count as somebody would say it out loud. It is a list
