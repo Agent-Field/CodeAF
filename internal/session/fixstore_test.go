@@ -421,7 +421,7 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	shelf := newFixShelf(bucket)
 
 	signature, _ := fixSignature("bash", "ld: symbol(s) not found for architecture arm64")
-	shelf.confirm(signature, "make clean && make build")
+	shelf.confirm(signature, "make clean && make build", false)
 
 	if _, err := os.Stat(filepath.Join(bucket, fixesFileName)); err != nil {
 		t.Fatalf("the project store should exist: %v", err)
@@ -468,7 +468,7 @@ func TestAShelfWithNoProjectStillHasTheMachineStore(t *testing.T) {
 		t.Fatal("every session has the machine's store")
 	}
 	signature, _ := fixSignature("bash", "an error worth keying on here")
-	shelf.confirm(signature, "the fix")
+	shelf.confirm(signature, "the fix", false)
 	if advice := shelf.consult(signature); len(advice) != 1 {
 		t.Fatal("the machine store should still answer")
 	}
