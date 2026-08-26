@@ -143,7 +143,21 @@ python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCO
 # runner directory has argv `bash cell.sh <arm> <task>` and one launched by
 # wave.sh has the absolute path. A pattern that assumed the second would silently
 # fail to release the first, leaving it polling a container that no longer exists.
-CELLPID="$(pgrep -f "cell\.sh $ARM $TASK" | head -1)"
+# THE PID IS THE CELL'S OWN, NEVER THE FIRST MATCH. `pgrep … | head -1` released the
+# oldest cell.sh of the arm and tore down two unrelated seeds (s4, s5 on
+# 2026-08-26). The cell writes its pid to $CELL/cell.pid at birth; a cell born
+# before that line is found by the SEED in its environment; nothing else is
+# acceptable, so with neither the cell is left running and this script says so.
+CELLPID="$(cat "$CELL/cell.pid" 2>/dev/null || true)"
+if [ -z "$CELLPID" ] || ! kill -0 "$CELLPID" 2>/dev/null; then
+  CELLPID=""
+  for pid in $(pgrep -f "cell\.sh $ARM $TASK"); do
+    if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "SEED=$SEED"; then CELLPID="$pid"; break; fi
+  done
+fi
+if [ -z "$CELLPID" ]; then
+  say "$ARM/$TASK/$SEED: no cell.sh pid belongs to this seed — container left as is; end it by hand"
+fi
 if [ -n "$CELLPID" ]; then
   say "$ARM/$TASK: releasing cell.sh pid $CELLPID (its EXIT trap tears the cell down)"
   kill "$CELLPID" 2>/dev/null
