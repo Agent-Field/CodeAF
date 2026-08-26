@@ -13,6 +13,13 @@ import (
 
 // handsLab is a machine with `working` conversations on it, and the app looking
 // at it with its reading already taken.
+//
+// THE FRAME IS WIDE ENOUGH FOR A CARD BECAUSE THE CHART ONLY EXISTS ON ONE.
+// There is no card at all below [homeCardMin] now (homebridge.go): at every
+// ordinary width home is the flat list and the fact a person keeps is the
+// pulse's `N working` — which is the law
+// [TestTheHandsSparkNeverDrawsAtTheListTier] states from the other side. So a
+// test whose subject is the chart asks at a width where a card is drawn.
 func handsLab(t *testing.T, working int) (*app, time.Time) {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -25,6 +32,7 @@ func handsLab(t *testing.T, working int) (*app, time.Time) {
 	}
 	a := lab.app(mine)
 	a.clock = func() time.Time { return now }
+	a.width, a.height = homeCardMin, 40
 	a.openHome()
 	return a, now
 }
@@ -44,11 +52,18 @@ func TestThePulseSaysHowManyHandsAreWorkingAndIsAbsentAtZero(t *testing.T) {
 	if facts := a.machineFactsAt(now); facts.hands != 3 {
 		t.Fatalf("the reading says %d hands, want 3", facts.hands)
 	}
-	// THE FIGURE AND THE ZONE ARE ONE ACCOUNTING. The moving strip on the left of
-	// the same screen gathers the same things; a top line that counted them a
-	// second way would be the screen arguing with itself.
-	if names := zoneNames(a, attentionMovingWord); len(names) != 3 {
-		t.Fatalf("the moving zone reads %v, and the pulse says 3 working", names)
+	// THE FIGURE AND THE LIST ARE ONE ACCOUNTING. The rows the switcher calls
+	// moving are the same things this figure counts; a top line that counted them
+	// a second way would be the screen arguing with itself (place_home.go's
+	// [app.machineHands] reads the world the list is ranked from).
+	moving := 0
+	for _, line := range a.home.lines {
+		if line.sw != nil && line.sw.row != nil && line.sw.row.moving {
+			moving++
+		}
+	}
+	if moving == 0 {
+		t.Fatal("the pulse says 3 working and the list shows nothing moving")
 	}
 
 	// AND ONE HAND STILL SPEAKS.

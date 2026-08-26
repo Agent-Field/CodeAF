@@ -22,18 +22,13 @@ package tui3
 //
 // ── WHICH ROW ───────────────────────────────────────────────────────────────
 //
-// THE MOVING ZONE HOLDS THE SPINNER WHENEVER IT IS DRAWN. That zone exists to
-// answer "what is running everywhere" (homeattention.go), and the one cell on the
-// screen that says "right now" belongs in the one place whose whole subject is
-// right now. Only when there is no such zone — under a search, on a machine with
-// no conversations — does the spinner fall to the list's own rows.
-//
-// AND WITHIN A ZONE IT IS THE MOST RECENTLY ACTIVE, which is the one order a
-// person can verify: the thing that started last is the thing they just did, and
-// a spinner that lands on it is the screen acknowledging the keystroke they are
-// still thinking about. The zone's own order is BUSIEST first, deliberately
-// ([homeZones]) — the top of the list and the moving cell answer two different
-// questions, and neither is the other's summary.
+// IT IS THE MOST RECENTLY ACTIVE ROW, which is the one order a person can
+// verify: the thing that started last is the thing they just did, and a spinner
+// that lands on it is the screen acknowledging the keystroke they are still
+// thinking about. It is deliberately NOT the top of the list — the list is
+// ranked by what wants a person first ([readSwitcher]) — because the top row and
+// the moving cell answer two different questions, and neither is the other's
+// summary.
 
 import (
 	"time"
@@ -48,21 +43,12 @@ import (
 // the draw, for [homeView.wide]'s reason: the paint asks it once per row and
 // thirty times a second, and a choice remade per cell would be this file paying
 // for its own law.
-func (h *homeView) spinAt() int {
-	if at := h.newestMoving(true); at >= 0 {
-		return at
-	}
-	return h.newestMoving(false)
-}
+func (h *homeView) spinAt() int { return h.newestMoving() }
 
-// newestMoving is the freshest moving row among the zones' rows, or among
-// everything that is not one.
-func (h *homeView) newestMoving(zoned bool) int {
+// newestMoving is the freshest moving row on the column.
+func (h *homeView) newestMoving() int {
 	best, when := homeRest, time.Time{}
 	for at, line := range h.lines {
-		if (line.zone != nil) != zoned {
-			continue
-		}
 		stamp, moving := homeMovingAt(line)
 		if !moving {
 			continue
@@ -77,15 +63,17 @@ func (h *homeView) newestMoving(zoned bool) int {
 // homeMovingAt reports that one line stands for something MOVING THIS INSTANT,
 // and when that movement began.
 //
-// THE THREE KINDS ARE THE THREE THE ZONE ITSELF GATHERS ([homeView.attentionMoving]),
-// read here off the row rather than off the world so that a line and the mark it
-// wears can never disagree: a conversation with nodes out, an errand mid-turn,
-// and a zone row for either of them. A standing item that is firing is moving too
-// and is in that zone, and it reaches this through its zone row — the item row in
-// the list below has never turned and does not start now ([StandingItemRow]).
+// IT IS READ OFF THE ROW AND NEVER OFF THE WORLD, so that a line and the mark it
+// wears can never disagree. On the resting list the reading has already made the
+// judgement and carries it ([switcherRow.moving]); under a query the line is the
+// drop-up's own and the two kinds that move are a conversation with nodes out
+// and an errand mid-turn.
 func homeMovingAt(line homeLine) (time.Time, bool) {
-	if line.zone != nil {
-		return line.zone.at, line.zone.word == attentionMovingWord
+	if line.sw != nil {
+		if row := line.sw.row; row != nil {
+			return row.at, row.moving
+		}
+		return time.Time{}, false
 	}
 	switch line.kind {
 	case homeSession:
@@ -121,6 +109,16 @@ func homeSpinNewer(best, cand time.Time) bool {
 // than in each of the three paints, so there is one place the exception lives.
 func (a *app) homeSpins(at int) bool {
 	return !a.linear && at >= 0 && at == a.home.spin
+}
+
+// homeSpinCell is the turning cell for one line of the column, and "" on every
+// other line — the one door the reading paints its moving mark through
+// (switcher.go's [switcherPaint]).
+func (a *app) homeSpinCell(at int) string {
+	if !a.homeSpins(at) {
+		return ""
+	}
+	return a.homeSpinGlyph()
 }
 
 // homeSpinGlyph is the moving cell itself, on the house grid so it never beats

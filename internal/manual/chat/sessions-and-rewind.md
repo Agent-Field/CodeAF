@@ -403,8 +403,8 @@ of it.
 
 **When home greets you instead, there is no welcome box at all.** On a machine that holds
 a conversation other than the one your launch opened, the first frame is the home screen
-(see the home page), and the box is retired before it ever draws — home's left column is
-every conversation in every project, which is the box's four recent rows and more. Two
+(see the home page), and the box is retired before it ever draws — home's list is every
+conversation in every project, which is the box's four recent rows and more. Two
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 

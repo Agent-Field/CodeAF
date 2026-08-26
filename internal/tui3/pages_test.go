@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ROUTER, AS A PERSON MEETS IT.
@@ -201,6 +202,12 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 // task from anywhere" is only true if the verb says where anywhere is.
 func TestTheComposerAndItsScopeChipAreOnEveryPlace(t *testing.T) {
 	a := placeApp(t)
+	// A FRAME WIDE ENOUGH FOR BOTH HALVES OF THE BOX ROW. The chip is dropped
+	// rather than crowding the sentence beside it (pages.go's [app.placeChipped]),
+	// and this suite's own temp directories are seventy cells of path — so a
+	// hundred and twenty columns is a frame where the chip's absence would be
+	// correct and would prove nothing.
+	a.width, a.height = 200, 30
 	for _, id := range []page{pageHome, pageSpend, pageSearch} {
 		a.showPage(id)
 		text := placeFrameText(a)
@@ -272,13 +279,34 @@ func TestALetterIsAVerbOnlyWhileTheStripIsDrawn(t *testing.T) {
 // AND `→` OPENS THE STRIP ONLY WHERE THE ROW HAS VERBS. Everywhere else the
 // arrow keeps every meaning it already had, which is what makes this a new claim
 // on the key rather than a seizure of it.
+//
+// A CONVERSATION WITH AN ADDRESS HAS VERBS AND ONE WITHOUT HAS NONE. The strip's
+// verbs are the READING's — put it away, and the three doors that need a folder
+// to open (switcher.go's [switcherVerbsFor]) — so a row the world recorded no
+// workspace for offers nothing, and the arrow goes on meaning what it meant.
 func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	a := placeApp(t)
 	a.home.box.reset()
 	a.home.build()
 	drive(t, a, key("right"))
-	if a.strip.open {
-		t.Fatal("a conversation row offered verbs it does not have")
+	if !a.strip.open {
+		t.Fatal("a conversation with a folder of its own offered no verbs")
+	}
+	words := ""
+	for _, v := range a.strip.verbs {
+		words += string(v.key) + " " + v.word + " · "
+	}
+	for _, want := range []string{"a put it away", "t new chat here", "o open folder", "c copy path"} {
+		if !strings.Contains(words, want) {
+			t.Fatalf("the strip is missing %q: %s", want, words)
+		}
+	}
+	// AND A ROW WITH NO ADDRESS AT ALL OFFERS NOTHING, which is what keeps a
+	// letter safe: the strip cannot offer a verb the row has no way to perform.
+	drive(t, a, key("esc"))
+	bare := switcherRow{kind: switcherConversation, title: "Nowhere"}
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].word != "put it away" {
+		t.Fatalf("an addressless row offered %v", got)
 	}
 }
 
@@ -344,9 +372,12 @@ func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	if pal.warnBold(homeAskGlyph) == pal.askBold(homeAskGlyph) {
 		t.Fatal("the two hues are the same colour, so this test proves nothing")
 	}
-	mark := a.attentionMark(pal, attentionNeedsWord, homeRest)
-	if mark != pal.warnBold(homeAskGlyph) {
-		t.Fatalf("the needs-you mark is not the waiting-on-you hue: %q", mark)
+	// The one place the mark is painted now is the switcher's own row, where a
+	// row that needs a person wears the amber and nothing else on the screen
+	// does (switcher.go's [switcherPaintRow]).
+	row := switcherRow{kind: switcherConversation, title: "Asking", needs: true}
+	if !strings.Contains(switcherPaintRow(row, 60, pal, false, switcherPaint{}), pal.warn(tokens.GlyphNeedsHuman)) {
+		t.Fatal("the needs-you row is not the waiting-on-you hue")
 	}
 	// AND MONEY HAS A HUE OF ITS OWN, which is not the hue of a finished tick.
 	if pal.money("$1.00") == pal.add("$1.00") {

@@ -3,7 +3,7 @@ package tui3
 // THE SHEET: A ROW'S CARD, OVER THE WHOLE FRAME.
 //
 // The card is home's right column and the right column goes at eighty
-// ([homeMinDetail]). Under sixty there is no second column and there is not
+// ([homeCardMin]). Under sixty there is no second column and there is not
 // going to be one — thirty cells beside thirty cells is two truncated columns —
 // so the card takes the FRAME instead, opened by the same gesture that would
 // have previewed it on a wide one: enter on the row, or a tap.

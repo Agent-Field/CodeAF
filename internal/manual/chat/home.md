@@ -1,21 +1,24 @@
-# Home — every project and session on this machine
+# Home — one list of everything on this machine
 
 ## See all my projects — /home
 
-Type `/home`. It takes the whole screen and shows **every project on this machine and
-every session in them**, not just the folder this window was started in.
+Type `/home`. It takes the whole screen and shows **every conversation on this machine,
+from every project**, not just the folder this window was started in.
 
 The top line reads `aforge` on the left, with the machine's own vital signs dim on the
-right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below). The way out
-is named at the foot, on the hint line: `esc close`. `esc` puts you back in exactly the chat
-you came from, untouched — nothing was closed and nothing was sent while you were looking.
+right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below).
+`esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
+nothing was sent while you were looking. The resting foot does not spend a cell naming it:
+it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
+place`, four keys and no more, and `alt+.` draws the whole map over the cells you are
+already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-The left column is **two tiers**: three projects drawn open — the one this window is in
-first, then the two you spoke in most recently — and every other project folded to one line
-each under a dim `elsewhere` rule, `enter` away from opening in place.
+Under the tab bar it is **one flat list**, ranked by what wants you first, with the project
+demoted to a tag out at the right of each row. There is no project tree and no folded block
+of other projects; `alt+g` groups the same list by project when you want that shape.
 
 Home is the **first of seven places** — home, tasks, standing, memory, spend, search,
 settings — drawn as a tab bar under the top line, with `tab` and `alt+1`…`alt+7` between
@@ -31,10 +34,9 @@ would have opened is loaded and waiting underneath it: `esc` drops straight into
 effect the launch is the launch you always had, with home already open on top of it.
 
 **The cursor starts on the conversation this window is holding** — the row `esc` drops
-back into, visibly selected, with its card on the right and its section's heading stepped
-up beside it. So the first frame already answers "where am I". `tab` crosses into `needs
-you`; `↑` off the top of the list walks up to **rest** — no row at all, the machine's own
-card (see *Where the cursor starts*); `esc` goes on with what you were doing.
+back into, visibly selected, wearing the one band on the screen. So the first frame already
+answers "where am I". `↑` off the top of the list walks up to **rest** — no row at all (see
+*Where the cursor starts*); `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -47,8 +49,8 @@ It greets you only when it has something to say. All of these have to be true:
   else to go, in other words.
 - It is a real terminal session — not `--once`, not `--host`.
 
-When home greets you there is no welcome box: home's left column already lists every
-conversation the box's `recent sessions` would have, and more.
+When home greets you there is no welcome box: home's list already holds every conversation
+the box's `recent sessions` would have, and more.
 
 ## Skip the home screen — launching straight into a conversation
 
@@ -72,134 +74,213 @@ rather than nothing (see *Home is empty — what an empty home shows*).
 
 ## Everything I have ever worked on — what home shows
 
-Two columns, no borders — three of them on a frame 110 columns or wider (see *The three
-columns on a wide home*).
-
-**On the left**, the projects on this machine, in **two tiers**. **With nothing typed the
-list hangs from the top of the frame**, as a page you are reading should:
+**One column, no borders**, hanging from the top of the frame with nothing typed. A card
+stands beside it only on a frame **160 columns or wider** (see *Why is there no preview on
+the right*). Top to bottom:
 
 ```
-  aforge-v2                          Pricing Research
-  ▲ Pricing Research  4m
-  ⠋ Port the Picker  12m             aforge-v2 · ~/src/aforge-v2
-  ✓ Import Cleanup    3h
-  ▸ …3 more, quiet…                  open in another window · waiting on you
-                                     can I run: rm -rf build/
-  pricing-api
-  ○ Log Rotation     20d             Port the Picker                          2h
-                                       the roster resumes cleanly · 14 files
-  ─ elsewhere ────────────
-  ▸ wisp        6 · ▲ 1 waiting      Fix the nil-map                          3h
-  ▸ site-gen           2 · 3d          the parser handles nested tags
-  ▸ notes              1 · 20d
+ aforge                        on watch · 4 orders · 3 working · $1.10 today · fri 9:41am
+  home   tasks 1   standing   memory 2   spend   search   settings
+ ─────────────────────────────────────────────────────────────────────────────────────────
+ since you left · 3h
+ a watch fired at 6am — nothing had changed, and it says so                      standing
+ 2 tasks landed                                                                     tasks
+
+ 20 chats · what wants you first     alt+g group by project · alt+q hide the quiet ones
+ ? Swarm Task Splitting     aforge-v2   asks: add a --report-only mode?              2h
+ ? Gmail cleanup routine    ~           wants to send on your behalf                 6h
+ ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings            3h
+ ○ Researching Santosh      aforge-v2   3 files made                               here
+ ▸ 15 more, quiet since aug 21
 ```
 
-**The top tier is three projects, drawn open** — a dim heading, its conversations under
-it, the things keeping an eye on it, and the quiet fold. They are **the project this
-window is in, first**, and then the two projects you spoke in most recently.
+1. **the pulse line**, the machine's own vital signs (its own section below);
+2. **the seven-place tab bar** and a dim rule under it — that is the router's frame, and
+   *Places* describes it;
+3. **the `since you left` ledger**, drawn only when something happened on its own while you
+   were away, each line a door into the place it names;
+4. **the section line** — `20 chats · what wants you first` on the left, and the two views
+   on the right — drawn only when something needs you or is moving;
+5. **the rows**, one flat ranked list;
+6. **one fold** over everything the list is not drawing.
 
-**Everything else folds to one line each**, under a dim rule that says `elsewhere`. That
-rule is the only rule on the screen, and what is under it is not another project — it is
-all the rest of them.
+**A row is:** the state mark, the name, and then out at the right margin the project as a
+tag, the note, and the age — or the word `here` in place of the age on the conversation
+this window is holding. The marks are `?` (amber) it is asking you something, `◐` it is
+moving, `○` at rest, `=` a standing item you paused. The note is the one fact the row is
+about: `asks: add a --report-only mode?`, `wants to send on your behalf`,
+`2 tasks running · reading filings`, `3 files made`, `ran a saved shape`.
 
-Home was an unorganised wall before this: every project on the machine got a heading and
-four rows, most of them saying `elsewhere`, and the one project you could actually act in
-was wherever recency happened to put it.
+**A narrow frame drops facts in one order and never the name:** the note goes first, then
+the project tag, then the age. Under **80 columns** there is no note at all.
 
-The cursor opens on **the conversation this window is holding**, with that row's card on
-the right (*Where the cursor starts*). As you move it, the preview on the right follows the
-cursor — **or follows your mouse pointer**, whenever the pointer is resting on a row of the
-list. The pane shows the row under the pointer while the pointer is on one, and the
-cursor's row otherwise.
+Both kinds of row are on the one list: a conversation, and a standing item that is asking
+you something or firing right now. An `ask here` errand sits above everything, because it
+is a thing you asked for a minute ago.
 
-A line is a glyph, the session's name, what it has going on, and how long since you last
-spoke in it — or `here` on **the conversation this window has on screen** (the row `esc`
-drops back into), or `open` where **this** terminal is holding a conversation behind that
-one, or `another window` where a *different* terminal is sitting on it and this one
-therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
-on you, `●` something is running in it, `◌` work was left
-unfinished, `✓` work landed since you last looked (see *What landed while I was away*),
-`○` at rest. **Exactly one row on the whole screen turns** — the most recently active one,
-which wears the spinner instead of its `●` (see *Why does only one row spin*). In
-screen-reader (linear) mode nothing animates and the glyphs are `!`, `*`, `o`, `+` and `-`.
+## Why is my project tree gone — home is one flat ranked list
 
-The left list stays deliberately calm — every row is dim except the one the cursor is on,
-which takes the highlight. The one exception is `waiting on you`, which is brought up out
-of the dim wherever it appears, because a screen whose whole job is triage cannot render
-its most urgent fact in the same grey as an age.
+**It is gone on purpose, and nothing under it is out of reach.** Home used to be a tree:
+every project a heading, three of them drawn open, the rest folded away under an
+`elsewhere` rule, with two strips standing over the whole thing. That shape answers "where
+is my work", and somebody opening this screen twenty times a day is not asking that — with
+ten to twenty live conversations and three to five projects the tree spent five rows of
+scaffolding to reach twenty rows of content.
 
-Inside a project the order is **what wants you first**: sessions stopped on a question,
-then ones with work running, then ones with work left unfinished, then the rest by when
-you last spoke. Quiet ones past the first four collapse into one dim line,
-`…3 more, quiet since 2d`.
+So the project became **a tag on the row** and the list became one ranked column. The
+order is:
 
-**The list never touches the rule above the box.** One blank row always sits between the
-last line of the list and the foot of the frame, in both of home's shapes.
+1. **what needs you** — anything stopped on a question, **longest wait first**. A thing
+   that has been stopped for six hours has already cost more than one stopped for ten
+   minutes, so it is above it whatever else is true.
+2. **what is moving** — **busiest first**, most tasks running, with the longest-running
+   settling a tie.
+3. **everything else**, most recently spoken in first.
 
-## What needs me — the needs you strip at the top of home
+`alt+g` puts the projects back as headings whenever you want them (*How do I group home by
+project*). Nothing else about the list changes when you do.
 
-Above the projects, home draws a strip labelled `needs you`. It is **everything on this
-machine that has stopped and is waiting on you**, from every project at once, whatever
-kind of thing it is:
+## What is since you left — the ledger at the top of home
 
-- a conversation in another window stopped on a question — a command to approve, a task
-  to approve, a card about something standing;
-- a task that has **landed and needs your look**, which is work nothing more will happen
-  to until you read it — its row says `landed` and is named after the task;
-- a reminder or a watch that stopped and wants an answer;
+**Things that happened on their own while you were not looking**, above the list, under
+one heading that says how long ago that was:
+
+```
+ since you left · 3h
+ a watch fired at 6am — nothing had changed, and it says so                      standing
+ 2 tasks landed                                                                     tasks
+```
+
+Three kinds of line, newest first:
+
+- **a standing item that fired** — its own last-look line, in its own words;
+- **`N tasks landed`** — work that finished anywhere on the machine since your last look;
+- **what memory learned or let go** — `learned 2 things, let go of 1`.
+
+**Every line is a door.** The lowercase word out at the right of the line is the place it
+goes to — `standing`, `tasks`, `memory` — and `enter` takes you there. That is the whole
+of how you find these pages: you meet `memory` on the day it has something to tell you,
+rather than being told a list of places exists. The hint under the box says
+`enter opens the place this happened in · esc close`.
+
+**It is drawn only when there is something in it.** A machine that did nothing while you
+were away has no `since you left` heading at all — it is not a section that stands empty.
+The look stamp it measures from is when you last **closed** home.
+
+**The memory line is not wired yet.** The figures behind `learned … , let go of …` come
+through a seam this surface does not have a memory store on, so they read zero and, under
+the rule that nothing zero is drawn, the line does not appear. When that seam is wired the
+line appears with no other change.
+
+## How do I group home by project — alt+g
+
+**Press `alt+g`.** The same rows are drawn in blocks, one per project, each under a dim
+heading with the project's name — **this window's own project first**, then the rest by
+what has happened in them most recently. The project tag comes off the rows, because the
+heading is saying it.
+
+Press it again and the flat ranked list comes back.
+
+- **The rows are chosen before they are grouped.** Home still draws eight rows and a fold;
+  grouping arranges the rows it was going to draw, so a project whose only conversation is
+  behind the fold has no heading either.
+- **A heading is not a row.** `↑`/`↓` walk straight over the project names; there is
+  nothing to open on one and no card for one.
+- **It is remembered for as long as aforge is running** — closing home and opening it
+  again keeps it — and it is **not a setting**: nothing is written to disk, and a fresh
+  aforge starts flat.
+- **It does nothing while you are typing**, and nothing at phone width. With something in
+  the box the column is the matches rising out of it, and under 60 columns home is already
+  an inbox with the projects under it — in both cases a key that silently changed a list
+  that is not on screen would be the worst kind of chord.
+
+## How do I hide the quiet chats — alt+q hide the quiet ones
+
+**Press `alt+q`.** Everything that is neither asking you something nor moving leaves the
+list, and the fold at the foot says so in one word — `▸ 12 more, quiet`. Press it again
+and they come back.
+
+It is the same key everywhere the section line names it: the right of that line reads
+`alt+g group by project · alt+q hide the quiet ones`, and on a frame with no room for both
+clauses it keeps `alt+g group by project` alone.
+
+Like `alt+g` it is **remembered for as long as the program is running and is not a
+setting** — nothing goes to disk — and like `alt+g` it does nothing while something is
+typed or at phone width, because then this list is not what is on the screen.
+
+`alt+q` never hides a row that wants you. That is what it is for: on a machine with two
+questions and eighteen quiet conversations it leaves the two.
+
+## Where did the rest of my chats go — eight rows and one fold
+
+**Home draws eight rows and then one fold over everything else:**
+
+```
+▸ 15 more, quiet since aug 21
+```
+
+The line says **how many** rows it stands for and, when the first hidden row is a quiet
+one, **how far back** they go. Under `alt+q` the clause is simply `quiet`.
+
+**It is a door.** `enter` or `→` on it shows every row with no cap at all, and its mark
+becomes `▾`; `enter` or `←` folds them back. The hint under the box says
+`enter or → show them · esc close`, and `enter or ← fold them away · esc close` while it
+is open. The fold line stays on screen while it is open, because it is the way back.
+
+**The eight are the eight that want you most** — the top of the ranked list — so the fold
+never hides a question or a running task while showing something quiet. And **typing sees
+straight through it**: a search has no cap and no fold, and matches every conversation on
+the machine including the ones the fold was holding.
+
+## What needs me — the ? rows at the top of home
+
+**The top of the list, and they wear an amber `?`.** There is no `needs you` strip any
+more, because the list is sorted by exactly what that strip used to gather — so the strip
+would have been the same reading twice, one row further up the screen.
+
+A row is there when something has stopped and cannot go on without you:
+
+- a conversation in another window stopped on a question — a command to approve, a task to
+  approve, a card about something standing;
+- a reminder, watch or rule that stopped and wants an answer;
 - an `ask here` errand holding a card.
 
-```
-  needs you
-  ▲ Pricing Research                 beta · 3h
-  ▲ keep main green                 alpha · 1h
-  ▲ port the parser       landed · alpha · 30m
-```
+The note on the row is **what it is asking**, in the question's own words — `asks: add a
+--report-only mode?`, or `wants to send on your behalf` for a command it wants to run —
+and the age is **how long it has been waiting**. The longest wait is at the top.
 
-Each row is `▲`, the thing's own name, then the project and how long it has been waiting.
-**The longest wait is at the top.** Nothing else re-orders it.
+**You can answer most of them without going anywhere.** With the cursor on the row, the
+question and its answers are drawn on the line above the box and the digits answer it
+(*Answer a question from home*), and `→` opens the row's verbs in the question's own words
+(*How do I answer without opening the chat*).
 
-A row here is a **door of the kind it always was**: `enter` opens the conversation, or the
-chat that asked for a reminder, exactly as it does on the row further down the screen. The
-card on the right is that thing's card, and where the question can be answered from home,
-`1`, `2` and `3` answer it from this row too (see *Answer a question from home*).
+Amber is spent on the `?` mark and on the answers under the list, and on nothing else. A
+machine with nothing waiting has no accent on it at all.
 
-**A row named after a task opens on that task**, not on the bare conversation — see *What
-happens when I press a landed row* below.
+## What opens when I press a landed row on home — I clicked a needs you row and it opened the chat
 
-**A row appears in the strip and under its project both.** They are two views of one live
-thing, not two things — pressing `enter` on either goes to the same place.
+**It opens the conversation, and that is now all it does.** Home no longer draws a row of
+its own for a task that landed and needs your look: a row on this list is a conversation
+or a standing item, and pressing `enter` opens it — whatever project it belongs to, with
+the conversation you were in left running behind it.
 
-## What happens when I press a landed row — I clicked a needs you row and it opened the chat, and the task's own record with it
+Work that landed reaches home two other ways instead, and neither is a row named after a
+task:
 
-A `needs you` row that says `landed` is named after **one piece of work**, not after the
-conversation it ran in. Pressing `enter` on it, or clicking it twice, does two things at
-once:
+- **the `since you left` ledger** says `2 tasks landed`, and `enter` on that line opens the
+  **tasks** place, which is the record of every piece of work and where one waiting for you
+  is named;
+- **the conversation's own row** carries it in the note — `3 files made` — and its card,
+  on a wide frame, has the work band with what each task came to.
 
-- the **conversation that ran the task opens**, exactly as any other row on home opens it —
-  whatever project it belongs to, with the conversation you were in left running behind it;
-- and **that task's own record card is raised in front of it**: what the work was called,
-  what it came to, what it cost, how many files it changed, the branch or worktree it left
-  them on, and the last thing it said.
+A conversation this window cannot open still refuses first, and says so in one line at the
+foot: `open in another window — go there, or start a new conversation here`.
 
-`esc` backs out of the card to the project's list of work, and `esc` again leaves the
-conversation on the screen. `ctrl+.` closes the whole page from inside the card.
+## How do I clear a needs your look row — settling work that landed
 
-This matters in a conversation that has run a lot of tasks: the row names one of forty, and
-landing on the conversation alone would drop you at the live edge of a transcript with no
-trace of the thing you pressed.
-
-**A row that is not a task opens the plain door.** A conversation stopped on a question, a
-reminder, an `ask here` errand — those stand for no single piece of work, so nothing is
-raised over them. And a row this window cannot open still refuses first: a conversation
-another window is sitting on says `open in another window — go there, or start a new
-conversation here`, and no card is raised over a conversation you never walked into.
-
-## How do I clear a needs your look row — settling work from the conversation
-
-Work that landed needing a look **stays on the strip until you decide about it**, however
-many days that is. It is not stale and it does not age out: nothing more will happen to
-that work until somebody accepts it or sends it back.
+Work that landed needing a look **waits until you decide about it**, however many days that
+is. It is not stale and it does not age out: nothing more happens to that work until
+somebody accepts it or sends it back.
 
 Three ways to settle it, and they are the same door:
 
@@ -212,292 +293,265 @@ Three ways to settle it, and they are the same door:
   7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
   says `already answered`.
 
-Accepting merges the task's branch and unblocks everything queued behind it. The moment it
-is settled the row leaves `needs you`. The tasks page has the whole of it under *Why is the
-task waiting for me*.
+Accepting merges the task's branch and unblocks everything queued behind it. The tasks page
+has the whole of it under *Why is the task waiting for me*.
 
-## What is running everywhere — the moving strip
+**Home is not where it is settled.** It is where you find it: the ledger line `N tasks
+landed` opens the tasks place, and the conversation's row opens the chat the work ran in.
 
-Under it is `moving`: **everything in flight anywhere on the machine**.
+## What is running everywhere — the ◐ rows, and what goes in the moving column
 
-```
-  moving
-  ● Odysseys Wave 4                 gamma · 8m
-  ▸ …2 more
-```
+**The `◐` rows, straight under the ones that are asking you something.** There is no
+`moving` strip and no moving column any more; being in flight is a rank in the one list
+rather than a place on the screen.
 
-A conversation is here when it has tasks running, and also when it is simply **mid-turn** —
-the model thinking or a tool out, with no task ever made. Conversations this terminal is
-holding open behind the one on screen count too, and so do a watch that is firing and an
-errand that is thinking.
+A row is `◐` when it has tasks running, and also when it is simply **mid-turn** — the model
+thinking or a tool out, with no task ever made. Conversations this terminal is holding open
+behind the one on screen count, and so does a watch that is firing this instant.
 
-The order is **busiest first** — most tasks running — and the longest-running settles a
-tie. The row is `●`, the name, the project, and how long it has been going. **Five rows,
-then `▸ …N more`**, which `enter` or a click opens in place, exactly like every other fold
-here; the rest are all in the list below anyway.
+They are ordered **busiest first** — most tasks running — with the longest-running settling
+a tie, and the note says what is actually happening: `2 tasks running · reading filings`.
 
-Most of these rows hold a still `●`. One of them turns — see *Why does only one row spin*.
+Two other places say the same thing more briefly:
+
+- **the pulse line** at the top — `3 working` — which is the same count over the whole
+  machine, a conversation with three tasks out counting as three;
+- **the tasks place**, which is the full record rather than a count.
 
 ## Why does only one row spin — the one spinner on home
 
-However many things are moving on the machine, **exactly one row on home animates**: the
-one that started most recently. Every other live row — in `moving`, under its project, an
-`ask here` errand mid-turn — holds the still `●` instead.
+**The resting list does not animate at all.** `◐` is a still mark: a row with work running
+wears it, and the page stays a still page redrawn every three seconds.
+
+The cell that can turn is an **`ask here` errand's own row** while its answer is coming,
+and — **while you are typing** — the most recently started conversation among the matches,
+which wears the spinner instead of its `●`. However much is happening, **exactly one cell
+on the frame ever turns.**
 
 Two reasons, and they are the same reason:
 
-- **Calm.** Eleven braille cells turning at once in three columns is a screen you cannot
-  glance at, and one moving cell says *this machine is working* exactly as well.
-- **A flat wire.** Home is otherwise a still page redrawn every three seconds. The frame
-  the spinner costs is the same frame whether one thing is running or twenty, so a busy
-  machine costs an ssh connection no more than a quiet one.
-
-When the `moving` zone is on the screen, the spinner is in it — that zone's whole subject
-is what is happening right now. The zone itself is ordered **busiest first**; the spinner
-goes to the most recent, and those are two different questions on purpose.
+- **Calm.** Eleven braille cells turning at once is a screen you cannot glance at, and one
+  moving cell says *this machine is working* exactly as well.
+- **A flat wire.** The frame the spinner costs is the same frame whether one thing is
+  running or twenty, so a busy machine costs an ssh connection no more than a quiet one.
 
 In screen-reader (linear) mode nothing turns at all.
 
-## Are the strips there when nothing is happening — an empty needs you or moving zone
+## Nothing needs me this morning — what a quiet home draws
 
-At **80 columns and wider** the two labels are always drawn, even with nothing under them —
-an empty `needs you` is the good news, and a screen whose shape moves every time a task
-lands is not a screen you can learn. Under 80 columns, where every row is dear, an empty
-strip is not drawn at all.
+**Nothing that has nothing to say is drawn.** On a machine where nothing is asking and
+nothing is moving there is no section line, no `since you left`, no accent anywhere — just
+the pulse, the tab bar, the rule, the rows and the fold:
 
-**At 110 columns and wider a label with nothing under it says what would be there.** One
-dim line under `needs you` reads `questions and landed work`, and one under `moving` reads
-`turns, tasks and watches` — the kinds of thing that arrive in that region, so a label you
-have never seen filled still tells you what it is for. It is a caption, not a row: the
-cursor walks straight past it and it goes the moment the zone has anything real to show.
-Neither line ever announces that something is missing; nothing on this surface does.
+```
+ aforge                                                                   tue 8:04am
+  home   tasks   standing   memory   spend   search   settings
+ ────────────────────────────────────────────────────────────────────────────────────
+ ○ Swarm Task Splitting Ideation     aforge-v2                                    2h
+ ○ Bounty Reward Companies           leadgen                                      3h
+ ○ Thor Fight Clip Generation        media                                       13h
+ ▸ 17 more
+ › say what you want done                                        here ~/aforge-v2
+ type to search or start something new · ↑↓ pick · enter open · tab next place
+```
 
-**Typing takes both strips away.** A search is the matches rising out of the box with
-`? ask here` and `+ start a new conversation` against it, at every width — no strips, no
-headings, no tiers.
+Eight rows is a legitimate home. The section line
+(`20 chats · what wants you first`) appears the moment something needs you or is moving,
+and goes again when it stops.
 
-A machine with no conversations on it yet keeps both strips wherever a width draws them —
-at 110 columns and wider each label stands in its own column with its teaching line under
-it — and the places column says `nothing here yet — say something and this fills up`
-where the first project's rows will be, over two rows split at the dash. An empty home is
+**Typing changes the shape and not the data.** A search is the matches rising out of the
+box with `? ask here` and `+ start a new conversation` against it, at every width — no
+section line, no ledger, no fold, no grouping.
+
+A machine with **no conversations at all** draws `nothing here yet — say something and this
+fills up` where the first row would be, over two rows split at the dash. An empty home is
 the same screen with fewer rows, never a different screen.
 
-## The three columns on a wide home — needs you, the projects, the card
+## Why is there no preview on the right — the card, and the 160-column rule
 
-At **110 columns and wider** the two strips stop standing over the list and take a **column
-of their own** on the left. Home is then three columns and no borders — the separation is
-made of alignment and space:
+**Below 160 columns home is one column and there is no card at all.** That is deliberate:
+at an ordinary width the card was showing you what pressing `enter` shows a beat later, and
+the **note on the row** now carries the one fact it was really for — what a conversation is
+stopped on, what is in flight in it, what it made.
 
-```
- aforge                          on watch · 4 orders · 1 working · $1.10 today · fri 9:41
- ──────────────────────────────────────────────────────────────────────────────────────────
-  needs you                    aforge                         keeping an eye on
-  ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
-                               ○ rename plan      yesterday   agents
-  moving                       hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
-  ● port sweep          8m     ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
-                               ─ elsewhere ─                  since you left
-                                                              ◆ 2 tasks landed        aforge
-                                                              today
-                                                              3 chats · 5 tasks · $1.10
- ──────────────────────────────────────────────────────────────────────────────────────────
-  type to search or start something new · ↑↓ pick · enter open
-  ↑↓ move · enter open · alt+. map · tab next place · esc close
-```
+The exact number is the sum of its parts: 120 cells is what a row wants to carry its mark,
+name, project tag, note and age with none of them giving way, the gutter is 4, and a card
+that can still say a whole sentence is 36 — so the card tier begins at **160**, and the
+card is never paid for out of the list.
 
-- **Left — what needs you, and what is moving.** The same two zones, the same rows, the
-  same doors: `enter` opens the thing, `1`/`2`/`3` answer a question on it, a click selects
-  it. Rows here are short — the name, then how long it has been waiting or running, with
-  the project where there is room for it. The card on the right is that row's card.
-- **Middle — the projects.** The list, unchanged: headings, conversations, the things
-  keeping an eye on each project, the quiet folds and the `elsewhere` block. It is the
-  **widest** column at every width, because it is the one holding everything.
-- **Right — the card.** Always a card, never a second list: the row the cursor is on, or
-  the machine's own with the cursor on no row.
-
-**`←` from rest enters `needs you`**, and the foot names it at this width:
-`← what needs you`. A zone with nothing in it is skipped, because its label is not a row.
-`esc` still closes home from wherever the cursor is.
-
-**`tab` used to walk the zones and no longer does.** It is the way to the **next place** now
-— home, tasks, standing, memory, spend, search, settings — on every place, because a key
-that meant "next section" here and "next place" everywhere else is a key nobody can build a
-habit on. Nothing became unreachable: the arrows already crossed the same gutter, and they
-still do.
-
-**`→` and `←` cross the columns too, the way the geography reads**: `→` off a row in
-`needs you` or `moving` crosses the gutter into the list, and `←` off a conversation in
-the list crosses back into the zones. Both land on the **same conversation** when the far
-column holds it — stepping across never loses the thing you were reading — and on the
-first row otherwise. On a zone's `…N more` line the arrows stay the fold's, opening and
-closing it, because the cursor is standing on the fold itself. With something typed the
-arrows are the caret's, as everywhere on this screen.
-
-**The first `↓` from rest lands at the top of the projects list**, in the middle — not in
-`needs you`, and not somewhere that depends on what the machine happens to be doing. The
-middle column is the widest thing on the screen and holds everything, so it is where the
-cursor wakes; `←` or `tab` is one key away when what you want is the flank. After that `↑`
-and `↓` walk **every** row on the page in reading order — the zones on the left, then the
-list — so nothing needs `tab` to be reachable.
-
-**One blank row separates `needs you` from `moving`.** They are two blocks, and a block
-boundary on this surface is one empty row.
-
-The narrower shapes are the same screen folded down:
-
-| Frame | What home draws |
-|---|---|
-| 110 columns and wider | three columns: the zones, the projects, the card |
-| 80–109 | the zones as two strips **above** the list, and the card beside it |
-| 60–79 | the list alone, full width — no card, no strips over nothing |
-| under 60 | the phone shape: one stacked column and a sheet (*Home on a phone*) |
-
-## Which column am I in — the highlighted heading over the section your cursor is in
-
-Home has several regions on one screen, and the row your cursor is on wears a very quiet
-background — enough to say *which row*, not enough to say *which region*. So the region
-says it too: **the heading over the section holding the cursor brightens**, its word
-stepping up from the usual dim grey to the ordinary body ink. Exactly one thing on the
-frame wears a background band — the cursor's row — and exactly one heading is brighter
-than the rest; together they read "this column, this row" without ever offering two
-things that both look selected.
+**At 160 and wider the card stands on the right and it ACTS.** It is the title, the place
+line, and five bands, each drawn only if it has something to say:
 
 ```
-  needs you                    aforge                ← brighter, not banded
-  ▲ approve schema      2h   ██████████████████████████
-                             ›● odysseys wave 4      8m ██
-  moving                       ○ rename plan   yesterday
-  ● port sweep          8m
+Swarm Task Splitting Ideation
+~/aforge-v2 · master, 1 file dirty · here
+
+it is stopped on you
+Add a --report-only mode so the report can be
+regenerated without re-running the sweep?
+1 do it   2 leave it
+
+work
+✓ toy-scale validation of decomposition             $1.63
+▸ 3 more tasks                                      tasks
+
+made for you
+· swarm-decomposition.md                               2h
+
+spent $1.63 · 3.6M tokens · thinking high
+
+→ verbs: put it away, new chat here, open folder, copy path
 ```
 
-Move into a project's conversations and that **project's name** brightens. Move into
-`needs you` or `moving` and **that word** does instead. It works the same way on a
-narrower frame, where the strips sit above the list rather than beside it.
+- **the place line** under the title carries the repository — the branch and the dirty count
+  as one clause, `master, 1 file dirty`, and `that folder is gone` in its place where the
+  directory is not there any more — then the door word: `here` for the conversation this
+  window is holding, `open in another window` for one somebody else has;
+- **`it is stopped on you`**, the question in its own words, and the keys that answer it
+  from here. A digit sends the answer without opening anything;
+- **`work`** — each task with its mark and what it cost, a run that is not done keeping its
+  outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
+  the tasks place** rather than unfolding: a card is not the place that holds them;
+- **`made for you`** — the files it left behind;
+- **one facts line** — what it cost, the tokens, and the rung work started here would think
+  at (`thinking high`); `ctrl+v` still does not move a conversation's own rung from here;
+- and **`→ verbs: …`**, which names what can be done and never the letters.
 
-- **Exactly one heading is marked at a time.** If `needs you` is marked, no project name
-  is, and the other way round — which is the whole point: one heading marked in one
-  column is the answer to "where are my arrow keys".
-- **Nothing is marked at rest.** With the cursor walked up off the top of the list onto
-  no row at all, no section is marked either; the next `↓` or `tab` puts the cursor
-  somewhere and a heading brightens with it.
-- **Nothing is marked while you are searching.** With something typed the column is a
-  list of matches and its headings are just grouping.
-- **The mouse never moves it.** Hovering a row previews its card on the right without
-  moving the selection, and it leaves the marked heading where your cursor put it. The
-  marked heading always answers *where the keyboard is*.
-- **The heading never takes a background band and never takes the accent blue** — a band
-  means the cursor's own row and nothing else, and a lit heading would spend the one-
-  accent budget on furniture. Brighter is the whole of the mark.
-- Some sections have no heading to mark. `▸ archive · 4 put away` is a section of one
-  line and nothing brightens above it.
+The old `keys` legend is gone from the card. Its last line names the strip instead —
+`→ verbs: …` — because a letter is a verb only while the strip naming it is on screen.
 
-## Why is the needs you heading highlighted — the section your cursor is standing in
+**With the cursor on no row at all** the card is the machine's own (*The machine's own
+card*), at that same width and no other.
 
-Because your cursor is on a row inside that strip. Press `→` or `tab` to cross into the
-projects list and the mark moves with you: `needs you` goes back to dim and the name of
-the project you land in brightens instead. It is not a warning and it is not saying
-anything about the rows underneath — it is the screen telling you which of its regions
-your arrow keys are in.
+## How do I answer without opening the chat — the verb strip on a row
 
-The same is true when a **project name** on home looks brighter than the others: your
-cursor is on one of that project's conversations. Press `esc` to close home, or walk out
-of the block, and it goes back to dim.
-
-## Why are most projects collapsed on home — the elsewhere block
-
-Home opens **three** projects and folds every other one to a single line under a dim rule:
+**Press `→`.** A strip opens under the list with that row's own verbs on it, and **while it
+is drawn those letters are the verbs and the composer is asleep**:
 
 ```
-  ─ elsewhere ────────────
-  ▸ wisp        6 · ▲ 1 waiting
-  ▸ site-gen           2 · 3d
-  ▸ notes              1 · 20d
+y let it send   n not this time   a put it away   t new chat here
+esc or ← to leave · enter opens it instead
 ```
 
-The three that stay open are **the project this window is in — always first, whatever its
-age — and then the two you spoke in most recently.**
+The first line is the strip; the second is the hint line under the box, which says both
+ways out while it is up. `esc` or `←` closes it, `enter` still opens the row, and moving
+off the row with `↑` or `↓` closes it too — verbs belong to one row. The strip pushes the
+body down by a row, and that visible displacement is exactly what makes the bare letters
+safe.
 
-A folded line is the fold mark `▸`, the project's name, **how many conversations it
-holds**, and then the one thing worth knowing about it from out here:
+**The verbs are the row's own and nothing invents one:**
 
-- `6 · ▲ 1 waiting` — something in there is stopped waiting on you;
-- `2 · ● 3 running` — work is running in there right now;
-- `2 · 3d` — nothing is happening, so the line says how long since anybody spoke in it.
+- a row that is **asking a question** offers the question's own first two option words on
+  `y` and `n` — `y let it send   n not this time` — and answering from here is the same act
+  and the same record as answering it in the window it belongs to;
+- a **conversation** offers `a put it away`, and — where it has a folder —
+  `t new chat here`, `o open folder`, `c copy path`;
+- a **standing item** offers `p pause it`, or `r resume it` when it is already paused.
 
-**Both kinds of row are counted.** A reminder, watch or rule standing in that project that
-is stopped on a question counts in `▲ waiting` exactly as a conversation does, and one
-firing at this moment counts in `● running` — the number is how many things want you, not
-how many chats do. The leading number stays the count of **conversations**, because that is
-what opening the line shows you.
+A conversation that is not asking anything has no `y`; a row with no folder has no
+`open folder`.
 
-**A fold never hides the row this screen exists for.** A project with something waiting or
-something running says so on its one line and **sorts above the quiet ones**; the waiting
-mark is brought up out of the dim, the same way it is on a conversation row.
+**The digits still answer on the row.** A question with more than two answers is answered
+with `1`, `2`, `3` — they are drawn on the line above the box (*Answer a question from
+home*) — and the strip carries the first two of them in words.
 
-**At most eight folded lines are drawn**, and the rest go behind one more fold —
-`▸ …4 more` — which opens with the same keys as everything else here.
+**The chords are unchanged and need no strip:** `ctrl+t` new chat here, `ctrl+o` open
+folder, `ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop a standing item for
+good, `ctrl+v` think harder. And every printable key still goes to the box — the foot
+promises `type to search or start something new`, and the strip is the one state on this
+screen where that is suspended, which is why it has to be visible.
 
-**And searching sees straight through all of it.** While anything is typed there are no
-tiers at all: every project holding a match is drawn open, under its own heading, wherever
-it lives.
+The card names it — `→ verbs: …` — and `alt+.` draws it on the map; the resting foot does
+not, because that line is four keys exactly. A row with verbs is any row
+under the box.
 
-**`elsewhere` is about the SHAPE of the list and never about a door.** Every row under that
-rule opens with `enter` exactly like every row above it — see "Open another project from
-home" below.
+## Which column am I in — there is one column, and the band is the cursor
+
+**One column.** The zones' own column went with the strips, so there is no crossing between
+columns to keep track of and no marked heading over a section: `↑`/`↓` walk every row on
+the page in reading order.
+
+**The cursor is the band.** The row you are on wears a quiet background and its name goes
+bold inside it; every other row is dim. Exactly one row on the frame wears that ground, and
+the row under your mouse pointer wears the same one while the pointer is on it — whether
+you arrived with `↓` or with the mouse, the row you are on is the row you are on.
+
+There is **no `›` lead mark** on the row. The state mark already sits in the first cell of
+every row, and two more cells for a pointer would push every name two columns right for
+something the ground already says.
+
+**A project heading is never marked.** Under `alt+g` the project names are dim and stay
+dim — they are grouping rather than a place the keyboard can be.
+
+## Why is the needs you heading highlighted — it is not there any more
+
+**There is no `needs you` heading and no `moving` heading.** Both were labels over strips,
+and the strips are gone; what needs you is the top of the one list, wearing an amber `?`,
+and what is moving is under it wearing `◐`.
+
+The only heading-shaped things left on the resting list are the `since you left` line, the
+section line — `20 chats · what wants you first` — and, under `alt+g`, the project names.
+**None of them ever brightens** and none of them is a cursor stop. The one thing on the
+frame that is lifted out of the dim is the row your cursor is on.
+
+If a **project name** looks different from the others it is because `alt+g` is grouping the
+list and this window's own project sorts first. Press `alt+g` again for the flat list.
+
+## Why are most projects collapsed on home — they are not, there is one list
+
+**Nothing is collapsed by project any more.** Every conversation on the machine is on one
+list, ranked by what wants you first, with its project as a tag on the row. There is no
+`elsewhere` rule, no folded block of other projects and no per-project fold.
+
+What *is* folded is the **tail of the one list**: eight rows, then
+`▸ 15 more, quiet since aug 21`, which `enter` or `→` opens (*Where did the rest of my
+chats go*).
+
+**To see the projects again, press `alt+g`.** The rows are drawn in blocks under dim
+project headings, this window's own project first. It is a view of the same rows and not a
+different reading of the machine.
+
+**Under 60 columns** — the phone shape — home is an inbox of triage sections with the
+projects under them, and there a project other than this window's *is* one folded line that
+`enter` opens in place (*Home on a phone*).
 
 ## Archiving a conversation — put junk away and clean up home
 
 Walk the cursor onto a conversation (or point at it, or click it), then press **`ctrl+e`**,
-and that row is
-**put away**: it leaves its project's block and home gets cleaner by one line. Put-away
-conversations from every project gather under **one folded line at the very foot of the
-resting list**:
-
-```
-▸ archive · 4 put away
-```
+or open the row's verbs with `→` and press **`a put it away`**. The row **leaves the list**
+and home is cleaner by one line. The foot says
+`put away · type its name to find it again`.
 
 Nothing is deleted and nothing moves on disk — the conversation keeps its transcript, its
-tasks and its project, and can still be opened. Archiving is a fact about home's list and
-nothing else.
+tasks and its project, and can still be opened. Putting away is a fact about home's list
+and nothing else.
 
-**Getting one back:** `enter` (or `→`, or a click) on the archive line opens it in place;
-the put-away rows draw as ordinary conversations — newest first, each naming its project —
-and `enter` on one opens it exactly as it would anywhere. Press **`ctrl+e` on a row inside
-the open archive** and it returns to its project's block — the same key is its own undoing,
-and the card's legend reads `ctrl+e bring back` there. `enter` or `←` on the archive line
-folds it away again.
+**Getting one back: type its name.** A search matches put-away conversations along with
+everything else — a filter that hid a match would be lying about the machine — so the row
+comes back into the column as an ordinary match, and `ctrl+e` on it there brings it back
+for good, saying `brought back`.
 
-**Search sees everything.** Typing into home's box matches put-away conversations along
-with everything else — a filter that hid a match would be lying about the machine — so a
-conversation you archived a month ago is still three letters away.
-
-The archive line is drawn only when something is in it: an empty archive is no line at
-all. At phone width the inbox has no archive line — put-away rows stay out of the
-sections, and search or a wider window is where they are found and brought back. There is
-no bulk gesture: rows are put away and brought back one at a time, each with one
-keystroke.
+There is **no archive fold** at the foot of the resting list any more: the resting list is
+the ranked reading, and put-away rows are simply not in it. There is no bulk gesture
+either — rows are put away and brought back one at a time, each with one keystroke.
 
 ## How do I open a collapsed project — enter on the ▸ line
 
-**Put the cursor on the project's line and press `enter` or `→`.** It opens **in place**:
-the line stays exactly where it is, its mark becomes `▾`, and its conversations, its
-standing items and its quiet fold appear under it — the same shape a project in the top
-tier has. `enter` or `←` folds it away again, and **clicking the line toggles it in one
-press**.
+**On the resting list there is no project line to open**, because there are no project
+blocks: `alt+g` is how you see the projects, and the only `▸` line is the one fold over the
+tail of the list (*Where did the rest of my chats go*).
 
-It does not move into the top tier and it does not push a project out of it. Nothing about
-which three projects are open changes.
+Two places a `▸` project line still exists, and in both `enter` or `→` opens it in place,
+its mark becoming `▾`, and `enter` or `←` folds it away again — clicking the line toggles
+it in one press:
 
-The projects you open by hand stay open for as long as home is up, including across a
+- **under 60 columns**, the phone shape, where every project but this window's own is one
+  folded line under the triage sections (*Home on a phone*);
+- **on a card**, where a band with more behind it says `▸ …3 more tasks` and the same two
+  arrows open and close every fold on the card at once.
+
+The folds you open by hand stay open for as long as home is up, including across a
 refresh — folding is something you did, not something the data said.
-
-**The cursor stops on those lines and never on the rule.** `↑`/`↓` walk over
-`─ elsewhere ────` as though it were not there, because it names a section rather than a
-thing.
-
-The right-hand pane, while the cursor is on a project's line, shows the project's own
-card: its name, and the folder it lives in.
 
 ## The line at the top of home — the pulse, on watch, orders, spend today, the clock
 
@@ -514,8 +568,8 @@ The top line of home is the program's name and, right-aligned and dim, what is t
   line's own `keeping an eye on 2` does.
 - `3 working` — how many things this machine has **in flight right now**, everywhere at
   once: task nodes out, conversations mid-turn in another window, an `ask here` errand
-  answering, a standing order firing. It is the same count as the rows in the `moving`
-  strip on the left, and a conversation with three tasks out counts as three. It shows
+  answering, a standing order firing. It counts the same things the `◐` rows on the list
+  are, and a conversation with three tasks out counts as three. It shows
   from **one** — one hand working is worth knowing — and disappears entirely at nothing,
   never `0 working`.
 - `$1.10 today` — what the machine has spent **since midnight**: the tasks that ran and the
@@ -534,36 +588,34 @@ every three seconds: the top line cannot say `4 orders` over a card that lists t
 ## Where the cursor starts — your own conversation, with rest one ↑ away
 
 **Home opens with the cursor visibly on the conversation this window is holding** — the
-row `esc` drops back into, wearing the quiet selection band, with its `here` word on the
-tail, its card on the right, and its section's heading brightened. The first frame
-answers "where am I" and "which column am I in" before you press anything, and `enter`
+row `esc` drops back into, wearing the quiet selection band, with the word `here` where its
+age would be. The first frame answers "where am I" before you press anything, and `enter`
 on the first keystroke means something safe: back into your own conversation. Home used
 to open **at rest** — on no row at all — and a frame with nothing lifted read as a screen
 that had lost its selection.
 
-**Rest is still a place**: `↑` off the top row of the list walks up onto no row at all.
-Nothing is highlighted there, `enter` has nothing to open, and the right side becomes
-**the machine's own card** — what is keeping an eye on things, what happened since you
-left, what the day has come to. `↓` from rest lands at the top of the projects list on a
-frame 110 columns or wider — always, whether or not anything is waiting — and `tab`, the
-key named for the zones, enters `needs you`. The three-second rescan leaves the cursor
-wherever you put it, rest included.
+A window whose own conversation is not on the list falls to the **first row the cursor can
+stand on**, and to rest only on a machine with nothing at all.
 
-Below 110 columns the zones are strips standing **over** the list rather than a column
-beside it, so `↓` from rest walks down into the top of `needs you` there, which is what
-that shape reads like. Where nothing is waiting the strip has no row to stop on and the
-key carries on into the list.
+**Rest is still a place**: `↑` off the top row of the list walks up onto no row at all.
+Nothing is highlighted there, `enter` closes home and drops you back into the conversation
+you came from, and on a frame 160 columns or wider the right side becomes **the machine's
+own card** — what is keeping an eye on things, what happened since you left, what the day
+has come to. `↓` from rest lands on the first row the cursor can stand on, which is under
+the ledger and the section line, because neither of those is a row. The three-second rescan
+leaves the cursor wherever you put it, rest included.
 
 `esc` does what `esc` always does here: back to the conversation you came from — and it
 is the same conversation the cursor opened on.
 
 ## The machine's own card — what the right side shows with the cursor on no row
 
-This is the card you reach by pressing `↑` off the top row of the left column: the cursor
-**leaves the list**, nothing is highlighted, `enter` has nothing to open, and the right
-side is **the machine's own card** — the morning glance. `↓` walks
-straight back into the first row. The card stays put while you read it — the three-second
-rescan leaves the cursor off the list.
+This is the card you reach by pressing `↑` off the top row of the list **on a frame 160
+columns or wider**, which is the only width home draws a card at at all: the cursor
+**leaves the list**, nothing is highlighted, and the right side is **the machine's own
+card** — the morning glance. `↓` walks straight back into the first row. The card stays put
+while you read it — the three-second rescan leaves the cursor off the list. Below 160
+columns there is no right-hand column, so rest is simply a cursor on no row.
 
 It is five bands and a legend, each drawn only if it has anything to say:
 
@@ -662,48 +714,55 @@ agents · in flight, the last few minutes
 - **The readings live only in this run of aforge.** Nothing is written to disk and no
   history is kept between runs: quit and start again and the chart is absent until the next
   few beats fill it in.
-- **It needs the room to be a chart.** On a frame too narrow for a card at all (under 80
+- **It needs the room to be a chart.** On a frame too narrow for a card at all (under 160
   columns) there is no `agents` band, and the count on the pulse line is what you keep. In
   plain-text mode and with fancy glyphs turned off it is not drawn either — a row of bars
   read aloud is a row of noise — and again the count is what stays.
 
-## The pane on the right of home — the preview of the session under the cursor or pointer
+## The pane on the right of home — the card under the cursor or pointer
 
-**On the right** is a preview of one row of the left column: **the row under your mouse
-pointer while the pointer is on one, and the row the cursor is on otherwise** (its own
-section, below). It is read top to bottom as bands separated by blank lines — no rules and
-no borders anywhere:
+**There is a right-hand pane only at 160 columns and wider** (*Why is there no preview on
+the right*). Where there is one, it is about **the row under your mouse pointer while the
+pointer is on one, and the row the cursor is on otherwise** (its own section, below). It is
+read top to bottom as bands separated by blank lines — no rules and no borders anywhere:
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
-   highlighted row on the left wears, so the eye travels between them;
-2. one dim line of **where it is** — project · path. That line is a **link**: cmd+click it
-   (ctrl+click on Linux) and the project's folder opens, in the terminals that make
-   hyperlinks. A folder that is no longer on this disk is named and not linked;
-3. what it is **doing right now**, and — if it is stopped on a question — that question, in
-   full;
-4. the **work it ran** — the tasks, name first, with what each came to underneath (its own
-   section below);
-5. the **last thing said** in it;
-6. a dim line of **facts**: `touched 12 files · spent $1.25 · 34k tokens · last active 12m`.
-   The file count is everything this conversation's tasks wrote.
+   banded row on the left wears, so the eye travels between them;
+2. one dim line of **where it is**, which carries the repository and whether a window is
+   holding it — `~/aforge-v2 · master, 1 file dirty · here`. The branch and the dirty count
+   are one clause about one repository, so they are joined by a comma; the ` · ` separates
+   the address, the repository and the door word. The whole line is a **link**: cmd+click it
+   (ctrl+click on Linux) and the folder opens, in the terminals that make hyperlinks. A
+   folder that is no longer on this disk says `that folder is gone` in place of the branch
+   and is not linked;
+3. `it is stopped on you`, the **question** in its own words, and the keys that answer it —
+   the one band that acts;
+4. `work` — each task with its mark and what it cost, `✓ toy-scale validation of
+   decomposition   $1.63`, a run that is not done keeping its outcome under it, then
+   `▸ N more tasks` with `tasks` at the margin, which **names the tasks place** rather than
+   unfolding;
+5. `made for you` — the **files it made**;
+6. a dim line of **facts**: `spent $1.63 · 3.6M tokens · thinking high`;
+7. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder, copy
+   path`.
 
-**It is there in both of home's shapes** and it never moves: when the list becomes a
-drop-up under your typing the card stays exactly where it is, because a card is assembled
-downward from its title and lifting it would take the facts off the bottom rather than move
-it down the screen.
+**It never moves.** When the list becomes a drop-up under your typing the card stays exactly
+where it is, because a card is assembled downward from its title and lifting it would take
+the facts off the bottom rather than move it down the screen.
 
-**It follows the cursor through a search as well.** Walking `↑`/`↓` through filtered matches
-switches the card to each one, so you are choosing between conversations by what they are
-rather than by name alone. On a **folded project's line** it shows that project's card
-instead — the project's name, and the folder it lives in. It goes **empty** — nothing drawn
-at all — when the row it is about is neither: a project's `…13 more` line, or the
+**It follows the cursor through a search as well**, and there it is the fuller preview the
+card has always been — what the conversation is doing, the last thing said in it, what is
+next up, what came in while you were away. On the resting list it is the five bands above,
+because at that width the card has to be worth more than the row beside it rather than
+being a second reading of it.
+
+It goes **empty** — nothing drawn at all — on a row that is not a thing: a fold line, or the
 `start a new conversation` row, which has nothing to preview because that chat does not
 exist yet. With the cursor on **no row at all** it is the machine's own card instead (its
 own section, above).
 
 A frame too short for all of that drops bands from the bottom — the facts go first — and
-never touches the name. Under 80 columns the right column is dropped entirely and the list
-takes the whole frame, because an index you can read beats a preview you cannot.
+never touches the name.
 
 Nothing that is zero is drawn, anywhere. A chat that ran no tasks says nothing about tasks;
 one that spent nothing says nothing about spending; a facts line with no facts is not
@@ -711,64 +770,63 @@ drawn at all.
 
 ## Why doesn't hovering change the right side — the mouse pointer previews a row
 
-It does, and this is the rule: **the right side shows the row under the pointer while your
-mouse is over one, and the cursor's row otherwise.**
+It does, where there is a right side at all, and this is the rule: **the right side shows
+the row under the pointer while your mouse is over one, and the cursor's row otherwise.**
 
-Move the pointer onto a row on the left and the card on the right becomes **that row's**
-card, at once. The cursor does not move: the hovered row takes the hover highlight, the
-cursor's row keeps the selected one, and the two are allowed to be different rows. Move the
-pointer off the column — onto the card itself, onto a project's heading, onto a blank line,
-or out of the frame — and the card goes **straight back to the row the cursor is on**.
-There is nothing to press and nothing to remember.
+Move the pointer onto a row and the card becomes **that row's** card, at once. The cursor
+does not move: the hovered row takes the same quiet ground the cursor's row wears, and the
+two are allowed to be different rows. Move the pointer off the list — onto the card itself,
+onto a heading, onto a blank line, or out of the frame — and the card goes **straight back
+to the row the cursor is on**. There is nothing to press and nothing to remember.
 
 **The pointer never moves the cursor** — only a click does that — and **the keyboard never
 moves the pointer**. `↑`/`↓` walk the cursor and the card follows the cursor whenever the
-pointer is not on a row; `enter`, `tab` and `esc` always act on the cursor's row.
+pointer is not on a row; `enter` and `esc` always act on the cursor's row.
 
-Every row the cursor can stop on can be previewed this way: a conversation, a `◦` standing
-item, a folded project's line — which shows that **project's** card. Rows the cursor cannot
-stop on, like a project's dim heading, preview nothing and leave the card where it was.
+Every row the cursor can stop on can be previewed this way: a conversation, a standing item
+that is asking or firing, an `ask here` errand. Rows the cursor cannot stop on — the
+section line, a project heading under `alt+g`, the `since you left` heading — preview
+nothing and leave the card where it was.
 
 The card is the real card and not a sketch. Hovering a conversation in another project
-shows **that project's** branch and dirty files, its work, its last exchange and its
-figures; `→` opens every fold on the card you are looking at (and the chords — `ctrl+e`,
-`ctrl+o`, `ctrl+y`, `ctrl+t` — act on the same card), so while you are pointing at a row
-they act on **that** row.
+shows **that project's** branch and dirty files, its work and its figures; `→` opens the
+row's verbs, and the chords — `ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t` — act on the same row,
+so while you are pointing at one they act on **that** row.
 
 Two cases where the right side does not move under the pointer, both of them by design:
-under 80 columns there is no right column at all, and while your terminal owns the pointer
+under 160 columns there is no right column at all, and while your terminal owns the pointer
 — after `ctrl+s`, or with the `ui.mouse` setting off — there is no hover anywhere, so the
 card is always the cursor's.
 
-## The project card — what the right side shows for a whole project
+## How many conversations does a project have — what the right side shows for a whole project
 
-Put the cursor on a **project** rather than on one of its conversations — its name, or the
-line that stands for it when it is folded away — and the right side stops being about one
-chat and becomes about the whole container. The name is the title, its folder is the dim
-line under it, and then three bands:
+**Nothing, and home no longer has a project card.** A card is drawn about the row the cursor
+is on, and on the resting list there is no row that stands for a whole project: the project
+is a **tag on each conversation's row**, and under `alt+g` it is a dim heading the cursor
+walks straight over.
 
-1. **its conversations**, the same rows the left column draws them as: the state glyph, the
-   name, and the dim tail — `▲ Fix Flaky Auth Test    waiting on you · 2m`,
-   `● Task Bar View More         1 running · 12m`. They are in the order home always puts
-   them in: what needs you, then what is running, then what was left unfinished, then the
-   rest by when you last spoke in them. Past four the rest go behind one line,
-   `▸ …3 more conversations`;
-2. **what is keeping an eye on it** — the reminders, watches and rules standing in this
-   project, each `◦ every Monday at 9, draft the weekly update      Mondays 9am · last Mon`,
-   with the same glyph and the same tail its row on the left wears. Past three:
-   `▸ …2 more keeping an eye`, and under that one dim line for all of them together,
-   `4 runs this week · $0.06`;
-3. one dim line of **how big the project is** and when anybody was last in it —
-   `12 conversations · 34 tasks · spent $4.10 · last active 2h`. That line is where to look
-   for **how many conversations** a project has and how many tasks have run in it.
+What home does say about size is on the **section line**:
 
-**Nothing that is zero is drawn.** A project nobody has run a task in says nothing about
-tasks; one that has spent nothing says nothing about spending; a project with a single chat
-in it and no work reads `1 conversation · last active 5m` and no more. A project with
-nothing standing has no second band at all — not an empty heading.
+```
+20 chats · what wants you first
+```
 
-A frame too short for all three drops whole bands from the bottom — the counting line goes
-first — and never touches the project's name.
+That is every conversation on the machine, from every project, the put-away ones excepted.
+Press `alt+g` and the rows are grouped under their projects, so the rows in a block are that
+project's — bearing in mind that home draws eight rows and a fold, so the quiet ones behind
+the fold are not in the block until you open it.
+
+Where to go for the whole figure instead:
+
+- **the tasks place** for the work a project has run, which is the record rather than a
+  count;
+- **the spend place** for what it has cost;
+- **a conversation's own card**, at 160 columns and wider, for that one chat's work, files
+  and figures.
+
+A project's own card existed while home was a tree of project headings. The tree is gone
+(*Why is my project tree gone*), and a card nobody can put a cursor on is a card that is not
+drawn rather than one that is empty.
 
 ## The work on the right of home — what each task came to
 
@@ -823,11 +881,11 @@ record of everything this project has ever run.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
-Home has **two panes and two shapes**, and only the left pane changes shape.
+Home has **two shapes**, and only the list changes shape.
 
-**With nothing typed it is a dashboard.** The list hangs from the top of the frame, the
-cursor sits on the conversation this window is in, and the preview card is beside it. That
-is what home is for: one page of everything the machine holds, read top to bottom.
+**With nothing typed it is a dashboard.** The list hangs from the top of the frame and the
+cursor sits on the conversation this window is in. That is what home is for: one page of
+everything the machine holds, ranked by what wants you first and read top to bottom.
 
 **The moment you type a character the list becomes a drop-up.** It lifts so that its last
 row — the action row, `start a new conversation: "…"` — lands directly above the box you
@@ -843,17 +901,17 @@ the cursor never moved — and the cost was the dashboard itself: most of a fram
 space with a clump of rows against the box. One keystroke of re-anchoring is cheaper than
 that.
 
-**The right pane never moves and never changes shape.** It previews whatever the cursor is
-on, in both shapes, and it is read downward from the conversation's name. It goes empty
-only when the cursor is on something that is not a conversation — a project's
-`…13 more` line, or the `start a new conversation` row, which is a chat that does not
-exist yet and so has nothing to preview.
+**The card, where the width draws one, never moves and never changes shape.** It is about
+whatever the cursor is on, in both shapes, and it is read downward from the conversation's
+name. It goes empty only when the cursor is on something that is not a thing — the fold
+line, or the `start a new conversation` row, which is a chat that does not exist yet and so
+has nothing to preview.
 
 ## Switch between sessions — enter on home
 
-`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk the rows, stepping over the project headings.
-`pgup`/`pgdown` jump four. The right column follows the cursor. Clicking a row puts the
-cursor on it; clicking the row the cursor is already on opens it.
+`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk the rows, stepping over the headings and the section
+line. `pgup`/`pgdown` jump a screenful. The card, where there is one, follows the cursor.
+Clicking a row puts the cursor on it; clicking the row the cursor is already on opens it.
 
 `enter` opens the session under the cursor — **any row on the screen, in any project.**
 The chosen journal is opened and replayed, and **the conversation you were in stays open
@@ -864,18 +922,18 @@ closed and it is not paused.
 already loaded underneath, so there is nothing to reopen and nothing to announce. That is
 what makes `enter` the calm keystroke on a launch: the cursor starts on that very row.
 
-`enter` on a conversation **this** terminal is already holding behind the screen — a row
-reading `open` — goes straight back to it, for the same reason: it is alive, so there is
-nothing to reopen.
+`enter` on a conversation **this** terminal is already holding behind the screen goes
+straight back to it, for the same reason: it is alive, so there is nothing to reopen.
 
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open
+type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
-and the line under it says what the keyboard does, which changes with what the cursor is
-on — at rest, `↑↓ move · enter open · esc close`.
+and it says what THAT row's keys do on every row that has its own — a `since you left`
+line, the fold, the action row — always with `alt+. map · tab next place` before the way
+out.
 
 ## Typing a long question on home — does the box wrap, and where does a paste go
 
@@ -898,19 +956,18 @@ home was covering, so pasting looked like it did nothing.)
 A conversation that a **different** terminal already has open cannot be opened by this one:
 two aforge windows on one journal would both append to it and neither would end up with the
 conversation. (One this terminal is holding is a different matter entirely — `enter` goes
-to it.) Home knows this **before you press anything**, so it says so twice over.
+to it.) Home knows this **before you press anything**.
 
-**On the row.** A conversation sitting idle in another terminal reads `another window`
-where its rollup would be, so a locked door does not look like an ordinary one.
+**On the row**, at every width: the right margin says `another window` where the age would
+be. That margin carries the one thing that decides what `enter` will do, and worst news
+comes first — `folder gone`, then `another window`, then `here` for the conversation this
+window is holding, and the age when none of them is true.
 
-**A conversation *this* terminal is holding never says that.** It reads `open`, and `enter`
-goes to it. The lock it would meet is our own, so home asks itself before it asks the
-kernel — see *Switch between projects without leaving*.
-
-A row already showing `waiting on you` or `N running` keeps those words instead, and does
-not need the extra label: **both of them are read from a file only a live session writes**,
-so a row wearing either is already telling you a window has it. Saying it twice would cost
-the name the width it needs.
+**On the card**, at 160 columns and wider: the place line under the title carries the long
+form, `open in another window`, with what that window is doing after it —
+`open in another window · working`. The conversation **this** terminal is holding reads
+`open here` in the same slot, and `enter` goes to it; the lock it would meet is our own, so
+home asks itself before it asks the kernel (*Switch between projects without leaving*).
 
 **On enter.** Nothing is tried. Home stays open, nothing is written into the conversation
 underneath, and one dim line appears at the foot of the screen:
@@ -923,9 +980,6 @@ Pressing enter again says it once more in the same place rather than piling it u
 can move straight to another row. **No file path is printed** — the path is aforge's own
 bookkeeping and not a thing you can act on.
 
-The right-hand pane spells the same fact out as `open in another window`, along with what
-that window is doing.
-
 So the two things to do are exactly the two the sentence names: go to the terminal that has
 it, or type something here and start a new conversation instead.
 
@@ -937,9 +991,8 @@ conversation you were in is untouched.
 
 **`enter` opens any row on this screen, whatever project it belongs to.** There is nothing
 to go to another terminal for and nothing to type: put the cursor on the row and press
-`enter`. That is as true of a row under the `─ elsewhere ────` rule as of one at the top of
-the screen — the rule says which projects home drew open, not which ones it will let you
-into.
+`enter`. There is nothing on this list that is only there to be looked at: the project is a
+tag on the row, and every row is a door.
 
 What happens is a **second conversation**, not this one moving. The conversation you were
 in is left running exactly where it was — its turn keeps streaming into its own transcript,
@@ -952,9 +1005,9 @@ The status line then reads `2 open`, and `tab` over an empty message box goes ba
 Two refusals are still possible and both leave home standing:
 
 - the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
-  already knew — the row reads `folder gone` and the card says so too, see *Enter does
-  nothing on a row — the folder is gone* — and this line is the check made again on the
-  keystroke, for a folder deleted in the seconds since;
+  already knew — the row reads `folder gone` in its right margin and the card's place line
+  says so too, see *Enter does nothing on a row — the folder is gone* — and this line is the
+  check made again on the keystroke, for a folder deleted in the seconds since;
 - this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
   one`.
 
@@ -966,45 +1019,47 @@ reboot is the usual way — cannot be opened, because the conversation would com
 agent whose tool root does not exist and every command and every relative path in it would
 fail.
 
-Home says so **before you press anything**, in two places:
+Home says so **on the row**, at every width: `folder gone` in the right margin, where the
+age would be. And **on the card**, at 160 columns and wider: the place line under the title
+carries `that folder is gone` where the branch would be, against the address it is about.
 
-**On the row.** A dim `folder gone` sits where its rollup would be, in the same slot and the
-same grey as `another window`. Every conversation in that project carries it, because the
-cursor stops on rows and never on a heading.
-
-**On the card.** Directly under the place line, above everything else on the right-hand
-pane, one dim line reads `that folder is gone`. The last line of the card — its legend —
-loses the three keys that need a folder and reads:
-
-```
-that folder is gone · ctrl+y copy path · → more
-```
-
-`enter open`, `ctrl+t new chat here` and `ctrl+o open folder` are not offered, because all
-three want that directory: `enter` opens a conversation rooted in it, `ctrl+t` starts a
-fresh one there, and `ctrl+o` hands it to your file manager. Pressing them anyway refuses.
+`enter`, `ctrl+t new chat here` and `ctrl+o open folder` all want that directory — `enter`
+opens a conversation rooted in it, `ctrl+t` starts a fresh one there, and `ctrl+o` hands it
+to your file manager — so each of them refuses rather than pretending. The row's verb strip
+drops `t new chat here` and `o open folder` for the same reason: a strip only ever names
+letters that work. `ctrl+y copy path` and `c copy path` still do, because a path is a
+string.
 
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
 
 **The conversation itself is not lost.** Everything aforge recorded about it lives under
-`~/.aforge/v3/projects`, not in the workspace: `→` still opens the card's folded bands —
-what it did, what it cost, where it left off — and `ctrl+y` still copies the workspace
+`~/.aforge/v3/projects`, not in the workspace: its card still says what it did and what it
+cost, and `ctrl+y` — or `c copy path` on the row's verb strip — still copies the workspace
 path. What cannot happen is *continuing* it, because there is nowhere to continue it.
 
 **What to do:** recreate the folder at that exact path and the row opens again on the next
 refresh (home re-checks every three seconds); or type a message at the foot of home and
 start a new conversation in a project that exists.
 
-## Why does it say elsewhere — it does not any more
+## Why does it say elsewhere — on a standing item, and nowhere else
 
-**It used to.** Every project but the one this window launched in carried a dim `elsewhere`
-on its heading, and `enter` on one of its rows opened nothing and said
-`elsewhere · <the project's path>`. That is gone: the heading is the project's name and
-nothing else, and `enter` opens the row. The one heading spelled longer than its name is
-your home directory's, which reads `~ home` — a bare `~` over a whole column read as
-furniture rather than as a name, so the heading carries the word beside the glyph. Rows
-and sentences still say plain `~`.
+**Almost never, and never on a conversation.** Every project but the one this window
+launched in used to carry a dim `elsewhere` on its heading, and `enter` on one of its rows
+opened nothing and said `elsewhere · <the project's path>`. That is gone, and so is the
+`─ elsewhere ────` rule that folded the other projects away underneath it: home is one flat
+list now, the project rides each row as a tag, and `enter` opens any of them.
+
+**One refusal still uses the word.** Pressing `enter` on a **standing item** — a reminder,
+a watch, a rule — asks to open the conversation that set it up, and where that conversation
+belongs to another project this window cannot resume it. Home says
+`elsewhere · <the item's workspace>` at the foot and opens nothing. An item that was set up
+from home and never became a conversation says `made from home — no conversation to open`
+instead.
+
+Your home directory's project is spelled `~ home` where it needs a heading, because a bare
+`~` over a column reads as furniture rather than as a name. Rows and sentences still say
+plain `~`.
 
 The reasoning behind the old refusal was right and is still kept — a window's approval
 rules, its crew, its spend ceiling and its saved shapes of work are resolved from the
@@ -1125,8 +1180,8 @@ Two things do **not** turn over with it:
   conversations inside each one, but a project name drawn under the things it names would
   read upside-down.
 - **The list with nothing typed.** At rest home is a dashboard read top to bottom in the
-  ordinary direction — most recently spoken-in project first. The inversion is part of the
-  drop-up, and the drop-up is what typing does.
+  ordinary direction — what wants you first, then what is moving, then the rest by recency.
+  The inversion is part of the drop-up, and the drop-up is what typing does.
 
 ## Can home search by meaning — semantic search
 
@@ -1208,22 +1263,24 @@ mistyped one.
 
 ## How do I see the collapsed sessions — …13 more
 
-A project **that home is drawing open** shows its first four conversations and folds the
-rest into one dim line, `…13 more, quiet since 1d`, with a `▸` in front of it. (A project
-folded to a single line under the `─ elsewhere ────` rule is a different fold, one rung up
-— "Why are most projects collapsed on home" is that one.)
+**There is one fold on home and it is at the foot of the whole list**, not one per project:
+`▸ 15 more, quiet since aug 21`. Home draws the eight rows that want you most and puts
+everything else behind that line.
 
-**That line is a door.** Put the cursor on it and press `enter` or `→` and the project opens
-in place; the line becomes `▾ …13 fewer`, and `enter` or `←` folds it away again. `←` on any
-conversation inside an opened project folds it too. Clicking the line toggles it in one
-press. It is the same fold gesture the task column uses, with the same two marks.
+**That line is a door.** Put the cursor on it and press `enter` or `→` and every row is
+drawn, with no cap at all; the mark becomes `▾`, and `enter` or `←` folds them back.
+Clicking the line toggles it in one press. It is the same fold gesture the task column uses,
+with the same two marks.
 
-**And searching sees straight through it.** While anything is typed the collapse is not
-applied at all — every match is drawn wherever it lives, including rows that were behind
-the fold. A search that could not see what it hides would be a search lying about the
-machine.
+Per-project folds — `…13 more, quiet since 1d` under a project's own heading — belong to
+the **phone shape**, under 60 columns, where home is still an inbox with the projects under
+it.
 
-Projects you open by hand stay open while home is up, including across a refresh.
+**And searching sees straight through it.** While anything is typed there is no cap and no
+fold at all — every match is drawn, including the rows the fold was holding. A search that
+could not see what it hides would be a search lying about the machine.
+
+A fold you open by hand stays open while home is up, including across a refresh.
 
 ## How do I get back to the dashboard — press space twice
 
@@ -1310,24 +1367,23 @@ What you find there is that chat, under its project, with its card on the right 
 A machine that has held nothing yet draws the same screen a full one does, with nothing in
 its rows:
 
-- the top line, with the time on the right
-- at 80 columns and wider, `needs you` and `moving` standing where they always stand; at
-  110 and wider each in its own column with its teaching line — `questions and landed
-  work`, `turns, tasks and watches`
-- `nothing here yet — say something and this fills up` where the first project's rows
-  will be, dim, in the places column — over two rows, split at the dash, so the column
-  never cuts it short
-- the box at the foot reading `type to search or start something new · ↑↓ pick · enter
-  open`, and the key line under it
+- the pulse line, with the time on the right
+- the tab bar and the dim rule under it
+- no `since you left` and no section line, because there is nothing that happened and
+  nothing that wants you
+- `nothing here yet — say something and this fills up` where the first row will be, dim —
+  over two rows, split at the dash, so a narrow frame never cuts it short
+- the box at the foot reading `› say what you want done`, and under it the foot,
+  `type to search or start something new · ↑↓ pick · enter open · tab next place`
 
 Typing there works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
 conversation: "…"` rise out of the box, and `enter` starts the conversation. The arrows
 have nothing to land on until there is a row; `esc` goes back to the conversation.
 
 A machine with one conversation — the one you are in — is not empty, and home does not
-say it is: the conversation is on the list under its project, from its first minute and
-before anything has been said in it, with `open here` on its card. The conversation on
-this terminal is always on the list.
+say it is: the conversation is on the list from its first minute and before anything has
+been said in it, wearing `here` where its age would be. The conversation on this terminal is
+always on the list.
 
 **And the door never waits for a second conversation.** The gesture and the line are there
 from the first minute on this machine, whatever it holds, and stay there through every
@@ -1348,16 +1404,21 @@ encoding a terminal can send at all.
 There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
 tasks place, `/history`).
 
-## What landed while I was away — the ✓ and "since you last looked"
+## What landed while I was away — since you left, and the note on the row
 
-Home remembers when you last closed it, and marks what finished after that. A resting
-session whose tasks landed while you were not looking wears `✓` instead of `○`, its line
-reads `2 landed` where the task count would be, and its card puts a dim
-`since you last looked` over the whole work band. That is the whole
-mechanism **on home**: no badge, no list of unread things. You open home and the ticks
-show you where work accumulated. (A session's own window does send a desktop notification
-when its turn finishes or it stops on a question while you are looking elsewhere — see
-"Why a session says it needs you" below. Home itself never does.)
+Home remembers when you last closed it, and says what finished after that in two places:
+
+- **the `since you left` ledger** at the top — `2 tasks landed`, whose door is the tasks
+  place (*What is since you left*);
+- **the note on the conversation's own row** — `3 files made`, which is what its work wrote
+  since your last look, or `ran a saved shape` for work that came out of a saved shape.
+
+That is the whole mechanism **on home**: no badge, no list of unread things, and no mark of
+its own on the row — a resting conversation keeps its `○` whether or not something landed in
+it. You open home and the ledger and the notes show you where work accumulated. (A session's
+own window does send a desktop notification when its turn finishes or it stops on a question
+while you are looking elsewhere — see "Why a session says it needs you" below. Home itself
+never does.)
 
 The marks are measured from the moment home was last **closed** — looking at the screen
 is what counts as seeing, so nothing is marked seen the instant it appears. They hold
@@ -1373,9 +1434,11 @@ safe direction to fail in.
 ## Why a session says it needs you — waiting on you
 
 A session that has asked you something and can go no further writes that down, and home is
-where you see it without opening the window it is in. The row wears `▲`, its rollup reads
-exactly `waiting on you`, and **it sorts to the top of its project** — above work that is
-running, above everything you spoke in more recently.
+where you see it without opening the window it is in. The row wears an amber `?`, its note
+is **what it is asking** in the question's own words — `asks: add a --report-only mode?`,
+or `wants to <the command>` for something it needs permission to run — and **it sorts to
+the very top of the whole list**, above work that is running and above everything you spoke
+in more recently, longest wait first.
 
 **Five things count as being asked**, and they are one list so that no window can say
 `working` about a session that is really stopped:
@@ -1389,13 +1452,12 @@ running, above everything you spoke in more recently.
 
 The run is the one that used to be missing: a run that had spent its tank read as `working`
 to every other window on the machine, which is the one thing this row must never do. It now
-reads `waiting on you` like the rest, and the line beside it is the gate's own — `out of
+counts as needing you like the rest, and the line beside it is the gate's own — `out of
 fuel · $2.00 of $2.00`.
 
-The right column then shows the one line it is stopped on, and it is the only thing on
-that pane that is not dim: everything else there is a fact about what happened, and this
-is a thing somebody has to do. A session that gave no words for what it is waiting on
-shows no line at all rather than a placeholder.
+The line above the box then repeats the question in full with the answers it will take, and
+the card — where the width draws one — has it too. A session that gave no words for what it
+is waiting on shows no line at all rather than a placeholder.
 
 This is read out of a small file each live session keeps in its own folder, refreshed
 every five seconds and believed for fifteen. So a window that was killed, or a laptop that
@@ -1408,10 +1470,14 @@ you do not have to go at all** — see the next section.
 
 ## Answer a question from home — approve a command in another window
 
-**You can answer it here, without opening the window it is in.** Put the cursor on the
-`▲` row. Under the line it is stopped on, the card on the right shows the answers that
-session will take, as chips, and pressing the digit answers it. A click on a chip does
-the same.
+**You can answer it here, without opening the window it is in.** Put the cursor on the `?`
+row (or point at it). One line above the box, home draws the question and the answers that
+session will take, as chips out at the right — and pressing the digit answers it. A click on
+a chip does the same, and where the frame is wide enough for a card the same chips are on it.
+
+**`→` answers it in words instead.** The row's verb strip carries the question's own first
+two option words on `y` and `n` — `y let it send   n not this time` — which is the same act
+and the same record as pressing the digit (*How do I answer without opening the chat*).
 
 The chips are the ones the question has:
 
@@ -1444,7 +1510,8 @@ new conversation at the same time.
 connect offer, a subharness offer, a task proposal and a standing card all take home down
 the moment they arrive, so the card is on the screen you are looking at rather than behind
 it. And while home is up, every letter belongs to home's box — `y`, `n`, `e` and the rest
-type there, and never answer a card that is off screen. This window's own question, found
+type there, and never answer a card that is off screen. The one exception is the verb strip,
+which has to be **on screen** before its letters are verbs. This window's own question, found
 behind a home you opened over it, is answered the way any other window's is: put the cursor
 on its row and press the digit.
 
@@ -1477,27 +1544,28 @@ another when it lands. So a machine that lost power, or an aforge that was kille
 rows on disk that say `running` forever.
 
 Home never repeats that claim. **It asks the session itself.** A live session says out
-loud, every few seconds, which task nodes it currently has out; a `running` row is drawn
-as `running` only when the session that ran it is still alive and still names that node.
-Every other live-looking row is `incomplete` — work that was under way when the window
-went — and the same rule decides the glyph: `◌`, never the spinner.
+loud, every few seconds, which task nodes it currently has out; a task is counted as
+running — and its conversation drawn as moving, with `2 tasks running` in the note — only
+when the session that ran it is still alive and still names that node. Every other
+live-looking row is **work that was under way when the window went**, and it counts for
+nothing: the conversation sits with the quiet rows wearing `○`, and its card says
+`incomplete` against that piece of work.
 
 A session too old to keep that file, but whose journal a window is holding, falls back to
 the older answer: the lock is asked, and its rows are believed. That is the same rule with
 less to go on, not a different one.
 
-The right column says `open here` for the one this window is in and `open in another
+The card's place line says `open here` for the one this window is in and `open in another
 window` for one a second aforge has, with what it is doing after it — `open in another
 window · working`. `idle` is not spelled out, because it is what an open session usually
 is. Nothing at all is said when nobody has it.
 
 ## Home on a fresh machine, and over --host
 
-A machine that has held nothing yet draws an empty home — the top line, the two strips
-wherever the width draws them, `nothing here yet — say something and this fills up` where
-the rows will be, and the box and keys at the foot (*home is empty — what an empty home
-shows* has the whole screen). The conversation you opened it from is on it as soon as
-there is one.
+A machine that has held nothing yet draws an empty home — the pulse line, the tab bar,
+`nothing here yet — say something and this fills up` where the rows will be, and the box and
+keys at the foot (*home is empty — what an empty home shows* has the whole screen). The
+conversation you opened it from is on it as soon as there is one.
 
 Over `--host` home refuses to open and says
 `home shows this machine's projects, and this session is on another`. The projects it
@@ -1512,88 +1580,68 @@ show up without you doing anything. There is no file watcher: home reads, and cl
 screen stops the reading. (Standing items — reminders, watches, rules — are a different
 mechanism and do keep going; see the keeping-an-eye page.)
 
-And while any row has work running, home is **visibly alive**: the spinner on that row and
-on its card turns continuously, and a running task's count-up climbs, exactly as they do
-in the conversation that owns the work. The moment nothing on screen is running the page
-falls still again — a home full of finished work animates nothing. In screen-reader
-(linear) mode nothing ever animates.
+The resting list itself does not animate: a row with work running wears the still `◐` and
+the ages simply change on the next reading. The one cell that turns is an `ask here`
+errand's own row while its answer is coming (*Why does only one row spin*), and in
+screen-reader (linear) mode nothing ever animates.
 
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
 
-## What is the ◦ row on home — things keeping an eye on your project
+## What is the ◦ row on home — where the things keeping an eye on your project are
 
-Under each project's conversations home draws a **band of the things that keep
-working after a window is closed** — a reminder, a watch on something, a rule, an
-overnight job. Each one is its own row: a glyph, the words you said, and one line
-saying where it stands.
+**A standing thing — a reminder, a watch, a rule, an overnight job — is on home's list only
+while it is asking you something or firing right now.** It is then an ordinary row of the
+one list, ranked with everything else: an amber `?` when it needs an answer, `◐` while it is
+running, and `=` when it is paused. The note is what it is asking or what it is doing, and
+`enter` opens the conversation that asked for it.
 
 ```
-  aforge-v2
-  ▲ Pricing Research  4m
-  ● Port the Picker    12m
-  ○ Import Cleanup     3h
-  ◦ every Monday at 9, post the standup note   Mondays 9am · last Mon
-  ◦ tell me when CI on main goes red         checked 6m ago · nothing
-  ▸ …2 more keeping an eye
-  ▸ …3 more, quiet since 2d
+ ? tell me when CI on main goes red     aforge-v2   asks: the fix touches migrations  1h
+ ◐ every Monday at 9, post the standup  aforge-v2   drafting from the git log         2m
 ```
 
-The glyphs share the two loud ones with the conversations above and have three
-of their own: `▲` it needs your look, `●` it is running right now, `◦` it is
-waiting for its time, `∙` it is paused, and `◆` something happened since you last
-spoke in the conversation that asked for it. On a terminal that cannot draw them
-they are `!`, `*`, `-`, `.` and `+`.
+**An item that is simply waiting for its time is not on home.** There is no
+`keeping an eye on` band under a project any more — the resting list is what wants you now,
+and a watch due on Monday wants nothing. Three places have those:
 
-`◆` is worked out and never claimed: it means the thing went off *after* the last
-time you spoke in the conversation behind it. Something with no conversation on
-this machine to compare against never wears it.
+- **the standing place** (`alt+3`, `/standing`), which is every promise this machine has
+  made, with how much rope each has;
+- **the machine's own card**, at 160 columns and wider with the cursor on no row: a
+  `keeping an eye on` band, soonest first, each with `in 2h` or `mon 8am`;
+- **the `since you left` ledger**, on the morning one of them has actually fired.
 
-The tail says where it stands, and it says **only what is true**:
+The `◦` mark itself belongs to those readings and to the `next up` band, where a line says
+`◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went
+off after the last time you spoke in the conversation behind it.
 
-- `Mondays 9am · last Mon` — a reminder or a routine: when it goes off, and when
-  it last did. An item that has never gone off says only when it will.
-- `checked 6m ago · nothing` — a watch on the world: when it last looked, and
-  what it found. `nothing` is a finding, and the commonest one — it is the whole
-  difference between a watch that is working and one that never ran.
-- `needs your look · <what it is stopped on>` — the one line on the band that is
-  not dim.
+The tail on those readings says where an item stands, and it says **only what is true**:
+
+- `Mondays 9am · last Mon` — a reminder or a routine: when it goes off, and when it last
+  did. An item that has never gone off says only when it will.
+- `checked 6m ago · nothing` — a watch on the world: when it last looked, and what it
+  found. `nothing` is a finding, and the commonest one — it is the whole difference between
+  a watch that is working and one that never ran.
+- `needs your look · <what it is stopped on>` — the one line that is not dim.
 - `running · 4m` — it is doing something right now.
 - `paused` — you pressed `ctrl+e` on it.
 
-**Where the rows sit is triage, not grouping.** An item that needs you or is
-running sits *above* the conversations, with the other rows that want you; one
-still waiting for its time sits under them. A project draws three of them and
-folds the rest into `…2 more keeping an eye`, which is a door — `enter` or `→`
-opens it, `←` folds it away, a click toggles it. Something that needs you or is
-running is drawn whatever that count says: those are the rows the screen exists
-for, and the fold only ever takes the ones still waiting.
+**Retired items are nowhere on home.** Something that fired once and finished, or that you
+stopped, is a thing that happened; the conversation that made it still has the whole record.
 
-**Retired items are not on this band.** Something that fired once and finished,
-or that you stopped, is a thing that happened; the conversation that made it
-still has the whole record.
-
-**A project with items and no conversations still gets a heading.** A watch is
-content. If you set a reminder in a directory you have never held a conversation
-in — or a machine-wide one, which belongs to `~` — home draws that workspace as a
-heading of its own, named the way every other heading is named (the folder's last
-part, `~` for your home directory), with its items under it. It sits in the
-recency order by the newest thing those items have done. A heading is never
-marked at all — it is the project's name and nothing else — and `ctrl+e` and
-`ctrl+x` on its rows work exactly as they do anywhere else: they go through the
-store, not through a door.
-
-**Typing hides the band.** The box at the foot searches conversations — by name,
-by project, by what their tasks came to — and rows the query never considered
-would be rows drawn as though it had.
+**Typing hides them.** The box at the foot searches conversations — by name, by project, by
+what their tasks came to — and a standing row riding along under a query would be a row the
+query never considered, drawn as though it had.
 
 ## How do I pause a reminder from home — the → strip, and ctrl+e / ctrl+x
 
 Put the cursor on the row (or point at it) and press **`→`**. A strip opens under the list
-offering `p pause` and `s stop`, and **while that strip is drawn those two letters are the
-verbs**. `esc` or `←` closes it. The chords **`ctrl+e` to pause** and **`ctrl+x` to stop for
-good** still work and need no strip.
+offering `p pause it` — or `r resume it` when it is already paused — and **while that strip
+is drawn those letters are the verbs**. `esc` or `←` closes it. The chords **`ctrl+e` to
+pause** and **`ctrl+x` to stop for good** still work and need no strip. An item that is
+asking you something carries its own answer words on the strip too, on `y` and `n`, before
+the pause verb.
 
 A third chord, **`ctrl+v`**, raises how hard that item thinks — see "How hard does a
 reminder think" below. Home says `paused · <your words>` or `stopped · <your words>` at the
@@ -1617,8 +1665,9 @@ that never became a conversation says
 
 ## What is on the right of home when I'm on one of these rows — the item's card
 
-The right column shows the same kind of card it shows for a conversation, about
-the other kind of thing, read downward:
+On a frame **160 columns or wider** — the only width home draws a card at — the right column
+shows the same kind of card it shows for a conversation, about the other kind of thing, read
+downward:
 
 1. **your own words**, the brightest text on the screen;
 2. one dim line of **where it is** — project · path, and that line is a link;
@@ -1637,9 +1686,8 @@ Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
 place and a cadence, and nothing else — no `0 runs`, no `$0.00`, no weekly line.
 A window with no ambient side wired to it draws no weekly line at all.
 
-The project card's `keeping an eye` band ends with the same count over all of
-that project's items: `4 runs this week · $0.06`, below the fold line, because it
-counts the items the fold hides too.
+Below 160 columns there is no card, and the row's own note is what it says — what it is
+asking, or what it is doing right now.
 
 ## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its card
 
@@ -1648,8 +1696,8 @@ A reminder, a watch and the sentinel check behind it are unattended and repeat
 forever, so they are held to the cheapest rung on purpose — an install set to
 `max` does not turn every check on the machine into a deep pass.
 
-**`ctrl+v` on an item's card is how you raise the one that deserves it.** Put the
-cursor on the `◦` row (or open its card) and press it: the rung climbs one step
+**`ctrl+v` on an item's row is how you raise the one that deserves it.** Put the
+cursor on the standing item (or point at it) and press it: the rung climbs one step
 each press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and
 home says `thinking high · <your words>` at the foot. The card then carries a
 dim `thinking high` clause, read straight back from the item's own document.
@@ -1824,8 +1872,9 @@ with a real transcript, kept outside `~/.aforge/v3/projects` so this list never 
 session row for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does
 it without leaving the box.
 
-**Every exchange is a row on this column**, marked `?`, in its project's block above the
-conversations, with what it is doing in the tail:
+**Every exchange is a row on this column**, marked `?`, **at the very top of the list** —
+above everything the machine has to say for itself, because it is the thing you asked for a
+minute ago — with what it is doing in the tail:
 
 ```
  ? remind me at 6 to leave                          ▲ waiting on you
@@ -1839,9 +1888,10 @@ the first.
 
 The pane on the right is **about the row under the cursor**, exactly like every other card
 in that column: walk onto an exchange row and you get the exchange, walk off it and the row
-you land on draws its own preview again. `enter` or `tab` on the row hands the keyboard to
-the pane; `esc` or `tab` hands it back. On a window too narrow for two columns the pane is
-**stacked** over the list instead of drawn beside it, and `esc` brings the list back.
+you land on draws its own preview again. `enter` or `→` on the row hands the keyboard to
+the pane; `esc` hands it back. (`tab` used to be that toggle and is the way to the **next
+place** now.) On a window too narrow for two columns the pane is **stacked** over the list
+instead of drawn beside it, and `esc` brings the list back.
 
 Inside that pane, the heading, exchange rows, any question card and the `continue as a
 conversation` offer are separate blocks. Exactly one blank line divides adjacent blocks;
@@ -1858,75 +1908,102 @@ conversation — is on its own page: *Asking from home*.
 
 ## What happened in this conversation while I was away — news since I last looked
 
-A conversation with queued news draws `◆ N things since you left` in its home preview.
-So does a **project** whose card is up, for news that belongs to the project rather than to
-one chat — what a reminder you set up with `ask here` left waiting when no window of that
-project was open. Opening any conversation there folds it in and the line goes.
-Each item underneath reads `<age> · <words> · <text>`, for example
-`4m · keep main green · the tests passed`. Home shows three items, then a
-`▸ …N more things` door; `→` opens the preview's folds and `←` closes them. An absent or
-empty inbox draws no news band at all. Looking at the band does not consume the news.
+**The `since you left` ledger at the top of home is where that lives now** — one line per
+thing that happened on its own, each a door into the place that owns it (*What is since you
+left*).
+
+A conversation's own **news band** — `◆ N things since you left`, with each item underneath
+reading `<age> · <words> · <text>`, for example `4m · keep main green · the tests passed` —
+is still drawn where a fuller card is drawn: on the **phone sheet** under 60 columns, and on
+the card while you are **searching**. It shows three items, then a `▸ …N more things` door.
+An absent or empty inbox draws no news band at all, and looking at the band does not consume
+the news. The resting card at 160 columns does not carry it, because the ledger above the
+list already said it once.
 
 ## Where are the files it produced — deliverables on a conversation
 
-The home preview lists files produced by that conversation, newest first, as
-`<basename> · <age>`, for example `report.md · 2h`. The basename is a clickable path in
-terminals that support file links, and opens the full recorded path. Home shows three
-files, then a `▸ …N more files` door; `→` opens the preview's folds and `←` closes them.
-A conversation with no indexed files draws no deliverables band.
+The card lists files produced by that conversation, newest first, as `· <basename>` with
+its age out at the right — `· report.md   2h`. The basename is a clickable path in terminals
+that support file links, and opens the full recorded path. It shows three files, then a
+`▸ …3 more files` door. A conversation with no indexed files draws no files band at all.
+
+It is one of the five bands the resting card keeps at 160 columns and wider (*Why is there
+no preview on the right*), so at any narrower width the way to the files is to open the
+conversation.
 
 ## Where did we leave off — the last exchange on a conversation
 
-The home preview keeps the two sides of the last exchange together. The person's last
-message is one muted line beginning `› `, followed by the reply in dim text wrapped to at
-most two lines. A conversation with no turns draws no last-exchange band.
+The card keeps the two sides of the last exchange together: the person's last message is
+one muted line beginning `› `, followed by the reply in dim text wrapped to at most two
+lines. A conversation with no turns draws no last-exchange band.
+
+**The resting card does not carry it.** At 160 columns the card is the five bands that act,
+and what a conversation last said is a thing pressing `enter` shows a beat later. It is
+drawn on the **phone sheet** and on the card **while you are searching**, where telling two
+similarly named conversations apart is the whole job.
 
 ## Where does this repository stand — branch and dirty files on home
 
-A conversation whose workspace is a Git repository gets one dim repository line on its
-home card. A changed branch can read `feature/home · 2 files dirty · ahead 1 · behind 3`.
-Every unknown or zero clause disappears, so a clean repository on main reads only `main`;
-a folder that is not a repository draws no line. Home refreshes this reading for the
-workspace at most once every five seconds, and a failed or timed-out Git check draws
-nothing.
+**On the card's place line, under the title**, where the address it is about is:
+`~/aforge-v2 · master · 1 file dirty · open here`. A changed branch can read
+`feature/home · 2 files dirty · ahead 1 · behind 3`. Every unknown or zero clause
+disappears, so a clean repository on main reads only the path and `master`; a folder that is
+not a repository adds nothing to the line. Home refreshes this reading for a workspace at
+most once every five seconds, and a failed or timed-out Git check draws nothing.
+
+The branch is on the place line rather than in a band of its own because a branch and a
+dirty count are facts **about that address**, and a band between the address and them would
+be saying the address twice. A folder that is no longer on this disk says
+`that folder is gone` there, in place of the branch it cannot have.
 
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
-The last dim line of a conversation card reads `enter open · ctrl+t new chat here · ctrl+o
-open folder · ctrl+y copy path · ctrl+e put away · → more`. They are chords and arrows
-rather than letters so that typing always types — every bare letter goes into the box,
-whatever the cursor is doing — and each acts on the card you are looking at: the row
-under your pointer when there is one, the cursor's row otherwise. `ctrl+t` starts a fresh
-conversation **in that row's own project**, whichever one it is — the conversation you
-were in steps aside and keeps running, exactly as it does for `enter` (the mnemonic is
-the browser's new-tab key; ctrl+n is the walk down the list). A row whose folder is no
-longer on this disk says `that folder is gone · <path>` and starts nothing.
-`ctrl+o` asks the machine to open that conversation's workspace folder, `ctrl+y` copies
-the workspace path, `ctrl+e` puts the conversation away into the archive (`ctrl+e bring
-back` on a put-away row), and `→` opens the card's folded bands while `←` closes them. A
-failed folder open says `could not open <path>` on home's message line.
+**The card no longer lists letters.** Its last dim line names the strip and the words
+instead — `→ verbs: put it away, new chat here, open folder, copy path` — because a letter
+is a verb only while the strip naming it is on screen (*How do I answer without opening the
+chat*), and a card printing `t new chat here` would be advertising a keystroke the box is
+about to eat.
 
-**A card whose project folder is gone carries a shorter legend** — `that folder is gone ·
-ctrl+y copy path · → more` — because `enter`, `ctrl+t` and `ctrl+o` all need that
-directory. See *Enter does nothing on a row — the folder is gone*.
+**The chords still work and need no strip**, and each acts on the row you are looking at:
+the row under your pointer when there is one, the cursor's row otherwise.
 
-An item's card carries the exact legend `enter open where it was asked · → pause · stop ·
-→ more`. The two verbs are on the row's own strip, opened with `→`; `ctrl+e` and `ctrl+x` do
-the same two things without it.
+| chord | what it does |
+| --- | --- |
+| `ctrl+t` | a fresh conversation **in that row's own project**, whichever one it is — the conversation you were in steps aside and keeps running (the mnemonic is the browser's new-tab key; `ctrl+n` is the walk down the list) |
+| `ctrl+o` | asks the machine to open that conversation's workspace folder |
+| `ctrl+y` | copies the workspace path |
+| `ctrl+e` | puts the conversation away, or pauses a standing item |
+| `ctrl+x` | stops a standing item for good |
+| `ctrl+v` | raises how hard a standing item thinks, or the machine's own default at rest |
+
+A row whose folder is no longer on this disk says `that folder is gone · <path>` and starts
+nothing — `enter`, `ctrl+t` and `ctrl+o` all need that directory. A failed folder open says
+`could not open <path>` on home's message line, and a copied path says `copied <path>`.
+
+The hint line under the box says when the arrow does anything at all: a row with verbs adds
+`→ verbs` to it.
 
 ## What is next up on home — scheduled items coming soon
 
 The `next up` band lists active items belonging to the card's project, soonest first and
 two at a time. Rows look like `◦ leave for the train · in 4m`, `◦ draft the update ·
-Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are present, the card
-adds a dim `▸ …N more items` door; `→` opens it. Paused, stopped, and absent items draw
-nothing.
+Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are present the card adds
+a dim `▸ …N more items` door. Paused, stopped and absent items draw nothing.
+
+**It is not on the resting card.** The card beside the flat list is the five bands that act
+(*Why is there no preview on the right*); `next up` is drawn on the **phone sheet** and on
+the card **while you are searching**. What is coming up across the whole machine is on the
+machine's own card at rest, under `keeping an eye on`, and the whole of it is the standing
+place.
 
 ## What has this conversation cost — the spend band on home
 
-The dim spend band under a conversation's card reads `touched 12 files · spent $1.25 ·
-34k tokens · last active 12m`. Each clause is independent: zero or unknown files, spend
-and tokens are omitted, and a line with no true fact at all is not drawn.
+The dim facts line at the foot of a conversation's card reads `touched 12 files · spent
+$1.25 · 34k tokens · last active 12m`. Each clause is independent: zero or unknown files,
+spend and tokens are omitted, and a line with no true fact at all is not drawn. On the
+resting card the thinking rung is folded into that same line where there is one to state —
+what a thing spent and how hard it thinks are one sentence of arithmetic about it. A chat
+states no rung, because that setting belongs to the window it is open in.
 
 `touched 12 files` is how many files this conversation's work wrote, summed over its
 tasks. It is here because nothing else on the card carries it, and it is the most physical
@@ -1947,8 +2024,7 @@ turn writes one, and resuming an old conversation folds its transcript's own usa
 in once on the way in. `/cost` and `/status` inside the conversation still answer for the
 live session, and agree with this line about the talking.
 
-The project card's own facts line (`12 conversations · 34 tasks · spent $4.10 · last
-active 2h`) adds the same two halves over every conversation in the project.
+A whole **project's** figures are on the spend place — home has no project card any more.
 
 ## What a narrow home card does with a long row
 
@@ -1973,8 +2049,9 @@ Top to bottom:
    conversation's inbox or in a project's, and any task that finished after the last
    thing you said in that conversation.
 4. **The projects.** This window's own project is drawn open with its remaining rows; every
-   other project is one folded line — `▸ wisp   6 · 2d` — exactly as the `elsewhere`
-   block draws them, without the rule line.
+   other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
+   place. This is the one shape of home that still draws projects as blocks; every wider
+   frame is the one flat ranked list.
 
 Each section shows **three rows** and folds the rest into `▸ …N more`; `enter` or a tap on
 that line opens it in place. A section with nothing in it is not drawn at all, so a quiet

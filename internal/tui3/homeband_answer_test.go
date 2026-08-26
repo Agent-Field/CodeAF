@@ -169,13 +169,22 @@ func TestADigitOnHomeLeavesTheAnswerOnTheOtherSessionsDoorstep(t *testing.T) {
 	if !strings.Contains(text, answerSentWord+"deny") {
 		t.Fatalf("home did not say what it just answered:\n%s", text)
 	}
-	// AND THE BAND SAYS IT IS WAITING, because the other session applies this on
-	// its own beat and the chips must not invite a second answer meanwhile.
-	if !strings.Contains(text, answerWaitingWord) {
-		t.Fatalf("the band did not say the answer is on its way:\n%s", text)
-	}
 	if strings.Contains(text, "1 allow once") {
 		t.Fatalf("the chips are still up on an answered question:\n%s", text)
+	}
+	// AND THE BAND SAYS IT IS WAITING, because the other session applies this on
+	// its own beat and the chips must not invite a second answer meanwhile.
+	//
+	// THE BAND IS ON THE CARD AND THE CARD ONLY EXISTS PAST [homeCardMin] (SCREEN
+	// 1d). At this lab's ordinary width home is the flat list, the chips are the
+	// strip's at the foot of the frame, and their going is the whole of what a
+	// person sees there. The SENTENCE that says why they went is the answer
+	// band's, so it is asked for at a width where a card is drawn — and wide
+	// enough that a sentence longer than [homeCardCol] is not clipped.
+	lab.a.width, lab.a.height = homeCardWidest, 40
+	lab.a.home.build()
+	if card := strings.Join(homeCardFor(t, lab.a, lab.row), "\n"); !strings.Contains(card, answerWaitingWord) {
+		t.Fatalf("the card did not say the answer is on its way:\n%s", card)
 	}
 	// A SECOND PRESS IS NOT A SECOND ANSWER.
 	lab.a.homeKey(key("1"))
