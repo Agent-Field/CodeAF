@@ -52,22 +52,16 @@ Four ways, and they all reach the same seven rooms:
 `alt+<digit>` arrives in every terminal aforge runs in. `ctrl+<digit>` does not exist as a
 thing a terminal can send, which is why the numbers are on `alt`.
 
-**`tab` goes past a place that has nothing to open.** Two rooms can be shut: **standing**,
-when nothing stands over you anywhere on this computer, and **memory**, when memory is
-turned off. `tab` and `shift+tab` walk on to the next room a person can actually get into,
-rather than stopping dead.
+**`tab` walks the whole circle, and no room on it is ever shut.** `tab` and `shift+tab`
+step from one place to the next in the bar's order and round again from the last; there is
+no state of the machine in which one of them is skipped. A place with nothing in it opens
+and spends the frame saying what it is for, which is the answer somebody arriving at an
+empty room actually wants — see **Every place opens, always** further down this page.
 
-**The tasks place is never shut.** Walking into it — `tab`, `alt+2`, a click on its word —
-opens it on whatever the machine has run, and on a machine that has run nothing it spends
-the frame saying what the place is for. Walking into a room is not asking it a question, so
-there is nothing to refuse. The **command** is a question and still answers one: `/history`
-and a bare `/task` on a machine that has run nothing say `no tasks yet — /task <brief>
-starts one` and open nothing.
-
-A shut place asked for **by name** — `alt+3`, `alt+4`, a click on its word — still says why
-it will not open, on the hint line of the place you are left on. Pressed in a conversation
-the same sentence is written into the conversation, because that is the surface you are
-looking at.
+That is true of every door onto a place and not only of the walk: a number, a click on the
+word, and the command that names it all open the same room on the same machine. `/history`
+and a bare `/task` on a machine that has run nothing open the tasks place, and the page
+says what tasks are and ends `no tasks yet — /task <brief> starts one`.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 

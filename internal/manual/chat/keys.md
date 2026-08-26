@@ -331,7 +331,7 @@ an ordinary `enter` and the message waits instead.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
-| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. Does nothing when nothing has run |
+| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
@@ -1050,9 +1050,9 @@ the digit. It arrives in every terminal aforge runs in, which is why the numbers
 **The numbers work from a conversation as well as from a place.** They are the one class of
 place key that does: `tab` belongs to the composer's path completion while you are typing,
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
-is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. A room
-that has nothing to open says so in the conversation, in the same words it would use on the
-hint line of a place.
+is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
+number opens its room whatever is in it: a place with nothing of its own to draw spends the
+frame saying what it is for, and none of the seven is ever a key that does nothing.
 
 There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
 taken, and `ctrl+.` is the tasks place (`/history`). `esc` was not available either: on an idle conversation it
