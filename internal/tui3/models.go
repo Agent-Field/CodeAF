@@ -41,6 +41,18 @@ type Model struct {
 	ID            string `json:"id"`
 	ContextLength int    `json:"context_length,omitempty"`
 
+	// Name is the display name the CATALOG publishes for this model — `Claude
+	// Opus 4.1`, `Google: Gemini 3.6 Flash` — and empty for a row nobody named:
+	// a built-in id, a cache written before this field existed, a provider that
+	// publishes no name. It rides the same fetch and the same cache file as the
+	// prices, and it is here because the spend place has to say what a model is
+	// CALLED beside what it cost (spendplace.go's [spendReading.modelName]); a
+	// surface that had only the slug would draw provenance at a person.
+	//
+	// Empty is absence and never a name of nothing: the caller falls back to the
+	// product's own shortener rather than drawing a blank.
+	Name string `json:"name,omitempty"`
+
 	// The three prices are PER TOKEN in US dollars, as the catalog publishes
 	// them. They are here — on a row a picker draws — because of one line this
 	// surface has to be able to write: what a turn's cache reads SAVED, which is

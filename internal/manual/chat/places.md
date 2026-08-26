@@ -301,9 +301,9 @@ What this machine has cost, by the day, by the model, and by what it was for. `a
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
 
-Three blocks: the window with its sparkline, `what ran it` by the model, and `what it was
-for`. `enter` on a row of the last one opens the thing the money went on — a task, a standing
-promise, or a conversation. `shift+←` and `shift+→` move the window by its own length;
+Three blocks: the window with its sparkline, `what ran it` by the model and the role that
+model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the
+thing the money went on — a task, a standing promise, or a conversation. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
 **There is nothing to set here.** The allowance is a rail and it is edited on the status

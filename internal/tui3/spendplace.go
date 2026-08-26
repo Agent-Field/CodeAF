@@ -15,7 +15,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -44,6 +46,74 @@ type spendReading struct {
 	// hands them here ([spendReading.naming]). A subject nobody could name keeps
 	// its id, which is a worse row than a title and a better one than a blank.
 	names map[string]string
+	// crew is the OTHER join the ledger cannot make: a model id against the role
+	// this machine has that model BOUND to, and the role slots nothing is bound
+	// to at all ([spendReading.crewed], [spendCrew]).
+	crew spendCrew
+}
+
+// spendCrew is what SCREEN 2c's model table needs and the ledger does not hold:
+// which slot each model is bound to, what each model is CALLED, and which slots
+// have nothing behind them.
+//
+// THE ROLE IS THE BINDING AND NEVER THE CALL. The ledger's own role word is the
+// auxiliary name one call gave itself — `title`, `taskname` — and a table headed
+// with it answers a question nobody can act on. The design's caption says which
+// question this column answers: `by the model, and the role it was bound to`, and
+// the point of the column is that reading "execution is 63% of the bill" sends
+// you to the one chip that changes it.
+type spendCrew struct {
+	// role is the slot's plain word — `execution`, `conversation`,
+	// `verification`, `naming`, `planning` — by model id, lower-cased, because
+	// a model id is matched case-insensitively everywhere else on this surface.
+	role map[string]string
+	// name is what to CALL a model, by the same key. Empty for a model this
+	// machine's catalog has never listed, and the id is then drawn as it is.
+	name map[string]string
+	// unbound is every role slot with nothing bound to it, in the ladder's own
+	// order. Each becomes a row of its own under the models — `planning ·
+	// unbound · follows execution` — because a slot nothing answers for is a
+	// fact about the crew that no model's row could carry.
+	unbound []config.ModelSlot
+}
+
+// crewed hands the reading the crew's own facts. It answers a copy, for
+// [spendReading.naming]'s reason: a reading is an immutable answer.
+func (r spendReading) crewed(crew spendCrew) spendReading {
+	r.crew = crew
+	return r
+}
+
+// modelName is what to call one model on a row: the name the catalog published
+// where this machine has it, and otherwise the word a person says out loud.
+//
+// THE FALLBACK IS THE PRODUCT'S OWN SHORTENER AND NOT THE RAW SLUG.
+// [modelui.ModelWord] takes off the four runs that are provably provenance — the
+// vendor prefix, the alias marker, the variant suffix, the release date — and
+// hands back anything it does not recognise WHOLE, so a slug this build has
+// never seen is still drawn exactly as the provider spells it. That is the same
+// spelling /model and the crew chips use, which is what stops one model wearing
+// two names on two screens a `tab` apart.
+func (r spendReading) modelName(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if name := strings.TrimSpace(r.crew.name[strings.ToLower(id)]); name != "" {
+		return name
+	}
+	if word := modelui.ModelWord(id); word != "" {
+		return word
+	}
+	return id
+}
+
+// modelRole is the slot one model is bound to, and the empty string for a model
+// bound to nothing — which draws NO ROLE WORD at all rather than a blank column
+// or a guess. A model can be on the bill for a hundred reasons and be nobody's
+// crew today; saying so is the emptiness law.
+func (r spendReading) modelRole(id string) string {
+	return r.crew.role[strings.ToLower(strings.TrimSpace(id))]
 }
 
 // spendStop is what one drawn row is ABOUT, so that `enter` opens the thing the
@@ -188,10 +258,18 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 		out = append(out, loud)
 	}
 
-	if len(r.models) > 0 {
-		out = appendPlaceSection(out, pal.dim(fit("what ran it · by the model, and the role it named", width)))
+	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
+		out = appendPlaceSection(out, pal.dim(fit(spendModelsWord, width)))
 		for _, model := range r.models {
 			out = append(out, r.modelRow(model, width, pal))
+		}
+		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
+		// no binding has no line in the ledger to be found on and would simply be
+		// missing from a table built out of spending — which is the one reading
+		// this column must not give, because "planning costs nothing" and "nothing
+		// is bound to planning" are opposite facts about the same blank.
+		for _, slot := range r.crew.unbound {
+			out = append(out, spendUnboundRow(slot, width, pal))
 		}
 	}
 	if len(r.subjects) > 0 {
@@ -263,9 +341,38 @@ func (r spendReading) loudestRow(width int, pal palette) string {
 	return spendSides(width, left, door, pal.dim, pal.dim)
 }
 
+// spendModelsWord is the models table's caption, and it is SCREEN 2c's own. The
+// column says the role each model was BOUND to — the crew binding a person can
+// go and change — and not the auxiliary word one call gave itself, which is what
+// the caption used to promise and what the table used to draw.
+const spendModelsWord = "what ran it · by the model, and the role it was bound to"
+
+// spendUnboundRow is one role slot with nothing bound to it:
+//
+//	· planning · unbound · follows execution
+//
+// THERE IS NO FIGURE ON IT, and the design's own em-dash is the one thing here
+// that is not followed. A slot nothing is bound to has spent nothing THAT CAN BE
+// FOUND — every line in the ledger names a model, not a slot — so a figure in
+// that column would be a measurement nobody took, and the emptiness law is that
+// an unknown renders as nothing rather than as a mark standing in for one.
+func spendUnboundRow(slot config.ModelSlot, width int, pal palette) string {
+	left := pal.dim(tokens.GlyphProseBullet+" ") + pal.data(slot.Label) + pal.dim(" · "+spendUnboundWord)
+	if slot.Follows != "" {
+		left += pal.dim(" · follows " + slot.Follows)
+	}
+	return spendSides(width, left, "", func(s string) string { return s }, pal.dim)
+}
+
+// spendUnboundWord is what a role slot with nothing behind it says, and it is
+// the design's own word. It is a fact about the settings rather than machinery
+// vocabulary: the row a person would bind is empty, and the clause after it says
+// what runs in the meantime.
+const spendUnboundWord = "unbound"
+
 func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette) string {
-	name := strings.TrimSpace(model.Model)
-	role := strings.TrimSpace(model.Role)
+	name := r.modelName(model.Model)
+	role := strings.TrimSpace(r.modelRole(model.Model))
 	money := spendMoneyWord(model.USD)
 	left := tokens.GlyphProseBullet
 	if name != "" {

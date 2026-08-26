@@ -237,10 +237,14 @@ func TestAWeekGrainWindowBucketsFromMonday(t *testing.T) {
 	}
 }
 
-// The pair, not the model alone: the same model answers a turn and names a
-// session, and one row for it could not say that the naming bill is on a model
-// somebody meant to be cheap.
-func TestUsageByModelGroupsTheModelWithItsRoleDearestFirst(t *testing.T) {
+// ONE ROW PER MODEL, and the per-call role word does not split it.
+//
+// This used to group by the pair (model, role) so that a page could say which
+// slice of a model's bill was naming. SCREEN 2c asks the other question — the
+// role a model was BOUND to, which is a settings fact rather than a call fact —
+// so the arithmetic here answers per model and the page makes the join. Three
+// opus lines, one of them named `title` by the call that made it, are one row.
+func TestUsageByModelGroupsOneRowPerModelDearestFirst(t *testing.T) {
 	lines := []UsageLine{
 		spendLine(t, "2026-08-25 09:00", "opus-4.1", "", 10),
 		spendLine(t, "2026-08-25 10:00", "opus-4.1", "", 11),
@@ -248,19 +252,16 @@ func TestUsageByModelGroupsTheModelWithItsRoleDearestFirst(t *testing.T) {
 		spendLine(t, "2026-08-25 12:00", "haiku-4.5", "", 30),
 	}
 	rows := UsageByModel(lines)
-	if len(rows) != 3 {
-		t.Fatalf("grouped into %d rows, want three pairings: %+v", len(rows), rows)
+	if len(rows) != 2 {
+		t.Fatalf("grouped into %d rows, want one per model: %+v", len(rows), rows)
 	}
 	if rows[0].Model != "haiku-4.5" || rows[0].USD != 30 {
 		t.Fatalf("the dearest row is %+v", rows[0])
 	}
-	if rows[1].Model != "opus-4.1" || rows[1].Role != "" || rows[1].USD != 21 || rows[1].Calls != 2 {
-		t.Fatalf("the unnamed opus row is %+v", rows[1])
+	if rows[1].Model != "opus-4.1" || rows[1].USD != 22 || rows[1].Calls != 3 {
+		t.Fatalf("the opus row is %+v — the `title` call belongs in it", rows[1])
 	}
-	if rows[2].Role != "title" || rows[2].USD != 1 {
-		t.Fatalf("the title row is %+v", rows[2])
-	}
-	if rows[1].Tokens != 240 {
+	if rows[1].Tokens != 360 {
 		t.Fatalf("the opus row holds %d tokens", rows[1].Tokens)
 	}
 }

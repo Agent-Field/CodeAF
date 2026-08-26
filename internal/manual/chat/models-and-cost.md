@@ -777,8 +777,19 @@ same three-second beat every place runs on, and it draws three things:
 
 - **the window and its total** — `aug 12 – aug 25 · $34.10 · 41.2M tokens` — with a sparkline
   under it, one cell per day, and today's figure at the right;
-- **what ran it**, by the model and the role it named itself under, dearest first, each row
-  with a bar, its call count and its tokens;
+- **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
+  a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
+  `conversation`, `verification`, `naming`, `planning` — read from the settings as they
+  stand right now, and never the auxiliary word one call gave itself. That is the point of
+  the column: seeing that execution is most of the bill sends you to the one row that
+  changes it. A model that is on the bill and is bound to nothing today draws **no role word
+  at all**, and a model bound to two slots says both. A model's name is the one the catalog
+  publishes where this machine has it, and otherwise the model word — `claude-opus-4-1`
+  rather than `anthropic/claude-opus-4-1`;
+- **a role slot with nothing bound to it** gets a row of its own under the models —
+  `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
+  is bound to planning" are opposite facts about the same blank. There is no figure on that
+  row: no line in the ledger names a slot, so there is nothing measured to put there;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
   shown and the rest fold into one line.

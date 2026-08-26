@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -80,6 +81,54 @@ func TestTheSpendModelsRunDearestFirstAndTheirBarsStayBounded(t *testing.T) {
 	for _, model := range r.models {
 		if got := ansi.StringWidth(spendBar(model.USD/r.models[0].USD, spendModelBarCap)); got > spendModelBarCap {
 			t.Fatalf("%s grew a %d-cell bar past the %d-cell cap", model.Model, got, spendModelBarCap)
+		}
+	}
+}
+
+// SCREEN 2c: THE ROLE COLUMN IS THE CREW BINDING AND NEVER THE CALL'S OWN WORD.
+//
+// The fixture's opus lines named themselves `execution`, which is also a slot
+// word — so the crew below binds opus to `conversation` instead. A row that drew
+// the ledger's word would say `execution` here, and the assertion is that it
+// does not: the column is what this machine has that model bound to, which is
+// the fact a person can go and change.
+func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
+	crew := spendCrew{
+		role: map[string]string{
+			"opus 4.1":   "conversation",
+			"haiku 4.5":  "naming",
+			"sonnet 4.5": "execution",
+		},
+		name: map[string]string{"sonnet 4.5": "Claude Sonnet 4.5"},
+	}
+	if slot, ok := config.ModelSlotFor("plan"); ok {
+		crew.unbound = append(crew.unbound, slot)
+	}
+	text := strings.Join(plainSpendRows(spendTestReading().crewed(crew).rows(120, newPalette(tokens.NoColor, false))), "\n")
+	if !strings.Contains(text, "what ran it · by the model, and the role it was bound to") {
+		t.Fatalf("the caption does not say what the column is:\n%s", text)
+	}
+	if !strings.Contains(text, "opus 4.1 · conversation") {
+		t.Fatalf("opus does not wear the slot it is bound to:\n%s", text)
+	}
+	if strings.Contains(text, "opus 4.1 · execution") {
+		t.Fatalf("opus wears the word its calls named themselves:\n%s", text)
+	}
+	// AND THE CATALOG'S OWN NAME HEADS THE ROW WHERE THIS MACHINE HAS ONE.
+	if !strings.Contains(text, "Claude Sonnet 4.5 · execution") {
+		t.Fatalf("the catalog's display name is not on the row:\n%s", text)
+	}
+	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL.
+	if !strings.Contains(text, "gemini 2.5 pro █") {
+		t.Fatalf("an unbound model grew a role word:\n%s", text)
+	}
+	// AND THE SLOT NOTHING IS BOUND TO IS A ROW OF ITS OWN, with no figure.
+	if !strings.Contains(text, "planning · unbound · follows execution") {
+		t.Fatalf("the unbound slot has no row:\n%s", text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "unbound") && strings.Contains(line, "$") {
+			t.Fatalf("the unbound row carries a figure nobody measured: %q", line)
 		}
 	}
 }
@@ -224,6 +273,42 @@ func TestTheSpendPlaceNamesWhatTheLedgerOnlyHasAnIdFor(t *testing.T) {
 	}
 	if !strings.Contains(text, "render-fight-clips") {
 		t.Fatalf("a subject nobody could name lost its id:\n%s", text)
+	}
+}
+
+// `what it was for` IS PRESENT WHENEVER THE LEDGER NAMES ANY SUBJECT AT ALL,
+// which on this machine is every line: the engine's one door onto the ledger
+// stamps the conversation on every record it writes
+// ([Agent.recordUsageLine]), so a line with no task and no promise is still a
+// line that went on SOMETHING.
+//
+// AND THE TITLE COMES OFF THE WORLD THIS SURFACE IS ALREADY HOLDING. The ledger
+// has the sixteen hex and nothing else; the row is headed with what the person
+// calls that conversation.
+func TestWhatItWasForIsDrawnForAConversationTheLedgerOnlyHasAnIdFor(t *testing.T) {
+	a := placeApp(t)
+	id := ""
+	for _, project := range a.home.world.Projects {
+		for _, row := range project.Sessions {
+			if strings.EqualFold(strings.TrimSpace(row.Title), "porting the picker") {
+				id = row.ID
+			}
+		}
+	}
+	if id == "" {
+		t.Fatal("the lab has no conversation to spend money in")
+	}
+	line := session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
+		USD: 4.25, Session: id}
+	b := spendLab(t, []session.UsageLine{line})
+	b.home.world = a.home.world
+	b.rebuildSpend()
+	text := placeFrameText(b)
+	if !strings.Contains(text, "what it was for") {
+		t.Fatalf("a ledger that names a conversation drew no `what it was for`:\n%s", text)
+	}
+	if !strings.Contains(strings.ToLower(text), "porting the picker") {
+		t.Fatalf("the conversation kept its id where the world knows its title:\n%s", text)
 	}
 }
 
