@@ -388,6 +388,12 @@ type TaskNode struct {
 	// beside an audit — and the node stops being paced when the LAST of them
 	// gets through, not when the first does.
 	paced int
+	// beat is this node's pulse on disk while it runs, and nil for a node that
+	// is not running or has no store behind it (task_beat.go). Every agent that
+	// stands in for the node carries a pointer to the same one — the worker, the
+	// checker, each repair round — because they are one node working, and a
+	// reader outside the process is asking about the node.
+	beat *taskBeat
 	// cancel ends this node's run: the deadline's context, cancelled early by
 	// jobs kill or by Close.
 	cancel context.CancelFunc
@@ -1559,6 +1565,45 @@ func (n *TaskNode) pacing(parked bool) {
 	}
 }
 
+// armBeat starts this node's pulse and hands it back so the runner can stop it
+// (task_beat.go). It is called once, by [Agent.runTaskNode], the one door every
+// kind of node goes through.
+//
+// The first row is written OUTSIDE the graph's lock, which is the whole reason
+// this is two steps rather than one: a node starting is a state transition the
+// frontier makes with the graph held, and a disk write under that lock would put
+// every other node in the family behind it.
+func (n *TaskNode) armBeat() *taskBeat {
+	// A NODE WITH NO GRAPH HAS NO STORE AND THEREFORE NO PULSE. Every scripted
+	// node in the tests is one, and so is a node whose session has no journal —
+	// the same nothing [TaskGraph.checkpoint] answers with.
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	beat := newTaskBeat(n.graph.store.beatPath(n.id), n.id, n.spec.title, n.started)
+	n.beat = beat
+	n.graph.mu.Unlock()
+	beat.arm()
+	return beat
+}
+
+// beatWriter is the pulse an agent built for this node writes into.
+func (n *TaskNode) beatWriter() *taskBeat {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.beat
+}
+
+// beatPhase moves the node's pulse into one of task_beat.go's three words and
+// hands back the way out, so a caller writes `defer node.beatPhase(x)()`.
+func (n *TaskNode) beatPhase(name string) func() {
+	return n.beatWriter().phase(name)
+}
+
 // claimSettle claims a node that NEEDS A LOOK for exactly one resolution, and
 // the state check is part of the claim rather than a question asked before it.
 //
@@ -2286,6 +2331,13 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	defer cancel()
 	node.setCancel(cancel)
 
+	// AND THE STORE LEARNS IT IS ALIVE AT THE CADENCE OF ITS WORK (task_beat.go).
+	// The checkpoint is written at admission and at landing, so between them the
+	// only thing an outside reader could do was guess; from here the node writes a
+	// pulse of its own at every provider call boundary, and the pulse goes away
+	// when the node lands and the checkpoint's row becomes the authority again.
+	defer node.armBeat().stop()
+
 	// The node is a JOB, from the registry every other piece of background work
 	// comes from: one id space, one row in `jobs list`, one `jobs kill`, one
 	// death at Close. What differs is the middle, which is this function.
@@ -2723,10 +2775,29 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	changed, report = outcome.changed, outcome.claim
 	verdict := outcome.verdict
 	switch {
+	// ── A CANCEL IS AN INTERRUPTION, NEVER A FINDING ──
+	//
+	// The check was running and something outside the work cut it: a settle-kill
+	// from the runner, a quit, a deadline on the session rather than on the node.
+	// None of those looked at the deliverable, and until this arm was written the
+	// KILL WROTE THE VERDICT — the node landed FAILED with "stopped while its work
+	// was being checked" as its whole account, on a benchmark cell where the
+	// runner's own settle produced the ctx.Err() it was reading.
+	//
+	// SO IT LANDS AS UNFINISHED WORK AND KEEPS BOTH HALVES. The node's own claim
+	// is what it says it did, [auditVerdict.checkedSoFar] is whatever the check had
+	// already said before it was cut, and the lead is the vocabulary a landing
+	// already has for work nobody could stand behind (task_audit.go's
+	// [incompleteLead], withdrawn.go's [unverifiedEdits]). Unverified rather than
+	// failed is the state that matches the sentence: nothing merges on a check that
+	// never finished, and nobody made a finding to fail it on. It is the arm two
+	// hundred lines above ("paused — it resumes") reasoning about the same fact one
+	// phase later, where there is a claim and possibly a verdict to carry.
 	case ctx.Err() != nil:
 		merge, changed := keptWork(tree, node.title(), changed)
-		node.finish(withReport("stopped while its work was being checked", report), changed, tree.branch, merge)
-		return TaskFailed
+		node.finish(withReport(taskCutMidCheck, withReport(report, verdict.checkedSoFar())),
+			changed, tree.branch, merge)
+		return TaskUnverified
 	case !verdict.answered:
 		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
 		// and not failed either, because no finding was made about this work.
@@ -4184,6 +4255,11 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
+		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
+		// checker and each repair round are the same NODE working, so a reader
+		// outside the process must see one heartbeat across all of them rather
+		// than three files appearing and disappearing (task_beat.go).
+		beat: node.beatWriter(),
 		// AND A DESIGN THREAD IS A ROOM RATHER THAN A WORKER, which is the one
 		// place the two node kinds want different agents. A worker's turns belong
 		// to the runner driving it, so a line steered at it lands in the turn it

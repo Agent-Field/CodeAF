@@ -1260,6 +1260,12 @@ type Config struct {
 	// would mean a clock, and the whole point of the signal is that it is free.
 	pacing func(bool)
 
+	// beat is the node's heartbeat on disk, and nil for every agent that is not
+	// standing in for a task node (task_beat.go). It is unexported for pacing's
+	// reason — it is not a caller's choice but a fact about an agent this package
+	// built — and the loop takes its two edges either side of the wire.
+	beat *taskBeat
+
 	// TaskModel is the model a task runs on when its proposal names none — the
 	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
 	// the behaviour every task had before this field existed: a node is the same
