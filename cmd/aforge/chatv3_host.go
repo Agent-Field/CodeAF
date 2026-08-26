@@ -454,6 +454,12 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 	})
 	stands := newHostStanding(client)
 	seams := newHostSeams(client)
+	// THE PLACES FOLLOW THE SESSION'S MACHINE. The world behind home, tasks,
+	// standing, spend and search is asked of the ENGINE and kept warm here, and
+	// it is asked once now so the first frame after launch already has it
+	// ([hostWorld] holds both laws).
+	world := newHostWorld(client)
+	world.prime()
 
 	options := tui3.Options{
 		Agent:     agent,
@@ -497,6 +503,18 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			}
 			return agent, next.SessionFile, nil
 		},
+		// ── THE PLACES, AS THE ENGINE MACHINE HOLDS THEM ────────────────────
+		//
+		// The seven places are a listing of one machine's disk, and until this
+		// pair existed the surface listed its OWN: over --host the tasks place
+		// walked this laptop's `~/.aforge/v3` and drew eight rows and $22.54 of
+		// work under a conversation on a server that had run none of it. The
+		// world crosses the wire now (internal/remote's Places.World), and the
+		// root it was walked under travels with it so that the conversation this
+		// window is sitting in can be put back into a walk taken before it
+		// existed (internal/tui3's [app.worldRoot]).
+		World:     world.world,
+		WorldRoot: welcome.PlacesRoot,
 		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
 		// the machine that runs them, so both halves go over the wire and
 		// neither reads a store on this laptop — the far end answers about the
@@ -932,4 +950,122 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	newline()
 	_ = agent.Close()
 	return failure
+}
+
+// ── the places over a connection ────────────────────────────────────────────
+
+// hostWorldEvery is how stale a held world is allowed to be before the next
+// reading kicks a fresh one.
+//
+// IT IS SHORTER THAN [hostStandingEvery] AND LONGER THAN NOTHING. The surface
+// re-reads its places every three seconds (internal/tui3's homeEvery), and a
+// staleness of two means every one of those beats finds the held world old
+// enough to refresh — so what a person looks at is at most one beat behind the
+// far machine, which is the same lag a local window has against the next
+// terminal on its own disk. Standing can afford five because an item's cadence
+// is measured in minutes; a conversation in the next window over there answers
+// in seconds, and home exists to show that happening.
+const hostWorldEvery = 2 * time.Second
+
+// hostWorld is the ENGINE machine's world, kept here so the places can have it
+// without waiting.
+//
+// It is [hostStanding] applied to the one reading five of the seven places are
+// built from, and it keeps that type's two laws for that type's two reasons:
+//
+//   - THE READ ANSWERS FROM WHAT IS HELD, ALWAYS AND IMMEDIATELY. A place may
+//     read on its open and on its beat, and over a connection both of those are
+//     still moments a person is waiting through — a call down an ssh pipe has a
+//     ten-second deadline (internal/remote's callDeadline), so an open that made
+//     one would be a terminal that stopped answering keys for as long as the far
+//     machine took, and on a link that had just died, for ten seconds.
+//   - ONE FETCH AT A TIME, never a pile. Seven places on a three-second beat,
+//     each asking the same question, is a queue of identical frames behind a link
+//     that is already slow.
+//
+// AND IT SAYS WHETHER IT HAS AN ANSWER, which [hostStanding] does not have to.
+// An empty list of standing items and no answer yet are the same thing on a
+// screen — the emptiness law draws both as nothing. An empty WORLD is not: it is
+// a machine with no projects on it, and `nothing here yet — say something and
+// this fills up` drawn over a server full of work is the one wrong sentence this
+// screen can say about somebody else's disk. So the seam answers a second value
+// and the surface draws nothing at all until the far machine has spoken once
+// (internal/tui3's [app.worldKnown]).
+type hostWorld struct {
+	// ask is the wire door, held as a closure for [hostStanding.ask]'s reason:
+	// what this type does is a policy about staleness and blocking, and a test of
+	// that policy should be able to hand it a slow answer without opening a pipe.
+	ask func() (session.World, error)
+
+	mu sync.Mutex
+	// held is the last world the engine answered with, read is when it answered,
+	// known says it has answered at least once, and fetching says a goroutine is
+	// already asking.
+	held     session.World
+	read     time.Time
+	known    bool
+	fetching bool
+}
+
+func newHostWorld(client *remote.Client) *hostWorld {
+	return &hostWorld{ask: client.World}
+}
+
+// world is [tui3.Options.World]: what is held, right now, with a refresh started
+// behind it when what is held has aged.
+func (h *hostWorld) world() (session.World, bool) {
+	h.mu.Lock()
+	held, known := h.held, h.known
+	stale := h.read.IsZero() || time.Since(h.read) >= hostWorldEvery
+	start := stale && !h.fetching
+	if start {
+		h.fetching = true
+	}
+	h.mu.Unlock()
+	if start {
+		guard.Go("chatv3/host-world", func() { h.fetch() })
+	}
+	return held, known
+}
+
+// fetch is the round trip, on a goroutine of its own.
+//
+// A FAILED CALL KEEPS THE LAST WORLD rather than emptying every place at once.
+// The two ways this fails are a link that has died and an engine too old to
+// answer this method; neither of them is the news "everything you have worked on
+// is gone", and seven rooms that blanked themselves on a dropped connection
+// would be the screen reporting a loss that did not happen. The clock is stamped
+// either way, so a link that is failing is asked again on the next beat rather
+// than on every frame — and `known` is only ever turned on, so a world that
+// arrived once goes on being drawn while the connection is being redialled.
+func (h *hostWorld) fetch() {
+	world, err := h.ask()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.fetching = false
+	h.read = time.Now()
+	if err != nil {
+		return
+	}
+	h.held, h.known = world, true
+}
+
+// prime asks once, in the background, at the moment the door is built.
+//
+// THE FIRST FRAME IS THE ONE THAT MATTERS. Without this the first reading a
+// place takes is the one that starts the fetch and answers nothing, so a person
+// who pressed space-space quickly would meet an empty frame and then a full one.
+// Launch is far longer than one round trip, so asking here means the answer is
+// almost always already there — and when it is not, the surface draws nothing
+// rather than a guess, which is why this is a convenience rather than a
+// correctness fix.
+func (h *hostWorld) prime() {
+	h.mu.Lock()
+	if h.fetching {
+		h.mu.Unlock()
+		return
+	}
+	h.fetching = true
+	h.mu.Unlock()
+	guard.Go("chatv3/host-world-prime", func() { h.fetch() })
 }

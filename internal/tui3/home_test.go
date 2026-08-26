@@ -2275,21 +2275,37 @@ func TestHomeSaysNothingOnAMachineWithNoProjects(t *testing.T) {
 	}
 }
 
-// Over --host the projects under this process's state root belong to the wrong
-// machine, so home opens WITHOUT THEM and says why, rather than drawing a
-// confident lie or refusing to open at all.
+// Over --host home lists THE MACHINE THE SESSION RUNS ON, and not one row of
+// this laptop's is on it.
 //
-// THIS TEST USED TO PIN A REFUSAL — the door shut, the screen not raised, the
-// sentence written into the transcript. Every place opens now (pages.go's
-// [app.showPage]), so what --host costs is the ROWS: the head, the tab bar and
-// the composer are all still there, and [homeRemoteWord] stands in the one slot
-// the rows would have used.
-func TestHomeOverHostOpensWithoutItsRows(t *testing.T) {
+// THIS TEST HAS BEEN THREE TESTS. It pinned a refusal — the door shut, the
+// screen not raised. Then it pinned one honest sentence where the rows would
+// have been, because every place opens and home's own state root belonged to the
+// wrong machine. It now pins the repair: the world crosses the wire
+// (internal/remote's Places.World) and home draws the far machine's projects,
+// with that machine's name at the right end of the tab bar.
+func TestHomeOverHostListsTheFarMachine(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now)
 	a := lab.app("")
 	a.host = "box"
+	// The world the ENGINE would have answered with — one project this laptop
+	// has never heard of, exactly as it arrives off the wire.
+	a.world = func() (session.World, bool) {
+		return session.World{
+			Read: now,
+			Projects: []session.Project{{
+				Dir: "-srv-code-api", Path: "/srv/code/api", Name: "api",
+				Sessions: []session.SessionRow{{
+					ID: "bbbb000000000002", Dir: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002",
+					Transcript: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002/transcript.jsonl",
+					Title:      "rewriting the importer", Project: "api", ProjectDir: "-srv-code-api",
+					Workspace: "/srv/code/api", At: now, Created: now,
+				}},
+			}},
+		}, true
+	}
 	if !a.homeDoorOpen() {
 		t.Fatal("the door to home is shut over --host")
 	}
@@ -2298,12 +2314,36 @@ func TestHomeOverHostOpensWithoutItsRows(t *testing.T) {
 		t.Fatal("home did not open over --host")
 	}
 	text := homeText(a)
-	if !strings.Contains(text, homeRemoteWord) {
-		t.Fatalf("home did not say why it is empty:\n%s", text)
+	if !strings.Contains(strings.ToLower(text), "rewriting the importer") {
+		t.Fatalf("home over --host did not list the far machine's work:\n%s", text)
 	}
-	// AND NOT ONE OF THE WRONG MACHINE'S CONVERSATIONS IS ON IT.
-	if strings.Contains(text, "porting the picker") {
+	// AND NOT ONE OF ITS ROWS IS MARKED GONE. The folder is on the other machine
+	// and this process cannot see it; a stat here would report every remote row
+	// as deleted ([homeView.readGone]).
+	if strings.Contains(text, homeGoneWord) {
+		t.Fatalf("home over --host statted the far machine's paths on this disk:\n%s", text)
+	}
+	// AND NOT ONE OF THIS MACHINE'S CONVERSATIONS IS ON IT.
+	if strings.Contains(strings.ToLower(text), "porting the picker") {
 		t.Fatalf("home over --host listed this machine's projects:\n%s", text)
+	}
+}
+
+// And a world the far machine has not answered yet is NOT an empty machine.
+// `nothing here yet — say something and this fills up` over a server full of
+// work is the one wrong sentence this screen can say about somebody else's disk,
+// so what is drawn in that moment is nothing at all.
+func TestHomeDrawsNothingUntilTheFarMachineHasAnswered(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.app("")
+	a.host = "box"
+	a.world = func() (session.World, bool) { return session.World{}, false }
+	a.openHome()
+	text := homeText(a)
+	for _, part := range homeEmptyLines() {
+		if strings.Contains(text, part) {
+			t.Fatalf("home called an unanswered machine empty (%q):\n%s", part, text)
+		}
 	}
 }
 

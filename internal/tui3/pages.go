@@ -446,16 +446,60 @@ func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	full, spans, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
 	if ok {
 		a.tabs = spans
-		return full
+		return a.placeBarMachine(full, width, pal)
 	}
 	worth := func(id page) bool { return a.barKeeps(id) || a.placeCount(id) > 0 }
 	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
 		a.tabs = spans
-		return some
+		return a.placeBarMachine(some, width, pal)
 	}
 	alone, spans, _ := a.tabBarAt(width, numbered, pal, a.barKeeps)
 	a.tabs = spans
-	return alone
+	return a.placeBarMachine(alone, width, pal)
+}
+
+// placeMachineLead is the word in front of the machine's name at the right end
+// of the bar. It is there so that a bare `spark` in the row the seven places are
+// drawn in cannot be read as an eighth place.
+const placeMachineLead = "on "
+
+// placeBarMachine puts the MACHINE THESE PLACES ARE ABOUT at the right end of
+// the tab bar, and puts nothing there at all on a local session.
+//
+// THE PLACES FOLLOW THE SESSION'S MACHINE NOW, AND A ROOM THAT MOVED WITHOUT
+// SAYING SO WOULD BE THE SAME FAULT WALKED BACKWARDS. Home used to draw one
+// sentence saying its rows belonged to the wrong machine; it draws the right
+// machine's rows instead ([app.readWorld]) — so the thing a person cannot see
+// any more is WHOSE work they are reading, and the fix is a name rather than a
+// sentence, because it is true on every frame of every place rather than in one
+// state of one of them.
+//
+// IT IS [app.host] AND NOT A SECOND SPELLING OF IT. The status line's place
+// segment writes `spark:app`, /status writes `spark:/srv/code/app`, and the
+// legend under the input writes `spark · porting the parser` — three renderings
+// of one field, which host.go's header states as the law that the connection is
+// shown as the place and nowhere else. This is the fourth, and it is the machine
+// alone because a place is a listing of a whole disk rather than of one
+// workspace.
+//
+// AND IT DISAPPEARS COMPLETELY ON A LOCAL SESSION, which is the test host.go
+// holds every indicator to: it is invisible when there is nothing to say. It
+// also gives up its cells before the bar gives up a word — the places are what
+// the row is for, and a name that pushed `search` off the end would be telling
+// somebody about a machine instead of about their own rooms.
+func (a *app) placeBarMachine(bar string, width int, pal palette) string {
+	name := strings.TrimSpace(a.host)
+	if name == "" {
+		return bar
+	}
+	word := placeMachineLead + name
+	used, room := ansi.StringWidth(bar), ansi.StringWidth(word)
+	// tabLead's worth of air at each end, and tabGap between the last chip and
+	// the name, so the row breathes the way every other row of this bar does.
+	if used+tabGap+room+tabLead > width {
+		return bar
+	}
+	return bar + strings.Repeat(" ", width-used-room-tabLead) + pal.dim(word)
 }
 
 // barKeeps is the word the ladder may never give up: the place you are standing
@@ -1255,10 +1299,10 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // is for. There is no refusal path left here to put anything back with, and each
 // place answers an empty world with its own teaching prose ([tasksTeach],
 // [standingTeach], [memoryTeaching]) rather than with a bounce. The one fact a
-// place cannot teach its way around — a session running on another machine,
-// where home's own state root belongs to the wrong disk — is drawn as a single
-// dim line in the place's body ([homeRemoteWord]), which is still the place
-// being open and saying why it is empty.
+// place cannot teach its way around — a reading that belongs to a machine this
+// process cannot see — is drawn as a single dim line in the place's body
+// ([place.remote]), which is still the place being open and saying why it is
+// empty.
 func (a *app) showPage(id page) tea.Cmd {
 	// LEAVING A PLACE IS THE LOOK, and it is the place's own `close` that writes
 	// the stamp — one call for EVERY place rather than a list of them here, which
