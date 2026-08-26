@@ -355,6 +355,9 @@ func (a *app) homeRowVerbs() []verb {
 	row := *line.sw.row
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
+		if a.hosted() && (v.key == 'o' || v.key == 'c' || v.key == 't') {
+			continue
+		}
 		// A VERB THAT CANNOT WORK IS ABSENT, NOT BROKEN. Two of the doors want a
 		// folder — a fresh conversation rooted in it, and handing it to the
 		// machine's file manager — and a row whose folder is not there any more
@@ -406,7 +409,13 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 // homeArchiveRow is `a put it away` — the same write `ctrl+e` makes, said once
 // so the key and the strip can never mean two different things.
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
-	if err := session.SetArchived(row.Dir, !row.Archived); err != nil {
+	err := error(nil)
+	if a.archive != nil {
+		err = a.archive(row.Dir, !row.Archived)
+	} else {
+		err = session.SetArchived(row.Dir, !row.Archived)
+	}
+	if err != nil {
 		a.home.say("could not put it away", "")
 		return nil
 	}

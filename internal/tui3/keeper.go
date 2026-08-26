@@ -458,10 +458,14 @@ func (a *app) openBeside(workspace, transcript string) (tea.Cmd, string) {
 		return nil, resumeUnavailableWord
 	}
 	if a.open == nil {
-		// The older seam cannot be asked about another project: it takes a
-		// transcript and resolves the workspace from the launch this process
-		// booted in. A capability that cannot work is absent, not broken.
-		return nil, resumeUnavailableWord
+		if a.resume == nil {
+			return nil, resumeUnavailableWord
+		}
+		agent, err := a.resume(transcript)
+		if err != nil {
+			return nil, err.Error()
+		}
+		return a.takeBeside(Conversation{Agent: agent, Workspace: workspace, SessionFile: transcript}), ""
 	}
 	conv, err := a.open(workspace, transcript)
 	if err != nil {

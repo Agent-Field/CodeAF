@@ -280,6 +280,14 @@ type Options struct {
 	// thing two surfaces could then share.
 	UsageLedger string
 
+	// Ledger is the hosted reading of the machine-wide ledger. Nil keeps the
+	// local path above; a hosted surface receives a non-blocking cached answer.
+	Ledger func(since time.Time) (lines []session.UsageLine, held bool, known bool)
+
+	// Archive puts a conversation away on the machine that owns its row. Nil
+	// makes that action absent, so a hosted surface never writes a far path here.
+	Archive func(dir string, archived bool) error
+
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
 	//
 	// World is the walk of the conversations and projects on THE MACHINE THAT
