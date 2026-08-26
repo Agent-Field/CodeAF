@@ -82,6 +82,19 @@ type standPage struct {
 	// layout for the pointer — the same bargain the other panels make
 	// (permissions.go, connectpanel.go). A heading answers to no row.
 	owner []int
+	// hover is the SCREEN LINE OF THE BLOCK the pointer is resting on, and -1
+	// for none. It is a line and not a row index because that is what the fill
+	// this list is drawn with compares against ([overlayFill.addTinted]): an
+	// order draws two lines at most widths, and either of them is the pointer
+	// being on it.
+	//
+	// IT IS THE PLACE'S OWN MAP. The overlay this list used to be read the
+	// pointer off the chrome's marks, and the chrome does not draw it any more —
+	// so for one wave the hover answered -1 by declaration and a pointer
+	// crossing the standing place lit nothing at all. It is written by pages.go's
+	// [app.placeBodyHover] against the `owner` map the draw wrote, which is the
+	// same bargain every other hit map on this surface strikes.
+	hover int
 	// win is WHEN IT FIRED — this place's time axis (screen 3d), drawn as the
 	// control on the header row and moved by the four shift-arrows. It opens
 	// holding every firing the machine has, so the first frame hides nothing and
@@ -99,16 +112,17 @@ type standPage struct {
 // a person was on in order to tell them it had nothing would cost them their
 // place to say nothing at all. The refusal is a sentence they read
 // ([standNothingWord]) and never a silent return.
+//
+// AND IT IS SAID WHERE THE PERSON WHO ASKED IS LOOKING (pages.go's
+// [app.refusePage]). `/standing` typed into a conversation is answered in that
+// conversation, which is what this always did; `alt+3` pressed while a place is
+// up is answered on the place, because a note written under a screen drawn over
+// the whole terminal is a sentence nobody can read — and that is exactly what
+// made the jump key look broken.
 func (p *standPage) open(a *app) tea.Cmd {
-	a.readStandingElsewhere()
-	// THE WINDOW IS MEASURED BEFORE ANYTHING IS SCOPED BY IT, over every order
-	// the machine holds — which is what makes the span it opens on the true one
-	// and the first frame's list complete.
-	stand, excepted, elsewhere := a.standingPageParts()
-	win := standingOpenWindow(a.now(), stand, excepted, elsewhere)
-	rows := standingShelvesIn(win, stand, excepted, elsewhere)
+	rows, win := a.standingPlaceReading()
 	if len(rows) == 0 {
-		a.note(standNothingWord)
+		a.refusePage(standNothingWord)
 		return nil
 	}
 	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
@@ -116,7 +130,7 @@ func (p *standPage) open(a *app) tea.Cmd {
 	// the whole screen, so a page left open under it would take keys nobody can
 	// see ([app.standDownFullscreen] holds the law and the reason).
 	a.standDownFullscreen()
-	*p = standPage{up: true, rows: rows, win: win}
+	*p = standPage{up: true, rows: rows, win: win, hover: -1}
 	p.cursor = p.settle(0)
 	a.page = pageStanding
 	a.closeLists()
@@ -138,7 +152,7 @@ func (p *standPage) close(a *app) {
 // "nothing reads the disk on a draw".
 func (p *standPage) body(a *app, width, room int) []placeRow[int] {
 	lines, owner, top, shown := standingLines(
-		p.rows, p.win, p.cursor, p.top, width, room, p.hover(), a.pal, a.now())
+		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())
 	p.top, p.shown, p.owner = top, shown, owner
 	rows := make([]placeRow[int], 0, room)
 	for i, text := range lines {
@@ -154,11 +168,20 @@ func (p *standPage) body(a *app, width, room int) []placeRow[int] {
 	return rows
 }
 
-// hover is the row under the pointer, and it is -1 until the place grows a
-// hover map of its own. The overlay read it off the chrome's marks, and the
-// chrome does not draw this list any more; a hover resolved against a map
-// nobody writes would be a highlight on whatever row it used to be.
-func (p *standPage) hover() int { return -1 }
+// rowAt is which ORDER one screen line of the block belongs to. A heading, a
+// "not here" line, a "last look" paragraph and the blank under the last row
+// belong to none, and are swallowed rather than resolved to whichever row they
+// happened to be nearest.
+//
+// It is the reading of the `owner` map and nothing else, because the arithmetic
+// that turns a row of the TERMINAL into a line of a body is the same on every
+// place and lives once (placemouse.go, pages.go's [app.placeBodyPress]).
+func (p *standPage) rowAt(line int) (int, bool) {
+	if line < 0 || line >= len(p.owner) || p.owner[line] < 0 {
+		return 0, false
+	}
+	return p.owner[line], true
+}
 
 // stops is the cursor-legal rows of the last reading.
 func (p *standPage) stops() []int { return standRowStops(p.rows) }
@@ -461,11 +484,8 @@ func (p *standPage) press(a *app, y int) tea.Cmd {
 	// resolve against the chrome's overlay marks, which is what an overlay had
 	// and a place does not — a place is the whole frame, so there is no chrome
 	// under it to ask.
-	at := -1
-	if line := y - placeHeadRows; line >= 0 && line < len(p.owner) {
-		at = p.owner[line]
-	}
-	if at < 0 {
+	at, ok := p.rowAt(y - placeHeadRows)
+	if !ok {
 		// A heading, a "not here" line, a "last look" paragraph, or a blank under
 		// the last row: a line belonging to no order. It is swallowed rather than
 		// resolved to whichever row it happened to be nearest.
@@ -654,6 +674,23 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	a.touch()
 	return cmd
+}
+
+// standingPlaceReading is the whole of what opening this place decides: every
+// order the machine holds, the span they fall in, and the shelves scoped by it.
+//
+// IT IS ONE FUNCTION BECAUSE TWO ROADS ASK IT. [standPage.open] takes it to put
+// a page on the frame, and pages.go's [app.pageReady] takes it to find out
+// whether `tab` may walk in here at all — and a walk that answered "there is
+// something" out of a second reading would step into a room that then refused,
+// which is the fault the walk was rebuilt to end. The window is measured BEFORE
+// anything is scoped by it, over every order the machine holds, which is what
+// makes the span it opens on the true one and the first frame's list complete.
+func (a *app) standingPlaceReading() ([]standRow, session.UsageWindow) {
+	a.readStandingElsewhere()
+	stand, excepted, elsewhere := a.standingPageParts()
+	win := standingOpenWindow(a.now(), stand, excepted, elsewhere)
+	return standingShelvesIn(win, stand, excepted, elsewhere), win
 }
 
 // standingPageRows is the WHOLE page: what the conversation's engine says stands

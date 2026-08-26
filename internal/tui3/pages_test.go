@@ -116,9 +116,13 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	if a.page != pageHome {
 		t.Fatalf("home did not leave the router standing on itself: %v", a.page)
 	}
+	// TAB LEAVES THE PLACE IT WAS PRESSED ON, whatever is or is not on this
+	// machine. It used to be allowed to land back on home here, which is exactly
+	// the defect that let the built binary ship a `tab` that did nothing at all
+	// (placemouse.go's [app.walkPage]).
 	drive(t, a, key("tab"))
-	if a.page != pageTasks && a.page != pageHome {
-		t.Fatalf("tab from home landed on %q", a.page.word())
+	if a.page == pageHome {
+		t.Fatal("tab from home stayed on home")
 	}
 	// alt+5 IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
 	drive(t, a, key("alt+5"))
@@ -130,8 +134,8 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	}
 	// AND shift+tab IS THE SAME CIRCLE WALKED BACK.
 	drive(t, a, key("shift+tab"))
-	if a.page != pageMemory && a.page != pageSpend {
-		t.Fatalf("shift+tab from spend landed on %q", a.page.word())
+	if a.page == pageSpend {
+		t.Fatal("shift+tab from the spend place stayed on it")
 	}
 }
 

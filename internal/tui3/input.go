@@ -544,6 +544,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// AND alt+1…7 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// of the place grammar that belongs to no place — it is how a person GETS to
+	// a room — and every claim above has already had its say, so a modal overlay
+	// that wants the chord still gets it first and nothing below has taken a
+	// keystroke yet (placekeys.go's [app.placeJumpKey] holds the whole argument).
+	if cmd, taken := a.placeJumpKey(msg); taken {
+		return cmd
+	}
+
 	// SPELL IT OUT takes its three keys here, under the typed lists and over the
 	// plain switch (spellout.go): the chord while the hint offers it, and enter
 	// and esc only while its block is up. Which keys and when is decided in that
