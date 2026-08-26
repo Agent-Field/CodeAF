@@ -51,8 +51,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -240,44 +238,30 @@ func standingShelvesIn(win session.UsageWindow, stand, excepted, elsewhere []Sta
 }
 
 // standingWindowRoom is whether this frame has room to draw the control beside
-// the page's name.
-//
-// ONE PREDICATE ANSWERS THE PAINT AND THE KEYS, which is what keeps the surface
-// honest: a capability that cannot work is absent rather than broken, so on a
-// frame too narrow for the label the arrows are not drawn AND the keys do
-// nothing ([standingPlace.window] asks this same question). A control bound but
-// invisible is the exact defect the verb strip exists to end.
+// the page's name, asked of the ONE predicate every windowed place asks
+// (placeprose.go's [placeWindowFits]). It answers the paint and the keys alike:
+// the arrows are never bound where they are not drawn.
 func standingWindowRoom(width int, win session.UsageWindow) bool {
-	words := placeWindowWords(win)
-	if words == "" || phoneList(width) {
-		// AT [tierPhone] THERE IS NO WIDTH TO SHARE, which is the same answer the
-		// rows themselves give: a list wraps its tail onto a line of its own
-		// there rather than cutting both halves in half ([overlayItemLines]). A
-		// header packed edge to edge with a control would be that arithmetic
-		// again, and the control is the half a phone can most afford to lose.
-		return false
-	}
-	return width >= ansi.StringWidth(standingHeadWords)+ansi.StringWidth(words)+standingHeadGap
+	arrows, _ := placeWindowFits(width, standingHeadWords, win)
+	return arrows
 }
 
-// standingHeadGap is the least air between the page's name and the control at
-// the other end of its line. Two cells would technically fit and would read as
-// one run-on row; four is a gap a person's eye reads as a gap, which is screen
-// 2a's own device — air where there is no fifth brightness tier to spend.
-const standingHeadGap = 4
+// standingGrainRoom is the same question about the SECOND axis: `shift+↑↓` is
+// bound only where the clause naming it is on the header.
+func standingGrainRoom(width int, win session.UsageWindow) bool {
+	_, grain := placeWindowFits(width, standingHeadWords, win)
+	return grain
+}
 
 // standingHeadWords is the page's name as the header lays it out, indent and
 // all. It is measured as well as drawn, so it is one string.
 const standingHeadWords = "  " + standHeading
 
 // standingHeaderRow is the place's first line: what this page is on the left,
-// and on the right the window that scopes it, drawn as its own control.
+// and on the right the window that scopes it — drawn by the one head row every
+// place with a time window shares ([placeHeadRow]).
 func standingHeaderRow(width int, win session.UsageWindow, pal palette) string {
-	if !standingWindowRoom(width, win) {
-		return pal.dim(fit(standingHeadWords, width))
-	}
-	gap := width - ansi.StringWidth(standingHeadWords) - ansi.StringWidth(placeWindowWords(win))
-	return pal.dim(standingHeadWords) + strings.Repeat(" ", gap) + placeWindowRow(win, pal)
+	return placeHeadRow(width, standingHeadWords, "", win, pal)
 }
 
 // standRowStops is which rows a cursor may come to rest on: the orders, and
@@ -506,4 +490,3 @@ func standingSummary(views []StandingItemView, now time.Time) string {
 	}
 	return clause
 }
-

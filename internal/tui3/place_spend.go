@@ -356,6 +356,19 @@ func (a *app) spendWindowKey(key string) bool {
 	if !a.at(pageSpend) {
 		return false
 	}
+	// AND A KEY IS BOUND ONLY WHERE THE HALF OF THE CONTROL NAMING IT IS DRAWN.
+	// One predicate answers the paint and the keys on every windowed place
+	// (placeprose.go's [placeWindowFits]): a frame too narrow for the arrows has
+	// no window at all, and one with room for the arrows but not for
+	// `shift+↑ coarser` beside them has no zoom.
+	width, _ := a.size()
+	arrows, grain := placeWindowFits(width, spendHeadWords(a.spend.reading.totals), a.spend.win)
+	if !arrows {
+		return false
+	}
+	if (key == "shift+up" || key == "shift+down") && !grain {
+		return false
+	}
 	next := a.spend.reading.step(a.spend.win, key)
 	if next == a.spend.win {
 		return false

@@ -193,8 +193,13 @@ The last two classes are bound where there is something to bind. `alt+<letter>` 
 `alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
-(which days). A place with no window to move answers those keys with nothing rather than
-with something that is not drawn, and so does a terminal too narrow to draw the control.
+(which days). All three draw the same control on their own head row, at the right of the
+line: `shift+← aug 12 – aug 25 →`, with `shift+↑ coarser` beside it where the line has room.
+The label between the arrows is the control and the reading at once, so the span is on the
+screen once and the keys that move it are beside it. A place with no window to move answers
+those keys with nothing rather than with something that is not drawn, and so does a terminal
+too narrow to draw the control — and the zoom is bound only where its own clause fits, for
+the same reason. **memory has no time window**; its `shift+<arrow>` keys do nothing.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
 

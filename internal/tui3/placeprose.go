@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -165,6 +167,97 @@ func placeWindowRow(win session.UsageWindow, pal palette) string {
 		return ""
 	}
 	return pal.dim(placeWindowBack) + pal.ink(label) + pal.dim(placeWindowOn)
+}
+
+// placeGrainWords is THE SECOND AXIS, NAMED — `shift+↑ coarser` and its inverse
+// — and it names every direction that would actually move.
+//
+// A window already on days cannot get finer and a window on months cannot get
+// coarser, so the clause is one key at either end of the ladder and two in the
+// middle. That is the same law the verb strip keeps: a key drawn is a key bound,
+// and a key that would do nothing is not offered.
+func placeGrainWords(win session.UsageWindow) string {
+	switch win.Normalized().Grain {
+	case session.GrainMonth:
+		return placeFinerWords
+	case session.GrainWeek:
+		return placeCoarserWords + " · " + placeFinerWords
+	default:
+		return placeCoarserWords
+	}
+}
+
+const (
+	placeCoarserWords = "shift+↑ coarser"
+	placeFinerWords   = "shift+↓ finer"
+	// placeHeadGap is the least air between what a place is called and the
+	// control at the other end of its line. Two cells would technically fit and
+	// would read as one run-on row; four is a gap a person's eye reads as a gap,
+	// which is screen 2a's own device — air where there is no fifth brightness
+	// tier to spend.
+	placeHeadGap = 4
+)
+
+// placeWindowFits is what one head row HAS ROOM FOR: the arrows around the
+// label, and the grain clause beside them.
+//
+// ONE PREDICATE ANSWERS THE PAINT AND THE KEYS, on every place that has a time
+// window, and that is what keeps the surface honest: a capability that cannot
+// work is absent rather than broken, so on a frame too narrow for the label the
+// arrows are not drawn AND the keys do nothing — and the same, separately, for
+// the zoom. A control bound but invisible is the exact defect the verb strip
+// exists to end.
+//
+// AT [tierPhone] THERE IS NO WIDTH TO SHARE. A list wraps its tail onto a line
+// of its own there rather than cutting both halves in half, and the control is
+// the half a phone can most afford to lose.
+func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, grain bool) {
+	words := placeWindowWords(win)
+	if words == "" || phoneList(width) {
+		return false, false
+	}
+	used := ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
+	if width < used {
+		return false, false
+	}
+	return true, width >= used+ansi.StringWidth(placeGrainWords(win))+placeHeadGap
+}
+
+// placeHeadRow is THE ONE HEAD ROW every place with a time window draws: what
+// the place is on the left, and on the right the window exactly as SCREEN 3d
+// draws it — `shift+← aug 12 – aug 25 →`, the control and the reading at once,
+// with the grain clause beside it where the line has room.
+//
+// IT IS ONE FUNCTION BECAUSE THERE IS ONE CONTROL. Standing drew this pair, the
+// spend place drew a legend of its own that named the keys and not the span, and
+// the tasks place drew neither while binding all four keys — three answers to one
+// question, and the third was the exact defect this file's law is written
+// against. What differs between the three places is the sentence on the LEFT,
+// which is the only thing any of them knows that the others do not.
+// head is the left field as it is MEASURED and painted as it is DRAWN. The two
+// are separate arguments because a painted string cannot be measured — an escape
+// sequence takes no cells and every one of them would be counted — and a head
+// row that measured its own colours would put the control off the right edge.
+// An empty `painted` means "paint it dim", which is what a place name wants.
+func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal palette) string {
+	if painted == "" {
+		painted = pal.dim(head)
+	}
+	arrows, grain := placeWindowFits(width, head, win)
+	if !arrows {
+		return pal.dim(fit(head, width))
+	}
+	right := placeWindowRow(win, pal)
+	plainRight := placeWindowWords(win)
+	if grain {
+		right += pal.dim("  " + placeGrainWords(win))
+		plainRight += "  " + placeGrainWords(win)
+	}
+	gap := width - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
+	if gap < 1 {
+		gap = 1
+	}
+	return painted + strings.Repeat(" ", gap) + right
 }
 
 // foldLine keeps every collapsed count in one sentence grammar. A clause is

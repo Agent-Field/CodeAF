@@ -302,6 +302,13 @@ func (p *standingPlace) window(a *app, key string) bool {
 	if !standingWindowRoom(width, p.win) {
 		return false
 	}
+	// AND THE ZOOM IS BOUND ONLY WHERE ITS OWN CLAUSE IS DRAWN. The header has
+	// room for the arrows long before it has room for `shift+↑ coarser` beside
+	// them, and the two halves of the control are gated separately for the reason
+	// the whole predicate exists ([placeWindowFits]).
+	if (key == "shift+up" || key == "shift+down") && !standingGrainRoom(width, p.win) {
+		return false
+	}
 	next := placeWindowStep(p.win, key)
 	if next == p.win {
 		return false

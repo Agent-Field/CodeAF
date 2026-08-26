@@ -35,12 +35,20 @@ func spendTestReading() spendReading {
 	return readSpend(spendFixture(), session.LastDays(spendTestNow, 14), spendTestNow)
 }
 
+// THE HEAD ROW IS THE FIGURES AND THE CONTROL, and the span is between the
+// arrows — SCREEN 3d's "the label between the arrows is the control and the
+// reading at once", drawn by the head row standing and tasks share.
 func TestTheSpendPageCarriesTheWindowFiguresInItsHeader(t *testing.T) {
 	got := plain(spendTestReading().rows(120, newPalette(tokens.NoColor, false))[0])
-	for _, want := range []string{"aug 12 – aug 25", "$34.10", "41.2M tokens", "shift+←→ window"} {
+	for _, want := range []string{"$34.10", "41.2M tokens", "shift+← aug 12 – aug 25 →", "shift+↑ coarser"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("header %q does not carry %q", got, want)
 		}
+	}
+	// AND THE SPAN IS SPELLED ONCE. It used to lead the left field as well, so
+	// the label a person moves and the label they read were two runs of one line.
+	if n := strings.Count(got, "aug 12"); n != 1 {
+		t.Fatalf("the window's span is spelled %d times, want once: %q", n, got)
 	}
 }
 

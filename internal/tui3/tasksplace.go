@@ -119,10 +119,10 @@ type tasksReading struct {
 	// count line — which is the only thing on the frame naming the window the
 	// four shift-arrows are moving. Teaching in the second case swallowed the way
 	// back, so `shift+←` on a real machine looked like the page had been wiped.
-	held  int
-	win   session.UsageWindow
-	seen  time.Time
-	now   time.Time
+	held int
+	win  session.UsageWindow
+	seen time.Time
+	now  time.Time
 }
 
 // tasksKey is what identifies ONE piece of work across every authority: the
@@ -302,7 +302,18 @@ func (r tasksReading) lay(width int) []tasksLine {
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
-	add(tasksLineWord, r.head())
+	// THE WINDOW EDGE IS NAMED ONCE PER FRAME, and which half of the line names
+	// it depends on whether the control fits. A frame with room for
+	// `shift+← aug 12 – aug 25 →` has the span between the arrows, where SCREEN
+	// 3d puts it — the control and the reading at once — so the sentence drops
+	// its `since` clause; a frame too narrow for the control keeps the clause,
+	// because a head line that named neither would leave the four arrow keys
+	// moving something nothing on the frame reports.
+	head := r.head(false)
+	if arrows, _ := placeWindowFits(width, head, r.win); !arrows {
+		head = r.head(true)
+	}
+	add(tasksLineWord, head)
 	phone := layoutTier(width) == tierPhone
 	for _, section := range []tasksSection{tasksNeeds, tasksRunning, tasksToday, tasksEarlier} {
 		items := r.section(section)
@@ -354,7 +365,12 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead s
 		return ""
 	case tasksLineWord:
 		if i == 0 {
-			return pal.muted(fit(line.text, width))
+			// THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), drawn by the
+			// one head row standing and spend also draw — `shift+← aug 12 – aug 25
+			// →`, the control and the reading at once. Before it, this place bound
+			// all four arrow keys and drew nothing that named them, which is the
+			// exact defect verbstrip.go's law was written against.
+			return placeHeadRow(width, line.text, pal.muted(line.text), r.win, pal)
 		}
 		return pal.dim(fit(line.text, width))
 	case tasksLineTail:
@@ -389,21 +405,26 @@ func (r tasksReading) at(lines []tasksLine, i int) (tasksItem, bool) {
 // THE WINDOW EDGE IS SAID HERE AND NOWHERE ELSE. It used to be repeated on a
 // fold at the foot of every section, which is one number in two places and the
 // drift the one-source-of-truth law exists to stop.
-func (r tasksReading) head() string {
+func (r tasksReading) head(edge bool) string {
 	// A WINDOW HOLDING NONE OF IT SAYS SO IN WORDS AND NOT AS A ZERO. The
 	// emptiness law reaches this sentence: `0 since aug 12` is the figure the law
 	// exists to forbid, and `nothing since aug 12` is the same fact a person can
 	// read — with the date still on the line, which is what says the window is
 	// the reason.
+	//
+	// `edge` IS WHETHER THIS SENTENCE HAS TO CARRY THE WINDOW'S OWN DATE. It does
+	// on a frame with no room for the control; where the control is drawn, the
+	// span sits between its arrows and a `since` clause here would be the same
+	// date in two places on one line ([tasksReading.lay] decides which).
 	if len(r.items) == 0 {
 		word := "work aforge ran on its own. nothing"
-		if start := tasksWindowStart(r.win); start != "" {
+		if start := tasksWindowStart(r.win); edge && start != "" {
 			word += " since " + start
 		}
 		return word + "."
 	}
 	word := fmt.Sprintf("work aforge ran on its own. %d", len(r.items))
-	if start := tasksWindowStart(r.win); start != "" {
+	if start := tasksWindowStart(r.win); edge && start != "" {
 		word += " since " + start
 	}
 	var cost float64
