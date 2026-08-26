@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -838,6 +839,29 @@ func (placeHome) cursorRow(a *app, rows []placeRow) int {
 func (placeHome) enter(a *app) tea.Cmd { return a.homeEnter() }
 
 func (placeHome) verbs(a *app) []verb { return a.homeRowVerbs() }
+
+// rowID names the row home's cursor is standing on (pages.go's [place.rowID]).
+//
+// IT IS THE ROW'S OWN IDENTITY AND NEVER ITS POSITION. Home rebuilds its lines
+// on every three-second beat and re-ranks them under every letter typed into
+// the query, so the conversation at line nine is a different conversation a
+// moment later — which is the whole reason [homeView.pointAt] finds a row by
+// what it IS rather than by where it was. The name is the kind and whichever
+// handle that kind of row carries, so two rows of one list cannot answer alike.
+func (placeHome) rowID(a *app) string {
+	line, ok := a.home.previewLine()
+	if !ok {
+		return ""
+	}
+	parts := []string{strconv.Itoa(int(line.kind)), line.project, line.dir, line.row.Transcript, line.item.ID}
+	if line.ex != nil {
+		parts = append(parts, line.ex.id)
+	}
+	if line.task != nil {
+		parts = append(parts, line.task.SessionID, line.task.ID)
+	}
+	return strings.Join(parts, "\x00")
+}
 
 // alt is `alt+g` and `alt+q`: the two views home can actually be shown in
 // ([app.homeAlt] holds the argument for why there are only two).

@@ -44,13 +44,26 @@ type verb struct {
 	do   func() tea.Cmd
 }
 
-// verbStrip is the strip's whole state: whether it is drawn, and what is on it.
+// verbStrip is the strip's whole state: whether it is drawn, whose row it is
+// about, and what is on it.
 //
 // The verbs are captured when the strip OPENS rather than asked for on every
 // frame, so a letter cannot act on a row that has moved out from under it — the
 // same reason home's hit maps are written by the draw.
+//
+// AND row IS WHAT MAKES THAT TRUE. Capturing the verbs is only half of it: a
+// captured verb still fires if the cursor walks away and the strip stays up. The
+// strip used to guard that with a list of the keys that move a cursor, and a
+// list is a fourth place the same fact is written down — it went stale the day
+// the tasks place bound `ctrl+n`, `ctrl+p`, `home` and `end` to its own cursor,
+// none of which were on it, so `x stop it` could be captured on a running task
+// and pressed on a finished one two rows down. The name of the row is not a
+// list: it cannot fall behind a key nobody has bound yet, a wheel tick or a
+// rebuild, because it is about the cursor's destination rather than about how
+// the cursor got there ([app.holdStrip]).
 type verbStrip struct {
 	open  bool
+	row   string
 	verbs []verb
 }
 
@@ -70,14 +83,48 @@ func (a *app) openStrip() bool {
 	if len(verbs) == 0 {
 		return false
 	}
-	a.strip = verbStrip{open: true, verbs: verbs}
+	a.strip = verbStrip{open: true, row: a.rowIdentity(), verbs: verbs}
 	return true
+}
+
+// rowIdentity is the name of the row the cursor is standing on right now, on
+// whichever place is up — the place's own answer and nothing this file invents
+// (pages.go's [place.rowID]).
+func (a *app) rowIdentity() string {
+	pl := a.showing()
+	if pl == nil {
+		return ""
+	}
+	return pl.rowID(a)
+}
+
+// holdStrip is THE STRIP BELONGS TO A ROW, enforced.
+//
+// It is asked twice: before any key is read while the strip is up, and again by
+// the frame before the strip is drawn. Those two between them cover every way a
+// cursor can move — a key the router took, a key the place took, a press, a
+// hover, a wheel tick, a filter re-ranking the list, the three-second beat
+// re-reading it — because none of them can reach a person without one of the
+// two happening first. What a key was called never enters into it.
+//
+// Leaving the place entirely is already covered a third time: [app.showPage]
+// closes the strip on the way out, since the verbs of a row in another room are
+// not stale so much as absent.
+func (a *app) holdStrip() {
+	if a.strip.open && a.rowIdentity() != a.strip.row {
+		a.closeStrip()
+	}
 }
 
 // stripKey is every key while the strip is up. It is read before the place's own
 // handler and before the composer, because a strip that could be typed over
 // would be a strip whose letters were a lottery.
 func (a *app) stripKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// THE ROW IS ASKED FOR FIRST, BEFORE ANY LETTER IS MATCHED. Whatever moved
+	// the cursor last — a key this file has never heard of, a wheel, a rebuild —
+	// the strip is gone before its letters can be read as verbs, and the key
+	// goes to the place as though the strip had never been up.
+	a.holdStrip()
 	if !a.strip.open {
 		return nil, false
 	}
@@ -92,13 +139,14 @@ func (a *app) stripKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// the row it was about is no longer the thing on screen.
 		a.closeStrip()
 		return nil, false
-	case "up", "down", "pgup", "pgdown", "tab", "shift+tab":
-		// A KEY THAT MOVES OFF THE ROW CLOSES THE STRIP AND THEN MOVES. Verbs
-		// belong to one row; carrying them onto the next would be exactly the
-		// stale-map bug this file's capture avoids.
-		a.closeStrip()
-		return nil, false
 	}
+	// AND THERE IS NO LIST OF THE KEYS THAT MOVE A CURSOR. There used to be —
+	// `up`, `down`, `pgup`, `pgdown`, `tab`, `shift+tab` — and a place that
+	// bound a second spelling of `down` walked straight past it. A key that
+	// moves the cursor now closes the strip by moving the cursor: it falls
+	// through to the place, the place moves, and the next thing to happen —
+	// the frame's own [app.holdStrip] before it draws, or this function's
+	// before the next key — finds the row is not the captured one and drops it.
 	for _, v := range a.strip.verbs {
 		if msg.String() == string(v.key) {
 			cmd := v.do()

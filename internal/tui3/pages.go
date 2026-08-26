@@ -130,6 +130,18 @@ type place interface {
 	// that answers for a row the draw did not put there, which is the law every
 	// hit map on this surface is held to.
 	cursorRow(a *app, rows []placeRow) int
+	// rowID NAMES THE ROW UNDER THE CURSOR, and it is what the verb strip is
+	// bound to (verbstrip.go). A strip captures its verbs from one row; the name
+	// captured beside them is how the frame knows, on any later frame, that the
+	// row is still the one those letters were about.
+	//
+	// It is a NAME and not an index, for the reason every restore on this
+	// surface is: a rebuild three seconds later hands the same thing a different
+	// row number, and a cursor compared by number would say a row had changed
+	// when only the list around it had. Two different rows must never share a
+	// name; a row a place cannot name answers "", which is a row no strip
+	// survives moving onto.
+	rowID(a *app) string
 	// owns is A LAYER INSIDE THIS PLACE THAT HAS TAKEN THE WHOLE KEYBOARD, and it
 	// is read BEFORE the router's own six classes. Home's focused errand pane and
 	// its phone sheet, and the settings panel's value editor, model picker and
@@ -214,6 +226,7 @@ func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int,
 }
 func (placeBase) stops(a *app) []int                      { return nil }
 func (placeBase) cursorRow(a *app, rows []placeRow) int   { return -1 }
+func (placeBase) rowID(a *app) string                     { return "" }
 func (placeBase) enter(a *app) tea.Cmd                    { return nil }
 func (placeBase) verbs(a *app) []verb                     { return nil }
 func (placeBase) alt(a *app, letter rune) bool            { return false }
@@ -501,6 +514,13 @@ type placeRow struct {
 // `<word>Frame` function is a two-line shim over this that casts the hit map
 // back into that place's vocabulary.
 func (a *app) placeDraw(pl place, width, height int) ([]string, []placeHit, int, int) {
+	// AND THE VERB STRIP IS DROPPED HERE IF THE CURSOR HAS LEFT ITS ROW. Every
+	// way a cursor can move ends in a frame — a press, a hover, a wheel tick, a
+	// filter re-ranking the list, the three-second beat re-reading it — so this
+	// one call, ahead of the split between a place's own frame and the shared
+	// one, is what makes the strip's binding to a row true for all seven
+	// (verbstrip.go's [app.holdStrip]).
+	a.holdStrip()
 	if lines, hits, caretX, caretY, own := pl.ownFrame(a, width, height); own {
 		return lines, hits, caretX, caretY
 	}

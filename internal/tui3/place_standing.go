@@ -284,6 +284,17 @@ func (p *standingPlace) verbs(a *app) []verb {
 	}
 }
 
+// rowID is the order under the cursor, named by the document's own id
+// (pages.go's [place.rowID]). The window re-groups this list and the beat
+// re-reads it, so a row's position here is the least durable thing about it.
+func (p *standingPlace) rowID() string {
+	row, ok := p.choice()
+	if !ok {
+		return ""
+	}
+	return row.view.Item.ID
+}
+
 // window is the four time keys of screen 3d, and this place's axis is WHEN IT
 // FIRED.
 //
@@ -864,6 +875,7 @@ func (a *app) standingPlaceFrame(width, height int) ([]string, []int, int, int) 
 }
 func (placeStanding) enter(a *app) tea.Cmd                { return a.orders.enter(a) }
 func (placeStanding) verbs(a *app) []verb                 { return a.orders.verbs(a) }
+func (placeStanding) rowID(a *app) string                 { return a.orders.rowID() }
 func (placeStanding) window(a *app, key string) bool      { return a.orders.window(a, key) }
 func (placeStanding) note(a *app, width int) []string     { return a.orders.note(a, width) }
 func (placeStanding) hint(a *app) string                  { return a.orders.hint(a) }
