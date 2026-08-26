@@ -24,12 +24,11 @@ package config
 // answer alone, so an unanswered row still says "not set" rather than claiming
 // a value the person never wrote.
 //
-// THIS PAIR MUST BE ROTATED BEFORE ANY PUBLIC DISTRIBUTION. What is shared here
-// is one quota, one consent screen, and one revocation: a shipped id that is
-// abused is disabled for everybody holding the same binary, so a build that
-// goes out beyond this team registers its own client and replaces these two
-// lines.
+// THIS PAIR NAMES THE PUBLIC AFORGE DESKTOP APP. It deliberately shares one
+// quota, one consent screen, and one revocation across every released binary.
+// Development and staging builds should use the override rungs above; changing
+// these lines is a release-wide registration migration, not local setup.
 const (
-	defaultGoogleOAuthClient = "173863316211-5jct1pmtq8bn4crsl029slkv9g4r8b4q.apps.googleusercontent.com"
-	defaultGoogleOAuthSecret = "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"
+	defaultGoogleOAuthClient = "921834031867-u1th3o1s80meaht5lecqsdgrelk2rq0g.apps.googleusercontent.com"
+	defaultGoogleOAuthSecret = "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"
 )
