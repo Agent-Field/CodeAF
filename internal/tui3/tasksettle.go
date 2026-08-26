@@ -380,7 +380,7 @@ func (a *app) hoveringSettle(entry int) int {
 // is typing a sentence is a surface that decided their work was finished on the
 // strength of the first word of a paragraph.
 func (a *app) settleCardKey(msg tea.KeyPressMsg) bool {
-	if a.sheet.open || a.home.open || a.pick.open || a.copy.on || a.rew.on ||
+	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
 		a.roomOpen() || !a.input.empty() {
 		return false
 	}

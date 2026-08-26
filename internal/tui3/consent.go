@@ -688,7 +688,7 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	//
 	// The three questions below all live under it: the proposal and the standing
 	// card are read from this hook, and both take bare letters too.
-	if a.home.open {
+	if a.at(pageHome) {
 		return nil, false
 	}
 	// A TASK PROPOSAL IS THE OTHER QUESTION on this surface, and it is read from
@@ -1352,7 +1352,7 @@ func (a *app) recordShapeTaps(parts []string) {
 // why): the countdown exists so an unattended session cannot park a call
 // forever, and a pointer inside the question is a person at the machine.
 func (a *app) consentPress(x, y int) bool {
-	if !a.asking() || a.copy.on || a.sheet.open {
+	if !a.asking() || a.copy.on || a.at(pageSettings) {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing for

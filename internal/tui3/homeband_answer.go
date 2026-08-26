@@ -182,7 +182,11 @@ func answerChips(question session.PresenceQuestion) []answerChip {
 // draws the same shape and cannot be borrowed — it asks whether the pointer is
 // over the block it belongs to, and there is no block here, only a card in a
 // column. What is shared is the thing that matters, which is that a key on this
-// surface is bold and violet wherever it is offered.
+// surface is bold and AMBER wherever it is offered ON THIS SCREEN. These chips
+// are the answer to a question that has stopped a conversation, which is home's
+// one meaning of "waiting on you", and the places wave moved every reading of it
+// onto the one hue ([hueWarn]). consent.go's block, inside a conversation, keeps
+// the violet.
 func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal palette) []string {
 	chips := answerChips(question)
 	if len(chips) == 0 {
@@ -190,7 +194,7 @@ func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal 
 	}
 	painted := make([]string, 0, len(chips))
 	for _, chip := range chips {
-		painted = append(painted, pal.askBold(chip.key)+pal.ask(" "+chip.label))
+		painted = append(painted, pal.warnBold(chip.key)+pal.warn(" "+chip.label))
 	}
 	return bandClauses(width, 0, func(s string) string { return s }, painted...)
 }
@@ -234,7 +238,7 @@ func (a *app) answerKey(key string) (tea.Cmd, bool) {
 // is recorded at draw time, which is the point: the only thing that could go
 // wrong with a remembered span is that it is a frame out of date.
 func (a *app) answerPress(x, y int) (tea.Cmd, bool) {
-	if !a.home.open || y < 0 {
+	if !a.at(pageHome) || y < 0 {
 		return nil, false
 	}
 	subject, ok := a.homeSubject()

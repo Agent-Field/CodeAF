@@ -3,7 +3,7 @@ package tui3
 // HOME ON A PHONE IS AN INBOX, NOT A DIRECTORY.
 //
 // Under sixty columns ([tierPhone]) home had no shape of its own. The detail
-// column went at eighty ([homeMinDetail]) and nothing else changed, so a
+// column went with the width ([homeCardMin]) and nothing else changed, so a
 // forty-four-cell frame drew the left column and only the left column: no card,
 // no answer chips — you could not approve another window's command from your
 // phone — no news, no outcome, no deliverables, no project card, and no `m` to
@@ -153,7 +153,7 @@ type homePhoneNote struct {
 // home takes the whole frame, so there is no body region to be narrower than
 // it.
 func (a *app) homePhone() bool {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return false
 	}
 	width, _ := a.size()
@@ -325,7 +325,8 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 			// A PUT-AWAY ROW IS NOT IN THE INBOX. The phone tier has no room
 			// for the archive's own fold; searching still finds the row, and
 			// the wide frame is where it is brought back (home.go's
-			// [homeArchiveFold]).
+			// the ranked reading leaves them out, and typing a name is the way
+			// back to one).
 			if row.Archived {
 				continue
 			}
@@ -501,7 +502,11 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 		a.caret = false
 	} else {
 		text := a.home.box.String()
-		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
+		// THE PERSON'S OWN GLYPH IS STRUCTURE ON A PLACE, NOT AN ACCENT. It is
+		// the same cell on every frame home has ever drawn, and the design spends
+		// colour on the two live states alone (styles.go's THE ONE-ACCENT LAW),
+		// so the prompt takes the second tier and the words keep the first.
+		add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1)
 		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
 		if caretX > width-1 {
 			caretX = width - 1
@@ -582,14 +587,14 @@ func (a *app) homePhoneList(width, room int, pal palette) []homeDrawn {
 
 // headingKind reports whether a line NAMES rows rather than being one.
 //
-// A zone's label is one of them, which is why it is in a list that started as
-// the phone's: the same question is asked by [homeView.markedSection], where the
-// answer has to hold for every section on the column and not only for the ones a
-// phone draws (homesection.go). A strip's label names its rows exactly as a
-// project's name names the conversations under it.
+// The switcher's own heading is one of them, which is why it is in a list that
+// started as the phone's: the same question is asked by
+// [homeView.markedSection], where the answer has to hold for every section on
+// the column and not only for the ones a phone draws (homesection.go). The
+// claim over the ranked list, the `since you left` heading and a project's name
+// under `alt+g` all name the rows below them exactly as a project heading does.
 func headingKind(kind homeRowKind) bool {
-	return kind == homePhoneSection || kind == homeHeading || kind == homeElsewhereRule ||
-		kind == homeAttentionZone
+	return kind == homePhoneSection || kind == homeHeading || kind == homeSwitchHead
 }
 
 // homePhoneRow is one line of the column as the lines it takes.
@@ -614,8 +619,6 @@ func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
 		// a wide frame (home.go's [app.homeLine]): a tap opens any project's
 		// conversation now, so there is no door to mark as shut.
 		return []string{" " + pal.dim(fit(line.project, width-1))}
-	case homeElsewhereRule:
-		return []string{pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))}
 	}
 	label, note, tint := a.homePhoneWords(line, pal)
 	// THE CONVERSATION THIS TERMINAL IS IN KEEPS ITS MARK ON A PHONE TOO. It is
@@ -673,7 +676,7 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			glyph = standNewsASCII
 		}
 		return glyph + " " + note.words, joinDot(sinceAt(note.at, h.world.Read), note.project), nil
-	case homePhoneMore, homeQuiet, homeItemFold, homeMoreProjects:
+	case homePhoneMore, homeQuiet, homeItemFold:
 		return homeFoldMark(line.folded, pal) + " " + homePhoneFoldWord(line, h.world.Read), "", nil
 	case homeProject:
 		return homeFoldMark(line.folded, pal) + " " + line.project,

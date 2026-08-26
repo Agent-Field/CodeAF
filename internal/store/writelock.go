@@ -75,6 +75,26 @@ func (s *Store) beginWrite() (*sql.Tx, error) {
 	return beginWriteWithin(s.db, writeLockWait)
 }
 
+// beginRead starts a DEFERRED transaction: a reader that wants two statements to
+// describe one moment, and takes no lock anybody else waits on.
+//
+// THE READ-ONLY FLAG IS LOAD-BEARING AND IS NOT DECORATION. This store's DSN
+// sets `_txlock=immediate` ([Open]) so that every ordinary transaction is a
+// write one, and a reader that began the same way would queue behind — and then
+// hold — the write lock, to answer a question that changes nothing. With the
+// flag the driver issues a plain `BEGIN`, which in WAL takes its snapshot at the
+// first statement inside it and holds that snapshot until the rollback, while
+// writers carry on beside it.
+//
+// A caller ROLLS BACK rather than commits: there is nothing to commit, and a
+// rollback says so to anybody reading the call site.
+func (s *Store) beginRead() (*sql.Tx, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("begin read: %w: no database", ErrInvalid)
+	}
+	return s.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+}
+
 // beginWriteWithin is beginWrite against a bare handle and a named bound. The
 // migrations [Open] runs deliberately do NOT come through here — they hold a
 // *sql.DB because there is no Store yet, they run once, and nobody is waiting on

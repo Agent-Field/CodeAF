@@ -25,44 +25,210 @@ The memory commands have two postures:
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
 default; off, nothing is carried, nothing is written, neither of the two calls
-below is made, and the background tidy never runs. With it off, all three
-commands answer:
+below is made, and the background tidy never runs. With it off, `/remember`,
+`/forget` and `/memories` answer:
 
 ```
-memory is off · turn it on under /settings
+memory is off for this session · turn it on under /settings
 ```
+
+**The memory PLACE still opens with it off.** `alt+4`, `tab` and `/memory` all reach it, and
+what they reach is the three sentences saying what memory is for with that same line said
+once under them, above the composer — *What the memory place shows when there is nothing in
+it* below. It used to refuse to open at all, which made `alt+4` on a fresh machine a key
+that did nothing.
+
+## It said memory is off and I never turned it off
+
+Then it is not the setting, it is the file. Two different sentences use the same
+words, and the one printed on the terminal before the screen appears always says
+what the trouble was after a colon:
+
+```
+memory is off for this session: could not open ~/.aforge/graph.db: permission denied
+```
+
+Everything remembered on this machine lives in one file, `~/.aforge/graph.db`,
+and every part of aforge opens that same file. When it will not open, this
+conversation runs without memory rather than refusing to start — you asked for a
+conversation, and a sulky file is no reason not to have one. Nothing already in
+the file is lost by this; nothing new is written until it opens again.
+
+The reason after the colon is the operating system's own, and it is the thing to
+act on:
+
+- `permission denied` — something owns `~/.aforge` that you do not. `ls -la ~/.aforge`
+  says who.
+- `read-only file system` — the disk it is on will not take writes.
+- `file is not a database` / `database disk image is malformed` — the file is
+  damaged. Move it aside and the next launch makes a fresh one, empty.
+
+**On a machine that has never run aforge there is no trouble to report.** The
+folder is made on the way in, and the first launch comes up with an empty memory
+that teaches rather than an error. It did not always: a first run once reported
+`out of memory (14)`, which was never true — that is one code SQLite uses for
+every reason a file will not open, and a build old enough to print it is a build
+worth replacing.
+
+## Where is everything you remember kept
+
+In `~/.aforge/graph.db`, one file, made the first time aforge runs. Memories,
+every conversation this machine has held, and the work it has run are all in it,
+which is why a memory kept in one project is there in the next.
+
+`AFORGE_HOME` moves the whole folder — set it and aforge keeps everything
+somewhere else, which is how a disposable run gets a brain of its own without
+touching yours.
+
+Copy the file to another machine and your memories go with it. Delete it and
+they are gone; nothing else keeps a second copy.
 
 ## How do I see what aforge remembers about me?
 
-Open `/memory`. Its twelve-row list starts with the most recently updated
-memories. Type to filter title, text and tags; the same prefix, substring
-and fuzzy subsequence ranking as the model picker is applied to the list loaded
-when the panel opened. A `*` marks a memory that has helped at least five
-times. Press tab
-to cycle the scope shown: all, user, project, env, then all again.
+Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
+place**, one of seven, taking the whole screen with the tab bar above it and a composer at
+the foot.
 
-Enter expands the selected memory to show its full text, tags, how many times it
-has helped (`used · 7`), age, and where it came from. Esc returns to the list; esc from the list closes the
-panel. `/memory <query>` prints matching lines into the conversation.
+The page is **shelves**, not a flat list. There are exactly three of them, because a memory's
+scope is a closed three: **you** (true everywhere), **this project**, and **this machine**.
+They are drawn biggest first, under a section line that says what the shelves are made of —
+`fact 12 · preference 8 · correction 3`. The biggest shelf opens itself; the rest stay rolled
+up with `▸` in front of them, and a fold at the bottom says exactly how many lines or shelves
+are not shown.
+
+The top line is the count: `41 held · 3 shelves · 2 let go`, with `type to filter` out at the
+right. A half that is zero is left out entirely.
+
+Each line says what it is and **how it has done**, in plain words rather than a percentage:
+
+```
+· tests live beside the file they test      lesson    helped 19 · bore on 3      2w ago
+· tui2 is the live tree; tui is dead code   quirk     new, learned 3h ago        3h
+· the rail owns the cursor                  let go                               6d ago
+```
+
+`helped` is how many times a line actually changed an answer; `bore on` is how many times it
+was put in front of a model and had nothing to do with the reply. A line that was **let go**
+stays on the shelf, dimmed, rather than vanishing.
+
+**Typing filters what is already on the page.** The store is read once, when you walk in, and
+again on the same three-second beat every place runs on — never on a keystroke. Every letter
+narrows the shelves and lines already in memory, matched against title, text, kind, status
+and tags, with the same prefix, substring and fuzzy ranking the model picker uses — **every
+letter, `u` included**. A filter that matches nothing says so in one line and draws nothing
+else.
+
+**`enter` on a shelf opens it, and `enter` again rolls it up.** On a LINE it is
+`ask me about it`, which has a section of its own below.
+
+**`alt+s` walks the shelves** — the next one open, the others rolled up, and one more press
+leaves them all closed. That key was `tab` until the places arrived; `tab` is the way to the
+next place now, and a view of a place belongs to the `alt+<letter>` class.
+
+**The foot says what the row under the cursor can be asked for**, so it is two sentences:
+
+```
+enter ask me about it · e fix the wording · f forget it · tab next place · esc
+enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc
+```
+
+`e` and `f` are the row's `→` strip, which is where they are bound: press `→` first and the
+letters are the verbs while it is drawn.
+
+`esc` clears the filter if there is one in it, and leaves the place on the second press.
+
+`/memory <query>` and `/memories <query>` print matching lines into the conversation instead
+of opening anything — a query is a question rather than a door.
+
+## What the memory place shows when there is nothing in it
+
+Two machines have an empty memory place and they show **the same body**: one that has simply
+not remembered anything yet, and one where memory is switched off. Both open, and both spend
+the frame on the three sentences that say what this is:
+
+```
+What I hold true about you and this machine.
+I put a line in here when it looked like it would matter later, and I only carry it into a chat it bears on.
+Corrections are the point — a wrong line here is wrong in every chat.
+```
+
+No shelf heading is drawn over an absence, and no count. The prose appears whenever fewer
+than eight lines are held, so a nearly-empty page teaches too rather than switching from a
+lesson to a list at the first memory.
+
+The one thing the sentences cannot carry is said **once**, on the dim note line between the
+rule and the composer:
+
+- memory switched off — `memory is off for this session · turn it on under /settings`
+- a store that is there and will not answer — `what is remembered could not be read just now`
+
+Neither is an error colour and neither is repeated on the three-second beat. The second one
+deliberately does not carry the underlying message: what you can do about it is the same
+either way.
+
+## ask me about it — what enter does on a memory line
+
+**`enter` on a line is `ask me about it`.** The line goes into a fresh conversation as its
+opening message — `about something you remember: <the line>` — and you are taken there, out
+of the memory place. That is how you talk about one of these lines: ask about it, argue with
+it, or tell me it is wrong and watch it be corrected.
+
+It is the same door `enter` over a place's message box takes — what you asked for is now
+happening somewhere you can watch it — so the conversation is an ordinary one, in this
+project, with the line as its first message. A window with no way to open a second
+conversation says `/new is unavailable here` and stays where it is.
+
+`enter` on a **shelf heading** still opens and closes that shelf. Only a line is asked about.
+
+The line's own card used to be on `enter`; it is on the row's `→` strip now, behind **`c`** —
+see *Where did a memory come from*.
 
 ## How do I edit a memory?
 
-In `/memory`, press enter to expand a row, then enter again (or `e`) to edit.
-The edit line is preloaded with the complete memory text. Enter saves it; esc
-cancels without changing anything. The title and tags stay as they were.
+Two ways. Press **`→`** on the line and the verb strip offers `e fix the wording`; or open
+the line's card with **`→` then `c`** and press enter there. The edit line is preloaded with
+the complete memory text. Enter saves it; esc cancels without changing anything. The title, the
+tags and the shelf stay as they were, and the corrected wording is on the page immediately.
+
+While the strip is drawn its letters are the verbs and the filter box is asleep; `esc` or
+`←` closes it and every letter is a character again.
+
+The strip is offered **only on a line**, and on a line it carries `c open the card`,
+`e fix the wording` and `f forget it` — plus `u put it back` while there is something to
+undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
+page all have nothing to fix and nothing to forget, so `→` on any of them opens nothing.
 
 ## How do I forget a memory and undo forgetting one?
 
-In the `/memory` list, delete (or ctrl+d) forgets the selected row immediately.
-The footer says `forgot '<title>' — u to undo`; press `u` to restore it. Undo is
-one-deep: only the most recent forget in this panel session can be restored.
+In the memory place, **delete** (or ctrl+d) forgets the line under the cursor immediately,
+and so does `f` on its `→` strip. The line above the composer says
+`forgot '<title>' · → put it back`; press **`→` then `u`** to restore it. Undo is one-deep:
+only the most recent forget in this visit can be restored.
+
+**`u` is not a bare key, and that is a fix rather than a cost.** It used to be matched ahead
+of the filter, which meant the letter could not be typed at all — a search for a word with a
+`u` in it lost the letter and put something back instead. On the strip it is a verb only
+while the strip is drawn, and it is offered only while there is something to put back.
 
 ## Where did a memory come from, and who says so?
 
-Expand it with enter. The provenance line reads `learned <age> in '<session
-title>'` when the source conversation is known. Older rows without provenance
-say `learned <age> ago`. Provenance answers “says who?”: memory is inspectable,
-forgetting is one key, and an accidental forget has one undo.
+Press **`→` then `c`** on the line — `c open the card`. The card carries the full text, what
+kind of thing it is, which shelf it is on, its tags, how it has done, and where it was
+learned — `learned 3h ago in 'Editor setup'` when the source conversation is known. A line
+whose origin nobody recorded carries no origin at all rather than a made-up one. Esc returns
+to the shelves.
+
+The card used to be on `enter`. `enter` on a line opens a conversation about it now, and the
+card moved onto the strip beside the two verbs that change the line.
+
+**That is one lookup, for one line, on the keypress that asked for it.** The page itself
+never asks: the older twelve-row panel read every memory and then asked for one line's
+provenance *per memory* — up to five hundred and one round trips before a frame could be
+drawn — which is exactly what a place on a three-second clock cannot afford. The whole page
+is now two statements, and the origin of one line is fetched when you open it.
+
+Provenance answers "says who?": memory is inspectable, forgetting is one key, and an
+accidental forget has one undo.
 
 ## How does it decide what to put in front of the model?
 
@@ -152,7 +318,7 @@ same cheap pass that reads the exchange afterwards is also shown those lines and
 asked which of them **bore on the answer** — as in, would the reply have been
 different without it. It costs no extra call and about ten words of answer.
 
-That number is what `used · 7` counts in `/memory`, and it is one of the three
+That number is what `helped 7` counts in `/memory`, and it is one of the three
 things the shortlist is ranked by. It counts **help, not retrieval**: a line put
 in front of a model that then had nothing to do with the reply is counted
 *against* itself, so something that keeps sounding relevant and never once
@@ -276,11 +442,13 @@ worked out.** A `preference`, a `decision` and a `correction` are your own words
 about how you want things — a correction is you saying aforge had it wrong — and
 the tidy is not allowed to decide any of them has been superseded. It may sharpen
 the wording of one, because you can read that and change it back; it may not
-retire it. Only a plain `fact` and a `project_state` can be retired that way,
-because those are the two that go stale on their own.
+retire it. Only a plain `fact` and a `project state` can be retired that way,
+because those are the two that go stale on their own. (The store spells that kind
+`project_state`; on the page and in the shelf legend it reads `project state`,
+because an underscore is a column name and not a word.)
 
 If you do want something gone, that is yours to do: `/forget <query>`, or delete
-(or ctrl+d) on a row in `/memory`, with one undo behind it.
+(or ctrl+d) on a line in `/memory`, with one undo behind it.
 
 ## Can you remember this for me?
 

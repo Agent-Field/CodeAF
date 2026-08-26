@@ -44,6 +44,18 @@ weighed against, and none of it is embedded data a packer could take back. The
 binary measured 50,069,769 and the budget was set to 51,071,000, keeping the
 same two percent of headroom the first figure was given.
 
+## The flush ceiling
+
+`FlushUsage` waits at most **2 seconds** (`usageFlushLimit`, `internal/session/usage_ledger.go`)
+for every ledger it is flushing, together rather than each. It is the exit path's
+cap, not a turn's: `v3Process.closeAll` calls it so the last turn's spending is on
+disk before the terminal comes back, and a writer parked inside `openUsageLedger`
+on a stalled mount never drains its queue again. Unbounded, that flush never
+returned and the terminal never came back — the one failure the rest of that file
+is written to prevent, moved off the turn path and onto the exit. The bargain is
+the file's own: a spending record is worth less than the turn that earned it, and
+less than the exit as well. Pinned by `TestFlushingUsageGivesUpOnAStalledLedger`.
+
 ## The allocation laws
 
 | Law | Where it is pinned |

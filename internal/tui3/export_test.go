@@ -31,7 +31,7 @@ func TestExportIsOnTheCommandList(t *testing.T) {
 	if !withPath {
 		t.Fatal("/export <path> is not on the command list")
 	}
-	if !strings.Contains(helpText(""), "/export") {
+	if !strings.Contains(helpText("", chordSpelling{}), "/export") {
 		t.Fatal("/export is not in /help")
 	}
 	// The word a person arrives with reaches the same row, and the table check

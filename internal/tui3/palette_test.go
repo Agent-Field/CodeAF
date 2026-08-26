@@ -3,6 +3,10 @@ package tui3
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The picker's list under test is the one the door hands over, and never the
@@ -244,6 +248,31 @@ func TestContextWord(t *testing.T) {
 	}{{0, ""}, {-1, ""}, {512, "512"}, {164_000, "164k"}, {1_048_576, "1M"}} {
 		if got := contextWord(c.tokens); got != c.want {
 			t.Fatalf("contextWord(%d) = %q, want %q", c.tokens, got, c.want)
+		}
+	}
+}
+
+// A ROW IS NEVER WIDER THAN THE FRAME, AND A NOTE IS THE HALF THAT USED TO
+// BREAK IT. [overlayRowTinted] fitted the label to the room the note left and
+// clamped the gap at one cell, but never cut the NOTE — so a value longer than
+// the terminal was appended whole to a label squeezed to nothing, and the row
+// ran past the edge by the note's own length. Settings' `tool exceptions` found
+// it at 60 columns with ten tools named in one value.
+func TestAnOverlayRowNeverOutgrowsItsWidth(t *testing.T) {
+	long := "• propose_task:allow, tasks:allow, read:allow, ls:allow, " +
+		"services:allow, track:allow, edit:allow, write:allow, " +
+		"commit:allow, web_search:allow"
+	pal := newPalette(tokens.ANSI256, false)
+	for _, width := range []int{4, 12, 24, 44, 60, 80, 120} {
+		for _, note := range []string{long, "short", ""} {
+			for _, oncursor := range []bool{false, true} {
+				line := overlayRowTinted("tool exceptions", note, nil,
+					oncursor, markNone, false, width, pal)
+				if got := ansi.StringWidth(ansi.Strip(line)); got > width {
+					t.Fatalf("at %d a row with a %d-cell note drew %d cells: %q",
+						width, len([]rune(note)), got, ansi.Strip(line))
+				}
+			}
 		}
 	}
 }

@@ -418,8 +418,25 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	item.LastOutcome = outcome.Kind
 	item.SpentUSD += outcome.USD
 	item.NeedsPerson = outcome.NeedsPerson
-	if outcome.Kind == "needs-you" && item.NeedsPerson == "" {
+	if outcome.Kind == OutcomeNeedsYou && item.NeedsPerson == "" {
 		item.NeedsPerson = oneLine(outcome.Text)
+	}
+	// THE TRUST COUNTER IS KEPT HERE BECAUSE THIS IS WHERE A FIRING IS RECORDED,
+	// beside [Item.Runs] and for the same reason: it is the one place in the
+	// program that knows a firing happened and how it came back. A streak is not
+	// recoverable from the record afterwards — LastOutcome is overwritten by the
+	// next firing — which [Item.CleanRuns] states at length.
+	//
+	// A QUESTION OR A FAILURE PUTS IT BACK TO NOTHING. Trust is a run of clean
+	// firings and not a tally of them: an item that needed somebody last night
+	// is an item somebody has to watch again, whatever it did the fortnight
+	// before. NeedsPerson is read rather than the outcome kind alone, because a
+	// runner may hand back a question on an outcome of any kind and the field is
+	// where that question actually lands.
+	if item.NeedsPerson != "" || outcome.Kind == OutcomeFailed {
+		item.CleanRuns = 0
+	} else {
+		item.CleanRuns++
 	}
 	if runDir != "" {
 		item.LastRun = runDir

@@ -1740,7 +1740,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// scope, and the nearest surface is the one on top.
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.taskSheet.open, a.home.open, a.deckShowing(), a.pick.open,
+		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
 		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.effPick.open:
 		return nil, false
@@ -1828,10 +1828,10 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "pgup":
-		a.roomScroll(-a.page())
+		a.roomScroll(-a.scrollPage())
 		return nil, true
 	case "pgdown":
-		a.roomScroll(a.page())
+		a.roomScroll(a.scrollPage())
 		return nil, true
 
 	case "up":
@@ -2163,8 +2163,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// the page is a place you go and come back from, not a state the column
 	// enters.
 	if line.more {
-		a.openTaskSheet()
-		return nil, true
+		return a.showPage(pageTasks), true
 	}
 	if line.hint {
 		a.railWiden(!a.railWide)

@@ -273,7 +273,7 @@ func (a *app) harnessPageHead(name, head string, room int, selected bool) string
 // mid-sentence walked into the design's room, and on home the same three keys
 // never reached the box a person was typing into.
 func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {
-	if a.sheet.open || a.home.open || a.pick.open || a.copy.on || a.rew.on ||
+	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
 		a.roomOpen() || !a.input.empty() {
 		return false
 	}

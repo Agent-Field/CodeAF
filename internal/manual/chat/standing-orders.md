@@ -44,8 +44,9 @@ Two gestures say the same thing outright, for when you want to be sure it is rea
 rule rather than as work: **`ctrl+enter`** instead of `enter`, and **`/standing <words>`**
 typed as a command. Both go through the same door, and both still end in a card.
 
-Bare `/standing` (or `/orders`) shows what already stands over the conversation you are in;
-`/home` shows everything standing on the machine, grouped by project.
+Bare `/standing` (or `/orders`) shows what already stands over the conversation you are in,
+and under that, everything else standing on this computer under the heading `in other
+projects`. `/home` shows the same orders filed under the project each one belongs to.
 
 ## How does it know I mean always — instruction, or standing order
 
@@ -101,8 +102,8 @@ everything with an appointment, newest first — a rule has no "next", so it doe
 belong in a queue of what happens next.
 
 On home, `ctrl+e` pauses one, which stops it reaching new work; `ctrl+x` stops it for
-good. (On the standing orders page inside a conversation, which has no message box
-competing for letters, the keys are `p` and `s`.)
+good. (On the standing orders page, press `→` on the row and the same two verbs appear as
+`p pause` and `s stop`.)
 
 ## Nothing stands until you say yes
 
@@ -329,63 +330,100 @@ below into a place to say either one: "only in this project", "everywhere", "jus
 chat" — the same door that changes the time. `enter` sends your words back, nothing is set
 up yet, and a new card comes with the reach you asked for on its `where ·` band.
 
-## /standing and /orders — what stands over this conversation
+## /standing and /orders — what stands over this conversation, and everywhere else
 
-`/standing` (or `/orders`) opens a short page under the message box: the heading
-`standing orders`, and up to three shelves in the order you read outward from where you
-are sitting.
+`/standing` (or `/orders`) opens the standing place, which takes the whole terminal: the
+heading `standing orders`, and up to **four** shelves in the order you read outward from
+where you are sitting.
 
 ```
   standing orders
   in this conversation
-› ▲ keep the tests green         needs your look · the fix touches migrations
+› ? keep the tests green         needs your look · the fix touches migrations
   for this project
   ◦ draft the weekly update                                  Mondays at 9am
   everywhere
   ◦ never touch the public API                                        holds
   ─ not here: post the standup
+  in other projects
+  ◦ watch the release feed                                   Mondays at 9am
 ```
 
-Each row leads with the mark every aforge screen uses — `▲` needs you, `●` being
+The first three are **where an order reaches**: this chat, this project, every project.
+The fourth, `in other projects`, is everything else this computer is holding that does
+not reach the conversation you are in — including orders in a folder you have never held
+a conversation in. An order is on exactly one shelf: what already stands over this
+conversation is never repeated down there.
+
+Each row leads with the mark every aforge screen uses — `?` needs you, `◐` being
 checked or fired right now, `◦` waiting for its time, `∙` paused or stopped — then what
 the order is called, then where it stands. A rule that never wakes says `holds` there,
-because it has no cadence and nothing it last found.
+because it has no cadence and nothing it last found. Rows are drawn the same way on all
+four shelves.
 
-**A shelf with nothing on it is not drawn at all**, heading included. With nothing
-standing here the page does not open: aforge says one line instead,
-`nothing stands here yet — say what should always be true, and I'll hold it.`
-Asking again straight away does not add a second copy of that line — the one already in
-the conversation is the answer, and the screen scrolls back down to it.
+**Under the row your cursor is on**, an order that has been looked at adds a short
+paragraph — its name, how long ago, and what the look found:
 
-The page is about **this conversation**. For everything standing on the whole machine,
-grouped by project, open `/home`.
+```
+  the 6am watch, last look · 3h
+  looked 3h ago · nothing had changed since yesterday, so nothing was done
+```
+
+An order that has never been looked at — a rule, or one whose moment has not come —
+draws no paragraph at all.
+
+**A shelf with nothing on it is not drawn at all**, heading included. When nothing at all
+stands on this computer the page still opens and teaches — *Nothing stands here yet — the
+empty standing page* below.
+
+**Nothing is hidden behind a fold.** However many orders there are, `↑ ↓` walks them all
+and the list scrolls to keep the one you are on in view; `pgup` and `pgdown` move by a
+screenful of whatever your terminal is tall. `/home` shows the same orders filed under
+the project each one belongs to.
 
 **With words after it the command means something else entirely**: `/standing <words>`
 makes a new order out of those words, through the same door `ctrl+enter` opens — see *Make
 a rule in one line*. Nothing on this page is ever named at the command line; the way to act
-on one of these is the keys above.
+on one of these is the keys below.
 
 The same page opens with the cursor already on one order when you click its row in the
 `standing` section of the column on the right.
 
 ## The keys on the standing orders page
 
-The line under the box says them while the page is up:
-`enter open where it was asked · p pause · s stop · n not here · esc`
+The line under the box names the verbs of **the row you are on**, and it never names one
+that is not bound. On an order that stands over this conversation it reads:
+`enter open where it was asked · → pause · stop · not here · esc`
+
+The verbs are on the row's own strip: press **`→`** and they appear as
+`p pause   s stop   n not here` under the list, and only while that strip is drawn are those
+letters verbs. `esc` or `←` closes it. They were bare letters while this was a small list
+drawn over the conversation; standing is a place now, with a composer at the foot, so every
+printable key belongs to the composer.
 
 | Key | What it does |
 | --- | --- |
-| ↑ ↓ | move between orders; headings and `not here` lines are skipped |
+| ↑ ↓ | move between orders; headings, `not here` lines and the `last look` paragraph are skipped |
+| pgup pgdown | move by a screenful |
 | enter | opens the conversation that asked for this order |
 | `p` | pauses it, or starts a paused one again — the receipt says `paused · …` or `going again · …` |
 | `s` | stops it for good — `stopped · …` |
 | `n` | not here: this place is excepted from it — `not here · …` |
 | esc | closes the page and changes nothing |
 
+**On the `in other projects` shelf the strip is shorter**, because those orders do not
+stand over this conversation: `→` offers `p pause` (or `p start again` on a paused one)
+and `s stop`, and the hint line names only those two. **`n` is absent there** — an
+exception names a place an order actually reaches, and that one does not reach here. Those
+two writes go straight to the stored order and the page is redrawn from what was saved; if
+this window has no way to write, no verbs are offered at all rather than keys that would
+fail.
+
 `enter` on an order that was set up from the home screen and never became a conversation
 says `made from home — no conversation to open`; on an order this very conversation
 asked for it says `you are already in it`. Clicking a row moves the cursor and never
-acts — every verb here is a key.
+acts — every verb here is a key. Clicking a heading, a `not here` line or the `last look`
+paragraph does nothing at all.
 
 **This page does not change how hard an order thinks.** `ctrl+v` does nothing here. The
 rung lives on the item's own card on **home** — put the cursor on its `◦` row and press
@@ -464,6 +502,118 @@ Three different things, and they are not the same:
 Anything you say in words needs no page at all; the page is there for when you want to
 see what is true before you decide.
 
+## The standing place — the whole screen, four shelves, no fold
+
+The **standing** place is a full place on the tab bar, not the old short overlay. It takes
+the whole terminal, which is what lets it show every order you have rather than the first
+four.
+
+- **The rows are filed on shelves, not sorted into one flat list.** The first three are
+  how far an order reaches — `in this conversation`, `for this project`, `everywhere` —
+  and the fourth, `in other projects`, is what this computer holds that does not reach the
+  conversation you are in. Inside a shelf the order is the same triage home uses: what
+  needs you, then what is moving, then everything else.
+- **A row says how much rope the order has, then what home says about it** — its mark, its
+  name, the rope (*How much rope one has* below), and one clause: `needs your look · …`,
+  `checking now`, `paused`, `holds`, `checked 4m ago · …`, or its cadence. There is one
+  derivation of that clause for the whole program, so this page and home can never disagree
+  about an order in front of you. On a narrow terminal the clause gives way first and the
+  rope stays: it is the fact that decides whether you have to watch the thing.
+- **Nothing is folded away.** `↑ ↓` walks every row and the window scrolls with the cursor;
+  `pgup` and `pgdown` move by a screenful of your terminal, not by a fixed twelve.
+- **The `last look` paragraph belongs to the row your cursor is on**, and is drawn only
+  when that order has actually been looked at.
+- **`enter`** opens the conversation where the order was asked for. **`→`** draws the row's
+  verbs — `p pause` / `p start again` and `s stop` everywhere, plus `n not here` on the
+  three shelves that reach this conversation. Writes on the fourth shelf go to the stored
+  order and the page is redrawn from what was saved.
+
+- **`shift+←` and `shift+→`** move the time window in the header — *When it fired* below.
+
+Typing remains composer text and `tab` moves to the next place. When nothing at all stands
+on this computer the place opens on its own three sentences — *Nothing stands here yet — the
+empty standing page* below has them.
+
+## Nothing stands here yet — the empty standing page
+
+A machine nothing stands on **still opens the page**. `alt+3`, `tab`, `/standing` and
+`/orders` all reach it, and what they reach is three dim lines saying what a standing order
+is:
+
+```
+nothing stands here yet — say what should always be true, and I'll hold it.
+an order stands until you stop it, and it can reach just this conversation, this project, or everywhere.
+enter opens the conversation that made one, when there is one here.
+```
+
+No shelf heading is drawn over it, and neither is the time window in the header: a control
+naming a span of days on a machine that has never held an order is a control about nothing.
+The tab bar, the composer and the top line are all there as usual, so `tab` walks on and
+anything you type is still the first sentence of something new.
+
+The first of those lines used to be what `/standing` said **instead** of opening, with no
+page behind it. On a machine aforge was installed on an hour ago that is every door onto the
+page, so the sentence stayed and the refusal went.
+
+A list emptied by the **time window** rather than by the machine is a different screen: it
+keeps its header, because the header is the control that pages the window back.
+
+## How much rope one has — asks first, earning trust, trusted alone
+
+Every row on the standing orders page says how much rope that order has, in three words at
+most. It is the one column that decides whether you have to watch the thing:
+
+| What the row says | What it means |
+| --- | --- |
+| `asks first` | You have never told it what it may do unattended. It can tell you things and nothing else |
+| `earning trust 3/5` | You gave it a licence, and it has fired 3 times in a row without needing you. Five in a row earns the next rung |
+| `trusted alone` | It has a licence and 5 clean firings in a row behind it |
+
+**The licence is the thing you said on the card**, in your own words — "open a pull request
+but never merge it". With none, an order is on `asks first` however long it stands and
+however often it fires; firing is not how rope is earned, it is how a licence you already
+gave is confirmed.
+
+**A clean firing is one that came back with nothing waiting for you and no failure.** One
+firing that stops on a question, or that could not finish, puts the count back to `0/5` — so
+`earning trust 0/5` after a run of good ones means the last one asked you something.
+Trust is a run, not a tally: five good mornings do not buy an order past the one that asked.
+
+**A rule that only `holds` says nothing about rope at all.** Nothing examines it and nothing
+fires it, so it can never act unattended and the question does not arise.
+
+Two honest limits. The count starts at zero for every order that existed before aforge began
+keeping it — nothing on disk says those old firings were clean, so they are not counted.
+And **the rung is a label, never a permission**: what a firing is allowed to do is your
+banked approval rules and only those. Nothing widens because a count went up.
+
+## When it fired — the time window on the standing orders page
+
+The standing orders page has a time window, drawn in its header as the control and the
+reading at once:
+
+```
+  standing orders                                       shift+← aug 12 – aug 25 →
+```
+
+- **`shift+←` and `shift+→`** move the window **by its own length** — one press is the
+  previous or next span, not the previous day.
+- **`shift+↑`** makes it coarser (days → weeks → months) and **`shift+↓`** finer, keeping
+  the same number of buckets.
+
+**It opens holding everything.** The span it starts on reaches back to the oldest firing this
+computer has, so the first frame hides nothing — narrowing is something you do on purpose.
+Once narrowed, orders whose last firing falls outside the window are not listed.
+
+**An order that has never fired is never hidden by it.** A rule that only holds, and a watch
+whose first moment has not come, have no firing to be outside a window — so they stay on the
+page at every span. Moving the window never reads the disk: the orders are already in hand,
+so you can hold the arrow down.
+
+**On a narrow terminal there is no window at all.** Below about 60 columns the header has no
+room for the control, so it is not drawn — and the four keys do nothing there rather than
+moving something you cannot see.
+
 ## What standing orders cannot do yet
 
 Honest limits, so you do not rely on something that is not built:
@@ -490,7 +640,7 @@ Honest limits, so you do not rely on something that is not built:
   something else that runs on its own.
 - **A firing thinks at `low` unless you raised that one thing.** Standing work is held to
   the cheapest rung however deep this machine is dialled, because it is unattended and it
-  repeats. `ctrl+v` on the item's card on home raises the one that needs it, and nothing
+  repeats. `ctrl+v` on the item's row on home raises the one that needs it, and nothing
   else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width before it starts;
   an order that fires is not, and is armed to split itself only off the items its own

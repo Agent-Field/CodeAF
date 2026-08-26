@@ -180,3 +180,82 @@ func (s *Store) SearchMessages(terms, sessionID string, limit int) ([]MessageHit
 	}
 	return hits, nil
 }
+
+// ConversationHit is one remembered line with the NAME of the thread it was
+// said in — the one fact [MessageHit] does not carry and the one a result on a
+// search page cannot be drawn without.
+//
+// Everything else a row needs is already on the hit underneath: the session id
+// to open, the bounded body to quote, the instant to sort on and the age to
+// print.
+type ConversationHit struct {
+	MessageHit
+	// Title is the conversation's name (internal/session's title.go, kept in the
+	// sessions table). Empty for a thread nobody has named yet, or one that
+	// posted messages without ever opening a session row — which is unknown and
+	// not "untitled": a page draws the project or the first line instead, and
+	// never a word this store made up.
+	Title string
+}
+
+// SearchConversations finds conversation by its words ACROSS EVERY THREAD, with
+// each hit carrying the name of the thread it came from.
+//
+// IT IS ONE FTS QUERY AND IT STAYS ONE. The title comes from a LEFT JOIN in the
+// same statement rather than a lookup per hit, which is the difference between a
+// search page and a search page that opens fifty connections to draw fifty rows
+// (see internal/store's memory snapshot for the same defect written down). The
+// ranking, the bound on one quoted body, and the tolerance of hostile FTS syntax
+// are all [Store.SearchMessages]'s and deliberately not restated here.
+//
+// There is no session filter: a search PLACE is the question "we talked about
+// this once", and the answer to it is the whole machine. A caller that wants one
+// thread already has [Store.SearchMessages].
+func (s *Store) SearchConversations(terms string, limit int) ([]ConversationHit, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	query := ftsQueryFrom(terms)
+	if query == "" {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`
+		SELECT m.seq, m.ts, m.session_id, m.role, m.body, COALESCE(c.title, '')
+		FROM messages_fts
+		JOIN messages AS m ON m.seq = messages_fts.rowid
+		LEFT JOIN sessions AS c ON c.id = m.session_id
+		WHERE messages_fts MATCH ? AND m.body <> ''
+		ORDER BY bm25(messages_fts, 0.0, 0.0, 1.0), m.seq DESC
+		LIMIT ?`, query, limit)
+	if err != nil {
+		// Hostile FTS syntax is a miss, exactly as it is above.
+		return nil, nil
+	}
+	defer rows.Close()
+	now := time.Now()
+	hits := make([]ConversationHit, 0, limit)
+	for rows.Next() {
+		var hit ConversationHit
+		var timestamp, role string
+		if err := rows.Scan(&hit.Seq, &timestamp, &hit.SessionID, &role, &hit.Body, &hit.Title); err != nil {
+			return nil, fmt.Errorf("search conversations: %w", err)
+		}
+		parsed, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("search conversations: %w", err)
+		}
+		hit.Role = Role(role)
+		hit.Time = parsed
+		hit.Age = AgeLabel(parsed, now)
+		hit.Body = bounded(strings.TrimSpace(hit.Body), messageSearchBytes)
+		hit.Title = strings.TrimSpace(hit.Title)
+		hits = append(hits, hit)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search conversations: %w", err)
+	}
+	return hits, nil
+}

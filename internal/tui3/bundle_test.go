@@ -2467,10 +2467,24 @@ func taskApp(t *testing.T) (*app, *taskFake, func(time.Duration)) {
 	}
 	a := newTestApp(agent)
 	a.width, a.height = 200, 24
-	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
+	// AND IT PINS THE PLACES ROOT. The tasks place reads the MACHINE — every
+	// project under [session.PlacesRoot] — so a suite that left this empty would
+	// be reading the developer's own history: the refusal on an empty machine
+	// would pass in CI and fail on any laptop that had ever run a task.
+	a.homeRoot = t.TempDir()
+	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
+
+// taskFixtureNow is the one clock every task fixture is dated from.
+//
+// ONE CLOCK AND NOT TWO. The surface's own is pinned so a countdown can be
+// tested without waiting four seconds; a row dated from time.Now() beside it is
+// a row that landed in the future, which the place's time window drops and every
+// age on screen reads wrong. So the rows are dated from this and the surface is
+// too, and the suite is the same on any day of any year.
+var taskFixtureNow = time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
 
 // proposal is one EventTaskProposal, as the engine sends it.
 func proposal(a *app, id uint64, countdown time.Duration) session.Event {

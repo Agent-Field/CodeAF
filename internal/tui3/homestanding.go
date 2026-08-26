@@ -68,9 +68,22 @@ const (
 	homeItemsFoldWord = " more keeping an eye"
 	// homeItemsFewerWord is the same line holding the band open.
 	homeItemsFewerWord = " fewer"
+	// homeItemPauseWord and homeItemStopWord are the two verbs an item's strip
+	// offers, and they are named here so that the legend below and the strip that
+	// binds them are ONE source (verbstrip.go). They were two strings for three
+	// waves, and the copy that was not the binding said keys that did not exist.
+	homeItemPauseWord = "pause"
+	homeItemStopWord  = "stop"
+	// homeItemEnterWord is what enter does to a standing item, wherever one is
+	// drawn. It is its own constant because the standing place builds its hint
+	// line from the verbs the row under the cursor actually has and needs this
+	// half without the other two ([standingPlace.hint]).
+	homeItemEnterWord = "enter open where it was asked"
 	// homeItemActions is the dim line at the foot of an item's card: the three
-	// things this screen can do to one.
-	homeItemActions = "enter open where it was asked · p pause · s stop"
+	// things this screen can do to one. The two letters are real now — they are
+	// the row's `→` strip (verbstrip.go), which is what "no key does anything
+	// that isn't drawn on screen right now" costs and buys.
+	homeItemActions = homeItemEnterWord + " · → " + homeItemPauseWord + " · " + homeItemStopWord
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is
@@ -378,7 +391,11 @@ func standRowInk(view StandingItemView) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueWarn]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 
@@ -568,7 +585,10 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 		// The one thing on this card that is not a fact about the past. It is
 		// somebody's to do, and it is the only line here that is not dim.
 		for _, line := range wrap("needs your look · "+item.NeedsPerson, width) {
-			state = append(state, pal.accent(line))
+			// Amber: this is the card's one line about a person being waited on,
+			// and the design gives that reading one colour (styles.go's
+			// [hueWarn]).
+			state = append(state, pal.warn(line))
 		}
 	}
 	if view.Running {

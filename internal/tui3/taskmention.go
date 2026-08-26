@@ -154,7 +154,7 @@ func (a *app) refreshTasks() tea.Cmd {
 		a.comp.tasksStale = true
 		return nil
 	}
-	if !a.comp.open && !a.taskSheet.open && !a.railShowing() {
+	if !a.comp.open && !a.at(pageTasks) && !a.railShowing() {
 		// Nobody is looking. The next "@" — or the next time the task page is
 		// opened — pays for the read, which is the same deal the first one made.
 		// THE PAGE IS ON THIS LIST BECAUSE IT IS THE ONE READER THAT STAYS OPEN

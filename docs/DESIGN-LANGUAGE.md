@@ -284,6 +284,54 @@ agent is waiting for a person and on nothing else — its whole value is that
 seeing it anywhere means exactly one thing. It sits at L 73.5, comfortably in
 band, and nothing in this wave had a reason to go near it.
 
+## THE PLACE LADDER — the same table, with three roles re-pointed
+
+**Owner-signed, 2026-08-25, and then reversed by the owner the same day.** The first
+order was "follow the exact design": home and the six places beside it — tasks,
+standing, memory, spend, search, settings — took the design's own nine hexes
+(`docs/design/home-rethink/SCREENS.txt`), painted `#12121A` over every cell of the
+frame, and carried place-scoped variants of the glare law, the isoluminant band and
+the ground ladder to admit them. It was built and shipped for testing. The owner ran
+it and said:
+
+> "i want bg color and text color to be same as in inside chat please this new bg
+> looks weird i think we were taking user terminal stuff or something previously"
+
+**So a place paints from the table above and authors nothing of its own.** There is no
+second palette, no second ceiling, no second band, and no page ground on any surface —
+`placeSignalBand`, `placeGlareCeiling` and the place ground ladder are gone from
+`internal/tui3/designlanguage_test.go`, and REST IS NOT A COLOUR is one law again.
+
+| The design's role | What a place asks the palette for | The hue it gets |
+| --- | --- | --- |
+| tier 1, the subject | `p.ink`, bold where the design bolds | `hueInk` `#C6CDDA` |
+| tier 2, what is true of it | `p.muted` | `hueMuted` `#7FA6C9` |
+| a note about the subject | `p.narr` | `hueNarr` `#848FA6` |
+| tier 3, the margin | `p.dim` | `hueDim` `#6B7280` |
+| amber, **needs a human** | `p.warn` / `p.ask` | `hueWarn` `#EBCB8B` |
+| cyan, **alive** | `p.accent` | `hueAccent` `#9DC3E6` |
+| green, **money** | `p.money` | `hueMoney` `#90D0AA` |
+| the page | — | the terminal's own background |
+| the band | `p.selected` | `hueSelected`, THE GROUND LADDER's own step |
+
+> **ONE ACCENT PER MEANING SURVIVES THE REVERSAL, BECAUSE IT IS ARITHMETIC ABOUT HOW
+> MANY MEANINGS A SCREEN CARRIES rather than a claim about which hexes carry them.**
+> Amber for waiting on a person, the accent for in flight, and nothing else on a place
+> is in colour. Green is a unit rather than a signal. Every hierarchy step past the
+> greys is made with bold, case, indent or air.
+
+So `placeRampFrom` retires three of the conversation's roles and re-points nothing
+else: the question's violet onto the amber (home said one thing in two colours), the
+payload cyan onto the body ink (a datum lifts by being the subject), and the finished
+tick's olive onto the second voice (the `✓` already says it landed, and the one green
+on a place is money). It takes the ramp the palette is ALREADY HOLDING, so adaptive.go's
+measured derivation reaches the places exactly as it reaches a transcript.
+
+What the fidelity wave landed that was never a colour all stays: the `?` and `◐` marks,
+the design's feet word for word, the bold subject in the tab bar, `p.money` on every
+figure in dollars, and the four laws about the plain floor, private-use glyphs, the
+marks and italics.
+
 ## THE ACCENT BUDGET
 
 > **One lit element per screen.**

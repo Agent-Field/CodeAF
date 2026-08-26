@@ -366,6 +366,18 @@ const (
 
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
+	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
+	// absorbs whatever the note leaves and the gap below clamps at one cell, so a
+	// note longer than the terminal used to be appended WHOLE to an empty label —
+	// the row ran past the edge by however long the note was, and no amount of
+	// squeezing the label could pull it back. What it may take is everything but
+	// the lead and that one cell of gap. Settings' `tool exceptions` is the row
+	// that found it: a value naming ten tools is 141 cells against a 60-cell
+	// terminal, which is LAW 1 (a place takes exactly the frame) broken by a
+	// value a person chose.
+	if note != "" {
+		note = fit(note, width-3)
+	}
 	room := width - 2
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
@@ -1103,8 +1115,6 @@ func (a *app) overlayHeight() int {
 		want = a.crewPick.height()
 	case a.effPick.open:
 		want = a.effPick.height()
-	case a.memPanel.open:
-		want = a.memPanel.height(width)
 	case a.roster.open:
 		want = a.roster.height(width)
 	case a.shelf.open:
@@ -1117,8 +1127,6 @@ func (a *app) overlayHeight() int {
 		want = a.harnPick.height(width)
 	case a.permPanel.open:
 		want = a.permPanel.height(width)
-	case a.standPage.open:
-		want = a.standPage.height(width, a.now())
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
@@ -1160,8 +1168,6 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.crewPick.rows(width, n, a.pal, hover, a)
 	case a.effPick.open:
 		return a.effPick.rows(width, n, a.pal, hover)
-	case a.memPanel.open:
-		return a.memPanel.rows(width, n, a.pal, hover)
 	case a.roster.open:
 		return a.roster.rows(width, n, a.pal, hover)
 	case a.shelf.open:
@@ -1174,8 +1180,6 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
-	case a.standPage.open:
-		return a.standPage.draw(width, n, a.pal, hover, a.now())
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:

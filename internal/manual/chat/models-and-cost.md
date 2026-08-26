@@ -738,6 +738,110 @@ Two things follow from that:
 The `model calls` count is rebuilt the same way, so a resumed conversation's call count also
 covers the requests made before the restart.
 
+## Is there a record of what I spent across all my conversations, by day or by model
+
+Yes — a file on disk, and **the spend place reads it**. Press `alt+5`, or `tab` to it from any
+other place, and it draws that file: which days, which models, and what the money was for.
+
+Every cost line written into a conversation's transcript is also appended to one file for the
+whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
+keeps. **One line per turn — the turn as a whole, however many requests it took — and one per
+call made beside a turn**, such as naming a session or judging a route. Each line carries a
+`calls` figure saying how many provider requests it covers, so a turn that used three tools is
+one line reading `calls: 4` rather than four lines. A turn that failed or that you interrupted
+writes its line too, for whatever it spent before it stopped.
+
+Every line records: when it happened and which local calendar day that was, which model answered,
+how many requests and how many tokens in and out, what it cost, the conversation it was made
+in, the piece of work or the standing promise it was made for, and the project directory it
+ran against.
+
+Three things are worth knowing about it:
+
+- **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
+  me this month" could only be answered by opening every transcript on the machine, and "what
+  did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
+  in it.
+- **A turn or a call that cost nothing writes no line.** So a day with no lines is a day
+  nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
+  nothing for an unpriced call rather than calling it free.
+- **Work is counted once.** A task's own requests are recorded where they were made. Its total
+  is added to the conversation that started it afterwards, and that addition is deliberately
+  not written here, or the same money would be counted twice.
+
+`/cost` and the status line are unchanged and are still rebuilt from **this conversation's**
+own transcript. The spend place is the whole machine; `/cost` is this conversation. They
+answer two different questions and neither is a correction of the other.
+
+## The spend place — what days and models cost, and what the money was for
+
+`alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
+same three-second beat every place runs on, and it draws three things:
+
+- **the window and its total** — `$34.10 · 41.2M tokens` on the left of the head row and the
+  window itself at the right, as the control `shift+← aug 12 – aug 25 →` with `shift+↑
+  coarser` beside it — then a sparkline under it, one cell per day, and today's figure at the
+  right. The span is spelled once, between the arrows;
+- **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
+  a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
+  `conversation`, `verification`, `naming`, `planning` — read from the settings as they
+  stand right now, and never the auxiliary word one call gave itself. That is the point of
+  the column: seeing that execution is most of the bill sends you to the one row that
+  changes it. A model that is on the bill and is bound to nothing today draws **no role word
+  at all**, and a model bound to two slots says both. A model is drawn by the word you say
+  out loud — `claude-opus-4-1`, not `anthropic/claude-opus-4-1` — which is the spelling
+  `/model`, the crew chips and the status line all use;
+- **a role slot with nothing bound to it** gets a row of its own under the models —
+  `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
+  is bound to planning" are opposite facts about the same blank. There is no figure on that
+  row: no line in the ledger names a slot, so there is nothing measured to put there.
+  **Today only the conversation slot is drawn at all.** A window holds a client for the
+  model you are talking to and for no other; the four crew slots are answered where their
+  own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
+  and the emptiness law says an unknown is drawn as nothing rather than guessed at;
+- **what it was for** — the three things money is ever spent on, because the ledger holds
+  three ids: a piece of work, a standing promise, or a conversation. The dearest three are
+  shown and the rest fold into one line.
+
+The ledger holds **ids and no titles**, so the place joins each id against the records it is
+already reading — the project's own index of what it ran, and the standing store — to put a
+name on the row. A thing neither of them knows keeps its id.
+
+**`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
+place, a standing promise to the standing place, a conversation to home.
+
+**There is no budget editor here and there will not be one.** The allowance is a rail and it
+is edited on the status line's money segment — the one that shows it. See "Spending limits"
+below. A cap on **one task** is a different figure and is set where that task is started —
+on the composer layer's third line, before you send it (the tasks page, *a task started from
+the composer carries a cap*).
+
+**An empty window is not an empty machine.** Until the ledger has a priced line at all, the
+place says what it is for and nothing else, which is what every place with nothing to draw
+does. Paged onto a fortnight nothing was spent in, it keeps its head row — `nothing spent`
+on the left and the control on the right — because that control is the only thing on the
+frame naming the window the arrows move.
+
+## Moving the spend window — the time keys
+
+Time is two questions, so it gets two arrow axes and no letters:
+
+| | |
+| --- | --- |
+| `shift+←` `shift+→` | move the window **by its own length** — one press is the previous or next fortnight, not the previous day |
+| `shift+↑` | coarser — a fortnight of days becomes a fortnight of weeks, then of months |
+| `shift+↓` | finer, the exact inverse |
+
+The window opens on **the last 14 days, by the day**. The label between the arrows is the
+reading and the control at once, and the same head row is drawn on the tasks place and the
+standing place. A terminal too narrow to draw the control has no window there at all — the
+keys do nothing rather than moving something nothing on screen reports — and the zoom keys
+are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a
+window of years is a question about a machine older than this program.
+
+Moving the window costs nothing on disk: the lines are already in memory, so a fortnight back
+is the same reading answering a different question.
+
 ## Everything at once — /status
 
 `/status` (also `/info`, `/context`) prints **every fact the status line can carry**, one per
@@ -945,3 +1049,9 @@ is no way to zero a conversation's recorded spend while keeping the conversation
 The settings panel's **Session** tab carries a row for it, labelled `session ceiling`. The
 panel's search matches a row's registry key as well as its label, so typing either `spendRail`
 or `ceiling` finds it.
+
+**A task started from the composer carries a ceiling of its own**, whether or not this row
+is set: `alt+enter` opens the composer layer, and its third line is the figure that errand
+may spend before it stops and asks you. It is the same mechanism — the errand's own session
+gets that ceiling — so everything above is true of it, and any adaptive run it starts is
+held to a tank no bigger than the same figure. The tasks page has it in full.

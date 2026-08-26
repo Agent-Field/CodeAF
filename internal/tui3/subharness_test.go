@@ -175,7 +175,7 @@ func TestSubharnessIsOnTheCommandListAndInHelp(t *testing.T) {
 	if canonicalCommand("sub") != "subharness" {
 		t.Fatalf("/sub reaches %q rather than /subharness", canonicalCommand("sub"))
 	}
-	if help := helpText(""); !strings.Contains(help, "/subharness") {
+	if help := helpText("", chordSpelling{}); !strings.Contains(help, "/subharness") {
 		t.Fatal("/help never names /subharness")
 	}
 }

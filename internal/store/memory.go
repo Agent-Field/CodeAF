@@ -913,9 +913,22 @@ func (s *Store) MemoryProvenance(id string) (sessionID, sessionTitle string, wri
 	return sessionID, sessionTitle, writtenAt, nil
 }
 
+// memoryQuerier is whatever a memory read runs against: the pool, or ONE open
+// transaction. It exists so that [Store.MemorySnapshot] can take its census and
+// its rows inside a single read snapshot without a second decoder growing up
+// beside [Store.queryMemories] — *sql.DB and *sql.Tx already share this method.
+type memoryQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 // queryMemories is the single reader every memory read goes through, so no two
 // of them can come to disagree about how a row decodes.
 func (s *Store) queryMemories(where string, args []any, order string, limit int) ([]Memory, error) {
+	return queryMemoriesOn(s.db, where, args, order, limit)
+}
+
+// queryMemoriesOn is queryMemories against a caller's own handle.
+func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, limit int) ([]Memory, error) {
 	// The timestamp is a correlated lookup by primary key rather than a join in
 	// the FROM clause, because the FROM clause is the caller's: SearchMemories
 	// passes its own JOIN onto memories_fts in the same fragment, and a reader
@@ -935,7 +948,7 @@ func (s *Store) queryMemories(where string, args []any, order string, limit int)
 		statement += ` LIMIT ?`
 		args = append(args, limit)
 	}
-	rows, err := s.db.Query(statement, args...)
+	rows, err := db.Query(statement, args...)
 	if err != nil {
 		return nil, err
 	}

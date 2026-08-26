@@ -359,12 +359,12 @@ func TestAPageOverTheRoomKeepsTheFoldKey(t *testing.T) {
 	a := briefRoom(t, said)
 	before := len(briefBodyRows(a))
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Skip("this session has no record page to raise")
 	}
 	a.touch()
 	drive(t, a, key(briefFoldKey))
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatalf("%s closed the page it was pressed on", briefFoldKey)
 	}
 	if got := len(briefBodyRows(a)); got != before {

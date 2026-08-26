@@ -296,7 +296,7 @@ func TestARunPagesNodeRowsCarryGoalsAndLightAlone(t *testing.T) {
 func TestTheTaskRecordCardLightsTheEdgeUnderThePointer(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.comp.tasks = []session.TaskIndexEntry{pastTask("9", "port-the-parser", "Port the parser", 0)}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a project with only a record")
 	}
 	drive(t, a, key("enter"))

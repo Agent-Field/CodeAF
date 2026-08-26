@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -808,21 +809,6 @@ type app struct {
 	// ringTurn is the turn the last reading was taken for — see
 	// [app.sampleContext] for why a turn can end more than once.
 	ringTurn int
-	// handsRing is the last [handsRingSize] readings of HOW MANY HANDS THIS
-	// MACHINE HAD OUT, oldest first: the data behind the machine card's `hands`
-	// spark (homeband_spark.go).
-	//
-	// IT IS SAMPLED ON HOME'S OWN BEAT AND NOWHERE ELSE — one reading per fresh
-	// [app.machineFactsAt], which is once per [homeEvery] while home is open. A
-	// ring fed by the paint clock would be a chart of how often the terminal
-	// redrew, which is a fact about the terminal.
-	//
-	// AND IT SURVIVES NOTHING. It lives in this process and dies with it: no
-	// file, no state directory, nothing carried across runs. A chart that opens
-	// empty and fills in over the next few minutes is the honest shape of a
-	// reading nobody kept — and the alternative, a spark restored from disk,
-	// would be this surface drawing yesterday's machine as though it were now.
-	handsRing []int
 
 	// branch is the git branch the workspace is on and branchDirty whether it
 	// has uncommitted work — what follows the conversation's name at the left
@@ -1035,11 +1021,18 @@ type app struct {
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
 	wait preflight
-	// memPanel is /memory's filterable view of the durable memory store.
-	memPanel memoryPanel
-	// memory is the store the panel reads and changes. It is optional because
-	// memory-off sessions must have no capability behind the panel.
+	// mem is the memory place's state: the snapshot it is drawing, the shelves that
+	// are unrolled, and the filter (place_memory.go).
+	mem memoryPlace
+	// memory is the store the place reads and changes. It is optional because
+	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
+	// searchStore is the conversation index the search place reads, and
+	// usageLedger is the file the spend place reads. Both are optional and both
+	// are absent rather than broken when they are: search says what it is for,
+	// and an empty ledger draws the spend place's own teaching.
+	searchStore SearchStore
+	usageLedger string
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1355,13 +1348,13 @@ type app struct {
 	// terminal has. Closed, it costs the frame nothing, and it is only ever
 	// opened at tierPhone.
 	expand expand
-	// taskSheet is the task page (taskview.go): the FOURTH fullscreen thing this
-	// surface draws, and the second of them that exists at EVERY width — the deck
-	// and the tool detail above it are the phone tier's alone. It holds the
-	// project's whole task record rather than this session's, which is the one
-	// question the roster's column cannot answer. Closed, it costs the frame
-	// nothing.
-	taskSheet taskSheet
+	// taskSheet is the tasks place (place_tasks.go): the FOURTH fullscreen thing
+	// this surface draws, and the second of them that exists at EVERY width — the
+	// deck and the tool detail above it are the phone tier's alone. It holds the
+	// MACHINE'S whole record of work that ran on its own rather than this
+	// session's, which is the one question the roster's column cannot answer.
+	// Closed, it costs the frame nothing.
+	taskSheet tasksPlace
 	// home is /home (home.go): the FIFTH fullscreen thing, the third that exists
 	// at every width, and the only one of them that is not about this
 	// conversation at all. It is every project on the machine and every
@@ -1370,10 +1363,98 @@ type app struct {
 	// somebody asks for one.
 	//
 	// SETTINGS, THE TASK PAGE AND HOME ARE MUTUALLY EXCLUSIVE. Opening any one
-	// of them closes the other two ([app.openSettings], [app.openTaskSheet],
+	// of them closes the other two ([app.openSettings], [app.showTaskPlace],
 	// [app.openHome]), because two pages that both believe they own the frame is
 	// a frame that draws one and takes keys for the other.
 	home homeView
+	// ── THE ROUTER ──────────────────────────────────────────────────────────
+	//
+	// page is WHICH PLACE the person is standing in, and [pageNone] — the zero
+	// value — is the conversation (pages.go).
+	//
+	// IT IS THE ONE ANSWER AND NOT A LABEL ON SIX OTHERS. Every place used to
+	// carry an `open bool` of its own with this field beside them, which is two
+	// answers to "which page is up" and therefore an invariant somebody has to
+	// keep; [app.showPage] closes what was standing and opens what was asked for,
+	// so the flags are gone and the frame, the keyboard, the pointer and the tab
+	// bar all read this.
+	page page
+	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
+	// that survived the width ladder, and the row of the terminal the bar landed
+	// on (-1 when a short frame cut it off). They are written by the draw
+	// (pages.go's [placeFrameWithBar]) and read by the press, which is the same
+	// bargain every hit map on this surface strikes: a click resolves against
+	// what was actually drawn, never against what a second computation thinks
+	// was drawn.
+	tabs   []placeTabSpan
+	tabRow int
+	// bar is THE CURSOR STANDING ON THE TAB BAR ITSELF, which is a row of the
+	// frame a person can walk onto from any place (pages.go's [barCursor] holds
+	// the whole law). It sits here beside [app.page] because the bar belongs to
+	// the router: it is drawn on all seven places, in the same cells, by one
+	// function — so a place that kept a flag of its own about it would be seven
+	// answers to one question.
+	bar barCursor
+	// tabHover is the place whose word the POINTER is resting on, and [pageNone]
+	// — the zero value — is "the pointer is not on the bar at all". It is what
+	// lifts one word's ink by one tier and changes nothing else on the frame
+	// (placemouse.go's [app.placeTabHover]).
+	tabHover page
+	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
+	// real 150ms timer — everywhere but a test (place_search.go's
+	// [app.searchQuiet] holds the whole argument). It is a seam rather than a
+	// clock because what a test needs is not a different duration but no real
+	// time at all: the tick is delivered by hand, at the instant the test means.
+	searchArm func(gen int) tea.Cmd
+	// spend and search are those two places' own state: the ledger window and
+	// the lines it is over (spendpage.go), and the query in flight with the
+	// results it is answering for (searchpage.go). Closed, both cost the frame
+	// nothing and neither has read anything.
+	spend  spendPage
+	search searchPage
+	// places is the seam the tab bar's counts come through: the cached answer
+	// per place, recomputed on the clock ([app.refreshPlaceCounts]). It is nil
+	// until the first beat, and a nil seam draws no number anywhere, which is the
+	// emptiness law rather than a gap (pages.go's [placeCounts]).
+	places placeCounts
+	// placeGen is the generation of the clock the places that are NOT home run
+	// on (placecounts.go's [placeTickMsg]). Home has its own for the same reason
+	// and by the same device.
+	placeGen int
+	// compose is the composer on the places that have no box of their own — the
+	// standing place, spend and search. It is app-level rather than per-place on
+	// purpose: a sentence half typed on one place is still there after `tab`,
+	// which is what makes a permanent bottom line a composer rather than seven
+	// boxes that each forget.
+	compose editor
+	// pageMsg is the one refusal a place that is not home has to say, drawn where
+	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
+	// door twice says the same thing once.
+	pageMsg string
+	// strip is the row's verbs, opened with `→`, and it is the ONE state on this
+	// surface in which a bare letter is a verb rather than a character
+	// (verbstrip.go). Closed — which is nearly always — every printable key
+	// belongs to the composer.
+	strip verbStrip
+	// mapShowing is `alt+.`: the whole key map drawn in the cells a person was
+	// already reading, until the next key (SCREEN 3b). A terminal cannot see a
+	// held modifier, so what the mockup drew as "hold alt" is a chord that lasts
+	// exactly one keystroke.
+	mapShowing bool
+	// chords is HOW THIS TERMINAL SPELLS THE CHORD CLASSES and what its option
+	// key is called — `alt+` everywhere, `⌥` on a Mac (chords.go). It is decided
+	// once at boot from the platform and the environment, because neither of
+	// those changes while a process runs, and every sentence a person reads about
+	// a chord is drawn through it.
+	chords chordSpelling
+	// chordLost and chordReal are the macOS option-as-meta check, and they are
+	// two flags rather than one because they answer different questions.
+	// chordLost is "a character arrived where a chord was aimed", which arms one
+	// dim line in the place's note slot; chordReal is "a real `alt+` chord has
+	// reached this program", which settles the question for the life of the
+	// process and is never unset.
+	chordLost bool
+	chordReal bool
 	// caret says whether the terminal caret should be shown on this frame. It
 	// is set by [app.frame] on every render and read by [app.View]: home at rest
 	// is a dashboard somebody reads, not a thing they type at, so its empty box
@@ -1396,11 +1477,27 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
+	// switchGrouped is `alt+g` and switchQuiet is `alt+q`: the two views home's
+	// list can be shown in (place_home.go).
+	//
+	// THEY ARE ON THE APP BECAUSE THEY OUTLIVE THE SCREEN AND NOTHING ELSE. A
+	// person who grouped the list expects it grouped the next time they open home
+	// in this terminal, and expects to have chosen a view rather than to have
+	// found a preference they now own — so the flags live for as long as the
+	// process does, and nothing writes them to a disk.
+	switchGrouped bool
+	switchQuiet   bool
+	// composer is the COMPOSER LAYER: `alt+enter` over a composer with something
+	// in it, on any place (composerlayer.go, SCREEN 2e). It is the router's own
+	// layer rather than any one place's, which is why it is here beside `page`
+	// and not on a place's state — the three facts it settles are the same three
+	// wherever a person typed the sentence.
+	composer composerLayer
 	// errand builds the agent behind `ask here` and standingRoot is where its
 	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a
 	// capability that is absent rather than broken.
-	errand       func(dir, workspace string) (Agent, error)
+	errand       func(ErrandOrders) (Agent, error)
 	standingRoot string
 	// exchanges is every errand this window has open, oldest first.
 	//
@@ -1462,11 +1559,12 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
-	// standPage is the list /standing opens over what stands here — this
-	// conversation's orders, this project's and the machine's (standingpage.go).
+	// orders is the standing place's state: the shelves of what stands here — this
+	// conversation's orders, this project's and the machine's (place_standing.go).
 	// It reads the engine's own seam, so a surface whose agent has no ambient
-	// side opens nothing at all; closed, it costs the frame nothing.
-	standPage standPage
+	// side opens on the three sentences saying what a standing order IS; closed,
+	// it costs the frame nothing.
+	orders standingPlace
 
 	// subPage is /subharness: the list of programs this conversation can run,
 	// and the intake card that starts one (subharness.go). It reads the engine's
@@ -1668,6 +1766,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
 		memory:           opts.Memory,
+		searchStore:      opts.Search,
+		usageLedger:      opts.UsageLedger,
 		live:             -1,
 		sel:              -1,
 		think:            -1,
@@ -1679,6 +1779,11 @@ func newApp(ctx context.Context, opts Options) *app {
 		linear:           opts.Linear,
 		tmux:             tmuxTerm(os.Getenv),
 		remote:           remoteLink(os.Getenv),
+		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
+		// whether the modifier is called `alt+` or `⌥`, and the environment names
+		// which emulator is running so the one option-as-meta line can name the
+		// setting instead of waving at "your terminal".
+		chords: detectChords(runtime.GOOS, os.Getenv),
 		// A terminal that has said nothing is assumed to HAVE the keyboard, which
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
@@ -1889,7 +1994,7 @@ func (a *app) Init() tea.Cmd {
 	// clock — home is a still page and asks for a beat every few seconds rather
 	// than thirty a second (home.go's [homeEvery]) — so it is started here
 	// beside the standing lanes rather than folded into the wake above.
-	if a.home.open {
+	if a.at(pageHome) {
 		standing = append(standing, homeTick(a.homeGen))
 		// A landing that greets over running work starts with its spinner
 		// already turning — the paint clock's ninth reason ([app.paint]).
@@ -2116,9 +2221,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
+		// the press: it is the router's row, drawn on all seven places in the same
+		// cells, so a wheel answered by the place under it would scroll a list for
+		// a gesture made over a row that is not that list's. Over the bar the
+		// wheel walks the PLACES, one room a tick (placemouse.go's
+		// [app.placeTabWheel]).
+		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		// The settings panel is modal for the pointer too: it is the whole
 		// screen, so there is no conversation under it for a wheel to reach.
-		if a.sheet.open {
+		if a.at(pageSettings) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.sheet.move(-3)
@@ -2131,7 +2245,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// And the task page, which is the same claim about the same kind of page:
 		// it is the whole screen, and its window follows its cursor rather than an
 		// offset of its own, so the wheel walks the cursor (taskview.go).
-		if a.taskSheet.open {
+		if a.at(pageTasks) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.taskSheetScroll(-3)
@@ -2145,7 +2259,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// conversation from a screen drawn over the top of it would scroll
 		// something nobody can see — and put them back on a transcript that has
 		// silently moved when esc gives the frame back.
-		if a.home.open {
+		if a.at(pageHome) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				a.home.move(-3)
@@ -2153,6 +2267,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.home.move(3)
 			}
 			a.touch()
+			return a, nil
+		}
+		// AND THE FOUR PLACES THE ROUTER PROMOTED, on exactly the same terms as
+		// the three above (pages.go's [app.placeBodyWheel]). Each of them is the
+		// whole screen and each has a window that follows its cursor rather than
+		// an offset of its own, so the wheel walks the cursor — and a wheel that
+		// fell through from one of them would scroll a transcript nobody can see,
+		// which is what a person turning it over the standing list actually got.
+		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 && a.placeBodyWheel(delta) {
 			return a, nil
 		}
 		// And the rewind timeline, on the same terms as all three: it is the whole
@@ -2252,20 +2375,37 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
-			if a.sheet.open {
+			// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, because it is
+			// the router's row and not any place's: it is drawn on every one of
+			// them, in the same cells, and a press answered by the place under it
+			// would be the one row of the frame that means something different
+			// depending on which room you happen to be standing in
+			// (placemouse.go's [app.placeTabPress]).
+			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			if a.at(pageSettings) {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// The task page and home are modal for the pointer at the same rung and
 			// for the same reason: each is the whole screen, so a press that fell
 			// through to the conversation underneath would open a tool call nobody
 			// can see (taskview.go, home.go).
-			if a.taskSheet.open {
+			if a.at(pageTasks) {
 				// phone lane: the record card's foot is two bands, so the press
 				// needs the column as well as the row (taskphone.go).
 				return a, a.taskSheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
-			if a.home.open {
+			if a.at(pageHome) {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
+			// THE SAME REASON: each is the whole screen, so a press that fell
+			// through to the conversation underneath would open a tool call
+			// nobody can see. A press on one of their rows moves that place's
+			// cursor and never acts (pages.go's [app.placeBodyPress]).
+			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// And the rewind timeline at the same rung and for the same reason: a
 			// press that fell through to the conversation underneath would open a
@@ -2334,17 +2474,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.permPanel.open {
 				return a, a.permPanelPress(msg.Mouse().Y)
 			}
-			// AND THE STANDING PAGE IS THE FOURTH, on the same terms except for
-			// what a press on a row DOES: it moves the cursor and never acts,
-			// because every verb there is a key and enter leaves this
-			// conversation (standingpage.go).
-			if a.standPage.open {
-				return a, a.standPagePress(msg.Mouse().Y)
-			}
-			// AND /subharness IS THE FIFTH, on the standing page's terms and for
-			// a sharper version of its reason: one of the card's rows starts work
-			// and spends money, so a press moves the cursor and never acts
-			// (subharness.go).
+			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
+			// panels. It is a PLACE now and is read with the other three of them,
+			// above — one rung for every surface that takes the whole frame,
+			// rather than one place resolved among the overlays that are drawn
+			// inside a conversation.
+			//
+			// AND /subharness IS THE FOURTH OF THESE PANELS, on the standing
+			// page's old terms and for a sharper version of its reason: one of
+			// the card's rows starts work and spends money, so a press moves the
+			// cursor and never acts (subharness.go).
 			if a.subPage.open {
 				return a, a.subPagePress(msg.Mouse().Y)
 			}
@@ -2538,16 +2677,31 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
-		if a.sheet.open {
+		// AND THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS HERE TOO, for the
+		// press's own reason: the bar is the router's row and means the same thing
+		// on all seven places, so the word under the pointer lifts wherever a
+		// person is standing (placemouse.go's [app.placeTabHover]).
+		if a.placeTabHover(msg.Mouse().X, msg.Mouse().Y) {
+			return a, nil
+		}
+		if a.at(pageSettings) {
 			a.sheetHover(msg.Mouse().Y)
 			return a, nil
 		}
-		if a.taskSheet.open {
+		if a.at(pageTasks) {
 			a.taskSheetHover(msg.Mouse().Y)
 			return a, nil
 		}
-		if a.home.open {
+		if a.at(pageHome) {
 			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		// AND THE FOUR PLACES THE ROUTER PROMOTED, on home's own law: THE POINTER
+		// PREVIEWS AND THE CURSOR SELECTS (pages.go's [app.placeBodyHover]). They
+		// had no hover at all — the standing list's map answered -1 and the other
+		// three had none — so a pointer crossing them lit nothing, on the four
+		// screens whose whole shape is a list of rows to aim at.
+		if a.placeBodyHover(msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.rewSheet.open {
@@ -2673,7 +2827,29 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
 		// then ask for one more beat. It rides its own clock rather than the
 		// paint clock for the reason home.go's [homeEvery] gives (home.go).
+		//
+		// AND THE TAB BAR'S NUMBERS RIDE THE SAME BEAT. They are a reading of the
+		// per-place look stamps and of the records behind each place, so they
+		// belong on the clock that already reads the disk rather than on a second
+		// one (placecounts.go).
+		if a.at(pageHome) {
+			a.refreshPlaceCounts(a.now())
+		}
 		return a, a.homeBeat(msg.gen)
+
+	case placeTickMsg:
+		// AND THE PLACES THAT ARE NOT HOME HAVE THE SAME CLOCK, at the same
+		// period, re-armed only while one of them is standing (placecounts.go).
+		return a, a.placeBeat(msg.gen)
+
+	case searchTickMsg:
+		// The quiet interval after a keystroke, arriving. It becomes a store read
+		// only when the words have not moved on since (searchpage.go).
+		return a, a.searchTick(msg)
+
+	case searchDoneMsg:
+		a.searchDone(msg)
+		return a, nil
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -2885,7 +3061,7 @@ func (a *app) paint() tea.Cmd {
 	// `incomplete` off that reading, and the history page draws a row per piece
 	// of work another window is holding (taskview.go's [app.refreshElsewhere],
 	// which keeps its own short window so this clock cannot outpace the disk).
-	if a.railStanding() || a.taskSheet.open {
+	if a.railStanding() || a.at(pageTasks) {
 		a.refreshElsewhere()
 	}
 	a.promoteMarkdown()
@@ -4203,9 +4379,9 @@ func (a *app) settleCompaction(text string) {
 //
 // THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE. Half the lines in this lane
 // are the surface answering an act a person repeats while they work out what to
-// do next: /standing on a conversation nothing stands over answers
-// [standNothingWord] every single time, /files on a machine that has made
-// nothing answers [filesNothingWord], and a refusal answers whatever it refused.
+// do next: /files on a machine that has made nothing answers [filesNothingWord]
+// every single time, /subharness on a build with none answers [subNothingWord],
+// and a refusal answers whatever it refused.
 // Four presses used to leave four identical lines stacked in the transcript,
 // which is the emptiness law's own complaint said about repetition — the screen
 // counting how many times it had nothing to report. So a note whose words are
@@ -4808,7 +4984,7 @@ func (a *app) linkHoverAt(x int, r row) int {
 // the mouse turned off (config's ui.mouse): /model with no argument opens the
 // same picker, and the help sheet says so.
 func (a *app) statusPress(x, y int) bool {
-	if a.copy.on || a.sheet.open || a.pick.open {
+	if a.copy.on || a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing:
@@ -4982,7 +5158,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// explanation, so the first column steps to ink while the second stays in
 		// the note's own dim. The rows that name a slash command need nothing from
 		// the list — a command wears its chip wherever it is written.
-		help := helpText(a.hostedPath(a.file))
+		help := helpText(a.hostedPath(a.file), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
 		return nil
 
@@ -5073,15 +5249,18 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "settings":
-		a.openSettings()
-		return nil
+		// EVERY DOOR ONTO A PLACE GOES THROUGH THE ROUTER (pages.go). It is one
+		// line's difference and it buys the whole of the tab bar being true: the
+		// band lands on the place that actually opened, whatever refused, and the
+		// verb strip and the map are put away on the way in.
+		return a.showPage(pageSettings)
 
 	case "home":
 		// The one command on this surface that is not about this conversation.
 		// It has no argument form: the screen IS the way of naming what you
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
-		return a.openHome()
+		return a.showPage(pageHome)
 
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
@@ -5117,8 +5296,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// — because a person who typed the word for the thing has said what they
 		// meant at least as plainly as a chord does.
 		if rest == "" {
-			a.openStanding()
-			return nil
+			return a.showPage(pageStanding)
 		}
 		return a.standingSay(rest)
 
@@ -5148,11 +5326,23 @@ func (a *app) slash(line string) tea.Cmd {
 		// Bare is the inspect-and-change panel; a query is the transcript form,
 		// for somebody who wants matching rows to remain scrollable. The plural
 		// alias keeps its older print posture even when it has no query.
-		if rest == "" && name != "memories" {
-			a.openMemory()
-		} else {
-			a.runMemories(rest)
+		// AND /memories NOW OPENS THE PLACE TOO. The plural used to keep an older
+		// print posture — a bare /memories wrote the whole list into the
+		// transcript — which was the right answer while memory was a twelve-row
+		// overlay and the wrong one the moment it became a place a person can
+		// walk into, filter and act on. With a query BOTH spellings still print,
+		// because a query is a question rather than a door.
+		//
+		// AND THE PRINT POSTURE IS STILL THE ANSWER WHERE THE PLACE CANNOT OPEN.
+		// The place needs a memory store on this surface; the printed list needs
+		// only an agent that keeps memories, and there are surfaces with the
+		// second and not the first. A person who typed the plural on one of those
+		// gets the list rather than a refusal, which is what the plural has
+		// always been for.
+		if rest == "" && (name != "memories" || a.memoryReady()) {
+			return a.showPage(pageMemory)
 		}
+		a.runMemories(rest)
 		return nil
 
 	case "remember":
@@ -5175,19 +5365,22 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runTaskCommand(rest)
 
 	case "history":
-		// The page onto every task this PROJECT has run, this session's and every
-		// conversation's before it (taskview.go). It is NOT spelled /tasks: the
-		// three /task rows all mean give aforge work, and a plural among them was a
-		// command that answered the muscle memory for starting one (commands.go
-		// says it at more length). It refuses on a project that has
-		// run nothing rather than raising a page with a title and nothing under it
-		// — the emptiness law reaches modals — and it says so, because a command
-		// typed on purpose that answers with silence reads as a command that broke.
+		// The place onto every task this MACHINE has run, this session's and every
+		// conversation's before it, across every project (place_tasks.go). It is
+		// NOT spelled /tasks: the three /task rows all mean give aforge work, and a
+		// plural among them was a command that answered the muscle memory for
+		// starting one (commands.go says it at more length).
 		//
-		// It arms the read as well as opening the page: the record is a file, and a
-		// session whose "@" list has never been opened has never paid for it
-		// (taskmention.go's [app.loadTasks]). Both doors onto the page go through
-		// one function, because a bare /task opens it too (taskcommand.go).
+		// IT OPENS ON A MACHINE THAT HAS RUN NOTHING, exactly as the tab bar does.
+		// The command used to refuse there, on the argument that a page with a
+		// title and nothing under it is the emptiness law broken — and what the
+		// page draws with nothing under it is three sentences saying what tasks are
+		// ([tasksTeach]), which is an answer. Every door onto this place is the one
+		// door now.
+		//
+		// Both commands go through one function, because a bare /task opens it too
+		// (taskcommand.go), and two copies of that line are two ways for one place
+		// to differ from itself.
 		return a.openTaskPage()
 
 	case "status":
@@ -5881,13 +6074,13 @@ func (a *app) paste(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	if a.memPanel.open {
+	if a.at(pageMemory) {
 		flat := strings.ReplaceAll(text, "\n", " ")
-		if a.memPanel.edit != nil {
-			a.memPanel.edit.insert(flat)
+		if a.mem.edit != nil {
+			a.mem.edit.insert(flat)
 		} else {
-			a.memPanel.filter.insert(flat)
-			a.memPanel.rank()
+			a.mem.filter.insert(flat)
+			a.mem.rank()
 		}
 		a.touch()
 		return nil
@@ -5897,7 +6090,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// is the paste this path exists for), into the select row's filter next,
 	// into the search box otherwise. All three are one-line boxes — newlines
 	// flatten to spaces.
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		switch {
 		case a.sheet.edit != nil:
@@ -5917,7 +6110,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// see until home was closed. It goes into the box the caret is actually in
 	// — the exchange pane's while that holds the keyboard, home's own otherwise
 	// — and home's list re-filters exactly as it does for a typed character.
-	if a.home.open {
+	if a.at(pageHome) {
 		if ex := a.paneExchange(); ex != nil && ex.focused {
 			ex.box.insert(text)
 		} else {

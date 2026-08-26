@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
@@ -334,9 +335,20 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	}
 
 	return tui3.Run(context.Background(), tui3.Options{
-		Agent:  agent,
-		Memory: cfg.Memory,
-		Output: wire,
+		Agent: agent,
+		// The memory place and the search place read the SAME database the
+		// conversation remembers into, through two seams that fail apart: memory
+		// turned off in the settings opens no store at all and both are then
+		// absent, which is what keeps "memory off makes no calls" a property of
+		// the wiring rather than a branch in every caller (v3Memory).
+		Memory: v3MemorySeam(cfg.Memory),
+		Search: v3SearchSeam(cfg.Memory),
+		// The machine-wide spending ledger the spend place adds up. It is the
+		// same file every window on this machine appends a model call to, named
+		// once by internal/session so a reader and a writer cannot spell it two
+		// ways (internal/session's UsageLedgerPath).
+		UsageLedger: session.UsageLedgerPath(),
+		Output:      wire,
 		// The sub-harness registry under the state root, which is where every
 		// window on this machine writes and reads them: /harness is a list of
 		// what is SAVED, so it has to be the same directory the builder saved
@@ -1258,6 +1270,16 @@ func v3BuiltinApprovals() map[string]any {
 // ([defaultChatDB]). Memories are the person's, not a conversation's, and a
 // second file beside it would be a second set of them that nothing else could
 // read.
+//
+// A FIRST RUN IS NOT ONE OF THOSE UNHAPPY CASES, and for a long time it was.
+// The state root does not exist on a machine that has never run aforge, SQLite
+// creates database files but never the directories holding them, and the
+// resulting complaint came back spelled `out of memory (14)` — so the first
+// launch on a new machine reported a memory problem it did not have and then
+// held nothing, for as long as that person kept using it. The directory is now
+// made by [store.Open] itself, which is the one door every caller goes through,
+// and what reaches the line below is only ever a real reason: it names the file
+// and says what the disk said about it.
 func v3Memory(profileDir string) *store.Store {
 	if !config.MemoryEnabledAt(profileDir) {
 		return nil
@@ -1265,6 +1287,67 @@ func v3Memory(profileDir string) *store.Store {
 	brain, err := store.Open(defaultChatDB())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
+		return nil
+	}
+	return brain
+}
+
+// ── the two reading seams the places open onto ──────────────────────────────
+
+// v3Brain is the store as the memory place asks for it.
+//
+// IT IS AN ADAPTER AND NOT AN INTERFACE THE STORE HAPPENS TO FIT, for one
+// reason: the surface's seam is named in the surface's own words — `Snapshot`,
+// `ChangedSince` — while the store prefixes every one of its methods with the
+// table they read, because it holds a dozen tables and `Snapshot` alone would
+// mean nothing there. Two vocabularies, one join, written down here where the
+// door already owns every other translation between the two packages.
+//
+// A NIL STORE STAYS NIL THROUGH IT. Memory off means no store, and a typed nil
+// inside a non-nil interface would turn "the place is absent" into "the place
+// panics the first time somebody presses alt+4" — the classic shape of that
+// bug, refused here rather than guarded against in the surface.
+type v3Brain struct{ brain *store.Store }
+
+func (s v3Brain) Snapshot(limit int) (store.MemoryShelves, error) {
+	return s.brain.MemorySnapshot(limit)
+}
+
+func (s v3Brain) ChangedSince(t time.Time) (int, int, error) {
+	return s.brain.MemoryChangedSince(t)
+}
+
+func (s v3Brain) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	return s.brain.ListMemories(scope, limit)
+}
+
+func (s v3Brain) UpdateMemory(id, title, text string, tags []string) error {
+	return s.brain.UpdateMemory(id, title, text, tags)
+}
+
+func (s v3Brain) ForgetMemory(id string) error  { return s.brain.ForgetMemory(id) }
+func (s v3Brain) RestoreMemory(id string) error { return s.brain.RestoreMemory(id) }
+
+func (s v3Brain) MemoryProvenance(id string) (string, string, time.Time, error) {
+	return s.brain.MemoryProvenance(id)
+}
+
+// v3MemorySeam is the adapter, or nothing at all for a store that was never
+// opened — see [v3Brain] for why the nil has to be answered here.
+func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
+	if brain == nil {
+		return nil
+	}
+	return v3Brain{brain: brain}
+}
+
+// v3SearchSeam is the same store as the search place asks for it: one full-text
+// query across every thread. It is a SECOND seam beside the memory one because
+// the two capabilities fail apart — a build with memory off has neither today,
+// and the day one of them moves to a different store the other does not have to
+// move with it.
+func v3SearchSeam(brain *store.Store) tui3.SearchStore {
+	if brain == nil {
 		return nil
 	}
 	return brain

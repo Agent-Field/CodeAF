@@ -1,6 +1,9 @@
 package manual
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
 //
@@ -237,10 +240,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you remember my preferences for next time", "what-i-remember"},
 		{"what happened to my memory.md file", "what-i-remember"},
 		{"how do I turn memory off", "what-i-remember"},
+		{"it said memory is off but I never turned it off", "what-i-remember"},
+		{"why does it say could not open graph.db", "what-i-remember"},
+		{"aforge printed out of memory 14 on startup", "what-i-remember"},
+		{"where is my memory file kept on disk", "what-i-remember"},
+		{"can I copy my memories to another machine", "what-i-remember"},
 		{"how do I see what aforge remembers", "what-i-remember"},
 		{"how do I edit a memory", "what-i-remember"},
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
+		// SCREEN 1f's own verb, asked the three ways somebody meets it: from the
+		// foot they are reading, from the key they just pressed, and from what
+		// they wanted to do with the line in front of them.
+		{"ask me about it", "what-i-remember"},
+		{"what does enter do on a memory line", "what-i-remember"},
+		{"talk about something you remember about me", "what-i-remember"},
 		{"why did my memories get merged", "what-i-remember"},
 		{"does it clean up old memories", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},
@@ -792,6 +806,39 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does 14 more lines mean at the top of a task", "tasks"},
 		{"how do I see the full task description", "tasks"},
 		{"how do I collapse the long brief in a task", "tasks"},
+
+		// THE PLACES, asked the way somebody meets them: seeing a row of words
+		// under the top line and not knowing what it is, wanting a key for one,
+		// finding a page that says what it is for and nothing else, and hitting
+		// the one state where a letter is not a letter.
+		{"what is the row of words at the top of the screen", "places"},
+		{"how do I get to the tasks page without a command", "places"},
+		{"is there a keyboard shortcut to jump between pages", "places"},
+		{"what does the number beside a tab mean", "places"},
+		{"why does the spend page only have three sentences on it", "places"},
+		{"how do I see all the keyboard shortcuts", "places"},
+		{"what does the right arrow do on a row", "places"},
+		{"where do I type on the standing page", "places"},
+		{"what is the here ~/ thing next to the box", "places"},
+		{"how do I start a task from any page", "places"},
+		{"what are the three lines that appear when I press alt+enter", "places"},
+		{"how do I change which project a task runs in before I send it", "places"},
+		{"what does alt+w do", "places"},
+		// THE PLATFORM QUESTION, in the four shapes it actually arrives in: the Mac
+		// user whose option key is composing accents (which is what they SEE, so
+		// they ask about the character rather than about the modifier), the person
+		// wondering whether the manual's `alt+` is their `⌥`, the one who tried
+		// `ctrl+1` because the number is drawn on the tab, and the Windows user
+		// checking whether any of it applies to them.
+		{"why does option type ¡ instead of jumping to a place", "screen"},
+		{"use option as meta", "screen"},
+		{"is alt the same as option on a mac", "screen"},
+		{"does ctrl+1 go to a place", "keys"},
+		{"do the alt chords work on windows", "screen"},
+		{"how do I pick the model a task runs on before starting it", "places"},
+		{"why did pressing alt+enter not send my task straight away", "places"},
+		{"how much money can a task spend before it stops and asks me", "tasks"},
+		{"how do I set a spend limit on a task before I send it", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -828,6 +875,44 @@ func TestTheTwoCorporaShareNoPageName(t *testing.T) {
 	for _, name := range Chat().Pages() {
 		if resident[name] {
 			t.Errorf("page %q exists in both the resident and chat manuals", name)
+		}
+	}
+}
+
+// EVERY PLACE OPENS, ALWAYS — AND NO PAGE MAY SAY OTHERWISE.
+//
+// The three gates around this corpus check that a name is MENTIONED. None of
+// them can see whether the sentence around the name is true, and that is how a
+// wave which made three refusals impossible shipped with three pages still
+// stating them: `tab` skipping a shut room, a place asked for by name saying why
+// it will not open, and `ctrl+.` doing nothing on a machine that has run
+// nothing. The pages are the only thing the model knows about this program, so
+// on a fresh machine it told people that the key they had just been given did
+// nothing — the exact experience the wave was built to end.
+//
+// This is the truth-side gate for the one claim that was retired: a place
+// refusing. Each phrase below shipped in the corpus and each is now false of the
+// code — nextPage walks the order table unconditionally, showPage has no refusal
+// path left in it, and both doors onto the tasks place are the same door.
+//
+// IT IS A SHORT LIST ON PURPOSE. A gate that tried to read English would fail
+// on the pages that tell the story of the retired refusal, which several
+// deliberately do; these are the sentences that ASSERTED it.
+func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
+	retired := []string{
+		"goes past a place that has nothing to open",
+		"Two rooms can be shut",
+		"still says why\nit will not open",
+		"Does nothing when nothing has run",
+		"A room\nthat has nothing to open says so in the conversation",
+		"and open nothing.",
+	}
+	for _, section := range Chat().Sections() {
+		for _, phrase := range retired {
+			if strings.Contains(section.Body, phrase) {
+				t.Errorf("%s · %q still says a place can refuse to open: %q",
+					section.Page, section.Title, phrase)
+			}
 		}
 	}
 }

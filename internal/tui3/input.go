@@ -232,6 +232,15 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// THE OPTION-AS-META CHECK READS EVERY KEY AND CLAIMS NONE OF THEM. It is
+	// here, above the pointer handover and above every modal, because both of the
+	// things it watches for can arrive anywhere: a real `alt+` chord settles the
+	// question for the life of the process wherever it lands, and the character a
+	// Mac produces instead of one is only worth a note while a place is standing
+	// (chords.go). It returns nothing and takes nothing, so the key below does
+	// exactly what it was always going to do.
+	a.chordWatch(msg)
+
 	// THE POINTER COMES BACK FIRST, ABOVE EVERYTHING, and then the key does
 	// whatever it was always going to do. A hand back on the keyboard is a hand
 	// that has finished selecting (copymode.go), so this is the whole of the exit
@@ -291,20 +300,24 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.takeRoomPump()
 	}
 
-	// The settings panel is the fullscreen overlay, and it is modal for the same
-	// reason the picker is and one more: there is nothing else on the screen to
-	// send a key to (settings.go).
-	if a.sheet.open && msg.String() != "ctrl+c" {
-		cmd, _ := a.sheetKey(msg)
-		return cmd
-	}
-
-	// And home is modal at the same rung and for the same reason: it takes the
-	// whole frame, so there is nothing under it a key could mean anything to.
-	// Every printable key belongs to it — typing on home is how a conversation
-	// starts (home.go).
-	if a.home.open && msg.String() != "ctrl+c" {
-		return a.homeKey(msg)
+	// AND WHATEVER PLACE IS STANDING IS MODAL AT THIS RUNG, in ONE arm and never
+	// five (pages.go). Each of the seven takes the whole frame, so there is
+	// nothing under it a key could mean anything to — and the six classes of the
+	// grammar are read before the place's own keys, on every place, which is what
+	// makes `tab`, `alt+1…7` and `→` mean one thing wherever a person is standing
+	// ([app.placeKeyPress]).
+	//
+	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
+	// home were read here; the memory place, the two teaching places and the
+	// standing place were read below the model picker, the resume picker and four
+	// command panels — so a letter pressed on the standing place with a picker
+	// somewhere underneath went to a list that is not on the screen. A place is
+	// modal at the highest rung of them all, because a place is the screen.
+	//
+	// ctrl+c is the one exception, for the reason it is everywhere on this file:
+	// leaving is never modal.
+	if a.pageShowing() && msg.String() != "ctrl+c" {
+		return a.placeKeyPress(msg)
 	}
 
 	// And the phone tier's status sheet is modal at the same rung and for the
@@ -344,11 +357,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.effPick.open && msg.String() != "ctrl+c" {
 		return a.effortMenuKey(msg)
 	}
-	if a.memPanel.open && msg.String() != "ctrl+c" {
-		a.memoryKey(msg)
-		return nil
-	}
-
 	// And the session picker is modal at the same rung, for the same reasons: it
 	// takes the input line's place, it holds its own filter, and esc leaves the
 	// conversation exactly as it was (resume.go). The two are never up together —
@@ -386,14 +394,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// draft is under this one for a letter to fall through into.
 	if a.permPanel.open && msg.String() != "ctrl+c" {
 		return a.permPanelKey(msg)
-	}
-
-	// And the standing page, which is that panel's twin in every respect that
-	// matters here: opened by a command, nothing being typed under it, and esc
-	// leaving the conversation exactly as it was (standingpage.go). Being modal
-	// is what frees a bare p, s and n to mean pause, stop and not here.
-	if a.standPage.open && msg.String() != "ctrl+c" {
-		return a.standPageKey(msg)
 	}
 
 	// And /subharness, which is those panels' twin in every respect that matters
@@ -535,6 +535,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// into the same box and the list follows what they type. Only the keys that
 	// move and commit a list are taken from the editor.
 	if cmd, taken := a.listKey(msg); taken {
+		return cmd
+	}
+
+	// AND alt+1…7 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// of the place grammar that belongs to no place — it is how a person GETS to
+	// a room — and every claim above has already had its say, so a modal overlay
+	// that wants the chord still gets it first and nothing below has taken a
+	// keystroke yet (placekeys.go's [app.placeJumpKey] holds the whole argument).
+	if cmd, taken := a.placeJumpKey(msg); taken {
 		return cmd
 	}
 
@@ -712,10 +721,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.cycleEffort()
 
 	case "pgup":
-		a.scroll(-a.page())
+		a.scroll(-a.scrollPage())
 		return nil
 	case "pgdown":
-		a.scroll(a.page())
+		a.scroll(a.scrollPage())
 		return nil
 
 	case jumpKey:
@@ -1030,8 +1039,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	switch tagDoor {
 	case sendDoorStanding:
 		if tagWords == "" {
-			a.openStanding()
-			return nil
+			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
 	case sendDoorTask:
@@ -1112,11 +1120,14 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.pick.open {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint, "")
 	}
-	if a.memPanel.open {
-		if a.memPanel.edit != nil {
-			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint, "")
+	if a.at(pageMemory) {
+		if a.mem.edit != nil {
+			return draftBlock(a.mem.edit, a.pal, width, 1, memoryEditHint, "")
 		}
-		return draftBlock(&a.memPanel.filter, a.pal, width, 1, memoryFilterHint, "")
+		// THE PLACE'S OWN SENTENCE, WHICH IS ABOUT THE ROW UNDER THE CURSOR. It
+		// used to be one constant for every row here, so on a line it named a key
+		// and described something else ([placeMemory.hint]).
+		return draftBlock(&a.mem.filter, a.pal, width, 1, placeMemory{}.hint(a), "")
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")

@@ -37,6 +37,20 @@ carry vocabulary or assumptions between them.
 The performance laws it and the suite enforce — and the rule that changing any cap
 changes the doc in the same commit — are in [PERF.md](PERF.md).
 
+`make demo-home` builds a **throwaway home with something on every place** — three
+projects, twelve conversations, standing orders, memories, a fourteen-day spending
+ledger — and opens `bin/aforge` against it with `HOME` pointed there. Use it when you
+want to SEE a page full: on a machine that has just started using aforge the standing,
+memory and spend pages correctly draw nothing, which is indistinguishable from a page
+that is broken. It never touches `~/.aforge`. The seeder is `cmd/aforge-demo-home` and
+`docs/design/home-rethink/HANDOFF.md` says what is in the fixture and how to add to it.
+
+```sh
+make demo-home                                       # a fresh one, in a temp directory
+make demo-home DEMO_HOME=/tmp/aforge-demo            # somewhere you can name
+make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is already there
+```
+
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 
 `internal/manual/chat/` is v3's own account of itself, compiled into the binary. The
@@ -133,8 +147,14 @@ Several Claude sessions often work this repo at once, in the same working tree.
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
 `TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, four `internal/swepro`
-packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, and four
-`cmd/harness-design` tests. Two more FLAKE under full-suite load on a clean tree and pass
+packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, four
+`cmd/harness-design` tests, `internal/config TestRegistryCoversEveryUserFacingEnvironmentPin`
+(`AFORGE_RELAY` in `internal/pair/service.go` is not in the registry), two `internal/guard`
+tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
+`internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
+`internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
+`TestSettingsRefusesToFightTheEnvironment`) — all verified failing at `origin/chat-v3-task`
+on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
 alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
 `TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
 believing a failure. Confirm anything else with a stash-and-rerun before chasing it.

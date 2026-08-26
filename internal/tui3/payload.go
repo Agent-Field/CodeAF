@@ -269,7 +269,13 @@ var chordWords = map[string]bool{
 }
 
 // chordMods are the prefixes a modified key is spelled with.
-var chordMods = []string{"ctrl+", "alt+", "shift+"}
+//
+// `⌥` IS ONE OF THEM BECAUSE IT IS WHAT A MAC'S KEYCAP SAYS. On macOS every
+// `alt+` in a hint is drawn as `⌥` by the one spelling door (chords.go), so a
+// list that named only the ASCII prefixes would leave `⌥1` and `⌥enter` painted
+// as prose on exactly the platform whose keys most need finding. It carries no
+// `+` for the same reason the keycap does not.
+var chordMods = []string{"ctrl+", "alt+", "shift+", chordMetaWord}
 
 // hintSegment is the separator the hint slot joins its clauses with. It is
 // [legendJoin] without the padding, and it is written here as well because this
