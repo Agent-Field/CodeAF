@@ -532,6 +532,30 @@ func (c *Client) noteCutProvider(model, served string) bool {
 	return c.velocity.pace(model, served, 0)
 }
 
+// noteRun and streamWall are the two halves of the stream wall's evidence, and
+// they are the ONLY pair on this file that is not gated on routing.
+//
+// The gate above exists because a demotion nobody can act on is overhead. A
+// wall is acted on by every session — the cut happens, the ladder re-asks — so
+// gating its history would leave `routing off` running on the bare floor with
+// no way to earn anything better. See [velocityLedger.runs].
+func (c *Client) noteRun(model, served string, ran time.Duration) {
+	if c.velocity == nil {
+		return
+	}
+	c.velocity.noteRun(model, served, ran)
+}
+
+// streamWall is how long the stream about to be opened, or the one now known to
+// be served by `served`, may run before it is cut. See streamguard.go's THE
+// WALL for the law and the constants.
+func (c *Client) streamWall(model, served string) time.Duration {
+	if c.velocity == nil {
+		return wallFor(0)
+	}
+	return c.velocity.wall(model, served)
+}
+
 // refuseUpstream takes the lane away from an endpoint that REFUSED this request,
 // so the next encode routes around it, and reports whether it struck.
 //
@@ -698,6 +722,26 @@ type velocityLedger struct {
 	now   func() time.Time
 	lanes map[string]map[string]*lane
 	last  map[string]Sighting
+	// runs is model → endpoint → the LONGEST REPLY THAT ENDPOINT HAS FINISHED
+	// for this process. It is what the stream wall is derived from
+	// (streamguard.go's [wallFor]), and it is kept apart from `lanes` for two
+	// reasons.
+	//
+	// FIRST, IT IS NOT A STRIKE. A lane's entry above is a standing — demoted,
+	// refused, on probation — and every write to it is a steering decision.
+	// This is a measurement of duration and nothing else; folding it into a
+	// lane would make "how long does this endpoint take" and "should we send
+	// there" one field, and the two are asked at different moments by different
+	// code.
+	//
+	// SECOND, IT IS RECORDED EVEN WITH `routing off`. The ledger above is not:
+	// an operator who asked for no steering asked for no demotions either, and
+	// the file says so. But a WALL is acted on whatever routing says — the cut
+	// happens, the request is re-asked — so the history it is derived from has
+	// to exist under routing off too, or every such session would run on the
+	// bare floor forever. Nothing here can move a request to another endpoint,
+	// so recording it steers nothing.
+	runs map[string]map[string]time.Duration
 }
 
 func newVelocityLedger() *velocityLedger {
@@ -705,7 +749,84 @@ func newVelocityLedger() *velocityLedger {
 		now:   time.Now,
 		lanes: map[string]map[string]*lane{},
 		last:  map[string]Sighting{},
+		runs:  map[string]map[string]time.Duration{},
 	}
+}
+
+// noteRun remembers how long one COMPLETED reply took, under the endpoint that
+// served it.
+//
+// COMPLETED IS THE WHOLE TEST OF HEALTH HERE, and it is a deliberately weaker
+// word than the one the lag law uses. A lane demoted for slowness still
+// answered; its answers took as long as they took, and a wall that excluded
+// them would cut the next one and turn a speed verdict into an outage. The
+// question this is evidence for is not "was that fast" but "has this lane ever
+// legitimately taken this long", and only a reply that arrived can answer it.
+//
+// It keeps the maximum rather than the last or a mean. A wall wants the widest
+// legitimate reply, because that is the one it must not cut; the average would
+// cut half of them.
+//
+// A reply from an endpoint that never named itself is recorded under the empty
+// name, where it still counts towards the lineage's widest wall and belongs to
+// no lane — the same attribution law observe follows, for the same reason.
+func (l *velocityLedger) noteRun(model, served string, ran time.Duration) {
+	if l == nil || ran <= 0 {
+		return
+	}
+	key := normalizeModel(model)
+	if key == "" {
+		return
+	}
+	served = strings.TrimSpace(served)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byLane := l.runs[key]
+	if byLane == nil {
+		byLane = map[string]time.Duration{}
+		l.runs[key] = byLane
+	}
+	if ran > byLane[served] {
+		byLane[served] = ran
+	}
+}
+
+// wall is how long the next reply on this (model, endpoint) may run.
+//
+// A NAMED LANE IS ASKED ABOUT ITSELF FIRST, and falls back to the lineage's
+// widest when this process has never seen it finish anything. That fallback is
+// the difference between a wall that works and one that fights the router: an
+// endpoint the ledger has just steered a long session onto is new by
+// construction, and giving its first reply the bare floor would cut exactly the
+// work the steering was for.
+//
+// An unnamed ask — a request that has not yet learned who is serving it — gets
+// the lineage's widest, which is the most generous honest answer available
+// before the first chunk arrives.
+func (l *velocityLedger) wall(model, served string) time.Duration {
+	if l == nil {
+		return wallFor(0)
+	}
+	key := normalizeModel(model)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byLane := l.runs[key]
+	if len(byLane) == 0 {
+		return wallFor(0)
+	}
+	served = strings.TrimSpace(served)
+	if served != "" {
+		if longest, seen := byLane[served]; seen {
+			return wallFor(longest)
+		}
+	}
+	widest := time.Duration(0)
+	for _, longest := range byLane {
+		if longest > widest {
+			widest = longest
+		}
+	}
+	return wallFor(widest)
 }
 
 // sharedVelocity is the ledger every client built by [NewClient] folds into.

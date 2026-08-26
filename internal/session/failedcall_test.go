@@ -225,6 +225,89 @@ func TestWhatCountsAsATurnThatBroke(t *testing.T) {
 // whatever `ending` gives — an empty response, or an error. The remains-reader's
 // ask is counted rather than answered, because the whole assertion is that it is
 // never asked at all.
+// ── THE THIRTY SILENT MINUTES ───────────────────────────────────────────────
+//
+// SWE-Marathon run s10, 11:15:55Z to 11:45:54Z: thirty minutes in which no row
+// of any kind was written anywhere. A failed call writes one now (above), tool
+// execution was excluded — the last bash returned in four tenths of a second —
+// and what was left was a streamed reply nothing bounded. The wall bounds it
+// (internal/provider's streamguard.go), and this is the row it leaves behind.
+//
+// THE ROW HAS TO SAY HOW FAR IT GOT. "The turn stopped" was the whole of the
+// last autopsy; a cut that says who was serving, for how long, and with how much
+// answer delivered is the difference between a fact and another guess.
+func TestAWallCutIsJournaledWithTheEndpointAndHowFarItGot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	cut := &provider.StreamCut{
+		Reason:   provider.CutOverrun,
+		Waited:   15 * time.Minute,
+		Provider: "gusher",
+		Ran:      18*time.Minute + 30*time.Second,
+		Tokens:   4210,
+	}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, cut },
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return finishedResponse("done on the second ask", "stop"), nil
+		},
+	}}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+
+	events, err := agent.Submit(context.Background(), "port the language server")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	rows := journaledErrors(t, path)
+	if len(rows) != 1 {
+		t.Fatalf("a wall cut wrote %d error rows, want one: %+v", len(rows), rows)
+	}
+	row := rows[0]
+	if row.Provider != "gusher" {
+		t.Errorf("provider = %q, want the endpoint the stream named", row.Provider)
+	}
+	if row.Endpoint != "gusher" {
+		t.Errorf("endpoint = %q, want the cut to name who was serving when nothing else did", row.Endpoint)
+	}
+	if row.Output != 4210 {
+		t.Errorf("output = %d, want how much answer had arrived before the cut", row.Output)
+	}
+	if row.DurationMS != (18*time.Minute + 30*time.Second).Milliseconds() {
+		t.Errorf("durationMs = %d, want how long the request actually ran", row.DurationMS)
+	}
+	if !strings.Contains(row.Message, "without finishing") {
+		t.Errorf("message = %q, want the cut's own sentence", row.Message)
+	}
+}
+
+// AND A REFUSAL STILL LEAVES BOTH FIGURES EMPTY. The emptiness law: a zero
+// output on a row would read as "the endpoint produced nothing", and only a cut
+// can say that honestly — a 400 never opened a stream to produce anything in.
+func TestARefusedCallWritesNoDistanceFigures(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return nil, refusalOf(400, "the request was turned away", "Baidu", "over the ceiling")
+		},
+	}}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	events, err := agent.Submit(context.Background(), "port the language server")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	rows := journaledErrors(t, path)
+	if len(rows) != 1 {
+		t.Fatalf("wrote %d error rows, want one: %+v", len(rows), rows)
+	}
+	if rows[0].Output != 0 || rows[0].DurationMS != 0 {
+		t.Fatalf("a refusal carried distance figures: output=%d durationMs=%d",
+			rows[0].Output, rows[0].DurationMS)
+	}
+}
+
 func brokenSteps(rounds int, asks *atomic.Int64, ending step) []step {
 	var done atomic.Int64
 	return repeatedStep(rounds+40, func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
