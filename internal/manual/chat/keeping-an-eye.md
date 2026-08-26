@@ -528,14 +528,16 @@ everything you set up from it:
   connection installs the timer **on devbox**, and turning the `background
   checks` row turns devbox's. Neither ever touches this machine.
 
-Three things are missing over a connection, and each says nothing rather than
+**Home and the standing place both work over a connection**, and both are about the far
+machine: home lists that machine's projects with each one's `◦` band under it, and the
+standing place lists both what stands on this conversation and what stands anywhere else on
+that machine. `p` and `s` write to the far machine's store and the refusal, if the store
+refuses, is that store's own. The status line counts too — `◦ keeping an eye on 2` is about
+the workspace this window is on, which over `--host` is a path on the far machine.
+
+Two things are still missing over a connection, and each says nothing rather than
 guessing:
 
-- **Home opens with no rows on it** over `--host` — where the list would be it says
-  `home shows this machine's projects, and this session is on another` — so there
-  is no `◦` band and no `p`/`s` keys on a remote session. The status line still
-  counts: `◦ keeping an eye on 2` is about the workspace this window is on, which
-  over `--host` is a path on the far machine, so the count is the right one.
 - **`/status` prints no `keeping watch` line.** The OS timer is devbox's and this
   surface has no way to read its state; a line read off this laptop's timer would
   be a status about the wrong machine.

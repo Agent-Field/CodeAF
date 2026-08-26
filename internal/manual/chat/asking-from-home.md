@@ -320,5 +320,7 @@ than moving it a second time.
   a reminder; a card does, and only after you press `1`.
 - **It will not end an errand because you looked away.** Closing home, opening another
   conversation and quitting a *different* window all leave it running.
-- **It will not work over `--host`.** Home opens there but draws no rows — the projects it
-  would read are on this computer and the work is on the other — and this is a row on home.
+- **It will not work over `--host`.** Home lists the far machine's projects there, but an
+  errand is a short conversation this surface opens **on this computer**, in a folder of its
+  own beside the projects — and over a connection that is the wrong machine to run the work
+  on. So the row is not offered. Everything else on a remote home works.
