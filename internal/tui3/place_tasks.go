@@ -483,6 +483,18 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.taskSheet.detailOn {
 		return a.taskCardKey(key), true
 	}
+	// THE CARET'S OWN CHORDS BEFORE THE PAGE'S KEYS (editkeys.go). `home` and
+	// `end` walk this roster's rows rather than the filter's caret, which is why
+	// they stay below with the rest of the walk; the word jumps and `ctrl+a`
+	// mean nothing else on this page and belong to the box a person is typing
+	// into.
+	if editorMotion(&a.taskSheet.query, key) {
+		return nil, true
+	}
+	if editorWordKill(&a.taskSheet.query, key) {
+		a.taskSheetTyped()
+		return nil, true
+	}
 	switch key {
 	case "esc":
 		// esc BACKS OUT ONE LAYER AT A TIME, which is the settings panel's own

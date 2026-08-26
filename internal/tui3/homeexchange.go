@@ -1059,6 +1059,16 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	defer a.touch()
+	// THE CARET'S OWN CHORDS FIRST, from the one vocabulary every box on this
+	// surface shares (editkeys.go). A follow-up typed into the pane is a
+	// sentence like any other, and the word jump it answers has to be the word
+	// jump the message box answers.
+	if editorMotion(&ex.box, msg.String()) {
+		return nil
+	}
+	if editorWordKill(&ex.box, msg.String()) {
+		return nil
+	}
 	switch msg.String() {
 	case "tab":
 		// THE ZONE TOGGLE, and it is unconditional. Whatever is half-typed and

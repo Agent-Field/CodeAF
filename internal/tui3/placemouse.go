@@ -2,6 +2,7 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE POINTER ON A PLACE ──────────────────────────────────────────────────
@@ -222,4 +223,56 @@ func placeHoverMoved(at *int, next int, a *app) bool {
 // frame saying what it is for rather than bouncing anybody out of it.
 func (a *app) walkPage(back bool) tea.Cmd {
 	return a.showPage(nextPage(a.page, back))
+}
+
+// ── the pointer, in the box ─────────────────────────────────────────────────
+
+// placeBoxPress answers a click on the composer a place draws at its foot, and
+// reports whether it took it. It is the ordinary text-field gesture the message
+// box already answers (draftclick.go) reaching the other seven screens: a press
+// puts the caret on the letter it landed on, at the row's end past the end of a
+// line, and at the start of the text left of it.
+//
+// IT IS THE ROUTER'S ROW, WHICH IS WHY IT LIVES HERE AND IS READ WHERE IT IS.
+// The box is drawn by [placeFrameWithBar] on every place, in the same cells, so
+// a press answered by whichever place happens to be standing would be the same
+// row meaning different things in different rooms — the argument the tab bar's
+// own press is read first for.
+//
+// THE ARITHMETIC IS THE FRAME'S OWN AND NEVER A SECOND COPY OF IT.
+// [draftClickIndex] is the pure inverse of the layout [draftBlock] drew the
+// rows with, and it is handed exactly the numbers the frame handed the drawing:
+// the same room, the same row cap, the same head. A press and a paint that
+// each did their own wrap would disagree on any line that wrapped.
+func (a *app) placeBoxPress(x, y int) bool {
+	// A LAYER THAT HAS TAKEN THE KEYBOARD HAS TAKEN THE CARET WITH IT
+	// (composerlayer.go). The box is still on the frame while the layer is up —
+	// that is the layer's whole promise, the box does not move — but every key
+	// belongs to the layer, so a caret placed under the pointer would be a caret
+	// nothing can move. draftclick.go refuses the thinking ladder for this exact
+	// reason.
+	if a.composer.open || a.boxRows < 1 {
+		return false
+	}
+	box := a.placeBox()
+	if box == nil || box.empty() {
+		return false
+	}
+	at := y - a.boxRow
+	if at < 0 || at >= a.boxRows {
+		return false
+	}
+	width, _ := a.size()
+	// The same three numbers [placeFrameWithBar] handed [draftBlock]: the box
+	// gets the frame less its one-cell margin, the rows are capped at
+	// [homeDraftRows], and the head is the prompt with no lead in front of it.
+	// The margin is why the column starts one cell in.
+	head := ansi.StringWidth(prompt)
+	room := width - 2 - head
+	if room < 4 {
+		room = 4
+	}
+	box.cursor = draftClickIndex(box.value, box.cursor, at, x-1-head, room, homeDraftRows)
+	a.touch()
+	return true
 }

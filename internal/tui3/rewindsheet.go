@@ -666,6 +666,16 @@ func (a *app) rewindSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	defer a.touch()
+	// THE CARET'S OWN CHORDS BEFORE THE PAGE'S KEYS (editkeys.go), on the task
+	// page's own reasoning: `home` and `end` walk the rows and stay below, and
+	// the word jumps belong to the box the search is typed into.
+	if editorMotion(&a.rewSheet.query, msg.String()) {
+		return nil, true
+	}
+	if editorWordKill(&a.rewSheet.query, msg.String()) {
+		a.rewindSheetTyped()
+		return nil, true
+	}
 	switch key := msg.String(); key {
 	case "esc":
 		// esc BACKS OUT ONE LAYER AT A TIME, which is the settings panel's own
