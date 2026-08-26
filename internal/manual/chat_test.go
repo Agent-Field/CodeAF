@@ -787,6 +787,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answers rather than somewhere that used to.
 		{"i pressed space space over --host and got one line", "places"},
 		{"why is home empty when I connect to another machine", "places"},
+		{"can I search old chats on the machine I connected to", "places"},
+		{"can I put away a conversation on the other machine", "places"},
 		{"whose projects am I looking at over --host", "places"},
 		{"does the tasks page show the other machine's work", "places"},
 		{"the tasks tab showed work that is not on this machine", "places"},

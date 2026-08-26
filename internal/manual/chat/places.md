@@ -503,10 +503,10 @@ draw that:
 | **home** | the far machine's projects and conversations |
 | **tasks** | the far machine's work, out of the same reading |
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
-| **settings** | this surface's own rows, plus the ones read from the far machine's profile — it says so as it opens |
-| **spend** | `spend shows what this machine has cost, and this session is on another` |
-| **search** | `search reads what was said on this machine, and this session is on another` |
-| **memory** | `memory shows what this machine has learned, and this session is on another` |
+| **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
+| **spend** | the far machine's priced model calls |
+| **search** | the far machine's conversation index |
+| **memory** | the far machine's memories; fixing and forgetting a line write there too |
 
 **Nothing on any place is drawn out of this laptop's copy.** A screen full of the wrong
 machine's work is a confident lie, and one honest sentence is better than eight rows and a
@@ -552,25 +552,18 @@ that reads a real disk and names the wrong machine is worse than a page that say
 
 ## Can I search my old chats, or see spend and memory, over --host
 
-**Not yet, and each of the three says so rather than showing you this machine's.**
+**Yes. All three follow the machine the session runs on.** Spend reads that machine's priced
+model calls, search asks its conversation index, and memory reads and writes its memory
+store. `e` and `f` on a memory line therefore change the other machine's memory, not this
+computer's. If the engine is an older build without one of these doors, the place keeps its
+honest dim sentence instead of falling through to this computer's files.
 
-- **spend** — `spend shows what this machine has cost, and this session is on another`
-- **search** — `search reads what was said on this machine, and this session is on another`
-- **memory** — `memory shows what this machine has learned, and this session is on another`
+## Can I put away a conversation on the other machine from home
 
-Spend and search say that line **where their rows would be**. Memory keeps its own three
-sentences about what memory is for and says its line **on the note line under them**, in the
-slot where a local session says `memory is off for this session · turn it on under
-/settings` — which would have been a claim about a setting on a machine this surface never
-asked.
-
-The three read a file or a database on the machine this window is running on, and there is no
-door on the wire for them yet — so what they can honestly show over a connection is nothing,
-and they say which nothing it is.
-
-The search box still takes letters. A search that found nothing looks exactly like a search
-that found nothing, which is why the line is there before you read an empty result as an
-answer.
+Yes. `a` or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+`enter` on a far conversation opens it in this window. `o open folder`, `c copy path`, and
+starting a new conversation in that folder are absent on far rows because those paths do not
+name folders on the computer holding your file manager and clipboard.
 
 ## Do the tab numbers follow the machine too
 

@@ -335,7 +335,7 @@ const (
 	// command, which is the trade every row in a frame makes.
 	connectAskRemoteWord = "connecting an account is not available over --host yet"
 	// settingsRemoteWord opens the panel on a remote session.
-	settingsRemoteWord = "these rows are this machine's — the ones that govern the conversation are read from the profile on the other one"
+	settingsRemoteWord = "these rows and changes belong to this machine — this conversation reads its profile on the other one"
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
 )
@@ -370,10 +370,10 @@ const (
 //	           THIS conversation always crossed the wire (Standing.Items), and
 //	           what else keeps an eye on that machine is a walk of the far world's
 //	           projects asking the far store about paths that are real there.
-//	spend      NOT YET. See [spendRemoteWord].
-//	search     NOT YET. See [searchRemoteWord].
-//	memory     NOT YET. See [memoryRemoteWord].
-//	settings   NEVER, AND CORRECTLY: half its rows are this surface's own and
+//	spend      THE FAR MACHINE'S, through Places.Ledger and a held cache.
+//	search     THE FAR MACHINE'S, one call from the search command's goroutine.
+//	memory     THE FAR MACHINE'S, all seven readings and writes together.
+//	settings   SPLIT, AND CORRECTLY: half its rows are this surface's own and
 //	           half are read from the far machine's profile, which is what
 //	           [settingsRemoteWord] says as it opens.
 //
