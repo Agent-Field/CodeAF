@@ -98,6 +98,9 @@ Two keys tell those apart:
 At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
 with nothing typed, because a verb that is always in reach has to always say where it goes.
+The path is shortened the same way every path on this surface is: `~` for your home
+directory, and a first letter for each folder above the last when the whole thing will not
+fit. Home used to draw it in full while every other place shortened it; both are short now.
 
 `alt+enter` from a place that is not home takes you to home and asks there, because home is
 where an errand's answer is drawn. You are left looking at the thing you just started.

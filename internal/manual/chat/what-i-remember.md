@@ -363,8 +363,10 @@ worked out.** A `preference`, a `decision` and a `correction` are your own words
 about how you want things — a correction is you saying aforge had it wrong — and
 the tidy is not allowed to decide any of them has been superseded. It may sharpen
 the wording of one, because you can read that and change it back; it may not
-retire it. Only a plain `fact` and a `project_state` can be retired that way,
-because those are the two that go stale on their own.
+retire it. Only a plain `fact` and a `project state` can be retired that way,
+because those are the two that go stale on their own. (The store spells that kind
+`project_state`; on the page and in the shelf legend it reads `project state`,
+because an underscore is a column name and not a word.)
 
 If you do want something gone, that is yours to do: `/forget <query>`, or delete
 (or ctrl+d) on a line in `/memory`, with one undo behind it.

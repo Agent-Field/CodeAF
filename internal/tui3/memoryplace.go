@@ -173,7 +173,7 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 			r.lines = append(r.lines, memoryReadingLine{
 				kind: memoryReadingMemory, shelf: key, memory: &copy,
 				label: tokens.GlyphProseBullet + " " + memory.Title,
-				note:  memory.Type, help: memoryHelp(memory, now), age: sinceAt(memory.UpdatedAt, now),
+				note:  memoryTypeWord(memory.Type), help: memoryHelp(memory, now), age: sinceAt(memory.UpdatedAt, now),
 			})
 		}
 		if more := len(shelf.lines) - shown; more > 0 {
@@ -221,7 +221,7 @@ func memoryTypeLegend(shelves []rankedMemoryShelf) string {
 	var parts []string
 	for _, kind := range []string{store.MemoryFact, store.MemoryPreference, store.MemoryDecision, store.MemoryCorrection, store.MemoryProjectState} {
 		if counts[kind] > 0 {
-			parts = append(parts, kind+" "+groupedInt(counts[kind]))
+			parts = append(parts, memoryTypeWord(kind)+" "+groupedInt(counts[kind]))
 		}
 	}
 	return strings.Join(parts, " · ")
@@ -240,12 +240,20 @@ func memoryShelfNote(shelf store.MemoryShelf, newToday int) string {
 		if shelf.ByType[kind] != 1 {
 			kind = memoryTypePlural(kind)
 		}
-		parts = append(parts, "mostly "+kind)
+		parts = append(parts, "mostly "+memoryTypeWord(kind))
 	}
 	if newToday > 0 {
 		parts = append(parts, groupedInt(newToday)+" new today")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// memoryTypeWord is a memory's kind as a PERSON reads it. The store spells one
+// of the five with an underscore, which is a column name and not a word — no
+// machinery vocabulary in anything a person reads (CLAUDE.md's law) — so the
+// bar goes and nothing else changes.
+func memoryTypeWord(kind string) string {
+	return strings.ReplaceAll(kind, "_", " ")
 }
 
 func memoryTypePlural(kind string) string {
@@ -318,7 +326,14 @@ func (r memoryReading) rows(width int, pal palette) []string {
 			}
 			rows = append(rows, memoryThree(pal.muted(line.label), pal.dim(middle), pal.dim(line.age), line.label, middle, line.age, width))
 		case memoryReadingMemory:
+			// THE KIND IS A SEPARATE COLUMN AND HAS TO LOOK LIKE ONE. It was
+			// concatenated straight onto the title, so a line read
+			// `not tabscorrection` — two facts run together into a word that is
+			// neither. The lead is the shelf row's own two cells, above.
 			note := line.note
+			if note != "" {
+				note = "  " + note
+			}
 			if width >= 80 && line.help != "" {
 				note += "  " + line.help
 			}

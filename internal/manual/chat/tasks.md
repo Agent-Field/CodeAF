@@ -907,6 +907,14 @@ the page, the date is the far edge of the time window, and the money is what tho
 are known to have cost. A window with no known start drops the `since`, and rows nobody
 priced drop the money: zero means "nobody published a price", never "free".
 
+**When the time window holds none of it, that sentence says `work aforge ran on its own.
+nothing since jul 29.`** — in words, because a `0` there is the figure the emptiness law
+forbids, and with the date still on it because the date is what says the window is the
+reason. The sentence stays on the frame in that state: it is the only thing naming the
+window the four shift-arrows move, so a page that replaced it with the teaching prose
+would have swallowed the way back. The teaching prose is for a machine that has run
+nothing IN ANY WINDOW, which is a different screen.
+
 Under it, **four sections, in the order you act on them**: `needs your look`, `running`,
 `done today`, then `earlier`. Nothing is grouped by whose work it is — a task this
 conversation started sits beside one another window is running and one a session you closed
