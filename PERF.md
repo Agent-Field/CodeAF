@@ -72,6 +72,53 @@ memo's bytes are the direct path's bytes, `attach_test.go` proves the fold spell
 the whole answer. Those tests say the fast path is *right*; the ones above say it
 is still *fast*.
 
+## The storm laws
+
+Four things arrive on this surface in bursts, and the pointer is the worst of
+them: a sweep across the window sends **one message per cell it crosses** — two
+hundred for a slow diagonal, six hundred for a fast one. Every one of them used
+to be answered in full: hit-test the row, ask the far disk about the path under
+it, mark what changed. Over a link that answer costs about twenty milliseconds,
+so six hundred of them is twelve seconds of work — during which a typed
+character sits in the terminal's pipe behind them, because the surface is busy
+answering a question about where the pointer was three hundred cells ago.
+
+`internal/tui3/coalesce.go` folds them. The positions in between are not
+information; they are the same claim made six hundred times, and every one but
+the last was already false when it was read. So the newest is kept, the rest are
+dropped, and the surface answers **once per frame** — `pointerEvery`, which is
+`frameInterval` and not a second cadence.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **Six hundred motions cost one answer**, and 598 of them are folded away. | `internal/tui3/coalesce_test.go` |
+| **A key never waits behind a sweep.** A hundred keys behind a six-hundred-motion storm are handled without the router answering a single motion on the way, and each character is in the draft when its own `Update` returns. | `internal/tui3/coalesce_test.go` |
+| **Keys are never folded and never reordered** — not against each other and not against the motions around them. | `internal/tui3/coalesce_test.go` |
+| **A sweep is answered where it ended**, never at a position it crossed. | `internal/tui3/coalesce_test.go` |
+| **A folded wheel run scrolls exactly as far as an unfolded one.** A scroll is a distance, so a folded run owes its whole length and spends every notch of it at the frame. | `internal/tui3/coalesce_test.go` |
+| **A folded message builds no frame**, at a handful of allocations against a frame's tens of thousands of bytes. | `internal/tui3/coalesce_test.go` |
+| A pointer ARRIVING somewhere is still answered on the spot, with no clock in between: only the SECOND motion in a row is a sweep. | `internal/tui3/coalesce_test.go` |
+| A pointer crossing a row it is already on still leaves no stale entry, no dirty flag and no frame. | `internal/tui3/inputsmooth_test.go` |
+
+**Why a fold and not a drain.** `internal/session`'s stream is coalesced by
+taking events off a channel until it would block (`waitEvent` in `app.go`) —
+the honest way, because the backlog is in hand. A Bubble Tea program has no such
+channel to reach: `Program.msgs` is unbuffered and private, the input reader
+hands over one message at a time and blocks until the model has taken it, and
+the rest of a storm is unparsed bytes in the terminal's own pipe. There is
+nothing queued to drain and no way to look ahead, so the fold is made forward
+instead — keep the newest position, answer it on a clock of its own.
+
+**What Bubble Tea already rate-limits, and what it does not.** Measured against
+v2.0.8, not assumed: the renderer writes to the terminal on a 60 Hz ticker
+(`startRenderer`), and `render(view)` only stores the view under a lock. But
+`model.View()` is called after **every** message, so the frame is BUILT per
+message and most of a burst's frames are thrown away unwritten. A clean frame
+over a twenty-turn conversation measures 31 µs and 19 KB, independent of
+transcript length — the row list is cached (`app.visible`) and the chrome around
+it is not. So the fold says when it changed nothing, and `app.View` hands back
+the frame it declared last time.
+
 ## The launch-path pins
 
 Two costs can hold a terminal dark before anything is drawn in it, and neither

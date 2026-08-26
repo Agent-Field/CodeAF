@@ -62,7 +62,15 @@ func stales(a *app) []int {
 // A POINTER THAT MOVED WITHOUT CHANGING WHAT IT IS OVER HAS NOT MOVED, as far
 // as this surface is concerned. Two cells of the same tool row are the same
 // answer, and the second one must leave nothing behind: no stale entry, no
-// dirty flag, no command, and so no frame.
+// dirty flag, and so no frame.
+//
+// THE SECOND MOTION IS THE ONE THAT ASKS FOR THE POINTER'S OWN CLOCK, and that
+// is the whole of what the fold added here (coalesce.go): a motion arriving
+// after another motion is a SWEEP, so it is kept rather than answered, and one
+// [pointerMsg] is asked for to answer it with. That wakeup is not a frame — it
+// spends the fold and stops — which is why the claim this test exists to make
+// survives it: a pointer crossing a row it is already on still costs no layout,
+// no stale row, and nothing on screen.
 func TestPointerMotionOverTheSameRowLeavesNothingBehind(t *testing.T) {
 	a := hoverApp(t)
 	toolY := screenRowOf(t, a, func(r row) bool { return r.hit == hitTool })
@@ -73,9 +81,11 @@ func TestPointerMotionOverTheSameRowLeavesNothingBehind(t *testing.T) {
 	}
 	settle(a)
 
-	_, cmd := a.Update(tea.MouseMotionMsg{X: 4, Y: toolY})
-	if cmd != nil {
-		t.Fatal("a motion that changed nothing scheduled a command")
+	// The fold takes it and answers it at the frame, which is where the claim is
+	// checked: the whole round trip must leave the surface exactly as it was.
+	drive(t, a, tea.MouseMotionMsg{X: 4, Y: toolY})
+	if a.ptr.have {
+		t.Fatal("the pointer's fold is still holding a position after it settled")
 	}
 	if a.dirty {
 		t.Fatal("a motion that changed nothing asked for a frame")
