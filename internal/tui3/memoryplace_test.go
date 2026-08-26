@@ -66,10 +66,17 @@ func TestTheMemoryPlaceTeachesUntilThereIsEnoughToRead(t *testing.T) {
 func TestTheMemoryLegendUsesTheStoresFiveKinds(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	text := memoryPlaceText(readMemory(memoryPlaceFixture(now), nil, "", now), 200)
-	for _, want := range []string{"fact 4", "preference 1", "decision 1", "correction 1", "project_state 3"} {
+	// THE LEGEND SPELLS THE FIFTH KIND AS A WORD AND NOT AS A COLUMN NAME. The
+	// store's constant is `project_state`; a person reads `project state`, which
+	// is the no-machinery-vocabulary law applied to the one kind that has an
+	// underscore in it ([memoryTypeWord]).
+	for _, want := range []string{"fact 4", "preference 1", "decision 1", "correction 1", "project state 3"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the legend omitted %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "project_state") {
+		t.Fatalf("the legend drew the store's column name at a person:\n%s", text)
 	}
 	for _, invented := range []string{"quirk", "lesson", "playbook", "trait"} {
 		if strings.Contains(text, invented) {

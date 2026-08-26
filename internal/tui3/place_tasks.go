@@ -794,7 +794,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
 		// the note line — `filter · zzz · nothing matches` — and the body stays
 		// blank under it.
 		rows := make([]placeRow[taskSheetHit], 0, room)
-		if len(p.reading.items) == 0 {
+		if p.reading.held == 0 {
 			for _, line := range tasksTeach(a.pal) {
 				if len(rows) >= room {
 					break
@@ -916,7 +916,7 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 // and a count beside that prose would be the surface saying both "there is
 // nothing here" and "here is how much of it there is" on one screen.
 func (p *tasksPlace) note(a *app, width int) []string {
-	if !p.open || p.detailOn || len(p.reading.items) == 0 {
+	if !p.open || p.detailOn || p.reading.held == 0 {
 		return nil
 	}
 	r := a.tasksFiltered()

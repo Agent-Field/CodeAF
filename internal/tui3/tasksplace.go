@@ -109,6 +109,17 @@ type tasksMineRow struct {
 // not need to reach back to disk to preserve that boundary.
 type tasksReading struct {
 	items []tasksItem
+	// held is how much work the machine has run IN ANY WINDOW, and it is what
+	// tells the two empty pages apart.
+	//
+	// A LIST EMPTIED BY THE WINDOW IS NOT AN EMPTY PLACE. Both draw no rows, and
+	// the right answer to each is the opposite of the other's: a machine that has
+	// run nothing wants the whole frame spent saying what tasks ARE
+	// ([tasksTeach]), while a window paged back past the oldest task wants the
+	// count line — which is the only thing on the frame naming the window the
+	// four shift-arrows are moving. Teaching in the second case swallowed the way
+	// back, so `shift+←` on a real machine looked like the page had been wiped.
+	held  int
 	win   session.UsageWindow
 	seen  time.Time
 	now   time.Time
@@ -177,6 +188,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	}
 
 	sections := [4][]tasksItem{}
+	r.held = len(order)
 	for _, key := range order {
 		item := held[key]
 		if !r.win.Holds(tasksEntryAt(item.entry, now)) {
@@ -278,7 +290,12 @@ const tasksBareLead = "  "
 // lay is the one walk of the reading: what line the page draws, in order, and
 // which of them a person can act on.
 func (r tasksReading) lay(width int) []tasksLine {
-	if width <= 0 || len(r.items) == 0 {
+	// A MACHINE THAT HAS RUN NOTHING LAYS NOTHING OUT, and the place spends the
+	// frame on [tasksTeach] instead. A machine that HAS and whose window holds
+	// none of it still lays out its head line, because that line is the only
+	// thing on the frame naming the window the shift-arrows move
+	// ([tasksReading.held] states the law).
+	if width <= 0 || r.held == 0 {
 		return nil
 	}
 	lines := make([]tasksLine, 0, len(r.items)+8)
@@ -373,6 +390,18 @@ func (r tasksReading) at(lines []tasksLine, i int) (tasksItem, bool) {
 // fold at the foot of every section, which is one number in two places and the
 // drift the one-source-of-truth law exists to stop.
 func (r tasksReading) head() string {
+	// A WINDOW HOLDING NONE OF IT SAYS SO IN WORDS AND NOT AS A ZERO. The
+	// emptiness law reaches this sentence: `0 since aug 12` is the figure the law
+	// exists to forbid, and `nothing since aug 12` is the same fact a person can
+	// read — with the date still on the line, which is what says the window is
+	// the reason.
+	if len(r.items) == 0 {
+		word := "work aforge ran on its own. nothing"
+		if start := tasksWindowStart(r.win); start != "" {
+			word += " since " + start
+		}
+		return word + "."
+	}
 	word := fmt.Sprintf("work aforge ran on its own. %d", len(r.items))
 	if start := tasksWindowStart(r.win); start != "" {
 		word += " since " + start
