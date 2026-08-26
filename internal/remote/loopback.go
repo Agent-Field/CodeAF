@@ -77,6 +77,16 @@ func Loopback(hello Hello, opts Options) (*Loop, error) {
 	return &Loop{Client: client, Served: served, surface: surface}, nil
 }
 
+// FarCalls is how many round trips this loop's surface has made — the reading
+// PERF.md's --host laws are counted against, forwarded here because a test
+// driving a [Loop] holds the loop and not the client.
+func (l *Loop) FarCalls() uint64 {
+	if l.Client == nil {
+		return 0
+	}
+	return l.Client.FarCalls()
+}
+
 // Close ends the connection from the surface's side, which is the ordinary way
 // a link dies: the pipe shuts and the engine's reader sees EOF. It is idempotent
 // because a test that closes in a defer and again on the happy path is a test

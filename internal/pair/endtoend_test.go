@@ -330,6 +330,7 @@ func (s *stubAgent) Model() string                       { return "a-model" }
 func (s *stubAgent) SetModel(string)                     {}
 func (s *stubAgent) SetContextWindow(int)                {}
 func (s *stubAgent) ReasoningFor(string) string          { return "" }
+func (s *stubAgent) ReasoningLevels() map[string]string  { return nil }
 func (s *stubAgent) SetReasoningFor(string, string)      {}
 func (s *stubAgent) ResolveConsent(uint64, bool)         {}
 func (s *stubAgent) Title() string                       { return "" }
