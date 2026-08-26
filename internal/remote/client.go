@@ -917,6 +917,27 @@ func (c *Client) World() (session.World, error) {
 	return world, nil
 }
 
+// TaskRecord is ONE ROW of the engine machine's record, read deeper than
+// [Client.World] reads it: the last thing that piece of work said, and whether
+// its journal is still on that machine's disk ([MethodPlacesTask]).
+//
+// THE ERROR IS ANSWERED AND NOT SWALLOWED, for [Client.World]'s reason narrowed
+// to one card: a record that came back empty is a piece of work that said
+// nothing at the end, and a call that failed is a card that has not been told
+// yet. The surface draws a different line for each, and only an error can carry
+// the second.
+func (c *Client) TaskRecord(uri string) (session.TaskRecord, error) {
+	payload, err := c.call(nil, MethodPlacesTask, PlacesTaskArgs{Transcript: uri})
+	if err != nil {
+		return session.TaskRecord{}, err
+	}
+	var record session.TaskRecord
+	if err := json.Unmarshal(payload, &record); err != nil {
+		return session.TaskRecord{}, err
+	}
+	return record, nil
+}
+
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 	payload, err := c.call(nil, MethodStandingItems, workspace)
 	if err != nil {
