@@ -159,17 +159,46 @@ func NoteLookAt(root, place string, at time.Time) {
 	if err != nil {
 		return
 	}
-	// WRITTEN WHOLE OR NOT AT ALL. This is a read-modify-write of every place's
-	// stamp, so a process that died halfway through an in-place write would cost
-	// a person every origin they had rather than one — the rename is what keeps
-	// the failure the size of the thing that failed.
-	final := filepath.Join(root, looksStampName)
-	temporary := final + ".tmp"
-	if os.WriteFile(temporary, append(payload, '\n'), 0o600) != nil {
+	writeLookStamps(root, payload)
+}
+
+// writeLookStamps puts one whole document where [readLookStamps] will find it.
+//
+// WRITTEN WHOLE OR NOT AT ALL. The document is a read-modify-write of every
+// place's stamp, so a process that died halfway through an in-place write would
+// cost a person every origin they had rather than one — the rename is what
+// keeps the failure the size of the thing that failed.
+//
+// AND EVERY WRITER GETS A TEMPORARY FILE OF ITS OWN, which is what makes that
+// rename worth anything. A shared `looks.json.tmp` re-opened the door the
+// rename closed: [looksMu] serializes one process and two windows are not
+// serialized at all, so both could truncate-and-write the same temporary path
+// and either could then rename a half-written or interleaved file onto
+// looks.json — and a file that will not parse answers empty for EVERY place at
+// once ([readLookStamps]), which is a failure the size of everything. With a
+// private file the last writer wins and the cost is one place's origin, which
+// is exactly the bargain [looksMu] states.
+//
+// The temporary file is made BESIDE the final one and never in the machine's
+// temporary directory: a rename across two filesystems is not atomic, and on
+// most of them is not a rename at all.
+func writeLookStamps(root string, payload []byte) {
+	temporary, err := os.CreateTemp(root, looksStampName+".*")
+	if err != nil {
 		return
 	}
-	if os.Rename(temporary, final) != nil {
-		_ = os.Remove(temporary)
+	name := temporary.Name()
+	if _, err := temporary.Write(append(payload, '\n')); err != nil {
+		_ = temporary.Close()
+		_ = os.Remove(name)
+		return
+	}
+	if temporary.Close() != nil {
+		_ = os.Remove(name)
+		return
+	}
+	if os.Rename(name, filepath.Join(root, looksStampName)) != nil {
+		_ = os.Remove(name)
 	}
 }
 
