@@ -56,6 +56,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // WrappedAgent is the slice of *session.Agent an engine serves. It is the
@@ -195,6 +196,31 @@ type Engine struct {
 	// of the surface's seven places are built from ([MethodPlacesWorld] names
 	// them), which is why one door serves all five.
 	World func() session.World
+
+	// Ledger is the spend place's reading: the priced lines of THIS machine's
+	// usage ledger at or after a floor the surface named, and whether the file
+	// holds any priced line at all outside it ([LedgerReading] says why the
+	// second fact cannot be derived from the first). Nil is a refusal, which the
+	// surface draws as the sentence spend has always said.
+	Ledger func(since time.Time) LedgerReading
+
+	// Search is one full-text query over every message THIS machine has kept.
+	// Nil is a refusal for the same reason, and it is the ordinary state of an
+	// engine whose memory row is off: the index and the memory store are one
+	// database today, and a machine that is not remembering has neither.
+	Search func(terms string, limit int) ([]store.ConversationHit, error)
+
+	// Memory is THIS machine's memory store, readings and writes together.
+	//
+	// IT IS ONE FIELD FOR SEVEN METHODS AND THAT IS THE POINT. The memory place
+	// is the only place on the surface that WRITES, so a wire that carried its
+	// readings and not its writes would hand a person a page of the far
+	// machine's memories whose `e` and `f` keys edited this laptop's. The store
+	// crosses whole or it does not cross, and nil is memory off over there —
+	// which the surface says in those words rather than in this session's own
+	// ([EngineMemory]).
+	Memory  EngineMemory
+	Archive func(dir string, archived bool) error
 	// PlacesRoot is the directory World walked, carried on the welcome so the
 	// surface can put THIS conversation back into a walk taken before it existed
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
@@ -1403,6 +1429,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			next, resumed, err := open(file)
 			return next, file, resumed, err
 		})
+	}
+	// AND THE THREE PLACES THAT LEARNED TO CROSS LATER ARE ASKED HERE, in a file
+	// of their own, ahead of the refusal. They are additive to version 4 and the
+	// refusal below is what an engine WITHOUT them answers, which is the whole
+	// bargain: a surface that meets it says the sentence its place has always
+	// said rather than waiting on a call nobody is going to answer
+	// (wire_places.go states the law).
+	if payload, handled, err := s.placesCall(call); handled {
+		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)
 }
