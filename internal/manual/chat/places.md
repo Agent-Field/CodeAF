@@ -495,8 +495,9 @@ ledger every model call there writes a line into; search reads the index of what
 there; memory reads what those sessions learned. All six are directories, and over a
 connection there are two machines with those directories on them.
 
-**Four of the seven now read the far machine's.** They ask the engine for its own reading and
-draw that:
+**Home, tasks and standing now read the far machine's.** They ask the engine for its own
+reading and draw that. Settings is deliberately mixed; the other three places state that
+their readings have not crossed:
 
 | Place | Over `--host` |
 |---|---|
@@ -508,16 +509,18 @@ draw that:
 | **search** | `search reads what was said on this machine, and this session is on another` |
 | **memory** | `memory shows what this machine has learned, and this session is on another` |
 
-**Nothing on any place is drawn out of this laptop's copy.** A screen full of the wrong
-machine's work is a confident lie, and one honest sentence is better than eight rows and a
-total in dollars that belong to somebody else's afternoon.
+**No place silently substitutes this laptop's rows for the far machine's.** Settings names
+the split as it opens. Spend, search and memory draw no local rows at all over `--host` and
+say why. A screen full of the wrong machine's work is a confident lie, and one honest
+sentence is better than eight rows and a total in dollars that belong to somebody else's
+afternoon.
 
 **The tab bar says whose machine it is.** Over a connection the right end of the bar reads
 `on <machine>` — the same name you typed after `--host`, and the same one the status line's
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty when I connect to another machine — space space over --host
+## Why is home empty over ssh when I connect to another machine — space space over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 

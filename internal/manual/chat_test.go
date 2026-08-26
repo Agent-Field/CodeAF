@@ -93,6 +93,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my google account", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
+		// Host parity is asked from the symptom, not from the name of the wire
+		// door. Each phrase therefore has to retrieve the page that owns the
+		// visible answer.
+		{"why is home empty over ssh", "places"},
+		{"someone else is typing", "staying-on-that-machine"},
+		{"how fast is the connection", "screen"},
+		{"my click does nothing on the server", "opening-files-from-that-machine"},
+		{"does export save to my laptop", "commands"},
+		{"which machine's settings are these", "commands"},
+		{"the far machine says a different version", "running-on-another-machine"},
+		{"how do I stop the old engine", "staying-on-that-machine"},
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},

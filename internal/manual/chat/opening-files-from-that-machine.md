@@ -41,7 +41,7 @@ The browser is where a click lands because that is what a terminal hands a web a
 If you want the file in **your own** program — Preview, an editor, a spreadsheet — use
 `/files <path>` instead.
 
-## Why is that file path not clickable over --host
+## My click does nothing on the server — why is that file path not clickable over --host
 
 A path becomes a link only after **the other machine** has confirmed the file is really
 there. Until then it is plain text, which is the same rule a local conversation follows —

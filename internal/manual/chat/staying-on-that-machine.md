@@ -322,7 +322,18 @@ account connections all wait for you now. What is left is not about anybody bein
 room; it is about a road that has not been built. Nothing here half-works: each one is
 absent rather than present and failing.
 
-## Make it not hold the session
+## How do I stop the old engine — there is no engine --stop command
+
+`aforge engine --stop` is not a command. A session host closes an idle conversation after
+30 minutes and leaves two minutes after its last conversation is gone. There is no surface
+door for ending that process early; closing a conversation ends the conversation, not every
+other conversation the host may be holding.
+
+If an old host is still answering, update the `aforge` binary on that machine and let the
+idle clock retire it. A new connection that meets a different wire version is refused before
+the surface opens; it does not send a stop request to the old process.
+
+## Make one connection not use the session host
 
 `aforge engine --no-host` serves that one connection on the pipe, the old way, without
 looking for or starting a host. Its help text reads:
