@@ -696,6 +696,33 @@ along with `watch`.
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
 
+## How do you decide how to go about a piece of work?
+
+Three working habits are in aforge's own instructions, and **the chat reads the same
+three as a task does** — the same words, from one page both are given. They are written
+as principles rather than examples, because aforge is handed prose, research, data,
+operations and code through the same door.
+
+- **When the work comes with its own measure, that measure is the loop, not the report.**
+  A check to run, a count to reach, a reading somebody will take: aforge works *between*
+  readings rather than saving the reading for the end, and takes them **more often when
+  the reading is zero**, changing less in between.
+- **Nothing on every count is one shared fault, not many separate ones.** When everything
+  reads zero, aforge looks for what they have in common — how they are reached, the step
+  before any of them runs — and proves that shared path carries one case end to end
+  before touching any single part. Uneven readings mean the opposite.
+- **Before making a thing itself, it spends one step asking whether it already exists** in
+  a form it can use: a tool, a source, a service, something the work already carries,
+  something done here before. Asking costs one step; not asking costs the whole thing.
+  It asks *before* the first piece exists.
+
+The chat carries them because **the approach is chosen in the conversation**, usually in
+the first minutes, before any task exists — measured over a set of runs of the same
+brief, the ones whose conversation asked whether the thing already existed got to a real
+result, and the ones that set about building it by hand did not. A habit that only
+reached the worker arrived after the decision it was meant to shape. *How work on its
+own actually runs* describes the same three from the task's side.
+
 ## Can I run a subharness — one of the typed programs?
 
 `/subharness` (or `/sub`) lists them, `enter` opens that one's intake card, and
