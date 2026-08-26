@@ -434,7 +434,7 @@ key arrives as an ordinary `enter` and the message waits instead.
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
-| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -1190,7 +1190,7 @@ with that space behind the cursor, takes the whole draft away and opens home —
 space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
 the box has words in it, and it is not a paste: text pasted with two leading spaces is two
 spaces. A machine with one conversation, or none, opens an empty home; so does a session
-over `--host`, where home opens with one sentence in place of its rows.
+over `--host`, where what opens is the **far machine's** home.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,

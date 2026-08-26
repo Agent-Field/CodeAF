@@ -139,6 +139,9 @@ The **far** machine owns the conversation and everything it touches:
 - the session file the conversation is written to
 - **everything you set up that keeps working** — reminders, watches, rules, overnight work:
   the store they live in, the clock that checks them, and the machine they run on
+- **the places** — home, tasks and standing all list the far machine's own disk, because a
+  place is a listing of a machine and the machine that matters is the one the work is on
+  (*The places over --host*, on the Places page)
 
 The **near** machine — the one you are sitting at — owns the surface:
 
@@ -182,6 +185,43 @@ path you may want to copy.
 
 The `~` collapse still runs against **this** machine's home directory, so it rarely fires
 on a remote path — expect to see the full path.
+
+## Do home, tasks and my projects work over --host
+
+Yes, and they show **the far machine's**.
+
+`space` `space` opens the home of the machine your session runs on: its projects, its
+conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
+that conversation — the engine swaps to it and this window keeps drawing, the same door
+`aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+see whose afternoon you are looking at, and it is not there at all on a local session.
+
+Three of the seven places still read the machine this window is running on, and each says so
+in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+and why the look-stamp behind each tab's number is kept per machine, is on the Places page
+under *The places over --host*.
+
+This is new. Home over a connection used to draw one dim line saying its projects belonged
+to the wrong machine, and before that it refused to open.
+
+## How do I work on the same conversation from two computers — another window, and another machine
+
+These are two different things and they are easy to run together.
+
+**Another window** is a second aforge on the *same* machine holding a conversation you can
+see on home. Its row says `another window` in the right margin, and `enter` on it will not
+open a second copy — one conversation, one writer. Go to that terminal, or start a new
+conversation here.
+
+**Another machine** is `--host`. The conversation lives over there and your terminal
+*attaches* to it: what you type crosses the wire, the work runs on that machine, and the
+answer comes back. Close the lid and the turn keeps going if the far end is a session host;
+open a terminal somewhere else, attach to the same session, and you are back in it with the
+gap replayed. That is what "it just transfers and works" actually is — attaching, not
+copying, and the place a conversation lives never moves.
+
+**And the places are neither.** They are a listing of one machine's disk, and they follow the
+machine your session is on. Nothing about them opens a second window or moves a conversation.
 
 ## What does not work over --host
 
@@ -257,7 +297,17 @@ The second half of the list, with the exact sentence each one says.
     designer is not offered over `--host` and aforge says it cannot build one from here.
     Running a harness that already exists is unaffected.
 
-13. **File paths are clickable again, and this is now a capability rather than a limit.**
+13. **Three of the seven places still read this machine.** Spend adds up the ledger every
+    model call on the machine this window runs on writes into, search reads the index of what
+    was said here, and memory reads what sessions here learned — and there is no door on the
+    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
+    says one line where its rows would be:
+    `spend shows what this machine has cost, and this session is on another`
+    `search reads what was said on this machine, and this session is on another`
+    `memory shows what this machine has learned, and this session is on another`
+    Home, tasks, standing and settings all work and all answer for the right machine.
+
+14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
     same name on this machine. Now the far machine is asked whether the file is really
     there, and a path it confirms is a link that opens the file itself — through a small
@@ -288,14 +338,14 @@ all work over `--host`. What to know is **whose machine they are on**:
 - Pausing or stopping one writes to the far machine's store, and a write that store
   refuses is shown as its own refusal rather than redrawn as done.
 
-Three readings are absent over a connection, and each says nothing rather than guessing:
+**Home and the standing place both work, and both are about the far machine.** Home lists
+that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
+them; the standing place lists both what stands on this conversation and what stands anywhere
+else on that machine. The status line's `◦ keeping an eye on 2` counts the far machine's items
+for the workspace this window is on, because over `--host` that path is the far machine's own.
 
-- **Home opens with no rows on it.** Where the list would be it says exactly:
-  `home shows this machine's projects, and this session is on another`
-  — so a remote session has no `◦` item band and no `p`/`s` keys on one. The tab bar, the
-  composer and the other six places are all there as usual. The status line's
-  `◦ keeping an eye on 2` still counts, and it counts the **far** machine's items for the
-  workspace this window is on, because over `--host` that path is the far machine's own.
+Two readings are absent over a connection, and each says nothing rather than guessing:
+
 - **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
   state is read from a file on that disk. A line drawn from this laptop's timer would be a
   status about a machine nobody consulted.

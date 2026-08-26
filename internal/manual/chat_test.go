@@ -773,6 +773,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
 
+		// The wave that made the places follow the session's machine. These are
+		// the owner's own sentences, from the report that started it: they
+		// attached over --host, pressed space-space, got one dim line, and said
+		// "i thought we can open multiple terminals and things would just auto
+		// transfer and work". Every one of these has to land somewhere that
+		// answers rather than somewhere that used to.
+		{"i pressed space space over --host and got one line", "places"},
+		{"why is home empty when I connect to another machine", "places"},
+		{"whose projects am I looking at over --host", "places"},
+		{"does the tasks page show the other machine's work", "places"},
+		{"the tasks tab showed work that is not on this machine", "places"},
+		{"what does on spark at the end of the tab bar mean", "places"},
+		{"which places work over --host", "places"},
+		{"why does spend say this session is on another machine", "places"},
+		{"can I search my old chats over --host", "places"},
+		{"does memory work when I connect to another machine", "places"},
+		{"why is nothing marked folder gone on a remote home", "places"},
+		{"do the tab numbers get mixed up between two machines", "places"},
+		{"can I open multiple terminals and have things just transfer", "running-on-another-machine"},
+		{"how do I work on the same conversation from two computers", "running-on-another-machine"},
+		{"what is the difference between another window and another machine", "running-on-another-machine"},
+		{"does home work over --host", "running-on-another-machine"},
+
 		// The wave that made the files on the far machine things this one can
 		// open. These are the sentences somebody types with a hosted session in
 		// front of them: the click, the download, the drag, the picture they

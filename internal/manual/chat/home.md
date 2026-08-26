@@ -63,7 +63,7 @@ Four ways, and each of them is you saying which conversation you mean:
 | `aforge chat --session <path>` | that conversation, no home |
 | `aforge resume` | the session picker, no home |
 | `aforge chat --once "text"` | one reply, printed; no surface at all |
-| `aforge --host <machine>` | the far machine's session, no home |
+| `aforge --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
 
 And on a machine with only one conversation — a first run — home does not greet you.
 There is no setting for this and no flag to turn it off: whether home greets you follows
@@ -1247,9 +1247,8 @@ It works with a turn running. Home takes the frame the way the settings panel do
 answer goes on streaming underneath — `esc` puts you back in it, still running.
 
 One thing it will not do: it does nothing when the box already has words in it. It works on
-a machine with one conversation, on one with none, and over `--host` — what opens in each
-case is a home with a sentence where its rows would be (*Home on a fresh machine, and over
---host*).
+a machine with one conversation, on one with none, and over `--host` — where what opens is
+the **far machine's** home (*Home on a fresh machine, and over --host*).
 
 ## What does pressing space twice do — the home door at the foot of a conversation
 
@@ -1290,9 +1289,9 @@ more:
 
 A machine with one conversation, or with none, opens home all the same: an empty home is
 a screen (*Home is empty — what an empty home shows*), not a refusal. So does a session
-over `--host`, which draws one sentence where its rows would be. Both used to be otherwise
-— the gesture stayed inert until the machine held a second conversation, and it was not
-bound at all over `--host` — and both those rules are gone.
+over `--host`, which opens the **far machine's** home. Both used to be otherwise — the
+gesture stayed inert until the machine held a second conversation, and it was not bound at
+all over `--host` — and both those rules are gone.
 
 ## how do I get back to home with one chat
 
@@ -1513,15 +1512,22 @@ A machine that has held nothing yet draws an empty home — the pulse line, the 
 keys at the foot (*home is empty — what an empty home shows* has the whole screen). The
 conversation you opened it from is on it as soon as there is one.
 
-Over `--host` home **opens without its rows** and says
-`home shows this machine's projects, and this session is on another` where they would have
-been. The projects it would read are under *this* computer's `~/.aforge/v3`, and the work is
-on the far end — a screen full of the wrong machine's projects would be a confident lie, so
-the list is the one part that is not drawn. The top line, the tab bar, the composer and the
-way on to the other six places are all there, and the space-space door works.
+Over `--host` home lists **the machine your session is running on**. The projects, the
+conversations in them and the work each of those ran are read on the far end and carried
+here, so what you are looking at is the server's afternoon rather than your laptop's — and
+the right end of the tab bar says `on <machine>` so you can see which. Enter on a row opens
+that conversation the way `aforge resume` opens one locally: the engine swaps to it and this
+window keeps drawing.
 
-It used to refuse to open at all. Every place opens now (the Places page states the law),
-and a place that cannot draw its rows says why in the slot the rows would have used.
+Two things a remote home does not do, and both are silences rather than sentences. **No row
+is ever marked `that folder is gone`** — the folders are on the other machine and a stat here
+would report every one of them as deleted. And in the fraction of a second before the far
+machine's first answer arrives, home draws **no rows and no sentence at all**: `nothing here
+yet` over a server full of work would be the one wrong thing this screen can say about
+somebody else's disk.
+
+It has been three screens. It used to refuse to open at all; then it opened with one dim line
+saying its projects belonged to the wrong machine; it now opens on the right machine's.
 
 ## Does home update while I look at it?
 
