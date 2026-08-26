@@ -203,6 +203,13 @@ func newTestApp(agent Agent) *app {
 	// machine and nowhere else. The posture has tests of its own that set the
 	// profile directory they read from.
 	a.railAway = false
+	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
+	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
+	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// read one way on a Mac and another way on Linux. The spelling has a table
+	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
+	// asserts the Mac reading against every place on purpose.
+	a.chords = chordSpelling{meta: chordAltWord}
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
@@ -1021,8 +1028,8 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	// block is taller than a twenty-row test frame, so which of its rows the
 	// bottom of the screen happens to show is a fact about the terminal.
 	for _, want := range []string{"/model <slug>", "/compact"} {
-		if !strings.Contains(helpText(a.file), want) {
-			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file))
+		if !strings.Contains(helpText(a.file, a.chords), want) {
+			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file, a.chords))
 		}
 	}
 	// What the SCREEN is asserted on is the block's last row, because that is the

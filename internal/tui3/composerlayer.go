@@ -332,13 +332,13 @@ func (a *app) composerRows(width int, pal palette) []string {
 	if where := a.composerWhereLine(); where != "" {
 		key := ""
 		if len(a.composerPlaces()) > 1 {
-			key = composerMoveWord
+			key = a.chords.say(composerMoveWord)
 		}
 		rows = append(rows, a.composerFact(where, key, width, pal))
 	}
 	if model := a.composerModel(); model != "" {
 		slot, _ := config.ModelSlotFor(composerSlot)
-		rows = append(rows, a.composerFact(slot.Label+composerRunsOnWord+model, composerModelWord, width, pal))
+		rows = append(rows, a.composerFact(slot.Label+composerRunsOnWord+model, a.chords.say(composerModelWord), width, pal))
 	}
 	rows = append(rows,
 		a.composerFact(composerCapSaysWord+a.composerCapWord()+composerCapAsksWord, composerCapEditWord, width, pal))

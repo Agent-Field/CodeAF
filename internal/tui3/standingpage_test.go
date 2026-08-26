@@ -152,7 +152,7 @@ func TestStandingIsOnTheCommandListAndInHelp(t *testing.T) {
 	if !found {
 		t.Fatal("/standing is not on the command list")
 	}
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, want := range []string{"/standing", "also /orders", "in /standing"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help is missing %q:\n%s", want, help)

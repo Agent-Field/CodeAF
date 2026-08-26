@@ -1014,6 +1014,9 @@ starting work here, so the box is still standing when you come back.
 
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 
+On macOS every `alt+` below is drawn `⌥` — `alt+enter` is `⌥enter`, `alt+w` is `⌥w`, `alt+o`
+is `⌥o`. Same key, same chord, the spelling the keycap uses.
+
 `alt+enter` with something typed into the composer on any place opens the **composer
 layer**: the page behind dims, the box stays where it is, and the three facts a task needs
 appear under it. The places page has the layer in full; these are its keys.
@@ -1042,10 +1045,23 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1`.** Home is the first of seven places, and every one of
-them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold `alt` and press
-the digit. It arrives in every terminal aforge runs in, which is why the numbers are on
-`alt` rather than on `ctrl` (`ctrl+<digit>` is not something a terminal can send at all).
+**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of seven places, and
+every one of them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold
+`alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
+keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
+`alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
+rather than on `ctrl`.
+
+**`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
+and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
+the first spelling and never will be — but a terminal running the kitty keyboard protocol
+sends exactly the keys that scheme cannot spell, and it tells aforge it does. Where that
+report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
+live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
+WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
+way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
+jumping" on the screen page.
 
 **The numbers work from a conversation as well as from a place.** They are the one class of
 place key that does: `tab` belongs to the composer's path completion while you are typing,
@@ -1054,8 +1070,10 @@ is shown, `shift+←→↑↓` for its time window — is about the room you are
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
 frame saying what it is for, and none of the seven is ever a key that does nothing.
 
-There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`). `esc` was not available either: on an idle conversation it
+There is no `ctrl+<letter>` chord for home: every one this surface could use is already
+taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
+takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
@@ -1554,9 +1572,20 @@ stripped off it.
 
 ## Chords that mean more than one thing
 
-Two chords carry unrelated meanings. Which one you get depends on where you are.
-A third, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
+Three chords carry unrelated meanings. Which one you get depends on where you are.
+A fourth, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
 the thing you are standing on — and its own section below has the table.
+
+**`ctrl+.` — two meanings, and the two screens can never both be up:**
+
+| Where you are | What it does |
+| --- | --- |
+| in a conversation | every task this project has run — the same list `/history` opens |
+| on a place | draws the key map, exactly as `alt+.` (`⌥.`) does — **only** on terminals that report they can send `ctrl+<digit>` |
+
+A place takes the whole frame, so while one is standing the conversation's keys are not
+under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
+reading simply does not exist and the chord does nothing there.
 
 **`ctrl+t` — two meanings:**
 
@@ -1650,7 +1679,8 @@ answer:
 | `ctrl+v` | **Bound**, on four surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, the machine's own default on home at rest, or a standing item. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
-| `ctrl+<digit>` | Not bound, and it cannot be: terminals have no encoding for it and most drop it entirely. The place keys are `alt+1` … `alt+7` for exactly this reason |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -1410,6 +1411,20 @@ type app struct {
 	// held modifier, so what the mockup drew as "hold alt" is a chord that lasts
 	// exactly one keystroke.
 	mapShowing bool
+	// chords is HOW THIS TERMINAL SPELLS THE CHORD CLASSES and what its option
+	// key is called — `alt+` everywhere, `⌥` on a Mac (chords.go). It is decided
+	// once at boot from the platform and the environment, because neither of
+	// those changes while a process runs, and every sentence a person reads about
+	// a chord is drawn through it.
+	chords chordSpelling
+	// chordLost and chordReal are the macOS option-as-meta check, and they are
+	// two flags rather than one because they answer different questions.
+	// chordLost is "a character arrived where a chord was aimed", which arms one
+	// dim line in the place's note slot; chordReal is "a real `alt+` chord has
+	// reached this program", which settles the question for the life of the
+	// process and is never unset.
+	chordLost bool
+	chordReal bool
 	// caret says whether the terminal caret should be shown on this frame. It
 	// is set by [app.frame] on every render and read by [app.View]: home at rest
 	// is a dashboard somebody reads, not a thing they type at, so its empty box
@@ -1734,6 +1749,11 @@ func newApp(ctx context.Context, opts Options) *app {
 		linear:           opts.Linear,
 		tmux:             tmuxTerm(os.Getenv),
 		remote:           remoteLink(os.Getenv),
+		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
+		// whether the modifier is called `alt+` or `⌥`, and the environment names
+		// which emulator is running so the one option-as-meta line can name the
+		// setting instead of waving at "your terminal".
+		chords: detectChords(runtime.GOOS, os.Getenv),
 		// A terminal that has said nothing is assumed to HAVE the keyboard, which
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
@@ -5051,7 +5071,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// explanation, so the first column steps to ink while the second stays in
 		// the note's own dim. The rows that name a slash command need nothing from
 		// the list — a command wears its chip wherever it is written.
-		help := helpText(a.hostedPath(a.file))
+		help := helpText(a.hostedPath(a.file), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
 		return nil
 

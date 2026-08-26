@@ -899,10 +899,16 @@ func (a *app) placeRestWord() string {
 	return "› " + placeRestWord
 }
 
-// placeHint is the line under the composer. Home writes its own sentence for
+// placeHintSaid is the line under the composer, IN THE ONE SPELLING EVERY
+// CONSTANT ON THIS SURFACE IS AUTHORED IN. Home writes its own sentence for
 // every row it can stand on ([app.homeHint]) and gains the router's tail; every
 // other place says the router's own line.
-func (a *app) placeHint() string {
+//
+// WHAT THIS TERMINAL ACTUALLY DRAWS IS [app.placeHint], one call above it: on a
+// Mac the modifier is called `⌥` rather than `alt+`, and chords.go is the single
+// door that substitutes it, so a sentence built here is the same sentence the
+// manual quotes wherever a lane greps for it.
+func (a *app) placeHintSaid() string {
 	// THE COMPOSER LAYER'S FOOT OUTRANKS EVERY OTHER SENTENCE ON THIS LINE. While
 	// it is up the only keys that do anything are its own, and SCREEN 3a's clause
 	// — no key does anything that is not drawn on screen right now — cuts both
@@ -912,7 +918,7 @@ func (a *app) placeHint() string {
 		return a.composerFoot()
 	}
 	if a.mapShowing {
-		return placeMapWords
+		return a.chords.mapLine(placeMapWords, a.ctrlDigits())
 	}
 	if a.strip.open {
 		return stripHint

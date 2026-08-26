@@ -93,6 +93,15 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 	key := msg.String()
+	// THE MAP'S SECOND ENCODING IS FOLDED INTO ITS FIRST HERE, and nowhere else.
+	// A terminal that answered the keyboard query can send `ctrl+.` — which has
+	// no legacy encoding and therefore arrives only from a terminal that took the
+	// disambiguation flag — and normalising it to the one spelling above the
+	// switch is what keeps the dismissal, the claim and the map's own hint line
+	// reading a single key name (chords.go).
+	if key == chordMapAlias && a.ctrlDigits() {
+		key = placeMapKey
+	}
 	// AND THE MAP IS DISMISSED BY THE NEXT KEY, WHATEVER IT IS — then that key
 	// does what it was always going to do. A map that had to be closed before
 	// anything could be pressed would be a mode, and the whole point of drawing
@@ -196,7 +205,16 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // a place with nothing in it spends the frame saying what it is for (pages.go's
 // [app.showPage] holds the law and the story of the three that used to refuse).
 func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	id, ok := placeDigit(msg.String())
+	key := msg.String()
+	id, ok := placeDigit(key)
+	if !ok && a.ctrlDigits() {
+		// AND THE SECOND ENCODING, WHERE THE TERMINAL SAID IT HAS ONE. `ctrl+1`
+		// is unreachable on a terminal with only the legacy encodings and is
+		// exactly what a terminal that took the kitty protocol's disambiguation
+		// flag delivers, so the alias is bound off that terminal's own reply and
+		// never off a guess about which emulator this is (chords.go).
+		id, ok = chordCtrlDigit(key)
+	}
 	if !ok {
 		return nil, false
 	}
@@ -210,14 +228,20 @@ const placeMapKey = "alt+."
 
 // placeDigit is `alt+1`…`alt+7`: the place at that position in [pages].
 //
-// WHY alt AND NOT ctrl: `ctrl+1` has no encoding a terminal can send, and most
-// drop it entirely. `alt+1` arrives as esc-then-1 and has for forty years, which
-// is why it is the one modifier class this program can promise everywhere.
-func placeDigit(key string) (page, bool) {
-	if !strings.HasPrefix(key, "alt+") || len(key) != 5 {
+// WHY alt IS THE ONE THIS PROGRAM PROMISES EVERYWHERE: `alt+1` arrives as
+// esc-then-1 and has for forty years, while `ctrl+1` has no legacy encoding at
+// all and most terminals drop it. It is bound as a SECOND spelling only where
+// the terminal has answered that it disambiguates ([app.ctrlDigits]) — never as
+// the first, and never on a terminal that has said nothing.
+func placeDigit(key string) (page, bool) { return placeDigitAt(chordAltWord, key) }
+
+// placeDigitAt is the digit reading behind both spellings, so a place can never
+// be in one position under `alt+` and another under `ctrl+`.
+func placeDigitAt(prefix, key string) (page, bool) {
+	if !strings.HasPrefix(key, prefix) || len(key) != len(prefix)+1 {
 		return 0, false
 	}
-	at := int(key[4] - '1')
+	at := int(key[len(prefix)] - '1')
 	all := pages()
 	if at < 0 || at >= len(all) {
 		return 0, false
@@ -228,7 +252,7 @@ func placeDigit(key string) (page, bool) {
 // placeAltLetter is `alt+<letter>` with the two spellings the composer already
 // owns held back ([app.placeKey]'s note says why `b` and `f` may not be taken).
 func placeAltLetter(key string) (rune, bool) {
-	if !strings.HasPrefix(key, "alt+") || len(key) != 5 {
+	if !strings.HasPrefix(key, chordAltWord) || len(key) != 5 {
 		return 0, false
 	}
 	letter := rune(key[4])
