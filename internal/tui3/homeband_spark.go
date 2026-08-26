@@ -142,7 +142,7 @@ const machineHandsFill = machineHandsFloor
 //
 // ── WHERE IT DOES NOT DRAW ──
 //
-//   - AT THE LIST TIER. Under [homeMinDetail] home is the list and nothing else
+//   - AT THE LIST TIER. Under [homeCardMin] home is the list and nothing else
 //     (homebridge.go's [homeTierList]) — there is no card for this band to be on.
 //     The test asserts it anyway and the check is written anyway, because the
 //     claim being made is about WIDTH and not about which pane happens to exist

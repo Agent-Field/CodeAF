@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -15,483 +14,53 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// ── DETACH AND ATTACH ───────────────────────────────────────────────────────
+// ── THE SWITCHER'S READING ──────────────────────────────────────────────────
 //
-// THE SURFACE DRAWS ONE CONVERSATION AND POINTS AT A DIFFERENT ONE BY MOVING,
-// NOT BY CLOSING. That is the whole of this file, and it is [app.openSession]
-// split along the one line that used to make the conversation being left stop
-// existing — `a.agent.Close()`.
+// HOME IS A SWITCHER, NOT A DIRECTORY, AND THIS FILE IS THE WHOLE OF WHAT IT
+// READS (SCREEN 1a). Data in — a world, the standing bands, where this window is
+// standing, a look stamp and a clock — rows, stops and verbs out.
 //
-// Detach takes the surface off an agent: it stops every lane this surface holds
-// on it, folds the box and the readings that are the PERSON's rather than the
-// agent's into a sidecar, and clears the per-conversation fields. The agent
-// itself is untouched — its turn goes on streaming into its own journal, its
-// tasks go on running, its presence file goes on heartbeating.
-//
-// Attach points the surface at an agent: it takes up the conversation bundle,
-// bumps every lane generation, rebuilds the screen from the agent's own record
-// ([app.replay], [app.measureContext]), re-subscribes the standing lanes, joins
-// an in-flight turn from its first token ([session.Agent.Attach]) and puts the
-// sidecar's readings back.
-//
-// EVERYTHING NOT IN THE SIDECAR IS REBUILT FROM THE AGENT OR FORGOTTEN. That is
-// the bargain that makes this a third of the size of a surface that held N
-// conversations: the transcript, the rail, the meters, the pending cards, the
-// model and the title are all facts about the agent, and the agent still has
-// them.
-
-// aside is a detached conversation's PERSON-SIDE readings: the few things on
-// screen that are not facts about the agent and would therefore be lost when
-// the surface stops drawing it.
-//
-// EVERYTHING NOT IN THIS STRUCT IS FORGOTTEN BY A SWITCH AND REBUILT FROM THE
-// AGENT ON THE WAY BACK. Adding a field here is adding a thing the surface must
-// keep correct while it is not drawing it, which is the expensive kind of
-// state; the test is "would a person notice it was gone", not "could we".
-type aside struct {
-	// draft is the unsent sentence with every parked message folded in after it,
-	// and chips are the pictures attached to it.
-	//
-	// THE PARKS GO INTO THE BOX RATHER THAN BEING DROPPED. [app.dropParked] is
-	// what /new and /resume do — they say "2 waiting messages dropped" because
-	// the turn those messages were queued behind is about to stop existing. A
-	// switch is not a close: the turn is still running and the words are still
-	// the person's, so they go back where they can see them (quitarm.go's
-	// [app.leavingDraft] assembles exactly this string for the same reason).
-	draft string
-	chips []chip
-	// offset is where they were reading and stick whether they were pinned to
-	// the foot of the transcript.
-	offset int
-	stick  bool
-	// askLeft is what was LEFT of the approval countdown, and zero is no
-	// question or no clock.
-	//
-	// IT IS THE REMAINDER AND NOT THE STAMP. Storing [app.askAt] would mean the
-	// countdown ran while the person was in another project, which is precisely
-	// what the focus gate already refuses to do (consent.go's [app.tickAsk]:
-	// ten seconds is "long enough to read a command and a rule", and there is
-	// nobody reading a conversation that is not on screen). Attach rebases it so
-	// the card comes back with the reading time it had.
-	askLeft time.Duration
-	// askPaused rides along unchanged, keeping the one exception [app.pauseAsk]
-	// makes intact: a question a person has already touched stays paused.
-	askPaused bool
-	// room is the node whose page was open, and zero is none. THE ID ONLY: the
-	// page itself is rebuilt on the way back from the agent's own journal, which
-	// is what opening a room from the rail does anyway.
-	room uint64
-	// since is when this conversation was detached.
-	since time.Time
-}
-
-// laneStops are the standing subscriptions this surface holds on the agent in
-// front, each with the function that LEAVES it (K1's Watch… doors).
-//
-// THEY EXIST BECAUSE A SUBSCRIBER THAT WALKS AWAY WITHOUT SAYING SO IS A PARKED
-// GOROUTINE AND A QUEUE THAT GROWS FOREVER (session's agent.go states this on
-// [eventStream.pump]). While nothing ever detached, dropping the channel was
-// free — the agent was being closed in the same breath. Under a switch the
-// agent goes on living, so every lane has to be given back.
-//
-// A nil stop is a door that does not offer one: an older seam, or a scripted
-// agent in a test that never heard of the Watch… variants. Calling through this
-// struct is always safe.
-type laneStops struct {
-	tasks   func()
-	wakes   func()
-	designs func()
-	runs    func()
-}
-
-// leave gives every standing lane back and forgets the stops.
-func (l *laneStops) leave() {
-	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs} {
-		if stop != nil {
-			stop()
-		}
-	}
-	*l = laneStops{}
-}
-
-// attachable is the agent door onto an in-flight turn: the whole of what the
-// turn has said so far, then its live tail, on one channel (session's
-// [Agent.Attach]).
-//
-// It is asserted rather than added to [Agent] for [taskAgent]'s reason: a
-// scripted agent in this package's tests has never heard of one, and a surface
-// driven by one must stay representable.
-type attachable interface {
-	Attach() (<-chan session.Event, bool, func())
-}
-
-// attachReplayer is the same door taken TOGETHER WITH THE REPLAY, in one atomic
-// reading (session's [Agent.AttachReplay]). It exists because the two taken
-// separately drew the running turn twice: the journal already holds a turn's
-// completed steps mid-turn, and the attach backlog replays those same steps in
-// their live form — so a surface that replayed and then attached showed the
-// turn's first half in both renderings, stacked. events is nil when no turn is
-// in flight, and the entries are then the whole record.
-type attachReplayer interface {
-	AttachReplay() ([]session.DisplayEntry, <-chan session.Event, func())
-}
-
-// convKey is a transcript's IDENTITY, and it is computed here and nowhere else.
-//
-// THE SYMLINKS ARE RESOLVED BECAUSE `/tmp` AND `/private/tmp` ARE ONE FILE ON
-// THIS PLATFORM AND TWO STRINGS. Two spellings of one transcript would be two
-// keys in the keeper, which is two agents on one journal — a flock conflict with
-// ourselves and a conversation this process could open twice. A link that cannot
-// be resolved (a transcript just minted, a filesystem that will not answer)
-// falls back to the cleaned path, because a name we cannot canonicalise is still
-// a name, and refusing to key it would be worse than keying it twice.
-func convKey(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return filepath.Clean(real)
-	}
-	return filepath.Clean(path)
-}
-
-// front is the conversation on screen, assembled as the bundle a door would
-// have handed over.
-//
-// IT IS READ OFF THE SURFACE RATHER THAN REMEMBERED FROM THE DOOR, and that is
-// deliberate: the older seam hands back an agent alone ([Options.Fresh]), and a
-// remembered bundle would then be nine zero fields where the surface is holding
-// nine live ones. What is true is what the surface has.
-func (a *app) front() Conversation {
-	return Conversation{
-		Agent:            a.agent,
-		SessionFile:      a.file,
-		Workspace:        a.workspace,
-		Place:            a.place,
-		Owned:            a.owned,
-		ContextWindow:    a.ctxWindow,
-		DraftFile:        a.draftFile,
-		History:          a.history,
-		RecentSessions:   a.recentSessions,
-		SaveApproval:     a.saveApproval,
-		SaveBashApproval: a.saveBashApproval,
-		ApplyApprovals:   a.applyApprovals,
-	}
-}
-
-// detachConversation takes the surface off the conversation in front and hands
-// back the readings that would otherwise be lost.
-//
-// IT DOES NOT CLOSE THE AGENT AND IT DOES NOT INTERRUPT THE TURN. Those are the
-// two lines [app.openSession] used to run that this deliberately does not, and
-// they are the whole feature: the conversation being left goes on working.
-//
-// The caller is what decides where the agent goes — the keeper, or
-// [app.closeFront], which closes it for real.
-func (a *app) detachConversation() *aside {
-	side := &aside{
-		// The box and the parked messages, in the order they would have been
-		// sent (quitarm.go's [app.leavingDraft] is the same assembly the door
-		// out of the program makes, and for the same reason).
-		draft:  a.leavingDraft(),
-		chips:  a.chips,
-		offset: a.offset,
-		stick:  a.stick,
-		since:  a.now(),
-	}
-	if left, ok := a.askLeft(); ok {
-		side.askLeft, side.askPaused = left, a.askPaused
-	}
-	if a.room != nil {
-		side.room = a.room.id
-	}
-	// THE DEBOUNCE IS DISARMED HERE AND THE FILE IS THE CALLER'S BUSINESS. A
-	// save armed by this conversation must not fire after the switch and write
-	// this box under the NEXT conversation's name (draft.go's [draftSaveMsg]
-	// carries the file it was armed for, and this is the other half of that
-	// guard). What happens to the file itself differs by caller: a conversation
-	// going into the keeper keeps its crash insurance, and one being closed has
-	// no crash to insure against.
-	a.draftPending = false
-	// THE OVERLAYS CLOSE BEFORE ANYTHING MOVES. Every one of them is a door onto
-	// something process-wide or a mode the person is in the middle of, and
-	// neither survives arriving somewhere else.
-	a.closeForSwitch()
-	// AND EVERY STANDING LANE IS GIVEN BACK. This is the inversion of
-	// [app.openSession]'s last line: it re-subscribed because the agent was
-	// being replaced, and this unsubscribes because the agent is being left
-	// alive with nobody reading it.
-	a.stops.leave()
-	a.clearConversation()
-	return side
-}
-
-// clearConversation empties every surface field that belongs to the
-// conversation being left.
-//
-// THE LIST IS [app.openSession]'S PLUS THE NINE ROWS IT USED TO LEAVE OVER.
-// /resume never called [app.dropTasks], never reset copy mode, never reset the
-// rewind marks, never cleared the per-turn fold state and never bumped the lane
-// generations other than [app.gen] — so a resumed session carried the previous
-// conversation's rail, its rooms, its pilots, a frozen viewport of a transcript
-// that was gone and a cut line through it. That was latent while switching was
-// rare. It is not latent here.
-func (a *app) clearConversation() {
-	a.entries = nil
-	a.live, a.sel, a.think = -1, -1, -1
-	a.asks, a.follows = nil, nil
-	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
-	// and after this line that is a different one (quitarm.go).
-	a.disarmQuit()
-	// The offers and the sign-ins belong to the conversation that raised them
-	// (connect.go), and a browser standing open on one is a browser nobody is
-	// coming back to.
-	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
-	a.harnessStep = ""
-	// And the picked harness with them: a chip is a choice about the NEXT
-	// message of this conversation (harnesspick.go).
-	a.harnPick, a.harnChip = harnessPick{}, ""
-	a.abandonConnects()
-	a.turn = 0
-	// The scrollback's mark and the compacted region both belong to the
-	// transcript being put down. [app.replay] rebuilds both on the way back —
-	// clearing them here is what makes that the design rather than luck.
-	a.replayFrom, a.replayFloor = 0, 0
-	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
-	a.unfolded = map[int]bool{}
-	// Per-turn fold state carried across would be applied to another
-	// conversation's turn NUMBERS, which is the same index meaning something
-	// else.
-	a.workOpen = map[int]bool{}
-	a.dropHover()
-	// A frozen viewport and a cut line are modes a person is in the middle of,
-	// and there is no honest way to be in the middle of one in a conversation
-	// nobody is looking at (copymode.go, rewind.go).
-	a.copy = copyMode{mark: -1}
-	a.rew = rewindMode{}
-	a.rewSay, a.rewSayAt = "", time.Time{}
-	// The rail goes with its nodes, its rooms and its pilots (task.go).
-	a.dropTasks()
-	// Which paths in THIS transcript were linkable. It is cleared at every turn
-	// end anyway (app.go's [app.settle]); leaving it would be a memo about a
-	// conversation that is no longer on screen.
-	a.pathSeen = nil
-	a.stream = nil
-	// EVERY LANE GENERATION, not only the turn's. An event already in flight on
-	// any of them must discard itself rather than land in the conversation that
-	// took this one's place — which is the law app.go's generation comment
-	// states and which /resume only ever kept for one of the eight.
-	a.gen++
-	a.taskGen++
-	a.designGen++
-	a.orchGen++
-	a.roomGen++
-	a.pilotGen++
-	a.wakeGen++
-	a.state = stateIdle
-	a.resetMeters()
-	a.endRecall()
-	a.offset, a.stick = 0, true
-	// The box goes with the conversation it was typed at: the sidecar is holding
-	// it, and the arriving conversation has its own.
-	a.input.setText("")
-	a.chips = nil
-	a.parks = nil
-	a.touch()
-}
-
-// closeForSwitch puts away every overlay that must not survive a switch.
-//
-// TWO KINDS OF THING ARE HERE AND THEY FAIL DIFFERENTLY. A picker, a panel and
-// a sheet are doors onto something PROCESS-WIDE — the model catalog, the
-// profile, the shared memory store, the machine's deliverables index — and a
-// person who left /settings open in one project and found it open in another
-// would reasonably believe it was that project's settings. Copy mode, the
-// rewind sheet and the expand sheet are modes a person is in the MIDDLE of, and
-// there is nothing to be in the middle of in a conversation nobody is drawing.
-//
-// HOME IS NOT CLOSED HERE. It is usually the thing that caused the switch, and
-// it closes itself on the keystroke that did (home.go).
-func (a *app) closeForSwitch() {
-	a.pick.close()
-	a.memPanel.close()
-	a.permPanel.close()
-	// AND THE STANDING PAGE, which is a door onto what stands over the
-	// conversation this window was holding: the shelves are read per
-	// conversation, so one left open across a switch would be three headings
-	// about somewhere else (standingpage.go).
-	a.standPage.close(a)
-	// AND /subharness, for the reason above and one of its own: a card is an
-	// answer half typed, and carrying one across a switch would leave a person
-	// about to start work in a conversation they are no longer in
-	// (subharness.go).
-	a.subPage.close()
-	a.roster.close()
-	a.shelf.close()
-	a.closeLists()
-	a.closeExpand()
-	if a.sheet.open {
-		a.closeSettings()
-	}
-	if a.deck.open {
-		a.closeStatusSheet()
-	}
-	if a.taskSheet.open {
-		a.closeTaskSheet()
-	}
-	if a.rewSheet.open {
-		// RESTORING the sentence it is holding: the draft it stashed on the way
-		// in belongs to the person and not to the page that took it, and the
-		// sidecar is about to pick that box up (rewindsheet.go).
-		a.closeRewindSheet(true)
-	}
-	a.closeTaskRecord()
-}
-
-// attachConversation points the surface at a conversation and hands back the
-// commands it owes itself.
-//
-// conv is the bundle — the agent and the seams minted around it — and side is
-// the sidecar a detach left, or nil for a conversation that was just opened.
-func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
-	a.takeUp(conv, true)
-	agent := a.agent
-	a.state = stateIdle
-	a.resetMeters()
-	if agent != nil {
-		a.model = agent.Model()
-		a.title = strings.TrimSpace(agent.Title())
-	}
-	a.hudStale = true
-	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
-	// a person can tell that this is not several terminals, and it is paid on
-	// the switch rather than on the frame.
-	//
-	// THE RECORD AND THE IN-FLIGHT TURN ARE TAKEN AS ONE READING when the agent
-	// offers it: mid-turn the journal already holds the turn's completed steps,
-	// and the attach backlog replays those same steps — two calls made
-	// separately drew them both, and a person resuming into a running turn read
-	// its first half twice. The atomic door hands back entries that stop where
-	// the turn's work begins and a stream that carries the turn whole, so the
-	// split cannot race the turn ending between the two.
-	var joined tea.Cmd
-	if door, ok := agent.(attachReplayer); ok {
-		entries, events, stop := door.AttachReplay()
-		a.replayList(entries)
-		if events != nil {
-			joined = a.adoptTurn(events, stop)
-		}
-	} else {
-		a.replay()
-		joined = a.joinTurn()
-	}
-	a.noteStandingHere()
-	a.measureContext()
-	// The rail is rebuilt from the engine's own record rather than carried: the
-	// task lane opens on a replay of the graph's roster (session's
-	// [Agent.WatchTaskUpdates]), so watchTasks re-grows the column row by row
-	// through the same taskUpdate door every live event uses. loadTasks
-	// refreshes only the "@" completion's snapshot (taskmention.go).
-	// AND THE WAITING ROOM IS ASKED ABOUT AGAIN, because the conversation being
-	// taken up is a DIFFERENT one: the far machine holds each session's
-	// outstanding questions with that session, and the list this surface was
-	// handed on the first frame belongs to the one it just left (hostlink.go's
-	// [app.askHeld]).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks(), a.askHeld()}
-	if side != nil {
-		cmds = append(cmds, a.restoreAside(side))
-	}
-	// THE IN-FLIGHT TURN'S STREAM IS PUMPED LAST, so the replay above has
-	// already put the person's own message on the screen: the journal holds it
-	// from the moment it was submitted, and the events this stream carries
-	// belong to that same turn number rather than to a new one.
-	if joined != nil {
-		cmds = append(cmds, joined)
-	}
-	a.touch()
-	return tea.Batch(cmds...)
-}
-
-// joinTurn puts the surface back on a turn that is still running, from its
-// first token, and answers nil when nothing is in flight.
-//
-// A SURFACE THAT SUBSCRIBED WITHOUT THE REPLAY WOULD DRAW HALF A TURN WITH NO
-// BEGINNING, which is why this goes through [session.Agent.Attach] and not
-// through a plain subscription.
-func (a *app) joinTurn() tea.Cmd {
-	door, ok := a.agent.(attachable)
-	if !ok {
-		return nil
-	}
-	events, running, stop := door.Attach()
-	if !running {
-		// Nothing to watch. The history is the journal and the replay above has
-		// already drawn it, so the surface stays idle rather than waiting on a
-		// channel that would never carry anything.
-		stop()
-		return nil
-	}
-	return a.adoptTurn(events, stop)
-}
-
-// adoptTurn wires an in-flight turn's stream onto the surface — the working
-// state, the clock, and the pump — whichever door handed it over.
-func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
-	a.stream = events
-	a.streamStop = stop
-	a.state = stateWorking
-	a.lastDelta = time.Now()
-	a.startClock()
-	return tea.Batch(waitEvent(a.stream, a.gen), a.wake())
-}
-
-// restoreAside puts the person's own readings back.
-func (a *app) restoreAside(side *aside) tea.Cmd {
-	if side.draft != "" {
-		a.input.setText(side.draft)
-	}
-	a.chips = side.chips
-	a.offset, a.stick = side.offset, side.stick
-	// THE COUNTDOWN IS HANDED BACK RATHER THAN RESTAMPED, and only to a question
-	// THE ENGINE STILL HOLDS. It is consumed by [app.startAskClock] when the
-	// replayed turn raises the question again — which it does, because the
-	// event is in the turn's backlog — and it is dropped if nothing is pending,
-	// because a card restored for a question nobody is asking any more is the
-	// worst outcome available: a person would answer it.
-	if side.askLeft > 0 && a.enginePending() {
-		a.askResume, a.askResumePaused = side.askLeft, side.askPaused
-	}
-	if side.room == 0 {
-		return nil
-	}
-	// A ROOM IS A PLACE RATHER THAN A MODE, which is why it is the one thing on
-	// this list that is not a reading. It is cheap to reopen from the node id
-	// and expensive to explain the absence of. A node that finished while the
-	// conversation was away opens as its finished page, which is what opening it
-	// from the rail would do anyway (room.go).
-	a.openRoom(side.room, "")
-	return a.takeRoomPump()
-}
-
-// enginePending reports whether the agent is still holding an approval question.
-func (a *app) enginePending() bool {
-	door, ok := a.agent.(interface{ PendingConsent() []uint64 })
-	if !ok {
-		// A door that cannot be asked is not evidence either way, and the
-		// alternative — refusing to restore the clock — would silently drop the
-		// reading time on every scripted agent in the suite.
-		return true
-	}
-	return len(door.PendingConsent()) > 0
-}
+// IT IS PURE AND IT MUST STAY PURE. Nothing here takes an *app, starts a clock,
+// opens a file or asks the disk anything: the facts are gathered on home's own
+// three-second beat and handed in whole (docs/design/home-rethink/ARCHITECTURE.md
+// states the three layers and which may know what). That is what lets the whole
+// reading be tested with fixtures at sixty, eighty, a hundred and twenty and two
+// hundred columns, and what keeps the place that draws it (place_home.go) down
+// to a cursor, two view flags and a fold.
 
 const switcherShown = 8
 
+// switcherVerb is one thing the strip can offer for a row: the letter, the word
+// it is spelled with, and — for the two verbs that ANSWER a question — the
+// option key that answer has to be sent under.
+//
+// THE ANSWER KEY IS CARRIED AND NEVER DERIVED. A question's options are the ones
+// that session offered ("1", "3", sometimes "2"), and a strip that recomputed
+// them from the letter it drew would be answering a different question than the
+// one on the row (homeband_answer.go's [app.answerKey] holds the same law for
+// the digits).
 type switcherVerb struct {
-	key  rune
-	word string
+	key    rune
+	word   string
+	answer string
+}
+
+// switcherView is HOW this reading is shown, as opposed to what is in it: the
+// three things `alt+g`, `alt+q` and the fold line change about one list of
+// facts. They travel together because they are one question — what shape is this
+// list in — and a reader that took three bools in a row would be a reader whose
+// call sites are three unlabelled trues.
+type switcherView struct {
+	// grouped is `alt+g`: the flat ranked list becomes one block per project.
+	grouped bool
+	// hideQuiet is `alt+q`: nothing that is neither asking nor moving is drawn,
+	// and the fold at the foot says so in one word.
+	hideQuiet bool
+	// all is the fold standing open — every row drawn, with no cap at all. It is
+	// a door and not a setting ([homeQuiet] states the rule this inherits): a
+	// line that says rows are being hidden and cannot be asked to stop hiding
+	// them is a dead end somebody hits and gives up at.
+	all bool
 }
 
 type switcherLedgerInput struct {
@@ -524,6 +93,8 @@ type switcherRow struct {
 	moving   bool
 	paused   bool
 	here     bool
+	held     bool
+	gone     bool
 	fold     bool
 	foldWord string
 	options  []session.AnswerOption
@@ -540,20 +111,46 @@ type switcherReading struct {
 	lines        []switcherLine
 	chatCount    int
 	hasAttention bool
-	grouped      bool
-	hideQuiet    bool
+	view         switcherView
 	now          time.Time
+	// hidden is how many rows the fold at the foot is standing for, and zero
+	// when there is no fold. It is what the door needs to know whether opening
+	// it would show anything.
+	hidden int
 }
+
+// switcherHere is WHERE THIS WINDOW IS STANDING, and it is two addresses because
+// two different questions are asked of it: `session` is the conversation on
+// screen — the one row that wears `here` instead of an age — and `project` is
+// the bucket it lives in, which is what puts a person's own project first when
+// `alt+g` groups the list.
+//
+// THE CONVERSATION IS THE EXACT ANSWER AND THE PROJECT IS THE BROAD ONE. A
+// window standing in a project with no conversation of its own has the second
+// and not the first, and a reading that only had the project would have to guess
+// which of its rows was `here` (it used to, and it guessed the first open one).
+type switcherHere struct {
+	session string
+	project string
+}
+
+// switcherGone is which project folders were NOT on the disk when the world was
+// last read, keyed by the path a row answers for ([homeWhere]).
+//
+// IT IS A READING AND NOT A SYSCALL. One os.Stat per project per reading, taken
+// where the world is taken (home.go's [homeView.readGone]), handed in here whole
+// — because this file may not touch a disk and because the door itself stats
+// again on the keystroke anyway. A path this map has never heard of is not gone.
+type switcherGone map[string]bool
 
 // readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, bucket string, seen time.Time, now time.Time, grouped bool, hideQuiet bool, ledger switcherLedgerInput) switcherReading {
-	r := switcherReading{grouped: grouped, hideQuiet: hideQuiet, now: now}
+func readSwitcher(world session.World, items map[string][]StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
+	r := switcherReading{view: view, now: now}
 	projectByDir := make(map[string]session.Project, len(world.Projects))
 	var all []switcherRow
-	hereSet := false
 	for _, project := range world.Projects {
 		projectByDir[filepath.Clean(project.Dir)] = project
 		for _, row := range project.Sessions {
@@ -563,15 +160,11 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 			r.chatCount++
 			needs := row.NeedsPerson()
 			moving := !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking)
-			here := bucket != "" && ((row.Dir != "" && filepath.Clean(row.Dir) == filepath.Clean(bucket)) || (row.ID != "" && row.ID == bucket))
-			// Existing home passes a project bucket, not a session id. An open row
-			// in that project is the narrowest honest identification available.
-			if !here && !hereSet && bucket != "" && project.Dir != "" && row.Open && filepath.Clean(project.Dir) == filepath.Clean(bucket) {
-				here = true
-			}
-			if here {
-				hereSet = true
-			}
+			// EXACTLY THE ONE CONVERSATION THIS WINDOW IS HOLDING. A broader test
+			// would put `here` on a row somebody would then press enter on and go
+			// nowhere, which is the worst thing a word on a door can do.
+			atHere := here.session != "" && ((row.Dir != "" && filepath.Clean(row.Dir) == filepath.Clean(here.session)) ||
+				(row.ID != "" && row.ID == here.session))
 			options := []session.AnswerOption(nil)
 			if row.NeedsPerson() && strings.TrimSpace(row.Presence.Question.Text) != "" {
 				options = append(options, row.Presence.Question.Options...)
@@ -579,7 +172,19 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 			all = append(all, switcherRow{
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
-				at: switcherSortAt(row), needs: needs, moving: moving, here: here,
+				at: switcherSortAt(row), needs: needs, moving: moving, here: atHere,
+				// AND THE TWO FACTS THAT DECIDE WHETHER ENTER CAN WORK AT ALL. A row
+				// another window is holding and a row whose folder is not there any
+				// more both refuse when they are pressed, and a list that said so only
+				// on a card would be saying it only past a hundred and sixty columns —
+				// which is exactly the trap the short spellings were written for.
+				// THE LOCK AND NOT THE HEARTBEAT. `Open` is a window holding this
+				// journal, which is exactly what the door refuses on; `Live` is a
+				// conversation saying what it is doing, which the note already
+				// carries and which would put `another window` on the margin of
+				// every row that is asking anything.
+				held:    !atHere && row.Open && strings.TrimSpace(row.Transcript) != "",
+				gone:    gone[switcherWhere(row, project)],
 				options: options,
 			})
 		}
@@ -605,12 +210,33 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 	}
 
 	r.addLedger(items, world, seen, ledger)
-	if grouped {
-		r.addGrouped(all, bucket, projectByDir)
+	if view.grouped {
+		r.addGrouped(all, here.project, projectByDir)
 	} else {
 		r.addFlat(all)
 	}
 	return r
+}
+
+// switcherCap is how many rows this reading draws before the rest go behind one
+// door. It is [switcherShown] at rest and NO CAP AT ALL once the fold has been
+// opened, which is the whole of what opening it means.
+func (r switcherReading) cap(n int) int {
+	if r.view.all {
+		return n
+	}
+	return min(switcherShown, n)
+}
+
+// switcherWhere is the project a row belongs to, in the words [homeView.gone] is
+// keyed by: the project's own path, and its name when nothing recorded one. It
+// is [homeWhere] read off a row rather than off a drawn line, so the two can
+// never disagree about which folder a row is about.
+func switcherWhere(row session.SessionRow, project session.Project) string {
+	if path := strings.TrimSpace(row.ProjectDir); path != "" {
+		return path
+	}
+	return project.Name
 }
 
 func switcherSortAt(row session.SessionRow) time.Time {
@@ -693,6 +319,14 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 		}
 		return note
 	}
+	// A FIRST LOOK HAS NO ORIGIN TO MEASURE FROM, so nothing is news. The stamp is
+	// zero until home has been closed once (home.go's [homeView.seen] states the
+	// law); without this guard every task a conversation ever ran would be work
+	// that landed "while you were away", on the one screen whose whole job is to
+	// say what changed.
+	if seen.IsZero() {
+		return ""
+	}
 	files := 0
 	saved := false
 	for _, entry := range row.Tasks.Rows {
@@ -739,12 +373,25 @@ func switcherPlural(n int, one, many string) string {
 }
 
 func (r *switcherReading) addLedger(items map[string][]StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
+	// AND THE WHOLE BLOCK IS ABOUT A STRETCH OF TIME THAT MAY NOT EXIST YET. With
+	// no look stamp there is no "since", so there is nothing to say — the same
+	// first-look law [switcherConversationNote] keeps one function up.
+	if seen.IsZero() {
+		return
+	}
 	var events []switcherRow
+	// ONE LINE PER ITEM, HOWEVER MANY PROJECTS HOLD IT. The bands are keyed by
+	// project directory and a machine-wide watch is in every one of them, so a
+	// walk that did not remember what it had seen would say the same thing four
+	// times (homestanding.go's [app.readStandBands] keys them, and this is the
+	// reading's own half of that fact).
+	said := make(map[string]bool)
 	for _, views := range items {
 		for _, view := range views {
-			if !view.Item.LastFired.After(seen) {
+			if !view.Item.LastFired.After(seen) || said[view.Item.ID] {
 				continue
 			}
+			said[view.Item.ID] = true
 			line := standing.LastLookLine(view.Item, r.now)
 			if line == "" {
 				line = switcherFirstLine(view.Item.LastCheckLine)
@@ -773,7 +420,9 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 		events = append(events, switcherRow{kind: switcherLedger, title: strings.Join(parts, ", "), place: "memory", at: r.now})
 	}
 	if landed > 0 {
-		events = append(events, switcherRow{kind: switcherLedger, title: fmt.Sprintf("%d tasks landed", landed), place: "tasks", at: r.now})
+		events = append(events, switcherRow{kind: switcherLedger,
+			title: fmt.Sprintf("%d %s landed", landed, switcherPlural(landed, "task", "tasks")),
+			place: "tasks", at: r.now})
 	}
 	if len(events) == 0 {
 		return
@@ -808,11 +457,11 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 		}
 	}
 	selected := append([]switcherRow(nil), active...)
-	if !r.hideQuiet {
+	if !r.view.hideQuiet {
 		selected = append(selected, quiet...)
 	}
-	shown := min(switcherShown, len(selected))
-	selected = selected[:shown]
+	capped := min(switcherShown, len(selected))
+	selected = selected[:r.cap(len(selected))]
 	byProject := map[string][]switcherRow{}
 	for _, row := range selected {
 		byProject[row.project] = append(byProject[row.project], row)
@@ -854,24 +503,25 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 			r.lines = append(r.lines, switcherLine{row: &copy})
 		}
 	}
-	hidden := len(active) + len(quiet) - len(selected)
+	hidden := len(active) + len(quiet) - capped
 	if hidden > 0 {
 		clause := ""
-		if len(selected) >= len(active) {
-			quietAt := len(selected) - len(active)
-			if r.hideQuiet {
+		if capped >= len(active) {
+			quietAt := capped - len(active)
+			if r.view.hideQuiet {
 				clause = "quiet"
 			} else if quietAt < len(quiet) && !quiet[quietAt].at.IsZero() {
 				clause = "quiet since " + strings.ToLower(quiet[quietAt].at.Format("Jan 2"))
 			}
 		}
+		r.hidden = hidden
 		r.addFold(foldLine(hidden, clause))
 	}
 }
 
 func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 	eligible := all
-	if r.hideQuiet {
+	if r.view.hideQuiet {
 		eligible = nil
 		for _, row := range all {
 			if row.needs || row.moving {
@@ -879,26 +529,40 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 			}
 		}
 	}
-	shown := min(switcherShown, len(eligible))
+	// WHAT THE FOLD STANDS FOR IS COUNTED AT THE CAP AND NEVER AT WHAT IS DRAWN.
+	// An opened fold draws every row and still says how many rows it is the door
+	// over, because it is the way back — a fold that vanished when it was opened
+	// would leave the list with no way to become a summary again.
+	capped := min(switcherShown, len(eligible))
+	shown := r.cap(len(eligible))
 	for _, row := range eligible[:shown] {
 		copy := row
 		r.lines = append(r.lines, switcherLine{row: &copy})
 	}
-	if more := len(all) - shown; more > 0 {
+	if more := len(all) - capped; more > 0 {
 		clause := ""
-		if shown < len(all) && !all[shown].needs && !all[shown].moving {
-			if r.hideQuiet {
+		if capped < len(all) && !all[capped].needs && !all[capped].moving {
+			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if !all[shown].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(all[shown].at.Format("Jan 2"))
+			} else if !all[capped].at.IsZero() {
+				clause = "quiet since " + strings.ToLower(all[capped].at.Format("Jan 2"))
 			}
 		}
+		r.hidden = more
 		r.addFold(foldLine(more, clause))
 	}
 }
 
+// addFold puts the one door over everything this reading is not drawing, and
+// wears the mark that says which way it goes — `▸` while it is hiding rows,
+// `▾` once it has been opened, the same two marks every other fold on this
+// surface uses.
 func (r *switcherReading) addFold(word string) {
-	row := switcherRow{kind: switcherFold, fold: true, foldWord: word}
+	mark := tokens.GlyphCollapsed
+	if r.view.all {
+		mark = tokens.GlyphExpanded
+	}
+	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + strings.TrimPrefix(word, tokens.GlyphCollapsed)}
 	r.lines = append(r.lines, switcherLine{row: &row})
 }
 
@@ -920,41 +584,105 @@ func (r switcherReading) rows(width int, pal palette) []string {
 	}
 	out := make([]string, 0, len(r.lines))
 	for _, line := range r.lines {
-		switch {
-		case line.section:
-			left := "what wants you first"
-			if r.chatCount > 0 {
-				left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
-			}
-			right := "alt+g group by project"
-			if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · alt+q hide the quiet ones")+3 <= width {
-				right += " · alt+q hide the quiet ones"
-			}
-			out = append(out, switcherSides(width, left, right, pal.dim, pal.dim))
-		case line.heading != "":
-			out = append(out, pal.dim(fit(line.heading, width)))
-		case line.row != nil:
-			out = append(out, switcherPaintRow(*line.row, width, pal, r.grouped))
-		case line.blank:
-			out = append(out, "")
-		}
+		out = append(out, r.paint(line, width, pal, switcherPaint{}))
 	}
 	return out
 }
 
-func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) string {
+// switcherPaint is what the SURFACE knows about one line that the reading
+// cannot: where the keyboard and the pointer are standing, which heading the
+// cursor is under, and which single row on the page is allowed to animate.
+//
+// IT IS THREE VALUES AND NOT AN *app, which is what keeps this file pure. Each
+// of them is a fact the drawing surface holds and the reading has no way to ask
+// for (docs/design/home-rethink/ARCHITECTURE.md's three layers).
+type switcherPaint struct {
+	sel   bool
+	hover bool
+	// head is the ink a HEADING takes. The heading over the section the cursor is
+	// standing in steps up one ink tier and wears no ground (homesection.go); nil
+	// is the dim every other heading takes.
+	head func(string) string
+	// spin is THE ONE MOVING CELL ON THE PAGE, and "" on every other row. However
+	// many things are running, exactly one row animates (homespinner.go), so the
+	// moving mark gives way to the turning cell on that row alone.
+	spin string
+}
+
+// paint is one line of the reading, with the band on the row the keyboard or the
+// pointer is standing on.
+//
+// THE BAND IS THE WHOLE OF THE SELECTION AND THERE IS NO LEAD. This list has its
+// state mark in the first cell of every row (SCREEN 1a), so two more cells spent
+// on a `›` would push every name two columns right for a fact the ground already
+// carries — which is the one device SCREEN 2a names for the cursor: "the band —
+// where the cursor is — selection, and the subject goes bold inside it".
+func (r switcherReading) paint(line switcherLine, width int, pal palette, p switcherPaint) string {
+	if width < 1 {
+		return ""
+	}
+	switch {
+	case line.section:
+		left := "what wants you first"
+		if r.chatCount > 0 {
+			left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
+		}
+		right := switcherGroupWord
+		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+switcherQuietWord)+3 <= width {
+			right += " · " + switcherQuietWord
+		}
+		leftInk := pal.dim
+		if p.head != nil {
+			leftInk = p.head
+		}
+		return switcherSides(width, left, right, leftInk, pal.dim)
+	case line.heading != "":
+		ink := pal.dim
+		if p.head != nil {
+			ink = p.head
+		}
+		return ink(fit(line.heading, width))
+	case line.row != nil:
+		return switcherPaintRow(*line.row, width, pal, r.view.grouped, p)
+	}
+	return ""
+}
+
+// switcherResumeWord is the undoing of a pause, and it is spelled here because
+// nothing else on this surface offers it: an item's card and the standing place
+// both pause and stop, and only a row that is ALREADY paused has a resume.
+const switcherResumeWord = "resume it"
+
+// The two views this list offers and the keys that reach them. They are quoted
+// on the section line and in the manual from this one spelling.
+const (
+	switcherGroupWord = "alt+g group by project"
+	switcherQuietWord = "alt+q hide the quiet ones"
+)
+
+func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p switcherPaint) string {
 	if row.fold {
-		return pal.dim(fit(row.foldWord, width))
+		return switcherBand(pal.dim(fit(row.foldWord, width)), width, pal, p)
 	}
 	if row.kind == switcherLedger {
-		return switcherSides(width, row.title, row.place, pal.ink, pal.dim)
+		// A LEDGER LINE IS A DOOR, so it takes the band like any other stop, and
+		// the place it names sits out at the right margin where every row's tail
+		// sits.
+		return switcherBand(switcherSides(width, row.title, row.place, pal.ink, pal.dim), width, pal, p)
 	}
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	if row.paused {
 		glyph = tokens.GlyphPaused
 	}
 	if row.moving {
+		// THE ONE MOVING CELL. A row that is the page's spinner turns; every other
+		// live row holds the still mark, which is what makes a machine with twenty
+		// things out cost the wire exactly what a machine with one costs
+		// (homespinner.go).
 		glyph, glyphInk = tokens.GlyphWorking, pal.accent
+		if p.spin != "" {
+			glyph = p.spin
+		}
 	}
 	if row.needs {
 		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
@@ -964,8 +692,17 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) str
 	if grouped {
 		project = ""
 	}
-	if row.here {
-		age = "here"
+	// THE RIGHT MARGIN SAYS THE ONE THING THAT DECIDES WHAT ENTER WILL DO, and an
+	// age is what it says when nothing does. A folder that is gone outranks a
+	// window holding the row, which outranks this window's own — worst news
+	// first, because that is the order a person needs them in.
+	switch {
+	case row.gone:
+		age = homeGoneShort
+	case row.held:
+		age = homeHeldShort
+	case row.here:
+		age = homeHereWord
 	}
 	if width < 80 {
 		note = ""
@@ -988,17 +725,35 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) str
 	}
 	tail := switcherTailWidth(parts)
 	room := max(0, width-ansi.StringWidth(glyph)-1-tail)
-	line := glyphInk(glyph) + " " + pal.ink(fit(row.title, room))
+	// THE SUBJECT GOES BOLD INSIDE THE BAND and the tail steps up with it: dim
+	// grey on a raised ground is grey on grey, which is the rule every row on
+	// this surface is painted under (palette.go's [overlayRowTinted]).
+	name, tailInk := pal.ink(fit(row.title, room)), pal.dim
+	if p.sel || p.hover {
+		name, tailInk = pal.bold(name), pal.ink
+	}
+	line := glyphInk(glyph) + " " + name
 	used := ansi.StringWidth(line)
 	if pad := width - used - tail; pad > 0 {
 		line += strings.Repeat(" ", pad)
 	}
 	for _, part := range parts {
 		if part != "" {
-			line += " " + pal.dim(part)
+			line += " " + tailInk(part)
 		}
 	}
-	return fit(line, width)
+	return switcherBand(fit(line, width), width, pal, p)
+}
+
+// switcherBand is the one ground this list paints: the row the keyboard is on,
+// and the row the pointer is over, at the same rung — whether a person arrived
+// with `↓` or with the mouse, the row they are on is the row they are on
+// (palette.go's ladder).
+func switcherBand(line string, width int, pal palette, p switcherPaint) string {
+	if !p.sel && !p.hover {
+		return line
+	}
+	return pal.cursor(line, width)
 }
 
 func switcherTailWidth(parts []string) int {
@@ -1035,24 +790,43 @@ func (r switcherReading) verbs(i int) []switcherVerb {
 	if !ok {
 		return nil
 	}
+	return switcherVerbsFor(row)
+}
+
+// switcherVerbsFor is the same answer taken from a row rather than from its
+// position, which is what the surface holding these rows as lines of its own
+// column needs (place_home.go).
+func switcherVerbsFor(row switcherRow) []switcherVerb {
 	if row.kind == switcherStanding {
 		verbs := switcherQuestionVerbs(row.options)
 		if row.paused {
-			return append(verbs, switcherVerb{'r', "resume it"})
+			return append(verbs, switcherVerb{key: 'r', word: switcherResumeWord})
 		}
-		return append(verbs, switcherVerb{'p', "pause it"})
+		// ONE SPELLING FOR ONE VERB. `pause` is what an item's own card and the
+		// standing place both call this act (homestanding.go's [homeItemActions],
+		// verbstrip.go's [app.standRowVerbs]), and a strip that said it a second
+		// way would be two words for one thing on one screen.
+		return append(verbs, switcherVerb{key: 'p', word: homeItemPauseWord})
 	}
 	if row.kind != switcherConversation {
 		return nil
 	}
 	verbs := switcherQuestionVerbs(row.options)
-	verbs = append(verbs, switcherVerb{'a', "put it away"})
+	verbs = append(verbs, switcherVerb{key: 'a', word: "put it away"})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
-		verbs = append(verbs, switcherVerb{'t', "new chat here"}, switcherVerb{'o', "open folder"}, switcherVerb{'c', "copy path"})
+		verbs = append(verbs, switcherVerb{key: 't', word: "new chat here"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'c', word: "copy path"})
 	}
 	return verbs
 }
 
+// switcherQuestionVerbs is 1b's answer-in-place: the question's OWN option
+// words, on the two letters a hand already knows, carrying the option key the
+// answer has to be sent under.
+//
+// TWO, AND NEVER THE WHOLE LIST. A strip is one row of the frame and a question
+// with five options would push the list down by two more; the digits still
+// answer every one of them, on the row, because they are drawn there
+// (homeband_answer.go).
 func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
 	var verbs []switcherVerb
 	for i, option := range options {
@@ -1064,7 +838,7 @@ func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
 			key = 'n'
 		}
 		if word := strings.TrimSpace(option.Label); word != "" {
-			verbs = append(verbs, switcherVerb{key, word})
+			verbs = append(verbs, switcherVerb{key: key, word: word, answer: option.Key})
 		}
 	}
 	return verbs

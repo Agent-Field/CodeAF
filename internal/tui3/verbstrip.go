@@ -6,8 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── THE VERB STRIP ──────────────────────────────────────────────────────────
@@ -169,6 +167,8 @@ const verbGap = "   "
 func (a *app) rowVerbs() []verb {
 	switch a.page {
 	case pageHome:
+		// Home's own half is place_home.go's; this file knows the mechanism and
+		// never a place's verbs.
 		return a.homeRowVerbs()
 	case pageTasks:
 		return a.tasksRowVerbs()
@@ -185,22 +185,6 @@ func (a *app) rowVerbs() []verb {
 // SCREEN 1e names two; exactly one of them has a seam behind it, and the place
 // says which and why.
 func (a *app) tasksRowVerbs() []verb { return a.taskSheet.verbs(a) }
-
-// homeRowVerbs is the strip on home, and today it carries exactly the three
-// actions home has been ADVERTISING on a standing item's row without binding
-// (`homeItemActions`, homestanding.go). They were bound to ctrl+e and ctrl+x,
-// which the line never named, and bare `p` and `s` typed. Now the line and the
-// keys are the same three things.
-func (a *app) homeRowVerbs() []verb {
-	line, ok := a.home.previewLine()
-	if !ok || line.kind != homeItem {
-		return nil
-	}
-	return []verb{
-		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
-		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
-	}
-}
 
 // standRowVerbs is the standing place's strip, and it is that place's own answer
 // ([standPage.verbs]) — this file invents no verb for it, as its header says.

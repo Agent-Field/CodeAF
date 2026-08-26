@@ -149,14 +149,27 @@ func (b *effortBand) wire(a *app) {
 	}
 }
 
+// itemHome is home with one standing item a cursor can be put on.
+//
+// THE ITEM IS FIRING, AND IT HAS TO BE. Home at rest is one flat ranked list and
+// a watch earns a row on it only while it is asking somebody something or is
+// actually running ([readSwitcher] — a watch that is merely set is not news and
+// is reached from the standing place or by typing its name). The rung is a fact
+// about the item and not about the pass it is on, so a running mark is the
+// cheapest honest way to put the cursor on one.
 func itemHome(t *testing.T) (*app, *effortBand) {
 	t.Helper()
 	lab := newHomeLab(t)
 	work := lab.workspace("alpha")
 	transcript := lab.session("alpha", "aaaa000000000001", "one", work, time.Now())
-	band := &effortBand{standBand: &standBand{items: []standing.Item{
-		bandItem("one", "remind me on Fridays", work, standing.WhenEvery, "Fridays"),
-	}}}
+	band := &effortBand{standBand: &standBand{
+		items: []standing.Item{
+			bandItem("one", "remind me on Fridays", work, standing.WhenEvery, "Fridays"),
+		},
+		running: map[string]standing.RunningMark{
+			"one": {PID: 4242, Since: time.Now().Add(-time.Minute), What: "reading the calendar"},
+		},
+	}}
 	a := lab.app(transcript)
 	band.wire(a)
 	a.openHome()
@@ -362,6 +375,28 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	}
 	if a.home.msg != "" {
 		t.Fatalf("a key with no door under it explained itself: %q", a.home.msg)
+	}
+	// AND THE CARD NAMES NO KEY FOR IT, which is the same law read rather than
+	// pressed: a chord with a visible door beside it is a promise, and this
+	// surface cannot keep that one.
+	//
+	// THE LAW THAT DIED IS "THE CARD STATES NO RUNG". It used to be asserted here
+	// that `thinking` appeared nowhere on a conversation's card, on the argument
+	// that printing the machine's default beside a chat would be advertising a
+	// fact about the install as a fact about the chat. SCREEN 1d overrules it: it
+	// spells the facts line of a CONVERSATION'S card `spent $1.63 · 3.6M tokens ·
+	// thinking high`, and the owner ordered the design followed exactly
+	// (FIDELITY.md item 8). So the clause is there, it is the INSTALL'S rung —
+	// what work started from this card would think at — and place_home.go's
+	// [app.homeCardFacts] says so in as many words. What survives untouched is the
+	// half this test is really about: no key is offered, because there is nothing
+	// here the key could honestly write.
+	card := strings.Join(homeCardFor(t, a, a.file), "\n")
+	if !strings.Contains(card, "thinking "+effort.Ship.String()) {
+		t.Fatalf("the card does not state the rung work started here would think at:\n%s", card)
+	}
+	if strings.Contains(card, effortKeyClause) || strings.Contains(card, "ctrl+v") {
+		t.Fatalf("a conversation's card named a key for a rung it cannot move:\n%s", card)
 	}
 }
 

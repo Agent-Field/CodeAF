@@ -619,7 +619,7 @@ Honest limits, so you do not rely on something that is not built:
   something else that runs on its own.
 - **A firing thinks at `low` unless you raised that one thing.** Standing work is held to
   the cheapest rung however deep this machine is dialled, because it is unattended and it
-  repeats. `ctrl+v` on the item's card on home raises the one that needs it, and nothing
+  repeats. `ctrl+v` on the item's row on home raises the one that needs it, and nothing
   else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width before it starts;
   an order that fires is not, and is armed to split itself only off the items its own

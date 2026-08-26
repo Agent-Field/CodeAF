@@ -41,10 +41,11 @@ in this order and stops at the first one that ends at a person:
 3. **The conversation's own inbox**, when nothing is open. The next time you open
    that conversation it is folded into one note beginning `while you were away`.
 4. **The project's inbox**, when nothing is open *and* it was an `ask here`
-   errand. An errand has no row on home to come back to, so the news is filed
-   under the project instead: it shows on home under that project as
-   `◆ N things since you left`, and the next ordinary conversation you open in
-   that project folds it into its own `while you were away`.
+   errand. An errand has no conversation to come back to, so the news is filed
+   under the project instead, and the next ordinary conversation you open in that
+   project folds it into its own `while you were away`. At phone width home shows
+   it under `since you left`; on a wider frame the conversation is where it
+   surfaces.
 
 So a reminder set from home while you are working in a chat in the same window
 arrives **in the chat you are working in**. Nothing is ever delivered only into
@@ -424,7 +425,8 @@ uses. An item that has done nothing in the last seven days shows **no weekly
 line at all**, and nothing anywhere reads `0 runs this week`.
 
 In a conversation, asking "what do you have standing?" lists what stands here
-with its rails; home's card is where the counts are.
+with its rails; the standing place, and an item's card on a frame wide enough to
+draw one, are where the counts are.
 
 ## Does it keep working when I close the terminal or shut the laptop?
 
