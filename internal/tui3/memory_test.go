@@ -414,9 +414,14 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 	}
 }
 
-// `enter` ON A SHELF OPENS AND CLOSES IT, and `enter` on a line opens that
-// line's own card — one provenance read, for one line, on the keystroke that
-// asked for it.
+// `enter` ON A SHELF OPENS AND CLOSES IT, and a line's own card is `→ c` — one
+// provenance read, for one line, on the keystroke that asked for it.
+//
+// THE CARD MOVED AND THE LAW DID NOT. It used to be behind `enter` on a line;
+// SCREEN 1f puts `ask me about it` there and the card on the row's strip, and
+// what this test is about — that the store is asked about ONE line, when
+// somebody asks for that line, and not about every line on the page — is the
+// same law either way.
 func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
 	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
@@ -434,7 +439,8 @@ func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
 		t.Fatalf("down did not land on the line: %#v %v", got, ok)
 	}
-	drive(t, a, key("enter"))
+	drive(t, a, key("right"))
+	drive(t, a, key("c"))
 	if got := plain(frame(a)); !strings.Contains(got, "in 'Editor setup'") || !strings.Contains(got, "tags · editor") {
 		t.Fatalf("the line's card:\n%s", got)
 	}
@@ -518,5 +524,77 @@ func TestAFailureIsReportedAndNotSwallowed(t *testing.T) {
 	a.slash("/remember I prefer tabs")
 	if text := lastNote(t, a); !strings.Contains(text, "the brain is locked") {
 		t.Fatalf("a failed write answered %q", text)
+	}
+}
+
+// `enter` ON A LINE IS `ask me about it` (SCREEN 1f / FIDELITY item 5).
+//
+// A line here is something aforge believes about you, and the useful thing to do
+// with one is to talk about it. It used to open the card in place — the thing
+// the design moved onto the row's `→` strip — and the foot said `enter open a
+// shelf` over every row, so on a line it named a key and described something
+// else.
+func TestEnterOnAMemoryLineOpensAConversationAboutThatLine(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{
+		ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Scope: store.MemoryScopeUser,
+	}})
+	started := &rememberingAgent{}
+	a.start = func(workspace string) (Conversation, error) {
+		return Conversation{Agent: started, SessionFile: "/tmp/lab/next/transcript.jsonl", Workspace: workspace}, nil
+	}
+	a.slash("/memory")
+	drive(t, a, key("down"))
+	line, ok := a.mem.choice()
+	if !ok || line.ID != "m1" {
+		t.Fatalf("the cursor is not on the line: %#v %v", line, ok)
+	}
+	// The foot says what THIS row can be asked for, and names the two verbs the
+	// row's strip holds.
+	if got := (placeMemory{}).hint(a); got != memoryLineHint {
+		t.Fatalf("over a line the foot reads %q, want %q", got, memoryLineHint)
+	}
+
+	drive(t, a, key("enter"))
+	if a.at(pageMemory) {
+		t.Fatal("`enter` on a line left the person standing in the memory place")
+	}
+	if len(started.sent) != 1 {
+		t.Fatalf("the fresh conversation was sent %v", started.sent)
+	}
+	if !strings.Contains(started.sent[0], "uses neovim daily") {
+		t.Fatalf("the conversation was not seeded with the line: %q", started.sent[0])
+	}
+	if !strings.HasPrefix(started.sent[0], memoryAskOpening) {
+		t.Fatalf("the opening does not say what the line is: %q", started.sent[0])
+	}
+}
+
+// AND A SHELF HEADING KEEPS ITS OWN `enter` AND ITS OWN SENTENCE. Two rows, two
+// things the key does, two feet — which is pages.go's contract for a hint.
+func TestTheMemoryFootSaysWhatTheRowUnderTheCursorCanBeAskedFor(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{
+		ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Scope: store.MemoryScopeUser,
+	}})
+	a.slash("/memory")
+	if _, ok := a.mem.shelfUnder(); !ok {
+		t.Fatal("the cursor did not open on a shelf heading")
+	}
+	if got := (placeMemory{}).hint(a); got != memoryShelfHint {
+		t.Fatalf("over a shelf the foot reads %q, want %q", got, memoryShelfHint)
+	}
+	if strings.Contains(memoryShelfHint, memoryAskWord) {
+		t.Fatalf("the shelf's foot promises %q, which `enter` does not do there", memoryAskWord)
+	}
+	drive(t, a, key("down"))
+	if got := (placeMemory{}).hint(a); strings.Contains(got, "open a shelf") {
+		t.Fatalf("over a line the foot still says `enter open a shelf`: %q", got)
+	}
+	// AND THE CARD IS ON THE STRIP, offered on a line and on nothing else.
+	words := ""
+	for _, v := range (placeMemory{}).verbs(a) {
+		words += string(v.key) + " " + v.word + " · "
+	}
+	if !strings.Contains(words, "c "+memoryCardWord) {
+		t.Fatalf("the line's strip does not carry the card: %s", words)
 	}
 }

@@ -1085,7 +1085,10 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		if a.mem.edit != nil {
 			return draftBlock(a.mem.edit, a.pal, width, 1, memoryEditHint, "")
 		}
-		return draftBlock(&a.mem.filter, a.pal, width, 1, memoryFilterHint, "")
+		// THE PLACE'S OWN SENTENCE, WHICH IS ABOUT THE ROW UNDER THE CURSOR. It
+		// used to be one constant for every row here, so on a line it named a key
+		// and described something else ([placeMemory.hint]).
+		return draftBlock(&a.mem.filter, a.pal, width, 1, placeMemory{}.hint(a), "")
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")

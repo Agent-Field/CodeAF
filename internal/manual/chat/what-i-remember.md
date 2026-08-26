@@ -73,10 +73,22 @@ and tags, with the same prefix, substring and fuzzy ranking the model picker use
 letter, `u` included**. A filter that matches nothing says so in one line and draws nothing
 else.
 
-**`enter` on a shelf opens it, and `enter` again rolls it up.** `enter` on a line opens that
-line's own card. **`alt+s` walks the shelves** — the next one open, the others rolled up, and
-one more press leaves them all closed. That key was `tab` until the places arrived; `tab` is
-the way to the next place now, and a view of a place belongs to the `alt+<letter>` class.
+**`enter` on a shelf opens it, and `enter` again rolls it up.** On a LINE it is
+`ask me about it`, which has a section of its own below.
+
+**`alt+s` walks the shelves** — the next one open, the others rolled up, and one more press
+leaves them all closed. That key was `tab` until the places arrived; `tab` is the way to the
+next place now, and a view of a place belongs to the `alt+<letter>` class.
+
+**The foot says what the row under the cursor can be asked for**, so it is two sentences:
+
+```
+enter ask me about it · e fix the wording · f forget it · tab next place · esc
+enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc
+```
+
+`e` and `f` are the row's `→` strip, which is where they are bound: press `→` first and the
+letters are the verbs while it is drawn.
 
 `esc` clears the filter if there is one in it, and leaves the place on the second press.
 
@@ -109,19 +121,37 @@ Neither is an error colour and neither is repeated on the three-second beat. The
 deliberately does not carry the underlying message: what you can do about it is the same
 either way.
 
+## ask me about it — what enter does on a memory line
+
+**`enter` on a line is `ask me about it`.** The line goes into a fresh conversation as its
+opening message — `about something you remember: <the line>` — and you are taken there, out
+of the memory place. That is how you talk about one of these lines: ask about it, argue with
+it, or tell me it is wrong and watch it be corrected.
+
+It is the same door `enter` over a place's message box takes — what you asked for is now
+happening somewhere you can watch it — so the conversation is an ordinary one, in this
+project, with the line as its first message. A window with no way to open a second
+conversation says `/new is unavailable here` and stays where it is.
+
+`enter` on a **shelf heading** still opens and closes that shelf. Only a line is asked about.
+
+The line's own card used to be on `enter`; it is on the row's `→` strip now, behind **`c`** —
+see *Where did a memory come from*.
+
 ## How do I edit a memory?
 
-Two ways. Press **`→`** on the line and the verb strip offers `e fix the wording`; or press
-enter to open the line's card and then enter again. The edit line is preloaded with the
-complete memory text. Enter saves it; esc cancels without changing anything. The title, the
+Two ways. Press **`→`** on the line and the verb strip offers `e fix the wording`; or open
+the line's card with **`→` then `c`** and press enter there. The edit line is preloaded with
+the complete memory text. Enter saves it; esc cancels without changing anything. The title, the
 tags and the shelf stay as they were, and the corrected wording is on the page immediately.
 
 While the strip is drawn its letters are the verbs and the filter box is asleep; `esc` or
 `←` closes it and every letter is a character again.
 
-The strip is offered **only on a line**. A shelf heading, the section line and the teaching
-prose at the top of a nearly-empty page all have nothing to fix and nothing to forget, so
-`→` on any of them opens nothing.
+The strip is offered **only on a line**, and on a line it carries `c open the card`,
+`e fix the wording` and `f forget it` — plus `u put it back` while there is something to
+undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
+page all have nothing to fix and nothing to forget, so `→` on any of them opens nothing.
 
 ## How do I forget a memory and undo forgetting one?
 
@@ -137,10 +167,14 @@ while the strip is drawn, and it is offered only while there is something to put
 
 ## Where did a memory come from, and who says so?
 
-Press enter on the line. Its card carries the full text, what kind of thing it is, which
-shelf it is on, its tags, how it has done, and where it was learned — `learned 3h ago in
-'Editor setup'` when the source conversation is known. A line whose origin nobody recorded
-carries no origin at all rather than a made-up one. Esc returns to the shelves.
+Press **`→` then `c`** on the line — `c open the card`. The card carries the full text, what
+kind of thing it is, which shelf it is on, its tags, how it has done, and where it was
+learned — `learned 3h ago in 'Editor setup'` when the source conversation is known. A line
+whose origin nobody recorded carries no origin at all rather than a made-up one. Esc returns
+to the shelves.
+
+The card used to be on `enter`. `enter` on a line opens a conversation about it now, and the
+card moved onto the strip beside the two verbs that change the line.
 
 **That is one lookup, for one line, on the keypress that asked for it.** The page itself
 never asks: the older twelve-row panel read every memory and then asked for one line's

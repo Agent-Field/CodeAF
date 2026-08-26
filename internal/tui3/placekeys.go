@@ -316,17 +316,34 @@ func (a *app) placeTalk() tea.Cmd {
 	if box == nil {
 		return nil
 	}
-	text := strings.TrimSpace(box.String())
+	cmd, started := a.placeTalkAbout(box.String())
+	if started {
+		box.reset()
+	}
+	return cmd
+}
+
+// placeTalkAbout is that door with the sentence handed IN rather than typed: a
+// fresh conversation carrying one line of words, and the place left behind
+// because what was asked for is now happening where a person can watch it.
+//
+// IT IS A SECOND CALLER AND NOT A SECOND DOOR. `enter` on a memory line is
+// `ask me about it` (SCREEN 1f) and the line's own words are the message
+// ([placeMemory.enter]); a place that started its own conversation would be a
+// second answer to what starting one means. The bool is whether one was
+// actually started, so a caller holding something it must only clear on the way
+// out — the composer — can tell a refusal from a start.
+func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
+	text = strings.TrimSpace(text)
 	if text == "" {
-		return nil
+		return nil, false
 	}
 	if !a.canStart() {
 		a.pageMsg = newUnavailableWord
-		return nil
+		return nil, false
 	}
-	box.reset()
 	a.leavePlace()
 	a.standDownFullscreen()
 	renewed := a.renew()
-	return tea.Batch(renewed, a.submit(text))
+	return tea.Batch(renewed, a.submit(text)), true
 }

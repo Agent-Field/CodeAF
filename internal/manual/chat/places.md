@@ -204,7 +204,8 @@ row**, on every place that has verbs — home, tasks, standing and memory:
 p pause   s stop   n not here
 ```
 
-On home the verbs are the row's own — a question's first two answers in its own words on
+On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
+verbs are the row's own — a question's first two answers in its own words on
 `y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
 `p pause it` or `r resume it` on a standing item.
 
@@ -291,10 +292,14 @@ it has done — `helped 19 · bore on 3` — and how old it is out at the right.
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
 including `u`**; the store is read when you walk in and on the place beat, never on a
-keystroke. `enter` opens or closes a shelf, and `enter` on a line opens that line's card and
-shows where it was learned. `alt+s` walks the shelves one at a time. `→` opens the verbs on a
-line — `e fix the wording`, `f forget it`, and `u put it back` while there is something to
-put back.
+keystroke. `enter` opens or closes a shelf; `enter` on a LINE is `ask me about it` — the
+line goes into a fresh conversation as its opening message and you are taken there. `alt+s`
+walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
+where the full text and where it was learned live, `e fix the wording`, `f forget it`, and
+`u put it back` while there is something to put back.
+
+The foot follows the row: `enter ask me about it · e fix the wording · f forget it` on a
+line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shelf heading.
 
 `delete` also forgets the line under the cursor.
 
