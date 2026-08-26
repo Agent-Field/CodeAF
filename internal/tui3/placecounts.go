@@ -47,7 +47,13 @@ func (t placeTally) ChangedIn(place string) int { return t[place] }
 // "no origin, therefore no news" rather than as "everything is news" — the
 // first look must not greet somebody with a number over every tab.
 func (a *app) refreshPlaceCounts(now time.Time) {
-	root := a.placesRoot()
+	// THE STAMP IS THIS TERMINAL'S AND IT IS KEYED BY THE MACHINE IT IS ABOUT.
+	// What changed is a fact about the machine the places describe, which over
+	// --host is the far one; when a person last looked is a fact about the
+	// terminal they are sitting at, which is always this one. [app.looksRoot] is
+	// where those two meet — a folder per machine, on this disk — and it is what
+	// stops a glance at the server clearing the badge over the laptop's tab.
+	root := a.looksRoot()
 	tally := placeTally{}
 	for _, id := range pages() {
 		pl := placeFor(id)
@@ -170,5 +176,7 @@ func (a *app) leavePage(id page) {
 	if !id.counted() {
 		return
 	}
-	session.NoteLookAt(a.placesRoot(), id.word(), a.now())
+	// A LOOK AT ANOTHER MACHINE'S PLACE IS NOT A LOOK AT THIS ONE'S
+	// ([app.looksRoot]).
+	session.NoteLookAt(a.looksRoot(), id.word(), a.now())
 }

@@ -144,7 +144,7 @@ func (a *app) takeTaskReading() tasksPlace {
 		mine:   mine,
 		awayAt: a.elsewhere().Read,
 		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays),
-			session.LastLookAt(a.placesRoot(), pageTasks.word()), now),
+			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
 	}
 }
 

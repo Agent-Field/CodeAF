@@ -380,6 +380,20 @@ func (placeSearch) tick(a *app, now time.Time) bool {
 // sentences ([searchTeach]). It ALWAYS has something to say, which is why it is
 // never the teaching frame's business: a search with no words in it is a page
 // about searching, not a page that is missing.
+// remote is this place over --host: the index it reads is the one this machine's
+// conversations were written into, and this conversation was written on another
+// (pages.go's [place.remote]).
+//
+// THE SENTENCE MATTERS MORE HERE THAN THE ROWS DO. A search that finds nothing
+// looks exactly like a search that found nothing — so without this line a person
+// would read "we never talked about that" off a place that never looked.
+func (placeSearch) remote(a *app) string {
+	if a.hosted() {
+		return searchRemoteWord
+	}
+	return ""
+}
+
 func (placeSearch) body(a *app, width, room int) []placeRow {
 	body := a.search.reading.rows(width, a.pal)
 	// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last

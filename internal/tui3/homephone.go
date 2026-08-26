@@ -561,8 +561,16 @@ func (a *app) homePhoneList(width, room int, pal palette) []homeDrawn {
 	drawn := make([]homeDrawn, 0, room)
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
-		if h.searching() {
+		switch {
+		case h.searching():
 			word = homeNoMatchWord
+		case !h.known:
+			// A WORLD THAT HAS NOT ANSWERED IS NOT AN EMPTY MACHINE. Over --host
+			// the rows come from the other machine and the first frames are drawn
+			// before they have arrived; `nothing here yet` over a server full of
+			// work is the one wrong sentence this screen can say about somebody
+			// else's disk. Unknown renders as nothing ([homeView.known]).
+			return nil
 		}
 		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1}}
 	}

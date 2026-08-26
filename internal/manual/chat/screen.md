@@ -286,8 +286,8 @@ space space home · / commands
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
 words does the same; `/` opens the command list. It is there on a fresh machine from the
-first minute — an empty home is still a home — and over `--host` too, where home opens with
-one sentence in place of its rows. The whole slot gives way the moment you type or a state
+first minute — an empty home is still a home — and over `--host` too, where it opens the far
+machine's home. The whole slot gives way the moment you type or a state
 above claims it. It costs no row either way — this line is on the frame regardless.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there

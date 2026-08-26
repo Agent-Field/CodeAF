@@ -492,6 +492,13 @@ func (a *app) openMemory() tea.Cmd {
 // prose above it: a fact about this machine, not a fault anybody committed
 // (styles.go's THE EMPTINESS LAW covers the figures; this covers the reason).
 func (a *app) memorySnapshot() (store.MemoryShelves, string) {
+	if a.hosted() {
+		// THE STORE IS THE FAR MACHINE'S AND THIS SURFACE HAS NOT ASKED IT
+		// ANYTHING. [memoryOffNote] would say memory is off for this session,
+		// which is a claim about a setting on a machine nobody consulted — the
+		// truth is narrower and it is host.go's [memoryRemoteWord].
+		return store.MemoryShelves{}, memoryRemoteWord
+	}
 	if !a.memoryReady() {
 		return store.MemoryShelves{}, memoryOffNote
 	}

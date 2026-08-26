@@ -119,10 +119,11 @@ import (
 //	                  goes on working after this window closes. THE ITEMS BELONG
 //	                  TO THE MACHINE THAT RUNS THEM: the store, the profile rules
 //	                  a firing inherits and the OS timer are all the engine's.
-//	the item band     wired to the engine's store and drawn nowhere, because
-//	                  /home does not open over a connection at all
-//	                  ([homeRemoteWord] above). What the seam actually lights up
-//	                  here is the status line's `keeping an eye on` segment,
+//	the item band     DRAWN, now that home lists the far machine's projects: the
+//	                  band under a project row is that project's standing items,
+//	                  asked of the engine's own store by a path that is real
+//	                  there. It also still lights up the status line's
+//	                  `keeping an eye on` segment,
 //	                  which asks about THIS window's workspace — and over --host
 //	                  that path is the engine's own, so the count is about the
 //	                  right machine. The rows answer from a cache that refreshes
@@ -308,4 +309,70 @@ const (
 	settingsRemoteWord = "these rows are this machine's — the ones that govern the conversation are read from the profile on the other one"
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
+)
+
+// ── THE PLACES AND THE MACHINE THE SESSION IS ON ────────────────────────────
+//
+// A PLACE IS A LISTING OF ONE MACHINE'S DISK. Home lists the conversations under
+// `~/.aforge/v3`; tasks lists the work those conversations ran; spend adds up the
+// ledger every model call on that machine appends to; search reads the index of
+// what was said there; memory reads the store the sessions there remember into;
+// standing lists the documents that machine's timer fires from. Every one of
+// those is a directory under the state root of THIS process — which over --host
+// is the laptop's, while the conversation the person is sitting in runs on the
+// server.
+//
+// THE ANSWER IS THAT THE PLACES FOLLOW THE SESSION'S MACHINE. The reading each
+// one is built from is asked of the ENGINE and not of this process, so the rows
+// on the frame are the rows on the machine the conversation is actually running
+// on. Which of the seven have learned that, and which have not:
+//
+//	home       THE FAR MACHINE'S. Its projects and conversations come from
+//	           internal/remote's Places.World, walked on the engine's own places
+//	           root and carried whole (Decision 1's payloads). It used to draw one
+//	           sentence instead of a list.
+//	tasks      THE FAR MACHINE'S, out of the same world — the task rows live
+//	           inside it (`world.Projects[].Sessions[].Tasks.Rows`), so the door
+//	           that answered home answered this too. This is the one the owner
+//	           reported: a click on the tab drew the LAPTOP's eight tasks and its
+//	           $22.54 under a session on a server that had run none of them, with
+//	           the full confidence of a page that had read a real disk.
+//	standing   THE FAR MACHINE'S, and it was half true already: what stands on
+//	           THIS conversation always crossed the wire (Standing.Items), and
+//	           what else keeps an eye on that machine is a walk of the far world's
+//	           projects asking the far store about paths that are real there.
+//	spend      NOT YET. See [spendRemoteWord].
+//	search     NOT YET. See [searchRemoteWord].
+//	memory     NOT YET. See [memoryRemoteWord].
+//	settings   NEVER, AND CORRECTLY: half its rows are this surface's own and
+//	           half are read from the far machine's profile, which is what
+//	           [settingsRemoteWord] says as it opens.
+//
+// A PLACE THAT HAS NOT LEARNED SAYS SO, in one dim line where its rows would be
+// ([place.remote], pages.go). The sentence is the place's own because the noun in
+// it is: what this machine RAN is not what this machine has LEARNED. What is
+// shared is the shape — the thing the place shows, then the fact that the session
+// is somewhere else — so that the rooms say one thing in one voice. A place that
+// learns to cross deletes its sentence in the same change, which is the law
+// CLAUDE.md states about the manual said about the code.
+//
+// AND THE FRAME SAYS WHOSE MACHINE IT IS. A room whose rows quietly changed which
+// disk they describe would be the same fault walked backwards, so the tab bar
+// carries the machine's name at its right end and nothing at all on a local
+// session ([app.placeBarMachine]). It is [app.host], the same field the status
+// line's place segment, /status and the legend under the input all read, because
+// the connection is shown as the place and is shown nowhere else.
+const (
+	// memoryRemoteWord is the memory place over --host. It replaces
+	// [memoryOffNote], which would otherwise say memory is off for this session
+	// — and that is a claim about the far machine's settings that this surface
+	// has never asked about.
+	memoryRemoteWord = "memory shows what this machine has learned, and this session is on another"
+	// spendRemoteWord is the spend place over --host.
+	spendRemoteWord = "spend shows what this machine has cost, and this session is on another"
+	// searchRemoteWord is the search place over --host. The box still takes
+	// letters, because a place with a composer that refused them would be a box
+	// that eats typing; what it cannot do is find anything, and this says so
+	// before somebody reads an empty result as an answer.
+	searchRemoteWord = "search reads what was said on this machine, and this session is on another"
 )

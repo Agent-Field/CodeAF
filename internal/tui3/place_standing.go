@@ -342,6 +342,12 @@ func (p *standingPlace) window(a *app, key string) bool {
 // above the composer. This place says nothing there: every fact it has is about
 // one order, which is what the row and the strip are for, and a count of what a
 // person can already see is the emptiness law broken from the other end.
+//
+// AND IT SAYS NOTHING OVER --host EITHER, WHICH IS NEW. Both halves of this page
+// are the engine machine's now: what stands on THIS conversation always crossed
+// the wire, and the walk of "what else keeps an eye on that machine" reads the
+// far world ([app.readWorld]) and asks the far store about paths that are real
+// there. There is no missing half left to apologise for.
 func (p *standingPlace) note(a *app, width int) []string { return nil }
 
 // hint is the line under the box: what enter does, what `→` reaches, and the way
@@ -803,7 +809,7 @@ func (a *app) readStandingElsewhere() {
 	if a.stands.Items == nil {
 		return
 	}
-	a.home.world = a.readWorld()
+	a.home.world, a.home.known = a.readWorld(), a.worldKnown()
 	a.readStandBands()
 }
 

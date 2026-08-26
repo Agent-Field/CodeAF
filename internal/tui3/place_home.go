@@ -140,10 +140,21 @@ func (h *homeView) buildSwitch() {
 	// ([homeEmptyRow]) — an empty home is the same screen with fewer rows, never
 	// a different screen. A machine whose rows CANNOT be read from here says why
 	// instead, in the same slot and the same dim register ([homeView.why]).
+	//
+	// AND A WORLD THAT IS NOT AN ANSWER YET DRAWS NEITHER. Over --host the world
+	// comes from the other machine and the first frames are drawn before it has
+	// arrived; `nothing here yet — say something and this fills up` over a
+	// machine full of work would be the one wrong sentence this screen can say
+	// about somebody else's disk. Unknown renders as nothing, which is the
+	// emptiness law, and the zones, the bar and the composer are all still there
+	// ([homeView.known]).
 	if len(h.lines) == 0 {
-		empty := homeEmptyLines()
-		if h.why != "" {
+		var empty []string
+		switch {
+		case h.why != "":
 			empty = []string{h.why}
+		case h.known:
+			empty = homeEmptyLines()
 		}
 		for _, part := range empty {
 			h.lines = append(h.lines, homeLine{kind: homeEmptyRow, project: part})

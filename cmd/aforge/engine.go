@@ -400,6 +400,24 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// reads as nothing to show rather than as an empty list.
 		StandingItems: engineStandingItems(cfg.Standing),
 		StandingSave:  engineStandingSave(cfg.Standing),
+		// ── THE PLACES, AS THIS MACHINE HOLDS THEM ──────────────────────
+		//
+		// The world under THIS machine's state root, and the root it was walked
+		// under. A surface over --host draws its seven places out of these two
+		// facts, and before they existed it drew them out of the LAPTOP's copy
+		// of the same directory — so the tasks place listed eight pieces of work
+		// and $22.54 that had happened on a machine nobody in the conversation
+		// had mentioned (internal/tui3's host.go).
+		//
+		// IT IS [session.ReadWorld] AND [session.PlacesRoot], WHICH IS WHAT THE
+		// LOCAL SURFACE CALLS. The far machine's disk is under the same layout
+		// decision as this one's, and a world assembled differently over a
+		// connection would be a second law about one layout — the same argument
+		// Recent's own comment makes two lines down.
+		World: func() session.World {
+			return session.ReadWorld(session.PlacesRoot())
+		},
+		PlacesRoot: session.PlacesRoot(),
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them
 			// ([v3RecentSessions]): the far machine's disk is under the same
