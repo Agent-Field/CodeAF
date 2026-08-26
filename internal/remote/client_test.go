@@ -267,7 +267,7 @@ func TestTheFactsAFrameReadsCostNoRoundTrip(t *testing.T) {
 	})
 
 	agent := client.Agent()
-	before := client.FarCalls()
+	before := client.CallsMade()
 	if got := agent.Model(); got != "openai/gpt-5" {
 		t.Fatalf("Model = %q", got)
 	}
@@ -285,7 +285,7 @@ func TestTheFactsAFrameReadsCostNoRoundTrip(t *testing.T) {
 	if got := agent.ReasoningFor("OpenAI/GPT-5"); got != "high" {
 		t.Fatalf("ReasoningFor = %q", got)
 	}
-	if spent := client.FarCalls() - before; spent != 0 {
+	if spent := client.CallsMade() - before; spent != 0 {
 		t.Fatalf("the five facts a frame draws cost %d round trips, want 0", spent)
 	}
 }

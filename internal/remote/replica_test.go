@@ -64,7 +64,7 @@ func TestTheFirstFrameIsDrawnFromTheWelcomesOwnFacts(t *testing.T) {
 	if got := handle.ReasoningFor("openai/gpt-5"); got != "high" {
 		t.Fatalf("ReasoningFor = %q", got)
 	}
-	if spent := loop.FarCalls(); spent != 0 {
+	if spent := loop.CallsMade(); spent != 0 {
 		t.Fatalf("the welcome's own facts cost %d round trips, want 0", spent)
 	}
 }
@@ -84,7 +84,7 @@ func TestATitleSettledOnTheEngineReachesTheReplicaWithoutARequest(t *testing.T) 
 	if got := handle.Title(); got != "" {
 		t.Fatalf("a conversation with no name answered %q", got)
 	}
-	asked := loop.FarCalls()
+	asked := loop.CallsMade()
 
 	stream := waitForStream(t, agent)
 	agent.name("the roof leaks")
@@ -97,7 +97,7 @@ func TestATitleSettledOnTheEngineReachesTheReplicaWithoutARequest(t *testing.T) 
 	if got := handle.Title(); got != "the roof leaks" {
 		t.Fatalf("the replica answered %q after the engine named itself", got)
 	}
-	if spent := loop.FarCalls() - asked; spent != 0 {
+	if spent := loop.CallsMade() - asked; spent != 0 {
 		t.Fatalf("learning the name cost %d round trips, want 0", spent)
 	}
 	agent.finish(stream)
@@ -192,7 +192,7 @@ func TestTheFactsAFrameDrawsIssueZeroFarCalls(t *testing.T) {
 	loop := stateOn(t, agent)
 	handle := loop.Client.Agent()
 
-	before := loop.FarCalls()
+	before := loop.CallsMade()
 	for range 200 {
 		_ = handle.Model()
 		_ = handle.Title()
@@ -200,7 +200,7 @@ func TestTheFactsAFrameDrawsIssueZeroFarCalls(t *testing.T) {
 		_ = handle.ContextTokens()
 		_ = handle.ReasoningFor("a/b")
 	}
-	if spent := loop.FarCalls() - before; spent != 0 {
+	if spent := loop.CallsMade() - before; spent != 0 {
 		t.Fatalf("two hundred frames' worth of reads cost %d round trips, want 0", spent)
 	}
 }
@@ -214,12 +214,12 @@ func TestSubmitOverAConnectionIssuesExactlyOneFarCall(t *testing.T) {
 	loop := stateOn(t, agent)
 	handle := loop.Client.Agent()
 
-	before := loop.FarCalls()
+	before := loop.CallsMade()
 	events, err := handle.Submit(context.Background(), "fix the roof")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	if spent := loop.FarCalls() - before; spent != 1 {
+	if spent := loop.CallsMade() - before; spent != 1 {
 		t.Fatalf("a submit cost %d round trips, want exactly 1", spent)
 	}
 	stream := waitForStream(t, agent)

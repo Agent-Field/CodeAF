@@ -92,12 +92,6 @@ type Client struct {
 	// replica.go for the whole of why this exists.
 	facts replica
 
-	// far counts the round trips this connection has actually made. See
-	// [Client.FarCalls]: it is the reading three of PERF.md's laws are pinned
-	// against, and it is here rather than in a test wrapper so that no path can
-	// spend a round trip without being counted.
-	far atomic.Uint64
-
 	// hello is the door's own first frame, kept because a redial has to say it
 	// again — the same workspace, the same session, the same model and level
 	// (redial.go's [Client.resume] fills the cursors in).
@@ -122,6 +116,12 @@ type Client struct {
 	// writeMu serializes frames onto the pipe. It is separate from mu because a
 	// write must not be held up by a map lookup and vice versa.
 	writeMu sync.Mutex
+
+	// made counts every call this client has PUT ON THE WIRE, and it exists for
+	// the perf pins and for nothing else (PERF.md's doctrine: a law about a
+	// round trip is a count, never a stopwatch). One atomic add behind a door
+	// that already existed is the whole cost.
+	made atomic.Uint64
 
 	// seq mints call ids. The engine mints stream ids, so the two spaces never
 	// collide even though both are uint64.
@@ -287,22 +287,6 @@ func (c *Client) Welcome() Welcome {
 // Host is the ssh destination this client dialled.
 func (c *Client) Host() string { return c.host }
 
-// FarCalls is how many round trips this connection has made since it was
-// dialled — every "call" frame, whatever door asked for it.
-//
-// IT EXISTS FOR THE PERFORMANCE LAWS AND FOR NOTHING ELSE (PERF.md): a View
-// over --host issues zero far calls, a key over --host issues zero far calls,
-// and a submit issues exactly one. Those are claims about the SHAPE of the code
-// — which reads go to the replica and which go to the wire — so they are pinned
-// with a count and never with a stopwatch, which would be a test of the network
-// instead (PERF.md's doctrine).
-//
-// It is one atomic counter behind a door that already existed, on the same
-// terms as catalog.BlockingReads and packed.Unpacks. Any lane needing a second
-// reading of the same traffic should read THIS one rather than wrap the client:
-// a wrapper counts what it is given and this counts what actually left.
-func (c *Client) FarCalls() uint64 { return c.far.Load() }
-
 // Attached is how many OTHER surfaces are on this session, as the engine
 // counted them at the door.
 //
@@ -333,6 +317,14 @@ func (c *Client) Live() (uint64, <-chan session.Event) {
 	}
 	return id, c.stream(id).events()
 }
+
+// CallsMade is how many calls this client has put on the wire since it was
+// dialled, and it is here for ONE reason: the laws that say a frame and a
+// pointer cost nothing on the far machine are counts of round trips, and
+// PERF.md's doctrine forbids proving such a thing with a clock. It counts calls
+// and never stream frames, because a turn's events are the work a person asked
+// for and the getters are the work nobody did.
+func (c *Client) CallsMade() uint64 { return c.made.Load() }
 
 // LinkNote is the quiet true sentence about the connection right now, and the
 // empty string whenever there is nothing to say — which is almost always, and
@@ -619,10 +611,10 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 	id := c.seq.Add(1)
 	// COUNTED HERE AND NOWHERE ELSE, because this is the one place a round trip
 	// can happen. It is counted before the refusals below rather than after,
-	// because a law that says "this frame issues zero far calls" is a claim
-	// about what the surface ASKED FOR, and a call that a dead link refused is
-	// still a call the code decided to make.
-	c.far.Add(1)
+	// because a law that says "this frame puts nothing on the wire" is a claim
+	// about what the surface ASKED FOR, and a call a dead link refused is still
+	// a call the code decided to make.
+	c.made.Add(1)
 	waiting := make(chan result, 1)
 
 	c.mu.Lock()
@@ -926,6 +918,28 @@ func (a *Agent) SetContextWindow(tokens int) { _, _ = a.c.call(nil, MethodSetCon
 // way internal/session keys it, and this is a lookup in it.
 func (a *Agent) ReasoningFor(model string) string {
 	return a.c.facts.read().LevelFor(model)
+}
+
+// ReasoningLevels is every level this conversation holds, in one answer.
+//
+// IT IS THE DOOR THAT MAKES THE SURFACE'S OWN TABLE COMPLETE AT BOOT
+// (internal/tui3's reasoninglevel.go). Asked one model at a time, a picker
+// drawing a three-hundred-row catalog had three hundred questions to get
+// through; the engine states the whole map instead, so this is one memory read
+// of the replica and the surface has nothing left to discover.
+func (a *Agent) ReasoningLevels() map[string]string {
+	held := a.c.facts.read().Reasoning
+	if len(held) == 0 {
+		return nil
+	}
+	// A COPY, for [session.Agent.ReasoningLevels]' reason: the map inside the
+	// replica is replaced under a lock by every push, and a caller ranging over
+	// the live one while a fact frame lands is a race.
+	levels := make(map[string]string, len(held))
+	for model, level := range held {
+		levels[model] = level
+	}
+	return levels
 }
 
 // SetReasoningFor sets it, moving the surface's own copy on [Agent.SetModel]'s

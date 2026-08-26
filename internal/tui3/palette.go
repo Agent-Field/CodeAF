@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -793,23 +795,33 @@ func nextReasoning(level string) string {
 	return ""
 }
 
-// reasoningFor is the level held for a model id, "" when none is or when there
-// is no agent to ask (a headless frame).
-func (a *app) reasoningFor(id string) string {
-	if a.agent == nil {
-		return ""
-	}
-	return a.agent.ReasoningFor(id)
-}
+// The level a model is held at is read through [app.reasoningFor], which lives
+// in reasoninglevel.go: the draw path asks it three times a frame and it must
+// never touch the agent, because over a connection the agent is another machine.
 
 // cycleReasoning is ctrl+t: the selected row's model moves one step round the
 // cycle, or nothing happens because that model takes no reasoning knob.
+//
+// IT ASKS THE AGENT WHERE THE ROW STANDS WHEN NOBODY HAS ASKED YET, which is
+// the one place the surface's held answer is not good enough: the cycle is
+// RELATIVE, so starting it from "not told yet" would walk a model already
+// dialled to high back down to low. This is a keystroke — the fourth of
+// reasoninglevel.go's seeded moments, and waiting is what a keystroke may do.
+//
+// AND THE NEW LEVEL IS WRITTEN THROUGH, so the row under the cursor changes on
+// the very next frame. The surface is the only thing that sets these, so what it
+// just set is what is true.
 func (a *app) cycleReasoning() {
 	chosen, ok := a.pick.choice()
 	if !ok || !chosen.Reasoning || a.agent == nil {
 		return
 	}
-	a.agent.SetReasoningFor(chosen.ID, nextReasoning(a.reasoningFor(chosen.ID)))
+	if _, known := a.levels[session.ReasoningKey(chosen.ID)]; !known {
+		a.learnLevel(chosen.ID)
+	}
+	next := nextReasoning(a.reasoningFor(chosen.ID))
+	a.agent.SetReasoningFor(chosen.ID, next)
+	a.keepLevel(chosen.ID, next)
 }
 
 // pickerHint is the placeholder in the empty filter box. It is the only place
@@ -948,6 +960,10 @@ func (a *app) switchModel(id string, window int) {
 	if a.model == "" {
 		a.model = id
 	}
+	// The new model's dial is learned HERE rather than left to the frame clock,
+	// so the status row names it on the very frame the switch lands on
+	// (reasoninglevel.go states the three moments that are seeded and why).
+	a.learnLevel(a.model)
 	if window <= 0 {
 		window = a.windowFor(a.model)
 	}

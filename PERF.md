@@ -72,36 +72,72 @@ memo's bytes are the direct path's bytes, `attach_test.go` proves the fold spell
 the whole answer. Those tests say the fast path is *right*; the ones above say it
 is still *fast*.
 
-## The --host laws: intent up, facts down
+## The connection laws
 
-A surface over `aforge chat --host devbox` must never wait on the wire for
-anything a frame or a keystroke reads. The engine STATES its facts — the model,
-the session's name, what has been spent, what the conversation weighs, the
-effort level held per model — in the welcome and again on a `facts` frame
-whenever one of them moves; the surface keeps a replica and reads it from
-memory (`internal/remote/replica.go`). What travels UP is intent, and only
-intent.
+Over `--host` the surface runs on the laptop and only the engine is far away
+(docs/REMOTE.md), so every question the surface asks its agent is a round trip
+down an ssh pipe with a ten-second deadline on it (internal/remote's
+`callDeadline`) — and every one of them is made from the update loop, which is
+the one goroutine that also decodes keys, resolves clicks and paints. A question
+asked while DRAWING is therefore a question asked thirty times a second, and one
+asked while resolving a POINTER is asked once per cell the pointer crosses.
 
 | Law | Where it is pinned |
 | --- | --- |
-| **A View over `--host` issues zero far calls.** Sixty frames of a status line naming the model, its effort rung, the weight and the cost. | `internal/tui3/hostperf_test.go` |
-| **A key over `--host` issues zero far calls.** Thirty-six keystrokes, typing and moving. | `internal/tui3/hostperf_test.go` |
-| **A submit over `--host` issues exactly one.** The sentence goes up; nothing else does. The update that echoes the line issues zero — the call happens on the command. | `internal/tui3/hostperf_test.go` |
-| The five getters a frame draws answer from the replica and never from the wire. | `internal/remote/replica_test.go` |
+| **A frame over a connection asks the far machine nothing.** | `internal/tui3/hostlatency_test.go` |
+| **A pointer motion over a connection asks the far machine nothing** — including one below the conversation, which rebuilds the chrome to find its row. | `internal/tui3/hostlatency_test.go` |
+| **The model picker draws its whole list for nothing**, however many rows it is showing. | `internal/tui3/hostlatency_test.go` |
+| **The frame clock's beat makes no call on the update loop.** What it reads it reads as a `tea.Cmd`. | `internal/tui3/hostlatency_test.go` |
+| **A key over a connection asks the far machine nothing** — thirty-six of them, typing and moving. | `internal/tui3/hostlatency_test.go` |
+| **A submit over a connection is exactly one call.** The sentence goes up and nothing else does; the update that echoes the line on screen is zero, because the call happens on the command. | `internal/tui3/hostlatency_test.go` |
+| **A turn ending is zero.** The settle reads the spending, the weight and the effort table off the replica, which the engine has already refreshed ahead of the turn's own ending. | `internal/tui3/hostlatency_test.go` |
+| The five facts a frame draws — the model, the name, the spending, the weight, the effort rung — answer from the replica and never from the wire, and the effort table is whole from the first frame. | `internal/remote/replica_test.go`, `internal/tui3/hostlatency_test.go` |
 
-The reading is `remote.Client.FarCalls()`: one atomic counter incremented in
-`Client.call`, which is the one place a round trip can happen. It is a count and
-not a stopwatch for this file's own doctrine — the loopback these tests drive is
-an in-memory pipe, so a timing would measure this machine's scheduler while the
-count is the same fact over an ssh pipe to another continent. **Any lane wanting
-a second reading of the same traffic reads this counter rather than wrapping the
-client**: a wrapper counts what it is handed, and this counts what actually left.
+`remote.Client.CallsMade` exists for these pins and for nothing else — one
+atomic add inside the one door every call already goes through. It counts calls
+and never stream frames, because a turn's events are the work a person asked for
+and a getter is work nobody did.
 
-The law that keeps them true as the surface grows is the one about WHERE, not
-about how many: a fact a frame reads belongs in `session.Facts` and is stated,
-and a question that must be ASKED belongs on a door a person opened on purpose
-(the transcript, the rewind points, a file fetched from that machine). Adding a
-frame-path read that takes the wire is the regression these three catch.
+They were written after the owner reported that over `--host` "even hover seems
+to slow everything down", and that clicks and keys felt dead. It was one defect
+in three places: the status row asked the agent what the model was dialled to
+while it was drawing, a hover below the conversation rebuilds the chrome, and
+the frame clock read the session's cost on the loop. At the twenty-millisecond
+round trip a real link has, a pointer swept across the foot of the window put
+about thirty-six milliseconds of network in front of the update loop per cell —
+so a two-hundred-cell sweep left seven seconds of keystrokes and clicks queued
+behind it, and a six-hundred-cell sweep twenty-two. Driven through tmux over a
+pipe with that delay, a typed character took 7.4s to appear after two hundred
+motions and 21.8s after six hundred; after the fix, 0.014s, which is what the
+same script measures on a local session. internal/tui3's reasoninglevel.go holds
+the fix.
+
+**INTENT UP, FACTS DOWN** is the shape that keeps all of these true as the
+surface grows, and it is the second half of the same fix. The first half stopped
+the draw path ASKING; this half stops there being anything to ask. The engine
+STATES its fact set — the model, the session's name, what has been spent, what
+the conversation weighs, and the effort rung held for every model anybody has
+dialled (`session.Facts`) — in the welcome and again on a `facts` frame whenever
+one of them moves: a turn ending, a name settling, a compaction landing, somebody
+turning the model or the rung. The surface keeps a replica of it
+(`internal/remote/replica.go`) and every getter on the frame path is a memory
+read of that.
+
+So the surface-side tables the laws above are drawn from are FED rather than
+filled: `internal/tui3`'s reasoninglevel.go seeds itself from the whole map the
+welcome carries and is complete at boot rather than a level behind, and
+`app.settle`'s two reads at a turn end are the replica's, taken after the engine
+has already restated them.
+
+The rule for the next thing anybody adds: **a fact a frame reads belongs in
+`session.Facts` and is stated; a question a person opened a door for may be
+asked.** The transcript, the rewind points and a file fetched from that machine
+are all the second kind, and all of them are off the frame path.
+
+The number that is NOT pinned here is the boot: opening a hosted conversation
+costs a handful of calls, and every one of them is a launch cost paid once with a
+person watching a connection open, which is the moment waiting is correct. The
+laws above are about the moments it never is.
 
 ## The launch-path pins
 

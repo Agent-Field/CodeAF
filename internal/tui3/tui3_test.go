@@ -136,6 +136,30 @@ func text(kind session.EventKind, s string) session.Event { return session.Event
 // outright: it fires every 33ms forever while working, so a harness that
 // followed it would never reach the end of the queue. The tests that care about
 // the clock deliver [frameMsg] themselves.
+// settleLevels spends the one frame of lateness reasoninglevel.go describes: it
+// puts the named models back in the queue and runs the background ask the frame
+// clock would have sent, so a test can assert on a level the SURFACE was never
+// the one to set.
+//
+// It is here beside [drive] and for [drive]'s own reason — the paint clock's
+// message is dropped there, so anything sent on that clock has to be spent by
+// hand — and it loops because one ask carries at most [levelBatchMax] ids.
+func settleLevels(a *app, ids ...string) {
+	for _, id := range ids {
+		delete(a.levels, id)
+		a.wantLevel(id)
+	}
+	for range 8 {
+		cmd := a.levelKick()
+		if cmd == nil {
+			return
+		}
+		if msg, ok := cmd().(levelsMsg); ok {
+			a.levelsBack(msg)
+		}
+	}
+}
+
 func drive(t *testing.T, a *app, msgs ...tea.Msg) {
 	t.Helper()
 	queue := append([]tea.Msg(nil), msgs...)
