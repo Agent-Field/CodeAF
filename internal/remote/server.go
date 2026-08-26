@@ -200,6 +200,12 @@ type Engine struct {
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
 	// world door; a build that answers a world and no root simply cannot adopt.
 	PlacesRoot string
+	// TaskRecord is ONE ROW of that record read deeper than the walk reads it:
+	// the last thing that piece of work said, out of the journal it left here
+	// ([MethodPlacesTask]). nil is the same absence World's nil is — the door is
+	// answered as a refusal and the card says so, rather than the surface reading
+	// a path on its own disk that only exists on this one.
+	TaskRecord func(uri string) (session.TaskRecord, error)
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -1334,6 +1340,26 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this engine cannot list its places")
 		}
 		return json.Marshal(world())
+
+	case MethodPlacesTask:
+		args, err := arg[PlacesTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		sess.mu.Lock()
+		read := sess.engine.TaskRecord
+		sess.mu.Unlock()
+		if read == nil {
+			// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT EMPTY, exactly as the
+			// world door above. An empty record answered here would reach the card
+			// as a piece of work that said nothing at the end, which is a claim.
+			return nil, errors.New("engine: this engine cannot read its record")
+		}
+		record, err := read(args.Transcript)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(record)
 
 	case MethodStandingItems:
 		workspace, err := arg[string](call)
