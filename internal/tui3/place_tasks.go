@@ -115,11 +115,12 @@ func (a *app) showTaskPlace() tea.Cmd {
 }
 
 // raiseTaskPlace puts one taken reading on the frame.
+//
+// WHATEVER WAS STANDING IS ALREADY DOWN. The router closes the last place before
+// it asks the next one to open (pages.go's [app.showPage]), so there is no
+// exclusion to keep here — the one field that says which room is up cannot hold
+// two answers.
 func (a *app) raiseTaskPlace(sheet tasksPlace) {
-	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and home both
-	// ([app.standDownFullscreen] states the law). Only one of the three may
-	// believe it owns the frame: view.go draws them in a fixed order, so a page
-	// opened under another would take the keyboard and never be seen.
 	a.taskSheet = sheet
 	a.taskSheet.cursor = a.tasksSettle(0)
 	a.noticeEvent(eventTaskPageOpened)

@@ -28,7 +28,8 @@ package tui3
 //
 //   - A BAND NEVER BLOCKS. It is drawn on every frame the cursor rests on a
 //     row. Anything that reads a file or runs a command caches on the app by
-//     subject id (see [app.homeLast] for the shape) and answers from the cache.
+//     subject id (see [app.leftOffBand]'s use of [homeView.last] for the shape)
+//     and answers from the cache.
 //
 //   - A BAND IS REGISTERED FROM ITS OWN FILE'S init, so two lanes adding two
 //     bands never edit one line. The registry sorts by order once, lazily.

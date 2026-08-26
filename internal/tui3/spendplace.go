@@ -395,10 +395,9 @@ func (r spendReading) step(win session.UsageWindow, key string) session.UsageWin
 	return placeWindowStep(win, key)
 }
 
-// THE EMPTY SPEND PAGE IS THE ROUTER'S TEACHING AND NOT A SECOND ONE. A ledger
-// with nothing priced in the window draws no rows at all ([spendReading.body]
-// answers nil), and the frame then falls through to the three sentences every
-// place-with-no-body says — [page.explain], drawn by teachplace.go. This file
+// THE EMPTY SPEND PAGE IS THE PLACE'S OWN TEACHING AND NOT A SECOND ONE. A
+// ledger with nothing priced in the window draws no rows at all
+// ([spendReading.body] answers nil), and the place's body then draws the three
+// sentences saying what spend is for ([spendTeach], place_spend.go). This file
 // used to carry a near-identical trio of its own; two teachings for one place is
-// two places for the wording to drift, and the router's is the one the manual
-// already quotes.
+// two places for the wording to drift, and that one is what the manual quotes.

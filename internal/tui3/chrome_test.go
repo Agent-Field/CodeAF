@@ -1343,8 +1343,8 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatalf("the task page is not what the frame draws:\n%s", page)
 	}
 	// AND A PLACE WITH NOTHING OF ITS OWN TO DRAW TAKES THE FRAME ON THE SAME
-	// TERMS, which is the whole reason it is a place and not a message
-	// (teachplace.go).
+	// TERMS, which is the whole reason it is a place and not a message: it spends
+	// the frame saying what it is for (place_spend.go's [spendTeach]).
 	a.showPage(pageSpend)
 	spend, _, _ := a.frame()
 	if strings.Contains(plain(spend), "Port the parser") {

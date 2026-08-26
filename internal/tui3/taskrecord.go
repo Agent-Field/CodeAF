@@ -503,7 +503,8 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 	}
 	// THE CLOCK IS WRITTEN WHEN THE WORK LANDS and is zero on every row that has
 	// not, so a row still claiming to be running says nothing about how long —
-	// the same reason [taskRecordNote] leaves the age off a live row.
+	// the same reason the record's own right margin says `running` instead of an
+	// age on a row that has not landed.
 	if !entry.Live() {
 		if ran := countUpWord(entry.Duration()); ran != "" {
 			segs = append(segs, "ran "+ran)

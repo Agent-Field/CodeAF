@@ -833,7 +833,7 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// home, where the sentence a person needs is the one about the door they
 	// just tried. Home's own is read when the router has nothing to say.
 	msg, path := a.pageMsg, ""
-	if msg == "" {
+	if msg == "" && a.at(pageHome) {
 		msg, path = a.home.msg, a.home.msgPath
 	}
 	if msg == "" {
@@ -928,13 +928,13 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 
 // ── the pointer, one place at a time ────────────────────────────────────────
 //
-// THE THREE GESTURES LIVE HERE FOR [app.openPage]'S REASON: this file is the
-// one that may know every place by name, and a mouse router that grew its own
-// switch would be a second list of the places to fall out of step with the
-// first. What each function is given is a row of the terminal; what it hands
-// back is whether this place took the gesture. The shared arithmetic — a
-// terminal row becoming a line of a body, a window that follows a cursor — is
-// placemouse.go's, because it is the same on every place.
+// THE THREE GESTURES ARE THREE LINES EACH, because each of them asks the place
+// that is standing and never a page id: a mouse router with a switch of its own
+// would be a second list of the places to fall out of step with the first, which
+// is what all three of these were. What each function is given is a row of the
+// terminal; what it hands back is whether the place took the gesture. The shared
+// arithmetic — a terminal row becoming a line of a body, a window that follows a
+// cursor — is placemouse.go's, because it is the same on every place.
 
 // placeBodyPress is a press on one place's own rows: it moves that place's
 // cursor and never acts, which is the law the standing place already stated for
