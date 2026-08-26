@@ -1835,7 +1835,18 @@ func (a *Agent) wakeLocked() bool {
 		for range sink.out { //nolint:revive // draining is the point
 		}
 	}()
-	a.startTurnLocked(context.Background(), userMessage{}, sink, watchers...)
+	// THE OPENING MESSAGE IS EMPTY BUT MARKED A WAKE, and the two facts are not in
+	// tension: empty is still empty — [userMessage.empty] reads the content, which
+	// there is none of, so nothing is recorded and the loop's first drain still
+	// writes the note off the queue exactly as before. The `wake` bit rides beside
+	// that emptiness so the metered loop can tell WHOSE turn this is: nobody typed
+	// it and nobody is holding a channel to answer it, which is what
+	// [Agent.checkpointReopen] needs to know before it decides whether a turn that
+	// stopped short is worth reading. Every gate that reads `user.wake` on an
+	// opening message already treats empty as the same class (route_judge.go,
+	// harness.go, task_brief.go), so the bit changes nothing but the one reading
+	// that was missing.
+	a.startTurnLocked(context.Background(), userMessage{wake: true}, sink, watchers...)
 	return true
 }
 

@@ -2214,6 +2214,117 @@ func TestAWokenTurnIsMeteredExactlyLikeATypedOne(t *testing.T) {
 	}
 }
 
+// A WOKEN TURN THAT STOPS SHORT IS RE-OPENED EVEN WHEN IT IS TOO CHEAP TO HAVE
+// PAID A READER, WHICH A PERSON'S TURN IS NOT.
+//
+// This is SWE-Marathon s14, 18:16Z, to the round: a task came home failed, the
+// note woke a turn, it read for six rounds — four under the first rung — and
+// sealed on a stated next step with no question. The price gate that rightly
+// leaves a person's cheap turn alone left this one unread, and the best clean
+// seed of the run settled idle with seven and a half of its ten hours unspent.
+// A woken turn has nobody sitting in front of it to carry the work on, so the
+// cheapness that protects a typed turn does not protect this one.
+func TestAWokenTurnThatStopsShortIsReopenedEvenWhenCheap(t *testing.T) {
+	const stopped = "This is a large, multi-part problem. Let me diagnose the specific " +
+		"failures systematically rather than rewriting everything."
+	const remains = "implementation is 0/322 and semanticTokens is 0/60; nothing is wired " +
+		"and the golden tests still fail"
+
+	var remainsAsks atomic.Int64
+	// SIX ROUNDS, four under the first rung — the exact depth s14 sealed at, and
+	// the depth a typed turn is left unread at (see the test below this one).
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(1)-4, stopped, func() string {
+		if remainsAsks.Add(1) == 1 {
+			return remains
+		}
+		return checkpointNothingLeft
+	})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+	// The person's ask, as the session already holds it: the woken turn is not the
+	// one they typed, and what its remains are read against is still their sentence.
+	agent.mu.Lock()
+	agent.personAsk = "port the whole language server and get every golden test passing"
+	agent.mu.Unlock()
+
+	// A TASK LANDS, which is the one road [Agent.wakeLocked] opens.
+	settleTask(t, agent, "the first piece", "the first piece is done")
+
+	waitFor(t, "the cheap woken turn's remains to be read", func() bool {
+		return remainsAsks.Load() > 0
+	})
+	waitFor(t, "the cheap woken turn to be re-opened on what is left", func() bool {
+		return strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains)
+	})
+}
+
+// AND THE WAKE CARVE-OUT STOPS AT THE PERSON'S OWN QUESTION.
+//
+// Lifting the price gate for a woken turn must not lift the exclusion that
+// matters most: a turn whose last words ask the PERSON something is waiting, not
+// stopping, and re-opening it would answer a question addressed to somebody else.
+// That gate runs in front of the price gate, so a cheap woken turn that ends on a
+// question is left alone exactly as a typed one is — no reader is spent on it.
+func TestAWokenTurnEndingOnAQuestionIsNotReopened(t *testing.T) {
+	var remainsAsks atomic.Int64
+	// THREE ROUNDS, under the first rung: only the wake carve-out could arm the
+	// reader here, and only the question can be keeping the turn shut.
+	completer := &scriptedCompleter{steps: stoppingSteps(3,
+		"I could wire the handlers or the folding ranges first. **Which should I do?**", func() string {
+			remainsAsks.Add(1)
+			return "there is work left"
+		})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+	agent.mu.Lock()
+	agent.personAsk = "port the language server and get the golden tests passing"
+	agent.mu.Unlock()
+
+	settleTask(t, agent, "the first piece", "the first piece is done")
+	waitForQuiet(t, agent)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a woken turn waiting on the person was read %d times for what remains", got)
+	}
+	if strings.Contains(transcriptText(agent), checkpointCarryOnLead) {
+		t.Errorf("a woken turn waiting on an answer was carried on:\n%s", transcriptText(agent))
+	}
+}
+
+// AND A WOKEN TURN THAT RUNS LONG HITS THE SAME CEILING AND MOVES WORK TO A TASK.
+//
+// The ceiling is not a person's-turn rule with a wake exception bolted on: it is
+// the one meter, and a woken turn climbs the same ladder to it. A task landing
+// starts a turn, the turn grinds past the ceiling, and what is left is handed to
+// exactly one governed task on the one road — the same ending a typed turn gets.
+func TestAWokenTurnPastTheCeilingMovesWorkToATask(t *testing.T) {
+	// Grinds past the ceiling and answers the mastermind's handoff when it is
+	// asked — the identical script a typed turn hands over on.
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, "a draft", "a brief somebody could work from")}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+	agent.mu.Lock()
+	agent.personAsk = "port the whole language server and get every golden test passing"
+	agent.mu.Unlock()
+
+	// A TASK LANDS AND WAKES A TURN: the note carries wake, [Agent.wakeLocked]
+	// opens the turn on it, and it grinds like any other.
+	if !agent.enqueueNote(wakeNote("task 1 is done · the first piece landed")) {
+		t.Fatal("the wake note was not taken")
+	}
+	node := ran.await(t)
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted when the woken turn hit the ceiling, want exactly one", count)
+	}
+	// AND IT IS THE PERSON'S OWN ASK THE WORK GOES OUT AGAINST, not the wake note.
+	if !strings.Contains(node.spec.acceptance, "port the whole language server") {
+		t.Errorf("the handed-over work is finished against %q, want the person's own words", node.spec.acceptance)
+	}
+}
+
 // ── a turn ends; the ask does not ───────────────────────────────────────────
 
 // A TURN THAT STOPS SHORT OF THE ASK IS RE-OPENED, ONCE, WITH WHAT IS LEFT.
