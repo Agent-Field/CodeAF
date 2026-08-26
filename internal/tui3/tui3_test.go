@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -212,8 +214,33 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // rendered unpainted under NO_COLOR — or ASCII under LANG=C — would make every
 // assertion about an escape sequence or a rail marker a test of the
 // environment.
+// labLedger is THE ONE LEDGER EVERY TEST APP SPENDS INTO, made once per test
+// binary under the OS temp dir. The door hands the surface a path and an empty
+// path means "this machine's" (usage_ledger.go's [session.UsageCache] falls back
+// to [session.UsageLedgerPath]), so a test app that left it empty had the spend
+// place reading the developer's real ~/.aforge — and went red the first time
+// anything on the machine cost a cent, which on a box running several lanes is
+// always. It is one file rather than one per test because [newTestApp] has no
+// *testing.T to ask for a TempDir, and nothing here reads what another test
+// wrote: the file exists only so that the fallback is never taken.
+var (
+	labLedgerOnce sync.Once
+	labLedgerPath string
+)
+
+func labLedger() string {
+	labLedgerOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "aforge-tui3-lab-")
+		if err != nil {
+			panic(err)
+		}
+		labLedgerPath = filepath.Join(dir, session.UsageLedgerName)
+	})
+	return labLedgerPath
+}
+
 func newTestApp(agent Agent) *app {
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab"})
+	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger()})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	// AND IT PINS THE MULTIPLEXER, for exactly the same reason. [newApp] reads
