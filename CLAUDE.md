@@ -153,7 +153,9 @@ packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, four
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
 `internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
 `internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
-`TestSettingsRefusesToFightTheEnvironment`) — all verified failing at `origin/chat-v3-task`
+`TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
+TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
+green with `TMPDIR=/tmp/eh`) — all verified failing at `origin/chat-v3-task`
 on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
 alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
 `TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
