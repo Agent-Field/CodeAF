@@ -266,6 +266,13 @@ var settingReaders = map[string]string{
 	// session's posture, from where the resolver hands it to every model call
 	// that has nothing more specific to go on (internal/effort).
 	KeyEffort: "DefaultEffortAt",
+	// The four ssh rows resolve as one transport policy at the local --host
+	// door, because passing four separately-read values to one process would
+	// let a settings edit split one launch across two snapshots.
+	KeySSHControlPersist: "SSHTransportAt",
+	KeySSHServerAlive:    "SSHTransportAt",
+	KeySSHServerMisses:   "SSHTransportAt",
+	KeySSHIPQoS:          "SSHTransportAt",
 }
 
 // Every persisted row names a reader, and every named reader is really there.
