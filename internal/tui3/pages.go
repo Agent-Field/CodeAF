@@ -303,10 +303,10 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	// THE PLACE LADDER IS IN FORCE FOR THE WHOLE OF THIS FRAME, and it is put back
 	// before this function returns (styles.go's [palette.onPlaces]). Every row
 	// below — the pulse, the tab bar, the body the place itself builds, the
-	// composer and the foot — asks `a.pal` for its colours, so swapping the ladder
-	// here is what makes the design's palette reach two thousand call sites
-	// without one of them being edited. The conversation is untouched because it
-	// is never drawn inside this frame: a place takes the whole terminal.
+	// composer and the foot — asks `a.pal` for its colours, so re-pointing three
+	// roles here is what makes THE ONE-ACCENT LAW reach two thousand call sites
+	// without one of them being edited. The inks are the conversation's own; what
+	// a place does not do is draw the question's violet or the tick's olive.
 	was := a.pal
 	a.pal = was.onPlaces()
 	defer func() { a.pal = was }()
@@ -414,13 +414,12 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	for len(lines) < height {
 		add("", blank)
 	}
-	// AND THE PAGE GROUND GOES ON LAST, OVER EVERY CELL THE FRAME OWNS — the pad
-	// rows above included, which is where a person actually reads the ground as a
-	// page (styles.go's [palette.pageGround] states the three things it does and
-	// why each is load-bearing). It is applied here, once, on a finished frame,
-	// rather than by each place: a place that had to remember to paint its own
-	// ground is a place that will one day forget on the row it added last.
-	return pal.groundRows(lines, width), hits, caretX, caretY
+	// AND NO GROUND GOES ON AT ALL. A place paints the rows it built and nothing
+	// under them: the terminal's own background shows through every cell this
+	// frame owns, exactly as it does behind a conversation (styles.go's THE GROUND
+	// LADDER, and the reversal note under it). The only lifted cells on the whole
+	// frame are the ones a person put a pointer or a cursor on.
+	return lines, hits, caretX, caretY
 }
 
 // placeChipped puts the scope chip against the right edge of the box row, and
