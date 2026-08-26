@@ -1100,8 +1100,9 @@ nothing*).
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the headings and the section
 line · home opens with the cursor on **the conversation this window is holding**, and `↑`
-off the top of the list walks up onto **no row at all**, from where the first `down` lands
-back on the first row the cursor can stand on · `pgup`/`pgdown` jump a screenful · `enter`
+off the top of the list walks up onto **the tab bar**, from where the first `down` lands
+back on the row you left (*The tab bar is a row the cursor can stand on*) ·
+`pgup`/`pgdown` jump a screenful · `enter`
 acts on the row under the cursor · **`tab` is the next place** — home is one column now and
 there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
 **`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
@@ -1185,6 +1186,39 @@ the list instead of beside it, and `esc` brings the list back (*Asking from home
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
 seconds quits aforge.
+
+## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
+
+**On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
+the row of seven words under the top line. The word you are standing in wears the cursor's
+band there instead of its usual mark, and five keys mean something on that row:
+
+| Chord | What it does while the cursor is on the bar |
+| --- | --- |
+| `←` / `→` | walk one word along, wrapping round from either end. **Nothing opens** |
+| `enter` | go into the place under the cursor |
+| `↓` | the same — go into the place under the cursor |
+| `esc` | back into the page, on the row you walked up from. It does **not** close the place |
+| `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
+
+Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
+next and previous place, `alt+1` … `alt+7` jump, `alt+.` draws the map, and **any printable
+key goes into the composer** — taking the cursor back down into the page with it, because
+somebody who has started typing has stopped looking at the bar.
+
+**`←` and `→` are not the row's keys up here.** On a row they open that row's verb strip
+and its folds; the bar is not a row of any page's list, so both arrows are the walk along
+the words and nothing else.
+
+**The first `↓` back off the bar lands where you left.** `↑` onto the bar does not move the
+page's own cursor, so walking up and straight back down costs nothing.
+
+**And it works only where a bar is drawn.** Home on a phone-shaped frame and a task's record
+card draw something else in those cells, so `↑` there is the walk it has always been — no
+key does anything that is not on the screen.
+
+The **places** page has the same thing with the pointer's half beside it: *How do I move
+between the tabs with the arrow keys*.
 
 ## Keys in the task roster and inside a room
 
@@ -1631,19 +1665,25 @@ movement. `ctrl+f` never is — it always moves the caret right.
 ## ctrl+v — how hard the thing you are looking at thinks
 
 `ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
-and it moves the rung of **the thing you are standing on**. One chord, four scopes:
+and it moves the rung of **the thing you are standing on**. One chord, three scopes:
 
 | Where you are | What moves |
 |---|---|
 | The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on **no row at all** | The machine's own default — the `thinking` row in `/settings` |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
 the chip above its message box moves it.
+
+**The machine's own default is not one of the scopes.** It used to be — home had a state
+where the cursor stood on no row at all and the right-hand side became a card about the
+machine, and this chord moved the install's rung from there. `↑` off the top of home's list
+reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+default, open `/settings` and walk to the **`thinking`** row, which is the setting both
+roads always wrote.
 
 **It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
 never returns to "nobody said" — clearing a rung hands the work back to whatever stands
@@ -1653,8 +1693,8 @@ thing back to nothing in the place it is written down: the `thinking` row's own 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
 thinking high` — and on the roster's own figures row when the column is wide enough to hold
-it. The machine's is on the card home draws at rest. An item's is on that item's card. A
-thing nobody has dialled says nothing, which is not the same as `low`.
+it. An item's is on that item's card. The machine's own is the `thinking` row of
+`/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
 
 **On a task it lands on the next call, not this one.** A worker already running keeps the
 rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
@@ -1676,7 +1716,7 @@ answer:
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
-| `ctrl+v` | **Bound**, on four surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, the machine's own default on home at rest, or a standing item. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
+| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
