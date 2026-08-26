@@ -1040,11 +1040,18 @@ func (a *Agent) dropFollowUpsLocked() {
 func (a *Agent) Interrupt() {
 	a.mu.Lock()
 	cancel := a.cancel
+	jobs := a.jobs
 	a.dropFollowUpsLocked()
 	a.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
+	// deliberately survives this — it is a command the person asked to be left
+	// running — but a forked hand is THIS MIND, copied, finishing a reply nobody
+	// is waiting for any more (fork.go), and it runs on its own context now
+	// rather than the turn's, so the cancel above does not reach it.
+	jobs.stopHands()
 }
 
 // Title is the session's name, empty until it has one (title.go).

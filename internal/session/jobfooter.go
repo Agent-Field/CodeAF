@@ -19,6 +19,17 @@ package session
 // the last thing it said. A model reading that does not need to poll, cannot
 // mistake a quiet job for a dead one, and is never surprised by a completion.
 //
+// A FORKED HAND IS ON THIS FOOTER TOO, and it is the same three facts with its
+// name in the middle:
+//
+//	[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+//
+// It is here because a hand is a stream now rather than a barrier (fork.go): the
+// caller's `fork` call returns the moment the hands are out and the caller keeps
+// working, so the only thing standing between it and a hand it has forgotten
+// about is this line. It says the same thing to the same reader for the same
+// reason — you have work out, this is how old it is, this is what it last did.
+//
 // ── WHERE IT IS APPENDED, AND WHY ONLY THERE ──
 //
 // At [Agent.executeTool]'s chokepoint, immediately after the error→fix sidecar
@@ -77,6 +88,15 @@ func (r *jobRegistry) runningFooter() string {
 			continue
 		}
 		line := jobFooterLead + strconv.Itoa(info.id) + jobFooterRunning + formatJobAge(info.elapsed)
+		// A HAND IS NAMED, because its id is not what the caller thinks of it by.
+		// It asked for "the docs" and it is holding that part of its own answer;
+		// `job 4` alone would make it look up which hand that was.
+		if info.kind == jobKindHand && info.label != "" {
+			line += " · " + info.label
+			if info.detail != "" {
+				line += " — " + clip(firstLine(info.detail), jobFooterLastLimit)
+			}
+		}
 		if last := one.sink.lastNonEmptyLine(); last != "" {
 			line += " · last: " + clip(firstLine(last), jobFooterLastLimit)
 		}

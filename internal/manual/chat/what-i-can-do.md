@@ -178,6 +178,13 @@ Three facts — it is alive, it has been alive this long, this is the last thing
 said — on every result, so "is it still going" is answered before it can be
 asked. A finished or killed job drops off the list immediately.
 
+**A forked hand is on that same footer**, named, because a hand is a job too (see
+"Hands" in the tasks page):
+
+```
+[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+```
+
 **When a job ends**, its exit code and the last 50 lines of its output arrive in
 the conversation on their own:
 
@@ -257,12 +264,16 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   Status is `running`, `exited(N)` or `killed`. Nothing running reads
   `No background jobs.` A job that started life as a foreground command and was
   promoted — by its timeout, or by `ctrl+g` — has exactly this row, with no mark
-  saying where it came from: it is a job like any other.
+  saying where it came from: it is a job like any other. A forked **hand** is in
+  this list too, as `job 4 · hand 2 · running · 12.0s · the docs`, and its status
+  when it ends is `finished` — a hand has no exit code, it has a report.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
   most**, with a footer naming the full log:
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
-  Answers `job 1 killed`.
+  Answers `job 1 killed`. Killing a **hand** answers
+  `hand 2 (job 4) stopped; what it had already written is still in your working
+  copy and may be half-made — no report is coming`.
 
 Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).`
 

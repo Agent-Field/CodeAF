@@ -2092,19 +2092,49 @@ each of the others is doing so it does not redo their work. That is the whole tr
 is why hands are cheap: the expensive thing about handing work over is explaining it, and a
 hand needs no explaining.
 
-**What you see** is one dim line while they are out:
+**What you see** is one dim line at the moment they go out:
 
 ```
-three hands on it · back when they are done
+three hands on it · each one folds in as it lands
 ```
 
-Then nothing until the answer carries on. Hands draw no rows on the task column and get no
-ids — they live and die inside one reply, so there is nothing to open, steer or stop. What
-they cost is folded into that turn's own cost, which is where it belongs: it is your answer
-being worked on, not work that left.
+The answer then carries on. It does **not** go quiet and wait for all of them — see the next
+section. What they cost is folded into that turn's own cost, which is where it belongs: it is
+your answer being worked on, not work that left.
 
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
+
+## A hand is a stream, not a wait — the answer keeps working while its hands are out
+
+`fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
+in the conversation, the moment that hand finishes — in the order they **come home**, not the
+order they were asked for. Nothing polls and nothing waits.
+
+That matters because the alternative was measured and it was expensive. On one benchmark task
+a worker forked three hands at 00:53. The first was finished ninety seconds later. The tool
+call did not return until 01:33, when the slowest one hit its budget — so for thirty-nine
+minutes the worker sat inside a tool call doing nothing at all, while the first hand's
+finished work sat in the working copy unbuilt and unmeasured. When it finally returned, the
+worker built once, ran the check, and gained 29 passing tests. Forty minutes for work that had
+been ready after two.
+
+So now the answer builds and tests **each slice as its report lands**, while the other hands
+are still writing elsewhere in the tree.
+
+Every hand still out also rides at the foot of every result the answer reads, the way a
+background job does:
+
+```
+[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+```
+
+Which hand, how old, what it last did. So a hand can never be forgotten and never has to be
+asked about.
+
+**Hands get job ids now.** They are in `jobs list` beside background commands and watches,
+each with a log on disk, and `jobs kill 4` ends one — its writes stay in your working copy and
+may be half made, and no report comes.
 
 **Every hand owns a slice of the files and can write nowhere else.** They share one working
 copy — no branches, no copies of the repository — so what keeps them out of each other's way
@@ -2144,8 +2174,8 @@ and calls again.
 copy at once, so a build in the middle of that reads a half-written repository: a pass would
 prove nothing and a failure would be a neighbour's unfinished work. Their `bash` runs
 `git diff`, `git log`, `git status`, `git show`, `pwd`, `wc`, `head` and `cat` and refuses
-everything else. The build, the tests and the review happen **after they are all back**, in
-the answer itself.
+everything else. The build, the tests and the review happen **in the answer itself**, hand by
+hand as each report lands.
 
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
@@ -2154,13 +2184,19 @@ repository in a state two of them fought over.
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
 
-**They cannot outlive your turn.** Interrupt the answer and every hand stops with it. There
-is no such thing as a hand still running after the reply has finished, and nothing about them
-survives a restart because nothing about them was ever written down as work.
+**They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
+that started it has finished, and its report wakes the session when it lands — the same thing
+a background command's exit does. What stops a hand where it stands is **your interrupt**
+(that is the difference from a background job: a job is a command you asked to be left
+running, a hand is the answer itself) and closing the window. A task that forked hands does
+**not** land while a hand is still out: it waits, reads the reports, and lands after.
 
-**Each has a budget of 15 rounds of tool calls.** A hand that runs out comes back saying so,
-with whatever it did finish, and the answer is told plainly that this part was left
-unfinished — it is not quietly treated as done.
+**Each has a budget of 15 rounds of tool calls.** A hand that runs out reports it **leading**
+with `OUT OF ROUNDS`, names the files it wrote, and **quotes its last sentence back verbatim**
+— because that sentence is the only description in existence of the change it was halfway
+through. Those files are called unverified: nothing built or ran them and the change may be
+half made. The answer is told plainly that this part is not done — it is never quietly treated
+as finished.
 
 **How it differs from the other two roads.** A **task** is work that leaves: its own copy of
 the repository, its own room, a check, a landing, and it survives you closing the window. A
