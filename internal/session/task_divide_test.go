@@ -807,10 +807,11 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
-	if !strings.Contains(systemPrompt, "WIDE WORK") || !strings.Contains(systemPrompt, "with `wide`") {
+	rendered := renderSystem(agent.config)
+	if !strings.Contains(rendered, "WIDE WORK") || !strings.Contains(rendered, "with `wide`") {
 		t.Error("prompts/system.md does not route wide work to propose_task")
 	}
-	if !strings.Contains(systemPrompt, "deliberate exception, not the way to") {
+	if !strings.Contains(rendered, "deliberate exception, not the way to") {
 		t.Error("prompts/system.md does not name run_adaptive as the exception")
 	}
 	// And the sentence that produced the live reflex is gone rather than merely
@@ -819,7 +820,7 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 		"Independent parts that share one goal and one synthesis: ONE adaptive run",
 		"the parallelism is already built",
 	} {
-		if strings.Contains(systemPrompt, gone) {
+		if strings.Contains(rendered, gone) {
 			t.Errorf("prompts/system.md still says %q", gone)
 		}
 	}
