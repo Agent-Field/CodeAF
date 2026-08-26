@@ -139,8 +139,21 @@ meta = {
     "workspace_files": workspace_files,
     "timer_at_start": read(os.path.join(CELL, "timer-at-start.txt")).replace("\n", " "),
     "verifier_stages": load(os.path.join(V, "oneroad_stages.json"), {}),
-    "network_deviation": "default docker bridge, full egress — the task asks for a "
-                         "crates.io + model-endpoint allowlist and none was built",
+    # THE DEVIATION IS WHAT THE CELL DID, NOT WHAT THIS FILE ONCE BELIEVED. It
+    # used to be a frozen sentence saying "full egress", which stayed true only
+    # as long as nobody built the allowlist. cell.sh computes it from the run it
+    # actually performed and exports it; the fallback is the honest reading of a
+    # record.py invoked by hand, where nothing is known about the network.
+    "network_deviation": os.environ.get(
+        "NETWORK_DEVIATION",
+        "unknown: this record was written without NETWORK_DEVIATION set, so the "
+        "cell's egress policy was not recorded"),
+    "toolchain": {
+        "image_toolchain": os.environ.get("IMAGE_TOOLCHAIN", ""),
+        "image_rustc": os.environ.get("IMAGE_RUSTC", ""),
+        "pinned": os.environ.get("PIN_TOOLCHAIN", "") == "1",
+        "rustup_home": "/root/.rustup", "cargo_home": "/root/.cargo",
+    },
     "loadavg_before": read(os.path.join(CELL, "loadavg-before")),
     "loadavg_after": read(os.path.join(CELL, "loadavg-after")),
 }
