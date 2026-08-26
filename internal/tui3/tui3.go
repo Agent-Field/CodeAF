@@ -325,9 +325,14 @@ type Options struct {
 	// The workspace is the project the cursor was on, or the person's home
 	// directory when it was on none (docs/AMBIENT.md Part 5).
 	//
+	// IT TAKES ONE STRUCT AND NOT FOUR ARGUMENTS. The composer layer settles
+	// three things before a sentence leaves it — where it runs, what the work
+	// runs on, how much it may spend (SCREEN 2e) — and a fourth fact settled
+	// later is a field here rather than a break in every door that fills this in.
+	//
 	// Nil is a window that cannot ask from home: the row says so and nothing is
 	// created. A test and the --host door are both that window.
-	Errand func(dir, workspace string) (Agent, error)
+	Errand func(ErrandOrders) (Agent, error)
 
 	// Answer leaves one answer on ANOTHER session's doorstep: the question home
 	// read out of that session's presence file, answered by the key the chips
@@ -639,6 +644,33 @@ type Options struct {
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
 	Width, Height int
+}
+
+// ErrandOrders is what the composer layer settled before the sentence left it,
+// and it is the whole argument to [Options.Errand].
+//
+// THE THREE FACTS A TASK NEEDS BEFORE IT LEAVES ARE WHERE, ON WHAT, AND HOW
+// MUCH (SCREEN 2e), so they travel together. Each is edited on the line that
+// shows it and each is honoured by a real field of the session the door builds
+// — the workspace it works in, the model its work runs on, the rail it stops at
+// — because a figure a person set and nothing read would be worse than a figure
+// they were never offered.
+type ErrandOrders struct {
+	// Dir is the folder the surface already made, under the standing root. The
+	// transcript and every sidecar go inside it.
+	Dir string
+	// Workspace is the project this errand is about: the destination the layer's
+	// `alt+w` cycled to, the project the cursor was on, or the person's home
+	// directory when it was on none.
+	Workspace string
+	// Model is what the WORK this errand hands out runs on — the execution slot
+	// (config's ModelSlotFor("work")), chosen on the layer's `alt+o`. Empty keeps
+	// whatever the launch bound, which is the ordinary case.
+	Model string
+	// CapUSD is the most this errand may spend before it stops and asks. Zero is
+	// the launch's own rail and therefore usually no cap at all; the layer never
+	// sends zero, because the line a person read said a figure.
+	CapUSD float64
 }
 
 // sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
