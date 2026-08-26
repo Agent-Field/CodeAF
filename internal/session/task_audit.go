@@ -351,6 +351,16 @@ const (
 	// report carrying three sets of evidence reads as three attempts rather than
 	// as one auditor repeating itself.
 	repairedAgainLead = "still incomplete after another go — "
+	// taskCutMidCheck opens the node whose CHECK was cut off from outside — a
+	// settle-kill, a quit, a deadline on the session. It is the one landing in
+	// this file that is not a reading of the work at all, so it says only what is
+	// knowable: the work stopped mid-check, nothing finished looking at it, and
+	// what it left is on its branch. It borrows [incompleteLead] for
+	// [unverifiedEdits]'s reason — nothing new happened to the work, and inventing
+	// a state for it would be the machinery describing itself (task_run.go).
+	taskCutMidCheck = incompleteLead +
+		"it was stopped while its work was being checked, so nothing finished checking it — " +
+		"what it wrote is on its branch"
 )
 
 // machineryWords is the vocabulary that must never reach a person, and what to
@@ -488,6 +498,20 @@ func gapsOutcome(rounds [][]string) string {
 	return strings.Join(out, "\n")
 }
 
+// checkedSoFar is whatever the check had ALREADY SAID when something cut it off,
+// in plain words, and "" when it had said nothing.
+//
+// It is not an outcome and it leads nothing: a cancelled check produced no
+// finding, so this rides UNDER the node's own claim as evidence rather than over
+// it as a verdict (task_run.go's cancel arm). A verdict nobody reached answers
+// empty, which is the honest half of "nothing finished checking it".
+func (v auditVerdict) checkedSoFar() string {
+	if !v.answered {
+		return ""
+	}
+	return strings.Join(plainLines(v.evidence), "\n")
+}
+
 // lookOutcome is what the node nobody could judge says: it FINISHED, and it
 // needs eyes. The checker's own words follow, in plain form, because they are
 // the whole basis on which somebody is being asked to decide.
@@ -594,6 +618,13 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
+	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go). A
+	// node under check is running — nothing landed, nothing was undone — so an
+	// outside reader watching only the state sees an unbroken "running" across a
+	// worker, a check and three repair rounds; the phase is what tells those
+	// apart, and a check that ends in an error still puts the word back.
+	defer node.beatPhase(taskBeatChecking)()
+
 	// STAGED, NOT COMMITTED. `git diff` in a worktree shows changes to tracked
 	// files only, so an auditor looking at a node whose whole work was three NEW
 	// files would see an empty diff and refute perfectly good work for the wrong
@@ -873,6 +904,10 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// that sent the work back is not on the wire (task_contract.go's Mending).
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
+	// AND THE PULSE SAYS SO TOO, for the surface's reason one layer out: a repair
+	// round is the node still working, and a reader outside the process is owed
+	// the same distinction the card gets (task_beat.go).
+	defer node.beatPhase(taskBeatRepairing)()
 
 	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairModel(node))
 	if err != nil {

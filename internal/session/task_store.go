@@ -208,6 +208,14 @@ type taskRecord struct {
 	// its id in the session's own tasks/ directory ([findTaskJournal]).
 	Journal string `json:"journal,omitempty"`
 
+	// Beat is the heartbeat sidecar a RUNNING node is writing, and "" for every
+	// node that is not running (task_beat.go). It is on the record so that a
+	// reader holding this file never has to guess at a path — "is this row still
+	// moving" is answered by opening the file this field names — and it is
+	// deliberately not read back on a resume: the process that was writing it is
+	// gone, and the next run mints the path again from the node's own id.
+	Beat string `json:"beat,omitempty"`
+
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
@@ -568,6 +576,13 @@ func (n *TaskNode) recordLocked() taskRecord {
 	copy(wrote, n.wrote)
 	dependsOn := make([]uint64, len(n.dependsOn))
 	copy(dependsOn, n.dependsOn)
+	// THE PULSE IS NAMED ONLY WHILE THERE IS ONE. A landed node's liveness is its
+	// final state, and a path to a file the runner has already removed would be a
+	// row inviting a reader to draw a conclusion from a missing file.
+	beat := ""
+	if n.state == TaskRunning && n.graph != nil {
+		beat = n.graph.store.beatPath(n.id)
+	}
 	return taskRecord{
 		ID:          n.id,
 		Title:       n.spec.title,
@@ -588,6 +603,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Worktree:    n.worktree,
 		Merge:       n.merge,
 		Journal:     n.journal,
+		Beat:        beat,
 		Model:       n.spec.model,
 		MaxSteps:    n.spec.maxSteps,
 		NoProgress:  n.spec.noProgress,

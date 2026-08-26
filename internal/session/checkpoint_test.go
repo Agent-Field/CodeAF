@@ -2338,14 +2338,22 @@ func TestAReopenedTurnStillMarksOnTheSameMeter(t *testing.T) {
 	}
 }
 
-// AND A TURN THE METER NEVER THOUGHT WORTH ONE READING IS NOT READ AT THE END OF
-// IT EITHER.
+// AND A TURN SHORTER THAN THE FIRST MARK IS NEVER READ UNLESS IT CHANGED THE
+// TREE.
 //
-// The gate is the mark ladder's first rung, and it is there because one `bash ls`
-// is one round: gated on a single finished round, EVERY small turn that touched a
-// tool paid a mastermind call worth a third to a half of its own bill, and in
-// eight of nine measured runs that call re-opened nothing.
-func TestATurnShorterThanTheFirstMarkIsNeverReadForWhatRemains(t *testing.T) {
+// THE PRICE GATE IS THE MARK LADDER'S FIRST RUNG, and it is there because one
+// `bash ls` is one round: gated on a single finished round, EVERY small turn that
+// touched a tool paid a mastermind call worth a third to a half of its own bill,
+// and in eight of nine measured runs that call re-opened nothing.
+//
+// THE TURN HERE ONLY LOOKED, which is what leaves the price gate standing. A
+// cheap turn that only read cannot have left a job half-done — the worst it can
+// have left is a question — so it is priced exactly as it was before the exposure
+// arm existed and pays no reader. What the arm answers is the OTHER kind of cheap
+// turn, the one that wrote and stopped
+// ([TestATurnThatWroteAndThenStoppedIsReadWhateverItCost]), and the two tests are
+// one rule read from both sides.
+func TestATurnShorterThanTheFirstMarkIsNeverReadUnlessItChangedTheTree(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	var remainsAsks atomic.Int64
 	// One short of the first rung, and the reader would say there is work left if
@@ -2376,6 +2384,154 @@ func TestATurnShorterThanTheFirstMarkIsNeverReadForWhatRemains(t *testing.T) {
 		if call.Role == string(roles.RoleMarkReader) {
 			t.Errorf("a turn of %d rounds paid the mark reader %q (%.5f USD)",
 				checkpointMarkAt(1)-1, call.Model, call.CostUSD)
+		}
+	}
+}
+
+// A CHEAP TURN THAT WROTE AND THEN STOPPED IS READ FOR WHAT REMAINS ANYWAY.
+//
+// THE READER IS GATED ON EXPOSURE, NOT ON PRICE. SWE-Marathon s10, 10:35Z: a turn
+// woken by a job's exit ran six rounds — four under the first rung — overwrote an
+// 18,771-byte source file, said "now let me build and run the full test suite"
+// with no tool call, and sealed. The price gate returned early, nothing read the
+// turn, the unbuilt file it had just written was the six compile errors the run
+// shipped with, and three hours of the ask went unspent.
+//
+// The rounds were cheap. The exposure was total, and it is the exposure this arm
+// prices: the turn's LAST act was a write, so nothing has looked at what it did.
+func TestATurnThatWroteAndThenStoppedIsReadWhateverItCost(t *testing.T) {
+	const stopped = "Now let me build and run the full test suite"
+	const remains = "analysis.rs was rewritten and never compiled; the build has not been run"
+
+	var remainsAsks atomic.Int64
+	// SIX ROUNDS, WHICH IS UNDER THE FIRST RUNG, and the sixth is the write.
+	calls := append(readingCalls(5), fileWriteCall("analysis.rs", "fn analyze() {}\n"))
+	completer := &scriptedCompleter{steps: stoppingStepsCalling(calls, stopped, func() string {
+		if remainsAsks.Add(1) == 1 {
+			return remains
+		}
+		return checkpointNothingLeft
+	})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "port analysis.rs and get the tests passing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got == 0 {
+		t.Fatalf("a turn that wrote and stopped was never read for what remains; it made %d rounds, "+
+			"and the first rung is %d", len(calls), checkpointMarkAt(1))
+	}
+	if !strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains) {
+		t.Errorf("the turn was not re-opened on what the reader said is left:\n%s", transcriptText(agent))
+	}
+	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("nobody said why the turn kept going; notices were %q", noticeTexts(collected))
+	}
+}
+
+// AND A TURN THAT RAN A CHECK OVER WHAT IT WROTE IS NOT EXPOSED.
+//
+// The change WAS looked at, by the one party that could look at it, and the
+// harness has no way of telling a build from a test from a read-back and no
+// business trying: anything after the write is the turn checking itself. So the
+// exposure arm answers no and the turn goes back on the price gate like every
+// other cheap turn — it may still be read at the dear end of the ladder, but it
+// is not read for free.
+func TestATurnThatCheckedWhatItWroteIsNotExposed(t *testing.T) {
+	var remainsAsks atomic.Int64
+	// The same six rounds as the turn above, with the build it actually ran.
+	calls := append(readingCalls(4),
+		fileWriteCall("analysis.rs", "fn analyze() {}\n"),
+		commandCall("cargo build"))
+	completer := &scriptedCompleter{steps: stoppingStepsCalling(calls,
+		"The build is clean. Next I will wire the handlers.", func() string {
+			remainsAsks.Add(1)
+			return "the handlers are not wired"
+		})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "port analysis.rs and get the tests passing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a turn that checked its own write was read %d times for what remains", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("a turn that checked itself was carried on: %q", noticeTexts(collected))
+	}
+}
+
+// AND A TURN THAT TOUCHED NOTHING IS NEVER EXPOSED BY THE TURN BEFORE IT.
+//
+// The ledger walks the whole transcript, so "the last call was a write" stays
+// true of a conversation long after the turn that wrote ended. A person who types
+// "thanks" next must not pay a reader for it: a turn with no rounds of its own
+// owns no call at the newest end of that transcript, and the price gate holds.
+func TestATurnWithNoRoundsIsNotExposedByAnEarlierTurnsWrite(t *testing.T) {
+	var remainsAsks atomic.Int64
+	answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		// The reader would say there is work left if anybody asked it, so nothing
+		// but the gate can be keeping this turn shut.
+		if askedForRemains(messages) {
+			remainsAsks.Add(1)
+			return textResponse("there is more to do"), nil
+		}
+		return textResponse("You are welcome."), nil
+	}
+	agent := checkpointAgent(t, &scriptedCompleter{steps: []step{answer, answer, answer, answer}})
+	stubbedGraph(agent, func(node *TaskNode) {})
+	// A whole turn's worth of writing, already in the transcript, with nothing
+	// after it — which is exactly what the arm reads as exposure.
+	writtenTurn(agent, "port analysis.rs", 3)
+
+	events, err := agent.Submit(context.Background(), "thanks")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a turn that touched nothing was read %d times on the previous turn's write", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("a turn that touched nothing was carried on: %q", noticeTexts(collected))
+	}
+}
+
+// AND THE READING ITSELF IS THE DIGEST'S OWN FACT, held to its four cases
+// directly so that a change to [checkpointLedger] cannot quietly move the arm.
+func TestExposureIsTheLastThingTheTurnDid(t *testing.T) {
+	ls := func(path string) ai.Message {
+		return ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: path, Function: ai.ToolCallFunction{Name: "ls", Arguments: `{"path":"` + path + `"}`},
+		}}}
+	}
+	wrote := func(path string) ai.Message {
+		return ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: path, Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"` + path + `"}`},
+		}}}
+	}
+	for _, c := range []struct {
+		what     string
+		messages []ai.Message
+		want     bool
+	}{
+		{"a turn that touched nothing", nil, false},
+		{"a turn that only read", []ai.Message{ls("a"), ls("b")}, false},
+		{"a turn whose last act was a write", []ai.Message{ls("a"), wrote("b")}, true},
+		{"a turn that wrote and then looked", []ai.Message{wrote("a"), ls("b")}, false},
+		{"a turn that wrote, looked, and wrote again", []ai.Message{wrote("a"), ls("b"), wrote("c")}, true},
+	} {
+		if got := turnLeftTheTreeUnchecked(c.messages); got != c.want {
+			t.Errorf("%s: exposed = %v, want %v", c.what, got, c.want)
 		}
 	}
 }
@@ -2429,6 +2585,30 @@ func stoppingSteps(rounds int, stopped string, remains func() string) []step {
 		}
 	}
 	return steps
+}
+
+// writtenTurn is [workedTurn] for a turn that ENDED ON A WRITE: the calls it made
+// are writes, so the newest thing in the transcript is a change nothing looked at.
+func writtenTurn(a *Agent, asked string, calls int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.personAsk = asked
+	a.messages = append(a.messages, textMessage("user", asked))
+	for index := 1; index <= calls; index++ {
+		id := fmt.Sprintf("written-%d", index)
+		a.messages = append(a.messages, ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: id,
+			Function: ai.ToolCallFunction{
+				Name:      "write",
+				Arguments: fmt.Sprintf(`{"path":"./%d.rs","content":"fn main() {}"}`, index),
+			},
+		}}})
+		a.messages = append(a.messages, ai.Message{
+			Role: "tool", ToolCallID: id,
+			Content: []ai.ContentPart{{Type: "text", Text: "Successfully wrote 13 bytes"}},
+		})
+	}
+	a.messages = append(a.messages, textMessage("assistant", "Now let me build and run the full test suite"))
 }
 
 // workedTurn puts a turn's worth of work into an agent by hand: the person's ask
@@ -2509,4 +2689,67 @@ func journaledEntries(t *testing.T, path, kind string) []sessionEntry {
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// scriptedCall is one tool call a turn makes, as the script names it.
+type scriptedCall struct{ tool, arguments string }
+
+// readingCalls is n calls that only LOOK, each at a different path so the loop
+// detector has nothing to say about them.
+func readingCalls(n int) []scriptedCall {
+	calls := make([]scriptedCall, 0, n)
+	for index := 1; index <= n; index++ {
+		calls = append(calls, scriptedCall{"ls", fmt.Sprintf(`{"path":"./%d"}`, index)})
+	}
+	return calls
+}
+
+// fileWriteCall and commandCall are the two verbs the exposure arm tells apart:
+// one CHANGES the working tree and one looks at what changed.
+func fileWriteCall(path, content string) scriptedCall {
+	arguments, _ := json.Marshal(struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}{Path: path, Content: content})
+	return scriptedCall{"write", string(arguments)}
+}
+
+func commandCall(command string) scriptedCall {
+	arguments, _ := json.Marshal(struct {
+		Command string `json:"command"`
+	}{Command: command})
+	return scriptedCall{"bash", string(arguments)}
+}
+
+// stoppingStepsCalling is [stoppingSteps] with the calls NAMED BY THE CALLER.
+//
+// The read-only fixture says `ls` for every round, which is exactly the wrong
+// shape for the exposure arm: what a turn TOUCHED is the whole of what that arm
+// reads, so a test about it has to be able to spell `write` and `bash` in the
+// order the measured turn spelled them.
+func stoppingStepsCalling(calls []scriptedCall, stopped string, remains func() string) []step {
+	var done atomic.Int64
+	steps := make([]step, len(calls)+40)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				return textResponse(checkpointChainSketch), nil
+			}
+			if askedForHandoff(messages) {
+				return textResponse("a draft of what is left"), nil
+			}
+			if askedToWriteHandoff(messages) {
+				return textResponse("a brief somebody could work from, written by the mastermind"), nil
+			}
+			if askedForRemains(messages) {
+				return textResponse(remains()), nil
+			}
+			if call := done.Add(1); call <= int64(len(calls)) {
+				made := calls[call-1]
+				return toolResponse(fmt.Sprintf("call-%d", call), made.tool, made.arguments), nil
+			}
+			return textResponse(stopped), nil
+		}
+	}
+	return steps
 }
