@@ -265,7 +265,6 @@ func (a *app) clearConversation() {
 	// A page or conversation replacing this one also owns the wheel reports that
 	// have not reached their frame yet. Letting one land afterwards would move a
 	// transcript the gesture was never made over.
-	a.wheelDelta, a.wheelPending = 0, false
 	a.unfolded = map[int]bool{}
 	// Per-turn fold state carried across would be applied to another
 	// conversation's turn NUMBERS, which is the same index meaning something

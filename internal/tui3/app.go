@@ -571,10 +571,6 @@ type (
 	// pointer crossing a row it is already on must cost no frame at all, so the
 	// thing that wakes it up may not draw one (coalesce.go).
 	pointerMsg struct{}
-	// wheelFrameMsg folds every wheel report that arrived inside one display
-	// interval into one scroll. Trackpads can send several reports for a single
-	// visible movement, and laying out an intermediate viewport cannot be seen.
-	wheelFrameMsg struct{}
 	// historyPageMsg is one local page of the mirrored transcript returning to
 	// the update loop. Even a hosted session therefore never waits on ssh in the
 	// key or wheel path, and a conversation replaced while the command was out
@@ -1074,10 +1070,6 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
-	// wheelDelta is the trackpad reports waiting for their one frame, and
-	// wheelPending says that frame is already on its way.
-	wheelDelta   int
-	wheelPending bool
 	// sizing says a resize is still settling, so the scroll clamp that a new
 	// size asks for is already on its way and a second one would be a second
 	// relayout for nothing (see [app.resized]).
@@ -2394,9 +2386,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case historyPageMsg:
 		return a, a.historyPrefetched(msg)
 
-	case wheelFrameMsg:
-		return a, a.flushWheel()
-
 	case tea.MouseWheelMsg:
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
 		// is the thing the wheel would otherwise move (copymode.go).
@@ -2546,9 +2535,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.Mouse().Button {
 		case tea.MouseWheelUp:
-			return a, a.queueWheel(-3)
+			return a, a.scroll(-3)
 		case tea.MouseWheelDown:
-			return a, a.queueWheel(3)
+			return a, a.scroll(3)
 		}
 		return a, nil
 
