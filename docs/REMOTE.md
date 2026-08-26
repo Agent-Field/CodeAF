@@ -76,6 +76,12 @@ the person a question happens on a plain terminal: ssh's passphrase prompt, its
 unknown-host-key question, and this refusal. A TUI that came up first would
 either eat those questions or draw a frame over them.
 
+**Version 4 adds the empty `Ping` call.** The surface sends one only on its slow
+connection clock and times the answer locally; no timestamp crosses between
+machines whose clocks may disagree. This is still a protocol change, so the
+version moved and the mismatch is still refused here, at the door, with the
+same sentence naming the fix.
+
 ## Decision 4 — Version 2 separates a conversation's life from a pipe's
 
 **Decision.** In version 1 the engine *was* the ssh command: it read frames on

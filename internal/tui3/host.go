@@ -12,7 +12,8 @@ import (
 // (internal/remote) and answers the same way — so almost nothing in this package
 // needs to know. Two things do, and they are the two halves of this file.
 //
-// THE CONNECTION IS SHOWN AS THE PLACE AND NOWHERE ELSE. The workspace is
+// THE MACHINE IS SHOWN AS THE PLACE, AND THE LINK'S SPEED IS SHOWN AS SPEED.
+// The workspace is
 // written `devbox:/s/c/app` on the status sheet's place row, `devbox:app` in the
 // status line's place segment, and `devbox:/srv/code/app` in /status — the same
 // three renderings a local session already has, each with the machine in front
@@ -22,17 +23,17 @@ import (
 // carrying a path and started carrying the conversation's name, and `devbox:`
 // in front of a sentence of English is scp syntax pointed at something nobody
 // can copy (render.go's [app.legendLeft]). That is the whole
-// indicator, and it is one string rather than a segment. It sits
+// place indicator, and it is one string rather than a segment. It sits
 // where a person already looks to answer "where am I", it costs no new rows and
 // no new segments, and it disappears completely on a local session — which is
 // the test a good indicator passes: it is invisible when there is nothing to
 // say. A badge, an icon or a "connected" word would all be a second place to
-// look for a fact that belongs in the first one.
+// look for that fact.
 //
-// THE ONE SEGMENT A CONNECTION EVER GROWS IS ABOUT IT NOT WORKING, and it
-// passes the same test: `reconnecting to devbox — trying for up to 5 minutes`
-// is drawn while the link is being redialled and nothing is drawn at any other
-// moment (hostlink.go). A healthy link still says nothing.
+// THE CONNECTION SEGMENT IS A MEASUREMENT, NEVER A BADGE. It begins empty and,
+// after an actual round trip answers, reads `devbox · 3ms`. If the link stops
+// working, `reconnecting to devbox — trying for up to 5 minutes` takes its
+// place until the redial finishes (hostlink.go). A local session has neither.
 //
 // THE MACHINE NAME IS PART OF THE PATH, not a decoration on it, which is why it
 // takes the path's own paint (the legend dims both halves together) and why it
@@ -139,15 +140,14 @@ import (
 //	                  process holds the tick lock, nothing on disk says so, and
 //	                  no frame could carry an answer the far end does not have.
 //	                  Running is nil here exactly as it is at home.
-//	a dropped link    SAID, and said in the one place a condition belongs: the
-//	                  status line grows a segment reading `reconnecting to
-//	                  devbox — trying for up to 5 minutes` while the connection
-//	                  is being redialled, and nothing at all the rest of the
-//	                  time. That is not an exception to this file's header — it
-//	                  is the same rule, because a working link says nothing and
-//	                  the segment exists only in the seconds where that stops
-//	                  being true. There is still no badge, no icon and no
-//	                  "connected" word (hostlink.go).
+//	the link          MEASURED, gently: after the first empty call returns, the
+//	                  status line reads `devbox · 3ms`, using a rolling estimate
+//	                  so one packet does not make the row twitch. Before that
+//	                  reply it says nothing, never `0ms`. While the connection
+//	                  is being redialled, `reconnecting to devbox — trying for
+//	                  up to 5 minutes` takes the segment and no ping is sent.
+//	                  There is still no badge, icon or "connected" word
+//	                  (hostlink.go).
 //	news from a redial
 //	                  an ordinary note in the transcript, once: the engine did
 //	                  not keep the turn, or it came back with a different

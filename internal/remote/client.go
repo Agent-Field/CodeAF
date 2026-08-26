@@ -56,10 +56,11 @@ import (
 // connection is gone. That is a true sentence: a round trip to a healthy engine
 // is milliseconds, and one that has taken ten seconds is not coming back.
 //
-// NOTHING HERE MEASURES ANYTHING EXTRA. Every getter is one frame out and one
-// frame back. The surface asks Model() on frames it repaints, so a client that
-// took a second round trip to "check" something would have doubled the cost of
-// drawing a status line.
+// NO GETTER MEASURES ANYTHING EXTRA. Every getter is one frame out and one
+// frame back. [Client.Ping] is the explicit exception: one empty call on the
+// surface's five-second clock, never a second call hidden behind a getter. The
+// surface asks Model() on frames it repaints, so a measurement there would have
+// doubled the cost of drawing a status line.
 
 // callDeadline is how long any one call waits for its result. See the law above.
 const callDeadline = 10 * time.Second
@@ -312,6 +313,34 @@ func (c *Client) Live() (uint64, <-chan session.Event) {
 // and never stream frames, because a turn's events are the work a person asked
 // for and the getters are the work nobody did.
 func (c *Client) CallsMade() uint64 { return c.made.Load() }
+
+// Ping measures one empty call to the engine and back.
+//
+// THE CLOCK STAYS ON THIS MACHINE. Two hosts need not agree about the time,
+// while the elapsed time around one call is exactly the path a keystroke and
+// its answer use. A reconnecting client refuses before [Client.call], so the
+// gentle meter on the surface never adds traffic to a link already trying to
+// find its way back.
+func (c *Client) Ping() (time.Duration, error) {
+	c.mu.Lock()
+	if c.reconnecting {
+		reason := c.roamingRefusal()
+		c.mu.Unlock()
+		return 0, errors.New(reason)
+	}
+	if c.dead != nil {
+		dead := c.dead
+		c.mu.Unlock()
+		return 0, dead
+	}
+	c.mu.Unlock()
+
+	started := time.Now()
+	if _, err := c.call(nil, MethodPing, nil); err != nil {
+		return 0, err
+	}
+	return time.Since(started), nil
+}
 
 // LinkNote is the quiet true sentence about the connection right now, and the
 // empty string whenever there is nothing to say — which is almost always, and
@@ -589,7 +618,6 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		payload = encoded
 	}
 	id := c.seq.Add(1)
-	c.made.Add(1)
 	waiting := make(chan result, 1)
 
 	c.mu.Lock()
@@ -625,6 +653,7 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		}
 		return nil, c.gone(err)
 	}
+	c.made.Add(1)
 
 	if ctx == nil {
 		ctx = context.Background()
