@@ -199,6 +199,7 @@ func newClient(host string, hello Hello) *Client {
 	if strings.TrimSpace(hello.Surface) == "" {
 		hello.Surface = MachineName()
 	}
+	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
 		host:    strings.TrimSpace(host),
 		hello:   hello,
@@ -238,6 +239,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	if err := lines.Decode(&frame); err != nil {
 		return Welcome{}, c.gone(err)
 	}
+	if err := expandFrame(&frame); err != nil {
+		return Welcome{}, c.gone(err)
+	}
 	switch frame.Kind {
 	case "welcome":
 	case "fatal":
@@ -259,6 +263,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// has an older aforge on it, and the person knows which machine is which.
 	if welcome.Version != Version {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())}
+	}
+	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
+		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
 	}
 	c.mu.Lock()
 	c.welcome = welcome
@@ -622,7 +629,10 @@ func (c *Client) write(frame Frame) error {
 		return errors.New("no link")
 	}
 	_, err = conn.Write(line)
-	return err
+	if err != nil {
+		return err
+	}
+	return flushFrame(conn)
 }
 
 // read is the reader goroutine: the only thing that decodes frames, and the
@@ -640,6 +650,10 @@ func (c *Client) read() {
 			if c.lost(err) {
 				continue
 			}
+			return
+		}
+		if err := expandFrame(&frame); err != nil {
+			c.bury(err)
 			return
 		}
 		switch frame.Kind {

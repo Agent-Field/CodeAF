@@ -40,7 +40,10 @@ schema would manage.
 **Why one JSON line per frame.** It is the journal's own framing, for the
 journal's own reason: a torn write is one lost line, not a lost stream. It also
 means the protocol can be read by a person with `head`, which has already paid
-for itself in debugging.
+for itself in debugging. Payloads at least 32KB may be gzip-compressed inside
+that envelope after the hello and welcome agree on it; the kind, id, method,
+encoding and line boundary remain readable, and small interactive frames remain
+plain JSON.
 
 ## Decision 2 — The transport is an `io.ReadWriteCloser`, and nothing in the protocol knows what it is
 
@@ -70,6 +73,12 @@ sentence naming the fix.
 not find that out three turns into a conversation. Negotiation also multiplies
 the states we have to be correct in by the number of versions in the wild,
 and the fix — update the older machine — is one command the person can run.
+
+**Capabilities are not versions.** Additive optimizations may be offered in the
+hello and selected in the welcome when their absence preserves the old wire.
+Frame gzip is that shape: an old engine ignores the offer and answers plain JSON;
+a new engine sends plain JSON unless the surface offered gzip. This does not
+negotiate protocol semantics down — a version mismatch is still refused.
 
 **Why the handshake happens before the TUI starts.** Everything that might ask
 the person a question happens on a plain terminal: ssh's passphrase prompt, its
