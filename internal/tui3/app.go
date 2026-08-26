@@ -1986,7 +1986,8 @@ func (a *app) Init() tea.Cmd {
 	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
 	// the seam saying there is no far machine to have a waiting room.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
-		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), tea.RequestBackgroundColor}
+		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(),
+		tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2995,6 +2996,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (homeexchange.go's [errandMsg] says why): the stream a Submit answered,
 		// one event off it, and the stream ending.
 		return a, a.errandUpdate(msg)
+
+	case drivingMsg:
+		// The keyboard moved, and nothing on this machine did it (watching.go).
+		// The frame that follows draws a composer or the watcher's line, and the
+		// wait re-arms itself.
+		return a, a.drivingMoved(msg)
 
 	case heldMsg:
 		// The far machine's waiting room, answered. Each question is redrawn
