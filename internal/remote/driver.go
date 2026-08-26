@@ -168,16 +168,20 @@ func (sess *Session) tellDriver(except *server) {
 // work has said the only thing that needs saying, and there is nothing for the
 // engine to weigh — the other window keeps the transcript, keeps its draft, and
 // is told in the same instant.
-func (s *server) take() {
+//
+// It ANSWERS WITH THE FACT rather than with nothing, so the surface that asked
+// learns the outcome from the call it made instead of racing a frame it also
+// receives. Everybody else is told by the frame.
+func (s *server) take() Driver {
 	sess := s.session
 	sess.mu.Lock()
 	moved := sess.takeLocked(s)
+	mine := sess.driverForLocked(s)
 	sess.mu.Unlock()
 	if moved {
-		// The taker is told by this call's own result; everybody else is told
-		// by the frame.
 		sess.tellDriver(s)
 	}
+	return mine
 }
 
 // mayDrive is the guard in front of every door that puts words into the

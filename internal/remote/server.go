@@ -973,8 +973,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodTake:
 		// The keyboard comes here, and the room is told in the same breath
 		// (driver.go's take).
-		s.take()
-		return nil, nil
+		return json.Marshal(s.take())
 
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
