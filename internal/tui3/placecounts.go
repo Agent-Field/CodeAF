@@ -47,6 +47,19 @@ func (t placeTally) ChangedIn(place string) int { return t[place] }
 // "no origin, therefore no news" rather than as "everything is news" — the
 // first look must not greet somebody with a number over every tab.
 func (a *app) refreshPlaceCounts(now time.Time) {
+	if a.hosted() {
+		// NOTHING IS COUNTED OVER --host, AND NO STAMP IS TOUCHED. Both halves of
+		// a count belong to the machine that owns the work: what changed is a fact
+		// about the far machine's disk, and the stamp it is measured from is a
+		// dotfile under THIS process's state root — the same one the laptop's own
+		// windows read. A number computed across those two would be a delta
+		// between two machines, and writing the stamp would clear the badge on a
+		// local window's tab bar because somebody glanced at a server. The places
+		// say what they are and why they are empty ([place.remote]); a tab wearing
+		// a number over one of them would be arguing with the sentence inside it.
+		a.places = placeTally{}
+		return
+	}
 	root := a.placesRoot()
 	tally := placeTally{}
 	for _, id := range pages() {
@@ -167,7 +180,11 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 // this stamp feeds is recomputed on the next beat, so a tab loses its number
 // within three seconds of being read rather than the instant it is entered.
 func (a *app) leavePage(id page) {
-	if !id.counted() {
+	if !id.counted() || a.hosted() {
+		// A LOOK AT ANOTHER MACHINE'S PLACE IS NOT A LOOK AT THIS ONE'S, and the
+		// stamp under this process's state root is the one every LOCAL window on
+		// this laptop measures its own news against ([app.refreshPlaceCounts] has
+		// the whole argument).
 		return
 	}
 	session.NoteLookAt(a.placesRoot(), id.word(), a.now())

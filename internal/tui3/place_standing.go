@@ -342,7 +342,19 @@ func (p *standingPlace) window(a *app, key string) bool {
 // above the composer. This place says nothing there: every fact it has is about
 // one order, which is what the row and the strip are for, and a count of what a
 // person can already see is the emptiness law broken from the other end.
-func (p *standingPlace) note(a *app, width int) []string { return nil }
+// It says ONE thing, and only over --host: that the second half of this page is
+// missing. What stands on THIS conversation crosses the wire and is the far
+// machine's own answer, so those rows are true; what a walk of this process's
+// projects would list underneath them is the laptop's, and [app.readWorld] now
+// answers nothing over a connection so that walk finds nothing. A page that went
+// from two shelves to one with no line saying why would read as a machine with
+// nothing else standing on it (host.go's [standingRemoteWord]).
+func (p *standingPlace) note(a *app, width int) []string {
+	if !a.hosted() {
+		return nil
+	}
+	return []string{" " + a.pal.dim(fit(standingRemoteWord, width-2))}
+}
 
 // hint is the line under the box: what enter does, what `→` reaches, and the way
 // out.

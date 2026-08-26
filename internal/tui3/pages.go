@@ -103,6 +103,18 @@ type place interface {
 	// body is the rows and the hit map, painted into exactly the room the frame
 	// reserved. It reads caches and never a seam.
 	body(a *app, width, room int) []placeRow
+	// remote is THE ONE DIM LINE this place draws INSTEAD of its rows when the
+	// session is on another machine and this place's reading is not, and "" when
+	// there is nothing to say — which is every place on a local session, and a
+	// place whose reading crosses the wire.
+	//
+	// IT IS THE PLACE'S OWN SENTENCE AND NOT THE FRAME'S, because the noun in it
+	// belongs to the place: what this machine RAN is not what this machine has
+	// LEARNED (host.go's places section holds the whole argument, and the five
+	// sentences). The frame's part is that it is read on EVERY place, ahead of
+	// [place.ownFrame], so a room that draws its own chrome cannot draw the wrong
+	// machine's rows inside it.
+	remote(a *app) string
 	// bar is a foot A THUMB CAN PRESS in place of the hint line's legend, and
 	// false where the place has none. At [tierPhone] a line naming four keys is a
 	// line naming four keys nobody has, so the way out has to be a target rather
@@ -232,6 +244,13 @@ func (placeBase) open(a *app) tea.Cmd                     { return nil }
 func (placeBase) close(a *app)                            {}
 func (placeBase) tick(a *app, now time.Time) bool         { return false }
 func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+
+// remote is NOTHING TO SAY, which is the right default in both directions: a
+// place on a local session has no other machine to name, and a place whose
+// reading crosses the wire is drawing the right machine already. A place that
+// reads THIS process's disk and has not learned to cross says its own sentence
+// (host.go's places section).
+func (placeBase) remote(a *app) string { return "" }
 func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 	return "", nil, false
 }
@@ -743,6 +762,19 @@ func (a *app) placeDraw(pl place, width, height int) ([]string, []placeHit, int,
 	// one, is what makes the strip's binding to a row true for all seven
 	// (verbstrip.go's [app.holdStrip]).
 	a.holdStrip()
+	// AND THE MACHINE IS ASKED BEFORE THE ROWS ARE, on every place and ahead of
+	// [place.ownFrame]. A place whose reading is this process's disk while the
+	// session runs somewhere else has one honest thing to draw and it is not a
+	// list; a room that took its own frame first would draw the wrong machine's
+	// rows inside its own chrome, which is exactly how the tasks place came to
+	// show a laptop's work under a server's conversation (host.go).
+	if line := pl.remote(a); line != "" {
+		return placeFrameWithBar(a, width, height,
+			func(width, room int) []placeRow {
+				return placeTeachRows(placeTeachProse(line, width, a.pal), room)
+			},
+			func(width int) (string, placeHit, bool) { return pl.bar(a, width) })
+	}
 	if lines, hits, caretX, caretY, own := pl.ownFrame(a, width, height); own {
 		return lines, hits, caretX, caretY
 	}
