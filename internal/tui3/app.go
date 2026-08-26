@@ -1369,6 +1369,12 @@ type app struct {
 	// was drawn.
 	tabs   []placeTabSpan
 	tabRow int
+	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
+	// real 150ms timer — everywhere but a test (place_search.go's
+	// [app.searchQuiet] holds the whole argument). It is a seam rather than a
+	// clock because what a test needs is not a different duration but no real
+	// time at all: the tick is delivered by hand, at the instant the test means.
+	searchArm func(gen int) tea.Cmd
 	// spend and search are those two places' own state: the ledger window and
 	// the lines it is over (spendpage.go), and the query in flight with the
 	// results it is answering for (searchpage.go). Closed, both cost the frame

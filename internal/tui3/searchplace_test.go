@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -182,11 +183,22 @@ func TestSearchGenerationGuardsRejectStaleTicksAndResults(t *testing.T) {
 
 // ── the place, as a person meets it ─────────────────────────────────────────
 
-// searchLab is an app standing in the search place over a store this test wrote.
+// searchLab is an app standing in the search place over a store this test wrote,
+// WITH NO REAL TIME IN IT.
+//
+// THE QUIET INTERVAL IS DRIVEN BY HAND HERE (place_search.go's
+// [app.searchQuiet]). Left alone it is 150ms of wall clock armed by every
+// keystroke, and [drive] runs each command a keystroke produces under a budget
+// of about the same length — so whether the interval fired before the harness
+// gave up was decided by how loaded the machine was, and the stale-answer test
+// below typed six letters and armed six of them. The seam answers nothing, and
+// every test in this file delivers [searchTickMsg] itself at the instant it
+// means to, which is what the surface's own loop does with the timer's message.
 func searchLab(t *testing.T, store *searchFakeStore) *app {
 	t.Helper()
 	a := placeApp(t)
 	a.searchStore = store
+	a.searchArm = func(int) tea.Cmd { return nil }
 	a.showPage(pageSearch)
 	return a
 }
@@ -271,6 +283,7 @@ func TestClearingTheSearchBoxTakesTheResultsWithIt(t *testing.T) {
 // list under somebody's words.
 func TestTheSearchPlaceWithNoIndexSaysWhatItIsForAndNothingElse(t *testing.T) {
 	a := placeApp(t)
+	a.searchArm = func(int) tea.Cmd { return nil }
 	a.showPage(pageSearch)
 	typeInto(t, a, "report")
 	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {

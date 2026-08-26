@@ -43,31 +43,14 @@ func placeFrameText(a *app) string {
 // one answers to, the circle tab walks, and the word a person types. A place
 // that fell out of step with itself would be a bar teaching a key that goes
 // somewhere else.
+//
+// THE FOUR READINGS ARE PINNED ON THE REGISTRY NOW
+// ([TestEveryPlaceIsRegisteredOnceAndInTabOrder]), because the list they have to
+// agree with is the registry rather than a literal seven this file counted. What
+// is left here is the two facts that are about the EDGES of that list.
 func TestTheSevenPlacesAreOneList(t *testing.T) {
-	all := pages()
-	if len(all) != 7 {
-		t.Fatalf("there are %d places, and the design has seven", len(all))
-	}
-	seen := map[string]bool{}
-	for i, id := range all {
-		word := id.word()
-		if word == "" {
-			t.Fatalf("the place at position %d has no word", i+1)
-		}
-		if seen[word] {
-			t.Fatalf("two places are called %q", word)
-		}
-		seen[word] = true
-		// THE NUMBER IS THE POSITION AND NOTHING ELSE.
-		got, ok := placeDigit("alt+" + itoa(i+1))
-		if !ok || got != id {
-			t.Fatalf("alt+%d does not reach %q", i+1, word)
-		}
-		// AND THE WORD REACHES IT TOO, which is what lets the typed surface
-		// offer places beside conversations (SCREEN 1g).
-		if back, ok := parsePageWord(word); !ok || back != id {
-			t.Fatalf("typing %q does not reach its own place", word)
-		}
+	if len(pages()) != 7 {
+		t.Fatalf("there are %d places, and the design has seven", len(pages()))
 	}
 	// AND alt+8 IS NOTHING, rather than the first place again.
 	if _, ok := placeDigit("alt+8"); ok {
@@ -205,28 +188,15 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 
 // ── the frame every place is drawn in ───────────────────────────────────────
 
-// THE FRAME IS EXACTLY THE WHOLE TERMINAL, on every place and at every width,
-// with no line running past the edge. It is home's own law, and the router is
-// what made it every place's.
-func TestEveryPlaceIsExactlyTheWholeFrame(t *testing.T) {
-	for _, width := range []int{44, 60, 80, 120, 200} {
-		a := placeApp(t)
-		a.width, a.height = width, 26
-		for _, id := range []page{pageHome, pageSpend, pageSearch} {
-			a.showPage(id)
-			lines := strings.Split(placeFrameText(a), "\n")
-			if len(lines) != a.height {
-				t.Fatalf("at %d the %s place drew %d rows into %d",
-					width, id.word(), len(lines), a.height)
-			}
-			for _, line := range lines {
-				if ansi.StringWidth(line) > width {
-					t.Fatalf("at %d the %s place overflows: %q", width, id.word(), line)
-				}
-			}
-		}
-	}
-}
+// THE FRAME IS EXACTLY THE WHOLE TERMINAL, on every place and at every width. It
+// is home's own law, and the router is what made it every place's.
+//
+// IT IS NOT HERE ANY MORE — IT IS ONE LOOP OVER THE REGISTRY. This test named
+// three of the seven places and five widths; the law it protects is about ALL of
+// them, and a place added later was covered by nobody remembering to add it to a
+// list. It is [TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth] in
+// placelaws_test.go, over every registered place at six widths — [tierPhone]
+// among them, which this one never reached for the four places it did not name.
 
 // THE TAB BAR GIVES UP WORDS IN A STATED ORDER RATHER THAN BEING CUT IN HALF. A
 // bar trimmed mid-word is a bar lying about how many places there are.

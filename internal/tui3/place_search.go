@@ -115,7 +115,30 @@ func (a *app) searchAsked() tea.Cmd {
 		return nil
 	}
 	a.search.waiting = true
-	return searchDebounce(a.search.ask.gen)
+	return a.searchQuiet(a.search.ask.gen)
+}
+
+// searchQuiet is the quiet interval, ARMED THROUGH A SEAM.
+//
+// IT IS INJECTABLE FOR THE TESTS AND FOR NO OTHER REASON, and the reason is a
+// real defect rather than a convenience. [searchDebounceEvery] is 150ms of REAL
+// TIME; the suite drives this surface by running each command it produces under
+// a budget of about the same length, so whether a keystroke's interval fired
+// before the harness gave up was a coin toss decided by how loaded the machine
+// was — and `TestTheSearchPlaceDropsAStaleIntervalAndAStaleAnswer` typed six
+// letters, each arming one. A test that fails on a busy laptop and passes on an
+// idle one is a test nobody reads any more.
+//
+// So the arming is a field: nil is the real timer, and a test puts a command
+// here that answers nothing and delivers [searchTickMsg] itself, at the instant
+// it means to. Nothing else in this program ever sets it — the surface arms the
+// real interval, which is what the other tests in that file assert by driving
+// the tick by hand exactly as the loop would.
+func (a *app) searchQuiet(gen int) tea.Cmd {
+	if a.searchArm != nil {
+		return a.searchArm(gen)
+	}
+	return searchDebounce(gen)
 }
 
 // searchTick is the quiet interval arriving. It sends the read only when the

@@ -36,6 +36,12 @@ type everyPlace struct {
 	hits   func(a *app) []int
 }
 
+// everyPlaceTable is the seven rooms, each opened WITH SOMETHING IN IT.
+//
+// IT IS CHECKED AGAINST THE REGISTRY BY [TestEveryPlaceBringsItsOwnLab], because
+// a table of labs that fell one behind the registry would silently stop asking
+// the new room any of the questions below — and "the room nobody tested" is
+// exactly what `alt+2`, `alt+3` and `alt+4` were on a fresh machine.
 func everyPlaceTable() []everyPlace {
 	return []everyPlace{
 		{
@@ -389,5 +395,27 @@ func TestWalkingPastTheWindowKeepsTheCursorOnTheFrame(t *testing.T) {
 			t.Fatalf("the cursor walked to body line %d and the %s place does not draw it",
 				cursor, place.id.word())
 		})
+	}
+}
+
+// EVERY REGISTERED PLACE BRINGS ITS OWN LAB. The five questions above and the
+// six laws in placelaws_test.go all walk this table, so a place missing from it
+// is a place with no test at all — and the table is a literal because "open it
+// with something in it" is the whole difficulty and cannot be derived.
+func TestEveryPlaceBringsItsOwnLab(t *testing.T) {
+	labs := map[page]bool{}
+	for _, place := range everyPlaceTable() {
+		if labs[place.id] {
+			t.Fatalf("two labs open the %s place", place.id.word())
+		}
+		labs[place.id] = true
+	}
+	for _, id := range pages() {
+		if !labs[id] {
+			t.Fatalf("the %s place is registered and has no lab in everyPlaceTable", id.word())
+		}
+	}
+	if len(labs) != len(placeRegistry) {
+		t.Fatalf("%d labs for %d registered places", len(labs), len(placeRegistry))
 	}
 }
