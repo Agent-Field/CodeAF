@@ -178,6 +178,9 @@ type Engine struct {
 	// redrew a row as paused over a rejected write would be lying about this
 	// disk, so nothing here softens it.
 	StandingSave func(item standing.Item) error
+	// StandingWatch reads this machine's scheduler. Nil means this engine has no
+	// scheduler to ask, which the surface renders as no line.
+	StandingWatch func() (standing.WatchStatus, bool)
 
 	// ── the places ──────────────────────────────────────────────────────────
 	//
@@ -740,6 +743,12 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// their screen and only becomes a waiting one if they leave without
 	// answering it.
 	sess.held.raise(wire, id, len(sess.surfaces) == 0)
+	// A connect ask removes itself when its five-minute wait settles. That
+	// settling emits the next event, so reconcile here while the session lock is
+	// already held and do not leave a dead card keeping the host alive forever.
+	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
+		sess.held.settleConnect(pending.PendingConnect())
+	}
 	watching := sess.watchingLocked()
 	sess.mu.Unlock()
 
@@ -1375,6 +1384,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this engine keeps an eye on nothing")
 		}
 		return nil, save(item)
+
+	case MethodStandingWatch:
+		sess.mu.Lock()
+		watch := sess.engine.StandingWatch
+		sess.mu.Unlock()
+		if watch == nil {
+			return nil, errors.New("engine: this engine cannot read background checks")
+		}
+		status, known := watch()
+		return json.Marshal(StandingWatchResult{Status: status, Known: known})
 
 	case MethodSessionNew:
 		sess.mu.Lock()

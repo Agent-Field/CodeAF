@@ -535,12 +535,12 @@ that machine. `p` and `s` write to the far machine's store and the refusal, if t
 refuses, is that store's own. The status line counts too — `◦ keeping an eye on 2` is about
 the workspace this window is on, which over `--host` is a path on the far machine.
 
-Two things are still missing over a connection, and each says nothing rather than
+One live detail is still missing over a connection, and it says nothing rather than
 guessing:
 
-- **`/status` prints no `keeping watch` line.** The OS timer is devbox's and this
-  surface has no way to read its state; a line read off this laptop's timer would
-  be a status about the wrong machine.
+- **`/status` reads devbox's background timer.** Its `keeping watch` line says
+  `installed` or `nothing is checking` from the far machine's own scheduler. If
+  that engine has no scheduler to ask, the whole line is absent.
 - **No row ever shows the firing mark `◐`.** Nothing on disk says an item is
   firing at this instant, so nothing claims it — the same silence a local window
   keeps.

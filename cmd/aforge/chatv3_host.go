@@ -587,8 +587,9 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		Standing: tui3.StandingSeam{
 			Items: stands.list,
 			Save:  stands.save,
-			// Running and Watch stay NIL, and both fields already document that
-			// as their honest reading rather than as a gap.
+			Watch: client.StandingWatch,
+			// Running stays nil; Watch reads the engine's own scheduler over the
+			// wire and therefore never substitutes this laptop's timer.
 			//
 			// Running: nothing on the far machine's disk says "firing at this
 			// instant" — a run is in flight inside whichever process holds the
@@ -598,11 +599,6 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			// [v3StandingSeam] declines it for the same reason on this machine's
 			// own store).
 			//
-			// Watch: the OS timer is the ENGINE's, and its status is derived
-			// from a definition file on that disk. Nil prints no `keeping watch`
-			// line at all, which is the emptiness law applied to a whole line
-			// and better than a line read off THIS laptop's launchd — a status
-			// about the wrong machine.
 		},
 		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
 		//
