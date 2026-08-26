@@ -101,14 +101,14 @@ type pointerFold struct {
 	folded, answered int
 }
 
-// Update is the door every message comes through, and it does exactly two
-// things: it folds the pointer's storms, and it hands everything else to
-// [app.route] untouched, in the order it arrived.
+// update is the fold, and it does exactly two things: it takes the pointer's
+// storms, and it hands everything else to [app.route] untouched, in the order it
+// arrived. It is what [app.Update] calls (app.go).
 //
 // KEYS ARE NOT MENTIONED HERE, and that is the point. A key falls straight
 // through to the router, ahead of any sweep still folded behind it, because the
 // fold holds a POSITION and not a queue: there is nothing for a key to wait for.
-func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// The frame memo is off until something earns it back, so a path that forgets
 	// to say it changed nothing draws a frame rather than skipping one.
 	a.ptr.still = false

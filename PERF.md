@@ -72,6 +72,46 @@ memo's bytes are the direct path's bytes, `attach_test.go` proves the fold spell
 the whole answer. Those tests say the fast path is *right*; the ones above say it
 is still *fast*.
 
+## The connection laws
+
+Over `--host` the surface runs on the laptop and only the engine is far away
+(docs/REMOTE.md), so every question the surface asks its agent is a round trip
+down an ssh pipe with a ten-second deadline on it (internal/remote's
+`callDeadline`) — and every one of them is made from the update loop, which is
+the one goroutine that also decodes keys, resolves clicks and paints. A question
+asked while DRAWING is therefore a question asked thirty times a second, and one
+asked while resolving a POINTER is asked once per cell the pointer crosses.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **A frame over a connection asks the far machine nothing.** | `internal/tui3/hostlatency_test.go` |
+| **A pointer motion over a connection asks the far machine nothing** — including one below the conversation, which rebuilds the chrome to find its row. | `internal/tui3/hostlatency_test.go` |
+| **The model picker draws its whole list for nothing**, however many rows it is showing. | `internal/tui3/hostlatency_test.go` |
+| **The frame clock's beat makes no call on the update loop.** What it reads it reads as a `tea.Cmd`. | `internal/tui3/hostlatency_test.go` |
+
+`remote.Client.CallsMade` exists for these pins and for nothing else — one
+atomic add inside the one door every call already goes through. It counts calls
+and never stream frames, because a turn's events are the work a person asked for
+and a getter is work nobody did.
+
+They were written after the owner reported that over `--host` "even hover seems
+to slow everything down", and that clicks and keys felt dead. It was one defect
+in three places: the status row asked the agent what the model was dialled to
+while it was drawing, a hover below the conversation rebuilds the chrome, and
+the frame clock read the session's cost on the loop. At the twenty-millisecond
+round trip a real link has, a pointer swept across the foot of the window put
+about thirty-six milliseconds of network in front of the update loop per cell —
+so a two-hundred-cell sweep left seven seconds of keystrokes and clicks queued
+behind it, and a six-hundred-cell sweep twenty-two. Driven through tmux over a
+pipe with that delay, a typed character took 7.4s to appear after two hundred
+motions and 21.8s after six hundred; after the fix, 0.014s, which is what the
+same script measures on a local session. internal/tui3's reasoninglevel.go holds
+the fix.
+
+The number that is NOT pinned here is the boot: opening a hosted conversation
+costs six calls, one of them the current model's dial. Six is a launch cost paid
+once with a person watching a connection open, which is the moment waiting is
+correct; the laws above are about the moments it never is.
 ## The storm laws
 
 Four things arrive on this surface in bursts, and the pointer is the worst of
