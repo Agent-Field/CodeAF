@@ -147,6 +147,78 @@ func Peek(path string) (Summary, bool) {
 	return summary, true
 }
 
+// SpokeIn answers whether anybody ever spoke in one transcript — and, second,
+// whether that answer is one to act on.
+//
+// [Peek] cannot be asked this. Its boolean folds four different files into one
+// false: a journal that is missing, one that could not be opened, one whose
+// lines would not parse, and one that was read from end to end and holds no
+// turn. A picker is right to treat all four alike, because all four draw the
+// same empty row. A CALLER THAT DELETES THE FOLDER IS NOT: the last of those is
+// litter and the first three are somebody's conversation seen through a reader
+// that failed.
+//
+// So this is the third answer. sure is true only when the file itself settled
+// the question:
+//
+//   - the journal is not there at all — absence is a fact, and the fact is that
+//     nothing was ever written;
+//   - or every non-empty line in it parsed, every line named a kind this build
+//     knows, and the scan reached the end.
+//
+// Anything else — a directory in the way, a permission, a torn last line from a
+// lid closing mid-write, one line past the scanner's buffer, a kind written by
+// a schema this build has never seen — leaves sure false, and a caller that
+// destroys on silence must read that as "do not".
+func SpokeIn(path string) (spoken bool, sure bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, os.IsNotExist(err)
+	}
+	defer file.Close()
+
+	clean := true
+	scanner := bufio.NewScanner(file)
+	// The same buffer [Peek] takes, for the same reason: one enormous tool
+	// result would otherwise end the scan early — and here an early end is the
+	// difference between "nobody spoke" and "we stopped listening".
+	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry sessionEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			clean = false
+			continue
+		}
+		if !journalKinds[entry.Type] {
+			clean = false
+			continue
+		}
+		// A MESSAGE WITH NO WORDS IN IT IS STILL A PERSON SPEAKING, exactly as
+		// [Peek] counts it: a picture and nothing else is an ordinary turn.
+		if entry.Type == "message" && entry.Role == "user" {
+			return true, true
+		}
+	}
+	return false, clean && scanner.Err() == nil
+}
+
+// journalKinds is every line kind [sessionFile.writeLine] writes and
+// [replaySessionFile] reads. A kind outside it is a journal from a schema this
+// build does not know, and the honest answer about such a file is that we
+// cannot read it — not that it is empty.
+var journalKinds = map[string]bool{
+	"session":    true,
+	"message":    true,
+	"compaction": true,
+	"rewind":     true,
+	"title":      true,
+	"usage":      true,
+}
+
 // reportPeekMax bounds what one report is read back as. A node's final message
 // is three lines in the project's record and a page or two in the journal it
 // was cut from; eight kilobytes is far past any report a person reads down and
