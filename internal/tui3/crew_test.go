@@ -426,7 +426,11 @@ func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
 		t.Fatalf("the confirmation spells the model as a routing address: %q", text)
 	}
 	// AND THE SPELLING FOLLOWS THE REASONING LEVEL, because the status line's does.
+	// Set on the AGENT rather than through ctrl+t, which is a session that was
+	// dialled somewhere this surface did not watch — so the level is learned the
+	// way the frame clock learns it (reasoninglevel.go).
 	a.agent.SetReasoningFor("openai/gpt-4.1-mini", "high")
+	settleLevels(a, "openai/gpt-4.1-mini")
 	a.slash("/crew balanced")
 	if text := lastNote(t, a); !strings.Contains(text, "you are still talking to gpt-4.1-mini:high —") {
 		t.Fatalf("the confirmation lost the level the status line shows: %q", text)
