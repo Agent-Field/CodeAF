@@ -98,7 +98,7 @@ const (
 	standResumeWord = "start again"
 	// standNotOursWord is what the conversation's own three verbs say if one is
 	// ever asked of an order in another project. The strip does not offer them
-	// there ([standPage.verbs]), so this is the second lock on the same door —
+	// there ([standingPlace.verbs]), so this is the second lock on the same door —
 	// and it is a SENTENCE rather than a silent return, because a key that did
 	// nothing and said nothing is indistinguishable from a key that is broken.
 	standNotOursWord = "that one does not stand over this conversation"

@@ -220,7 +220,7 @@ func TestTheHintIsAbsentWhereTheChordWouldRefuse(t *testing.T) {
 func standDoorLab(t *testing.T) (*app, *standBand) {
 	t.Helper()
 	item := bandItem("one", "remind me on Fridays", "/tmp/lab", standing.WhenEvery, "Fridays")
-	agent := &standPageFake{fakeAgent: &fakeAgent{model: "m"}, stand: []standing.Item{item}}
+	agent := &standingPlaceFake{fakeAgent: &fakeAgent{model: "m"}, stand: []standing.Item{item}}
 	a := newTestApp(agent)
 	a.width = 120
 	a.workspace = "/tmp/lab"

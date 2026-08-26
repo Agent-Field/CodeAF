@@ -97,7 +97,7 @@ type standRow struct {
 	// the whole point of filing them on one page. What cannot be the same is
 	// what a key can do to it: the conversation seam has never heard of this
 	// order, so its three writes are not available and the store's two are
-	// ([standPage.verbs]).
+	// ([standingPlace.verbs]).
 	elsewhere bool
 }
 
@@ -245,7 +245,7 @@ func standingShelvesIn(win session.UsageWindow, stand, excepted, elsewhere []Sta
 // ONE PREDICATE ANSWERS THE PAINT AND THE KEYS, which is what keeps the surface
 // honest: a capability that cannot work is absent rather than broken, so on a
 // frame too narrow for the label the arrows are not drawn AND the keys do
-// nothing ([standPage.window] asks this same question). A control bound but
+// nothing ([standingPlace.window] asks this same question). A control bound but
 // invisible is the exact defect the verb strip exists to end.
 func standingWindowRoom(width int, win session.UsageWindow) bool {
 	words := placeWindowWords(win)

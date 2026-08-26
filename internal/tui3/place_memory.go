@@ -8,9 +8,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// memoryPanelRows matches the model picker's twelve-row reading window. It is
+// memoryPlaceRows matches the model picker's twelve-row reading window. It is
 // what `pgup` and `pgdown` step by inside this place's boxes.
-const memoryPanelRows = 12
+const memoryPlaceRows = 12
 
 const (
 	// SCREEN 2d's register: the verb first, the way out last. Its own sentence is
@@ -68,7 +68,7 @@ type memoryOrigin struct {
 	at    time.Time
 }
 
-// memoryPanel is the whole memory place: the snapshot it is drawing, which
+// memoryPlace is the whole memory place: the snapshot it is drawing, which
 // shelves are unrolled, what is typed into the filter, and the one line an
 // editor or an undo is about.
 //
@@ -83,7 +83,7 @@ type memoryOrigin struct {
 // keystroke that walks in, and TYPING FILTERS WHAT IS ALREADY HELD. Nothing in
 // this file opens the store on a draw, and nothing but `enter` on a line opens
 // it on a keypress.
-type memoryPanel struct {
+type memoryPlace struct {
 	// shelves is the snapshot the body is drawn from, and read is the instant it
 	// was taken. Every age on the page is measured from that instant rather than
 	// from a fresh clock, so two rows drawn in one frame cannot disagree about
@@ -96,7 +96,7 @@ type memoryPanel struct {
 	// different shelf the moment a letter was typed.
 	shelfOpen map[string]bool
 	// reading is the last built body: pure, derived, and rebuilt only when the
-	// snapshot, the filter or a fold actually changed ([memoryPanel.rank]).
+	// snapshot, the filter or a fold actually changed ([memoryPlace.rank]).
 	reading memoryReading
 	filter  editor
 	// cursor is a LINE OF THE READING and not an index into the memories: the
@@ -124,11 +124,11 @@ type memoryPanel struct {
 	footer   string
 }
 
-func (p *memoryPanel) close() { *p = memoryPanel{} }
+func (p *memoryPlace) close() { *p = memoryPlace{} }
 
 // start takes one snapshot and makes it the page.
-func (p *memoryPanel) start(shelves store.MemoryShelves, now time.Time) {
-	*p = memoryPanel{
+func (p *memoryPlace) start(shelves store.MemoryShelves, now time.Time) {
+	*p = memoryPlace{
 		shelves: shelves, read: now, hover: -1,
 		shelfOpen: map[string]bool{}, origins: map[string]memoryOrigin{},
 	}
@@ -147,7 +147,7 @@ func (p *memoryPanel) start(shelves store.MemoryShelves, now time.Time) {
 
 // refresh replaces the snapshot under a page that is already up, keeping the
 // filter, the folds and — where it can — the line the cursor was on.
-func (p *memoryPanel) refresh(shelves store.MemoryShelves, now time.Time) {
+func (p *memoryPlace) refresh(shelves store.MemoryShelves, now time.Time) {
 	was, _ := p.reading.at(p.cursor)
 	p.shelves, p.read = shelves, now
 	p.rank()
@@ -157,7 +157,7 @@ func (p *memoryPanel) refresh(shelves store.MemoryShelves, now time.Time) {
 // rank rebuilds the reading from the snapshot and the filter. It is called
 // `rank` because that is what the overlay's own re-filter was called and what
 // every paste path on this surface still asks for by name (app.go).
-func (p *memoryPanel) rank() {
+func (p *memoryPlace) rank() {
 	p.reading = readMemory(p.shelves, p.shelfOpen, p.filter.String(), p.read)
 	p.cursor = p.nearestStop(p.cursor)
 }
@@ -170,7 +170,7 @@ func (p *memoryPanel) rank() {
 // genuinely re-sorts this page, and a pointer that stayed at line seven would
 // land somebody on a memory they never chose, with `f forget it` one keypress
 // away.
-func (p *memoryPanel) followStop(was memoryStop) {
+func (p *memoryPlace) followStop(was memoryStop) {
 	if was.shelf == "" && was.line == nil {
 		return
 	}
@@ -196,7 +196,7 @@ func (p *memoryPanel) followStop(was memoryStop) {
 // the teaching page, a filter that matched nothing — answers zero, and the
 // cursor then points at prose, which is exactly the state in which no verb is
 // offered.
-func (p *memoryPanel) nearestStop(from int) int {
+func (p *memoryPlace) nearestStop(from int) int {
 	if from < 0 {
 		from = 0
 	}
@@ -215,7 +215,7 @@ func (p *memoryPanel) nearestStop(from int) int {
 
 // move walks the cursor by whole STOPS rather than by rows, so ↓ never lands on
 // a section heading or on a fold line that nothing can be done to.
-func (p *memoryPanel) move(delta int) {
+func (p *memoryPlace) move(delta int) {
 	stops := p.stops()
 	if len(stops) == 0 {
 		return
@@ -234,7 +234,7 @@ func (p *memoryPanel) move(delta int) {
 }
 
 // stops is every line of the reading a cursor may stand on, in drawn order.
-func (p *memoryPanel) stops() []int {
+func (p *memoryPlace) stops() []int {
 	var found []int
 	for i := range p.reading.lines {
 		if _, ok := p.reading.at(i); ok {
@@ -246,7 +246,7 @@ func (p *memoryPanel) stops() []int {
 
 // choice is the memory under the cursor, and false where the cursor is on a
 // shelf, on prose, or on nothing.
-func (p *memoryPanel) choice() (store.Memory, bool) {
+func (p *memoryPlace) choice() (store.Memory, bool) {
 	stop, ok := p.reading.at(p.cursor)
 	if !ok || stop.line == nil {
 		return store.Memory{}, false
@@ -257,7 +257,7 @@ func (p *memoryPanel) choice() (store.Memory, bool) {
 // shelfUnder is the shelf the cursor is standing ON — the heading itself, and
 // not the shelf a line happens to sit on. `enter` unrolls a heading; a line has
 // its own door.
-func (p *memoryPanel) shelfUnder() (string, bool) {
+func (p *memoryPlace) shelfUnder() (string, bool) {
 	stop, ok := p.reading.at(p.cursor)
 	if !ok || stop.line != nil {
 		return "", false
@@ -266,7 +266,7 @@ func (p *memoryPanel) shelfUnder() (string, bool) {
 }
 
 // toggleShelf is `enter` on a heading: unroll it, or roll it up again.
-func (p *memoryPanel) toggleShelf(scope string) {
+func (p *memoryPlace) toggleShelf(scope string) {
 	if p.shelfOpen == nil {
 		p.shelfOpen = map[string]bool{}
 	}
@@ -284,7 +284,7 @@ func (p *memoryPanel) toggleShelf(scope string) {
 // shelves the same meaning is "unroll the next one and roll the others up",
 // which walks a person through the whole page on one key and ends with
 // everything closed — a state `enter` cannot reach in one press.
-func (p *memoryPanel) cycleShelf() {
+func (p *memoryPlace) cycleShelf() {
 	var scopes []string
 	for _, line := range p.reading.lines {
 		if line.kind == memoryReadingShelf {
@@ -312,7 +312,7 @@ func (p *memoryPanel) cycleShelf() {
 
 // forget takes one line off the shelves it is on, so the page redraws without
 // it before the next snapshot lands. The store has already been told.
-func (p *memoryPanel) forget(id string) {
+func (p *memoryPlace) forget(id string) {
 	for i := range p.shelves.Shelves {
 		shelf := &p.shelves.Shelves[i]
 		for j := range shelf.Memories {
@@ -335,7 +335,7 @@ func (p *memoryPanel) forget(id string) {
 // It is drawn INSTEAD of the shelves rather than under them, for the reason
 // every fullscreen page on this surface is drawn instead of the one before it:
 // a card over a list is two things claiming the same rows.
-func (p *memoryPanel) card(width int, pal palette) []string {
+func (p *memoryPlace) card(width int, pal palette) []string {
 	memory, ok := p.byID(p.expanded)
 	if !ok {
 		return []string{pal.dim(fit("that line is not on a shelf any more", width))}
@@ -382,7 +382,7 @@ func (p *memoryPanel) card(width int, pal palette) []string {
 	return rows
 }
 
-func (p *memoryPanel) byID(id string) (store.Memory, bool) {
+func (p *memoryPlace) byID(id string) (store.Memory, bool) {
 	for _, shelf := range p.shelves.Shelves {
 		for _, memory := range shelf.Memories {
 			if memory.ID == id {
@@ -457,14 +457,14 @@ func (a *app) openMemory() tea.Cmd {
 	// sentences ([memoryTeaching]), which is exactly the reading somebody who has
 	// never seen this page needs, and the one fact those sentences cannot carry —
 	// that there is no store here to hold any of it — is said once on the note
-	// line under them ([memoryOffNote], [memoryPanel.footer]).
+	// line under them ([memoryOffNote], [memoryPlace.footer]).
 	shelves, why := a.memorySnapshot()
 	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
 	// ([app.standDownFullscreen]).
 	a.standDownFullscreen()
 	a.page = pageMemory
-	a.memPanel.start(shelves, a.now())
-	a.memPanel.footer = why
+	a.mem.start(shelves, a.now())
+	a.mem.footer = why
 	a.touch()
 	return a.armPlaceClock()
 }
@@ -508,11 +508,11 @@ func (a *app) refreshMemory() {
 		// than an error line that arrives on its own every three seconds.
 		return
 	}
-	a.memPanel.refresh(shelves, a.now())
+	a.mem.refresh(shelves, a.now())
 }
 
 func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
-	p := &a.memPanel
+	p := &a.mem
 	if p.edit != nil {
 		switch msg.String() {
 		case "esc":
@@ -528,7 +528,7 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			p.edit, p.editID = nil, ""
 		default:
-			listNavigate(msg, p.edit, func(int) {}, func() {}, memoryPanelRows)
+			listNavigate(msg, p.edit, func(int) {}, func() {}, memoryPlaceRows)
 		}
 		a.touch()
 		return nil
@@ -597,14 +597,14 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 	// place now, so the view moved to `alt+s` — the class a view belongs to
 	// (placekeys.go's [app.placeAlt]).
 	default:
-		listNavigate(msg, &p.filter, p.move, p.rank, memoryPanelRows)
+		listNavigate(msg, &p.filter, p.move, p.rank, memoryPlaceRows)
 	}
 	a.touch()
 	return nil
 }
 
 // setText corrects one line's wording in the held snapshot.
-func (p *memoryPanel) setText(id, text string) {
+func (p *memoryPlace) setText(id, text string) {
 	for i := range p.shelves.Shelves {
 		for j := range p.shelves.Shelves[i].Memories {
 			if p.shelves.Shelves[i].Memories[j].ID == id {
@@ -632,7 +632,7 @@ func (placeMemory) open(a *app) tea.Cmd { return a.openMemory() }
 
 func (placeMemory) close(a *app) {
 	a.leavePage(pageMemory)
-	a.memPanel.close()
+	a.mem.close()
 }
 
 func (placeMemory) tick(a *app, now time.Time) bool {
@@ -647,7 +647,7 @@ func (placeMemory) tick(a *app, now time.Time) bool {
 // snapshot, the filter or a fold last changed — so a resize is a re-measure of
 // words already decided rather than five hundred rows re-ranked.
 func (placeMemory) body(a *app, width, room int) []placeRow {
-	p := &a.memPanel
+	p := &a.mem
 	var body []string
 	switch {
 	case p.expanded != "":
@@ -681,11 +681,11 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	return rows
 }
 
-func (placeMemory) stops(a *app) []int { return a.memPanel.stops() }
+func (placeMemory) stops(a *app) []int { return a.mem.stops() }
 
 // enter opens a shelf, or the card behind one line.
 func (placeMemory) enter(a *app) tea.Cmd {
-	p := &a.memPanel
+	p := &a.mem
 	if scope, ok := p.shelfUnder(); ok {
 		p.toggleShelf(scope)
 		return nil
@@ -712,12 +712,12 @@ func (placeMemory) enter(a *app) tea.Cmd {
 // and put a memory back instead. On the strip the letter is a verb only while
 // the strip is drawn, and the filter gets every letter of the alphabet back.
 func (placeMemory) verbs(a *app) []verb {
-	p := &a.memPanel
+	p := &a.mem
 	var verbs []verb
 	// THE TWO THAT ACT ON A LINE ARE OFFERED ONLY WHILE THERE IS A LINE. A shelf
 	// heading, a section line, the prose at the top of a nearly-empty page — the
 	// cursor stands on all of them and none of them has wording to fix or
-	// anything to forget ([memoryPanel.choice] answers only on a line).
+	// anything to forget ([memoryPlace.choice] answers only on a line).
 	if memory, ok := p.choice(); ok {
 		verbs = append(verbs,
 			verb{key: 'e', word: memoryFixWord, do: func() tea.Cmd {
@@ -762,34 +762,34 @@ func (placeMemory) verbs(a *app) []verb {
 
 // alt is `alt+s`: WHICH SHELF THIS PLACE IS SHOWING. It was `tab` while memory
 // was a modal overlay; `tab` is the way between places now, so the view key
-// moved into the class views belong to ([memoryPanel.cycleShelf]).
+// moved into the class views belong to ([memoryPlace.cycleShelf]).
 func (placeMemory) alt(a *app, letter rune) bool {
 	if letter != 's' {
 		return false
 	}
-	a.memPanel.cycleShelf()
+	a.mem.cycleShelf()
 	return true
 }
 
 // box is the filter, or the wording being fixed when a card's editor is open.
 func (placeMemory) box(a *app) *editor {
-	if a.memPanel.edit != nil {
-		return a.memPanel.edit
+	if a.mem.edit != nil {
+		return a.mem.edit
 	}
-	return &a.memPanel.filter
+	return &a.mem.filter
 }
 
 // note is the receipt line — what was just forgotten and how to put it back, or
 // the one sentence saying this build remembers nothing at all.
 func (placeMemory) note(a *app, width int) []string {
-	if a.memPanel.footer == "" {
+	if a.mem.footer == "" {
 		return nil
 	}
-	return []string{" " + a.pal.dim(fit(a.memPanel.footer, width-2))}
+	return []string{" " + a.pal.dim(fit(a.mem.footer, width-2))}
 }
 
 func (placeMemory) hint(a *app) string {
-	if a.memPanel.edit != nil {
+	if a.mem.edit != nil {
 		return memoryEditHint
 	}
 	return memoryFilterHint
@@ -798,9 +798,9 @@ func (placeMemory) hint(a *app) string {
 func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }
 
 func (placeMemory) press(a *app, y int) bool {
-	if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
-		if _, stop := a.memPanel.reading.at(at); stop {
-			a.memPanel.cursor = at
+	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
+		if _, stop := a.mem.reading.at(at); stop {
+			a.mem.cursor = at
 			a.touch()
 		}
 	}
@@ -809,16 +809,16 @@ func (placeMemory) press(a *app, y int) bool {
 
 func (placeMemory) hover(a *app, y int) bool {
 	next := -1
-	if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
-		if _, stop := a.memPanel.reading.at(at); stop {
+	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
+		if _, stop := a.mem.reading.at(at); stop {
 			next = at
 		}
 	}
-	return placeHoverMoved(&a.memPanel.hover, next, a)
+	return placeHoverMoved(&a.mem.hover, next, a)
 }
 
 func (placeMemory) wheel(a *app, delta int) bool {
-	a.memPanel.move(delta)
+	a.mem.move(delta)
 	a.touch()
 	return true
 }

@@ -77,7 +77,7 @@ const (
 	// homeItemEnterWord is what enter does to a standing item, wherever one is
 	// drawn. It is its own constant because the standing place builds its hint
 	// line from the verbs the row under the cursor actually has and needs this
-	// half without the other two ([standPage.hint]).
+	// half without the other two ([standingPlace.hint]).
 	homeItemEnterWord = "enter open where it was asked"
 	// homeItemActions is the dim line at the foot of an item's card: the three
 	// things this screen can do to one. The two letters are real now — they are

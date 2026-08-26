@@ -2826,8 +2826,8 @@ func (a *app) hintWord() string {
 		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
 		// actually has: one of them stops a thing for good, and an order in
 		// another project cannot be excepted from a place it never reached
-		// ([standPage.hint]).
-		return a.standPage.hint(a)
+		// ([standingPlace.hint]).
+		return a.orders.hint(a)
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and

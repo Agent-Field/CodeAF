@@ -311,14 +311,14 @@ func (a *app) clearConversation() {
 // it closes itself on the keystroke that did (home.go).
 func (a *app) closeForSwitch() {
 	a.pick.close()
-	a.memPanel.close()
+	a.mem.close()
 	a.permPanel.close()
 	// AND THE STANDING PAGE, which is a door onto what stands over the
 	// conversation this window was holding: the shelves are read per
 	// conversation, so one left open across a switch would be three headings
 	// about somewhere else (place_standing.go). CLOSING IS THE LOOK, so the
 	// place is handed the app to stamp it with, exactly as `esc` does.
-	a.standPage.close(a)
+	a.orders.close(a)
 	// AND /subharness, for the reason above and one of its own: a card is an
 	// answer half typed, and carrying one across a switch would leave a person
 	// about to start work in a conversation they are no longer in

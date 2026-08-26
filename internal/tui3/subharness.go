@@ -106,7 +106,7 @@ const (
 	// subNotStartedWord leads a refusal from the launching door. What comes back
 	// from there is a sentence written for a person ("there is nothing here to
 	// run"), so it is said as it stands rather than wrapped in a second sentence
-	// about a key that did not work ([standPage.ask] states the law).
+	// about a key that did not work ([standingPlace.ask] states the law).
 	subNotStartedWord = "did not start · "
 
 	// ── THE THIRD DOOR: THE CARD CHAT ITSELF RAISED ─────────────────────────
@@ -293,7 +293,7 @@ func subSpanWord(d time.Duration) string {
 // it. The zero value is closed.
 //
 // THE CARD IS A FIELD ON THE LIST AND NOT A SECOND OVERLAY, which is the memory
-// panel's own arrangement (memorypanel.go's expanded row): one thing owns the
+// panel's own arrangement (place_memory.go's expanded row): one thing owns the
 // keyboard, one thing owns the block of rows the frame handed out, and esc walks
 // back out of whichever half is up rather than closing two things at once.
 type subPage struct {

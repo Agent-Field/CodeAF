@@ -158,7 +158,7 @@ func (s *panelMemoryStore) MemoryProvenance(id string) (string, string, time.Tim
 	return "session", origin.title, origin.at, nil
 }
 
-func memoryPanelApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore) {
+func memoryPlaceApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore) {
 	t.Helper()
 	agent := &rememberingAgent{}
 	for _, row := range rows {
@@ -320,7 +320,7 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 }
 
 func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
-	a, _ := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
+	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
 	a.slash("/memory")
 	if !a.at(pageMemory) {
 		t.Fatal("bare /memory did not open the panel")
@@ -366,7 +366,7 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 // place is the best teacher on the machine, and a person who has never seen this
 // page is exactly who is standing there.
 func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
-	a, _ := memoryPanelApp(t, nil)
+	a, _ := memoryPlaceApp(t, nil)
 	a.slash("/memory")
 	got := plain(frame(a))
 	if !strings.Contains(got, memoryTeaching[0]) {
@@ -401,7 +401,7 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 		{ID: "m1", Title: "terminal editor", Text: "uses neovim", Scope: store.MemoryScopeUser},
 		{ID: "m2", Title: "deploys", Text: "deploys Fridays", Scope: store.MemoryScopeProject},
 	}
-	a, brain := memoryPanelApp(t, rows)
+	a, brain := memoryPlaceApp(t, rows)
 	a.slash("/memory")
 	asked := brain.snapshots
 	typeInto(t, a, "nvm")
@@ -418,10 +418,10 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 // line's own card — one provenance read, for one line, on the keystroke that
 // asked for it.
 func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
-	a, memory := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
 	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
 	a.slash("/memory")
-	if _, ok := a.memPanel.shelfUnder(); !ok {
+	if _, ok := a.mem.shelfUnder(); !ok {
 		t.Fatal("the cursor did not open on a shelf heading")
 	}
 	// The biggest shelf opens itself, so enter here ROLLS IT UP.
@@ -431,7 +431,7 @@ func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 	}
 	drive(t, a, key("enter"))
 	drive(t, a, key("down"))
-	if got, ok := a.memPanel.choice(); !ok || got.ID != "m1" {
+	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
 		t.Fatalf("down did not land on the line: %#v %v", got, ok)
 	}
 	drive(t, a, key("enter"))
@@ -439,7 +439,7 @@ func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 		t.Fatalf("the line's card:\n%s", got)
 	}
 	drive(t, a, key("enter"))
-	if a.memPanel.edit == nil || a.memPanel.edit.String() != "uses neovim daily" {
+	if a.mem.edit == nil || a.mem.edit.String() != "uses neovim daily" {
 		t.Fatal("edit was not preloaded")
 	}
 	drive(t, a, key("ctrl+u"))
@@ -469,15 +469,15 @@ func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 // there is something to put back, and `tab` — which cycled the shelves — is the
 // way to the next place, so the shelf walk moved to `alt+s` (verbstrip.go).
 func TestMemoryForgetUndoIsOneDeepAndAltSWalksTheShelves(t *testing.T) {
-	a, memory := memoryPanelApp(t, []store.Memory{
+	a, memory := memoryPlaceApp(t, []store.Memory{
 		{ID: "m1", Title: "uses neovim", Text: "uses neovim", Scope: store.MemoryScopeUser},
 		{ID: "m2", Title: "release branch", Text: "release is main", Scope: store.MemoryScopeProject},
 	})
 	a.slash("/memory")
 	drive(t, a, key("down"))
 	drive(t, a, key("delete"))
-	if len(memory.forgotten) != 1 || !strings.Contains(a.memPanel.footer, "forgot 'uses neovim'") {
-		t.Fatalf("forget state: %v %q", memory.forgotten, a.memPanel.footer)
+	if len(memory.forgotten) != 1 || !strings.Contains(a.mem.footer, "forgot 'uses neovim'") {
+		t.Fatalf("forget state: %v %q", memory.forgotten, a.mem.footer)
 	}
 	drive(t, a, key("right"), key("u"))
 	if len(memory.restored) != 1 {
@@ -489,7 +489,7 @@ func TestMemoryForgetUndoIsOneDeepAndAltSWalksTheShelves(t *testing.T) {
 	a.slash("/memory")
 	open := func() []string {
 		var found []string
-		for scope, on := range a.memPanel.shelfOpen {
+		for scope, on := range a.mem.shelfOpen {
 			if on {
 				found = append(found, scope)
 			}

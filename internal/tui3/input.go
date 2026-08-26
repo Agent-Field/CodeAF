@@ -1082,10 +1082,10 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint, "")
 	}
 	if a.at(pageMemory) {
-		if a.memPanel.edit != nil {
-			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint, "")
+		if a.mem.edit != nil {
+			return draftBlock(a.mem.edit, a.pal, width, 1, memoryEditHint, "")
 		}
-		return draftBlock(&a.memPanel.filter, a.pal, width, 1, memoryFilterHint, "")
+		return draftBlock(&a.mem.filter, a.pal, width, 1, memoryFilterHint, "")
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
