@@ -145,10 +145,19 @@ func (a *app) searchDone(msg searchDoneMsg) {
 	if msg.err != nil {
 		// THE REFUSAL IS THE PLACE'S ONE LINE and not a note in the transcript:
 		// somebody standing on this page asked this page a question.
-		a.pageMsg = "could not search what was said · " + msg.err.Error()
+		a.pageMsg = searchFailedWord + " · " + msg.err.Error()
 		return
 	}
-	a.pageMsg = ""
+	// AND A READ THAT LANDS CLEARS ITS OWN OLD FAILURE AND NOTHING ELSE. That
+	// line is the ROUTER'S and it is shared with every refusal a place can be
+	// handed: `alt+2` on a machine that has run no work leaves its sentence
+	// there and puts the person back here, where this place re-arms its query on
+	// the way in ([app.openSearch]) and answered it a moment later — wiping the
+	// sentence off the screen before anybody could read it. A refusal that
+	// flashes is a refusal that did not happen.
+	if strings.HasPrefix(a.pageMsg, searchFailedWord) {
+		a.pageMsg = ""
+	}
 	a.search.hits = msg.hits
 	a.rebuildSearch()
 	a.touch()
@@ -268,6 +277,12 @@ func (a *app) openSearchHit(hit searchHit) tea.Cmd {
 	}
 	return a.openConversationRow(hit.row())
 }
+
+// searchFailedWord leads the one sentence this place says when the index could
+// not answer. It is a constant because it is spelled twice — once when the
+// failure is written and once when it is taken back down — and two spellings of
+// one sentence is a failure line that never clears.
+const searchFailedWord = "could not search what was said"
 
 // searchNoDoorWord is what a result with no findable conversation says. It
 // names the fact rather than a fault, because it is neither: the turn is
