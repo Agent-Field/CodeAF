@@ -446,10 +446,15 @@ places, and nothing else gets through:
   read out of the text: a span in backticks (`` `bash verify.sh` ``, `` `make check` ``) or a
   line that opens with a shell prompt (`$ ./verify --quiet`). A wildcard you wrote is
   honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
-- **the check the task itself used** — any command its worker issued **as one command**,
-  taken from the same tool results the checker is shown. A composed line
-  (`cd x && cargo build 2>&1 | tail -5`) contributes nothing: a check is repeated exactly as
-  it was issued or not at all, and this gate never composes one. A command that even a
+- **the check the task itself used** — any command its worker issued, taken from the same
+  tool results the checker is shown, read for **the one command that line runs**. A leading
+  `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
+  working in — and so is everything after the first pipe, along with the redirections of output
+  at the end of the line (`2>&1`, `> log`). So
+  `cd /workspace/thing && cargo build --release 2>&1 | tail -3` contributes
+  `cargo build --release`, which the checker then runs as one command, composing nothing. A
+  `cd` to somewhere outside your tree contributes nothing at all, an arrow in the middle of the
+  line leaves it composed and it contributes nothing, and a command that even a
   permit-everything policy would still stop and ask about — `rm -rf /`, `shutdown`, `mkfs` —
   never becomes one either;
 - **the always-safe reading commands** — `git diff`, `git log`, `git status`, `git show`,
@@ -457,10 +462,11 @@ places, and nothing else gets through:
   not verification, so a checker holding only these can read your work but cannot exercise
   it.
 
-A prefix is matched field by field, so a check named `make check` admits `make check ./...`
-and does not admit `make checkout`. **Every refusal names what this particular check is
-allowed**, listing the task's own check first and the reading commands after it, so the model
-reads the door in the same breath as the no.
+A check that names no file is matched as a prefix, field by field, so `make check` admits
+`make check ./...` and does not admit `make checkout`. A check that **names a file in your
+tree** is matched by which file it is instead — see the next section. **Every refusal names
+what this particular check is allowed**, listing the task's own check first and the reading
+commands after it, so the model reads the door in the same breath as the no.
 
 **When the work names no check and issued nothing that looks like one**, the checker is told
 so in as many words, told to judge from reading and answer, and given a much shorter window —
@@ -470,6 +476,30 @@ going to open. That was measured on a Rust deliverable: the allowlist used to be
 of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
 all, exhausted its five minutes on all six attempts, and every one of them landed the task
 needing your look.
+
+## How the check is spelled — one file, any way you name it
+
+**A check that names a file in your tree is allowed under every spelling of that file.** If
+your brief says the check is `bash verify.sh` and `verify.sh` is really there, the
+checker may run it as `verify.sh`, as `./verify.sh`, by its full path, or with one
+program word in front of it — `bash verify.sh`, `sh /full/path/verify.sh`,
+`python3 scripts/check.py`. **Which word is in front does not matter**: aforge holds no list
+of launchers, only the rule that exactly one word may precede the file. Spellings are resolved
+against the directory the checker stands in and compared as files, so anything that starts the
+same file is the same check. A wildcard you wrote is resolved the same way — `verify.*`
+names the file it actually matches on disk.
+
+**What is still refused:** a different file (`bash other.sh`), arguments your brief never
+declared (`bash verify.sh --flag` — one word, then the file, and nothing after it), an
+option where the program word should be (`bash -x verify.sh`), and anything composed
+(`cd x && bash verify.sh`). The refusal spells the check out for you, as
+"the check /path/verify.sh — run it as `/path/verify.sh` or `<one word> /path/verify.sh`",
+and the checker is told the same thing before it types anything.
+
+This was measured. On a Rust deliverable the checker was handed a door naming the project's own
+script and then had five spellings of that one file refused in a row — the directory stated
+first, the absolute path, the bare name, the name behind a program word, the name behind `./` —
+so it gave up and read source code until its window ran out.
 
 ## Where the check runs — a clean restore, not the task's messy checkout
 

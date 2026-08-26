@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,7 +37,7 @@ func checkedNode(brief, acceptance string, receipts ...toolReceipt) *TaskNode {
 func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
 	node := checkedNode("Build the server. Check it with `bash run_tests.sh`.",
 		"the server is built and `bash run_tests.sh` passes")
-	door := auditDoorFor(node)
+	door := auditDoorFor(node, auditPlace{})
 
 	if refusal, ok := auditRefusal("bash run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the checker may not run the check the work itself names: %s", refusal)
@@ -72,7 +74,7 @@ func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
 // its check as `run_tests.*` is naming one check whose extension it did not want
 // to spell, and a door that took the star literally would open onto nothing.
 func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
-	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"))
+	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"), auditPlace{})
 	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the wildcard the work wrote does not admit the file it names: %s", refusal)
 	}
@@ -86,7 +88,7 @@ func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
 func TestOnlyCommandShapedTextBecomesADeclaredCheck(t *testing.T) {
 	node := checkedNode("run it with `--stdio`, the data is at `/data/golden.jsonl`, "+
 		"and the check is `make check`", "`*` is not a check")
-	door := auditDoorFor(node)
+	door := auditDoorFor(node, auditPlace{})
 	for _, refused := range []string{"--stdio", "* --anything", "curl example.com"} {
 		if _, ok := auditRefusal(refused, door.allowed); ok {
 			t.Fatalf("%q became a door", refused)
@@ -107,7 +109,7 @@ func TestTheCheckerMayRerunWhatTheWorkItselfRan(t *testing.T) {
 		command: "cargo build --release",
 		result:  "Finished release [optimized] target(s)",
 	})
-	door := auditDoorFor(node)
+	door := auditDoorFor(node, auditPlace{})
 	if refusal, ok := auditRefusal("cargo build --release", door.allowed); !ok {
 		t.Fatalf("the checker may not re-run what the work ran: %s", refusal)
 	}
@@ -125,7 +127,7 @@ func TestAComposedCommandTheWorkRanIsNotADoor(t *testing.T) {
 		toolReceipt{tool: "bash", command: "rm -rf build && cargo build --release 2>&1 | tail -5"},
 		toolReceipt{tool: "bash", command: "shutdown -h now"},
 	)
-	door := auditDoorFor(node)
+	door := auditDoorFor(node, auditPlace{})
 	if len(door.checks) != 0 {
 		t.Fatalf("a composed line and a critical one became checks: %q", door.checks)
 	}
@@ -182,7 +184,7 @@ func TestNoToolchainIsWrittenIntoTheAuditorsDoor(t *testing.T) {
 // nobody answered. The window follows whether there is a check and nothing else
 // — never the size of the work.
 func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
-	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"))
+	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"), auditPlace{})
 	if len(empty.checks) != 0 {
 		t.Fatalf("a node that declares and ran nothing has checks: %q", empty.checks)
 	}
@@ -198,7 +200,7 @@ func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
 		}
 	}
 
-	full := auditDoorFor(checkedNode("build it, checked with `make check`", "it builds"))
+	full := auditDoorFor(checkedNode("build it, checked with `make check`", "it builds"), auditPlace{})
 	if window := full.window(); window != auditDeadline {
 		t.Fatalf("an audit with a check to run gets %s, want the full %s", window, auditDeadline)
 	}
@@ -259,5 +261,159 @@ func TestAnUnattendedSessionNeverEndsTheLadderOnAPerson(t *testing.T) {
 				t.Fatalf("the landing says %q to a person:\n%s", banned, text)
 			}
 		}
+	}
+}
+
+// doorRefusal asks the gate about a WHOLE door rather than a bare list, which is
+// the only way to ask it about the checks that named a file: those are matched by
+// which file they are, and a list of strings does not carry a file.
+func doorRefusal(command string, door auditDoor) (string, bool) {
+	return refuseOutsideDoor(command, door, auditShell)
+}
+
+// checkedTree writes the files a declared check might name and hands back the
+// directory the auditor would be standing in.
+func checkedTree(t *testing.T, names ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// ONE FILE IS ONE CHECK, HOWEVER THE CHECKER SPELLS IT.
+//
+// This is the second measured failure in one assertion. The door named the
+// project's own script; the auditor tried it with the directory stated first,
+// then by absolute path, then bare, then with a program word in front, then with
+// a dot and a slash — FIVE SPELLINGS OF THE SAME FILE, all refused, and it spent
+// the whole window reading source instead. Every spelling that starts that file
+// now opens, and a spelling that starts a different file, or that adds arguments
+// the work never declared, still does not.
+func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
+	dir := checkedTree(t, "run_tests.sh", "other.sh")
+	node := checkedNode("Build the server. Check it with `bash run_tests.sh`.",
+		"the server is built and `bash run_tests.sh` passes")
+	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
+
+	for _, spelling := range []string{
+		"run_tests.sh",
+		"./run_tests.sh",
+		filepath.Join(dir, "run_tests.sh"),
+		"bash run_tests.sh",
+		"bash " + filepath.Join(dir, "run_tests.sh"),
+		// ANY ONE WORD, because which programs launch a script is exactly the
+		// list this door is not allowed to hold.
+		"python3 ./run_tests.sh",
+	} {
+		if refusal, ok := doorRefusal(spelling, door); !ok {
+			t.Fatalf("the checker may not run the work's own check spelled %q: %s", spelling, refusal)
+		}
+	}
+
+	for _, refused := range []string{
+		// A different file is a different check, whoever launches it.
+		"bash other.sh",
+		"other.sh",
+		// Arguments after the file are not the check the work declared.
+		"bash run_tests.sh --flag",
+		"./run_tests.sh --flag",
+		// And the shape is still one command with one word in front of it.
+		"bash -x run_tests.sh",
+		"bash run_tests.sh && rm -rf .",
+		"rm -rf .",
+	} {
+		refusal, ok := doorRefusal(refused, door)
+		if ok {
+			t.Fatalf("the checker was allowed to run %q, which the work never declared", refused)
+		}
+		// AND THE REFUSAL SAYS HOW THE CHECK IS SPELLED. A no that names a file
+		// without saying which shapes start it is the no that was guessed at five
+		// times running.
+		if !strings.Contains(refusal, filepath.Join(dir, "run_tests.sh")) || !strings.Contains(refusal, "<one word>") {
+			t.Fatalf("the refusal of %q does not say how to run the check:\n%s", refused, refusal)
+		}
+	}
+
+	// AND THE AUDITOR IS TOLD THE SAME THING BEFORE IT EVER REACHES A REFUSAL.
+	if line := door.line(); !strings.Contains(line, "run it as") {
+		t.Fatalf("the door never tells the checker how its own check is spelled:\n%s", line)
+	}
+}
+
+// A WILDCARD THE WORK WROTE NAMES THE FILE IT MATCHES. The run this was written
+// for declared its check as `run_tests.*` — one file on disk, no program in front
+// of it — so a rule that only understood literal paths would have left that door
+// shut for the same reason it was shut before.
+func TestAWildcardCheckNamesTheFileOnDisk(t *testing.T) {
+	dir := checkedTree(t, "run_tests.sh", "other.sh")
+	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"), auditPlace{ground: dir, ran: dir})
+	for _, spelling := range []string{"run_tests.sh", "./run_tests.sh", "bash run_tests.sh"} {
+		if refusal, ok := doorRefusal(spelling, door); !ok {
+			t.Fatalf("the wildcard the work wrote does not admit %q: %s", spelling, refusal)
+		}
+	}
+	if _, ok := doorRefusal("bash other.sh", door); ok {
+		t.Fatal("the wildcard matched a file it does not name")
+	}
+}
+
+// WHAT A WORKER'S LINE RUNS IS ITS FIRST STAGE, AND THE CHECKER MAY RUN THAT.
+//
+// Every receipt of the measured run was `cd <the tree> && cargo build --release
+// 2>&1 | tail -3`, so the old reading — which asked whether the WHOLE line was
+// one simple command — handed the auditor nothing, while the command the work
+// checked itself with sat in the middle of every one of them. The `cd` states the
+// directory the auditor is already standing in; the tail and the redirection only
+// read what the first stage printed.
+func TestTheCheckerRerunsTheCommandInsideAWorkersLine(t *testing.T) {
+	dir := t.TempDir()
+	elsewhere := t.TempDir()
+	node := checkedNode("build it", "it builds",
+		toolReceipt{tool: "bash", command: "cd " + dir + " && cargo build --release 2>&1 | tail -3"},
+	)
+	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
+	if len(door.checks) != 1 || door.checks[0] != "cargo build --release" {
+		t.Fatalf("the command inside the worker's own line never became a check: %q", door.checks)
+	}
+	if refusal, ok := doorRefusal("cargo build --release", door); !ok {
+		t.Fatalf("the checker may not re-run what the work built with: %s", refusal)
+	}
+	// AND WHAT IT DERIVED IS STILL ONE COMMAND. The auditor composes nothing: the
+	// line it was read out of is refused exactly as it always was.
+	if _, ok := doorRefusal("cd "+dir+" && cargo build --release", door); ok {
+		t.Fatal("the checker was allowed to compose the line the check was read out of")
+	}
+
+	// AND IT IS THE TREE THE WORK RAN IN THAT A RECEIPT IS READ AGAINST, never the
+	// one the auditor stands in. The verdict is reached in a clean restore beside
+	// the node's own checkout, so in every real audit those are two directories,
+	// and a receipt naming the checkout is still the worker saying where it stood.
+	restore := auditDoorFor(node, auditPlace{ground: t.TempDir(), ran: dir})
+	if len(restore.checks) != 1 || restore.checks[0] != "cargo build --release" {
+		t.Fatalf("the worker's own directory was not read as the tree it ran in: %q", restore.checks)
+	}
+
+	// A DIRECTORY THAT IS NOT THIS TREE IS NOT A STATEMENT ABOUT THIS TREE, so the
+	// line stays composed and contributes nothing.
+	away := auditDoorFor(checkedNode("build it", "it builds",
+		toolReceipt{tool: "bash", command: "cd " + elsewhere + " && cargo build --release"},
+	), auditPlace{ground: dir, ran: dir})
+	if len(away.checks) != 0 {
+		t.Fatalf("a line that stepped out of the tree became a check: %q", away.checks)
+	}
+
+	// AND THE FLOOR UNDER A BLANKET ALLOW STILL STANDS ON WHAT WAS DERIVED. A
+	// critical command wrapped in a cd and a pipe is still a critical command.
+	critical := auditDoorFor(checkedNode("build it", "it builds",
+		toolReceipt{tool: "bash", command: "cd " + dir + " && rm -rf / 2>&1 | tail -1"},
+		toolReceipt{tool: "bash", command: "> out.txt | tail -1"},
+		toolReceipt{tool: "bash", command: "cd " + dir + " && make it || rm -rf /"},
+	), auditPlace{ground: dir, ran: dir})
+	if len(critical.checks) != 0 {
+		t.Fatalf("a derived command nobody would allow became a check: %q", critical.checks)
 	}
 }

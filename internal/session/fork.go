@@ -781,7 +781,7 @@ func forkBelt(belt []bare.Tool, dir string) []bare.Tool {
 				"edits, installs, fetches, or chains a second command onto one of these. THERE IS NO BUILD AND NO " +
 				"TEST HERE — the other hands are writing this same working copy right now, so neither would mean " +
 				"anything; both happen after you are all back. " + forkShell.hint + " " + tool.Description
-			out = append(out, readingOnlyBash(tool, forkCommands, forkShell))
+			out = append(out, readingOnlyBash(tool, plainDoor(forkCommands), forkShell))
 		}
 	}
 	return out
