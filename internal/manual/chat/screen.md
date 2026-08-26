@@ -473,7 +473,7 @@ are looking at a different one is counted in `N waiting` on the next frame. `tab
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
 
-## Host latency and round-trip time in the status line
+## How fast is the connection — host latency and round-trip time in the status line
 
 For `aforge chat --host devbox`, the connection segment begins empty. Every few seconds
 the surface sends one empty call, off the drawing path, and folds the reply into a rolling

@@ -108,7 +108,7 @@ continues rather than restarting. Send something while it is down and the messag
 lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
 in a moment`, and pressing enter again once it is back sends it.
 
-## When the connection cannot be made
+## The far machine says a different version — when the connection cannot be made
 
 The failed dial says what it found, rather than guessing:
 
