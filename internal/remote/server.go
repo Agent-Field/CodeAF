@@ -171,6 +171,28 @@ type Engine struct {
 	// redrew a row as paused over a rejected write would be lying about this
 	// disk, so nothing here softens it.
 	StandingSave func(item standing.Item) error
+
+	// ── the places ──────────────────────────────────────────────────────────
+	//
+	// THE PLACES ARE A LISTING OF THIS MACHINE'S DISK, and until version 4 the
+	// surface listed its own instead. Over --host that meant the tasks place
+	// walked the LAPTOP's `~/.aforge/v3` and drew what it found — eight rows and
+	// a total in dollars — under a conversation running here. These doors are
+	// how it asks the right machine, and they are the same shape Recent and
+	// StandingItems already are: nil is the reading absent rather than empty,
+	// answered as a refusal, so the surface keeps the difference between "there
+	// is nothing there" and "nobody asked".
+
+	// World is the walk of this machine's places root: every project, every
+	// conversation in it, and the work each of those ran. It is the reading five
+	// of the surface's seven places are built from ([MethodPlacesWorld] names
+	// them), which is why one door serves all five.
+	World func() session.World
+	// PlacesRoot is the directory World walked, carried on the welcome so the
+	// surface can put THIS conversation back into a walk taken before it existed
+	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
+	// world door; a build that answers a world and no root simply cannot adopt.
+	PlacesRoot string
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -490,6 +512,7 @@ func (sess *Session) welcomeLocked() Welcome {
 		Title:        sess.agent.Title(),
 		Note:         sess.engine.Note,
 		ApprovalMode: sess.engine.ApprovalMode,
+		PlacesRoot:   sess.engine.PlacesRoot,
 		Live:         sess.liveLocked(),
 		Held:         sess.held.waiting(),
 		Persistent:   sess.persistent,
@@ -1133,6 +1156,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this engine cannot list sessions")
 		}
 		return json.Marshal(recent())
+
+	case MethodPlacesWorld:
+		sess.mu.Lock()
+		world := sess.engine.World
+		sess.mu.Unlock()
+		if world == nil {
+			// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT EMPTY. An empty world
+			// answered here would reach the surface as a machine with no projects
+			// on it, which is a claim; the refusal reaches it as no answer at all,
+			// and the emptiness law draws that as nothing.
+			return nil, errors.New("engine: this engine cannot list its places")
+		}
+		return json.Marshal(world())
 
 	case MethodStandingItems:
 		workspace, err := arg[string](call)

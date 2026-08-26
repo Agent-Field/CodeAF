@@ -100,7 +100,7 @@ type composerLayer struct {
 	// their keystrokes back at them would be a box that fights the hand.
 	capText string
 	// places is everywhere this task can be sent, READ ONCE ON THE WAY IN and
-	// held. The list is a walk of the projects root ([app.homeWorld]) and a walk
+	// held. The list is a walk of the projects root ([app.readWorld]) and a walk
 	// is a thing a keystroke may do and a draw may not (ARCHITECTURE.md's fourth
 	// law) — and holding it is also what makes `alt+w` a cycle rather than a
 	// lottery, because a project that appeared between two presses cannot shift
@@ -239,7 +239,7 @@ func (a *app) composerPlaces() []string { return a.composer.places }
 // you already are would be a key that has to be pressed all the way round to
 // undo.
 //
-// IT ASKS [app.homeWorld] AND NOT THE SWITCHER'S CACHE, because the switcher's
+// IT ASKS [app.readWorld] AND NOT THE SWITCHER'S CACHE, because the switcher's
 // cache belongs to home and is dropped the moment home closes — and this layer
 // opens on any of the seven. That function is also the one that answers NOTHING
 // over `--host`, which is exactly right here: the projects under this process
@@ -248,7 +248,7 @@ func (a *app) composerPlaces() []string { return a.composer.places }
 func (a *app) composerDestinations() []string {
 	world := a.home.world
 	if len(world.Projects) == 0 {
-		world = a.homeWorld()
+		world = a.readWorld()
 	}
 	out := make([]string, 0, len(world.Projects)+2)
 	seen := map[string]bool{}

@@ -442,9 +442,9 @@ ago, `alt+2`, `alt+3` and `alt+4` all open:
   it: `memory is off for this session · turn it on under /settings`.
 - **spend** inside a window nothing was spent in says what spend is for.
 - **search** with an empty box says what search is for.
-- **home** over `--host` says `home shows this machine's projects, and this session is on
-  another` where its rows would be — the projects under this process belong to the laptop
-  and the session is on the server, so the list is the only part that cannot be drawn.
+- **spend**, **search** and **memory** over `--host` each say one dim line where their rows
+  would be — see *The places over --host* below for the exact words and why three of the
+  seven still say them.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -485,3 +485,111 @@ walk in.
 `/rewind` (also `/undo`, `/back`) opens a full-screen page too, and it is deliberately **not**
 one of the seven. It is something you do to *this conversation* — pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
+
+## The places over --host — whose machine am I looking at
+
+**A place is a listing of one machine's disk, and over `--host` that machine is the one your
+session runs on.** Home lists the conversations under `~/.aforge/v3`; tasks lists the work
+those conversations ran; standing lists what keeps an eye on that machine; spend adds up the
+ledger every model call there writes a line into; search reads the index of what was said
+there; memory reads what those sessions learned. All six are directories, and over a
+connection there are two machines with those directories on them.
+
+**Four of the seven now read the far machine's.** They ask the engine for its own reading and
+draw that:
+
+| Place | Over `--host` |
+|---|---|
+| **home** | the far machine's projects and conversations |
+| **tasks** | the far machine's work, out of the same reading |
+| **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
+| **settings** | this surface's own rows, plus the ones read from the far machine's profile — it says so as it opens |
+| **spend** | `spend shows what this machine has cost, and this session is on another` |
+| **search** | `search reads what was said on this machine, and this session is on another` |
+| **memory** | `memory shows what this machine has learned, and this session is on another` |
+
+**Nothing on any place is drawn out of this laptop's copy.** A screen full of the wrong
+machine's work is a confident lie, and one honest sentence is better than eight rows and a
+total in dollars that belong to somebody else's afternoon.
+
+**The tab bar says whose machine it is.** Over a connection the right end of the bar reads
+`on <machine>` — the same name you typed after `--host`, and the same one the status line's
+place segment and the legend under the box already carry. On a local session it is not there
+at all: a machine name is worth a word only when there is more than one machine in play.
+
+## Why is home empty when I connect to another machine — space space over --host
+
+**It is not empty any more, and this is the answer if you have seen it be.**
+
+`space` `space` over `--host` opens the home of the machine your session runs on: its
+projects, its conversations, and what each of those ran. `enter` on a row opens that
+conversation — the engine swaps to it and this window keeps drawing, the same door
+`aforge resume` uses locally.
+
+It used to draw **one dim line** where the rows would be —
+`home shows this machine's projects, and this session is on another` — because the projects
+it could reach were the laptop's while the work was on the server. Before that it refused to
+open at all. If you press space space over a connection and get one line, the machine you are
+attached to is running an older aforge than the one you are sitting at, and the fix is the
+same as for any version mismatch: update the older one.
+
+In the fraction of a second before the far machine's first answer arrives, home draws **no
+rows and no sentence at all**. `nothing here yet` over a server full of work would be the one
+wrong thing this screen can say about somebody else's disk, so nothing is said until there is
+something true to say.
+
+## Does the tasks page show the other machine's work over --host
+
+**Yes — the far machine's work, and none of this one's.**
+
+The tasks place reads its rows out of the same reading home lists, so the door that carried
+home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
+
+This was the worst of the seven before it crossed. The page walked *this* computer's
+`~/.aforge/v3` and drew what it found — a count and a total in dollars, `work aforge ran on
+its own. 8, $22.54 of it.` — under a conversation on a server that had run none of it. A page
+that reads a real disk and names the wrong machine is worse than a page that says nothing.
+
+## Can I search my old chats, or see spend and memory, over --host
+
+**Not yet, and each of the three says so rather than showing you this machine's.**
+
+- **spend** — `spend shows what this machine has cost, and this session is on another`
+- **search** — `search reads what was said on this machine, and this session is on another`
+- **memory** — `memory shows what this machine has learned, and this session is on another`
+
+Spend and search say that line **where their rows would be**. Memory keeps its own three
+sentences about what memory is for and says its line **on the note line under them**, in the
+slot where a local session says `memory is off for this session · turn it on under
+/settings` — which would have been a claim about a setting on a machine this surface never
+asked.
+
+The three read a file or a database on the machine this window is running on, and there is no
+door on the wire for them yet — so what they can honestly show over a connection is nothing,
+and they say which nothing it is.
+
+The search box still takes letters. A search that found nothing looks exactly like a search
+that found nothing, which is why the line is there before you read an empty result as an
+answer.
+
+## Do the tab numbers follow the machine too
+
+Yes, and the stamp behind them is kept per machine.
+
+A tab's number is *what changed since you last looked at that place*, so it needs two facts:
+what is in there now, which belongs to the machine the place describes, and when you last
+looked, which belongs to the terminal you are sitting at. Those are two different machines
+over a connection, so **the look stamps for a remote session are kept on this computer in a
+folder of their own** — `~/.aforge/v3/looks/<machine>` — beside the local ones rather than in
+them. Glancing at the server's tasks does not clear the number over your laptop's tasks tab,
+and your laptop's own windows do not overwrite the origin a remote one measures from.
+
+## Why doesn't home say folder gone over --host
+
+Because the folder is on the other machine, and this one cannot see it.
+
+A local home stats every project directory it is about to draw and marks the missing ones
+`that folder is gone · <path>`. Over a connection those paths are the far machine's —
+`/srv/code/api` is almost certainly not on your laptop — so a stat here would mark **every**
+remote row as deleted. It is not made at all, and nothing is claimed: a row whose folder was
+never asked about is not a row with a missing folder.

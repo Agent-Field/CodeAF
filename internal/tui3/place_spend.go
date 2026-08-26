@@ -489,6 +489,16 @@ const spendTeach = "What this machine has cost, by the day, by the model, and by
 // IT ASKS THE TOTAL rather than drawing the body to see whether it is empty,
 // because drawing it twice a frame to answer one question is the kind of waste a
 // still page does not notice until it is on a clock.
+// remote is this place over --host: the ledger it adds up is the file every
+// window on THIS machine appends a model call to, and the calls this session
+// makes are billed on the other one (pages.go's [place.remote]).
+func (placeSpend) remote(a *app) string {
+	if a.hosted() {
+		return spendRemoteWord
+	}
+	return ""
+}
+
 func (placeSpend) body(a *app, width, room int) []placeRow {
 	if a.spend.reading.totals.USD <= 0 {
 		if !a.spend.held {

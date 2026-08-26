@@ -832,7 +832,6 @@ it under *Open another project from home*.
 Refusals, exactly as written:
 
 ```
-home shows this machine's projects, and this session is on another
 nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
@@ -840,14 +839,17 @@ that folder is gone · <path>
 8 open is as many as aforge holds — /quit closes this one
 ```
 
-The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
-session is on the other end, so home opens over a connection without any rows and there is
-one conversation. The second is not a refusal: it is what an empty home says where its rows
-will be, with the box and the keys at the foot still live — typing there offers
-`start a new conversation: "…"` as it does anywhere. `/new is unavailable here` is what
-the typing-to-start box says where no fresh-session seam exists. The last two are `enter` on a project whose folder has been
-deleted or moved since its last conversation, and `enter` when this terminal is already
-holding eight — in both cases home stays up and nothing is opened.
+The first is not a refusal: it is what an empty home says where its rows will be, with the
+box and the keys at the foot still live — typing there offers
+`start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
+rows are the **far** machine's and that machine may simply not have been used yet. `/new is
+unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
+The last two are `enter` on a project whose folder has been deleted or moved since its last
+conversation, and `enter` when this terminal is already holding eight — in both cases home
+stays up and nothing is opened.
+
+`that folder is gone` is never said over `--host`: the folders are the far machine's and this
+one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
 
 ## /permissions — what runs without asking
 

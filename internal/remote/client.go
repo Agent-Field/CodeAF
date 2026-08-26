@@ -697,6 +697,29 @@ func (c *Client) OpenSession(path string) (Welcome, error) {
 // the last good answer must be able to tell "there is nothing here" from "the
 // round trip failed" — a fault redrawn as an empty band would be the screen
 // saying the person's watches had gone away.
+// World is the engine machine's places root, walked: what home lists, what the
+// tasks place reads its rows out of, and what the standing, spend and search
+// places each take one fact from ([MethodPlacesWorld]).
+//
+// THE ERROR IS ANSWERED AND NOT SWALLOWED, unlike [Client.Recent] next door,
+// and the difference matters: a recent-sessions list that came back empty is a
+// picker with no rows, which is a small wrong. A WORLD that came back empty is
+// every place on the surface saying this machine has nothing on it — so the
+// caller has to be able to tell "the engine has no world door" and "the call
+// failed" from "there is genuinely nothing there", and only an error can carry
+// the first two (cmd/aforge's [hostWorld] is what does the telling).
+func (c *Client) World() (session.World, error) {
+	payload, err := c.call(nil, MethodPlacesWorld, nil)
+	if err != nil {
+		return session.World{}, err
+	}
+	var world session.World
+	if err := json.Unmarshal(payload, &world); err != nil {
+		return session.World{}, err
+	}
+	return world, nil
+}
+
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 	payload, err := c.call(nil, MethodStandingItems, workspace)
 	if err != nil {

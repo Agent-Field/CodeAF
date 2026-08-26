@@ -280,6 +280,40 @@ type Options struct {
 	// thing two surfaces could then share.
 	UsageLedger string
 
+	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
+	//
+	// World is the walk of the conversations and projects on THE MACHINE THAT
+	// OWNS THE WORK, and nil is "this process's own disk" — which is every local
+	// launch, where the surface reads the places root itself and the two machines
+	// are one.
+	//
+	// IT ANSWERS A SECOND VALUE, AND THE SECOND VALUE IS NOT "IS IT EMPTY". It
+	// says whether this is an ANSWER: over a connection the world arrives from
+	// the other machine and the first frames are drawn before it has, and a
+	// surface that could not tell "that machine has no projects" from "that
+	// machine has not said yet" would greet a person with `nothing here yet` over
+	// a machine full of work. False draws NOTHING, which is the emptiness law
+	// applied to the one fact every place downstream is built out of
+	// ([app.worldKnown], home's [homeView.known]).
+	//
+	// AND IT MAY NOT BLOCK. It is asked on the open and on the three-second beat,
+	// which are the two moments a place may read anything — but over a wire those
+	// are still moments a person is waiting through. The door answers from a
+	// cache that refreshes behind itself (cmd/aforge's [hostWorld]), which is the
+	// same bargain and the same law [StandingSeam.Items] already keeps.
+	World func() (session.World, bool)
+
+	// WorldRoot is the state root [Options.World] was walked under, on the disk
+	// it was walked on. Empty falls through to this process's own places root.
+	//
+	// IT EXISTS BECAUSE A WORLD IS A SET OF PATHS AND A PATH NEEDS ITS DISK.
+	// [session.World.Adopt] puts the conversation THIS WINDOW is sitting in back
+	// into a walk taken too early to see it, and works out which bucket it
+	// belongs to from the root. Over a connection that bucket is on the far
+	// machine, and adopting against this laptop's root would file a conversation
+	// living on the server under a project on the laptop.
+	WorldRoot string
+
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no
 	// [Options.Start] was wired. Nil makes /new report that it is unavailable

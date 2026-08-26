@@ -103,6 +103,18 @@ type place interface {
 	// body is the rows and the hit map, painted into exactly the room the frame
 	// reserved. It reads caches and never a seam.
 	body(a *app, width, room int) []placeRow
+	// remote is THE ONE DIM LINE this place draws INSTEAD of its rows when the
+	// session is on another machine and this place's reading is not, and "" when
+	// there is nothing to say — which is every place on a local session, and a
+	// place whose reading crosses the wire.
+	//
+	// IT IS THE PLACE'S OWN SENTENCE AND NOT THE FRAME'S, because the noun in it
+	// belongs to the place: what this machine RAN is not what this machine has
+	// LEARNED (host.go's places section holds the whole argument, and the five
+	// sentences). The frame's part is that it is read on EVERY place, ahead of
+	// [place.ownFrame], so a room that draws its own chrome cannot draw the wrong
+	// machine's rows inside it.
+	remote(a *app) string
 	// bar is a foot A THUMB CAN PRESS in place of the hint line's legend, and
 	// false where the place has none. At [tierPhone] a line naming four keys is a
 	// line naming four keys nobody has, so the way out has to be a target rather
@@ -232,6 +244,13 @@ func (placeBase) open(a *app) tea.Cmd                     { return nil }
 func (placeBase) close(a *app)                            {}
 func (placeBase) tick(a *app, now time.Time) bool         { return false }
 func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+
+// remote is NOTHING TO SAY, which is the right default in both directions: a
+// place on a local session has no other machine to name, and a place whose
+// reading crosses the wire is drawing the right machine already. A place that
+// reads THIS process's disk and has not learned to cross says its own sentence
+// (host.go's places section).
+func (placeBase) remote(a *app) string { return "" }
 func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 	return "", nil, false
 }
@@ -427,16 +446,60 @@ func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	full, spans, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
 	if ok {
 		a.tabs = spans
-		return full
+		return a.placeBarMachine(full, width, pal)
 	}
 	worth := func(id page) bool { return a.barKeeps(id) || a.placeCount(id) > 0 }
 	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
 		a.tabs = spans
-		return some
+		return a.placeBarMachine(some, width, pal)
 	}
 	alone, spans, _ := a.tabBarAt(width, numbered, pal, a.barKeeps)
 	a.tabs = spans
-	return alone
+	return a.placeBarMachine(alone, width, pal)
+}
+
+// placeMachineLead is the word in front of the machine's name at the right end
+// of the bar. It is there so that a bare `spark` in the row the seven places are
+// drawn in cannot be read as an eighth place.
+const placeMachineLead = "on "
+
+// placeBarMachine puts the MACHINE THESE PLACES ARE ABOUT at the right end of
+// the tab bar, and puts nothing there at all on a local session.
+//
+// THE PLACES FOLLOW THE SESSION'S MACHINE NOW, AND A ROOM THAT MOVED WITHOUT
+// SAYING SO WOULD BE THE SAME FAULT WALKED BACKWARDS. Home used to draw one
+// sentence saying its rows belonged to the wrong machine; it draws the right
+// machine's rows instead ([app.readWorld]) — so the thing a person cannot see
+// any more is WHOSE work they are reading, and the fix is a name rather than a
+// sentence, because it is true on every frame of every place rather than in one
+// state of one of them.
+//
+// IT IS [app.host] AND NOT A SECOND SPELLING OF IT. The status line's place
+// segment writes `spark:app`, /status writes `spark:/srv/code/app`, and the
+// legend under the input writes `spark · porting the parser` — three renderings
+// of one field, which host.go's header states as the law that the connection is
+// shown as the place and nowhere else. This is the fourth, and it is the machine
+// alone because a place is a listing of a whole disk rather than of one
+// workspace.
+//
+// AND IT DISAPPEARS COMPLETELY ON A LOCAL SESSION, which is the test host.go
+// holds every indicator to: it is invisible when there is nothing to say. It
+// also gives up its cells before the bar gives up a word — the places are what
+// the row is for, and a name that pushed `search` off the end would be telling
+// somebody about a machine instead of about their own rooms.
+func (a *app) placeBarMachine(bar string, width int, pal palette) string {
+	name := strings.TrimSpace(a.host)
+	if name == "" {
+		return bar
+	}
+	word := placeMachineLead + name
+	used, room := ansi.StringWidth(bar), ansi.StringWidth(word)
+	// tabLead's worth of air at each end, and tabGap between the last chip and
+	// the name, so the row breathes the way every other row of this bar does.
+	if used+tabGap+room+tabLead > width {
+		return bar
+	}
+	return bar + strings.Repeat(" ", width-used-room-tabLead) + pal.dim(word)
 }
 
 // barKeeps is the word the ladder may never give up: the place you are standing
@@ -743,6 +806,19 @@ func (a *app) placeDraw(pl place, width, height int) ([]string, []placeHit, int,
 	// one, is what makes the strip's binding to a row true for all seven
 	// (verbstrip.go's [app.holdStrip]).
 	a.holdStrip()
+	// AND THE MACHINE IS ASKED BEFORE THE ROWS ARE, on every place and ahead of
+	// [place.ownFrame]. A place whose reading is this process's disk while the
+	// session runs somewhere else has one honest thing to draw and it is not a
+	// list; a room that took its own frame first would draw the wrong machine's
+	// rows inside its own chrome, which is exactly how the tasks place came to
+	// show a laptop's work under a server's conversation (host.go).
+	if line := pl.remote(a); line != "" {
+		return placeFrameWithBar(a, width, height,
+			func(width, room int) []placeRow {
+				return placeTeachRows(placeTeachProse(line, width, a.pal), room)
+			},
+			func(width int) (string, placeHit, bool) { return pl.bar(a, width) })
+	}
 	if lines, hits, caretX, caretY, own := pl.ownFrame(a, width, height); own {
 		return lines, hits, caretX, caretY
 	}
@@ -1245,10 +1321,10 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // is for. There is no refusal path left here to put anything back with, and each
 // place answers an empty world with its own teaching prose ([tasksTeach],
 // [standingTeach], [memoryTeaching]) rather than with a bounce. The one fact a
-// place cannot teach its way around — a session running on another machine,
-// where home's own state root belongs to the wrong disk — is drawn as a single
-// dim line in the place's body ([homeRemoteWord]), which is still the place
-// being open and saying why it is empty.
+// place cannot teach its way around — a reading that belongs to a machine this
+// process cannot see — is drawn as a single dim line in the place's body
+// ([place.remote]), which is still the place being open and saying why it is
+// empty.
 func (a *app) showPage(id page) tea.Cmd {
 	// LEAVING A PLACE IS THE LOOK, and it is the place's own `close` that writes
 	// the stamp — one call for EVERY place rather than a list of them here, which
