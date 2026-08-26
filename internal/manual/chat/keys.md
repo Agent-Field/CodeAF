@@ -1020,6 +1020,13 @@ them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold `a
 the digit. It arrives in every terminal aforge runs in, which is why the numbers are on
 `alt` rather than on `ctrl` (`ctrl+<digit>` is not something a terminal can send at all).
 
+**The numbers work from a conversation as well as from a place.** They are the one class of
+place key that does: `tab` belongs to the composer's path completion while you are typing,
+and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
+is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. A room
+that has nothing to open says so in the conversation, in the same words it would use on the
+hint line of a place.
+
 There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
 taken, and `ctrl+.` is the tasks place (`/history`). `esc` was not available either: on an idle conversation it
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third

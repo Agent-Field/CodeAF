@@ -47,7 +47,8 @@ session has tasks to come back to.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-jump straight to one, and each has commands of its own (`/home`, `/history`, `/standing`,
+jump straight to one from wherever you are standing — a place or a conversation — and each
+has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven — it is something you do to this conversation rather than
 a room in the machine.
