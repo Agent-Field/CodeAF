@@ -13,15 +13,30 @@ import (
 const memoryPlaceRows = 12
 
 const (
-	// SCREEN 2d's register: the verb first, the way out last. Its own sentence is
-	// `enter open a shelf · → verbs: fix the wording, forget it, settle it · alt+t
-	// only what was tidied · tab next place`, and the two clauses missing here are
-	// missing because the keys are: the verbs' own names live on the row's `→` strip
-	// (verbstrip.go) and `alt+t` has nothing behind it yet. A foot may not name a
-	// key that does nothing — SCREEN 3a's whole law is that nothing is drawn that is
-	// not real — so this line says what is bound and no more.
-	memoryFilterHint = "enter open a shelf · → verbs · ↑↓ move · type to filter · alt+s walk the shelves · esc close"
-	memoryEditHint   = "edit memory · enter save · esc cancel"
+	// SCREEN 1f'S FOOT, WORD FOR WORD, over the row it is drawn over — a LINE.
+	// The two letters on it are the row's `→` strip (verbstrip.go), which is where
+	// they are bound; the foot names them because 1f names them, and because the
+	// answer to "what can I do with this line" is a worse answer for leaving them
+	// out.
+	memoryLineHint = "enter " + memoryAskWord + " · e " + memoryFixWord + " · f " + memoryForgetWord
+	// AND A SHELF HEADING IS A DIFFERENT ROW WITH A DIFFERENT enter. The foot used
+	// to be one constant for every row, so on a line — where `enter` does not open
+	// a shelf — it named a key and described something else. pages.go's contract
+	// for a hint is "what the row under the cursor can be asked for".
+	memoryShelfHint = "enter open a shelf · type to filter · alt+s walk the shelves"
+	memoryEditHint  = "edit memory · enter save · esc cancel"
+)
+
+// The words this place's own doors are spelled in, once.
+const (
+	// memoryAskWord is `enter` on a line (SCREEN 1f): the line goes into a fresh
+	// conversation and you talk about it there.
+	memoryAskWord = "ask me about it"
+	// memoryAskOpening is the sentence that carries it. THE LINE'S OWN WORDS ARE
+	// THE MESSAGE and the clause in front of them says what they are: a
+	// conversation opened with a bare belief in it reads as somebody asserting
+	// that belief, which is the opposite of asking about it.
+	memoryAskOpening = "about something you remember: "
 )
 
 // MemoryStore is the exact durable seam the memory place needs. Keeping it
@@ -560,21 +575,12 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.leavePlace()
 		return nil
 	case "enter":
-		if scope, ok := p.shelfUnder(); ok {
-			p.toggleShelf(scope)
-			break
-		}
-		if memory, ok := p.choice(); ok {
-			p.expanded = memory.ID
-			// ONE QUERY, FOR ONE LINE, ON THE KEYSTROKE THAT ASKED FOR IT. The
-			// overlay asked this of every memory it had just listed; a door asks it
-			// of the one thing behind the door.
-			if _, held := p.origins[memory.ID]; !held && a.memory != nil {
-				if _, title, at, err := a.memory.MemoryProvenance(memory.ID); err == nil {
-					p.origins[memory.ID] = memoryOrigin{title: title, at: at}
-				}
-			}
-		}
+		// ONE SPELLING OF WHAT `enter` DOES HERE, and it is the interface's
+		// ([placeMemory.enter]). This arm held a second copy of it, which is how
+		// the two came to disagree about what the key opens.
+		cmd := placeMemory{}.enter(a)
+		a.touch()
+		return cmd
 	case "delete", "ctrl+d":
 		if memory, ok := p.choice(); ok && a.memory.ForgetMemory(memory.ID) == nil {
 			p.undoID, p.undoName = memory.ID, memory.Title
@@ -701,7 +707,15 @@ func (placeMemory) rowID(a *app) string {
 	return ""
 }
 
-// enter opens a shelf, or the card behind one line.
+// enter opens a shelf, or ASKS ME ABOUT A LINE (SCREEN 1f).
+//
+// The card used to be here, and it was the wrong thing behind this key. A line
+// on this page is something aforge believes about you; the useful thing to do
+// with one is to talk about it, and the design puts that on `enter` and moves
+// the card onto the row's strip, behind `c`. The conversation is started through
+// the door every other place starts one through ([app.placeTalkAbout]), so a
+// line asked about from here and a sentence typed into a place's box arrive the
+// same way.
 func (placeMemory) enter(a *app) tea.Cmd {
 	p := &a.mem
 	if scope, ok := p.shelfUnder(); ok {
@@ -712,6 +726,13 @@ func (placeMemory) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	cmd, _ := a.placeTalkAbout(memoryAskOpening + strings.TrimSpace(memory.Text))
+	return cmd
+}
+
+// openMemoryCard is the `c` verb: the line's own page — what it says, what it is
+// made of, how often it has helped, and where it was learned.
+func (p *memoryPlace) openMemoryCard(a *app, memory store.Memory) {
 	p.expanded = memory.ID
 	// ONE QUERY, FOR ONE LINE, ON THE KEYSTROKE THAT ASKED FOR IT. The overlay
 	// asked this of every memory it had just listed; a door asks it of the one
@@ -721,7 +742,6 @@ func (placeMemory) enter(a *app) tea.Cmd {
 			p.origins[memory.ID] = memoryOrigin{title: title, at: at}
 		}
 	}
-	return nil
 }
 
 // verbs is this place's `→` strip, and it closes a real bug: `u` (undo a forget)
@@ -738,6 +758,14 @@ func (placeMemory) verbs(a *app) []verb {
 	// anything to forget ([memoryPlace.choice] answers only on a line).
 	if memory, ok := p.choice(); ok {
 		verbs = append(verbs,
+			// THE CARD IS THE FIRST VERB BECAUSE IT IS THE ONE THAT ONLY LOOKS.
+			// `enter` opens a conversation about this line now (SCREEN 1f), and the
+			// card came here rather than being dropped: where a line was learned is
+			// the fact somebody wants when they doubt it.
+			verb{key: 'c', word: memoryCardWord, do: func() tea.Cmd {
+				p.openMemoryCard(a, memory)
+				return nil
+			}},
 			verb{key: 'e', word: memoryFixWord, do: func() tea.Cmd {
 				box := editor{}
 				box.setText(memory.Text)
@@ -806,11 +834,20 @@ func (placeMemory) note(a *app, width int) []string {
 	return []string{" " + a.pal.dim(fit(a.mem.footer, width-2))}
 }
 
+// hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR (pages.go's
+// [place.hint]), which on this place is two different sentences: a shelf heading
+// unrolls and a line is talked about.
 func (placeMemory) hint(a *app) string {
 	if a.mem.edit != nil {
 		return memoryEditHint
 	}
-	return memoryFilterHint
+	if _, ok := a.mem.shelfUnder(); ok {
+		return memoryShelfHint
+	}
+	if _, ok := a.mem.choice(); ok {
+		return memoryLineHint
+	}
+	return memoryShelfHint
 }
 
 func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }

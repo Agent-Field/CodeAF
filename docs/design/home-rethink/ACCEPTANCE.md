@@ -50,7 +50,7 @@ and looks exactly like a surface that cannot read the disk.
 | 1g | typing offers places | **matches** — the place ranks first (nearest the box in an inverted column) and its margin says what is behind it |
 | 2b | home on the scale, seven places, global composer | **matches** |
 | 2c | spend | **matches** — the role column is the crew binding, models wear the word a person says, and `what it was for` names what it was for. One deviation stays and is flagged below: only the conversation slot can be asked about on this surface, so no `unbound` row is drawn |
-| 2d | memory at scale | **matches** at this scale; the design's `wants your eye` and `gaps it knows it has` blocks are **not built** (FIDELITY has no mechanism behind either) |
+| 2d | memory at scale | **matches** at this scale, item 5 included (`enter` on a line is `ask me about it`, the card behind `→ c`); the design's `wants your eye` and `gaps it knows it has` blocks are **not built** (FIDELITY has no mechanism behind either) |
 | 2f | standing, and how much rope | **matches** — three rope states, the design's mechanism, the word `trust` per FIDELITY's flagged deviation |
 | 3b | the map | **matches**, as `alt+.` rather than a held modifier — FIDELITY's first flagged deviation |
 | 3c | the verb strip | **matches** — the strip is drawn under the row it acts on and pushes the list down by its own height |
@@ -428,12 +428,19 @@ shelves · biggest first                              fact 4 · preference 3 · 
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  › say what you want done                                                                              here ~/aforge-v2
- enter open a shelf · → verbs · ↑↓ move · type to filter · alt+s walk the shelves · tab next place · esc close
+ enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc close
 ```
 
 **Matches at this scale.** Shelves biggest first, the biggest one open and the rest rolled
 up, the kind legend on the section line, the counts exact, `▸ 1 more, on this shelf`, and
 the foot naming every key that is real.
+
+**Item 5 is built now, and the foot moved with it.** `enter` on a LINE is `ask me about it`
+— the line opens a fresh conversation as its first message — and the card it used to open in
+place is on the row's `→` strip behind `c`. The foot follows the row under the cursor, as
+pages.go's contract for a hint has always asked: the shelf heading drawn above gets the line
+in the frame, and a line gets 1f's own sentence,
+`enter ask me about it · e fix the wording · f forget it`.
 
 **Fixed in this lane, twice.** The kind ran straight into the title — a line read
 `· not tabscorrection`, two facts glued into a word that is neither — and now takes the

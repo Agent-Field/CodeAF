@@ -229,6 +229,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I edit a memory", "what-i-remember"},
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
+		// SCREEN 1f's own verb, asked the three ways somebody meets it: from the
+		// foot they are reading, from the key they just pressed, and from what
+		// they wanted to do with the line in front of them.
+		{"ask me about it", "what-i-remember"},
+		{"what does enter do on a memory line", "what-i-remember"},
+		{"talk about something you remember about me", "what-i-remember"},
 		{"why did my memories get merged", "what-i-remember"},
 		{"does it clean up old memories", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},

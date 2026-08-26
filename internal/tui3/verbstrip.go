@@ -285,6 +285,7 @@ func (a *app) rowVerbs() []verb {
 // spelled here, and the two home already had are borrowed from its own legend
 // rather than written a second time.
 const (
+	memoryCardWord   = "open the card"
 	memoryFixWord    = "fix the wording"
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
