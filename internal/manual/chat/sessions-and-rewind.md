@@ -536,6 +536,11 @@ the section on two terminals in the same folder.
 **Yes, you can run more than one aforge at once in the same workspace.** Each gets its own
 conversation file. What they cannot do is share one.
 
+That is true of conversations on **this** machine, and it is the opposite of what happens
+over `--host`: a conversation on another machine is held by a process over there and your
+terminals attach to it, so two windows really can share one. The keyboard follows the
+newest of them and the rest keep watching — *Staying on that machine* is the page for it.
+
 Opening a journal takes a non-blocking exclusive lock on the file before anything is
 replayed, so the second window fails at the door rather than paying for a replay it cannot
 use. But it does not fail *you*. The second launch quietly names a new session file, opens

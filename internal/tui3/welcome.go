@@ -577,6 +577,12 @@ func (a *app) welcomeHolds() bool {
 		a.shelf.open || a.connPanel.open {
 		return false
 	}
+	// AND A WATCHER HAS NO BOX TO PUT INSIDE THE GREETING (watching.go): the
+	// line that stands in its place belongs at the foot of the frame with the
+	// rest of what has taken that position.
+	if a.watching() {
+		return false
+	}
 	return true
 }
 

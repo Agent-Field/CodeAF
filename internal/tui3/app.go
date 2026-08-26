@@ -1217,6 +1217,10 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when the ambient side is off.
 	link LinkSeam
+	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
+	// door home is reached from a register with no box on the frame
+	// (watching.go's [app.watchKey]). It is zero everywhere else.
+	watchSpaces int
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
 	// is every frame of a conversation nobody has pressed the chord in.
@@ -2030,7 +2034,8 @@ func (a *app) Init() tea.Cmd {
 	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
 	// the seam saying there is no far machine to have a waiting room.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
-		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), tea.RequestBackgroundColor}
+		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3069,6 +3074,17 @@ func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one event off it, and the stream ending.
 		return a, a.errandUpdate(msg)
 
+	case followingMsg:
+		// A turn some other window on this conversation started (watching.go).
+		// It is drawn by the code that draws every turn.
+		return a, a.followTurn(msg)
+
+	case drivingMsg:
+		// The keyboard moved, and nothing on this machine did it (watching.go).
+		// The frame that follows draws a composer or the watcher's line, and the
+		// wait re-arms itself.
+		return a, a.drivingMoved(msg)
+
 	case heldMsg:
 		// The far machine's waiting room, answered. Each question is redrawn
 		// through the door its live twin comes through, and a kind this build
@@ -3320,14 +3336,26 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	if msg.ch == nil || a.stream != nil {
 		return nil
 	}
+	return a.takeStream(msg.ch)
+}
+
+// takeStream is the surface taking up one turn's events: the generation, the
+// stream, the working state and the clock.
+//
+// IT IS ITS OWN FUNCTION BECAUSE THERE ARE TWO WAYS INTO A TURN NOW. One is the
+// submit this window made; the other is a turn some OTHER window on the same
+// conversation started, which reaches here through watching.go's [Following].
+// Both are the same turn drawn by the same code, and the day those two spellings
+// drift is the day a watched turn looks different from a typed one.
+func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 	a.gen++
-	a.stream = msg.ch
+	a.stream = ch
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
 	a.awaited = time.Now()
 	a.startClock()
-	return tea.Batch(waitEvent(msg.ch, a.gen), a.wake())
+	return tea.Batch(waitEvent(ch, a.gen), a.wake())
 }
 
 // event folds one session event into the conversation and waits on the stream

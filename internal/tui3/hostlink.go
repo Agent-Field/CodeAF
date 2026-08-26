@@ -87,6 +87,40 @@ type LinkSeam struct {
 	// answer" are different facts, and a surface that drew the second as the
 	// first would be quietly telling a person there is nothing to answer.
 	Held func() ([]HeldQuestion, error)
+
+	// Driving is who holds the keyboard on this conversation, as the machine
+	// running it last said. Nil is a surface with no room to share.
+	//
+	// IT IS ASKED ON THE DRAW PATH and must answer from what is already held,
+	// under [LinkSeam.Note]'s law and for the same reason: the answer is a field
+	// a frame already delivered, with nothing on the wire behind it.
+	Driving func() Driving
+
+	// DrivingChanged is closed the next time that answer moves.
+	//
+	// IT IS THE ONE ASYNC FACT THIS SURFACE HAS NO OTHER ROAD FOR. A hand-over
+	// happens because somebody attached on ANOTHER MACHINE — no keystroke, no
+	// stream event — and a surface waiting for something to happen here would
+	// keep a composer on screen until the person next touched it. So it is a
+	// channel a command can block on (watching.go's [app.watchDriving]), the
+	// way a turn's events are.
+	DrivingChanged func() <-chan struct{}
+
+	// Follow is the turns some OTHER window on this conversation started.
+	//
+	// A WINDOW THAT IS NOT TYPING IS STILL WATCHING THE WORK, and the work is a
+	// turn somebody started somewhere else. Without this a watcher's frame goes
+	// quiet the moment the other machine sends a message — which is the whole
+	// promise of staying attached, unkept. The channel hands over the turn's
+	// own event channel, so the surface draws it with the code that draws every
+	// turn (watching.go's [app.watchFollowing]).
+	Follow func() <-chan Following
+
+	// Take asks for the keyboard back. One round trip, never a reconnect, and
+	// the far end does not refuse it — a person pressing enter on their own work
+	// has said the only thing that needs saying. Its error is a link that is
+	// down or an engine that did not answer, and it is SHOWN.
+	Take func() error
 }
 
 // HeldQuestion is one card raised while no window was attached to the

@@ -563,9 +563,13 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// hostlink.go says where; what this door owes is the answer, and the
 		// client has answered all three since the wire grew them.
 		Link: tui3.LinkSeam{
-			Note:   seams.Link,
-			Notice: seams.Notice,
-			Held:   hostHeld(seams),
+			Note:           seams.Link,
+			Notice:         seams.Notice,
+			Held:           hostHeld(seams),
+			Driving:        hostDriving(seams),
+			DrivingChanged: seams.DrivingChanged,
+			Take:           seams.Take,
+			Follow:         hostFollow(seams),
 		},
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
@@ -632,7 +636,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 // session can know it. Zero says nothing at all, by the emptiness law.
 func hostEntryNotice(welcome remote.Welcome) string {
 	said := strings.TrimSpace(welcome.Note)
-	attached := hostAttachedNote(welcome.Attached)
+	attached := hostAttachedNote(welcome.Attached, welcome.Driver.Yours)
 	switch {
 	case said == "":
 		return attached
@@ -643,15 +647,32 @@ func hostEntryNotice(welcome remote.Welcome) string {
 	}
 }
 
-func hostAttachedNote(attached int) string {
+// hostAttachedNote is who else is here, and — since the room got one keyboard —
+// what arriving did to them.
+//
+// THE SECOND HALF IS OWED TO THE OTHER WINDOW'S PERSON. Opening this
+// conversation here has just taken the keyboard off whatever window was holding
+// it (internal/remote's driver.go), and the person who did it is the only one
+// who can be told why the screen over there changed. `typing is here now` is the
+// same fact the watcher's own line says from the other side, in the same words.
+//
+// A window that arrived WITHOUT the keyboard — a link coming back to a
+// conversation somebody has walked to since — says only who is here, because it
+// took nothing.
+func hostAttachedNote(attached int, driving bool) string {
+	who := ""
 	switch {
 	case attached <= 0:
 		return ""
 	case attached == 1:
-		return "another window is on this conversation"
+		who = "another window is on this conversation"
 	default:
-		return fmt.Sprintf("%d other windows are on this conversation", attached)
+		who = fmt.Sprintf("%d other windows are on this conversation", attached)
 	}
+	if driving {
+		who += " — typing is here now"
+	}
+	return who
 }
 
 // hostSeams is what a remote connection can tell the surface, in the wire's own
@@ -677,10 +698,63 @@ type hostSeams struct {
 	// surface replays each one's event through the door it already draws live
 	// cards with.
 	Held func() ([]remote.HeldQuestion, error)
+	// Driving is who holds the keyboard on this conversation, DrivingChanged is
+	// closed the next time that moves, and Take asks for it back. They are the
+	// three halves of one fact — a conversation with more than one window on it
+	// has exactly one that can type (internal/remote's driver.go) — and they are
+	// listed here beside the others because they are the same kind of thing: what
+	// a connection can tell the surface about itself.
+	Driving        func() remote.Driver
+	DrivingChanged func() <-chan struct{}
+	Take           func() error
+	// Follow is the turns started by another window on this conversation, so a
+	// window that is not typing is still a window onto the work.
+	Follow func() <-chan remote.Following
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
-	return hostSeams{Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions}
+	return hostSeams{
+		Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions,
+		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
+		Follow: client.Follow,
+	}
+}
+
+// hostDriving is who holds the keyboard in the SURFACE's shape, for
+// [hostHeld]'s reason: internal/tui3 does not import internal/remote, so the
+// one translation there is happens here, at the door, where both halves are
+// already in scope.
+// hostFollow is the same translation for the turns this window did not start.
+// The channel itself is remade, one element at a time, because the surface's
+// [tui3.Following] is its own type for [hostHeld]'s reason.
+func hostFollow(seams hostSeams) func() <-chan tui3.Following {
+	if seams.Follow == nil {
+		return nil
+	}
+	var once sync.Once
+	var out chan tui3.Following
+	return func() <-chan tui3.Following {
+		once.Do(func() {
+			out = make(chan tui3.Following)
+			go func() {
+				for turn := range seams.Follow() {
+					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
+				}
+				close(out)
+			}()
+		})
+		return out
+	}
+}
+
+func hostDriving(seams hostSeams) func() tui3.Driving {
+	if seams.Driving == nil {
+		return nil
+	}
+	return func() tui3.Driving {
+		note := seams.Driving()
+		return tui3.Driving{Yours: note.Yours, Machine: note.Machine, Here: note.Here}
+	}
 }
 
 // hostHeld is the waiting room in the SURFACE's shape.

@@ -879,6 +879,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did pressing alt+enter not send my task straight away", "places"},
 		{"how much money can a task spend before it stops and asks me", "tasks"},
 		{"how do I set a spend limit on a task before I send it", "tasks"},
+
+		// The wave that gave the room one keyboard. Two windows on one hosted
+		// conversation used to race each other in silence; now the newest one
+		// types and the rest watch. These are the sentences somebody types with a
+		// composer that has just turned into a line they did not ask for — and
+		// the ones they type at the OTHER window, wondering what it did.
+		{"someone else is typing", "staying-on-that-machine"},
+		{"why can't I type", "staying-on-that-machine"},
+		{"two terminals on the same chat", "staying-on-that-machine"},
+		{"take over the keyboard", "staying-on-that-machine"},
+		{"my input box turned into one line", "staying-on-that-machine"},
+		{"what does typing from now mean", "staying-on-that-machine"},
+		{"can two windows share one conversation", "staying-on-that-machine"},
+		{"how do I get the keyboard back", "staying-on-that-machine"},
+		{"is my draft lost when the other window takes over", "staying-on-that-machine"},
+		{"does the other window see the turn I started", "staying-on-that-machine"},
+		{"what happens to the keyboard when a window closes", "staying-on-that-machine"},
+		{"my window came back and now I cannot type", "when-the-connection-drops"},
+		{"it says the keyboard is on another machine", "staying-on-that-machine"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -100,7 +100,9 @@ func (s *server) submitFiles(call Frame) (json.RawMessage, error) {
 	}
 	// SubmitImage with no pictures IS Submit (internal/session's image.go says
 	// so in as many words), so one door answers both shapes of this message.
-	return s.stream(agent.SubmitImage(context.Background(), AttachedSentence(args.Text, kept), images))
+	said := AttachedSentence(args.Text, kept)
+	events, err := agent.SubmitImage(context.Background(), said, images)
+	return s.stream(said, events, err)
 }
 
 // keep writes every arriving file into this session's attachments and answers
