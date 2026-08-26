@@ -1,6 +1,9 @@
 package manual
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
 //
@@ -817,6 +820,44 @@ func TestTheTwoCorporaShareNoPageName(t *testing.T) {
 	for _, name := range Chat().Pages() {
 		if resident[name] {
 			t.Errorf("page %q exists in both the resident and chat manuals", name)
+		}
+	}
+}
+
+// EVERY PLACE OPENS, ALWAYS — AND NO PAGE MAY SAY OTHERWISE.
+//
+// The three gates around this corpus check that a name is MENTIONED. None of
+// them can see whether the sentence around the name is true, and that is how a
+// wave which made three refusals impossible shipped with three pages still
+// stating them: `tab` skipping a shut room, a place asked for by name saying why
+// it will not open, and `ctrl+.` doing nothing on a machine that has run
+// nothing. The pages are the only thing the model knows about this program, so
+// on a fresh machine it told people that the key they had just been given did
+// nothing — the exact experience the wave was built to end.
+//
+// This is the truth-side gate for the one claim that was retired: a place
+// refusing. Each phrase below shipped in the corpus and each is now false of the
+// code — nextPage walks the order table unconditionally, showPage has no refusal
+// path left in it, and both doors onto the tasks place are the same door.
+//
+// IT IS A SHORT LIST ON PURPOSE. A gate that tried to read English would fail
+// on the pages that tell the story of the retired refusal, which several
+// deliberately do; these are the sentences that ASSERTED it.
+func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
+	retired := []string{
+		"goes past a place that has nothing to open",
+		"Two rooms can be shut",
+		"still says why\nit will not open",
+		"Does nothing when nothing has run",
+		"A room\nthat has nothing to open says so in the conversation",
+		"and open nothing.",
+	}
+	for _, section := range Chat().Sections() {
+		for _, phrase := range retired {
+			if strings.Contains(section.Body, phrase) {
+				t.Errorf("%s · %q still says a place can refuse to open: %q",
+					section.Page, section.Title, phrase)
+			}
 		}
 	}
 }

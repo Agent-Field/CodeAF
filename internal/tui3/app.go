@@ -5260,21 +5260,20 @@ func (a *app) slash(line string) tea.Cmd {
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every
 		// conversation's before it, across every project (place_tasks.go). It is
-		// NOT spelled /tasks: the
-		// three /task rows all mean give aforge work, and a plural among them was a
-		// command that answered the muscle memory for starting one (commands.go
-		// says it at more length). It refuses on a machine that has
-		// run nothing rather than raising a page with a title and nothing under it
-		// — the emptiness law reaches modals — and it says so, because a command
-		// typed on purpose that answers with silence reads as a command that broke.
+		// NOT spelled /tasks: the three /task rows all mean give aforge work, and a
+		// plural among them was a command that answered the muscle memory for
+		// starting one (commands.go says it at more length).
 		//
-		// It arms the read as well as opening the page: the record is a file, and a
-		// session whose "@" list has never been opened has never paid for it
-		// (taskmention.go's [app.loadTasks]). Both doors onto the page go through
-		// one function, because a bare /task opens it too (taskcommand.go) — and it
-		// is that function rather than [app.showPage] because a COMMAND refuses on
-		// an empty machine where the TAB BAR walks in and is taught
-		// (place_tasks.go's [app.openTaskPage] states the difference).
+		// IT OPENS ON A MACHINE THAT HAS RUN NOTHING, exactly as the tab bar does.
+		// The command used to refuse there, on the argument that a page with a
+		// title and nothing under it is the emptiness law broken — and what the
+		// page draws with nothing under it is three sentences saying what tasks are
+		// ([tasksTeach]), which is an answer. Every door onto this place is the one
+		// door now.
+		//
+		// Both commands go through one function, because a bare /task opens it too
+		// (taskcommand.go), and two copies of that line are two ways for one place
+		// to differ from itself.
 		return a.openTaskPage()
 
 	case "status":
