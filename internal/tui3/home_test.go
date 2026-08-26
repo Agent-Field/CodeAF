@@ -135,6 +135,12 @@ func (l *homeLab) app(standing string) *app {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	a.homeRoot = l.root
+	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
+	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
+	// [UsageLedgerPath]), so a lab that left it empty had the spend place read
+	// the developer's real ~/.aforge — and a test about an empty spend place
+	// went red the first time anything on the machine cost a cent.
+	a.usageLedger = filepath.Join(l.root, session.UsageLedgerName)
 	a.file = standing
 	a.resume = func(string) (Agent, error) { return &fakeAgent{model: "m"}, nil }
 	// AND THE WHOLE SEAM, because home is the switcher: enter on another
