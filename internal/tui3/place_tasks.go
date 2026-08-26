@@ -623,6 +623,17 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 // starting a second walk of the disk — which is the law this place is built on
 // (tasksplace.go's header) restated where it would be easiest to break.
 func (p *tasksPlace) window(a *app, key string) bool {
+	// A KEY IS BOUND ONLY WHERE THE HALF OF THE CONTROL NAMING IT IS DRAWN, which
+	// is the one predicate standing and spend ask as well (placeprose.go's
+	// [placeWindowFits]).
+	width, _ := a.size()
+	arrows, grain := placeWindowFits(width, p.reading.head(false), p.reading.win)
+	if !arrows {
+		return false
+	}
+	if (key == "shift+up" || key == "shift+down") && !grain {
+		return false
+	}
 	before := p.reading.win
 	next := p.reading.step(before, key)
 	if next == before {

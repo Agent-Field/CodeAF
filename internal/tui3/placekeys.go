@@ -136,10 +136,12 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":
 		// TIME IS TWO AXES AND FOUR KEYS (SCREEN 3d): ←→ moves the window this
-		// place is showing, ↑↓ changes how coarse it is. No place has a window
-		// yet — the records that would give tasks, standing and spend one are
-		// another lane's — so the hook exists, every place answers false, and the
-		// keys do nothing rather than doing something undrawn.
+		// place is showing, ↑↓ changes how coarse it is. Three places have one —
+		// tasks (when it ran), standing (when it fired) and spend (which days) —
+		// and each of them draws the control on its own head row, through the one
+		// helper they share (placeprose.go's [placeHeadRow]). A place with no
+		// window, and a frame too narrow to draw the control, both answer false,
+		// so the keys do nothing rather than doing something undrawn.
 		if a.placeWindow(key) {
 			a.touch()
 			return nil, true

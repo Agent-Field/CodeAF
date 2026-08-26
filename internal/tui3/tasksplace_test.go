@@ -70,8 +70,14 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 		}
 		last = at
 	}
-	if !strings.Contains(page, "work aforge ran on its own. 14 since aug 2, $34.10 of it.") {
+	if !strings.Contains(page, "work aforge ran on its own. 14, $34.10 of it.") {
 		t.Fatalf("header did not count the window and its known spend:\n%s", page)
+	}
+	// AND THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), exactly as
+	// standing and spend draw it. This place bound all four arrow keys and drew
+	// nothing naming them for three waves.
+	if !strings.Contains(page, "shift+← aug 2 – aug 25 →") {
+		t.Fatalf("the tasks head line draws no window control:\n%s", page)
 	}
 	if !strings.Contains(page, tokens.GlyphNeedsHuman+" verify the pro model's pricing") {
 		t.Fatalf("the row needing a look did not wear %q:\n%s", tokens.GlyphNeedsHuman, page)
@@ -82,7 +88,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	// THE WINDOW'S EDGE IS SAID ONCE, in the sentence the page opens on. It used
 	// to be repeated on a fold at the foot of every section, which is one number
 	// in four places and exactly the drift the one-source-of-truth law forbids.
-	if n := strings.Count(page, "aug 2"); n != 1 {
+	if n := strings.Count(page, "aug 2 "); n != 1 {
 		t.Fatalf("the window's edge is spelled %d times, want once:\n%s", n, page)
 	}
 }

@@ -775,8 +775,10 @@ answer two different questions and neither is a correction of the other.
 `alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
-- **the window and its total** — `aug 12 – aug 25 · $34.10 · 41.2M tokens` — with a sparkline
-  under it, one cell per day, and today's figure at the right;
+- **the window and its total** — `$34.10 · 41.2M tokens` on the left of the head row and the
+  window itself at the right, as the control `shift+← aug 12 – aug 25 →` with `shift+↑
+  coarser` beside it — then a sparkline under it, one cell per day, and today's figure at the
+  right. The span is spelled once, between the arrows;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
   a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
@@ -821,7 +823,10 @@ Time is two questions, so it gets two arrow axes and no letters:
 | `shift+↓` | finer, the exact inverse |
 
 The window opens on **the last 14 days, by the day**. The label between the arrows is the
-reading and the control at once. A week buckets from Monday; there is no year rung, because a
+reading and the control at once, and the same head row is drawn on the tasks place and the
+standing place. A terminal too narrow to draw the control has no window there at all — the
+keys do nothing rather than moving something nothing on screen reports — and the zoom keys
+are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a
 window of years is a question about a machine older than this program.
 
 Moving the window costs nothing on disk: the lines are already in memory, so a fortnight back

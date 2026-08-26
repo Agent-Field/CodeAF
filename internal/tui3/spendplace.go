@@ -293,19 +293,58 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	return out, stops
 }
 
+// windowHeaderRow is what the window came to on the left and the window itself
+// on the right, drawn by the one head row every place with a time window shares
+// ([placeHeadRow], placeprose.go).
+//
+// THE SPAN IS SAID ONCE, AND IT IS SAID BETWEEN THE ARROWS. It used to lead the
+// left field — `aug 12 – aug 25 · $5.94 · 1.1M tokens` — while the right field
+// named the keys without the span, so the label a person moves and the label
+// they read were two different runs of one line. SCREEN 3d says which of the two
+// is right: "the label between the arrows is the control and the reading at
+// once". So the left is the FIGURES, which is what the window came to, and the
+// control carries the dates.
+//
+// A FRAME TOO NARROW FOR THE CONTROL DRAWS THE FIGURES ALONE, and the arrows do
+// nothing there — one predicate answers the paint and the keys.
 func (r spendReading) windowHeaderRow(width int, pal palette) string {
+	return placeHeadRow(width, spendHeadWords(r.totals), r.paintedHead(pal), r.window, pal)
+}
+
+// spendHeadWords is the head line's LEFT FIELD — what the window came to — as
+// plain text, and [spendReading.paintedHead] is the same list in its own inks.
+// They are built from one sequence so the measured line and the drawn line
+// cannot come apart on a narrow frame.
+//
+// THE SPAN IS NOT IN IT. It used to lead this field — `aug 12 – aug 25 · $5.94 ·
+// 1.1M tokens` — while the right of the row named the four keys without saying
+// what they were moving, so the label a person moves and the label they read
+// were two different runs of one line. SCREEN 3d settles it: "the label between
+// the arrows is the control and the reading at once".
+func spendHeadWords(totals session.DaySpend) string {
+	var parts []string
+	if totals.USD > 0 {
+		parts = append(parts, spendMoneyWord(totals.USD))
+	}
+	if totals.Tokens > 0 {
+		parts = append(parts, tokenWord(totals.Tokens)+" tokens")
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (r spendReading) paintedHead(pal palette) string {
 	var left strings.Builder
-	left.WriteString(pal.ink(r.window.Label()))
 	if r.totals.USD > 0 {
-		left.WriteString(pal.dim(" · "))
 		left.WriteString(placeMoneyInk(pal)(spendMoneyWord(r.totals.USD)))
 	}
 	if r.totals.Tokens > 0 {
-		left.WriteString(pal.dim(" · "))
+		if left.Len() > 0 {
+			left.WriteString(pal.dim(" · "))
+		}
 		left.WriteString(pal.data(tokenWord(r.totals.Tokens)))
 		left.WriteString(pal.dim(" tokens"))
 	}
-	return spendSides(width, left.String(), "shift+←→ window · shift+↑ coarser", func(s string) string { return s }, pal.dim)
+	return left.String()
 }
 
 func (r spendReading) sparkline() string {
