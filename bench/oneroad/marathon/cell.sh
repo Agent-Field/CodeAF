@@ -80,9 +80,9 @@ SILENCE_SECONDS="${SILENCE_SECONDS:-900}"
 # written into the record where it cannot be missed.
 NETLOCK="${NETLOCK:-1}"
 NETLOCK_REFRESH="${NETLOCK_REFRESH:-30}"
-# PIN_TOOLCHAIN=1 fixes the agent's rustc to the one the image shipped. See
-# "The toolchain" below for why the shared RUSTUP_HOME alone is not enough.
-PIN_TOOLCHAIN="${PIN_TOOLCHAIN:-1}"
+# THERE IS NO TOOLCHAIN PIN, DELIBERATELY — see "The toolchain" below. The agent
+# may upgrade its compiler exactly as it may officially, and everything that
+# compiles this cell's workspace afterwards adopts whatever it chose.
 POLL="${POLL:-15}"
 SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-3600}"
 
@@ -138,7 +138,7 @@ WORKDIR="$(docker image inspect -f '{{.Config.WorkingDir}}' "$IMAGE")"
 IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
 TASK_COMMIT="$(git -C "$MARATHON_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
 
-# ── the toolchain: the agent's compiler is the verifier's compiler ──────────
+# ── the toolchain: one rustup state, shared with the verifier ───────────────
 #
 # THE DEFECT THIS FIXES, MEASURED. The agent is run with `HOME=/chome` so the
 # harness's dotfiles stay out of /root — but the image installs rust as root,
@@ -150,29 +150,26 @@ TASK_COMMIT="$(git -C "$MARATHON_REPO" rev-parse HEAD 2>/dev/null || echo unknow
 #   specified explicitly, and no default is configured.
 #   help: run 'rustup default stable' …
 #
-# and every model does what the help text says. On an open network that
-# downloaded a NEWER stable into /chome/.rustup, and the workspace then drifted
-# to whatever that compiler allowed: seed s6's Cargo.lock pinned url 2.5.8 →
-# idna → icu 2.3, which needs rustc 1.88. It built in the cell. It could not
-# build under `tests/test.sh`, which exports PATH=/root/.cargo/bin and runs with
-# HOME=/root — so the benchmark's own verifier scored it 0.0, and so did the
-# hourly snapshot scorer in its fresh image container. The agent was never told.
+# and every model does what the help text says. That install went to
+# /chome/.rustup, where `tests/test.sh` — PATH=/root/.cargo/bin, HOME=/root —
+# could never see it. Seed s6's Cargo.lock pinned url 2.5.8 -> idna -> icu 2.3,
+# which needs rustc 1.88; it built in the cell all day and the verifier scored it
+# 0.0 for a compiler it did not have.
 #
-# RUSTUP_HOME/CARGO_HOME point the agent at the image's store, which is the store
-# the verifier reads. That alone is what the official environment has (there the
-# agent simply runs as root with HOME=/root).
+# THE FIX IS TO RESTORE INHERITANCE, NOT TO FORBID THE UPGRADE. Officially the
+# agent runs as root with HOME=/root, task.toml's allowlist includes
+# static.rust-lang.org, and the verifier runs in the SAME container off the SAME
+# /root/.rustup — so an agent that runs `rustup default stable` is making a legal
+# move and the verifier inherits its compiler. That inheritance is what our split
+# HOME broke. It is also close to unavoidable now: lsp-types depends on url, any
+# fresh resolution today lands on url 2.5.8, and two of the six live seeds are
+# already on a 1.88+ lockfile.
 #
-# RUSTUP_TOOLCHAIN goes one step further and pins the compiler to the one the
-# image shipped. This is a DEVIATION, deliberately: the benchmark's allowlist
-# includes static.rust-lang.org, so an agent may legitimately install a newer
-# stable and — sharing /root/.rustup — the verifier would inherit it. But the
-# hourly snapshot scorer builds in a FRESH container of the image, which has only
-# the shipped toolchain, and a curve that cannot build what the cell built is a
-# curve that lies. Pinning makes all three compilers the same one. It is proven
-# to hold: with RUSTUP_TOOLCHAIN set, `rustup default stable` still installs
-# 1.98.0 and rustup itself prints "note that the toolchain '1.86.0-…' is
-# currently in use (overridden by environment variable RUSTUP_TOOLCHAIN)", and
-# `rustc --version` still answers 1.86.0.
+# So: RUSTUP_HOME and CARGO_HOME on the image's own paths, HOME still /chome for
+# the harness's dotfiles, PATH exactly tests/test.sh's. One rustup state, shared
+# by agent and verifier, precisely as officially. NOTHING IS PINNED — a pin would
+# make this runner STRICTER than the benchmark and score a legitimately upgraded
+# workspace 0.0, which is the same error in the other direction.
 IMAGE_TOOLCHAIN="$(docker run --rm --entrypoint sh "$IMAGE" -c \
   'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
 IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/dev/null' 2>/dev/null)"
@@ -180,11 +177,6 @@ IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/d
 # verifier will.
 TOOLCHAIN_PATH="/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 TOOLCHAIN_ENV="-e RUSTUP_HOME=/root/.rustup -e CARGO_HOME=/root/.cargo -e PATH=$TOOLCHAIN_PATH"
-VERIFIER_TC_ENV=""
-if [ "$PIN_TOOLCHAIN" = "1" ] && [ -n "$IMAGE_TOOLCHAIN" ]; then
-  TOOLCHAIN_ENV="$TOOLCHAIN_ENV -e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
-  VERIFIER_TC_ENV="-e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
-fi
 
 # ── the network deviation, in one string, told the same way everywhere ──────
 # record.py and verify.sh both used to carry their own hardcoded sentence about
@@ -204,7 +196,7 @@ export NETWORK_DEVIATION
 cp "$TASKDIR/instruction.md" "$CELL/prompt.txt"
 
 say "$ARM/$TASK: image=${IMAGE_ID:7:19} wd=$WORKDIR cpus=$CPUS mem=${MEM_MB}m wall=${CELL_SECONDS}s"
-say "$ARM/$TASK: toolchain=${IMAGE_TOOLCHAIN:-unknown} (${IMAGE_RUSTC:-unknown}) pinned=$PIN_TOOLCHAIN netlock=$NETLOCK"
+say "$ARM/$TASK: image toolchain=${IMAGE_TOOLCHAIN:-unknown} (${IMAGE_RUSTC:-unknown}), not pinned — netlock=$NETLOCK"
 
 # ── the container ───────────────────────────────────────────────────────────
 docker rm -f "$CONTAINER" >/dev/null 2>&1
@@ -492,15 +484,19 @@ sleep 2
 # agent actually left behind, target directory and all.
 docker cp "$TASKDIR/tests" "$CONTAINER:/tests" >/dev/null || { say "could not stage /tests"; echo INVALID > "$CELL/outcome"; }
 VSTART=$(date +%s)
-# THE VERIFIER GETS THE SAME PIN. tests/test.sh sets its own PATH and reads
-# rustup's store through HOME=/root, so it needs nothing from here to find the
-# toolchain — but if the agent ran `rustup default stable` it changed the DEFAULT
-# in the shared /root/.rustup, and the verifier would then compile with a
-# compiler the agent never used and the snapshot scorer does not have. Handing it
-# RUSTUP_TOOLCHAIN closes that last gap without editing one line of test.sh.
+# THE VERIFIER COMPILES WITH WHATEVER THE AGENT ENDED ON. For a cell run by this
+# script that is already true for free — one shared /root/.rustup, HOME=/root
+# inside test.sh — and the RUSTUP_HOME/CARGO_HOME handed over below are the
+# image's own defaults, so they change nothing. They are passed explicitly all
+# the same, because toolchain.sh's answer is the ONE place that decides which
+# store this cell's compiler lives in, and the verifier, the hourly scorer and
+# rescore.sh all have to agree with it.
+read -r AGENT_TC AGENT_RUSTUP_HOME AGENT_CARGO_HOME <<<"$(bash "$MAR/toolchain.sh" detect "$CONTAINER" 2>/dev/null)"
+AGENT_RUSTUP_HOME="${AGENT_RUSTUP_HOME:-/root/.rustup}"; AGENT_CARGO_HOME="${AGENT_CARGO_HOME:-/root/.cargo}"
+say "$ARM/$TASK: verifying with the agent's own toolchain — ${AGENT_TC:-unknown} from $AGENT_RUSTUP_HOME"
 timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
   -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" \
-  $VERIFIER_TC_ENV \
+  -e "RUSTUP_HOME=$AGENT_RUSTUP_HOME" -e "CARGO_HOME=$AGENT_CARGO_HOME" \
   "$CONTAINER" bash /oneroad-verify.sh \
   > "$CELL/verify.log" 2>&1
 VCODE=$?
@@ -516,7 +512,8 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
 AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
-IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" PIN_TOOLCHAIN="$PIN_TOOLCHAIN" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
+AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="$CELL_SECONDS" \
 python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" "$CODE" "$VWALL" "$VCODE"
 cleanup

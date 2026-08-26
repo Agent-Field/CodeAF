@@ -99,21 +99,28 @@ fi
 export NETWORK_DEVIATION
 say "$ARM/$TASK: network was — $NETWORK_DEVIATION"
 
-VERIFIER_TC_ENV=""
-SPLIT_TOOLCHAIN="$(docker exec "$CONTAINER" sh -c 'ls -d /chome/.rustup/toolchains 2>/dev/null' 2>/dev/null)"
-IMAGE_TOOLCHAIN="$(docker exec "$CONTAINER" sh -c 'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
-IMAGE_RUSTC="$(docker exec "$CONTAINER" sh -c 'rustc --version 2>/dev/null' 2>/dev/null)"
-if [ -n "$SPLIT_TOOLCHAIN" ]; then
-  say "$ARM/$TASK: this cell had a SPLIT toolchain (/chome/.rustup exists) — verifying unpinned, as the benchmark would"
-  PIN_TOOLCHAIN=0
-elif [ "${PIN_TOOLCHAIN:-1}" = "1" ] && [ -n "$IMAGE_TOOLCHAIN" ]; then
-  VERIFIER_TC_ENV="-e RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN"
-  PIN_TOOLCHAIN=1
-fi
+# ── THE COMPILER THIS CELL'S AGENT ENDED ON, WHEREVER IT PUT IT ─────────────
+# Officially the agent may upgrade its toolchain and the verifier, sharing
+# /root/.rustup in the same container, inherits it. Cells launched before the fix
+# upgraded into /chome/.rustup instead, where the verifier could not see it —
+# which is the runner's fault, not the agent's, and the official-equivalent state
+# is "the agent upgraded". So the verifier is pointed at whatever store this
+# cell's agent actually used. toolchain.sh looks at /chome first for exactly this
+# reason; for a cell run after the fix it answers /root/.rustup and these two
+# variables are the image's own defaults.
+read -r AGENT_TC AGENT_RUSTUP_HOME AGENT_CARGO_HOME <<<"$(bash "$MAR/toolchain.sh" detect "$CONTAINER" 2>/dev/null)"
+AGENT_RUSTUP_HOME="${AGENT_RUSTUP_HOME:-/root/.rustup}"; AGENT_CARGO_HOME="${AGENT_CARGO_HOME:-/root/.cargo}"
+IMAGE_TOOLCHAIN="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
+IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/dev/null' 2>/dev/null)"
+case "$AGENT_RUSTUP_HOME" in
+  /chome/*) say "$ARM/$TASK: SPLIT HOME cell — the agent's rustup store is $AGENT_RUSTUP_HOME (${AGENT_TC:-unknown}); the verifier is pointed at it, which is the state the official run would have had in /root/.rustup" ;;
+  *)        say "$ARM/$TASK: verifying with the agent's own toolchain — ${AGENT_TC:-unknown} from $AGENT_RUSTUP_HOME" ;;
+esac
 
 VSTART=$(date +%s)
 timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
-  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" $VERIFIER_TC_ENV \
+  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" \
+  -e "RUSTUP_HOME=$AGENT_RUSTUP_HOME" -e "CARGO_HOME=$AGENT_CARGO_HOME" \
   "$CONTAINER" bash /oneroad-verify.sh \
   > "$CELL/verify.log" 2>&1
 VCODE=$?
@@ -124,7 +131,8 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
 AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
-IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" PIN_TOOLCHAIN="${PIN_TOOLCHAIN:-0}" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
+AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="${CELL_SECONDS:-36000}" \
 python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCODE"
 

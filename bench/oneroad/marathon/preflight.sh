@@ -4,7 +4,8 @@
 # Usage: bash preflight.sh [task]            (default: rust-java-lsp)
 #
 # Two things about a cell are invisible from inside a run and fatal to its row:
-# WHICH COMPILER the agent is holding, and WHAT THE NETWORK REACHES. Both were
+# WHICH COMPILER the agent is holding — and whether the verifier and the hourly
+# scorer end up holding the SAME one — and WHAT THE NETWORK REACHES. Both were
 # wrong for seeds s4–s9 and neither showed up until the verifier scored 0.0 ten
 # hours later. This script builds a throwaway container exactly as cell.sh builds
 # the real one, asserts both, and prints PASS/FAIL for each.
@@ -26,7 +27,10 @@ bad()  { printf '  FAIL  %s\n' "$*"; FAIL=$((FAIL + 1)); }
 note() { printf '        %s\n' "$*"; }
 head_() { printf '\n== %s ==\n' "$*"; }
 
-cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1; }
+cleanup() {
+  docker rm -f "$CONTAINER" "$CONTAINER-scorer" >/dev/null 2>&1
+  docker volume rm "$CONTAINER-rustupvol" >/dev/null 2>&1
+}
 trap cleanup EXIT INT TERM
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "no image $IMAGE"; exit 2; }
@@ -42,7 +46,11 @@ note "toolchain : ${IMAGE_TOOLCHAIN:-<none>}"
 # The cell's own strings, copied from cell.sh rather than reinvented here.
 TOOLCHAIN_PATH="/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 AGENT_ENV=(-e HOME=/chome -e RUSTUP_HOME=/root/.rustup -e CARGO_HOME=/root/.cargo
-           -e "PATH=$TOOLCHAIN_PATH" -e "RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN")
+           -e "PATH=$TOOLCHAIN_PATH")
+# The verifier's environment is tests/test.sh's own: HOME=/root (docker's default
+# for this image), that PATH, and NOTHING from the agent's exec. If the agent's
+# compiler and this one ever differ, a cell can build what the benchmark cannot.
+VERIFIER_ENV=(-e "PATH=$TOOLCHAIN_PATH")
 
 head_ "a throwaway cell"
 docker rm -f "$CONTAINER" >/dev/null 2>&1
@@ -115,24 +123,60 @@ if grep -q 'Finished' /tmp/pf-build.$$; then ok "a crate with a registry depende
 else bad "cargo build failed under the allowlist"; sed 's/^/        /' /tmp/pf-build.$$; fi
 rm -f /tmp/pf-build.$$
 
-head_ "5. what the agent installs cannot change what the agent compiles with"
-# static.rust-lang.org is ON the benchmark's allowlist and shares a Fastly
-# address with the crate registries, so an address-based allowlist cannot refuse
-# it — and refusing it would deviate from task.toml anyway. The guarantee that
-# matters is therefore not "nothing can be installed" but "nothing that is
-# installed can change the compiler the verifier will also use".
-OUT="$(docker exec "${AGENT_ENV[@]}" "$CONTAINER" sh -c 'rustup default stable 2>&1' | tail -4)"
+head_ "5. an upgrade the agent makes is INHERITED, not pinned away"
+# task.toml allows static.rust-lang.org and the official agent runs as root off
+# /root/.rustup, so `rustup default stable` is a legal move — and the official
+# verifier, running in the same container, compiles with whatever the agent
+# chose. Today that matters concretely: lsp-types -> url 2.5.8 -> idna -> icu 2.3
+# needs rustc 1.88 and the image ships 1.86.0, so a cell that CANNOT upgrade is a
+# cell that cannot use the obvious crate. What must hold is not "nothing is
+# installed" but "the agent, the verifier and the scorer all end up on the same
+# compiler".
+OUT="$(docker exec "${AGENT_ENV[@]}" "$CONTAINER" sh -c 'rustup default stable 2>&1' | tail -3)"
 note "$(printf '%s' "$OUT" | tr '\n' '|')"
-INSTALLED="$(docker exec "$CONTAINER" sh -c 'ls /root/.rustup/toolchains' | tr '\n' ' ')"
-note "toolchains now installed: $INSTALLED"
-AFTER="$(docker exec "${AGENT_ENV[@]}" "$CONTAINER" sh -c 'rustc --version 2>&1' | head -1)"
-[ "$AFTER" = "$IMAGE_RUSTC" ] && ok "after 'rustup default stable', the agent's rustc is still $AFTER" \
-  || bad "after 'rustup default stable', the agent's rustc became '$AFTER'"
-AFTER="$(docker exec -e "RUSTUP_TOOLCHAIN=$IMAGE_TOOLCHAIN" "$CONTAINER" sh -c 'rustc --version 2>&1' | head -1)"
-[ "$AFTER" = "$IMAGE_RUSTC" ] && ok "and so is the verifier's, which cell.sh hands the same pin" \
-  || bad "the verifier's rustc would be '$AFTER'"
+note "toolchains installed: $(docker exec "$CONTAINER" sh -c 'ls /root/.rustup/toolchains' | tr '\n' ' ')"
 
-head_ "6. the lock survives, and re-locks itself"
+AGENT_AFTER="$(docker exec "${AGENT_ENV[@]}" "$CONTAINER" sh -c 'rustc --version 2>&1' | head -1)"
+[ -n "$AGENT_AFTER" ] && [ "$AGENT_AFTER" != "$IMAGE_RUSTC" ] \
+  && ok "the agent upgraded itself: $AGENT_AFTER (image shipped ${IMAGE_RUSTC#rustc })" \
+  || bad "the agent's rustc did not move: '$AGENT_AFTER' — an upgrade must be possible"
+
+VERIFIER_AFTER="$(docker exec "${VERIFIER_ENV[@]}" "$CONTAINER" sh -c 'rustc --version 2>&1' | head -1)"
+[ "$VERIFIER_AFTER" = "$AGENT_AFTER" ] \
+  && ok "the VERIFIER env inherits it: $VERIFIER_AFTER" \
+  || bad "the verifier would compile with '$VERIFIER_AFTER' while the agent used '$AGENT_AFTER'"
+
+read -r DET_TC DET_RH DET_CH <<<"$(bash "$MAR/toolchain.sh" detect "$CONTAINER")"
+[ -n "$DET_TC" ] && [ "$DET_RH" = "/root/.rustup" ] \
+  && ok "toolchain.sh detects '$DET_TC' from $DET_RH (cargo home $DET_CH)" \
+  || bad "toolchain.sh detected '$DET_TC' from '$DET_RH'"
+
+head_ "6. the snapshot scorer adopts the same compiler"
+# This is the path snapshot.sh and rescore.sh take: a fresh container of the
+# image, a named volume at /root/.rustup (populated from the image on first use,
+# so only the delta is downloaded), then install + default the agent's toolchain.
+SCORER="$CONTAINER-scorer"
+SCVOL="$CONTAINER-rustupvol"
+docker rm -f "$SCORER" >/dev/null 2>&1; docker volume rm "$SCVOL" >/dev/null 2>&1
+docker run -d --name "$SCORER" -v "$SCVOL:/root/.rustup" --entrypoint sleep "$IMAGE" 900 >/dev/null
+SEEDED="$(docker exec "$SCORER" sh -c 'ls /root/.rustup/toolchains' | tr '\n' ' ')"
+note "volume seeded from the image with: $SEEDED"
+SCORER_RUSTC="$(bash "$MAR/toolchain.sh" adopt "$SCORER" "$DET_TC" 2>/dev/null)"
+[ "$SCORER_RUSTC" = "$AGENT_AFTER" ] \
+  && ok "the scorer adopted it: $SCORER_RUSTC" \
+  || bad "the scorer is on '$SCORER_RUSTC', the agent on '$AGENT_AFTER'"
+# tests/test.sh sets only PATH, so this is what the scorer's verifier will see.
+SCORER_TESTSH="$(docker exec "${VERIFIER_ENV[@]}" "$SCORER" sh -c 'rustc --version 2>&1' | head -1)"
+[ "$SCORER_TESTSH" = "$AGENT_AFTER" ] \
+  && ok "and tests/test.sh's own env inside the scorer sees $SCORER_TESTSH" \
+  || bad "tests/test.sh inside the scorer would see '$SCORER_TESTSH'"
+T0="$(date +%s)"; bash "$MAR/toolchain.sh" adopt "$SCORER" "$DET_TC" >/dev/null 2>&1
+T1="$(date +%s)"
+[ $((T1 - T0)) -lt 20 ] && ok "a second adoption is cached ($((T1 - T0))s) — hourly snapshots do not re-download" \
+  || bad "a second adoption took $((T1 - T0))s — the volume is not caching"
+docker rm -f "$SCORER" >/dev/null 2>&1; docker volume rm "$SCVOL" >/dev/null 2>&1
+
+head_ "7. the lock survives, and re-locks itself"
 bash "$MAR/netlock.sh" apply "$CONTAINER" >/dev/null 2>&1
 docker exec "$CONTAINER" sh -c 'true'
 PID="$(docker inspect -f '{{.State.Pid}}' "$CONTAINER")"
