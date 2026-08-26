@@ -139,3 +139,77 @@ func TestHomeWearsNoNumberBecauseItDrawsTheNewsItself(t *testing.T) {
 // THE SEAM IS STILL AN INTERFACE, and the cache is one thing that answers it —
 // which is what keeps a test able to hand the app a tally of its own.
 var _ placeCounts = placeTally(nil)
+
+// THE BAR GOES ON COUNTING IN EVERY ROOM, AND A ROOM MAY NOT SILENCE IT.
+//
+// The numbers on the tab bar are recomputed on the places' three-second beat,
+// and that beat used to stop the moment a room answered `tick` with false —
+// which standing, tasks and settings all did. Standing on any of the three
+// froze every tab's count, including the counts of the six rooms that room has
+// nothing to do with, so whether the bar was alive depended on which room you
+// happened to be standing in.
+//
+// The count watched here is memory's, which is deliberately NOT the room the
+// test is standing in: what broke was the bar and not the room.
+func TestTheTabsGoOnCountingInEveryRoom(t *testing.T) {
+	for _, place := range everyPlaceTable() {
+		if place.id == pageHome {
+			// Home runs a beat of its own and refreshes the counts on it
+			// ([app.refreshHome]), which is why it answers the router's beat with
+			// false — a second self-re-arming chain turning behind home is the
+			// thing that answer prevents.
+			continue
+		}
+		t.Run(place.id.word(), func(t *testing.T) {
+			a := place.open(t)
+			brain := &countingBrain{}
+			brain.origins = map[string]memoryOrigin{}
+			a.agent = &rememberingAgent{}
+			a.memory = brain
+			session.NoteLookAt(a.placesRoot(), pageMemory.word(), time.Now().Add(-time.Hour))
+
+			a.refreshPlaceCounts(time.Now())
+			if got := a.placeCount(pageMemory); got != 0 {
+				t.Fatalf("the memory tab opened wearing %d", got)
+			}
+			// Something happens in the next terminal.
+			brain.learned, brain.letGo = 3, 1
+			next := a.placeBeat(a.placeGen)
+			if got := a.placeCount(pageMemory); got != 4 {
+				t.Fatalf("standing on %s, the beat left the memory tab wearing %d, want 4",
+					place.id.word(), got)
+			}
+			// AND THE BEAT COMES ROUND AGAIN. A count that moved once and then
+			// stopped is the same freeze three seconds later.
+			if next == nil {
+				t.Fatalf("standing on %s, the beat did not re-arm itself", place.id.word())
+			}
+			brain.learned, brain.letGo = 5, 2
+			a.placeBeat(a.placeGen)
+			if got := a.placeCount(pageMemory); got != 7 {
+				t.Fatalf("standing on %s, the second beat left the memory tab wearing %d, want 7",
+					place.id.word(), got)
+			}
+		})
+	}
+}
+
+// AND EVERY ROOM ARMS THE CLOCK ON THE WAY IN. A room that armed no clock had
+// no beat to answer, so the two facts are one fact and this is the half a
+// `tick` returning true cannot supply by itself.
+func TestEveryPlaceThatIsNotHomeArmsTheClockOnTheWayIn(t *testing.T) {
+	for _, place := range everyPlaceTable() {
+		if place.id == pageHome {
+			continue
+		}
+		t.Run(place.id.word(), func(t *testing.T) {
+			a := placeApp(t)
+			was := a.placeGen
+			a.showPage(place.id)
+			if a.placeGen == was {
+				t.Fatalf("walking into %s armed no clock, so nothing there will ever beat",
+					place.id.word())
+			}
+		})
+	}
+}

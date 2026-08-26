@@ -1087,19 +1087,31 @@ func (placeTasks) id() page      { return pageTasks }
 func (placeTasks) word() string  { return "tasks" }
 func (placeTasks) counted() bool { return true }
 
-func (placeTasks) open(a *app) tea.Cmd { return a.showTaskPlace() }
-func (placeTasks) close(a *app)        { a.taskSheet.close(a) }
+// open takes the reading and arms the beat. The reading is this place's own
+// walk of the record; the beat is the tab bar's ([placeTasks.tick] says which
+// of the two it is for).
+func (placeTasks) open(a *app) tea.Cmd {
+	cmd := a.showTaskPlace()
+	return tea.Batch(cmd, a.armPlaceClock())
+}
+func (placeTasks) close(a *app) { a.taskSheet.close(a) }
 
 // tick keeps the record current while somebody stands on it: the other windows'
 // readings are re-filed without a second walk of the disk.
 //
-// IT ANSWERS FALSE because this place never arms the clock — the reading is taken
-// on the keystroke that walks in ([app.showTaskPlace]) and re-filed on the common
-// frame ([tasksPlace.regroup]). A beat here would be a third reader of the same
-// record.
+// IT RE-FILES AND DOES NOT RE-READ. The reading is taken on the keystroke that
+// walks in ([app.showTaskPlace]); a second walk of the same record on the beat
+// would be a third reader of it, and this place's own argument against that
+// stands.
+//
+// IT ANSWERS TRUE ANYWAY, because the answer is about the BEAT and not about
+// the reading. It used to answer false and that stopped the clock dead: the tab
+// bar's numbers are recomputed on this beat, so standing on this place froze
+// every tab's count — including the counts of the six rooms this one has
+// nothing to do with (placecounts.go's [app.placeBeat]).
 func (placeTasks) tick(a *app, now time.Time) bool {
 	a.taskSheet.regroup(a)
-	return false
+	return true
 }
 
 func (placeTasks) body(a *app, width, room int) []placeRow {
