@@ -187,10 +187,12 @@ into the task's copy of it. Only a conversation with no folder at all falls back
 
 ## How a task is told to spend its time — the measure, a zero, and not remaking what exists
 
-Beyond the tools, a task is given three working habits in its own instructions. They are
+Beyond the tools, a task is given three working habits in its instructions. They are
 written as principles rather than examples, because aforge hands tasks prose, research,
 data, operations and code through the same door and a habit written in one trade's words
-is a habit that is wrong for the next job.
+is a habit that is wrong for the next job. **The chat is given the same three, in the
+same words** — see *What aforge can do for you* — because the approach to a piece of work
+is usually chosen in the conversation, before the task exists.
 
 - **When the work comes with its own measure, that measure is the loop, not the report.**
   A check to run, a count to reach, a reading somebody will take — the task is told to

@@ -146,6 +146,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// actually queried. Each of these reached the wrong page until the
 		// asker's own words were written into a heading, which is the fix this
 		// test is meant to provoke.
+		// The working discipline the chat itself is taught, asked the two ways
+		// people meet it: wanting to know how aforge will go about the job, and
+		// asking why it went looking before it started building.
+		{"how do you decide how to go about a piece of work", "what-i-can-do"},
+		{"why did you search for something that already exists before building it", "what-i-can-do"},
 		{"can you delete files", "what-i-can-do"},
 		{"can you run tests for me", "what-i-can-do"},
 		{"can you start a dev server", "what-i-can-do"},
