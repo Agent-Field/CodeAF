@@ -1054,6 +1054,12 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 type toolResult struct {
 	text    string
 	isError bool
+	// harness says the HARNESS wrote this failure, rather than the world the
+	// model reached for: a withdrawn hand (withdrawn.go), or a door that refused
+	// the call before it ran (the pre-action chain). It rides out to the runner
+	// on [Event.HarnessMade], and every counter that judges the model by its
+	// steps skips it — the harness's failures are the harness's steps.
+	harness bool
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -1180,8 +1186,9 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 	if call.ID == "" || !earlyTools[call.Function.Name] {
 		return
 	}
-	// A tool the belt does not have would only produce "Unknown tool" early
-	// instead of late; refusing here keeps a warm result from ever being an
+	// A tool the belt does not have would only produce the dispatcher's miss —
+	// "Unknown tool", or a withdrawal for a hand that was taken (withdrawn.go) —
+	// early instead of late; refusing here keeps a warm result from ever being an
 	// answer the live belt would not have given.
 	if !a.hasTool(call.Function.Name) {
 		return
@@ -1390,6 +1397,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   argsText(call),
 				Output: capOutput(results[index].text),
+				// WHOSE FAILURE THIS WAS travels with it. Everything counting
+				// steps out of band — the runner's no-progress ledger above all —
+				// reads events and not results, so a fact kept only on the result
+				// is a fact no counter can act on (withdrawn.go).
+				HarnessMade: results[index].harness,
 			})
 			continue
 		}
@@ -1436,6 +1448,13 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
+			// A REFUSED DOOR IS THE HARNESS'S OWN ANSWER. The tool never ran, the
+			// world never saw the call, and what came back was written here — by a
+			// policy, a scope, a capability that is off, a person saying no. Marked
+			// at the ONE place every veto passes through rather than inside each
+			// citizen, so a pre-action hook added next month cannot forget to say
+			// so and have its refusals counted against the model as spinning.
+			refused.harness = true
 			return refused
 		}
 		// The arguments are read from what pre-action handed back — a canonicalizing
@@ -1484,6 +1503,27 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// be a line no model was ever sent.
 		return a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
 	}
+	// ── TAKEN, OR NEVER HELD ──
+	//
+	// The belt cannot tell these apart: both are one lookup that missed. The
+	// difference is a fact only the code that narrowed the belt has, and it
+	// recorded it there (withdrawn.go) so this line can read it back.
+	//
+	// A WITHDRAWN HAND IS REPORTED AS A WITHDRAWAL. Measured in SWE-Marathon s4:
+	// the landing pass took `bash`, `read` and `grep` off a worker's belt and the
+	// worker was answered "Unknown tool: bash" — eighteen bytes naming no reason,
+	// no surviving set and nothing to do instead. It retried eight times, which
+	// was the only rational move left, and the stuck watch then punished it for
+	// the retries. The notice below says why the hand is gone, what is still on
+	// the belt by name, and what to do with what is left.
+	//
+	// AND IT IS THE HARNESS'S FAILURE, not the model's, so no counter spends it
+	// against the model ([toolResult.harness]).
+	if notice, withdrawn := a.withdrawalNotice(call.Function.Name); withdrawn {
+		return toolResult{text: notice, isError: true, harness: true}
+	}
+	// A name nobody ever had keeps the old answer, and keeps it word for word:
+	// that one IS a sentence about the model.
 	return toolResult{text: "Unknown tool: " + call.Function.Name, isError: true}
 }
 

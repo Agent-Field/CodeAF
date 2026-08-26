@@ -85,6 +85,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the check run", "how-tasks-run"},
 		{"why did my task fail on a file it says it created", "how-tasks-run"},
 		{"does the checker see the files my task installed", "how-tasks-run"},
+		// Written from a real run: a task was landed, lost bash, read and grep to
+		// the landing turn, was answered "Unknown tool" eight times, was nudged
+		// three times for the retries that answer invited, and then saved two
+		// source files it had no way left to build.
+		{"why does my task say a tool was withdrawn", "how-tasks-run"},
+		{"my task says unknown tool bash", "how-tasks-run"},
+		{"why were the files my task saved called unverified", "how-tasks-run"},
 		// And the other half: a fork whose hands declared their files in full and
 		// were refused every single write.
 		{"how do I say which files each hand may write", "tasks"},
