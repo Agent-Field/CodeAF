@@ -52,7 +52,7 @@ const (
 	// taskCardBackWord is the way out, in the head's right corner. It is `back`
 	// and not `close` because that is what the key does from here: the list is
 	// underneath, and a card that promised to close would be lying about the
-	// next keystroke — the same honesty [taskSheetFilterKeys] keeps.
+	// next keystroke — the same honesty [tasksClearFilterWord] keeps.
 	taskCardBackWord = "esc back"
 	// taskCardKeys is the foot: the way out, the scroll, and the one gesture
 	// this card carries that the row it came from used to.
@@ -133,19 +133,22 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	if entry == nil {
 		return nil
 	}
-	// THE OTHER FULLSCREEN PAGES STAND DOWN. This is an open path onto the page,
-	// so it owes the same law every other one does ([app.standDownFullscreen],
-	// settings.go) — and it is stated here rather than left to [app.openTaskSheet]
-	// because this one does not go through it.
-	a.standDownFullscreen()
-	a.taskSheet = taskSheet{open: true, detail: *entry, detailOn: true}
+	// IT GOES THROUGH THE ROUTER, exactly as every other door onto a place does
+	// (pages.go's [app.showPage]): what was standing is closed, its look stamp is
+	// written, and the tasks place opens on the same snapshot every other road in
+	// takes. It used to stand the other pages down and build the reading itself,
+	// which is a second answer to what this place is holding — and before that it
+	// built NO reading at all, so a card opened from home left an EMPTY place
+	// behind it and esc dropped the person onto a page with nothing on it.
+	raised := a.showPage(pageTasks)
+	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
 	// The list underneath is parked on the row that was pressed, so esc comes
 	// back to it rather than to the top of a list somebody scrolled a long way
 	// down. It is done on the way IN because the list is rebuilt every frame and
 	// the row's position is only knowable while the entry is in hand.
 	a.taskSheetPointAt(*entry)
 	a.touch()
-	return a.readTaskTail(*entry)
+	return tea.Batch(raised, a.readTaskTail(*entry))
 }
 
 // taskSheetPointAt puts the LIST's cursor on the row naming this piece of work,
@@ -156,8 +159,11 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 // unique across the record (session's task_index.go says so on
 // [session.TaskIndexEntry.ID]).
 func (a *app) taskSheetPointAt(want session.TaskIndexEntry) {
-	for at, item := range a.taskSheetItems() {
-		if item.entry != nil && taskSameRecord(*item.entry, want) {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	for at := range lines {
+		if item, ok := r.at(lines, at); ok && taskSameRecord(item.entry, want) {
 			a.taskSheet.cursor = at
 			return
 		}
@@ -497,7 +503,8 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 	}
 	// THE CLOCK IS WRITTEN WHEN THE WORK LANDS and is zero on every row that has
 	// not, so a row still claiming to be running says nothing about how long —
-	// the same reason [taskRecordNote] leaves the age off a live row.
+	// the same reason the record's own right margin says `running` instead of an
+	// age on a row that has not landed.
 	if !entry.Live() {
 		if ran := countUpWord(entry.Duration()); ran != "" {
 			segs = append(segs, "ran "+ran)

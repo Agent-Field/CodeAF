@@ -406,7 +406,7 @@ const crewClassWidth = 12
 // that wrote a row while the panel was open would otherwise leave the panel
 // showing what it read when it opened.
 func (a *app) refreshSettings() {
-	if !a.sheet.open || a.sheet.registry == nil {
+	if !a.at(pageSettings) || a.sheet.registry == nil {
 		return
 	}
 	a.sheet.rows = a.sheet.registry.Rows()

@@ -3,7 +3,7 @@ package tui3
 // THE SECTION THAT HOLDS THE CURSOR SAYS SO ON ITS OWN HEADING.
 //
 // Home is several regions at once — two zones of triage, a list of projects, a
-// card — and at [homeTierColumns] they stand side by side as three columns. The
+// card — and past [homeCardMin] they stand side by side. The
 // row under the cursor wears THE GROUND LADDER's cursor step, which is a very
 // quiet tint on purpose (1.17:1 against an ordinary terminal ground), and that
 // tint answers "which ROW am I on" perfectly while answering "which REGION is
@@ -66,20 +66,22 @@ package tui3
 //
 // IT FAILS TOWARD MARKING NOTHING, which is the right direction. A project
 // somebody opened inside the folded block gets air on both sides
-// ([homeView.buildElsewhere]), so a cursor down among its conversations meets a
+// (the folded block the switcher replaced), so a cursor down among its rows meets a
 // blank before it meets any heading and the frame marks none — that line is a
 // DOOR rather than a heading and cannot be one without a row that answers enter
 // wearing a ground it did not earn. An honest silence beats a confident mark on
 // the section above.
 func sectionEnd(kind homeRowKind) bool {
-	return kind == homeBlank || kind == homeAttentionGap
+	return kind == homeBlank
 }
 
 // markedSection is the line number of THE ONE HEADING THIS FRAME MARKS, and
-// [homeRest] when it marks none.
+// [homeNoLine] when it marks none.
 func (h *homeView) markedSection() int {
-	if !h.open || h.searching() || h.cursor < 0 || h.cursor >= len(h.lines) {
-		return homeRest
+	// A CLOSED VIEW MARKS NOTHING, and that falls out of having no lines rather
+	// than out of a flag: the cursor is then never inside the list.
+	if h.searching() || h.cursor < 0 || h.cursor >= len(h.lines) {
+		return homeNoLine
 	}
 	for at := h.cursor - 1; at >= 0; at-- {
 		kind := h.lines[at].kind
@@ -87,10 +89,10 @@ func (h *homeView) markedSection() int {
 			return at
 		}
 		if sectionEnd(kind) {
-			return homeRest
+			return homeNoLine
 		}
 	}
-	return homeRest
+	return homeNoLine
 }
 
 // marksSection reports that the line at `at` is that one heading.

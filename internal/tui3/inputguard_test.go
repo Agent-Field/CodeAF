@@ -186,7 +186,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 			a, ev, _ := tc.start(t)
 			a.openHome()
 			drive(t, a, streamOf(a, ev))
-			if a.home.open {
+			if a.at(pageHome) {
 				t.Fatal("home stayed up over a question the session is waiting on")
 			}
 
@@ -227,7 +227,7 @@ func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
 	})})
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home stayed up over a standing card the session is waiting on")
 	}
 }

@@ -290,15 +290,16 @@ all work over `--host`. What to know is **whose machine they are on**:
 
 Three readings are absent over a connection, and each says nothing rather than guessing:
 
-- **Home does not open at all.** It says exactly:
+- **Home opens with no rows on it.** Where the list would be it says exactly:
   `home shows this machine's projects, and this session is on another`
-  — so a remote session has no `◦` item band and no `p`/`s` keys on one. The status line's
+  — so a remote session has no `◦` item band and no `p`/`s` keys on one. The tab bar, the
+  composer and the other six places are all there as usual. The status line's
   `◦ keeping an eye on 2` still counts, and it counts the **far** machine's items for the
   workspace this window is on, because over `--host` that path is the far machine's own.
 - **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
   state is read from a file on that disk. A line drawn from this laptop's timer would be a
   status about a machine nobody consulted.
-- **No row ever shows the firing mark `●`.** Nothing on any disk says an item is firing at
+- **No row ever shows the firing mark `◐`.** Nothing on any disk says an item is firing at
   this instant — a run is in flight inside whichever process holds the tick lock — so the
   surface does not claim it. That is true locally too.
 

@@ -5,23 +5,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
-// ── THE THREE COLUMNS ───────────────────────────────────────────────────────
+// ── THE TWO COLUMNS ─────────────────────────────────────────────────────────
 //
 // These tests are about the ARRANGEMENT and nothing else: which shape a width
-// asks for, what stands in each column, where the cursor opens, which key moves
-// between them, and the one cell on the whole page that is allowed to turn. What
-// the columns HOLD is tested where it is built — homeattention.go's zones,
-// homeband_machine_test.go's card, home_test.go's list.
+// asks for, what stands in each column, where the cursor opens, and the one cell
+// on the whole page that is allowed to turn. What the columns HOLD is tested
+// where it is built — switcher_test.go's reading, place_home_test.go's wiring,
+// homeband_machine_test.go's card.
+//
+// THE LADDER USED TO HAVE THREE RUNGS AND HAS TWO. The zones' column and the
+// everyday card tier went with the strips, so every test here that asked "which
+// of three shapes is this width" now asks "is the width genuinely spare", and
+// every test that asked "which column did that row leave the list for" now asks
+// "does the list keep the whole frame".
 
 // bridgeLab is a machine with something in every column: two projects, a
-// conversation stopped on a question somewhere else, work running here, and two
-// standing orders for the machine's own card.
+// conversation stopped on a question somewhere else, work running here, and a
+// standing order for the machine's own card — on a frame past [homeCardMin], so
+// there is a second column to have opinions about.
 func bridgeLab(t *testing.T) (*app, string) {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -44,298 +49,395 @@ func bridgeLab(t *testing.T) (*app, string) {
 	}}
 	a := lab.app(mine)
 	band.wire(a)
-	a.width, a.height = 140, 26
+	a.width, a.height = 200, 30
 	a.openHome()
 	return a, mine
 }
 
-// THE LADDER IS ONE DECISION. Every width belongs to exactly one shape, and the
-// two floors are the ones the design names: the card at eighty, the third column
-// at a hundred and ten — which is what the three columns and their gutters add
-// up to at their floors and not a number chosen beside them.
-func TestTheWidthLadderPicksOneShapePerTier(t *testing.T) {
+// THE LADDER IS ONE DECISION AND ITS FLOOR IS AN ADDITION. Every width belongs
+// to exactly one of two shapes, and the one floor there is left is the sum of
+// what the two columns and the gutter ask for rather than a number chosen beside
+// them — which is what lets it move by itself the day one of the parts changes.
+func TestTheWidthLadderIsTwoRungsAndItsFloorIsTheSumOfTheColumns(t *testing.T) {
 	for _, want := range []struct {
 		width int
 		tier  homeTier
 	}{
-		{79, homeTierList}, {80, homeTierCard}, {109, homeTierCard},
-		{110, homeTierColumns}, {140, homeTierColumns},
+		{60, homeTierList}, {120, homeTierList}, {homeCardMin - 1, homeTierList},
+		{homeCardMin, homeTierCard}, {240, homeTierCard},
 	} {
 		if got := homeTierAt(want.width); got != want.tier {
 			t.Fatalf("a %d-column frame is tier %v, want %v", want.width, got, want.tier)
 		}
 	}
-	if homeMinColumns != homeAttentionCol+homeGutter+homePlacesCol+homeGutter+homeCardCol {
-		t.Fatal("the tier's floor is not the sum of the columns it has to hold")
+	if homeCardMin != homeSwitchFull+homeGutter+homeCardCol {
+		t.Fatal("the card tier's floor is not the sum of the columns it has to hold")
 	}
-	// AND THE CARD IS MEASURED OFF THE WIDTH AT EVERY TIER THAT HAS ONE, so the
-	// three-column frame is the two-column one with the left half split in two.
-	for _, width := range []int{110, 120, 140, 200} {
-		zone, places, card := homeThreeColumns(width)
+	// BELOW THE FLOOR THE LIST IS THE WHOLE FRAME. There is no half-card and no
+	// reserved gutter: the row's own note carries the one fact the card was for.
+	for _, width := range []int{60, 100, homeCardMin - 1} {
+		if left, right := homeColumns(width); left != width || right != 0 {
+			t.Fatalf("a %d-column frame drew a card: left %d right %d", width, left, right)
+		}
+	}
+	// AND ABOVE IT THE SPARE CELLS ARE SPLIT rather than handed to the card
+	// whole: the card takes what it needs plus half of what is over, up to
+	// [homeCardCap], and the list is never pushed below the width it draws every
+	// fact at ([homeSwitchFull]).
+	for _, width := range []int{homeCardMin, 180, 200, 400} {
 		left, right := homeColumns(width)
 		if left+homeGutter+right != width {
-			t.Fatalf("at %d the columns leave %d cells over", width, width-left-homeGutter-right)
+			t.Fatalf("at %d the two columns leave %d cells over", width, width-left-homeGutter-right)
 		}
-		if right != card || zone+homeGutter+places != left {
-			t.Fatalf("at %d the split (%d %d %d) disagrees with the frame (%d %d)",
-				width, zone, places, card, left, right)
+		if right < homeCardCol || right > homeCardCap {
+			t.Fatalf("at %d the card is %d cells wide, want between %d and %d", width, right, homeCardCol, homeCardCap)
 		}
-		// PLACES IS THE WIDEST COLUMN, at the tier's floor and at every width
-		// above it. It is the one thing the ladder promises about the middle.
-		if places < card || places <= zone {
-			t.Fatalf("at %d places is %d beside a %d card and a %d zone column",
-				width, places, card, zone)
+		if left < homeSwitchFull {
+			t.Fatalf("at %d the card was paid for out of the list: %d cells left", width, left)
+		}
+		if spare := width - homeCardMin; right < homeCardCap && right != homeCardCol+spare/2 {
+			t.Fatalf("at %d the card took %d of the %d spare cells, want half of them", width, right-homeCardCol, spare)
 		}
 	}
 }
 
-// AND THE SHAPE ON THE SCREEN FOLLOWS IT. Below the floor the zones are strips
-// standing OVER the list; above it they are a column standing BESIDE it, which
-// is the same rows in a different place and is visible as one thing: a zone label
-// and a project heading on the SAME screen row.
-func TestTheZonesLeaveTheListOnlyAtTheColumnsTier(t *testing.T) {
-	a, _ := bridgeLab(t)
+// AND THE SHAPE ON THE SCREEN FOLLOWS IT. Below the floor the list is alone on
+// every screen row; above it the card stands beside it, which is visible as one
+// thing — a fact only the card knows on the SAME screen row as a row of the list.
+func TestTheCardJoinsTheListOnlyWhereTheWidthIsSpare(t *testing.T) {
+	a, mine := bridgeLab(t)
+	a.home.point(mine)
+	// The card names the strip in words and never in letters, with a colon after
+	// it ([app.homeCardVerbs]); the foot's own hint spells the same clause without
+	// one. So this is the phrase only a card ever draws.
+	only := homeVerbsWord + ":"
+	// AND BESIDE IS THE WHOLE CLAIM. The card's title stands on the same screen
+	// row as the first row of the list, which is what makes it a column rather
+	// than something further down the page.
 	beside := func(width int) bool {
 		a.width = width
 		for _, line := range homeLines(a) {
-			if strings.Contains(line, attentionNeedsWord) && strings.Contains(line, "alpha") {
+			if strings.Contains(line, "what wants you first") && strings.Contains(line, "Porting the Picker") {
 				return true
 			}
 		}
 		return false
 	}
-	if beside(109) {
-		t.Fatalf("at 109 the zones already left the list:\n%s", homeText(a))
+	a.width = homeCardMin - 1
+	if strings.Contains(homeText(a), only) || beside(homeCardMin-1) {
+		t.Fatalf("a %d-column frame drew a card anyway:\n%s", homeCardMin-1, homeText(a))
 	}
-	if !beside(110) {
-		t.Fatalf("at 110 the zones did not take a column of their own:\n%s", homeText(a))
+	a.width = homeCardMin
+	if !strings.Contains(homeText(a), only) {
+		t.Fatalf("a %d-column frame drew no card:\n%s", homeCardMin, homeText(a))
 	}
-	// AND THE KEY BETWEEN THEM IS NAMED THERE AND NOWHERE ELSE.
-	a.width = 140
-	if !strings.Contains(a.homeHint(), homeTabWord) {
-		t.Fatalf("the wide tier does not name its own key: %q", a.homeHint())
-	}
-	a.width = 100
-	a.homeFrame(a.width, a.height)
-	if strings.Contains(a.homeHint(), homeTabWord) {
-		t.Fatalf("a frame with no zone column names tab anyway: %q", a.homeHint())
+	if !beside(homeCardMin) {
+		t.Fatalf("a %d-column frame put the card somewhere other than beside the list:\n%s",
+			homeCardMin, homeText(a))
 	}
 }
 
-// THE RIGHT COLUMN IS ALWAYS A CARD: the row's own while the cursor is on one,
-// and the MACHINE'S while it is on nothing. There is no state of this screen
-// where the third column is a second list or an empty half.
-func TestTheThirdColumnIsTheRowsCardAndTheMachinesAtRest(t *testing.T) {
+// THE SECOND COLUMN IS ALWAYS THE CARD OF THE ROW UNDER THE CURSOR. There is no
+// state of this screen where it is a second list, an empty half, or a card about
+// something no row on the left names.
+//
+// THE LAW THAT DIED IS "AND THE MACHINE'S WHILE THE CURSOR IS ON NOTHING". The
+// cursor could stand on no row at all — `↑` off the top row put it there — and
+// the column became a card about the machine. `↑` reaches the TAB BAR now
+// (pages.go's [barCursor]), so the cursor is on a row of this list at every
+// moment home is up, and the column has one subject rather than two.
+func TestTheSecondColumnIsTheCardOfTheRowUnderTheCursor(t *testing.T) {
 	a, mine := bridgeLab(t)
 	width, _ := a.size()
 	_, right := homeColumns(width)
-
-	// Rest is walked into now rather than opened onto ([homeView.openAt]).
-	a.home.cursor = homeRest
-	if got := plain(strings.Join(a.homeDetail(right, 20, a.pal), "\n")); !strings.Contains(got, machineWatchWord) {
-		t.Fatalf("the third column at rest is not the machine's card:\n%s", got)
+	if right == 0 {
+		t.Fatalf("a %d-column frame has no second column to ask about", width)
 	}
+
 	a.home.point(mine)
 	got := plain(strings.Join(a.homeDetail(right, 20, a.pal), "\n"))
 	if !strings.Contains(got, "Porting the Picker") {
-		t.Fatalf("the third column on a row is not that row's card:\n%s", got)
+		t.Fatalf("the card on a row is not that row's:\n%s", got)
 	}
-	if strings.Contains(got, machineWatchWord) {
-		t.Fatalf("the row's card kept the machine's bands:\n%s", got)
-	}
-	// AND IT IS REALLY ON THE FRAME, across the second gutter from the list.
 	if !strings.Contains(homeText(a), "Porting the Picker") {
-		t.Fatalf("the card is not on the three-column frame:\n%s", homeText(a))
+		t.Fatalf("the card is not on the frame at all:\n%s", got)
+	}
+
+	// AND WALKING TO THE TOP AND ON UP KEEPS IT. The cursor leaves the BODY for
+	// the tab bar and not the list, so the card underneath still answers for the
+	// row a person walked up off.
+	a.frame()
+	for i := 0; i < len(a.home.lines)+2; i++ {
+		drive(t, a, key("up"))
+	}
+	if !a.bar.on {
+		t.Fatalf("walking up off the top row did not reach the bar:\n%s", homeText(a))
+	}
+	if card := a.homeDetail(right, 20, a.pal); len(card) == 0 {
+		t.Fatal("the column went blank with the cursor on the bar")
+	}
+	if line, ok := a.home.previewLine(); !ok || !line.stop() {
+		t.Fatalf("the card is about no row of the list: %+v", line)
 	}
 }
 
 // HOME OPENS ON THE CONVERSATION THIS WINDOW HOLDS, VISIBLY SELECTED — the row
 // esc drops back into — so the first frame answers "where am I" before a key is
-// pressed. Rest is still a place ([homeRest]), reached by walking up; and from
-// rest, focus wakes at the center of mass: `↓` lands in the MIDDLE column and
-// `tab`, the named triage key, enters `needs you`.
-func TestHomeOpensOnItsOwnConversationAndRestStillWakesIntoTheList(t *testing.T) {
+// pressed. `↑` off the top row reaches the TAB BAR, and the first `↓` back off
+// the bar lands on the first stop of the body.
+//
+// THE LAW THAT DIED IS "REST IS STILL A PLACE, ONE `↑` ABOVE THE LIST". The
+// cursor used to leave the list at the top row and stand on no row at all. It
+// leaves the BODY now and stands on the bar (pages.go's [barCursor]), which is a
+// row a person can walk along and open a room from — so what this pins is the
+// same journey with a destination that does something.
+func TestHomeOpensOnItsOwnConversationAndUpOffTheTopReachesTheBar(t *testing.T) {
 	a, mine := bridgeLab(t)
-	if len(zoneNames(a, attentionNeedsWord)) == 0 {
-		t.Fatal("this machine has nothing waiting, so the landing proves nothing")
+	line, ok := a.home.focusedLine()
+	if !ok || line.row.Transcript != mine {
+		t.Fatalf("home opened on %q, want the conversation this window is holding:\n%s",
+			homeName(a.home.focused()), homeText(a))
 	}
-	for _, step := range []struct {
-		word string
-		key  func()
-		zone string
-	}{
-		{"↓", func() { a.home.move(1) }, ""},
-		{"tab", func() { a.home.tab() }, attentionNeedsWord},
-	} {
-		a.openHome()
-		line, ok := a.home.focusedLine()
-		if !ok || line.row.Transcript != mine {
-			t.Fatalf("home opened on %q, want the conversation this window is holding:\n%s",
-				homeName(a.home.focused()), homeText(a))
+	a.frame()
+	for i := 0; i < len(a.home.lines)+2; i++ {
+		drive(t, a, key("up"))
+	}
+	if !a.bar.on {
+		t.Fatalf("↑ off the top row did not reach the bar:\n%s", homeText(a))
+	}
+	if a.bar.at != pageHome {
+		t.Fatalf("the bar cursor landed on %q, want the room it was standing in", a.bar.at.word())
+	}
+	// AND THE FIRST `↓` OFF THE BAR LANDS ON THE FIRST STOP OF THE BODY, which is
+	// where the walk up left home's own cursor: the router claims `↑` at the top
+	// row before home ever sees it, so nothing moved on the way up.
+	drive(t, a, key("down"))
+	if a.bar.on {
+		t.Fatalf("↓ left the cursor on the bar:\n%s", homeText(a))
+	}
+	if a.home.cursor != a.home.placesTop() {
+		t.Fatalf("↓ off the bar landed on line %d, want the top of the list at %d:\n%s",
+			a.home.cursor, a.home.placesTop(), homeText(a))
+	}
+	if line, ok := a.home.focusedLine(); !ok || !line.stop() {
+		t.Fatalf("↓ off the bar landed on a line no cursor may rest on:\n%s", homeText(a))
+	}
+}
+
+// AND THE LANDING IS THE SAME LINE AT BOTH RUNGS OF THE LADDER.
+//
+// It used to differ: below the columns tier the strips stood over the list and
+// the first `↓` walked into them, above it they had a column of their own. With
+// one list the landing cannot depend on the width at all — it is
+// [homeView.placesTop] at every width — and a landing that moved with the frame
+// would be a landing nobody can build a habit on.
+//
+// IT IS ALSO NOT LINE ZERO, which is why it is a function and not a constant:
+// the `since you left` heading and the claim over the ranked rows both stand
+// above the first row a cursor may rest on.
+func TestTheLandingIsTheSameLineAtBothRungsOfTheLadder(t *testing.T) {
+	lab := newSwitchLab(t)
+	tops := map[int]int{}
+	for _, width := range []int{120, homeCardMin, 200} {
+		a := lab.open(width, 40)
+		a.home.seen = lab.now.Add(-30 * time.Minute)
+		a.home.build()
+		a.frame()
+		// UP OFF THE TOP AND STRAIGHT BACK DOWN, which is the whole journey the
+		// bar added and the one this landing is about.
+		for i := 0; i < len(a.home.lines)+2; i++ {
+			drive(t, a, key("up"))
 		}
-		// Rest is one deliberate state away, and the first key from it still
-		// lands where the old landing law promised.
-		a.home.cursor = homeRest
-		step.key()
-		line, ok = a.home.focusedLine()
-		if !ok || attentionWordOf(line) != step.zone {
-			t.Fatalf("%s from rest landed in zone %q, want %q:\n%s",
-				step.word, attentionWordOf(line), step.zone, homeText(a))
+		drive(t, a, key("down"))
+		if a.home.cursor != a.home.placesTop() {
+			t.Fatalf("at %d columns ↓ off the bar landed on %d, want %d", width, a.home.cursor, a.home.placesTop())
 		}
-		if step.zone == "" && a.home.cursor != a.home.placesTop() {
-			t.Fatalf("%s from rest landed on line %d, want the top of the list at %d:\n%s",
-				step.word, a.home.cursor, a.home.placesTop(), homeText(a))
+		if a.home.cursor == 0 {
+			t.Fatalf("at %d columns the list has no heading above its first row:\n%s", width, homeText(a))
+		}
+		tops[width] = a.home.cursor
+	}
+	for width, at := range tops {
+		if at != tops[120] {
+			t.Fatalf("the landing moved with the frame: %d at 120 columns, %d at %d", tops[120], at, width)
 		}
 	}
 }
 
-// AND THE LANDING IS THE SAME LINE WHATEVER THE ZONES HOLD. A landing that moved
-// with what the machine happens to be doing this morning is a landing nobody can
-// build a habit on, so `↓` reaches the top of the list on a busy machine and on
-// a quiet one alike — and `←` is the way across into the flank.
-func TestTheFirstArrowLandsInTheListWhicheverWayTheZonesStand(t *testing.T) {
-	quiet := func(t *testing.T) *app {
-		t.Helper()
-		lab := newHomeLab(t)
-		now := time.Now()
-		mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-time.Hour))
-		lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
-		a := lab.app(mine)
-		a.width, a.height = 140, 26
-		a.openHome()
-		return a
+// ENTER ON THE BAR OPENS THE PLACE UNDER THE CURSOR.
+//
+// THE LAW THAT DIED IS "ENTER AT REST RETURNS TO THE CONVERSATION YOU ARE
+// HOLDING". Rest was the screen's own furniture — the cursor on no row at all —
+// and `enter` there had nothing to open, so it was spent going back to work
+// rather than being a dead key. The cursor reaches the TAB BAR now instead
+// (pages.go's [barCursor]), and the bar is not furniture: every word on it is a
+// room, so `enter` opens the one under the cursor. That is the same principle —
+// the key is never dead — with somewhere real to go.
+func TestEnterOnTheBarOpensThePlaceUnderTheCursor(t *testing.T) {
+	a, _ := bridgeLab(t)
+	a.frame()
+	for i := 0; i < len(a.home.lines)+2; i++ {
+		drive(t, a, key("up"))
 	}
-	for _, machine := range []struct {
-		word  string
-		build func(t *testing.T) *app
-		zoned bool
-	}{
-		{"busy", func(t *testing.T) *app { a, _ := bridgeLab(t); return a }, true},
-		{"quiet", quiet, false},
-	} {
-		a := machine.build(t)
-		if got := len(zoneNames(a, attentionNeedsWord)) > 0; got != machine.zoned {
-			t.Fatalf("the %s machine has %d rows in %q, which is not the case this covers",
-				machine.word, len(zoneNames(a, attentionNeedsWord)), attentionNeedsWord)
+	if !a.bar.on {
+		t.Fatal("↑ off the top row did not reach the bar")
+	}
+	// One word along the bar, which opens nothing by itself...
+	drive(t, a, key("right"))
+	if !a.at(pageHome) {
+		t.Fatalf("walking the bar opened %q by itself", a.page.word())
+	}
+	if a.bar.at != pageTasks {
+		t.Fatalf("→ landed the bar cursor on %q, want the next word along", a.bar.at.word())
+	}
+	// ...and `enter` is what goes in, with the cursor coming down into the body.
+	drive(t, a, key("enter"))
+	if !a.at(pageTasks) {
+		t.Fatalf("enter on the bar left the person on %q", a.page.word())
+	}
+	if a.bar.on {
+		t.Fatal("enter left the cursor standing on the bar of the room it opened")
+	}
+}
+
+// A DRAFT KEEPS THE ARROWS FOR THE CARET. `←` and `→` are the fold's and the
+// card's while the box is empty; the moment there is something typed they belong
+// to the text, and a key that moved the selection out from under a person
+// mid-word would be the list arguing with the box.
+func TestADraftKeepsTheArrowsForTheCaret(t *testing.T) {
+	a, _ := bridgeLab(t)
+	a.homeKey(key("x"))
+	if !a.home.searching() {
+		t.Fatal("typing a letter did not put anything in the box")
+	}
+	was := a.home.cursor
+	a.homeKey(key("right"))
+	a.homeKey(key("left"))
+	if a.home.cursor != was {
+		t.Fatalf("the arrows moved the cursor from %d to %d while something was typed", was, a.home.cursor)
+	}
+}
+
+// AND THE ROW'S OWN KEYS ARE THE SAME AT BOTH RUNGS. A digit over a conversation
+// stopped on a question answers it whether or not there is a card beside the
+// row: the tier is a fact about the FRAME and never about the door.
+func TestADigitAnswersTheQuestionAtBothRungsOfTheLadder(t *testing.T) {
+	for _, width := range []int{120, 200} {
+		lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+		a := lab.a
+		a.width = width
+		a.openHome()
+		a.home.point(lab.row)
+		if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
+			t.Fatalf("at %d columns the waiting conversation has no row:\n%s", width, homeText(a))
 		}
-		// Rest is walked into now rather than opened onto ([homeView.openAt]);
-		// the landing law under test is about the first key FROM rest.
-		a.home.cursor = homeRest
+		a.homeKey(key("3"))
+		if len(*lab.sent) != 1 {
+			t.Fatalf("at %d columns a digit sent %d answers, want 1:\n%s", width, len(*lab.sent), homeText(a))
+		}
+		if typed := a.home.box.String(); typed != "" {
+			t.Fatalf("at %d columns the digit also typed %q into the box", width, typed)
+		}
+	}
+}
+
+// ONE SCREEN ROW IS ONE LINE OF THE LIST.
+//
+// This used to be a test about telling two LEFT columns apart by x: a zone row
+// and a list row shared a screen row, and the pointer had to know which half it
+// was aimed at. There is one column of rows now, so the law inverts — every x
+// inside the list resolves to the SAME line — and a pointer that resolved
+// differently at the two ends of a row would be inventing a column that is not
+// there.
+func TestOneScreenRowIsOneLineOfTheList(t *testing.T) {
+	a, _ := bridgeLab(t)
+	width, height := a.size()
+	left, _ := homeColumns(width)
+	lines, hits, _, _ := a.homeFrame(width, height)
+	row := -1
+	for y := range lines {
+		if y < len(hits) && hits[y] >= 0 && a.home.lines[hits[y]].kind == homeSession &&
+			a.home.lines[hits[y]].row.Transcript != a.file {
+			row = y
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatalf("no other conversation's row on the frame:\n%s", homeText(a))
+	}
+	want := hits[row]
+	for _, x := range []int{0, 1, left / 2, left - 1} {
+		a.home.cursor = homeNoLine
+		a.homePress(x, row)
+		if a.home.cursor != want {
+			t.Fatalf("a press at x=%d on screen row %d landed on line %d, want %d",
+				x, row, a.home.cursor, want)
+		}
+	}
+}
+
+// THE LIST IS THE ONLY THING THAT SCROLLS. It used to be two windows onto one
+// line list — the zones' own top and the list's — and only one of them held the
+// cursor. There is one window now, and the card beside it is not a window at all:
+// it is redrawn for whatever row the cursor reached, from its own first line.
+func TestTheListScrollsAndTheCardBesideItDoesNot(t *testing.T) {
+	// A machine with more rows than the frame can hold, with the fold standing
+	// open so that all of them are on the column at once.
+	lab := newSwitchLab(t)
+	a := lab.open(200, 12)
+	a.home.foldSwitch(true)
+	if len(a.home.lines) < 12 {
+		t.Fatalf("this column fits in the frame, so there is no scroll to test (%d lines)", len(a.home.lines))
+	}
+	width, height := a.size()
+	a.home.cursor = a.home.placesTop()
+	a.homeFrame(width, height)
+	if a.home.top != 0 {
+		t.Fatalf("the list started scrolled (top %d)", a.home.top)
+	}
+	for i := 0; i < 40; i++ {
 		a.home.move(1)
-		line, ok := a.home.focusedLine()
-		if !ok || attentionWordOf(line) != "" || a.home.cursor != a.home.placesTop() {
-			t.Fatalf("↓ on the %s machine landed on line %d in zone %q, want the list's top at %d:\n%s",
-				machine.word, a.home.cursor, attentionWordOf(line), a.home.placesTop(), homeText(a))
-		}
-		// AND THE ROW IT LANDS ON IS A REAL ONE, not a heading the cursor slid off.
-		if !line.stop() {
-			t.Fatalf("↓ on the %s machine landed on a line no cursor may rest on", machine.word)
-		}
 	}
-}
-
-// THE NARROWER TIERS ARE UNTOUCHED. There the zones are strips standing OVER the
-// list, so the first `↓` walking into them is what the geometry promises.
-func TestTheFirstArrowStillWalksIntoTheStripsBelowTheColumnsTier(t *testing.T) {
-	a, _ := bridgeLab(t)
-	a.width = homeMinColumns - 1
-	a.homeFrame(a.width, a.height)
-	a.home.cursor = homeRest
-	if !a.home.resting() || a.home.columns() {
-		t.Fatalf("the two-column tier was not set up (tier %v)", a.home.tier)
+	a.homeFrame(width, height)
+	if a.home.top == 0 {
+		t.Fatalf("walking to the bottom never scrolled the list at all (%d lines)", len(a.home.lines))
 	}
-	a.home.move(1)
+	// AND THE CARD IS STILL THE CURSOR'S ROW, HEADED BY ITS NAME. A column that
+	// had scrolled with the list would have its title somewhere off the top. The
+	// bottom row of this list is the fold, which is a door and not a thing with a
+	// card, so the walk steps back onto the last conversation.
+	for i := 0; i < len(a.home.lines); i++ {
+		if line, ok := a.home.focusedLine(); ok && line.kind == homeSession {
+			break
+		}
+		a.home.move(-1)
+	}
+	a.homeFrame(width, height)
 	line, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("↓ from rest at the strips tier landed in %q, want %q:\n%s",
-			attentionWordOf(line), attentionNeedsWord, homeText(a))
+	if !ok || line.kind != homeSession {
+		t.Fatalf("the bottom of the list holds no conversation to have a card:\n%s", homeText(a))
+	}
+	_, right := homeColumns(width)
+	card := a.homeDetail(right, height, a.pal)
+	if len(card) == 0 {
+		t.Fatalf("the bottom of the list has no card beside it:\n%s", homeText(a))
+	}
+	if !strings.Contains(plain(card[0]), homeName(line.row)) {
+		t.Fatalf("the card's first line is %q, want the cursor's row %q", plain(card[0]), homeName(line.row))
 	}
 }
 
-// ENTER AT REST STILL TAKES YOU IN. Rest is the screen's own furniture, and a
-// person who opens home and presses enter is going back to work, not asking
-// about the machine — so enter returns to the conversation this terminal is
-// holding, instead of dying on a cursor that is on no row. It does not open
-// the first list row: that can be another window's conversation, and enter at
-// rest must never land on a refusal.
-func TestEnterAtRestReturnsToTheConversationYouAreHolding(t *testing.T) {
-	a, _ := bridgeLab(t)
-	was := a.file
-	a.openHome()
-	// Rest is walked into now rather than opened onto ([homeView.openAt]).
-	a.home.cursor = homeRest
-	if !a.home.resting() {
-		t.Fatal("rest is no longer a state this screen can hold")
-	}
-	a.homeEnter()
-	if a.home.open {
-		t.Fatalf("enter at rest left home up saying %q", a.home.msg)
-	}
-	if a.file != was {
-		t.Fatalf("enter at rest landed in %q, want the held conversation %q", a.file, was)
-	}
-}
-
-// AND TAB ON A MACHINE WITH NOTHING WAITING LANDS IN THE LIST TOO, because a
-// zone with no rows is a label and a label is not a place a cursor can stand —
-// which is the one way the triage key's landing depends on what is there, and
-// the reason `↓` is not allowed to.
-func TestTabLandsInTheListWhenTheZonesAreEmpty(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	alpha := lab.workspace("alpha")
-	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", alpha, now.Add(-time.Hour))
-	lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
-	a := lab.app(mine)
-	a.width, a.height = 140, 26
-	a.openHome()
-	a.home.tab()
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeSession || attentionWordOf(line) != "" {
-		t.Fatalf("tab on a quiet machine landed on kind %v in zone %q:\n%s",
-			line.kind, attentionWordOf(line), homeText(a))
-	}
-}
-
-// STABLE GEOGRAPHY BEATS EMPTINESS, ON HOME ONLY. Both labels draw at the wide
-// tier over nothing at all, in the zones' own column — an empty `needs you` is
-// the good news, said with space, and a map that redraws itself is not a map.
-func TestTheZoneLabelsHoldTheirGroundAtTheWideTierOverNothing(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-time.Hour))
-	lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
-	a := lab.app(mine)
-	a.width, a.height = 140, 26
-	a.openHome()
-
-	if names := zoneNames(a, attentionNeedsWord); len(names) != 0 {
-		t.Fatalf("this machine has something waiting after all: %v", names)
-	}
-	lines := homeLines(a)
-	for _, word := range []string{attentionNeedsWord, attentionMovingWord} {
-		at := -1
-		for y, line := range lines {
-			if strings.Contains(line, word) {
-				at = y
-				break
-			}
-		}
-		if at < 0 {
-			t.Fatalf("the %q label vanished over nothing at the wide tier:\n%s", word, homeText(a))
-		}
-		// AND IT IS IN THE ZONES' OWN COLUMN, which is what makes the geography
-		// stable rather than merely present.
-		if head := strings.TrimRight(lines[at][:homeAttentionCol], " "); !strings.Contains(head, word) {
-			t.Fatalf("the %q label is not in the first column: %q", word, lines[at])
-		}
-	}
-}
-
-// ONE SPINNER. However many things move, exactly one row turns and every other
-// live row holds the still `●` — and the one that turns is the most recently
-// active.
-func TestExactlyOneRowSpinsHoweverManyAreMoving(t *testing.T) {
+// ONE SPINNER. However many things move, exactly one row is given the moving
+// cell and every other live row holds the still mark — and the one that gets it
+// is the most recently active, which is the one order a person can verify: the
+// thing that started last is the thing they just did.
+//
+// THE CHOICE IS WHAT IS PINNED HERE rather than the cell on the screen. The
+// resting list is painted by the reading itself ([switcherReading.paint]), which
+// draws a conversation's state mark and does not ask [app.homeSpins] — so today
+// no row of the switcher actually turns. The law that survives, and the one this
+// guards, is that ONE line is chosen and the paint clock is earned for that one.
+func TestExactlyOneRowIsGivenTheSpinnerHoweverManyAreMoving(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	alpha := lab.workspace("alpha")
@@ -351,202 +453,59 @@ func TestExactlyOneRowSpinsHoweverManyAreMoving(t *testing.T) {
 		})
 	}
 	a := lab.app(mine)
-	a.width, a.height = 140, 30
+	a.width, a.height = 200, 30
 	a.openHome()
 
-	if names := zoneNames(a, attentionMovingWord); len(names) != 3 {
-		t.Fatalf("the machine is not busy enough to prove anything: %v", names)
-	}
-	frame := homeText(a)
-	spinning := 0
-	for _, line := range strings.Split(frame, "\n") {
-		if strings.ContainsAny(line, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
-			spinning++
+	moving := 0
+	for _, line := range a.home.lines {
+		if _, ok := homeMovingAt(line); ok {
+			moving++
 		}
 	}
-	if spinning != 1 {
-		t.Fatalf("%d rows are turning at once, want exactly one:\n%s", spinning, frame)
+	if moving != 3 {
+		t.Fatalf("the machine is not busy enough to prove anything: %d moving rows\n%s", moving, homeText(a))
 	}
-	// AND IT IS THE ONE THAT STARTED LAST, in the zone whose subject is what is
-	// moving — the rest of that zone, sorted busiest-first, holds the still mark.
-	var spun homeLine
-	ok := false
-	for at, line := range a.home.lines {
+	spun := 0
+	var line homeLine
+	for at := range a.home.lines {
 		if a.homeSpins(at) {
-			spun, ok = line, true
+			spun, line = spun+1, a.home.lines[at]
 		}
 	}
-	if !ok {
-		t.Fatalf("nothing was given the spinner at all:\n%s", frame)
+	if spun != 1 {
+		t.Fatalf("%d rows were given the spinner at once, want exactly one:\n%s", spun, homeText(a))
 	}
-	if attentionWordOf(spun) != attentionMovingWord {
-		t.Fatalf("the spinner is on a %q row, want one in %q", attentionWordOf(spun), attentionMovingWord)
-	}
-	if spun.zone.name != "Wave C" {
-		t.Fatalf("the spinner is on %q, want the most recently active", spun.zone.name)
+	if got := homeName(line.row); got != "Wave C" {
+		t.Fatalf("the spinner is on %q, want the most recently active", got)
 	}
 	// AND THE CLOCK IS WOKEN FOR THAT ONE ROW, however many are out.
 	if !a.homeAnimating() {
 		t.Fatal("a machine with three things running does not earn the paint clock")
 	}
+	// AND NO ROW OF THE FRAME TURNS TWICE. However the paint changes, two turning
+	// cells on one page is what this law exists to stop.
+	turning := 0
+	for _, drawn := range strings.Split(homeText(a), "\n") {
+		if strings.ContainsAny(drawn, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+			turning++
+		}
+	}
+	if turning > 1 {
+		t.Fatalf("%d rows are turning at once:\n%s", turning, homeText(a))
+	}
 }
 
-// AND NOTHING TURNS ON A STILL MACHINE, which is what lets the page fall back
-// to its three-second beat.
+// AND NOTHING TURNS ON A STILL MACHINE, which is what lets the page fall back to
+// its three-second beat.
 func TestNothingTurnsWhenNothingIsMoving(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-time.Hour))
 	lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
 	a := lab.app(mine)
-	a.width, a.height = 140, 26
+	a.width, a.height = 200, 30
 	a.openHome()
-	if a.home.spin != homeRest || a.homeAnimating() {
+	if a.home.spin != homeNoLine || a.homeAnimating() {
 		t.Fatalf("a still machine woke the paint clock for line %d", a.home.spin)
-	}
-}
-
-// TAB CYCLES THE ZONES, in the order they are drawn and round again from the
-// last — and every zone it stops on is a row, never a label.
-func TestTabCyclesTheZonesAndComesBackRound(t *testing.T) {
-	a, _ := bridgeLab(t)
-	if len(zoneNames(a, attentionNeedsWord)) == 0 || len(zoneNames(a, attentionMovingWord)) == 0 {
-		t.Fatal("this machine does not have both zones, so tab has nothing to prove")
-	}
-	want := []string{attentionNeedsWord, attentionMovingWord, "", attentionNeedsWord}
-	for i, zone := range want {
-		a.homeKey(key("tab"))
-		if got := a.home.cursorZone(); got != zone {
-			t.Fatalf("tab %d landed in %q, want %q:\n%s", i+1, got, zone, homeText(a))
-		}
-		if _, ok := a.home.focusedLine(); !ok {
-			t.Fatalf("tab %d landed on no row at all", i+1)
-		}
-	}
-	// AND ESC STILL MEANS WHAT IT MEANT: one layer at a time, and home closes.
-	a.homeKey(key("esc"))
-	if a.home.open {
-		t.Fatal("esc from a zone did not close home")
-	}
-}
-
-// THE ARROWS FOLLOW THE GEOGRAPHY AT THE COLUMNS TIER: the zones stand to the
-// left of the list, so → off a zone row crosses into the list and ← crosses
-// back — and both land on the SAME conversation when the far column holds it,
-// so stepping across the gutter never loses the thing being read.
-func TestTheArrowsCrossBetweenTheZonesAndTheList(t *testing.T) {
-	a, _ := bridgeLab(t)
-	// tab lands in `needs you`, on the conversation stopped on a question.
-	a.homeKey(key("tab"))
-	line, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("tab did not reach the needs-you row:\n%s", homeText(a))
-	}
-	held := line.row.Transcript
-
-	a.homeKey(key("right"))
-	after, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(after) != "" {
-		t.Fatalf("→ did not leave the zones' column (zone %q):\n%s", attentionWordOf(after), homeText(a))
-	}
-	if after.row.Transcript != held {
-		t.Fatalf("→ landed on %q, want the same conversation %q:\n%s", after.row.Transcript, held, homeText(a))
-	}
-
-	a.homeKey(key("left"))
-	back, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(back) == "" {
-		t.Fatalf("← did not cross back into the zones:\n%s", homeText(a))
-	}
-	if back.row.Transcript != held {
-		t.Fatalf("← landed on %q, want the same conversation %q:\n%s", back.row.Transcript, held, homeText(a))
-	}
-
-	// AND A DRAFT KEEPS THE ARROWS. With something typed they are the caret's,
-	// so the cursor stays where it is standing.
-	a.homeKey(key("x"))
-	was := a.home.cursor
-	a.homeKey(key("right"))
-	if a.home.cursor != was {
-		t.Fatal("→ moved the cursor while something was typed")
-	}
-}
-
-// AND THE KEYS ARE THE ROW'S OWN KEYS IN WHICHEVER COLUMN IT IS DRAWN. A digit
-// over a conversation stopped on a question answers it from the zones' column
-// exactly as it does from a strip over the list — the row is the same row, and
-// the column it stands in is a fact about the frame and not about the door.
-func TestADigitAnswersTheQuestionFromTheZonesColumn(t *testing.T) {
-	a, _ := bridgeLab(t)
-	sent := 0
-	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error {
-		sent++
-		return nil
-	}
-	a.homeKey(key("tab"))
-	line, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("tab did not reach the needs-you row:\n%s", homeText(a))
-	}
-	a.homeKey(key("3"))
-	if sent != 1 {
-		t.Fatalf("a digit in the zones' column sent %d answers, want 1:\n%s", sent, homeText(a))
-	}
-	if typed := a.home.box.String(); typed != "" {
-		t.Fatalf("the digit also typed %q into the box", typed)
-	}
-}
-
-// A PRESS IN THE ZONES' COLUMN IS A PRESS ON THAT ZONE'S ROW. One screen row
-// carries two lines now — a zone row and a places row — and the x is what tells
-// them apart.
-func TestThePointerTellsTheTwoLeftColumnsApart(t *testing.T) {
-	a, _ := bridgeLab(t)
-	width, height := a.size()
-	lines, hits, _, _ := a.homeFrame(width, height)
-	row := -1
-	for y, line := range lines {
-		if strings.HasPrefix(ansi.Strip(line), "  "+homeAskGlyph+" ") {
-			row = y
-			break
-		}
-	}
-	if row < 0 {
-		t.Fatalf("no needs-you row on the frame:\n%s", homeText(a))
-	}
-	if hits[row] < 0 || attentionWordOf(a.home.lines[hits[row]]) != "" {
-		t.Fatalf("the screen row's own hit is a zone row, so this proves nothing")
-	}
-	a.homePress(3, row)
-	line, ok := a.home.focusedLine()
-	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("a press in the first column landed on %q:\n%s", attentionWordOf(line), homeText(a))
-	}
-	// AND A PRESS ACROSS THE GUTTER IS THE LIST'S, on the same screen row.
-	a.homePress(homeAttentionCol+homeGutter+1, row)
-	if line, ok := a.home.focusedLine(); !ok || attentionWordOf(line) != "" {
-		t.Fatalf("a press in the middle column landed in %q:\n%s", attentionWordOf(line), homeText(a))
-	}
-}
-
-// THE TWO COLUMNS SCROLL SEPARATELY, because they are two windows onto one list
-// and only one of them holds the cursor.
-func TestTheZoneColumnDoesNotScrollWithTheList(t *testing.T) {
-	a, _ := bridgeLab(t)
-	a.height = 12
-	width, height := a.size()
-	a.homeFrame(width, height)
-	if a.home.zoneTop != 0 {
-		t.Fatalf("the zones scrolled with the cursor in the list (top %d)", a.home.zoneTop)
-	}
-	for i := 0; i < 40; i++ {
-		a.home.move(1)
-	}
-	a.homeFrame(width, height)
-	if a.home.zoneTop != 0 {
-		t.Fatalf("walking to the bottom of the list scrolled the zones (top %d)", a.home.zoneTop)
-	}
-	if a.home.top <= a.home.placesFrom() {
-		t.Fatalf("the list never scrolled at all (top %d, first place %d)", a.home.top, a.home.placesFrom())
 	}
 }

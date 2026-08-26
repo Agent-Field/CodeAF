@@ -139,10 +139,13 @@ func (s *setupFlow) step() setupStep { return s.steps[s.at] }
 // screen and held behind it — starts its arrival from the first frame, which
 // is what "precedes the box" means in practice.
 //
-// AND THE ONE NOTE THIS SCREEN MAY LEAVE. A person who skipped, or who pressed
+// AND THE NOTES THIS SCREEN MAY LEAVE. A person who skipped, or who pressed
 // enter through the key step with nothing in it, is about to meet the first
-// turn's refusal with no key behind it. One dim line pointing at the row that
-// takes one is the whole of what is said; a profile with a key says nothing.
+// turn's refusal with no key behind it, so one dim line points at the row that
+// takes one; a profile with a key says nothing. On a Mac a SECOND line follows
+// it about the option key, for the reason written over it below — so a test
+// that means the key's line asks for the note that names it rather than for the
+// last note on the pile.
 func (a *app) endSetup(skipped bool) tea.Cmd {
 	if !a.setup.open {
 		return nil
@@ -152,6 +155,20 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	a.setup = setupFlow{skipped: skipped}
 	if !config.APIKeyConfigured(dir) {
 		a.noteFacts(setupNoKeyWord, "/settings")
+	}
+	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. Every
+	// chord this surface binds is `⌥`, and most macOS terminals send Option as an
+	// accent-composing key until a setting is turned on — so the first minute is
+	// where that is worth saying, while a person is being told how the program
+	// works rather than after a chord has silently typed `¡` into their sentence.
+	//
+	// IT IS WRITTEN AS A CONDITION AND NOT AS A DIAGNOSIS. Nothing has been
+	// pressed yet, so nothing here knows which way the profile is set; what this
+	// can honestly say is what the keys are and what to do if they type a
+	// character instead. The places' own note says it the other way round, after
+	// the character has actually arrived (chords.go's [app.chordNote]).
+	if words := a.chords.chordSetupWords(); words != "" {
+		a.note(words)
 	}
 	a.touch()
 	if a.welcome.open {

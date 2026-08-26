@@ -1,0 +1,292 @@
+package tui3
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+)
+
+// placeMoneyInk is the one semantic door onto money's ink, so a palette move
+// cannot leave one reading behind with the old meaning.
+//
+// IT IS [palette.money] AND NO LONGER [palette.add]. The design's own preamble
+// spends green on money — "green = money" — and this file was reaching for the
+// tick's olive instead, which said that finishing and paying are one event.
+// styles.go's [hueMoney] is the mint the design names, held at this table's own
+// lightness so it sits inside the conversation's signal band.
+func placeMoneyInk(pal palette) func(string) string { return pal.money }
+
+// ── the standing vocabulary ─────────────────────────────────────────────────
+//
+// EVERY WORD A PERSON READS ABOUT A STANDING ORDER IS SPELLED ONCE, HERE. The
+// same facts are said by four surfaces — the ratification card in the
+// transcript (standing.go), the shelves of the standing place (standingplace.go),
+// the column down the right (margin.go) and home's own item rows
+// (homestanding.go) — and a fact spelled twice is a fact that will drift the
+// first time one of the four is edited. Each of them is quoted in
+// internal/manual/chat/standing-orders.md exactly as it is spelled here.
+const (
+	// standHeading is the standing place's one sentence, drawn above the shelves.
+	// It NAMES the page and counts nothing: a heading with a tally beside it
+	// would be the screen counting what a person can already see.
+	standHeading = "standing orders"
+	// The three shelves, in the order they are drawn.
+	standInHereWord     = "in this conversation"
+	standProjectWord    = "for this project"
+	standEverywhereWord = "everywhere"
+	// standOtherWord heads the FOURTH shelf: what this machine holds that does
+	// not reach the conversation the person is sitting in.
+	//
+	// IT IS A PLACE AND NOT A REACH, which is why it is not one of the three
+	// above it. The three name how far an order was agreed to reach; this one
+	// names where the orders under it live, because that is the only thing they
+	// have in common — some are one project's, some are another conversation's,
+	// and all of them are somewhere else. And it is said in a person's words:
+	// `elsewhere on this machine` would put the machinery's own word for the
+	// widest reach onto a heading that does not mean it.
+	standOtherWord = "in other projects"
+	// standJustHereWord is the conversation reach as the RATIFICATION CARD says
+	// it, and it is deliberately not [standInHereWord]. A shelf heading names
+	// the place a person is standing and files rows under it; the card names how
+	// far the thing they are about to agree to will reach, and "in this
+	// conversation" on a card reads as where the order was said rather than as
+	// the whole of what it will govern.
+	standJustHereWord = "just this conversation"
+	// standJustHereTag is the conversation reach as a ROW'S TAIL says it, and it
+	// is a third spelling of one fact for the reason [standJustHereWord] is a
+	// second. A shelf heading files rows under a place and a card names how far
+	// something will reach; a tail is two or three cells at the end of a row in a
+	// column twenty-eight wide (margin.go), where `just this conversation` is the
+	// whole row and `in this conversation` is most of it. What is left is the
+	// half that carries the meaning: just here.
+	standJustHereTag = "just here"
+	// standWhereTag is the card's third band label, in the grammar of the two
+	// beside it ([standWhenTag], [standCostTag]): a lower-case noun and not a
+	// heading, because a card in a conversation with a heading on every row is a
+	// form.
+	standWhereTag = "where · "
+	// standNotHereWord is the exception, said in the same three words wherever
+	// it appears: the dim line under a shelf, the verb on the row's strip, and
+	// the receipt for the key that wrote it.
+	standNotHereWord = "not here"
+	// standNothingWord is the standing place on a machine nothing stands on at
+	// all, and it is the first line of that place's teaching prose
+	// ([standingTeach]).
+	//
+	// IT USED TO BE A REFUSAL. `/standing` said it and opened nothing, on the
+	// argument that a place with no rows is a screen which has to be dismissed
+	// before it can be told it was useless. On a fresh machine that is every
+	// door onto the place, so the tab was drawn and the key did nothing — and
+	// SCREEN 1f'S PREAMBLE says the opposite: an almost-empty place is the best
+	// teacher on the machine. The sentence stayed and the refusal went.
+	standNothingWord = "nothing stands here yet — say what should always be true, and I'll hold it."
+	// standHereWord is enter on the order this very conversation asked for.
+	// There is a door and it leads exactly where the person already is, so the
+	// page says the fact instead of moving them nowhere.
+	standHereWord = "you are already in it"
+	// standResumedWord is what a paused order that has been started again is
+	// called, on the place's receipt and on the one line of news in the
+	// transcript ([standUpdateWord] says the same word about the same event).
+	standResumedWord = "going again"
+	// standResumeWord is that same event as a VERB on the strip — what the key
+	// will do rather than what it did. [standResumedWord] is the receipt and
+	// reads as a report ("going again · draft the weekly update"), which is the
+	// wrong half of the sentence to offer somebody a key with.
+	standResumeWord = "start again"
+	// standNotOursWord is what the conversation's own three verbs say if one is
+	// ever asked of an order in another project. The strip does not offer them
+	// there ([standingPlace.verbs]), so this is the second lock on the same door —
+	// and it is a SENTENCE rather than a silent return, because a key that did
+	// nothing and said nothing is indistinguishable from a key that is broken.
+	standNotOursWord = "that one does not stand over this conversation"
+)
+
+// placeWindowStep is SCREEN 3d'S FOUR KEYS, and it is one function because
+// there is one answer.
+//
+// Time is two dimensions — which window, and how coarse — so it gets two arrow
+// axes rather than three letters: `shift+←→` pages the window by its own length
+// and `shift+↑↓` zooms the grain. Every place that has a window answers exactly
+// these four and no others, and a place that wrote its own switch would be a
+// fourth chance for one of them to disagree about what `shift+↑` means. The
+// arithmetic itself is [session.UsageWindow]'s, which is the one window
+// vocabulary this surface has.
+//
+// A KEY THAT IS NOT ONE OF THE FOUR ANSWERS THE WINDOW IT WAS GIVEN, so a caller
+// can compare and learn whether anything actually moved — which is what lets a
+// place refuse to redraw for a keystroke that changed nothing.
+func placeWindowStep(win session.UsageWindow, key string) session.UsageWindow {
+	switch key {
+	case "shift+left":
+		return win.Step(-1)
+	case "shift+right":
+		return win.Step(1)
+	case "shift+up":
+		return win.Coarser()
+	case "shift+down":
+		return win.Finer()
+	}
+	return win
+}
+
+// The window control as screen 3d draws it: the label BETWEEN THE ARROWS, which
+// is the control and the reading at once. A person reads the span they are
+// looking at and the keys that move it in one glance, on the row that reports
+// it, rather than learning a chord from a foot note somewhere else.
+//
+// A WINDOW WITH NO SPAN DRAWS NOTHING — not the arrows, not an empty pair of
+// them. [session.UsageWindow.Label] answers "" for a window nobody has chosen
+// yet, and arrows around nothing would be a control over no reading.
+const (
+	placeWindowBack = "shift+← "
+	placeWindowOn   = " →"
+)
+
+// placeWindowWords is the control as PLAIN TEXT, which is what a caller measures
+// against the frame it has. It is separate from the painted form because a
+// string with escape sequences in it cannot be clipped or counted safely, and a
+// header deciding whether the control fits has to do both.
+func placeWindowWords(win session.UsageWindow) string {
+	label := win.Label()
+	if label == "" {
+		return ""
+	}
+	return placeWindowBack + label + placeWindowOn
+}
+
+// placeWindowRow is that same control, painted: the arrows dim because they are
+// the instruction, the label in the reading tier because it is the fact.
+func placeWindowRow(win session.UsageWindow, pal palette) string {
+	label := win.Label()
+	if label == "" {
+		return ""
+	}
+	return pal.dim(placeWindowBack) + pal.ink(label) + pal.dim(placeWindowOn)
+}
+
+// placeGrainWords is THE SECOND AXIS, NAMED — `shift+↑ coarser` and its inverse
+// — and it names every direction that would actually move.
+//
+// A window already on days cannot get finer and a window on months cannot get
+// coarser, so the clause is one key at either end of the ladder and two in the
+// middle. That is the same law the verb strip keeps: a key drawn is a key bound,
+// and a key that would do nothing is not offered.
+func placeGrainWords(win session.UsageWindow) string {
+	switch win.Normalized().Grain {
+	case session.GrainMonth:
+		return placeFinerWords
+	case session.GrainWeek:
+		return placeCoarserWords + " · " + placeFinerWords
+	default:
+		return placeCoarserWords
+	}
+}
+
+const (
+	placeCoarserWords = "shift+↑ coarser"
+	placeFinerWords   = "shift+↓ finer"
+	// placeHeadGap is the least air between what a place is called and the
+	// control at the other end of its line. Two cells would technically fit and
+	// would read as one run-on row; four is a gap a person's eye reads as a gap,
+	// which is screen 2a's own device — air where there is no fifth brightness
+	// tier to spend.
+	placeHeadGap = 4
+)
+
+// placeWindowFits is what one head row HAS ROOM FOR: the arrows around the
+// label, and the grain clause beside them.
+//
+// ONE PREDICATE ANSWERS THE PAINT AND THE KEYS, on every place that has a time
+// window, and that is what keeps the surface honest: a capability that cannot
+// work is absent rather than broken, so on a frame too narrow for the label the
+// arrows are not drawn AND the keys do nothing — and the same, separately, for
+// the zoom. A control bound but invisible is the exact defect the verb strip
+// exists to end.
+//
+// AT [tierPhone] THERE IS NO WIDTH TO SHARE. A list wraps its tail onto a line
+// of its own there rather than cutting both halves in half, and the control is
+// the half a phone can most afford to lose.
+func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, grain bool) {
+	words := placeWindowWords(win)
+	if words == "" || phoneList(width) {
+		return false, false
+	}
+	used := ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
+	if width < used {
+		return false, false
+	}
+	return true, width >= used+ansi.StringWidth(placeGrainWords(win))+placeHeadGap
+}
+
+// placeHeadRow is THE ONE HEAD ROW every place with a time window draws: what
+// the place is on the left, and on the right the window exactly as SCREEN 3d
+// draws it — `shift+← aug 12 – aug 25 →`, the control and the reading at once,
+// with the grain clause beside it where the line has room.
+//
+// IT IS ONE FUNCTION BECAUSE THERE IS ONE CONTROL. Standing drew this pair, the
+// spend place drew a legend of its own that named the keys and not the span, and
+// the tasks place drew neither while binding all four keys — three answers to one
+// question, and the third was the exact defect this file's law is written
+// against. What differs between the three places is the sentence on the LEFT,
+// which is the only thing any of them knows that the others do not.
+// head is the left field as it is MEASURED and painted as it is DRAWN. The two
+// are separate arguments because a painted string cannot be measured — an escape
+// sequence takes no cells and every one of them would be counted — and a head
+// row that measured its own colours would put the control off the right edge.
+// An empty `painted` means "paint it dim", which is what a place name wants.
+func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal palette) string {
+	if painted == "" {
+		painted = pal.dim(head)
+	}
+	arrows, grain := placeWindowFits(width, head, win)
+	if !arrows {
+		return pal.dim(fit(head, width))
+	}
+	right := placeWindowRow(win, pal)
+	plainRight := placeWindowWords(win)
+	if grain {
+		right += pal.dim("  " + placeGrainWords(win))
+		plainRight += "  " + placeGrainWords(win)
+	}
+	gap := width - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
+	if gap < 1 {
+		gap = 1
+	}
+	return painted + strings.Repeat(" ", gap) + right
+}
+
+// foldLine keeps every collapsed count in one sentence grammar. A clause is
+// already prose and therefore follows the count after one comma.
+func foldLine(n int, clause string) string {
+	line := tokens.GlyphCollapsed + " " + groupedInt(n) + " more"
+	if clause = strings.TrimSpace(strings.TrimPrefix(clause, ",")); clause != "" {
+		line += ", " + clause
+	}
+	return line
+}
+
+// appendPlaceSection gives consecutive blocks exactly one breath without
+// growing a second blank when two callers describe the same boundary.
+func appendPlaceSection(rows []string, heading string) []string {
+	for len(rows) > 0 && rows[len(rows)-1] == "" {
+		rows = rows[:len(rows)-1]
+	}
+	if len(rows) > 0 {
+		rows = append(rows, "")
+	}
+	return append(rows, heading)
+}
+
+// groupedInt is the one thousands spelling for reading-layer counts.
+func groupedInt(n int) string {
+	plain := strconv.Itoa(n)
+	for at := len(plain) - 3; at > 0; at -= 3 {
+		plain = plain[:at] + "," + plain[at:]
+	}
+	return plain
+}

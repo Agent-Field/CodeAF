@@ -433,7 +433,7 @@ key arrives as an ordinary `enter` and the message waits instead.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
-| `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
+| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
@@ -1023,13 +1023,15 @@ and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, steppi
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **every other printable key, the space included, types into the filter**, which narrows
-both sections at once and is shown at the foot as `filter · port`. Its foot reads
-`esc close · ↑↓ move · enter opens its room`, or
-`esc close · ↑↓ move · enter goes inside it` on a task another conversation ran, which has
-no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
-at all — which is a page holding only work running in other aforge windows — or
-`esc clears the filter · ↑↓ move · enter opens the row` while you are typing one. Clicking a row acts on the first press; the wheel walks the
-cursor. The tasks pages describe what is on it.
+every section at once and is shown at the foot as `filter · port`. `→` opens the row's
+verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
+still queued or running. Its foot is assembled from what is true of the row under the
+cursor — `enter open its room · → verbs: stop it · type to filter` over a task this window is
+running, `enter go inside it` on a task another conversation ran, which has no room to open,
+no `enter` clause at all where the row under the cursor has no door — which is a page
+holding only work running in other aforge windows — and `esc clear the filter` in place of
+`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
@@ -1086,8 +1088,8 @@ seconds quits aforge.
 
 ## Go back to the last conversation — tab
 
-**`tab`, pressed with an empty message box, goes to the conversation you were in before
-this one.** Press it again and you are back. It is `cd -`.
+**`tab`, pressed in a conversation with an empty message box, goes to the conversation you
+were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
 terminal has been in before. A key that cannot act says so by not being advertised — and
@@ -1097,34 +1099,98 @@ It works while a turn is running in either conversation. Nothing is interrupted:
 you leave keeps streaming into its own transcript, and it is redrawn from its first token
 when you come back.
 
+**On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
+search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+the same key doing the same kind of thing — going to the next thing of the kind you are
+looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
+
 **Everything else that wants `tab` gets it first**, and that is the whole rule rather than a
 claim that `tab` is free. In order: a paste bracket makes it a literal tab; the task roster
-eats it while it holds the keyboard (`esc` gives the keyboard back first); the settings
-panel changes page with it; the memory panel changes scope; the rewind timeline and the
-inline rewind lift with it; and path completion takes it over `/image ` or `/export `. Only
-when none of those is claiming it, and the box is empty, is it the way back.
+eats it while it holds the keyboard (`esc` gives the keyboard back first); a box that has
+taken the whole keyboard on a place keeps it — the errand pane on home, the value being
+edited in settings; the rewind timeline and the inline rewind lift with it; and path
+completion takes it over `/image ` or `/export `. Then, on a place, it is the next place.
+Only in a conversation, with none of those claiming it and the box empty, is it the way back.
+
+Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
+points the way they go: **the settings panel** changed its own section with `tab`, and now
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and now uses `alt+s`.
 
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
+
+## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
+
+On macOS every `alt+` below is drawn `⌥` — `alt+enter` is `⌥enter`, `alt+w` is `⌥w`, `alt+o`
+is `⌥o`. Same key, same chord, the spelling the keycap uses.
+
+`alt+enter` with something typed into the composer on any place opens the **composer
+layer**: the page behind dims, the box stays where it is, and the three facts a task needs
+appear under it. The places page has the layer in full; these are its keys.
+
+| Key | What it does |
+| --- | --- |
+| `alt+enter` | first press opens the layer; second press sends the task off |
+| `alt+w` | move the task to the next project aforge knows, and round again |
+| `alt+o` | open the model list for the **execution** slot — what the work runs on |
+| a digit, or `.` | type the spend cap; the figure changes as you type |
+| `backspace` | take one character off the cap |
+| `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
+| `esc` | back to the place you were on, sentence still in the box |
+
+`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
+neither can move a view while you are aiming at a destination, and pressing them with no
+layer up does nothing at all.
+
+While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
+letters do not reach the composer — what you typed is already written and is on the screen
+above you. Inside the model list `alt+o` opens, the keys are the model picker's own — type
+to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 ## Keys on home, and is there a shortcut for it
 
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
-taken, `ctrl+.` is the task page (`/history`), and the chords that were left — the `alt+`
-letters — arrive in some terminals and do nothing at all in others. `esc` was not available either: on an idle conversation it
+**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of seven places, and
+every one of them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold
+`alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
+keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
+`alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
+rather than on `ctrl`.
+
+**`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
+and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
+the first spelling and never will be — but a terminal running the kitty keyboard protocol
+sends exactly the keys that scheme cannot spell, and it tells aforge it does. Where that
+report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
+live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
+WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
+way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
+jumping" on the screen page.
+
+**The numbers work from a conversation as well as from a place.** They are the one class of
+place key that does: `tab` belongs to the composer's path completion while you are typing,
+and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
+is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
+number opens its room whatever is in it: a place with nothing of its own to draw spends the
+frame saying what it is for, and none of the seven is ever a key that does nothing.
+
+There is no `ctrl+<letter>` chord for home: every one this surface could use is already
+taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
+takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box that still shows nothing
 with that space behind the cursor, takes the whole draft away and opens home — so a leading
 space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
-the box has words in it, it is not bound over `--host` where home refuses, and it is not a
-paste: text pasted with two leading spaces is two spaces. A machine with one conversation,
-or none, opens an empty home.
+the box has words in it, and it is not a paste: text pasted with two leading spaces is two
+spaces. A machine with one conversation, or none, opens an empty home; so does a session
+over `--host`, where home opens with one sentence in place of its rows.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
@@ -1137,7 +1203,7 @@ back in it.
 
 When the box is empty, the legend line above the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type, and it is absent only over `--host`.
+you type.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second
@@ -1146,38 +1212,37 @@ found somewhere else to go, and that rule is gone (the home page, *space space d
 nothing*).
 
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
-`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
-home opens with the cursor on **no row**, and **the first `down` lands at the top of the
-projects list** on a frame 110 columns or wider — the middle column, always, whatever the
-zones beside it hold; on a narrower frame, where the zones are strips over the list, it
-walks into `needs you` instead · `pgup`/`pgdown` jump four · `enter` acts on the row under
-the cursor · **`tab` moves to the
-next zone** on a frame 110 columns or wider, where home draws three columns — `needs you`,
-`moving`, the list, then round again, and from rest it enters `needs you`; the foot names
-it `tab next zone` · `backspace`,
+`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the headings and the section
+line · home opens with the cursor on **the conversation this window is holding**, and `↑`
+off the top of the list walks up onto **the tab bar**, from where the first `down` lands
+back on the row you left (*The tab bar is a row the cursor can stand on*) ·
+`pgup`/`pgdown` jump a screenful · `enter`
+acts on the row under the cursor · **`tab` is the next place** — home is one column now and
+there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
+**`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
+as aforge is running and neither written to disk · `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
 — home's own page has the table) · **anything else you type goes into the box**, which
 searches the whole machine and offers to start a new conversation at the same time.
 
-`→` and `←` are the fold's, the way they are in the task column: on a project's
-`…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
-`←` on a conversation inside an opened project folds that project too. On a conversation
-or watch row with the box empty, `→` opens **every folded band on the card** you are
-looking at and `←` folds them all back — one layer at a time, so `←` folds the card's
-bands before it folds anything on the list. **On the three-column frame (110 columns and
-up) the same arrows also cross the columns**: `→` off a row in `needs you` or `moving`
-crosses into the list and `←` off a conversation in the list crosses back, each landing
-on the same conversation when the far column holds it. While something is typed the two
-arrows move the caret in the box instead.
+**`→` opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
+of the list down by its own height, and while that strip is drawn its letters are the verbs
+and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
+`o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
+with no verbs the arrows are the fold's, the way they are in the task column: on home's one
+fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+folds them back, and on a card `→` opens every folded band while `←` folds them again.
+While something is typed the two arrows move the caret in the box instead.
 
-**A letter always types. Every letter, always** — there is no row, cursor, hover or pick
-that turns one into a shortcut, so "make me a site" comes out whole wherever the cursor
-is resting. The card's actions ride chords, which can never begin a word: **`ctrl+e` puts
-the conversation away into the archive** — the folded `archive · N put away` line at the
-very foot — and `ctrl+e` on a row inside the open archive brings it back (the archive
-page section has the whole shape). **`ctrl+t`** starts a new conversation in that row's
+**A letter always types**, unless the verb strip that names it is on screen — that visible
+strip is the one state where a printable key is a verb, and it is why it has to be drawn.
+Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
+actions otherwise ride chords, which can never begin a word: **`ctrl+e` puts the
+conversation away** — it leaves the list, and typing its name is how you find it again, with
+`ctrl+e` on the found row bringing it back. **`ctrl+t`** starts a new conversation in that row's
 project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
 folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
 **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
@@ -1185,11 +1250,13 @@ item thinks** one rung. **With the cursor on no row at all** — one `↑` up of
 where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
 instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
 under your pointer when there is one, the cursor's row otherwise — and the card's own
-dim legend names exactly the keys that work. The one printable exception is the digits
-on a waiting row's answer chips, which are drawn on the row itself.
+dim legend names the verbs, and the strip names the letters. The other printable exception
+is the digits on a waiting row's answer chips, which are drawn on the line above the box.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
-a click on a `…13 more` line toggles it in one press.
+a click on a `…13 more` line toggles it in one press. The wheel walks the list three rows a
+turn, and the **tab bar above the list is a control** — clicking a place's word goes there,
+and clicking a gap between two words does nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
@@ -1198,15 +1265,22 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The top line carries `esc close` on the right. The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open`, and the line under it
-changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
-`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
-row, and `enter or → show them · esc close` on a folded project.
+The box row reads `› say what you want done`, with the scope chip — `here ~/aforge-v2` —
+against its right edge. The line under it is the foot, and **at rest it is exactly**
+`type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
+and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
+naming it, and `alt+.` draws the whole map when you want it.
+
+On any other row the foot says what THAT row's keys do and gains the two that are true
+everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
+on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
+on the fold, and
+`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+on the action row.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in, with the preview card beside it. **While anything is typed the list is a
-drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
+this window is in; a card stands beside it only at 160 columns and wider. **While anything
+is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
 `ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,
@@ -1227,6 +1301,39 @@ Home is modal like the panels above: while it is up, every chord except `ctrl+c`
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
 seconds quits aforge.
 
+## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
+
+**On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
+the row of seven words under the top line. The word you are standing in wears the cursor's
+band there instead of its usual mark, and five keys mean something on that row:
+
+| Chord | What it does while the cursor is on the bar |
+| --- | --- |
+| `←` / `→` | walk one word along, wrapping round from either end. **Nothing opens** |
+| `enter` | go into the place under the cursor |
+| `↓` | the same — go into the place under the cursor |
+| `esc` | back into the page, on the row you walked up from. It does **not** close the place |
+| `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
+
+Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
+next and previous place, `alt+1` … `alt+7` jump, `alt+.` draws the map, and **any printable
+key goes into the composer** — taking the cursor back down into the page with it, because
+somebody who has started typing has stopped looking at the bar.
+
+**`←` and `→` are not the row's keys up here.** On a row they open that row's verb strip
+and its folds; the bar is not a row of any page's list, so both arrows are the walk along
+the words and nothing else.
+
+**The first `↓` back off the bar lands where you left.** `↑` onto the bar does not move the
+page's own cursor, so walking up and straight back down costs nothing.
+
+**And it works only where a bar is drawn.** Home on a phone-shaped frame and a task's record
+card draw something else in those cells, so `↑` there is the walk it has always been — no
+key does anything that is not on the screen.
+
+The **places** page has the same thing with the pointer's half beside it: *How do I move
+between the tabs with the arrow keys*.
+
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
@@ -1245,7 +1352,7 @@ does nothing.
 
 **The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
-project's record. Old tasks from earlier sessions are on the task page, reached from the
+project's record. Old tasks from earlier sessions are on the tasks place, reached from the
 column's own `ctrl+. earlier` line, from `ctrl+.` or from `/history`; `enter` on an
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
@@ -1258,8 +1365,8 @@ standing orders page, and typing `/task ` is exactly what pressing `+ /task` put
 box. **No new key is added to the column by either of them.**
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
-cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
-move · enter opens its room`, and the strip that opens it is one full-width door
+cards a tap opens, its foot is a `‹ back` bar in place of the key legend
+`enter open its room · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
@@ -1613,9 +1720,20 @@ stripped off it.
 
 ## Chords that mean more than one thing
 
-Two chords carry unrelated meanings. Which one you get depends on where you are.
-A third, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
+Three chords carry unrelated meanings. Which one you get depends on where you are.
+A fourth, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
 the thing you are standing on — and its own section below has the table.
+
+**`ctrl+.` — two meanings, and the two screens can never both be up:**
+
+| Where you are | What it does |
+| --- | --- |
+| in a conversation | every task this project has run — the same list `/history` opens |
+| on a place | draws the key map, exactly as `alt+.` (`⌥.`) does — **only** on terminals that report they can send `ctrl+<digit>` |
+
+A place takes the whole frame, so while one is standing the conversation's keys are not
+under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
+reading simply does not exist and the chord does nothing there.
 
 **`ctrl+t` — two meanings:**
 
@@ -1661,19 +1779,25 @@ movement. `ctrl+f` never is — it always moves the caret right.
 ## ctrl+v — how hard the thing you are looking at thinks
 
 `ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
-and it moves the rung of **the thing you are standing on**. One chord, four scopes:
+and it moves the rung of **the thing you are standing on**. One chord, three scopes:
 
 | Where you are | What moves |
 |---|---|
 | The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on **no row at all** | The machine's own default — the `thinking` row in `/settings` |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
 the chip above its message box moves it.
+
+**The machine's own default is not one of the scopes.** It used to be — home had a state
+where the cursor stood on no row at all and the right-hand side became a card about the
+machine, and this chord moved the install's rung from there. `↑` off the top of home's list
+reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+default, open `/settings` and walk to the **`thinking`** row, which is the setting both
+roads always wrote.
 
 **It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
 never returns to "nobody said" — clearing a rung hands the work back to whatever stands
@@ -1683,8 +1807,8 @@ thing back to nothing in the place it is written down: the `thinking` row's own 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
 thinking high` — and on the roster's own figures row when the column is wide enough to hold
-it. The machine's is on the card home draws at rest. An item's is on that item's card. A
-thing nobody has dialled says nothing, which is not the same as `low`.
+it. An item's is on that item's card. The machine's own is the `thinking` row of
+`/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
 
 **On a task it lands on the next call, not this one.** A worker already running keeps the
 rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
@@ -1707,9 +1831,13 @@ answer:
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
-| `ctrl+v` | **Bound**, on four surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, the machine's own default on home at rest, or a standing item. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
+| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
+| `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
+| `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries

@@ -2091,12 +2091,10 @@ func (a *app) ctxSpark() string {
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
-	// THE SHAPE IS THE SPARK MACHINERY'S AND NOT THIS FUNCTION'S (spark.go). The
-	// machine card's `hands` chart draws in the same alphabet off the same
-	// quantizer, and one rounding rule is what keeps two sparks on one screen
-	// from disagreeing about the same reading. The ceiling is STATED here —
-	// a context bar means the same thing from one turn to the next — where the
-	// chart on the card has no scale but its own window.
+	// THE SHAPE IS THE SPARK MACHINERY'S AND NOT THIS FUNCTION'S (spark.go), so
+	// that one rounding rule answers "how tall is this sample" for every spark on
+	// this surface. The ceiling is STATED here, because a context bar has to mean
+	// the same thing from one turn to the next.
 	return barSpark(a.ctxRing, threshold, len(a.ctxRing))
 }
 
@@ -2877,11 +2875,13 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
-	case a.standPage.open:
+	case a.at(pageStanding):
 		// The standing page names its verbs here because they are the half of it
-		// nobody can guess: three of the four are bare letters, and one of them
-		// stops a thing for good (standingpage.go).
-		return standPageVerbs
+		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
+		// actually has: one of them stops a thing for good, and an order in
+		// another project cannot be excepted from a place it never reached
+		// ([standingPlace.hint]).
+		return a.orders.hint(a)
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and

@@ -39,16 +39,36 @@ import (
 // Nothing else about the session moves with it: the approval gate is still this
 // launch's, re-read now, because a window's rules are the person's rules
 // wherever the sentence points.
-func v3Errand(cfg session.Config, workspace, profileDir string, yolo bool) func(string, string) (tui3.Agent, error) {
-	return func(dir, ws string) (tui3.Agent, error) {
+func v3Errand(cfg session.Config, workspace, profileDir string, yolo bool) func(tui3.ErrandOrders) (tui3.Agent, error) {
+	return func(orders tui3.ErrandOrders) (tui3.Agent, error) {
+		dir := orders.Dir
 		if strings.TrimSpace(dir) == "" {
 			return nil, fmt.Errorf("an errand needs a folder to write into")
 		}
+		ws := orders.Workspace
 		if strings.TrimSpace(ws) == "" {
 			ws = workspace
 		}
 		fresh := v3CurrentGate(cfg, ws, profileDir, yolo)
 		fresh.Workspace = ws
+		// ── THE TWO FACTS THE COMPOSER LAYER SETTLED, HONOURED HERE ──
+		//
+		// The model is the EXECUTION slot's — what the work this errand hands out
+		// runs on (config's ModelSlotFor("work"), whose prefs field is task_model)
+		// — so it is Config.TaskModel and not Config.Model: the errand still talks
+		// on the launch's own model, and only the work it starts moves. Empty
+		// keeps the launch's binding, which is what every door but the layer sends.
+		if model := strings.TrimSpace(orders.Model); model != "" {
+			fresh.TaskModel = model
+		}
+		// And the cap is the session's own spend rail (internal/session's rail.go):
+		// it stops the errand's next turn once its journaled spend reaches the
+		// figure, and it holds every adaptive run the errand starts to a tank no
+		// bigger than itself ([Agent.railCap]). Zero is the launch's own rail,
+		// untouched.
+		if orders.CapUSD > 0 {
+			fresh.SpendRailUSD = orders.CapUSD
+		}
 		// ── lane time ── AND IT SAYS WHAT IT IS. An exchange is a pane that
 		// closes with home, not a room somebody sits in, so it is never a
 		// steering target for a standing item that fires (internal/session's

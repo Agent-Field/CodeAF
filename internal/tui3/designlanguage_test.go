@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -152,6 +155,14 @@ var backgroundAuthors = map[string]string{
 // which is only true for as long as nothing else in the package can paint one.
 // Every tinted run on this surface therefore comes through the ladder, and
 // "which step is this" is a question with three answers rather than forty.
+//
+// FIDELITY.md item 13 briefly made the places an exception: home and the six
+// paint #12121A over every cell of the frame, so rest gained a floor step there.
+// The owner tested it on 2026-08-25 and reversed it — "i want bg color and text
+// color to be same as in inside chat please this new bg looks weird i think we
+// were taking user terminal stuff or something previously" — so there is one
+// ladder again, with three drawable steps and a fourth that is the absence of a
+// paint, on every surface this program draws.
 func TestOnlyTheGroundLadderPaintsABackground(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -225,6 +236,9 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
 				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
+				// money joined the band in the places wave: it is a signal like
+				// the rest, so it answers to the band like the rest.
+				"money": hueMoney,
 			},
 			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "narr": hueNarr, "dim": hueDim},
 		},
@@ -233,6 +247,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
 				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
+				"money": lightMoney,
 			},
 			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
 		},
@@ -310,11 +325,18 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
 			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
 			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
+			"money": hueMoney,
+			// THE PLACE LADDER ADDS NOTHING TO THIS WALK, and after 2026-08-25 that
+			// is a fact about the palette rather than a gap in the test: a place
+			// paints from the conversation's own table with three roles re-pointed
+			// at colours already in it (styles.go's [placeRampFrom]), so every hue
+			// a place can draw is a row of this map.
 		}},
 		{"light", map[string]hue{
 			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
 			"narr": lightNarr, "dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
 			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
+			"money": lightMoney,
 		}},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
@@ -720,4 +742,173 @@ func trimFloat(f float64) string {
 	s := strconv.FormatFloat(f, 'f', 2, 64)
 	s = strings.TrimRight(s, "0")
 	return strings.TrimSuffix(s, ".")
+}
+
+// ── 5. THE PLAIN FLOOR, AND THE ALPHABET ────────────────────────────────────
+
+// EVERY PLACE IS LEGIBLE WITH NOTHING BUT LETTERS.
+//
+// FIDELITY.md item 11(c) asks for this by name, and it is the honest half of
+// item 13: a surface that paints its own page has to be a surface that reads
+// with no page at all. Two capability floors meet here and they are independent
+// questions — [tokens.DetectProfile]'s NoColor answer (this terminal was told
+// not to be styled) and [detectASCII]'s veto (this terminal cannot be trusted
+// with a box-drawing character) — so the walk below turns both of them on at
+// once, which is the worst terminal aforge claims to run on: TERM=linux in a C
+// locale with NO_COLOR set.
+//
+// Four things are asserted and each of them is a way the floor could be a lie:
+//
+//   - NOT ONE SGR SEQUENCE SURVIVES. A place that painted a ground, a band or a
+//     hue here would be a program styling a terminal that said not to. What is
+//     NOT forbidden is OSC 8 — a hyperlink is a destination rather than a style,
+//     it is the one escape styles.go's own underline note excepts by name, and a
+//     terminal that cannot follow one simply shows the text.
+//   - THE FRAME IS STILL THE WHOLE FRAME. The layout may not depend on a paint:
+//     if a row's width came from a padded background rather than from its text,
+//     the count below moves.
+//   - THE PLACE STILL SAYS WHERE YOU ARE. The tab bar's band is a colour and is
+//     gone, so the place's own word had better still be on the screen — this is
+//     the one fact the bar exists for, and it is the fact a floor most easily
+//     eats.
+//   - THE FOOT STILL NAMES A KEY. A screen with no colour and no way out is a
+//     screen somebody is stuck on.
+func TestEveryPlaceHoldsAtThePlainFloor(t *testing.T) {
+	a := placeApp(t)
+	// BOTH FLOORS AT ONCE, stated rather than detected: this test is about a
+	// named terminal and not about whatever the runner happened to export.
+	a.pal = newThemedPalette(tokens.NoColor, true, themeDark, nil)
+	for _, width := range []int{80, 120, 200} {
+		a.width, a.height = width, 26
+		for _, id := range []page{pageHome, pageSpend, pageSearch} {
+			a.showPage(id)
+			if a.page != id {
+				t.Fatalf("the %s place would not open at the plain floor", id.word())
+			}
+			frame, _, _ := a.frame()
+			if strings.Contains(frame, "\x1b[") {
+				t.Fatalf("at %d the %s place draws an SGR sequence at NO_COLOR:\n%q",
+					width, id.word(), frame)
+			}
+			lines := strings.Split(frame, "\n")
+			if len(lines) != a.height {
+				t.Fatalf("at %d the %s place drew %d rows into %d — the layout is leaning "+
+					"on a paint that is not there", width, id.word(), len(lines), a.height)
+			}
+			for _, line := range lines {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("at %d the %s place overflows the plain frame: %q",
+						width, id.word(), line)
+				}
+			}
+			if !strings.Contains(frame, id.word()) {
+				t.Fatalf("at %d the %s place does not say its own name with no colour to "+
+					"say it with:\n%s", width, id.word(), frame)
+			}
+			if !strings.Contains(frame, "tab next place") && !strings.Contains(frame, "enter") {
+				t.Fatalf("at %d the %s place names no key at the plain floor:\n%s",
+					width, id.word(), frame)
+			}
+		}
+	}
+}
+
+// NOTHING A PLACE DRAWS COMES FROM A NERD-FONT PRIVATE USE AREA.
+//
+// FIDELITY.md item 11(b): every glyph a place draws must render in JetBrains
+// Mono, Menlo, SF Mono and DejaVu Sans Mono. No test can open a font, so what is
+// checked is the one thing that makes a character unrenderable in ALL FOUR by
+// construction — a code point in a Private Use Area, which is where every patched
+// nerd-font puts its icons and where no unpatched font has anything at all.
+//
+// A place drawing one would look correct on the machine of whoever added it and
+// like a row of empty boxes on every other.
+func TestNoPlaceDrawsAPrivateUseGlyph(t *testing.T) {
+	private := func(r rune) bool {
+		return r >= 0xE000 && r <= 0xF8FF || // the Basic Multilingual Plane's own
+			r >= 0xF0000 && r <= 0xFFFFD || // Supplementary Private Use Area-A
+			r >= 0x100000 && r <= 0x10FFFD // and -B
+	}
+	a := placeApp(t)
+	a.width, a.height = 160, 30
+	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+		a.showPage(id)
+		for _, r := range placeFrameText(a) {
+			if private(r) {
+				t.Fatalf("the %s place draws U+%04X, which is in a Private Use Area — it is "+
+					"an icon from a patched font and it renders as an empty box on every "+
+					"terminal whose font was not patched (styles.go, THE PLACE LADDER; "+
+					"FIDELITY.md item 11)", id.word(), r)
+			}
+		}
+	}
+}
+
+// THE TWO MARKS THE DESIGN RE-SPELLED ARE THE HOUSE ALPHABET'S OWN.
+//
+// home.go authors `?` and `◐` as literals because that is where this surface's
+// glyph vocabulary lives, and internal/tui2/tokens holds the same two characters
+// in named slots with the same meanings — [tokens.GlyphNeedsHuman], whose comment
+// reads "always amber", and [tokens.GlyphWorking]. Two spellings of one alphabet
+// is exactly the drift the one-source-of-truth law exists to catch, so the
+// agreement is asserted rather than assumed.
+//
+// The store's own two are asserted at the same time, because [standSurfaceGlyph]
+// translates between the alphabets with literals it cannot reach for
+// (internal/standing does not hand its glyphs out, and CLAUDE.md forbids this
+// package from reshaping the resident's). A translation whose left-hand side had
+// drifted would silently do nothing.
+func TestThePlaceMarksAreTheDesignsOwn(t *testing.T) {
+	if homeAskGlyph != tokens.GlyphNeedsHuman {
+		t.Fatalf("home's needs-a-human mark is %q and the house alphabet's is %q",
+			homeAskGlyph, tokens.GlyphNeedsHuman)
+	}
+	if homeLiveGlyph != tokens.GlyphWorking {
+		t.Fatalf("home's working mark is %q and the house alphabet's is %q",
+			homeLiveGlyph, tokens.GlyphWorking)
+	}
+	if homeIdleGlyph != tokens.GlyphQueued {
+		t.Fatalf("home's queued mark is %q and the house alphabet's is %q",
+			homeIdleGlyph, tokens.GlyphQueued)
+	}
+	if got := standSurfaceGlyph(standStoreAskGlyph); got != homeAskGlyph {
+		t.Fatalf("the store's needs-you mark translates to %q, want %q", got, homeAskGlyph)
+	}
+	if got := standSurfaceGlyph(standStoreLiveGlyph); got != homeLiveGlyph {
+		t.Fatalf("the store's firing mark translates to %q, want %q", got, homeLiveGlyph)
+	}
+	// AND THE STORE STILL SPELLS WHAT THE TRANSLATION EXPECTS. This is the half
+	// that would rot in silence.
+	item := standing.Item{NeedsPerson: "the fix touches migrations"}
+	if got := item.Glyph(false); got != standStoreAskGlyph {
+		t.Fatalf("internal/standing now writes %q for needs-you, and standing.go still "+
+			"translates %q — the translation has quietly stopped happening",
+			got, standStoreAskGlyph)
+	}
+	if got := (standing.Item{}).Glyph(true); got != standStoreLiveGlyph {
+		t.Fatalf("internal/standing now writes %q for firing, and standing.go still "+
+			"translates %q", got, standStoreLiveGlyph)
+	}
+}
+
+// NO PLACE DRAWS AN ITALIC.
+//
+// FIDELITY.md item 12: the design's own file uses none, and a terminal's italic
+// is the least reliable attribute it has — half of them render it as a colour
+// swap and some as nothing. [palette.italic] has exactly one caller in this
+// package (thinking.go, the model's own reasoning, which is conversation and not
+// a place), and this is what keeps that true from the other end: the frames
+// themselves, checked for SGR 3.
+func TestNoPlaceDrawsAnItalic(t *testing.T) {
+	a := placeApp(t)
+	a.width, a.height = 160, 30
+	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+		a.showPage(id)
+		frame, _, _ := a.frame()
+		if strings.Contains(frame, "\x1b[3m") {
+			t.Fatalf("the %s place draws an italic (SGR 3). The design uses none, and "+
+				"emphasis past bold is brightness, case, indent or air — SCREEN 2a",
+				id.word())
+		}
+	}
 }

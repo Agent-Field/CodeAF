@@ -117,7 +117,7 @@ func TestTheKeySheetLiftsItsChordsAndChipsItsCommands(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width = 200
 
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	rows := noteRows(a, help, columnFacts(help, true)...)
 	body := strings.Join(rows, "\n")
 

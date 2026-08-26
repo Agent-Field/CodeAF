@@ -212,6 +212,13 @@ func newTestApp(agent Agent) *app {
 	// machine and nowhere else. The posture has tests of its own that set the
 	// profile directory they read from.
 	a.railAway = false
+	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
+	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
+	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// read one way on a Mac and another way on Linux. The spelling has a table
+	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
+	// asserts the Mac reading against every place on purpose.
+	a.chords = chordSpelling{meta: chordAltWord}
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
@@ -257,6 +264,21 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "home":
+		return tea.KeyPressMsg{Code: tea.KeyHome}
+	case "end":
+		// THE TWO ENDS OF A LIST, spelled out for the same reason as the two page
+		// keys below: the tasks place binds both to its cursor, and without a
+		// case here a test that "pressed end" pressed the zero key — which is how
+		// a strip that survived them went unnoticed.
+		return tea.KeyPressMsg{Code: tea.KeyEnd}
+	case "pgup":
+		return tea.KeyPressMsg{Code: tea.KeyPgUp}
+	case "pgdown":
+		// THE TWO PAGE KEYS, spelled out for this switch's own stated reason: they
+		// are not single runes, so without a case here they fell through to the
+		// zero key and every test that "pressed pgdown" pressed nothing at all.
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
 	case standMarkKey:
 		// The marked send (standmark.go). It is spelled out here because the
 		// fall-through below only builds single-rune chords, and a chord that
@@ -284,6 +306,29 @@ func key(s string) tea.KeyPressMsg {
 	// be able to do.
 	if chord, ok := strings.CutPrefix(s, "ctrl+"); ok && len([]rune(chord)) == 1 {
 		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModCtrl}
+	}
+	// AND EVERY alt CHORD, WITH NO TEXT ON IT. That is not a shortcut: a modified
+	// key carries no text through ultraviolet's decoder, which clears it on the
+	// esc-prefix path explicitly — and it is exactly what makes the router's
+	// alt+digit and alt+letter classes safe to add under a page whose rule is
+	// "every printable key is the filter" (placekeys.go). A helper that invented
+	// text here would hide the one property the design depends on.
+	if chord, ok := strings.CutPrefix(s, "alt+"); ok && len([]rune(chord)) == 1 {
+		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModAlt}
+	}
+	switch s {
+	case "alt+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "shift+left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
+	case "shift+right":
+		return tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
+	case "shift+up":
+		return tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModShift}
+	case "shift+down":
+		return tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift}
 	}
 	return tea.KeyPressMsg{}
 }
@@ -992,8 +1037,8 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	// block is taller than a twenty-row test frame, so which of its rows the
 	// bottom of the screen happens to show is a fact about the terminal.
 	for _, want := range []string{"/model <slug>", "/compact"} {
-		if !strings.Contains(helpText(a.file), want) {
-			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file))
+		if !strings.Contains(helpText(a.file, a.chords), want) {
+			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file, a.chords))
 		}
 	}
 	// What the SCREEN is asserted on is the block's last row, because that is the

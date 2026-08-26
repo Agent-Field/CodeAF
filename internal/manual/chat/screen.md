@@ -45,11 +45,22 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
 
-Four things take the whole frame instead of sharing it, at every width: the settings
-panel (`ctrl+,`), the task page (`ctrl+.`, or `/history`), home (`/home`, or space
-twice on an empty box), and the rewind timeline (`/rewind`). While any of them is up
-nothing else is drawn — no conversation, no box, no status line — and `esc` gives the
-frame back. **Only one of the four is ever up:** opening any one closes the other three.
+**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
+standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
+(`⌥1` … `⌥7` on a Mac) jump straight to one from wherever you are standing — a place or a
+conversation — and each
+has commands of its own (`/home`, `/history`, `/standing`,
+`/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
+deliberately not one of the seven — it is something you do to this conversation rather than
+a room in the machine.
+
+While any of them is up nothing else is drawn — no conversation, no box, no status line —
+and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
+
+Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
+naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+**composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
+hint line last. See the **Places** page.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
@@ -275,10 +286,9 @@ space space home · / commands
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
 words does the same; `/` opens the command list. It is there on a fresh machine from the
-first minute — an empty home is still a home. The home half is dropped only over `--host`,
-where home refuses, leaving just `/ commands`, and the whole slot gives way the moment you
-type or a state above claims it. It costs no row either way — this line is on the frame
-regardless.
+first minute — an empty home is still a home — and over `--host` too, where home opens with
+one sentence in place of its rows. The whole slot gives way the moment you type or a state
+above claims it. It costs no row either way — this line is on the frame regardless.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
@@ -1640,6 +1650,98 @@ selected to copy. A row that is none of those has no background at all.
 
 If a colour on this surface could be described as "bright", it is wrong.
 
+## The font aforge is drawn for — JetBrains Mono, and how to set it in your terminal
+
+**aforge is drawn for JetBrains Mono, regular and bold. Any monospace font with the block
+and box-drawing ranges works.** A terminal program cannot set your font — it draws
+characters and your terminal chooses the shapes — so this is a recommendation and never a
+requirement, and nothing here breaks on another face.
+
+What the design actually assumes is two weights and no more: **regular for everything, bold
+for one tier.** There is no third weight and no second size, because a terminal has
+neither. Where something needs to stand out past bold, aforge uses brightness, case, indent
+or a blank line instead.
+
+Every character aforge draws on home and the places is from a standard Unicode range —
+`?` `◐` `○` `✓` `✕` `▸` `›` `·`, the box-drawing rail, the block characters in a bar chart.
+**Nothing is from a nerd-font private-use area**, so no patched font is needed anywhere.
+
+Where the font setting lives, per terminal:
+
+| Terminal | Where |
+| --- | --- |
+| iTerm2 | Settings → Profiles → Text → Font |
+| Terminal.app | Settings → Profiles → Text → Font → Change… |
+| kitty | `font_family JetBrains Mono` in `~/.config/kitty/kitty.conf` |
+| alacritty | `[font.normal] family = "JetBrains Mono"` in `~/.config/alacritty/alacritty.toml` |
+| ghostty | `font-family = JetBrains Mono` in `~/.config/ghostty/config` |
+| WezTerm | `font = wezterm.font("JetBrains Mono")` in `~/.wezterm.lua` |
+
+If characters come out as boxes or as `?`, the font is missing those ranges — pick another
+monospace, or start aforge with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
+back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
+
+## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
+
+**It is one key and two spellings, and aforge picks the spelling from the platform it is
+running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
+`⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
+else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
+line, the key map, the composer layer's rows and the `/keys` sheet read that one spelling, so
+what is on your screen is what is on your keyboard.
+
+The manual names both spellings together — `alt+1` (`⌥1` on a Mac) — because it is one book
+for both platforms. If a page here says `alt+` and your screen says `⌥`, they are the same
+chord.
+
+**On Windows and on Linux, Alt is already meta and there is nothing to set.** Windows
+Terminal, conhost, the WSL consoles and every Linux terminal send `alt`+key the way aforge
+expects. There is no `option` key and no setting; the chords simply work.
+
+## Why my option key types ¡ ™ £ instead of jumping — "use option as meta" on macOS
+
+**On macOS most terminals send Option as an accent-composing key rather than as meta until
+you turn that on.** Until you do, `⌥1` types `¡`, `⌥2` types `™`, `⌥.` types `≥` and
+`⌥enter` opens a line in the box instead of sending a task off.
+
+aforge notices. The first time one of those characters arrives on a place, one dim line
+appears under the list:
+
+    your terminal sends ⌥ as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+
+
+It names the terminal you are actually in, it is said once, and the first real chord that
+arrives retires it for the rest of the session. The first-run setup says the same thing ahead
+of time, as a condition rather than a diagnosis: `the seven places answer ⌥1…⌥7 · if ⌥ types
+a character instead, turn on "use option as meta" in …`.
+
+Where the setting lives:
+
+| Terminal | Setting |
+| --- | --- |
+| iTerm2 | Settings → Profiles → Keys → **Left Option key: Esc+** (and Right Option, if you use it) |
+| Terminal.app | Settings → Profiles → Keyboard → **Use Option as Meta key** |
+| kitty | `macos_option_as_alt yes` in `~/.config/kitty/kitty.conf` |
+| alacritty | `[keyboard] option_as_alt = "Both"` in `~/.config/alacritty/alacritty.toml` |
+| ghostty | `macos-option-as-alt = true` in `~/.config/ghostty/config` |
+| WezTerm | `send_composed_key_when_left_alt_is_pressed = false` in `~/.wezterm.lua` |
+
+**What "on" looks like:** `⌥1` arrives as the escape character followed by `1` — which is how
+meta has been sent for forty years, and is why aforge puts the place numbers on Option rather
+than on Control.
+
+**What "off" looks like:** the chord either does nothing or types a symbol. Nothing is broken
+and nothing is lost — every chord has a drawn way to the same place: `tab` walks the places in
+order, and the composer's own foot line names what `enter` does. But the map and the jump keys
+are worth the one setting.
+
+**And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
+terminals run the kitty keyboard protocol and report it, and where that report arrives aforge
+binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
+live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
+why it can only ever be the second spelling and never the first — a terminal that has said
+nothing is never promised it.
+
 ## What each colour means
 
 Every colour aforge draws is a role, and each role has one job.
@@ -1650,38 +1752,67 @@ blue one full step calmer than the accent — for your message's words, tool nam
 spinner, and headings; a neutral narration grey for the reply's working prose, one shade
 under the body; dim for everything the surface says about itself — stats, notes, hunk
 markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
-and an overdue context meter; warn for a bound about to be reached and only that; and
-violet for **the question hue and nothing else**.
+and an overdue context meter; amber for a bound about to be reached **and for anything
+waiting on you**; a mint green for **money and only money**; and violet for **the
+question hue inside a conversation**.
 
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
 cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
 Headings and section labels do not: the `openaf` wordmark in the welcome box, the name on
-home's top line, and every band heading on the machine's card are **structure**, and
+home's top line, and every band heading on a card are **structure**, and
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
 
-Violet is spent on the moment aforge is waiting for you and on nothing else: the consent
-question, its glyph, its choices, the status word, and the legend while one is up. Its
-whole value is that seeing it anywhere means one thing.
+Violet is spent on the moment aforge is waiting for you **inside this conversation** and
+on nothing else: the consent question, its glyph, its choices, the status word, and the
+legend while one is up. Its whole value is that seeing it anywhere means one thing.
 
-Hue carries identity; weight carries markdown. Your message is the soft muted blue
-behind its accent `› ` glyph — a quiet colour of your own, a full step calmer than the
-accent, so a question and the answer under it never read as one voice — and nothing the
-model's prose ever wears is muted or accent: its narration is the neutral grey, its
-answer is ink. On a 16-colour terminal the glyph's accent degrades to bold, which is the
-only marker left there.
+## Home and the places use the same colours as the chat — and their own background, none
 
-One thing inside your own words is painted differently: a slash command at the start, or
-a live `/task`, `/standing`, or `/orders` tag later in the sentence, wears a **chip** —
-the selection band's tint behind its letters. The chip promises Enter will act on that
-word. Other mid-sentence commands and tags made plain with backspace have no chip.
-Nothing the model writes is ever chipped.
+**Home and the six places beside it — tasks, standing, memory, spend, search, settings —
+paint from the table you just read.** Same inks, same three background steps, same
+terminal background showing through. A place is the chat's palette applied to a list.
 
-Six mid-tone hues form a separate identity ring, spent on exactly one cell: the glyph at
-the head of a task row. No role ever paints that column, so a ring hue cannot be misread
-as a state. The ring has no 16-colour tier — below the 256 rung the glyph alphabet
-carries identity alone.
+For a while they were not. A wave painted a page of their own — a near-black `#12121A`
+under every cell, with the design's own brighter greys on top of it — and the owner tried
+it and asked for it back: *"i want bg color and text color to be same as in inside chat…
+this new bg looks weird."* So there is one palette again.
+
+| What a place is saying | The colour it uses | Where you have seen it |
+| --- | --- | --- |
+| the subject — a conversation's title, a belief's sentence, a model's id, the place you are standing in on the tab bar | ink, **bold** for the subject | the reply's body |
+| what is true about the subject — the note beside it, a section heading | muted | tool names, headings |
+| the reply's working prose on a card | the narration grey | a reply's grey working-out |
+| the margin — an age, a count, the hint line | dim | the status line |
+| **needs a human** | **amber** | a bound about to be reached |
+| **alive** — work in flight this instant | **the accent** | the one live or chosen thing |
+| **money** | **mint green** | a figure in dollars anywhere |
+
+**The background is your terminal's, on a place exactly as in a conversation.** Nothing
+paints a page. The only rows lifted off your own background are the row your pointer is
+over, the row your cursor is on, and a span you have selected to copy — the same three
+steps, the same shades, everywhere in aforge.
+
+**A place spends colour on two meanings and no more: amber means a person is being waited
+on, the accent means something is moving.** Green is a unit rather than a signal. Every
+hierarchy step past that is made with **bold, case, indent or a blank line** — bold marks
+the subject and nothing else, and **nothing on a place is ever italic**.
+
+**Three of the chat's colours do not appear on a place**, and that is the one thing about
+a place's palette that is not simply the chat's:
+
+- **The question's violet.** In a conversation, violet means aforge is waiting on you —
+  the consent block, its glyph, its choices. On a place that reading is the amber, so a
+  list says "this stopped on somebody" in one colour rather than two.
+- **The payload cyan** that lifts a model id or a figure out of a quiet line. On a place
+  a datum lifts by being the subject: it takes the body ink.
+- **The finished tick's olive green.** The `✓` already says the work landed; a place draws
+  it in muted so the one green on the screen stays money.
+
+In both surfaces money's green is never the green of a finished tick: landing and paying
+are two different events, and a table where they share a colour is a table that says they
+are one.
 
 ## What the task column looks like: quiet rows, its footer lines and its one door
 
@@ -1858,7 +1989,7 @@ takes a background, which is how everything pressable on this screen says so. On
 that cannot draw them the two chevrons are `>` and `<`.
 
 One cell above the closed edge's handle carries what the work is doing while there is
-anything to carry — `▲` in the question colour for a task waiting on you, `●` in the accent
+anything to carry — `?` in the question colour for a task waiting on you, `◐` in the accent
 for something running, and nothing at all otherwise. Those keep their own colours; they are
 about the work, not about the door. The edge costs the conversation its two columns, so the
 text re-wraps around it and nothing is ever drawn underneath. Under 100 columns there is no
@@ -2080,8 +2211,12 @@ Some lines in the conversation are not the model's. They lead with a dim `· ` a
 aforge answering you directly: the tables `/status`, `/cost` and `/help` print, an
 `exported · …` receipt, a refusal, and the one-line answers a command gives when there is
 nothing for it to open — `nothing made yet.` from `/files`, or
-`nothing stands here yet — say what should always be true, and I'll hold it.` from
-`/standing`. None of them is ever sent to the model.
+`no subharnesses here yet — a subharness is a saved program for work that comes round
+again.` from `/subharness`. None of them is ever sent to the model.
+
+The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+page whatever is in it and let the page say so, rather than writing a line here (the Places
+page states the law).
 
 **The same line twice running is one line.** Press a command four times because the first
 press looked like it did nothing, and you get one copy of its answer rather than four
@@ -2226,6 +2361,11 @@ two answers on the stop card, a chip or a link on an adaptive run's page: the on
 the pointer lights and its neighbours stay dark. The gap between two chips lights nothing
 — it is a place to miss, not a door.
 
+**The tab bar of the places is one of them.** Each place's word is its own chip, clicking
+it goes there, and the gap between two words is a place to miss. Under the bar, every
+place answers the pointer the same way: the row you are hovering takes the band, and the
+wheel walks the list three rows a turn.
+
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
 accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
 table's foot, the jump-to-latest chip, the `✕` on a room's header and the model's name at
@@ -2277,24 +2417,24 @@ is tmux's `allow-rename` setting refusing outside renames, and aforge respects t
 refusal by simply being refused. When aforge exits, your shell's next prompt sets the
 title back the way your shell normally does.
 
-## The ▲ and ✓ on the terminal tab — does it need me, did something finish while I was away
+## The ? and ✓ on the terminal tab — does it need me, did something finish while I was away
 
 The tab can carry one glyph ahead of the name, from the same vocabulary the rest of the
 surface uses:
 
-- `▲` — something is waiting on you: a permission question in this conversation, or in
+- `?` — something is waiting on you: a permission question in this conversation, or in
   any conversation this window is keeping in the background. It stays until the
   question is answered. This is the one to come back for.
 - `✓` — a turn finished while you were looking at another window, and you have not been
   back since. Clicking back into the window clears it; the answer itself is on screen.
 
-A question outranks a tick: if both are true you see `▲`. While work is simply running
+A question outranks a tick: if both are true you see `?`. While work is simply running
 there is no glyph and no spinner in the tab — a window you walked away from is assumed
 to be working, and the tab only speaks when something changed that is worth a glance
 from outside. No glyph at all means nothing is waiting and nothing landed unseen.
 
 In the screen-reader tier the same two facts are spelled `!` and `+`. The glyphs match
-the home screen's rows, so a `▲` on a tab and a `▲` on home are the same statement
+the home screen's rows, so a `?` on a tab and a `?` on home are the same statement
 about the same conversation.
 
 ## The dim thought row above a reply — and models that think between their words

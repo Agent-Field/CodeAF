@@ -247,9 +247,38 @@ type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 
-	// Memory is the durable memory store behind /memory. Nil means the panel is
-	// unavailable; the live door passes the same store it gave the session.
+	// Memory is the durable memory store behind the memory place. Nil means the
+	// place is unavailable; the live door passes the same store it gave the
+	// session, wrapped so that the two READING methods are spelled the way this
+	// surface asks for them (cmd/aforge's v3MemorySeam).
 	Memory MemoryStore
+
+	// Search is the conversation index the search place reads: one full-text
+	// query over every message this machine has kept ([store.Store.SearchConversations]).
+	//
+	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
+	// owns where the database lives — and it is a SECOND seam beside Memory
+	// rather than a method on it because the two are different capabilities that
+	// fail apart: memory turned off in the settings opens no store, and searching
+	// what was said is not memory at all. A build with one and not the other is
+	// the ordinary case, and each place is absent on its own terms.
+	//
+	// Nil is a surface that cannot search, and the place says what it is for
+	// rather than drawing an empty result list.
+	Search SearchStore
+
+	// UsageLedger is the machine-wide spending ledger the spend place reads —
+	// one line per model call, written where the turn was taken
+	// (internal/session's usage_ledger.go). Empty falls through to
+	// [session.UsageLedgerPath], which is where every window on this machine
+	// writes: the field exists so a test can point one surface at a file it
+	// wrote itself, exactly as [Options.ArtifactsIndex] does.
+	//
+	// IT IS A PATH AND NOT A CACHE. The cache holds parsed lines and a file
+	// offset and belongs to ONE surface's goroutine ([session.UsageCache] says
+	// so in as many words), so a door handing one in would be handing over a
+	// thing two surfaces could then share.
+	UsageLedger string
 
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no
@@ -296,9 +325,14 @@ type Options struct {
 	// The workspace is the project the cursor was on, or the person's home
 	// directory when it was on none (docs/AMBIENT.md Part 5).
 	//
+	// IT TAKES ONE STRUCT AND NOT FOUR ARGUMENTS. The composer layer settles
+	// three things before a sentence leaves it — where it runs, what the work
+	// runs on, how much it may spend (SCREEN 2e) — and a fourth fact settled
+	// later is a field here rather than a break in every door that fills this in.
+	//
 	// Nil is a window that cannot ask from home: the row says so and nothing is
 	// created. A test and the --host door are both that window.
-	Errand func(dir, workspace string) (Agent, error)
+	Errand func(ErrandOrders) (Agent, error)
 
 	// Answer leaves one answer on ANOTHER session's doorstep: the question home
 	// read out of that session's presence file, answered by the key the chips
@@ -612,6 +646,33 @@ type Options struct {
 	Width, Height int
 }
 
+// ErrandOrders is what the composer layer settled before the sentence left it,
+// and it is the whole argument to [Options.Errand].
+//
+// THE THREE FACTS A TASK NEEDS BEFORE IT LEAVES ARE WHERE, ON WHAT, AND HOW
+// MUCH (SCREEN 2e), so they travel together. Each is edited on the line that
+// shows it and each is honoured by a real field of the session the door builds
+// — the workspace it works in, the model its work runs on, the rail it stops at
+// — because a figure a person set and nothing read would be worse than a figure
+// they were never offered.
+type ErrandOrders struct {
+	// Dir is the folder the surface already made, under the standing root. The
+	// transcript and every sidecar go inside it.
+	Dir string
+	// Workspace is the project this errand is about: the destination the layer's
+	// `alt+w` cycled to, the project the cursor was on, or the person's home
+	// directory when it was on none.
+	Workspace string
+	// Model is what the WORK this errand hands out runs on — the execution slot
+	// (config's ModelSlotFor("work")), chosen on the layer's `alt+o`. Empty keeps
+	// whatever the launch bound, which is the ordinary case.
+	Model string
+	// CapUSD is the most this errand may spend before it stops and asks. Zero is
+	// the launch's own rail and therefore usually no cap at all; the layer never
+	// sends zero, because the line a person read said a figure.
+	CapUSD float64
+}
+
 // sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
 // [forwardSignals] for why this surface catches them itself.
 type sigQuitMsg struct{}
@@ -635,6 +696,25 @@ type StandingSeam struct {
 	//
 	// Nil is a home with no item band, which is the ambient side switched off.
 	Items func(workspace string) []standing.Item
+
+	// All answers EVERY standing item this machine holds, in the store's own
+	// order, and each item carries the workspace it belongs to.
+	//
+	// IT EXISTS BECAUSE A PAGE THAT WANTS THE WHOLE SET WAS ASKING Items ONCE
+	// PER PROJECT. Items is the store's List filtered down to one workspace, so
+	// a page joining ids against titles across five projects paid five walks of
+	// the standing root and five parses of every document on the machine to
+	// build one map — a cost that grows as projects × orders, which PERF.md
+	// does not allow of anything a keystroke or a beat can reach. One question
+	// asked once is the same answer.
+	//
+	// Like [StandingSeam.Items] it must NOT block: the spend place asks it on
+	// the way in and on the three-second beat.
+	//
+	// Nil is a surface with no way to ask the question at all — a connection,
+	// whose door answers by workspace and has no "every workspace" on the wire
+	// — and a caller then names nothing rather than fanning out into N reads.
+	All func() []standing.Item
 
 	// Save writes one item back — the pause and the stop keys on a home row, and
 	// nothing else on this surface. It returns the write's error and home says

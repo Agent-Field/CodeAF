@@ -419,7 +419,7 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 	// token for a row whose tail is already redrawn every frame.
 	rank := exchangeRank(ex)
 	defer func() {
-		if a.home.open && exchangeRank(ex) != rank {
+		if a.at(pageHome) && exchangeRank(ex) != rank {
 			a.home.build()
 		}
 	}()
@@ -452,7 +452,7 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 // because an errand is working. It is what keeps the frame clock running while
 // the conversation underneath is idle ([app.paint] names it among the ten).
 func (a *app) exchangeAnimating() bool {
-	if !a.home.open {
+	if !a.at(pageHome) {
 		return false
 	}
 	for _, ex := range a.exchanges {
@@ -803,6 +803,21 @@ func (a *app) errandsDir() string { return filepath.Join(a.standingHome(), "exch
 // answer: the row says why, the list is untouched, and nothing half-made is
 // left on the disk.
 func (a *app) askHere(text string) tea.Cmd {
+	return a.askHereWith(text, ErrandOrders{})
+}
+
+// askHereWith is [app.askHere] WITH THE THREE FACTS THE COMPOSER LAYER SETTLED:
+// where it runs, what its work runs on, how much it may spend (SCREEN 2e,
+// composerlayer.go). The zero orders are the plain door — the project the cursor
+// is on, the launch's own model binding, the launch's own rail — which is what
+// every caller that never opened the layer passes.
+//
+// THE WORKSPACE IN THE ORDERS OUTRANKS THE CURSOR'S. A person who pressed
+// `alt+w` said where this one goes, and the bucket goes with it, because a
+// folder promoted into one project's bucket while its meta.json named another
+// workspace would be a conversation filed under a project it says it is not in
+// ([app.errandPlace] holds the whole argument).
+func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -821,13 +836,17 @@ func (a *app) askHere(text string) tea.Cmd {
 	// list one esc away and the row still standing on it (home.go's
 	// [app.homeStacked]).
 	workspace, bucket := a.errandPlace()
+	if chosen := strings.TrimSpace(orders.Workspace); chosen != "" && chosen != workspace {
+		workspace, bucket = chosen, a.errandBucketOf(chosen)
+	}
 	id := session.NewSessionID()
 	dir := filepath.Join(a.errandsDir(), id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		h.say(err.Error(), "")
 		return nil
 	}
-	agent, err := a.errand(dir, workspace)
+	orders.Dir, orders.Workspace = dir, workspace
+	agent, err := a.errand(orders)
 	if err != nil {
 		// The folder is left behind on purpose: it is empty, it carries the
 		// sweep's own TTL, and removing a directory after a failure is how a
@@ -911,6 +930,21 @@ func (a *app) errandPlace() (workspace, bucket string) {
 	return errandHomeDir(), a.home.bucket
 }
 
+// errandBucketOf is the bucket one workspace's conversations are filed in, and
+// "" for a workspace home has never seen. It is [app.errandWorkspaceOf] read the
+// other way round, and it exists so that a destination a person chose on the
+// composer layer carries its own bucket rather than the one the cursor happened
+// to be resting on.
+func (a *app) errandBucketOf(workspace string) string {
+	workspace = strings.TrimSpace(workspace)
+	for _, project := range a.home.world.Projects {
+		if strings.TrimSpace(project.Path) == workspace {
+			return project.Dir
+		}
+	}
+	return ""
+}
+
 // errandWorkspaceOf is the real workspace one bucket recorded, and "" for a
 // bucket nothing named one for. It is read off the world in hand rather than off
 // the disk: the same reading the rows were drawn from is the one the cursor is
@@ -958,7 +992,7 @@ func (a *app) forgetExchange(ex *homeExchange) {
 // wherever the list itself changes rather than on every frame.
 func (a *app) showExchanges() {
 	a.home.exchanges = a.exchanges
-	if a.home.open {
+	if a.at(pageHome) {
 		a.home.build()
 	}
 }
@@ -1431,7 +1465,7 @@ func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string
 			if i > 0 {
 				mark = "  "
 			}
-			out = append(out, pal.accent(mark)+pal.ink(wrapped))
+			out = append(out, pal.muted(mark)+pal.ink(wrapped))
 		}
 	case exchangeReply:
 		for _, wrapped := range wrap(row.text, width) {
@@ -1792,7 +1826,11 @@ func exchangeTailInk(ex *homeExchange) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueWarn]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 

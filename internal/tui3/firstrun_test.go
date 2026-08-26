@@ -132,8 +132,8 @@ func TestEnterThreeTimesLandsTheDefaultsInTheProfile(t *testing.T) {
 	if config.APIKeyConfigured(dir) || len(*handed) != 0 {
 		t.Fatal("an empty key box writes no key and hands none to the session")
 	}
-	if got := lastNote(t, a); !strings.Contains(got, "/settings") || !strings.Contains(got, config.APIKeyEnv) {
-		t.Fatalf("a setup that ended keyless leaves one line pointing at /settings, got %q", got)
+	if got := noteSaying(t, a, config.APIKeyEnv); !strings.Contains(got, "/settings") {
+		t.Fatalf("a setup that ended keyless leaves a line pointing at /settings, got %q", got)
 	}
 	// And it never returns.
 	b, _, _ := setupApp(t, func(next string) {
@@ -218,8 +218,8 @@ func TestEscSkipsTheWholeFlowAndWritesNothingButTheMarker(t *testing.T) {
 	if config.SetupSeenAt(dir).IsZero() {
 		t.Fatal("skipping counts as shown")
 	}
-	if got := lastNote(t, a); !strings.Contains(got, "/settings") {
-		t.Fatalf("a skipped setup with no key leaves the one line, got %q", got)
+	if got := noteSaying(t, a, "/settings"); !strings.Contains(got, config.APIKeyEnv) {
+		t.Fatalf("a skipped setup with no key leaves the line naming the key, got %q", got)
 	}
 	// Typing afterwards goes to the draft, not to a screen that is gone.
 	pressSetup(a, key("h"))

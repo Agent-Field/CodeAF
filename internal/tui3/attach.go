@@ -536,7 +536,7 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	// half first, because a session whose model wants no thinking at all draws no
 	// dial and should pay nothing for the question.
 	if (len(a.chips) == 0 && len(cells) == 0 && a.effortChipText() == "") ||
-		a.sheet.open || a.pick.open {
+		a.at(pageSettings) || a.pick.open {
 		return 0, false
 	}
 	width, height := a.size()

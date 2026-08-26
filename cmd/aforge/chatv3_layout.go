@@ -567,9 +567,25 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 
 // v3EmptySession reports whether a session folder is one nobody ever said
 // anything in and nothing was made in.
+//
+// A TRANSCRIPT WE COULD NOT READ IS NOT AN EMPTY ONE. This is the law
+// [session.sweepSession] rule 3 states about meta.json — a session that cannot
+// say what it is, stays, because the rule reaps what is PROVABLY litter and
+// leaves everything else alone forever — applied here to a much bigger file. A
+// journal torn by a lid closing mid-write, one line past the scanner's buffer,
+// or a schema this build has never seen all look like silence to a reader, and
+// none of them is silence. Hiding somebody's conversation on the strength of a
+// failed parse is the more expensive mistake by far, and [v3ReapEmpty] is the
+// only rm -rf on the launch path.
+//
+// That is why the question is put to [session.SpokeIn] and not to
+// [session.Peek]: Peek folds "read it all, nobody spoke" and "could not read
+// it" into one false, which is right for a picker row and fatal for a delete.
+// Only the first of the two is emptiness.
 func v3EmptySession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
-	if _, spoken := session.Peek(place.Transcript()); spoken {
+	spoken, sure := session.SpokeIn(place.Transcript())
+	if spoken || !sure {
 		return false
 	}
 	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts()} {
@@ -596,10 +612,11 @@ func v3FreeEmpty(empty []v3Folder) (v3Folder, bool) {
 // v3ReapEmpty removes the empty session folders a launch left behind, except
 // the one it is about to open.
 //
-// It is `rm -rf` and it is safe to be: an empty folder has no worktrees to
-// unregister and no work directory to lose, which is what [v3EmptySession]
-// checks before a folder is ever called one. A folder another window is holding
-// open is skipped — a live empty session is somebody sitting at a prompt.
+// It is `rm -rf` and it is safe to be only because [v3EmptySession] reaps what
+// is PROVABLY litter and leaves everything else alone forever: an empty folder
+// has no words in its journal, no worktrees to unregister and no work directory
+// to lose. A folder another window is holding open is skipped — a live empty
+// session is somebody sitting at a prompt.
 func v3ReapEmpty(empty []v3Folder, keep string) {
 	for _, folder := range empty {
 		if folder.dir == keep {

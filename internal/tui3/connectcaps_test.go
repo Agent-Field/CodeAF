@@ -339,7 +339,7 @@ func TestAnUnconnectedRowStartsTheSignInInPlace(t *testing.T) {
 	if len(conns.began) != 1 || conns.began[0] != "slack" {
 		t.Fatalf("the tab began %v, want one slack sign-in", conns.began)
 	}
-	if !a.sheet.open || settingTabs[a.sheet.tab] != tabConnections {
+	if !a.at(pageSettings) || settingTabs[a.sheet.tab] != tabConnections {
 		t.Fatal("the sheet walked away from the account it was connecting")
 	}
 
@@ -407,7 +407,7 @@ func TestDisconnectingFromTheTabAsksFirst(t *testing.T) {
 	}
 	// esc un-asks the question rather than closing the sheet.
 	drive(t, a, key("esc"))
-	if !a.sheet.open || sheetHas(a, disconnectArmedWord) {
+	if !a.at(pageSettings) || sheetHas(a, disconnectArmedWord) {
 		t.Fatal("esc did not drop the question standing on the row")
 	}
 
@@ -438,7 +438,7 @@ func TestEscOnTheConnectionsTabBacksOutInOrder(t *testing.T) {
 		t.Fatal("typing did not reach the filter box")
 	}
 	drive(t, a, key("esc"))
-	if !a.sheet.open || a.sheet.searching() {
+	if !a.at(pageSettings) || a.sheet.searching() {
 		t.Fatal("esc did not drop the filter first")
 	}
 	if settingTabs[a.sheet.tab] != tabConnections {
@@ -448,18 +448,18 @@ func TestEscOnTheConnectionsTabBacksOutInOrder(t *testing.T) {
 	a.sheet.cursor = kindRowAt(a, connDisconnect, "google")
 	drive(t, a, key("enter")) // arm
 	drive(t, a, key("esc"))
-	if !a.sheet.open || a.sheet.conn.armed {
+	if !a.at(pageSettings) || a.sheet.conn.armed {
 		t.Fatal("esc did not un-ask the disconnect question first")
 	}
 	drive(t, a, key("esc"))
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("esc closed the sheet over an open account")
 	}
 	if capRowAt(a, "google", "mail-read") >= 0 {
 		t.Fatal("esc did not collapse the open account")
 	}
 	drive(t, a, key("esc"))
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		t.Fatal("esc did not close the sheet once there was nothing open on it")
 	}
 }
@@ -827,7 +827,7 @@ func TestAKeyServiceOpensItsBoxOnTheTab(t *testing.T) {
 		t.Fatalf("the box does not say what to put in it:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 	// The sheet stays up and stays on this page.
-	if !a.sheet.open || settingTabs[a.sheet.tab] != tabConnections {
+	if !a.at(pageSettings) || settingTabs[a.sheet.tab] != tabConnections {
 		t.Fatal("the box took the page away")
 	}
 	// And a browser service still opens a browser from the same key.
@@ -887,7 +887,7 @@ func TestSubmittingAKeyOnTheTabConnectsInPlace(t *testing.T) {
 	if a.sheet.conn.entry != nil {
 		t.Fatal("the box survived the key it asked for")
 	}
-	if !a.sheet.open || settingTabs[a.sheet.tab] != tabConnections {
+	if !a.at(pageSettings) || settingTabs[a.sheet.tab] != tabConnections {
 		t.Fatal("the sheet walked away from the account it was connecting")
 	}
 	screen := strings.Join(sheetLabels(a), "\n")
@@ -917,7 +917,7 @@ func TestTheTabsKeyBoxBacksOutWithoutConnecting(t *testing.T) {
 		if a.sheet.conn.entry != nil {
 			t.Fatalf("%s left the box open", out)
 		}
-		if !a.sheet.open {
+		if !a.at(pageSettings) {
 			t.Fatalf("%s closed the whole sheet", out)
 		}
 		// The cursor is back on the row the box was opened from.

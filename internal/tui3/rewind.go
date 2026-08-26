@@ -163,7 +163,7 @@ func (a *app) enterRewind() tea.Cmd {
 	// The frame stack decides where this can be opened from: a room, a frozen
 	// viewport and the fullscreen panels all draw over the place the mode bar
 	// stands in, and a bar nobody can see is a mode nobody can leave (view.go).
-	if a.rew.on || a.rewSheet.open || a.copy.on || a.roomOpen() || a.sheet.open || a.railFull() {
+	if a.rew.on || a.rewSheet.open || a.copy.on || a.roomOpen() || a.at(pageSettings) || a.railFull() {
 		return nil
 	}
 	agent, ok := a.rewinder()
@@ -257,7 +257,7 @@ func (a *app) rewindReady() bool {
 	}
 	switch {
 	case a.rewSheet.open,
-		a.sheet.open, a.taskSheet.open, a.deck.open, a.expand.open, a.pick.open, a.roster.open,
+		a.at(pageSettings), a.at(pageTasks), a.deck.open, a.expand.open, a.pick.open, a.roster.open,
 		a.connPanel.open, a.menu.open, a.comp.open, a.welcome.open,
 		a.copy.on, a.recalling(), a.roomOpen(), a.railHold, a.railFull(),
 		a.asking(), a.awaitingTask(), a.guard != nil, len(a.connAsks) > 0,

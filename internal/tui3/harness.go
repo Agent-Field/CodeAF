@@ -379,7 +379,7 @@ func (a *app) harnessAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// offer that ARRIVES closes home on its way in (app.go's
 	// EventHarnessOffer), which leaves this reached only by a home opened over
 	// an offer already standing.
-	if a.home.open {
+	if a.at(pageHome) {
 		return nil, false
 	}
 	if msg.String() == "ctrl+c" {
@@ -568,7 +568,7 @@ func (a *app) recordHarnessTaps(parts []string) {
 // missed the keys and fell through would expand a tool call while somebody was
 // answering a question about their turn.
 func (a *app) harnessPress(x, y int) bool {
-	if !a.asksHarness() || a.copy.on || a.sheet.open {
+	if !a.asksHarness() || a.copy.on || a.at(pageSettings) {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN: laying the chrome out is what

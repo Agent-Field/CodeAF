@@ -79,11 +79,17 @@ const (
 	// wired, or a registry with nothing in it, which are the same fact from
 	// where a person is sitting and get the same sentence.
 	//
-	// IT IS SAID AND NO PAGE IS OPENED BEHIND IT ([standNothingWord] states both
-	// halves): silence after a deliberate command reads as a command that broke,
-	// and an overlay with no rows is a trap that has to be dismissed before it
-	// can be told it was useless. What the sentence says is what a subharness IS,
-	// because somebody typing the word on a build that has none is asking.
+	// IT IS SAID AND NO PAGE IS OPENED BEHIND IT: silence after a deliberate
+	// command reads as a command that broke, and an overlay with no rows is a
+	// trap that has to be dismissed before it can be told it was useless. What
+	// the sentence says is what a subharness IS, because somebody typing the word
+	// on a build that has none is asking.
+	//
+	// THE SEVEN PLACES ANSWER THIS DIFFERENTLY AND THE DIFFERENCE IS THE FRAME.
+	// A place has a tab bar, a composer and six neighbours to walk on to, so it
+	// opens empty and teaches ([standNothingWord] is now the first line of one
+	// such lesson). This is a modal overlay with none of that, and a modal with
+	// no rows is still a trap.
 	subNothingWord = "no subharnesses here yet — a subharness is a saved program for work that comes round again."
 	// subNoMatchWord is the filter that matched nothing, drawn where the rows
 	// would have been (the deliverables picker's own line, in its own grammar).
@@ -100,7 +106,7 @@ const (
 	// subNotStartedWord leads a refusal from the launching door. What comes back
 	// from there is a sentence written for a person ("there is nothing here to
 	// run"), so it is said as it stands rather than wrapped in a second sentence
-	// about a key that did not work ([app.standPageWrite] states the law).
+	// about a key that did not work ([standingPlace.ask] states the law).
 	subNotStartedWord = "did not start · "
 
 	// ── THE THIRD DOOR: THE CARD CHAT ITSELF RAISED ─────────────────────────
@@ -287,7 +293,7 @@ func subSpanWord(d time.Duration) string {
 // it. The zero value is closed.
 //
 // THE CARD IS A FIELD ON THE LIST AND NOT A SECOND OVERLAY, which is the memory
-// panel's own arrangement (memorypanel.go's expanded row): one thing owns the
+// panel's own arrangement (place_memory.go's expanded row): one thing owns the
 // keyboard, one thing owns the block of rows the frame handed out, and esc walks
 // back out of whichever half is up rather than closing two things at once.
 type subPage struct {

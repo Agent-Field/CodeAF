@@ -13,6 +13,12 @@ const homeRepoTTL = 5 * time.Second
 type homeRepoReading struct {
 	at   time.Time
 	line string
+	// branch is the head this workspace is on, kept beside the whole clause list
+	// rather than parsed back out of it. The composer layer states where a task
+	// will run as `in ~/aforge-v2, on master` (SCREEN 2e) and wants that one word
+	// without the dirty count beside it — and reading it back off `line` would be
+	// a second parser for a string this file just built.
+	branch string
 }
 
 var homeGitStatus = func(ctx context.Context, workspace string) ([]byte, error) {
@@ -45,7 +51,18 @@ func (a *app) refreshHomeRepo(now time.Time) {
 	if !ok || subject.kind != bandKindSession {
 		return
 	}
-	workspace := strings.TrimSpace(subject.row.Workspace)
+	a.refreshRepoOf(strings.TrimSpace(subject.row.Workspace), now)
+}
+
+// refreshRepoOf is that reading for ONE NAMED WORKSPACE, which is what the
+// composer layer needs: it opens on a keystroke and moves its destination on a
+// keystroke, and the workspace it lands on may be one no card has ever drawn.
+//
+// IT IS STILL NEVER CALLED FROM A DRAW. Both callers are keystrokes — a card
+// arriving under the cursor, and the layer opening or cycling — which is the
+// whole of what ARCHITECTURE.md's fourth law asks: `open` and `tick` may read
+// the disk and `body` may not.
+func (a *app) refreshRepoOf(workspace string, now time.Time) {
 	if workspace == "" {
 		return
 	}
@@ -58,14 +75,23 @@ func (a *app) refreshHomeRepo(now time.Time) {
 	commandCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	raw, err := homeGitStatus(commandCtx, workspace)
-	line := ""
+	line, branch := "", ""
 	if err == nil {
-		line = parseHomeRepo(string(raw))
+		line, branch = parseHomeRepo(string(raw))
 	}
-	a.home.repos[workspace] = homeRepoReading{at: now, line: line}
+	a.home.repos[workspace] = homeRepoReading{at: now, line: line, branch: branch}
 }
 
-func parseHomeRepo(raw string) string {
+// repoBranchOf is the head one workspace is on, as the last reading found it,
+// and "" for a workspace nobody has read or one that is not a repository at all.
+// It reads the cache and never the disk, so a body may call it.
+func (a *app) repoBranchOf(workspace string) string {
+	return a.home.repos[strings.TrimSpace(workspace)].branch
+}
+
+// parseHomeRepo answers the whole clause list AND the branch on its own, for
+// [homeRepoReading.branch]'s stated reason.
+func parseHomeRepo(raw string) (string, string) {
 	var branch string
 	dirty, ahead, behind := 0, 0, 0
 	for _, line := range strings.Split(raw, "\n") {
@@ -104,5 +130,5 @@ func parseHomeRepo(raw string) string {
 	if behind > 0 {
 		parts = append(parts, "behind "+strconv.Itoa(behind))
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, " · "), branch
 }

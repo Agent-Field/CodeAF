@@ -28,7 +28,7 @@ import (
 // is still on the frame — but every key belongs to the ladder while it is up, so
 // a caret placed under the pointer would be a caret nothing can move.
 func (a *app) draftPress(x, y int) bool {
-	if a.rew.on || a.pick.open || a.memPanel.open || a.roster.open ||
+	if a.rew.on || a.pick.open || a.at(pageMemory) || a.roster.open ||
 		a.subPage.open || a.shelf.open || a.connPanel.open || a.effPick.open {
 		return false
 	}

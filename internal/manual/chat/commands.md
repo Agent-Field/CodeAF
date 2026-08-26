@@ -195,7 +195,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
-| `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/cache` | — | — | how big the shared build cache is, and where |
@@ -801,8 +801,9 @@ greeting you is not the same as being out of reach: `/home`, or `space` twice on
 box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
 refuses.
 
-There is no argument form and no key chord — `/home` is the only way in. Projects are dim
-headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
+There is no argument form. There are three other ways in: **`alt+1`**, home being the first
+of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
+headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
 right half shows the line it is stopped on. Quiet
@@ -840,8 +841,8 @@ that folder is gone · <path>
 ```
 
 The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
-session is on the other end, so home refuses over a connection and there is one
-conversation. The second is not a refusal: it is what an empty home says where its rows
+session is on the other end, so home opens over a connection without any rows and there is
+one conversation. The second is not a refusal: it is what an empty home says where its rows
 will be, with the box and the keys at the foot still live — typing there offers
 `start a new conversation: "…"` as it does anywhere. `/new is unavailable here` is what
 the typing-to-start box says where no fresh-session seam exists. The last two are `enter` on a project whose folder has been
@@ -979,10 +980,9 @@ through the marked door when its turn comes. On a build with no ambient side it 
 **Bare, it opens a page.** A short list under the message box of what stands over this
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens nothing and says
+opens all the same, on three dim lines beginning
 `nothing stands here yet — say what should always be true, and I'll hold it.`
-Pressing it again straight away says it once, not twice: a line aforge has just written is
-not written a second time under itself.
+Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,
 never a query, because the only way to name one is to read it off the page first.
@@ -1008,10 +1008,10 @@ immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
-it starts nothing. On a project that has never run one it says
-`no tasks yet — /task <brief> starts one` and opens nothing. The `+ /task` row at the foot
-of the task column types `/task ` into your box, which is why the word on its own has an
-answer worth giving.
+it starts nothing. On a project that has never run one it opens the page anyway, and the
+page says what tasks are and ends `no tasks yet — /task <brief> starts one`. The `+ /task`
+row at the foot of the task column types `/task ` into your box, which is why the word on
+its own has an answer worth giving.
 
 Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
 into the fuller brief the worker is given — your sentence kept word for word, with the
@@ -1066,9 +1066,11 @@ this conversation's work **and every earlier conversation's**. It is the one pla
 answers "what did we do about this last week" — the roster's column beside the conversation
 is built from this session's own work, and carries only a short dulled note of the rest.
 
-**It is not `/tasks`, and there is no `/tasks`.** `/task <brief>` and its `solo` and
+**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` and
 `adaptive` forms mean *give aforge work*; this page starts none, so it does not share their
-word. Typing `/history` is the only slash form.
+word. Typing `/history` is the only slash form — but the PLACE this opens is called `tasks`
+on the tab bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a
+place, not a command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
 current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
@@ -1090,8 +1092,8 @@ this directory has out right now**, marked `another window` on the right. Those 
 no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
 a mention to point at. They are how you find out that the directory is busy somewhere else.
 
-On a project that has never run a task it says `no tasks yet — /task <brief> starts one`
-and opens nothing. The tasks pages describe the page in full.
+On a project that has never run a task the page opens on its own teaching prose, ending
+`no tasks yet — /task <brief> starts one`. The tasks pages describe the page in full.
 
 ## /crew — the four models aforge uses on its own behalf, read beside the one you talk to
 
@@ -1198,7 +1200,10 @@ Moving in it:
 
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
-- ← / shift+tab and → / tab switch tabs, clamping at the ends rather than wrapping.
+- ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
+  does**: it is the way to the next place — home, tasks, standing, memory, spend, search,
+  settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
+  bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
   grouping matches under faint tab headings and moving the tab bar to the first match's
   tab, so backing out leaves you where the thing lives. backspace, ctrl+w and ctrl+u edit

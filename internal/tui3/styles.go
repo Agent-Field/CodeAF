@@ -337,8 +337,19 @@ var (
 	hueDel    = mustHue("#C67173", quiet)
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
-	// hueWarn is the SIXTH colour, and it exists for one shape: a bound that is
-	// about to be reached. A deadline thirty seconds out is not a failure and
+	// hueWarn is the SIXTH colour, and since the places wave it carries two
+	// readings that are the same reading: A BOUND ABOUT TO BE REACHED, and A
+	// PERSON BEING WAITED ON. Home used to say the second of those in two colours
+	// — the `needs you` mark and the answer chips in the violet of [hueAsk],
+	// the "finished, needs your look" glyph in this amber — which meant the
+	// screen had two ways to say the one thing a person is meant to act on. They
+	// are settled here, on the colour that was already right for the glyph, and
+	// they are the same reading because both are the machine saying "this stops
+	// unless you do something". The chat's own consent block keeps [hueAsk]: a
+	// question inside a conversation is a different object from a row on a list,
+	// and moving it is the owner's call rather than this wave's.
+	//
+	// A deadline thirty seconds out is not a failure and
 	// must not wear the failure hue — the call may still land — but it is no
 	// longer a fact you can leave in the dim tier either, because it is the one
 	// thing on the row that is about to change what happens. Nord's yellow, one
@@ -400,6 +411,27 @@ var (
 	// mid-tone by construction and reads on a dark terminal and a white page
 	// alike.
 	hueViolet = mustHue("#8F6FA8", quiet)
+	// hueMoney is the EIGHTH colour, and it is the only one this table has ever
+	// added for a single reading: what a thing cost.
+	//
+	// Until the places wave a figure in dollars was painted `dim` and lifted to
+	// `warn` near the day's ceiling (pulse.go), which says "money is telemetry
+	// until it is nearly a problem" — fine on one line of a status bar, wrong on
+	// a page whose whole subject is spend, and wrong on a row where the cost sits
+	// beside a project tag and an age and has to be findable among them. It could
+	// not borrow [hueAdd]: that green means IT LANDED, and a table where the
+	// finished tick and the bill are one colour is a table that says finishing
+	// and paying are the same event.
+	//
+	// The hue is the mint the design's own token table names for money — H 144,
+	// where [hueAdd]'s olive is H 92 — held at THIS table's lightness rather than
+	// the token table's: L 69.0 sits inside the fifteen-point signal band beside
+	// the accent's 75.9 and the diff-minus' 61.0, where the token green's 76.1
+	// would have widened the band past its law. 115 on the 256 rung, one clear
+	// step off [hueData]'s 116 and far from [hueAdd]'s 144, so the three greens
+	// and blue-greens of this table never collapse into one another where hues
+	// get rounded.
+	hueMoney = mustHue("#90D0AA", heavy)
 )
 
 // ── THE GROUND LADDER ───────────────────────────────────────────────────────
@@ -413,12 +445,27 @@ var (
 //	selected  the chosen thing: the current row, the current chip
 //	mark      a marked span: copy mode's selection, and the text a yank takes
 //
-// REST IS NOT A COLOUR, AND THAT IS THE LAW. It has no entry in the tables
-// below because there is nothing to author: an unremarkable row is painted by
-// not painting it. This is the emptiness law wearing its background clothes —
-// a surface that tinted every row would be a surface where a tint said
-// nothing, and the three steps that DO say something are only legible because
-// the fourth state is empty.
+// REST IS NOT A COLOUR, AND THAT IS THE LAW — ON THE CONVERSATION AND ON EVERY
+// PLACE ALIKE. It has no entry in the tables below because there is nothing to
+// author: an unremarkable row is painted by not painting it. This is the
+// emptiness law wearing its background clothes — a surface that tinted every row
+// would be a surface where a tint said nothing, and the three steps that DO say
+// something are only legible because the fourth state is empty.
+//
+// ── THE PAINTED PAGE THAT WAS TRIED, AND WHAT THE OWNER SAID ABOUT IT ───────
+//
+// FIDELITY.md item 13 asked the places to bring their own ground — #12121A over
+// every cell of home and the six places — on the reasoning that a surface which
+// paints its own page no longer has to guess what is under it. It was built, and
+// on 2026-08-25 the owner tested it and reversed it in one sentence: "i want bg
+// color and text color to be same as in inside chat please this new bg looks
+// weird i think we were taking user terminal stuff or something previously."
+//
+// So THE TERMINAL'S OWN BACKGROUND SHOWS THROUGH EVERYWHERE, and the reason the
+// law originally gave for itself turns out to be the reading a person actually
+// has: a ground this program authored is a ground laid over somebody's theme,
+// and it looks like one. A place raises the cursor and selection steps of THIS
+// ladder and paints nothing else. FIDELITY item 13 carries the reversal note.
 //
 // ── THE EMPHASIS LAW ────────────────────────────────────────────────────────
 //
@@ -642,6 +689,12 @@ var (
 	// nothing — the near miss was #31859C, whose neighbour is 67, one step
 	// from the light accent's own index.
 	lightData = mustHue("#2C8A9E", heavy)
+	// The money hue inverted for the page, the same way the data hue was: the
+	// same mint at H 144, deepened rather than paled, because on white what leads
+	// is what is DARKER. L 45.1 sits in the middle of the light signal band —
+	// warn's 38.6 is its floor and del's 53.3 its ceiling — and 71 on the 256
+	// rung is claimed by nothing (the light accent's own index is 67).
+	lightMoney = mustHue("#34B266", heavy)
 
 	// The light ladder's own three grounds. THE STEPS ARE THE SAME THREE STEPS
 	// (see THE GROUND LADDER above) and they carry the same names — what changes
@@ -654,6 +707,86 @@ var (
 	// already inside the band they were aimed at.
 	lightMark = mustHue("#B7C0D1", flat)
 )
+
+// ── THE PLACE LADDER ────────────────────────────────────────────────────────
+//
+// Everything above this line is the CONVERSATION's palette. Home and the six
+// places beside it (pages.go) PAINT FROM IT TOO, and this block is the record of
+// why there is no second table any more.
+//
+// FIDELITY.md item 1 asked for the design's own nine hexes on the places: three
+// greys (#E6E6F0 / #A0A6BB / #7C8296), three colours (amber #EECE96, cyan
+// #A4D7EA, green #A2E2BC) and three grounds (#12121A / #1D1D28 / #262633). It
+// was built exactly, with place-scoped variants of the glare law, the isoluminant
+// band and the ground ladder to admit it. Then the owner ran it, on 2026-08-25:
+//
+//	"i want bg color and text color to be same as in inside chat please this new
+//	 bg looks weird i think we were taking user terminal stuff or something
+//	 previously"
+//
+// THE INKS ARE THE CHAT'S, MAPPED BY ROLE. That is the whole of what a place
+// palette is now, and it is why [placeRampFrom] is nine lines rather than a
+// table: every role a place paints has a reading the conversation already
+// authored for the same reading, so the design's own semantics survive without a
+// single new colour.
+//
+//	the design's role   what a place asks for   the hue it gets
+//	the subject         p.ink (bold for tier 1) [hueInk]     #C6CDDA
+//	what is true of it  p.muted                 [hueMuted]   #7FA6C9
+//	demoted prose       p.narr                  [hueNarr]    #848FA6
+//	the margin          p.dim                   [hueDim]     #6B7280
+//	NEEDS A HUMAN       p.warn / p.ask          [hueWarn]    #EBCB8B
+//	ALIVE               p.accent                [hueAccent]  #9DC3E6
+//	MONEY               p.money                 [hueMoney]   #90D0AA
+//
+// THE DESIGN'S THREE MEANINGS ARE KEPT AND ONLY THE HEXES ARE THE CHAT'S: amber
+// is a person being waited on, the accent is work in flight this instant, and
+// green is a figure in dollars. Home already warned in [hueWarn] before the
+// fidelity wave, so the amber reading did not move at all — only the two points
+// of lightness the design's own token table carried.
+//
+// ── THE ONE-ACCENT LAW, AS THE DESIGN'S OWN PREAMBLE STATES IT ──────────────
+//
+// The designer wrote it down and then flagged it as unresolved: "one accent per
+// screen vs. two live states. I read the law as one accent per meaning — amber
+// for waiting on a person, cyan for in flight, and nothing else in colour."
+//
+// That reading survives the reversal, because it is arithmetic about how many
+// meanings a screen carries rather than a claim about which hexes carry them. So
+// a place still RETIRES two of the conversation's roles rather than merely
+// re-pointing them ([placeRampFrom]):
+//
+//   - [hueData]'s cyan — the payload rule's identity ink — becomes the body ink
+//     on a place, because a lifted datum on a screen with three meanings lifts by
+//     being the SUBJECT tier, which is what SCREEN 2a says every hierarchy step
+//     past the fourth must do.
+//   - [hueAsk]'s violet becomes the amber, because home used to say "a person is
+//     needed" in two colours and the design says it in one.
+//   - [hueAdd]'s olive — the tick on work that landed — becomes the second voice,
+//     because the glyph already says it landed and a hue saying it again spends
+//     the screen's colour budget on the least urgent fact on it.
+//
+// The conversation keeps all three, untouched: a question inside a conversation
+// is a different object from a row on a list.
+//
+// The ONE hue that survives outside the design's three is [hueBad]'s orange-red.
+// It is a deviation and it is flagged rather than hidden: the design's own token
+// table has a Coral for broken, its preamble does not name it, and a failed row
+// stripped of every non-glyph signal is a row whose failure is carried by one
+// cell of punctuation. It stays until the owner says otherwise.
+//
+// ── AND THE GROUND IS THE TERMINAL'S, ON A PLACE AS IN A CHAT ───────────────
+//
+// The painted page is gone with the inks that were authored against it. THE
+// GROUND LADDER above is the only ladder, on every surface: rest is not a colour,
+// and a place lifts a row off the terminal's own background only where a person
+// put a pointer or a cursor on it ([hueCursor], [hueSelected], [hueMark]).
+//
+// The NoColor and plain profiles therefore need no special case here at all —
+// there is nothing to suppress — and TestEveryPlaceHoldsAtThePlainFloor still
+// walks every place with both floors on, because "legible as text with every
+// escape removed" is a law about the layout rather than about the ground.
+
 
 // ramp is one whole ladder: every role this surface paints, resolved once.
 //
@@ -676,6 +809,9 @@ type ramp struct {
 	warn               hue
 	data               hue
 	violet             hue
+	// money is what a thing cost ([hueMoney]). It is named apart from `add` for
+	// the reason that hue's own note gives: landing and paying are two events.
+	money hue
 	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
 	// not here and cannot be: it is the absence of a paint, not a colour.
 	cursor, selected, mark hue
@@ -692,7 +828,7 @@ type ramp struct {
 var darkRamp = ramp{
 	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, narr: hueNarr, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
-	data: hueData, violet: hueViolet, fade: thoughtFade,
+	data: hueData, violet: hueViolet, money: hueMoney, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
 	ring: taskRing,
 }
@@ -700,7 +836,7 @@ var darkRamp = ramp{
 var lightRamp = ramp{
 	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, narr: lightNarr, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
-	data: lightData, violet: hueViolet, fade: lightFade,
+	data: lightData, violet: hueViolet, money: lightMoney, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
 	ring: lightTaskRing,
 }
@@ -708,6 +844,41 @@ var lightRamp = ramp{
 // lightFade is the thinking window's gradient on a page. It fades toward WHITE
 // rather than toward black — the gradient's whole job is "this line is on its
 // way out", and on a light terminal the way out is up, not down.
+// placeRampFrom is what home and the six places paint from: THE LADDER THE
+// PALETTE IS ALREADY HOLDING, with the three roles THE ONE-ACCENT LAW retires
+// pointed at readings that table already carries.
+//
+// IT AUTHORS NO COLOUR AND IT TAKES NO TABLE OF ITS OWN, and both halves of that
+// are the point. The owner asked for the chat's inks on the places, and the
+// shortest way to keep that true forever is for there to be nothing here to
+// retune — every role a place does not retire (the failure hue, the diff pair,
+// the identity ring, the three ground steps, the thinking fade) is the same
+// colour on both surfaces because it is LITERALLY the same value.
+//
+// It takes the ramp rather than naming [darkRamp] or [lightRamp] so that a
+// MEASURED terminal reaches the places too: adaptive.go derives a whole ladder
+// from the background the terminal reported and hands it to the palette, and a
+// place that reached past it for the authored table would be the one surface in
+// the program that ignored the answer.
+//
+// `ask` AND `warn` BECOME ONE COLOUR. On a place, "a person is being waited on"
+// and "a bound is about to be reached" are the same sentence — something stops
+// here unless you do something — and the design paints them with one hue. The
+// amber is the one the conversation already warns in, which is the hue home
+// already used for the needs-your-look mark before any of this. The conversation
+// keeps its violet question and its yellow warning as two.
+func placeRampFrom(base ramp) ramp {
+	out := base
+	out.ask = base.warn
+	// `data` becomes the body ink: the payload rule lifts a datum out of a quiet
+	// line, and on a screen with three meanings it lifts by being the SUBJECT
+	// rather than by taking a fourth colour.
+	out.data = base.ink
+	// `add` becomes the second voice: the tick already says the work landed.
+	out.add = base.muted
+	return out
+}
+
 var lightFade = [3]hue{
 	liftOf(lightDim, fadeOldest),
 	liftOf(lightDim, fadeMiddle),
@@ -927,6 +1098,9 @@ type palette struct {
 	// whole of styles.go was written for.
 	ground   measuredGround
 	measured bool
+	// light is which of the two authored ladders this palette started from, kept
+	// so [palette.onPlaces] can answer the same question without re-detecting.
+	light bool
 	// linear is the screen-reader tier (Options.Linear): no motion, no pointer.
 	// It gates the two paints that mean neither of those things to a reader —
 	// the thinking window's gradient and the hover background — because a
@@ -947,7 +1121,38 @@ func newThemedPalette(p tokens.Profile, ascii bool, t theme, env func(string) st
 	pal := newPalette(p, ascii)
 	pal.ramp = rampFor(t, env)
 	pal.pin = t
+	pal.light = resolveTheme(t, env) == themeLight
 	return pal
+}
+
+// resolveTheme is [rampFor]'s question without its answer: which of the two
+// authored ladders a theme setting actually lands on. It is split out so the
+// ladder and the flag that remembers WHICH ladder can never disagree.
+func resolveTheme(t theme, env func(string) string) theme {
+	if t == themeAuto {
+		return detectTheme(env)
+	}
+	return t
+}
+
+// onPlaces is THE PLACE LADDER'S ONE DOOR: the same terminal, the same profile,
+// the same glyph floor, the same inks, with the three roles THE ONE-ACCENT LAW
+// retires pointed elsewhere ([placeRampFrom]).
+//
+// It is called once per frame, by the two functions that draw a whole place —
+// pages.go's [placeFrameWithBar] and home.go's [app.homeFrame] — and it is a
+// VALUE returned rather than a field mutated, so a caller that forgets to put
+// the old palette back gets a compile-time nothing rather than a conversation
+// painted in home's colours.
+//
+// A MEASURED GROUND REACHES THE PLACES EXACTLY AS IT REACHES THE CONVERSATION,
+// and that is a consequence of the reversal rather than a special case: this
+// swap re-points three roles of whatever ladder the palette is already holding
+// — adaptive.go's derived one included — and touches nothing else, so a place
+// stands on the terminal's own background wearing the terminal's own ladder.
+func (p palette) onPlaces() palette {
+	p.ramp = placeRampFrom(p.ramp)
+	return p
 }
 
 // detectPalette reads the terminal the way the rest of the tree does.
@@ -1036,6 +1241,17 @@ func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
 // (styles.go's [hueWarn]). The only thing that wears it today is a timeout with
 // seconds left on it (toolview.go).
 func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
+
+// warnBold is [palette.askBold]'s opposite number now that WAITING ON A PERSON
+// is amber on home and its places: the hue and the weight together, so the mark
+// on a row that has stopped on you leads on a truecolor terminal and on a
+// sixteen-colour one alike. The chat's own question block keeps [palette.ask].
+func (p palette) warnBold(s string) string { return p.bold(p.warn(s)) }
+
+// money is what a thing cost ([hueMoney]) — a figure in dollars, and nothing
+// else. It is deliberately not [palette.add]: that green is the tick on work
+// that landed, and a bill is not an achievement.
+func (p palette) money(s string) string { return p.paint(s, p.ramp.money) }
 
 // data is the payload rule's ink (payload.go): the datum inside a quiet line —
 // a model id, a figure, a key chord — one hue of its own so it reads as a

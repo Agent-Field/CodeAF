@@ -1,43 +1,35 @@
 package tui3
 
-// ── `ctrl+v` ON HOME: TWO SCOPES, ONE CARD AT A TIME ────────────────────────
+// ── `ctrl+v` ON HOME: ONE SCOPE, ON THE CARD THAT HAS A RUNG ────────────────
 //
-// Home draws one card at a time and the card is always about something
-// (homemachine.go): the row under the cursor, or — at rest, with the cursor on
-// no row at all — THE MACHINE ITSELF. So the chord needs no state of its own to
-// know what it means. It asks the screen the same question the screen asked to
-// draw the card, [app.homeSubject], and moves the rung of whatever came back:
+// Home draws one card at a time and the card is always about a row under the
+// cursor. So the chord needs no state of its own to know what it means: it asks
+// the screen the same question the screen asked to draw the card,
+// [app.homeSubject], and moves the rung of whatever came back.
 //
-//	the machine's card    the install's own `effort` row (internal/config)
 //	a standing item       that item's `does.effort` (internal/standing)
 //
 // EVERY OTHER SUBJECT IS LEFT ALONE AND SAYS NOTHING. A conversation's rung is
 // that conversation's own sticky setting, kept in its session folder and moved
-// from inside it; a project is not a thing that thinks. Neither card's legend
-// names this key, and pressing it there does nothing at all — which is what the
-// design language asks of a key with no door under it, rather than a message
+// from inside it; a project is not a thing that thinks. The card's legend does
+// not name this key there, and pressing it does nothing at all — which is what
+// the design language asks of a key with no door under it, rather than a message
 // explaining why the screen declined.
+//
+// IT USED TO MOVE A SECOND RUNG. Home had a resting state — the cursor on no row
+// at all, the column a card about the machine — and this chord moved the
+// install's own default from it. That state is retired (`↑` off the top row
+// reaches the tab bar now, pages.go's [barCursor]), so the install's rung is
+// moved where it has always also been moved: the `thinking` row of the settings
+// panel, which is the writer both roads went through anyway.
 
 import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-)
-
-// The words home says on its own message line after the key lands. They are
-// quoted in internal/manual/chat/home.md exactly as they are spelled here.
-const (
-	// homeEffortMachineWord follows the rung when the install's own default has
-	// moved — `thinking high · the default on this machine` — because the card
-	// at rest has no name of its own and the sentence has to say what it changed.
-	homeEffortMachineWord = " · the default on this machine"
-	// homeEffortNoProfile is a window with nowhere to write the row. It is the
-	// item's own refusal said about the install, in the same shape.
-	homeEffortNoProfile = "this window cannot change it"
 )
 
 // cycleHomeEffort is the key. It answers a command because the emphasis on the
@@ -47,39 +39,10 @@ func (a *app) cycleHomeEffort() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	switch subject.kind {
-	case bandKindMachine:
-		return a.cycleDefaultEffort()
-	case bandKindItem:
+	if subject.kind == bandKindItem {
 		return a.cycleItemEffort(subject.item.Item)
 	}
 	return nil
-}
-
-// cycleDefaultEffort moves the install's rung one step up the wheel.
-//
-// IT IS THE SETTINGS ROW'S OWN WRITER AND NOT A SECOND ONE. Everything a person
-// could do here they could do in the `thinking` row of the settings panel, and
-// both go through [config.WriteDefaultEffort] — which validates against the same
-// choices and refuses in the same words. What this key buys is that the machine's
-// card is where a person is ALREADY LOOKING when the question occurs to them.
-func (a *app) cycleDefaultEffort() tea.Cmd {
-	h := &a.home
-	dir, ok := a.effortProfile()
-	if !ok {
-		h.say(homeEffortNoProfile, "")
-		return nil
-	}
-	next := effortNext(config.DefaultEffortAt(dir))
-	if err := config.WriteDefaultEffort(dir, next); err != nil {
-		// The writer's own sentence, kept: a row that redrew as moved over a
-		// profile that refused the write would be the screen lying about the disk
-		// (homestanding.go's [app.homeItemWrite] states the same rule).
-		h.say(err.Error(), "")
-		return nil
-	}
-	h.say(effortClause(next)+homeEffortMachineWord, "")
-	return a.markEffortMoved(machineSubjectID)
 }
 
 // cycleItemEffort moves one standing item's rung one step up the wheel.

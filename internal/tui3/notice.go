@@ -80,7 +80,7 @@ const (
 	// error).
 	eventTaskStarted = "task-started"
 	// eventTaskPageOpened is ctrl+. or /history actually raising the page
-	// (taskview.go's [app.openTaskSheet]).
+	// (place_tasks.go's [app.showTaskPlace]).
 	eventTaskPageOpened = "task-page-opened"
 	// eventMenuOpened is the command list opening under a typed "/" (app.go's
 	// [app.syncLists]).
@@ -568,7 +568,7 @@ func (a *app) noticeHint() string {
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {
 	return a.input.empty() && a.state != stateWorking &&
-		!a.rew.on && !a.rewSheet.open && !a.sheet.open && !a.taskSheet.open && !a.home.open &&
+		!a.rew.on && !a.rewSheet.open && !a.at(pageSettings) && !a.at(pageTasks) && !a.at(pageHome) &&
 		!a.copy.on && !a.menu.open && !a.comp.open && !a.pick.open && !a.roster.open &&
 		!a.asking() && !a.roomOpen()
 }

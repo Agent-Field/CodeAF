@@ -45,8 +45,25 @@ func TestTheChatManualDoesNotSpeakOfTheResident(t *testing.T) {
 	// Each of these is a v1 resident concept with no counterpart in the chat.
 	// A page needing one of these words is a page written about the wrong
 	// product.
+	//
+	// ── `alt+1`, `alt+2` AND `alt+3` WERE ON THIS LIST AND WERE TAKEN OFF ─────
+	//
+	// They were banned because they were the RESIDENT's place keys and the chat
+	// had no such thing — so a chat page spelling one could only be a page that
+	// had drifted into the wrong product's vocabulary. The places wave (pages.go)
+	// binds `alt+1` … `alt+7` in the chat itself, as the jump to each of the seven
+	// places, which means the ban stopped being a fact about this product and
+	// became a stale rule forcing the manual to lie: CLAUDE.md requires every new
+	// key to be documented, and the only way to document these three while the
+	// ban stood was to describe the class and quietly omit its first three
+	// members — which is exactly the "named in a section that denies it" failure
+	// the manual law warns about.
+	//
+	// So the three strings are gone and NOTHING ELSE IS. The phrases left are the
+	// ones that are still resident-only, and `alt+4` … `alt+7` were never on the
+	// list in the first place. If a later wave gives the chat a board or a self
+	// page, the same reasoning applies to that word and to no other.
 	foreign := []string{
-		"alt+1", "alt+2", "alt+3",
 		"the board", "the self page", "standing watch",
 		"resident employee", "front desk",
 	}
