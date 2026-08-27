@@ -123,11 +123,29 @@ import (
 // same version because an older engine's no-such-method answer has an explicit
 // honest fallback on the surface.
 //
-// VERSION 6 ADDS [MethodSteer]. A local surface could put words into a running
-// turn, but the client agent did not expose that verb and a hosted surface
-// therefore hid the key entirely. Steering is another stream-opening intent:
-// the returned stream is the running turn from the correction onward, exactly
-// as [session.Agent.Steer] defines it.
+// VERSION 6 IS TWO LANES' ONE BUMP, the same way version 4 was: steering and
+// the task door landed together and a number that moved twice for one release
+// would refuse engines for no reason.
+//
+// It adds [MethodSteer]. A local surface could put words into a running turn,
+// but the client agent did not expose that verb and a hosted surface therefore
+// hid the key entirely. Steering is another stream-opening intent: the returned
+// stream is the running turn from the correction onward, exactly as
+// [session.Agent.Steer] defines it.
+//
+// And it adds THE TASK DOOR — [MethodTaskStart], [MethodPlannerStart] and
+// [MethodTaskJudge] (wire_task.go). Every place method before it was a READING,
+// which is why they could ride version 5 behind an honest fallback: an engine
+// that cannot answer one leaves a page drawing the sentence it has always
+// drawn. These calls are not reading. They COMMISSION WORK on the far machine
+// and spend that machine's money doing it, so there is no sentence a surface
+// could draw instead of an answer — either the far end starts the task or
+// nothing happened. A surface that sent [MethodTaskStart] to an engine which
+// does not know the method would have told a person their work was under way
+// while the far machine refused a name it had never heard, and that is
+// precisely the guess Decision 3 refuses to let two builds make three turns
+// into a conversation. So the number moves and the mismatch is refused at the
+// door, in the same sentence naming the same fix.
 const Version = 6
 
 // Frame is one line on the wire, either direction.

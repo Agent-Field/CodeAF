@@ -156,7 +156,7 @@ func TestAShaperThatCannotAnswerLetsThePersonsWordsThrough(t *testing.T) {
 	}
 	empty := func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(""), nil }
 	offline := func(context.Context, []ai.Message) (*ai.Response, error) { return nil, errors.New("offline") }
-	// The deadline's path, without waiting out taskShapeWindow: what a stall
+	// The deadline's path, without waiting out TaskShapeWindow: what a stall
 	// reaches this code as is a context that ended, and a call that ends is a
 	// call that failed.
 	stalled := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {

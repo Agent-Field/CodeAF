@@ -120,10 +120,14 @@ func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea
 	// work over regardless, because a claim another window wrote is evidence and
 	// never an instruction (internal/session's taskpreflight.go).
 	//
-	// The reading is the cached one the roster already keeps, so this costs a
-	// readdir at most once every three seconds (taskview.go's [app.elsewhere]).
-	if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
-		a.note(line)
+	// The local reading is cached, so this costs a readdir at most once every
+	// three seconds (taskview.go's [app.elsewhere]). A HOSTED SURFACE SAYS
+	// NOTHING: this seam cannot ask the far roster, and consulting the laptop
+	// would describe another machine's work.
+	if !a.hosted() {
+		if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
+			a.note(line)
+		}
 	}
 	a.beginPreflight(taskShapingNote, brief)
 	return func() tea.Msg {

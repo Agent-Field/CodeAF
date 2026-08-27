@@ -59,6 +59,23 @@ func TestTaskExplicitFormsSkipSizing(t *testing.T) {
 	}
 }
 
+func TestHostedTaskUsesTheAgentDoor(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	a.host = "spark"
+	cmd := a.runTaskCommand("solo fix the far parser")
+	if cmd == nil {
+		t.Fatal("the hosted command opened no task door")
+	}
+	_, _ = a.Update(cmd())
+	if f.singleCalls != 1 || f.brief != "fix the far parser" {
+		t.Fatalf("far starts=%d brief=%q", f.singleCalls, f.brief)
+	}
+	if got := lastNote(t, a); got != "single task 7 started · named work" {
+		t.Fatalf("started note = %q", got)
+	}
+}
+
 // THE SIZING JUDGE'S YES STARTS THE WORK, and it starts it as ONE WORKER. There
 // is no card in the way any more: the question the card asked — should this run
 // wide — is answered later and from the material, by the worker that has opened
