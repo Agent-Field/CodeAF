@@ -340,6 +340,13 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
 	if !place.Owned {
+		// A resumed conversation may have acquired its project after it was
+		// minted in the no-project bucket. The Place is the persisted authority;
+		// keeping the launch directory here would reopen the right transcript with
+		// the wrong tools root and lose the anchor precisely on resume.
+		if workspace := strings.TrimSpace(place.Workspace); workspace != "" {
+			cfg.Workspace = workspace
+		}
 		return cfg, nil
 	}
 	if err := prepareOwnedWorkspace(place); err != nil {

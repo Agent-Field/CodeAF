@@ -255,6 +255,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			Title:     node.title,
 			Status:    string(node.state),
 			Kind:      taskNodeKind(node),
+			Where:     node.where,
 			Cost:      node.cost,
 			Model:     node.model,
 			SessionID: self,

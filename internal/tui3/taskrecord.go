@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -93,6 +94,7 @@ const (
 	// meaning is not obvious from what follows them.
 	taskCardTreeWord       = "worktree"
 	taskCardBranchWord     = "branch"
+	taskCardPlaceWord      = "where"
 	taskCardTranscriptWord = "transcript"
 	// taskCardFilesWord is the count of what the work wrote, singular and plural.
 	// The list is not here — the record keeps a count and not forty paths
@@ -611,11 +613,20 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 		}
 		label(word, taskCardShown(path, a.tilde), path)
 	}
+	var artifactPath string
 	if uri := strings.TrimSpace(entry.ArtifactURI); uri != "" {
 		if path := taskURIPath(uri); path != "" {
+			artifactPath = filepath.Clean(path)
 			where(taskCardTreeWord, path)
 		} else {
 			label(taskCardBranchWord, strings.TrimPrefix(uri, "git:"), "")
+		}
+	}
+	if path := strings.TrimSpace(entry.Where); path != "" && (artifactPath == "" || filepath.Clean(path) != artifactPath) {
+		if path == "task folder" {
+			label(taskCardPlaceWord, path, "")
+		} else {
+			where(taskCardPlaceWord, path)
 		}
 	}
 	if path := taskURIPath(entry.TranscriptURI); path != "" {

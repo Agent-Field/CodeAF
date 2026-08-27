@@ -73,6 +73,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -103,7 +104,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task running outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once, the report later: keep working, never wait. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
+var taskDescription = "Hand self-contained work to a task outside this conversation. Its `where` decides the place. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once, the report later: keep working, never wait. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -153,6 +154,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing. Do not paste, summarise or contradict the person's message, attached verbatim above"},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
+	`"where":{"type":"string","description":"Path the person named, or 'in place'. Empty uses a task-folder worktree; never guess"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
 	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. The worker may hand parts out under itself once the material shows the width is real, then fold their reports into one deliverable. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items. Leave it out for a linear job"},` +
@@ -167,6 +169,7 @@ type taskArguments struct {
 	Summary     string   `json:"summary"`
 	Brief       string   `json:"brief"`
 	Deliverable string   `json:"deliverable"`
+	Where       string   `json:"where"`
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on"`
 	Wide        bool     `json:"wide"`
@@ -204,8 +207,12 @@ type taskSpec struct {
 	// [composeBrief] lays all four out as the node's opening message.
 	brief       string
 	deliverable string
-	acceptance  string
-	dependsOn   []uint64
+	// where is empty for the default task-folder worktree, "in place" when the
+	// request is deliberately non-code work in this conversation's directory,
+	// or the exact path the person named. A worker never infers it from prose.
+	where      string
+	acceptance string
+	dependsOn  []uint64
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run
@@ -560,6 +567,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		summary:     strings.TrimSpace(parsed.Summary),
 		brief:       strings.TrimSpace(parsed.Brief),
 		deliverable: strings.TrimSpace(parsed.Deliverable),
+		where:       strings.TrimSpace(parsed.Where),
 		acceptance:  strings.TrimSpace(parsed.Acceptance),
 		dependsOn:   parsed.DependsOn,
 		// THE MODEL'S OWN "THIS IS WIDE", carried to [TaskGraph.admit] where the
@@ -705,6 +713,7 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 				Summary:    spec.summary,
 				Brief:      spec.brief,
 				Acceptance: spec.acceptance,
+				Where:      taskWhereNotice(a.config.Place, a.config.Workspace, id, spec.where),
 				DependsOn:  spec.dependsOn,
 				Deadline:   deadline,
 				// What it will run on, and — when one word fit more than one model
@@ -737,6 +746,23 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 		a.forgetTask(id)
 		return TaskAnswer{}, ctx.Err()
 	}
+}
+
+func taskWhereNotice(place Place, workspace string, id uint64, where string) string {
+	where = strings.TrimSpace(where)
+	if strings.EqualFold(where, "in place") {
+		return workspace
+	}
+	if where != "" {
+		if resolved, err := resolveTaskWhere(where, workspace); err == nil {
+			return resolved
+		}
+		return where
+	}
+	if trees := place.Trees(); trees != "" {
+		return filepath.Join(trees, strconv.FormatUint(id, 10))
+	}
+	return "task folder"
 }
 
 // ── the handoff made from inside the work ───────────────────────────────────

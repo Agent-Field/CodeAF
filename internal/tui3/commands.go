@@ -75,6 +75,10 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	// A project-less conversation needs this once, while /compact is a daily
+	// command everywhere. Keep the one-shot anchor immediately below the eight
+	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
 	// here" and this is "what is there at all" — the same question one size up —
