@@ -1037,6 +1037,11 @@ type handLeash struct {
 	stop   context.CancelFunc
 }
 
+// Keep the leash tied to the lifecycle seam at compile time. The hook registry
+// deliberately accepts citizens through several interfaces, so a signature
+// change would otherwise turn this budget into a silent no-op at runtime.
+var _ postFeedbackHook = (*handLeash)(nil)
+
 func (*handLeash) Name() string { return "hand-rounds" }
 
 // arm hands the leash the cancel that ends the hand's turn.
@@ -1046,7 +1051,7 @@ func (l *handLeash) arm(stop context.CancelFunc) {
 	l.mu.Unlock()
 }
 
-func (l *handLeash) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult) {
+func (l *handLeash) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult, bool) {
 	l.mu.Lock()
 	l.rounds++
 	spent, stop := l.rounds >= l.limit, l.stop
