@@ -1192,10 +1192,10 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	}
 }
 
-// A SECOND ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
+// CMD+ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
 // above the box (park.go) and the answer keeps coming on the same channel, at
 // the same generation, into the same working state.
-func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
+func TestCmdEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "first"),
 	}}}
@@ -1203,7 +1203,7 @@ func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	typeLine(t, a, "one")
 	generation, stream := a.gen, a.stream
 
-	typeLine(t, a, "two")
+	parkLine(t, a, "two")
 	if a.gen != generation || a.stream != stream {
 		t.Fatal("a second enter replaced the stream that was still running")
 	}

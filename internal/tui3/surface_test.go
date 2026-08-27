@@ -313,7 +313,7 @@ func TestATurnFinishingBetweenPressesStillNeedsTheSecond(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	now := time.Now()
 	a.clock = func() time.Time { return now }
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 	if len(a.parks) != 1 {
 		t.Fatalf("the second message was not parked: %+v", a.parks)
 	}
@@ -346,8 +346,8 @@ func TestQuitFoldsParkedMessagesIntoTheDraft(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
 	path := filepath.Join(t.TempDir(), "drafts", "one")
 	a.draftFile = path
-	typeLine(t, a, "first correction")
-	typeLine(t, a, "second correction")
+	parkLine(t, a, "first correction")
+	parkLine(t, a, "second correction")
 	typeInto(t, a, "and this is still in the box")
 
 	if cmd := a.quit(); !isQuit(cmd) {

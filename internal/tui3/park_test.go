@@ -18,7 +18,7 @@ import (
 // own here, because either could come back without the other:
 //
 //	the render order  a person's line must never cut a streamed block in two
-//	the key           enter waits for the answer instead of sending into it
+//	the key           cmd+enter waits when plain enter would steer immediately
 //
 // Every assertion below reads what a person would see or what the session was
 // actually told, never the shape of the code between them.
@@ -120,13 +120,13 @@ func TestARoomsSteerNeverCutsTheNodesAnswerInTwo(t *testing.T) {
 
 // ── parking ─────────────────────────────────────────────────────────────────
 
-// ENTER WHILE AN ANSWER IS COMING DOES NOT SEND. The session is told nothing,
+// CMD+ENTER WHILE AN ANSWER IS COMING DOES NOT SEND. The session is told nothing,
 // the transcript grows nothing, and the words are held where the person can see
 // them.
-func TestEnterWhileAnAnswerIsStreamingParksTheMessage(t *testing.T) {
+func TestCmdEnterWhileAnAnswerIsStreamingParksTheMessage(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	before := len(agent.sent)
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 
 	if len(agent.sent) != before {
 		t.Fatalf("the message was sent mid-answer: %q", agent.sent)
@@ -152,7 +152,7 @@ func TestTheParkedBlockSaysWhatItIsWaitingForAndWhichKeysMoveIt(t *testing.T) {
 	// A frame with the room for the whole line, so the trim is not what is under
 	// test here — it has a test of its own directly below.
 	a.width = 90
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 	drive(t, a, frameMsg{})
 
 	body := plain(frame(a))
@@ -209,7 +209,7 @@ func TestTheParkedLineTrimsFromTheRightOnANarrowFrame(t *testing.T) {
 // queue drop the offer together, and what is left of each is still true.
 func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 	drive(t, a, frameMsg{})
 
 	if len(a.parks) != 1 {
@@ -250,7 +250,7 @@ func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
 	// one and the message that follows it is parked against a turn esc can stop.
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen}, frameMsg{})
-	typeLine(t, a, "and the tests too")
+	parkLine(t, a, "and the tests too")
 	drive(t, a, frameMsg{})
 	if !a.parking() {
 		t.Fatal("the drained message did not open a turn")
@@ -265,7 +265,7 @@ func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
 // THE WHOLE POINT: it goes on its own, as a turn, the moment the answer is over.
 func TestAParkedMessageSendsItselfWhenTheAnswerIsFinished(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
@@ -291,8 +291,8 @@ func TestAParkedMessageSendsItselfWhenTheAnswerIsFinished(t *testing.T) {
 // own law for its follow-up queue, said about this one.
 func TestParkedMessagesGoOneAtATimeInTheOrderTheyWereTyped(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	typeLine(t, a, "first correction")
-	typeLine(t, a, "second correction")
+	parkLine(t, a, "first correction")
+	parkLine(t, a, "second correction")
 	if len(a.parks) != 2 {
 		t.Fatalf("%d messages parked, want two", len(a.parks))
 	}
@@ -318,7 +318,7 @@ func TestParkedMessagesGoOneAtATimeInTheOrderTheyWereTyped(t *testing.T) {
 // ESC WITH A MESSAGE WAITING STOPS THE ANSWER AND SENDS IT.
 func TestEscWithAMessageWaitingStopsTheAnswerAndSendsItNow(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 
 	drive(t, a, key("esc"))
 	agent.finish()
@@ -355,7 +355,7 @@ func TestTheHintSaysWhatEscDoesWhileAMessageIsWaiting(t *testing.T) {
 	if got := a.hintWord(); got != "esc interrupt" {
 		t.Fatalf("a plain running turn = %q, want the interrupt", got)
 	}
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 	if got := a.hintWord(); got != "esc stops and sends" {
 		t.Fatalf("hint = %q, want what esc now does", got)
 	}
@@ -367,7 +367,7 @@ func TestTheHintSaysWhatEscDoesWhileAMessageIsWaiting(t *testing.T) {
 // what comes back is exactly what went in, and the block goes with it.
 func TestUpPullsAWaitingMessageBackIntoTheBox(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	typeLine(t, a, "do much more of a deep resaerch please")
+	parkLine(t, a, "do much more of a deep resaerch please")
 
 	drive(t, a, key("up"))
 	if got := a.input.String(); got != "do much more of a deep resaerch please" {
@@ -379,9 +379,9 @@ func TestUpPullsAWaitingMessageBackIntoTheBox(t *testing.T) {
 	if strings.Contains(plain(frame(a)), parkedHint[0]) {
 		t.Fatalf("the block is still drawn after being taken back:\n%s", plain(frame(a)))
 	}
-	// And enter parks the edited sentence again, once — not twice, which is what
+	// And cmd+enter parks the edited sentence again, once — not twice, which is what
 	// a ↑ that walked the history instead would have produced.
-	drive(t, a, key("enter"))
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
 	if len(a.parks) != 1 || a.parks[0].text != "do much more of a deep resaerch please" {
 		t.Fatalf("re-parking the edited sentence gave %+v", a.parks)
 	}
@@ -391,7 +391,7 @@ func TestUpPullsAWaitingMessageBackIntoTheBox(t *testing.T) {
 // read over an empty box, which is the same rule every other ↑ meaning is under.
 func TestUpWithASentenceInTheBoxDoesNotTakeTheWaitingMessage(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	typeLine(t, a, "the parked one")
+	parkLine(t, a, "the parked one")
 	typeInto(t, a, "half a thought")
 
 	drive(t, a, key("up"))
@@ -403,7 +403,7 @@ func TestUpWithASentenceInTheBoxDoesNotTakeTheWaitingMessage(t *testing.T) {
 // A CLICK ON THE BLOCK IS THE SAME GESTURE, because the block prints it.
 func TestClickingAWaitingMessageTakesItBackIntoTheBox(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 	drive(t, a, frameMsg{})
 
 	y := parkedRowY(t, a)
@@ -420,7 +420,7 @@ func TestClickingAWaitingMessageTakesItBackIntoTheBox(t *testing.T) {
 // nothing rather than taking a sentence the pointer was not over.
 func TestClickingTheLineUnderTheBlockTakesNothing(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 	drive(t, a, frameMsg{})
 
 	drive(t, a, press(2, parkedRowY(t, a)+1))
@@ -471,7 +471,7 @@ func TestParkingLeavesTheProviderWaitWhereItWas(t *testing.T) {
 	a, _ := streaming(t, "")
 	anchored := time.Now().Add(-12 * time.Second)
 	a.awaited = anchored
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 
 	if !a.awaited.Equal(anchored) {
 		t.Fatalf("parking moved the wait's anchor to %v, want %v", a.awaited, anchored)
@@ -486,7 +486,7 @@ func TestParkingLeavesTheProviderWaitWhereItWas(t *testing.T) {
 // one does: the request went out with nothing back from it.
 func TestTheTurnAParkedMessageOpensAnchorsItsOwnWait(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 	a.awaited = time.Time{}
 
 	agent.finish()

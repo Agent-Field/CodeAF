@@ -1921,7 +1921,13 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
-	steering  []userMessage
+	// generation is the CURRENT provider request, independently cancellable from
+	// the turn around it (steer.go). A steer cuts this context and leaves cancel
+	// alone, so the same turn can record the partial answer, land the person's
+	// words, and make a fresh request. It is under mu because Steer is the writer
+	// from the input goroutine while the loop installs and clears it.
+	generation *activeGeneration
+	steering   []userMessage
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn

@@ -215,6 +215,16 @@ func (p *promotableCalls) find(id string) *bare.BashCall {
 	return p.calls[id]
 }
 
+func (p *promotableCalls) snapshot() []*bare.BashCall {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	calls := make([]*bare.BashCall, 0, len(p.calls))
+	for _, call := range p.calls {
+		calls = append(calls, call)
+	}
+	return calls
+}
+
 func (a *Agent) holdPromotable(id string, call *bare.BashCall) {
 	a.inFlightBash.hold(id, call)
 }
@@ -235,21 +245,35 @@ func (a *Agent) releasePromotable(id string) { a.inFlightBash.release(id) }
 // capability whose whole promise is "and the work is not lost".
 func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 	var answer string
-	adopted := call.Adopt(func() (string, bool, bool) {
-		started, err := a.jobs.adopt(call)
-		if err != nil {
-			return "", false, false
-		}
-		// The adoption has already replayed bare's rolling tail into the job's
-		// sink ([jobRegistry.adopt]), so the sink IS the output so far and there
-		// is no second copy of it to keep in step.
+	_, adopted := a.adoptRunningBashAs(call, func(started *job) string {
 		answer = promotedSentence(started.id, started.logPath, started.sink.text())
-		return answer, false, true
+		return answer
 	})
 	if !adopted {
 		return "", false
 	}
 	return answer, true
+}
+
+// adoptRunningBashAs is the one adoption claim with the tool-result sentence
+// left to the caller. Timeout promotion, a person's steer and a person's stop
+// all take the same process into the same registry; only the immediate account
+// returned to the interrupted tool call differs.
+func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, quiet ...bool) (*job, bool) {
+	var started *job
+	adopted := call.Adopt(func() (string, bool, bool) {
+		var err error
+		started, err = a.jobs.adopt(call, quiet...)
+		if err != nil {
+			return "", false, false
+		}
+		answer := answerFor(started)
+		return answer, false, true
+	})
+	if !adopted {
+		return nil, false
+	}
+	return started, true
 }
 
 // PromoteCall sends a running foreground bash call to the background and
