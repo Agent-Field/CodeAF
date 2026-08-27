@@ -490,33 +490,22 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 		text := strings.TrimSpace(e.Text)
 		switch e.Role {
 		case "user":
-			// A LINE TYPED INTO THE TURN ABOVE IT IS NOT A QUESTION AND NEVER WAS
-			// (steerelbow.go). The journal is the only thing that remembers the
-			// difference — the message itself is an ordinary user message, because
-			// that is what the model had to read it as — and a replay that drew it
-			// as one would put a question in the transcript that nobody asked, in
-			// the middle of the turn it was correcting.
-			//
-			// So it hangs off the block above it, the turn is NOT counted, and the
-			// mark's own instant and outcome come across with it. A file written
-			// before steering existed carries no mark and takes the ordinary road
-			// below, exactly as it always did.
+			// A LINE TYPED INTO THE TURN ABOVE IT IS STILL THE PERSON'S OWN MESSAGE
+			// (steerelbow.go). The journal mark says it did not open a new turn, and
+			// carries the muted clause that explained where it landed. Replay draws
+			// that same user line and clause without incrementing the turn. A file
+			// written before steering existed carries no mark and takes the ordinary
+			// road below, exactly as it always did.
 			if e.Steer != nil && text != "" {
-				at := lastTrunk(blocks)
-				if at < 0 {
-					// THE WINDOW OPENED PART-WAY THROUGH A STEERED TURN and the
-					// question is above its top. The corrections are still drawn —
-					// they are what the person said — hanging from a trunk with no
-					// words of its own rather than promoted into questions of their
-					// own, which is the one thing they are not (render.go's
-					// entryUser draws a wordless trunk as its elbows alone).
-					turn++
-					turns++
-					blocks = append(blocks, entry{kind: entryUser, turn: turn})
-					at = len(blocks) - 1
+				landing := strings.TrimSpace(e.Steer.Landing)
+				if landing == "" {
+					landing = "landed in this answer"
 				}
-				blocks[at].steers = append(blocks[at].steers, steerElbow{
-					words: text, at: e.Steer.At, consumed: e.Steer.Consumed,
+				blocks = append(blocks, entry{
+					kind: entryUser, text: text, turn: turn, steerLine: true,
+					steers: []steerElbow{{
+						words: landing, at: e.Steer.At, consumed: e.Steer.Consumed, status: true,
+					}},
 				})
 				continue
 			}

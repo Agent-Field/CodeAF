@@ -597,6 +597,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 
 	case "enter":
+		if a.steerAvailable() {
+			return a.steerIn()
+		}
 		return a.enter()
 
 	case standMarkKey:
@@ -626,7 +629,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// those two are the other spellings of a different gesture, and a chord
 		// that fell through to them would open a line where somebody meant to
 		// correct an answer.
-		return a.steerIn()
+		if a.state == stateWorking {
+			return a.enter()
+		}
+		return nil
 
 	case bargeKey:
 		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside

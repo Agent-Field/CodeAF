@@ -9,21 +9,24 @@ package session
 // the answer and correcting it afterwards spent the whole rest of the turn on
 // the wrong thing first.
 //
-// A STEER IS NEITHER A NEW QUESTION NOR AN INTERRUPTION. It is more of the same
-// question, arriving late. Nothing is cancelled, no partial reply is discarded,
-// no second turn starts: the words go into the transcript of the turn that is
-// running, as user content, at the next model-call boundary — so what the model
-// reads is the original question, everything it has done about it so far, and
-// then the correction, in the order they happened.
+// A STEER INTERRUPTS THE CURRENT GENERATION AND NOT THE TURN. The provider
+// request stops where it is, the assistant text that actually arrived remains
+// in the transcript, and no half-sent tool call is kept. The person's words then
+// land as user content at that new step boundary and the SAME turn makes a fresh
+// request. What the model reads is the original question, its work up to the
+// cut, and then the correction, in the order they happened.
 //
 // ── WHERE IT LANDS, AND WHY THERE ──
 //
-// [Agent.runTurn]'s loop already has exactly one legal place for a user message:
-// the step boundary, after a batch's tool results are recorded and before the
-// next request is assembled. Anywhere else is a shape a provider rejects — a
-// user message between an assistant's tool_calls and their results is a 400 —
-// and the drain that runs there is the one this rides (loop.go). So the delivery
-// mechanism is not new; the identity, the outcome and the honest ending are.
+// [Agent.runTurn]'s loop has exactly one legal place for a user message: a step
+// boundary. Cancelling the request CREATES that boundary after a partial
+// assistant message with no tool calls. During an ordinary tool batch it cannot:
+// a user message between tool_calls and their results is a provider-invalid
+// shape, so short tools finish first. A foreground bash call older than
+// [steerBashAge] is adopted as a job instead, making its tool result available
+// immediately without killing its process. An unmistakable stop phrase adopts
+// and kills that job, because preserving work the person just rejected would be
+// the harness overruling them.
 //
 // ── PER-BOUNDARY, AND BATCHED WHEN THAT IS WHAT HAPPENED ──
 //
@@ -91,8 +94,13 @@ package session
 // mean one of the two lying about what it promises.
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -109,9 +117,44 @@ var ErrNothingToSteer = errors.New("nothing is running to steer")
 // without matching text — two identical corrections typed a second apart are two
 // steers, and a surface that paired them by words would resolve the wrong row.
 type SteerNote struct {
-	ID    uint64
-	Words string
-	At    time.Time
+	ID      uint64
+	Words   string
+	At      time.Time
+	Landing string
+}
+
+// steerBashAge is how old a foreground bash call must be when a steer arrives
+// before waiting becomes the wrong bargain. Short commands finish their batch
+// normally; a build, test suite or server past this one bound becomes a job so
+// the person's correction can land without throwing the process away.
+const steerBashAge = 3 * time.Second
+
+var errSteerCut = errors.New("session: generation cut by steer")
+
+// activeGeneration is one provider attempt and its independent stop handle.
+// The pointer is its identity: an attempt may finish while the next one starts,
+// and only the attempt that installed a handle is allowed to clear it.
+type activeGeneration struct {
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+}
+
+func (a *Agent) beginGeneration(parent context.Context) (context.Context, *activeGeneration) {
+	ctx, cancel := context.WithCancelCause(parent)
+	active := &activeGeneration{ctx: ctx, cancel: cancel}
+	a.mu.Lock()
+	a.generation = active
+	a.mu.Unlock()
+	return ctx, active
+}
+
+func (a *Agent) endGeneration(active *activeGeneration) error {
+	a.mu.Lock()
+	if a.generation == active {
+		a.generation = nil
+	}
+	a.mu.Unlock()
+	return context.Cause(active.ctx)
 }
 
 // turnSteer is one steer as the AGENT holds it while it waits: the note the
@@ -180,6 +223,25 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	}
 	a.steering = append(a.steering, steerMessage(steer))
 	hub := a.hub
+	// A MODEL GENERATION IS CUT, NOT THE TURN. The request's own cancellation
+	// handle is distinct from a.cancel, so the loop comes back to its boundary,
+	// records only what arrived, drains this steer and continues on the same
+	// stream. There is no call to Interrupt here and therefore no follow-up drop.
+	if a.generation != nil {
+		steer.note.Landing = "stopped the reply here"
+		a.generation.cancel(errSteerCut)
+	} else if landed, jobs := a.steerRunningBashLocked(words); landed != "" {
+		steer.note.Landing = landed
+		defer func() {
+			for _, started := range jobs {
+				a.jobs.announceRow(started)
+			}
+		}()
+	} else {
+		// Short tools are allowed to finish. The line is still visible now, and
+		// this clause says exactly why its consumed event has not arrived yet.
+		steer.note.Landing = "waiting for the running step"
+	}
 	// Adopted under a.mu, for the reason a steering Submit subscribes under it:
 	// the turn's goroutine clears running with this same lock held BEFORE it
 	// closes the hub, so running == true here means the hub cannot already have
@@ -199,6 +261,97 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	hub.send(Event{Kind: EventSteerAccepted, Steer: noteOf(steer)})
 	a.mu.Unlock()
 	return steer.stream.out, nil
+}
+
+// steerRunningBashLocked handles foreground bash calls while Steer holds a.mu.
+// The call and job registries have their own locks precisely so this input path
+// can reach them while the turn is busy. Every old call is handled: adopting
+// only one from a parallel batch would still leave the steer waiting on another.
+func (a *Agent) steerRunningBashLocked(words string) (string, []*job) {
+	calls := a.inFlightBash.snapshot()
+	if len(calls) == 0 {
+		return "", nil
+	}
+	stop := steerStopsBash(words)
+	var ids []int
+	var adoptedJobs []*job
+	for _, call := range calls {
+		if call.RunningFor() < steerBashAge {
+			continue
+		}
+		var started *job
+		var adopted bool
+		if stop {
+			started, adopted = a.adoptRunningBashAs(call, func(*job) string {
+				return "stopped by the person: " + words
+			}, true)
+		} else {
+			started, adopted = a.adoptRunningBashAs(call, func(one *job) string {
+				return steerPromotedSentence(one.id, call.Command(), call.RunningFor())
+			}, true)
+		}
+		if !adopted {
+			continue
+		}
+		ids = append(ids, started.id)
+		adoptedJobs = append(adoptedJobs, started)
+		if stop {
+			a.stopAdoptedBash(started)
+		}
+	}
+	if len(ids) == 0 {
+		return "", nil
+	}
+	sort.Ints(ids)
+	if stop {
+		return "stopped the running command", adoptedJobs
+	}
+	if len(ids) == 1 {
+		return "kept bash running as job " + strconv.Itoa(ids[0]), adoptedJobs
+	}
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.Itoa(id)
+	}
+	return "kept bash running as jobs " + strings.Join(parts, ", "), adoptedJobs
+}
+
+// steerStopsBash is intentionally tiny. Only unmistakable command-stopping
+// phrases take the destructive arm; everything else preserves the process as a
+// job and lets the model read the person's actual words before deciding more.
+func steerStopsBash(words string) bool {
+	normal := strings.ToLower(strings.TrimSpace(words))
+	normal = strings.Trim(normal, ".!?")
+	switch normal {
+	case "stop", "stop it", "kill", "kill it", "cancel", "cancel it", "abort", "abort it", "ctrl-c", "ctrl+c", "^c":
+		return true
+	}
+	return false
+}
+
+func steerPromotedSentence(id int, command string, elapsed time.Duration) string {
+	command = strings.ReplaceAll(strings.TrimSpace(command), "`", "'")
+	if command == "" {
+		command = "bash"
+	}
+	return fmt.Sprintf("still running as job %d (`%s`, %s so far); output via jobs output %d; you will be told when it exits",
+		id, command, formatElapsed(elapsed), id)
+}
+
+// stopAdoptedBash marks the new job as deliberately stopped before signalling
+// it, so its reaper never produces an exit note for news the person already
+// supplied. SIGKILL is scheduled after the registry's one shared grace without
+// making the steer wait through that grace.
+func (a *Agent) stopAdoptedBash(started *job) {
+	if started == nil || !started.requestKill() {
+		return
+	}
+	started.signal(syscall.SIGTERM)
+	go func() {
+		if !waitDone(started.done, jobTermGrace) {
+			started.signal(syscall.SIGKILL)
+		}
+	}()
 }
 
 // nextSteerID mints one steer's identity. Ids start at 1, so a zero [SteerNote]

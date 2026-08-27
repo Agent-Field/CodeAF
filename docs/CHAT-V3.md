@@ -589,19 +589,17 @@ tools.go.
 **Decision.** Typing while the session agent works produces two kinds of
 messages, exactly omp's split:
 
-- **Steer** (plain Enter mid-turn): injected into the running turn at the
-  next tool-batch boundary — the agent sees it between steps. v3's
-  `Agent.Submit` during a turn already implements this; every Submit returns
-  a live fan-out channel over the turn's event hub.
+- **Steer** (plain Enter mid-turn): stops the model generation that is running,
+  keeps its partial reply, and injects the person's words as the next user
+  message in the same turn. A short tool reaches its boundary first; a bash
+  already running for 3 seconds is adopted as a job so the steer can land now.
 - **Follow-up** (`ctrl+q`): queued to start a fresh turn the moment the
   current one yields.
 
-Dequeue is one message per poll by default (`steering.mode:
-one-at-a-time`); `all` flushes the queue at one boundary. The queue renders
-above the input as a dim enumerated list ("Steering · 2", "After yield ·
-1"); `alt+up` pops the last queued message back into the input. Interrupt
-(esc) clears both queues — a drain must never auto-resume a turn the person
-just stopped. The display counts only user-authored messages.
+Accepted steers render immediately as the person's own transcript line with a
+short muted landing clause. A steer that finds the turn already sealing lifts
+to the follow-up queue. Interrupt (esc) still ends the turn; a drain must never
+auto-resume a turn the person just stopped.
 
 ## Decision 6 — Settings and models follow omp's pattern on aforge's registry
 

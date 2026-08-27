@@ -253,17 +253,21 @@ type entry struct {
 	// history every time the person walked into a different room.
 	context string
 
-	// steers are the corrections typed INTO this turn after this block opened it
-	// — the elbow rows drawn under the question (steerelbow.go). They are here
-	// rather than in the turn's own run of blocks because THE QUESTION IS WHAT
-	// THEY BELONG TO: a turn folded to its `worked` chip still reads back as
-	// everything that was asked, and a rewind that drops a turn drops its
-	// corrections with it because they are the same block.
+	// steers are the muted structural rows drawn beneath a user block
+	// (steerelbow.go). On a live steer the block is the correction itself and the
+	// row says where it landed; grouped rows remain representable for older
+	// in-memory shapes. Keeping both on the user block makes a fold or rewind
+	// move the person's words and the surface's account together.
 	//
 	// Empty on every block of every conversation nobody steered, which is nearly
 	// all of them, and a block with none renders exactly as it did before this
 	// existed.
 	steers []steerElbow
+	// steerLine marks a person's ordinary transcript block as a steer rather
+	// than the question that opened this turn. The words still draw in their own
+	// hue; the mark exists so a fall-through can remove the provisional line
+	// before the follow-up road draws it as a new question.
+	steerLine bool
 	// steerFoldRow is which of this block's rows is the elbows' fold line, so the
 	// layout pass can make that one row a door — and ZERO IS NONE, which costs
 	// nothing to say: row zero is always the first row of the person's own

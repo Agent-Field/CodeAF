@@ -2,8 +2,9 @@ package session
 
 // The laws of the splice (steer.go), one test each:
 //
-//	(a) a steer lands at the next model-call boundary, as user content of the
-//	    SAME turn — the model reads the question, the work so far, then it
+//	(a) a steer cuts the current generation and lands at the boundary it makes,
+//	    as user content of the SAME turn — the model reads the question, the
+//	    partial work, then the correction
 //	(b) several steers land in the order they were sent
 //	(c) a steer that missed every boundary of a turn that ANSWERED falls through
 //	    onto the follow-up queue and asks its own question, on the same stream
@@ -25,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -107,12 +109,13 @@ func journalEntries(t *testing.T, path string) []sessionEntry {
 // ── (a) the splice lands at the boundary, as the same turn's user content ───
 
 func TestASteerLandsAtTheNextBoundaryAsSameTurnUserContent(t *testing.T) {
-	held := newHeldTurn()
+	started := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			close(held.entered)
-			<-held.release
-			return toolResponse("call-1", "ls", `{"path":"."}`), nil
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "I started in the wrong place")
+			close(started)
+			<-ctx.Done()
+			return &ai.Response{Usage: &ai.Usage{PromptTokens: 11, CompletionTokens: 4}}, ctx.Err()
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse("counted them too"), nil
@@ -121,9 +124,8 @@ func TestASteerLandsAtTheNextBoundaryAsSameTurnUserContent(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, nil)
 
 	turn := mustSubmit(t, agent, "list the workspace")
-	held.wait(t)
+	<-started
 	steered := mustSteer(t, agent, "count the files while you are there")
-	close(held.release)
 
 	collect(t, turn)
 	fromSteer := collect(t, steered)
@@ -133,8 +135,11 @@ func TestASteerLandsAtTheNextBoundaryAsSameTurnUserContent(t *testing.T) {
 	}
 	second := completer.request(1)
 	// The question, the work so far, then the correction: one turn, in order.
-	if got, want := rolesOf(second), []string{"system", "user", "assistant", "tool", "user"}; !equalStrings(got, want) {
+	if got, want := rolesOf(second), []string{"system", "user", "assistant", "user"}; !equalStrings(got, want) {
 		t.Fatalf("second request roles = %v, want %v — the steer lands at the step boundary", got, want)
+	}
+	if got := messageText(second[len(second)-2]); got != "I started in the wrong place" {
+		t.Fatalf("partial assistant = %q, want the streamed text", got)
 	}
 	if got, want := userLines(second), []string{"list the workspace", "count the files while you are there"}; !equalStrings(got, want) {
 		t.Fatalf("user content = %v, want %v — the question, then the steer", got, want)
@@ -151,6 +156,82 @@ func TestASteerLandsAtTheNextBoundaryAsSameTurnUserContent(t *testing.T) {
 	if last := fromSteer[len(fromSteer)-1]; last.Kind != EventTurnDone {
 		t.Fatalf("steer stream ended with %v, want EventTurnDone", last.Kind)
 	}
+	if last := fromSteer[len(fromSteer)-1]; last.Usage.Input < 21 || last.Usage.Output < 9 {
+		t.Fatalf("turn usage = %+v, want the cut and finishing attempts both charged", last.Usage)
+	}
+}
+
+func TestASteerDuringReasoningOnlyDropsTheUnfinishedSidecar(t *testing.T) {
+	started := make(chan struct{})
+	var carried []provider.MessageReasoning
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamThinking, "")
+			provider.EmitEvent(ctx, provider.StreamEvent{
+				Kind: provider.StreamReasoning, Delta: "private first half", ReasoningField: "reasoning_content",
+			})
+			close(started)
+			<-ctx.Done()
+			return &ai.Response{Usage: &ai.Usage{PromptTokens: 8, CompletionTokens: 3}}, ctx.Err()
+		},
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			carried = provider.MessageReasoningFrom(ctx)
+			return textResponse("continued cleanly"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "think this through")
+	<-started
+	mustSteer(t, agent, "use the simpler route")
+	collect(t, turn)
+
+	second := completer.request(1)
+	if got, want := rolesOf(second), []string{"system", "user", "user"}; !equalStrings(got, want) {
+		t.Fatalf("second request roles = %v, want %v", got, want)
+	}
+	for _, sidecar := range carried {
+		if strings.Contains(sidecar.Text, "private first half") {
+			t.Fatalf("cut reasoning leaked into the next request: %#v", carried)
+		}
+	}
+}
+
+func TestASteerDropsAnIncompleteToolCallAndKeepsItsText(t *testing.T) {
+	started := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "I found the file. ")
+			provider.EmitEvent(ctx, provider.StreamEvent{
+				Kind: provider.StreamToolCallForming, Index: 0, ID: "cut-call", Tool: "read",
+				Delta: `{"path":"internal/session/steer.go`,
+			})
+			close(started)
+			<-ctx.Done()
+			return &ai.Response{Usage: &ai.Usage{PromptTokens: 7, CompletionTokens: 4}}, ctx.Err()
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("continued without the broken call"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "inspect the session")
+	<-started
+	mustSteer(t, agent, "use the other file")
+	collect(t, turn)
+
+	second := completer.request(1)
+	if got, want := rolesOf(second), []string{"system", "user", "assistant", "user"}; !equalStrings(got, want) {
+		t.Fatalf("second request roles = %v, want %v", got, want)
+	}
+	cut := second[len(second)-2]
+	if len(cut.ToolCalls) != 0 {
+		t.Fatalf("the cut assistant kept an incomplete tool call: %#v", cut.ToolCalls)
+	}
+	text := messageText(cut)
+	if !strings.Contains(text, "I found the file.") ||
+		!strings.Contains(text, "incomplete tool call dropped when you steered") {
+		t.Fatalf("cut assistant text = %q, want the partial and the dropped-call account", text)
+	}
 }
 
 // ── (b) several steers keep the order they were typed in ────────────────────
@@ -159,46 +240,32 @@ func TestASteerLandsAtTheNextBoundaryAsSameTurnUserContent(t *testing.T) {
 // and one sent after it arrives at the next — which is the same rule twice
 // (steer.go): every steer lands at the FIRST boundary after it was sent.
 func TestSteersLandInTheOrderTheyWereSent(t *testing.T) {
-	first := newHeldTurn()
-	second := newHeldTurn()
+	first := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			close(first.entered)
-			<-first.release
-			return toolResponse("call-1", "ls", `{"path":"."}`), nil
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "looking")
+			close(first)
+			<-ctx.Done()
+			return nil, ctx.Err()
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			close(second.entered)
-			<-second.release
-			return toolResponse("call-2", "ls", `{"path":"src"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("all three folded in"), nil
+			return textResponse("both folded in"), nil
 		},
 	}}
 	agent, _ := newTestAgent(t, completer, nil)
 
 	turn := mustSubmit(t, agent, "look around")
-	first.wait(t)
+	<-first
 	mustSteer(t, agent, "one")
 	mustSteer(t, agent, "two")
-	close(first.release)
-
-	second.wait(t)
-	mustSteer(t, agent, "three")
-	close(second.release)
 	collect(t, turn)
 
-	if completer.requests() != 3 {
-		t.Fatalf("requests = %d, want 3", completer.requests())
+	if completer.requests() != 2 {
+		t.Fatalf("requests = %d, want 2", completer.requests())
 	}
-	// Two typed in one step batch at that step's boundary, in order.
+	// Both typed into one generation arrive at its cut boundary, in order.
 	if got, want := userLines(completer.request(1)), []string{"look around", "one", "two"}; !equalStrings(got, want) {
 		t.Fatalf("second request user content = %v, want %v", got, want)
-	}
-	// The third waited for the boundary after the step it was typed in.
-	if got, want := userLines(completer.request(2)), []string{"look around", "one", "two", "three"}; !equalStrings(got, want) {
-		t.Fatalf("third request user content = %v, want %v", got, want)
 	}
 }
 
@@ -208,7 +275,7 @@ func TestSteersLandInTheOrderTheyWereSent(t *testing.T) {
 // boundary left. It must not vanish, and it must not be written into the turn
 // it missed: it becomes an ordinary waiting message, and the stream the person
 // is already holding carries the turn it starts.
-func TestASteerThatMissedItsBoundaryBecomesAWaitingMessage(t *testing.T) {
+func TestASteerCutsEvenTheLastGenerationBeforeItCanSeal(t *testing.T) {
 	held := newHeldTurn()
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -233,20 +300,19 @@ func TestASteerThatMissedItsBoundaryBecomesAWaitingMessage(t *testing.T) {
 
 	if got, want := steerEvents(fromSteer), []string{
 		"accepted:count them as well",
-		"fell:count them as well",
+		"consumed:count them as well",
 	}; !equalStrings(got, want) {
-		t.Fatalf("steer events = %v, want %v — it steered nothing and must say so", got, want)
+		t.Fatalf("steer events = %v, want %v", got, want)
 	}
-	// ONE CHANNEL, ONE STORY: the turn it steered, the fall-through, then the
-	// turn its own words started.
+	// One turn was cut and continued; the steer never became a second turn.
 	var turns int
 	for _, event := range fromSteer {
 		if event.Kind == EventTurnDone {
 			turns++
 		}
 	}
-	if turns != 2 {
-		t.Fatalf("EventTurnDone on the steer's stream = %d, want 2 — the turn it missed and the turn it became", turns)
+	if turns != 1 {
+		t.Fatalf("EventTurnDone on the steer's stream = %d, want 1", turns)
 	}
 	// And the second turn is an ORDINARY question: its own turn, opening on the
 	// person's words, with nothing pretending they steered the first one.
@@ -341,7 +407,7 @@ func recordsAFallThrough(t *testing.T, path, words string) bool {
 
 // ── (e) fall-through on a turn that faulted ─────────────────────────────────
 
-func TestASteerFallsThroughWhenTheTurnFaults(t *testing.T) {
+func TestASteerCutsARequestBeforeItsFaultCanEndTheTurn(t *testing.T) {
 	held := newHeldTurn()
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -364,17 +430,17 @@ func TestASteerFallsThroughWhenTheTurnFaults(t *testing.T) {
 			faulted = true
 		}
 	}
-	if !faulted {
-		t.Fatalf("turn events = %v, want EventError among them", kinds(collected))
+	if faulted {
+		t.Fatalf("turn events = %v, did not want the cut request's late fault", kinds(collected))
 	}
 	if got, want := steerEvents(collect(t, steered)), []string{
 		"accepted:and skip the tests",
-		"fell:and skip the tests",
+		"consumed:and skip the tests",
 	}; !equalStrings(got, want) {
 		t.Fatalf("steer events = %v, want %v", got, want)
 	}
-	if completer.requests() != 1 {
-		t.Fatalf("requests = %d, want 1 — a faulted turn starts nothing else", completer.requests())
+	if completer.requests() != 2 {
+		t.Fatalf("requests = %d, want 2 — the steer continues the turn", completer.requests())
 	}
 }
 
@@ -414,8 +480,8 @@ func TestSteeringAnIdleSessionIsRefused(t *testing.T) {
 
 // A steer is an ordinary user message in the transcript, because that is what
 // the model has to read it as. The journal keeps the one bit that says it did
-// not open the turn it sits in, and a surface reads it back off the display
-// entry — which is what lets a turn be drawn as a trunk with elbow rows.
+// not open the turn it sits in, plus the landing clause a surface draws beneath
+// the person's line.
 func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	held := newHeldTurn()
@@ -438,7 +504,7 @@ func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 	close(held.release)
 	collect(t, turn)
 
-	// The live surface: the question is the trunk, the steer is an elbow on it.
+	// The live surface receives an ordinary user message carrying a steer mark.
 	entries := agent.Transcript()
 	var trunk, elbow *DisplayEntry
 	for index := range entries {
@@ -456,10 +522,13 @@ func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 		t.Fatal("the message that OPENED the turn must not be marked a steer")
 	}
 	if elbow.Steer == nil {
-		t.Fatal("the steer is drawn as an ordinary question: nothing says it was part of the turn")
+		t.Fatal("the steer mark was lost, so replay would treat it as a new question")
 	}
 	if !elbow.Steer.Consumed {
 		t.Fatal("the steer landed, and the record must say so")
+	}
+	if elbow.Steer.Landing != "stopped the reply here" {
+		t.Fatalf("landing = %q, want the provider-cut account", elbow.Steer.Landing)
 	}
 	if elbow.Steer.At.Before(sent.Add(-time.Second)) || elbow.Steer.At.After(time.Now()) {
 		t.Fatalf("steer instant = %v, want the moment it was sent", elbow.Steer.At)
@@ -473,7 +542,8 @@ func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 	for _, entry := range journalEntries(t, path) {
 		if entry.Type == "message" && entry.Content == "and count them" {
 			found = true
-			if entry.Steer == nil || !entry.Steer.Consumed || entry.Steer.At == "" {
+			if entry.Steer == nil || !entry.Steer.Consumed || entry.Steer.At == "" ||
+				entry.Steer.Landing != "stopped the reply here" {
 				t.Fatalf("journal line for the steer = %+v", entry.Steer)
 			}
 		}
@@ -485,7 +555,7 @@ func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 		t.Fatal("the steer is not in the journal at all")
 	}
 
-	// A resume reads the mark back, so the elbow survives the process.
+	// A resume reads the mark back, so the user line and landing clause survive.
 	replayed, err := replaySessionFile(path)
 	if err != nil {
 		t.Fatalf("replay: %v", err)
@@ -493,7 +563,8 @@ func TestTheRecordSaysASteerWasPartOfTheTurnItSteered(t *testing.T) {
 	steers := 0
 	for _, message := range replayed.messages {
 		if messageText(message) == "and count them" {
-			if _, marked := replayed.steers[noteKey(message)]; !marked {
+			mark, marked := replayed.steers[noteKey(message)]
+			if !marked || mark.Landing != "stopped the reply here" {
 				t.Fatal("the replay lost the steer's mark")
 			}
 			steers++
@@ -598,4 +669,117 @@ func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	if strings.TrimSpace(messageText(lastMessage(agent))) == "" {
 		t.Fatal("the steered line reached the transcript empty")
 	}
+}
+
+func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
+	t.Parallel()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("long-bash", "bash", `{"command":"sleep 4; echo steer-job-finished"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("I changed course while it finishes"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the background build finished too"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "build and inspect")
+	waitFor(t, "foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	time.Sleep(steerBashAge + 100*time.Millisecond)
+	steered := mustSteer(t, agent, "inspect the parser while that runs")
+	collect(t, turn)
+	events := collect(t, steered)
+
+	second := completer.request(1)
+	if got := roleText(second, "tool"); !strings.Contains(got, "still running as job 1") ||
+		!strings.Contains(got, "output via jobs output 1") {
+		t.Fatalf("adopted tool result = %q", got)
+	}
+	if got, want := userLines(second), []string{"build and inspect", "inspect the parser while that runs"}; !equalStrings(got, want) {
+		t.Fatalf("second request users = %v, want %v", got, want)
+	}
+	if got := steerLanding(events); got != "kept bash running as job 1" {
+		t.Fatalf("steer landing = %q", got)
+	}
+	waitFor(t, "adopted job exit note", func() bool { return notesContain(agent, "steer-job-finished") })
+	waitFor(t, "owed exit request", func() bool { return completer.requests() >= 3 })
+	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 0") {
+		t.Fatalf("later request has no owed exit note: %q", got)
+	}
+}
+
+func TestASteerWaitsForAYoungBash(t *testing.T) {
+	t.Parallel()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("young-bash", "bash", `{"command":"sleep 0.5; echo young-finished"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "run the quick check")
+	waitFor(t, "young foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	began := time.Now()
+	steered := mustSteer(t, agent, "then read the result")
+	collect(t, turn)
+	events := collect(t, steered)
+	if elapsed := time.Since(began); elapsed < 200*time.Millisecond {
+		t.Fatalf("young bash landed in %s, want the batch to finish first", elapsed)
+	}
+	if list := agent.jobs.list(); list != "No background jobs." {
+		t.Fatalf("young bash became a job: %q", list)
+	}
+	if got := steerLanding(events); got != "waiting for the running step" {
+		t.Fatalf("steer landing = %q", got)
+	}
+}
+
+func TestAStopSteerKillsAnOldBash(t *testing.T) {
+	t.Parallel()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("stopped-bash", "bash", `{"command":"sleep 30"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("stopped"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "start the server")
+	waitFor(t, "old foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	time.Sleep(steerBashAge + 100*time.Millisecond)
+	steered := mustSteer(t, agent, "kill it")
+	collect(t, turn)
+	events := collect(t, steered)
+	if got := roleText(completer.request(1), "tool"); !strings.Contains(got, "stopped by the person: kill it") {
+		t.Fatalf("stopped tool result = %q", got)
+	}
+	if got := steerLanding(events); got != "stopped the running command" {
+		t.Fatalf("steer landing = %q", got)
+	}
+	waitFor(t, "adopted job to settle killed", func() bool {
+		job := agent.jobs.find(1)
+		return job != nil && !job.running()
+	})
+	if notesContain(agent, "job 1 exited") {
+		t.Fatal("a person-requested stop produced an owed exit note")
+	}
+}
+
+func roleText(messages []ai.Message, role string) string {
+	for _, message := range messages {
+		if message.Role == role {
+			return messageText(message)
+		}
+	}
+	return ""
+}
+
+func steerLanding(events []Event) string {
+	for _, event := range events {
+		if event.Kind == EventSteerAccepted && event.Steer != nil {
+			return event.Steer.Landing
+		}
+	}
+	return ""
 }

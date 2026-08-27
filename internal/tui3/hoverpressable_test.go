@@ -183,7 +183,7 @@ func TestTheStopCardsAnswersLightOneAtATime(t *testing.T) {
 // the box. The dim line under the block belongs to no message and stays dark.
 func TestAParkedMessageLightsWholeAndItsFootDoesNot(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 	drive(t, a, frameMsg{})
 	y := parkedRowY(t, a)
 

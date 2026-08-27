@@ -14,7 +14,7 @@ import (
 //
 // The thing being pinned here is a pair of meanings on one keyboard, and the
 // dangerous half of the pair is the one that ALREADY WORKED. Plain enter over a
-// running answer parks the sentence and waits (park.go); every test in the
+// running answer now steers, while cmd+enter parks the sentence (park.go); every test in the
 // first block below exists to make sure the chord beside it never quietly
 // became a second way to do that, or — very much worse — that enter never
 // quietly became a way to stop a turn.
@@ -42,22 +42,22 @@ func bargeable(t *testing.T, first string) (*app, *fakeAgent) {
 
 // ── the safe default is sacred ──────────────────────────────────────────────
 
-// PLAIN ENTER STILL ONLY WAITS. It parks, it does not send, and above all it
+// CMD+ENTER WAITS. It parks, it does not send, and above all it
 // does not stop the answer — on a terminal that can spell the chord just as
 // much as on one that cannot, because the chord's existence must change nothing
 // about the key beside it.
-func TestPlainEnterOverAnAnswerStillOnlyWaits(t *testing.T) {
+func TestCmdEnterOverAnAnswerWaits(t *testing.T) {
 	a, agent := bargeable(t, "reading the tree. ")
-	typeLine(t, a, "no, the other file")
+	parkLine(t, a, "no, the other file")
 
 	if agent.stops != 0 {
-		t.Fatalf("plain enter stopped the answer: %d stops", agent.stops)
+		t.Fatalf("cmd+enter stopped the answer: %d stops", agent.stops)
 	}
 	if len(agent.sent) != 1 {
-		t.Fatalf("plain enter sent something: %q", agent.sent)
+		t.Fatalf("cmd+enter sent something: %q", agent.sent)
 	}
 	if len(a.parks) != 1 || a.parks[0].text != "no, the other file" {
-		t.Fatalf("plain enter did not park the sentence: %+v", a.parks)
+		t.Fatalf("cmd+enter did not park the sentence: %+v", a.parks)
 	}
 	if a.state != stateWorking {
 		t.Fatalf("state = %v, want the turn still running", a.state)
@@ -183,8 +183,8 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 	if a.bargeOffered() {
 		t.Fatal("the chord is offered on a terminal that never said it could send it")
 	}
-	if got := a.hintWord(); got != "esc interrupt" {
-		t.Fatalf("hint = %q, want the plain interrupt where the chord cannot work", got)
+	if got := a.hintWord(); got != steerShortHint {
+		t.Fatalf("hint = %q, want the plain-enter steer where the chord cannot work", got)
 	}
 	if strings.Contains(plain(frame(a)), bargeKey) {
 		t.Fatal("the frame named a chord this terminal cannot deliver")
@@ -258,18 +258,17 @@ func TestTheChordAndTheParkedBlockSayTheSameThreeWords(t *testing.T) {
 
 // ── the impatient user ──────────────────────────────────────────────────────
 
-// SOMEBODY TYPES DURING A STREAM, HITS ENTER THREE TIMES, THEN THE CHORD.
+// SOMEBODY PARKS DURING A STREAM, HITS ENTER TWICE, THEN THE STOP CHORD.
 //
 // The three presses are one message and two keys pressed at a box that is
 // already empty, and the chord after them has nothing left to say. What must
 // come out of that is: ONE message queued, ONE turn spent on it, no second copy
 // of it, and no stop that the person did not ask for — because the chord over
 // an empty box is the absent key, not a bare interrupt.
-func TestThreeEntersThenTheChordSendTheMessageOnceAndLoseNothing(t *testing.T) {
+func TestAParkThenEmptyEntersAndTheChordSendTheMessageOnceAndLoseNothing(t *testing.T) {
 	a, agent := bargeable(t, "reading the tree. ")
-	typeInto(t, a, "no, the other file")
-
-	drive(t, a, key("enter"), key("enter"), key("enter"))
+	parkLine(t, a, "no, the other file")
+	drive(t, a, key("enter"), key("enter"))
 	if len(a.parks) != 1 {
 		t.Fatalf("%d messages queued, want the one that was typed: %+v", len(a.parks), a.parks)
 	}
