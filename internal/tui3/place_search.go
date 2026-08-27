@@ -388,7 +388,7 @@ func (placeSearch) tick(a *app, now time.Time) bool {
 // looks exactly like a search that found nothing — so without this line a person
 // would read "we never talked about that" off a place that never looked.
 func (placeSearch) remote(a *app) string {
-	if a.hosted() {
+	if a.hosted() && a.searchStore == nil {
 		return searchRemoteWord
 	}
 	return ""
