@@ -4,9 +4,11 @@
 // working state, the task checkpoint, the node journals, the droppings, the
 // worktrees and — for an owned session — the workspace itself all live inside
 // one directory, so deleting a session is removing one folder and exporting
-// one is zipping one. Every path below is arithmetic on [Place.Dir]; nothing
-// here touches the disk except [Meta]'s load and save, because where things
-// live and what lives there are one decision made in one file.
+// one is zipping one. Every path below starts as arithmetic on [Place.Dir];
+// only [Place.Trees] resolves that spelling against the disk, because git
+// records worktree paths after resolving symlinks. The other disk access here
+// is [Meta]'s load and save, because where things live and what lives there are
+// one decision made in one file.
 //
 // The zero Place is the LEGACY layout: every method on it answers "", and a
 // caller holding one keeps deriving sidecar paths the flat way. That is what
@@ -65,6 +67,38 @@ func (p Place) join(parts ...string) string {
 	return filepath.Join(append([]string{p.Dir}, parts...)...)
 }
 
+// canonicalPath gives every repository and worktree path one spelling.
+//
+// GIT RECORDS THE RESOLVED SPELLING. On macOS, for example, a directory made
+// beneath /var is reported beneath /private/var. Keeping the unresolved
+// spelling in a task checkpoint or deriving a lock from it would make one
+// directory look like two different places.
+//
+// A worktree path usually does not exist when it is first chosen. In that case
+// the nearest existing parent is resolved and the missing suffix is put back,
+// so the spelling is already stable before mkdir or `git worktree add`.
+// Failures other than absence keep the cleaned path: canonicalization must not
+// turn a path that may still be usable into an empty answer.
+func canonicalPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	path = filepath.Clean(path)
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return path
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(canonicalPath(parent), filepath.Base(path))
+}
+
 // ID is the session's id, which is the folder's own name — the same 16-hex id
 // the transcript header carries and [Meta.ID] records. It is arithmetic on
 // [Place.Dir] like every other method here: the name IS the identity, so a
@@ -116,8 +150,10 @@ func (p Place) Artifacts() string { return p.join(placeArtifacts) }
 // Trees holds the git worktrees, one per running node. Session deletion runs
 // git worktree remove/prune against [Meta.Workspace] BEFORE this directory
 // goes, or the repository is left holding registrations for paths that are
-// gone.
-func (p Place) Trees() string { return p.join(placeTrees) }
+// gone. It uses the same canonical spelling git records even before trees/
+// itself exists, so creation, checkpoints and later unregistering all name one
+// directory.
+func (p Place) Trees() string { return canonicalPath(p.join(placeTrees)) }
 
 // Work is the owned session's workspace, and "" for a borrowed one: a
 // borrowed session has no work/ at all, which is itself the record of which

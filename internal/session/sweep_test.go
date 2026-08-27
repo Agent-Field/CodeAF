@@ -20,7 +20,11 @@ import (
 // FIRST, so the person is not left with a repository pointing at paths that are
 // gone.
 func TestTheSweepReapsATempWorkspaceNobodyCameBackTo(t *testing.T) {
-	root := t.TempDir()
+	realRoot := t.TempDir()
+	root := filepath.Join(t.TempDir(), "projects")
+	if err := os.Symlink(realRoot, root); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now()
 	repo := newTestRepo(t)
 

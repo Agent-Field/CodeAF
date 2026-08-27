@@ -336,6 +336,15 @@ func TestUnderTreeIsNotAStringPrefix(t *testing.T) {
 			t.Fatalf("underTree(%q, %q) = %v, want %v", c.tree, c.path, got, c.want)
 		}
 	}
+
+	real := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "tree")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	if path := filepath.Join(real, "not-made-yet.go"); !underTree(alias, path) {
+		t.Fatalf("the canonical tree %q did not cover its symlinked spelling %q", real, alias)
+	}
 }
 
 // ── (f) no budget is today's session, and one line saying so ────────────────
