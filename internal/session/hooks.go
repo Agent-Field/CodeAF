@@ -3,14 +3,12 @@ package session
 // The control plane: the four moments in a turn where the harness — rather than
 // the model — gets a say, each one named.
 //
-// Nothing here is new behavior. The stub pass, the approval gate, the guardian
-// and the loop detector already existed and already ran at exactly these four
-// moments; what they did not have was a NAME for the moment, so each one was
-// wired into loop.go as a line of its own. That is fine for four. It is not fine
-// for the fifth, and every guardrail, recovery move and context trick this
-// harness grows next is a fifth: without a seam they land as more lines in the
-// turn, each with its own ordering argument, none of them testable apart from a
-// whole turn.
+// The seam began as names around existing behavior. The turn-output fold is the
+// first new context citizen to use it: its end-of-turn pass shares this chain,
+// while its per-step pass is called alone because the older cross-turn stub must
+// remain an end-of-turn operation (loop.go). Every guardrail, recovery move and
+// context trick this harness grows next otherwise lands as another line in the
+// turn with its own ordering argument, testable only through a whole turn.
 //
 // ── THE FOUR, IN HARNESS-R1'S OWN WORDS ──
 //
@@ -30,7 +28,7 @@ package session
 // to adopt the naming rather than invent one:
 //
 //	episode-init   the turn's loop window (looped.go) and change ledger (recovery.go)
-//	pre-decision   the tool-output stub pass (stub.go)
+//	pre-decision   the tool-output stub passes (stub.go, turnfold.go)
 //	pre-action     the approval gate, and the guardian inside it (consent.go, guardian.go)
 //	post-feedback  the loop detector's nudge and its recovery escalation (looped.go, recovery.go)
 //
@@ -85,11 +83,13 @@ type episodeInitHook interface {
 // guidance/constraints before the model decides".
 //
 // It runs at the boundary where the next request's context is settled and the
-// model has not yet been asked anything — which for this session is the end of a
-// completed turn, where the stub pass rewrites old heavy results into pointers
-// before the compaction check weighs what remains (stub.go's own ordering
-// argument). Anything that shapes WHAT THE MODEL WILL SEE belongs here: retrieved
-// lessons, injected constraints, a memory read.
+// model has not yet been asked anything. The whole chain runs at the end of a
+// completed turn, where old heavy results and old current-turn results become
+// pointers before the compaction check weighs what remains. The current-turn
+// fold also runs alone at tool-step boundaries because its bound applies inside
+// a turn while the cross-turn stub's cache bargain does not. Anything that
+// shapes WHAT THE MODEL WILL SEE belongs here: retrieved lessons, injected
+// constraints, a memory read.
 type preDecisionHook interface {
 	Name() string
 	PreDecision(ctx context.Context, ep *episode)
@@ -172,8 +172,8 @@ func (p *controlPlane) register(hook any) {
 	}
 }
 
-// controlPlaneFor builds the session's plane: the four mechanisms that existed
-// before this file, each now the first citizen of its own hook.
+// controlPlaneFor builds the session's plane: the original four mechanisms and
+// the current-turn fold, each placed at the seam whose timing it needs.
 //
 // THE REGISTRATION ORDER IS THE LAW, and one order satisfies both lists that
 // care about it:
@@ -199,6 +199,7 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	plane.register(&changeLedger{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
+	plane.register(turnFoldPass{agent: a})
 	// The error→fix sidecar hangs one more piece of turn state (fixrecall.go).
 	// It is registered LAST and its position carries no argument, because
 	// episode-init is the one hook whose order cannot matter: every citizen there
@@ -248,6 +249,13 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 type episode struct {
 	agent *Agent
 	plane *controlPlane
+	// hub is where a context-shaping pass says what changed to the person who is
+	// watching this turn. It is nil in the small hook tests that have no surface.
+	hub *eventHub
+	// seenThrough is the exclusive end of the transcript the last decision
+	// request carried. A result at or beyond it has not been seen by the model and
+	// may not be folded, however full the turn has become (turnfold.go).
+	seenThrough int
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
@@ -279,6 +287,19 @@ func (ep *episode) preDecision(ctx context.Context) {
 	}
 }
 
+// decisionBegins stamps the byte-stable horizon immediately before a request is
+// sent. The response and its tool results land after this index, so the next
+// pre-decision pass can distinguish results the model has used from results it
+// has not seen yet without inferring that fact from roles.
+func (ep *episode) decisionBegins() {
+	if ep == nil || ep.agent == nil {
+		return
+	}
+	ep.agent.mu.Lock()
+	ep.seenThrough = len(ep.agent.messages)
+	ep.agent.mu.Unlock()
+}
+
 // preAction runs the pre-action chain and reports the call to run, or the
 // refusal to hand the model. The first veto ends the chain.
 func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
@@ -305,7 +326,7 @@ func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.T
 	}
 }
 
-// ── the four legacy citizens ────────────────────────────────────────────────
+// ── the original citizens, and the first new one ────────────────────────────
 
 // stubPass is the tool-output stub (stub.go) as a pre-decision citizen. It is a
 // pure adapter: the pass itself, its guards and its silence are unchanged.
@@ -314,6 +335,18 @@ type stubPass struct{ agent *Agent }
 func (stubPass) Name() string { return "stub" }
 
 func (s stubPass) PreDecision(context.Context, *episode) { s.agent.stubOldOutputs() }
+
+// turnFoldPass bounds one long turn's live tool-output working set. It follows
+// the cross-turn stub pass because old-turn output is always the cheaper prefix
+// to reclaim first; both run before the ordinary compaction check weighs what is
+// left.
+type turnFoldPass struct{ agent *Agent }
+
+func (turnFoldPass) Name() string { return "turn-fold" }
+
+func (f turnFoldPass) PreDecision(_ context.Context, ep *episode) {
+	f.agent.foldTurnOutputs(ep.seenThrough, ep.hub)
+}
 
 // approvalGate is the consent gate (consent.go), with the guardian inside it
 // (guardian.go), as the pre-action citizen. It rewrites nothing — the gate's

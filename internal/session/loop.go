@@ -321,9 +321,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// making for the first time today.
 	//
 	// This is `episode-init`, the first of the four hooks, and it is the only one
-	// called by name from this function; the other three are called at the three
-	// lines below that used to call a mechanism directly.
+	// called by name from this function; the later seams are called where the
+	// turn reaches them below.
 	episode := a.newEpisode()
+	episode.hub = hub
 
 	// toolCtx is the turn's context WITHOUT the observer installed below. EVERY
 	// TOOL RUNS ON IT — the batch below as well as the early start — because a
@@ -481,6 +482,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// the wire, after steering has landed, because steering is part of the
 		// request being measured.
 		a.guardOversizeRequest(ctx, hub)
+		// The horizon is stamped AFTER an oversize pass may have rebuilt the
+		// transcript and immediately before the request takes its snapshot. Results
+		// appended after it have not been seen and are never eligible for the
+		// intra-turn fold (turnfold.go).
+		episode.decisionBegins()
 
 		// THE NODE'S PULSE, EITHER SIDE OF THE WIRE. This is the one line in this
 		// package where a request actually goes out, so it is the one place a
@@ -578,12 +584,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				a.markTurnTruncated()
 			}
 			// `pre-decision` (hooks.go): the last chance to shape what the model
-			// will be sent next. Its one citizen today is the stubbing pass, which
-			// runs BEFORE the compaction check, and the order is the whole economy
-			// of it (stub.go): a transcript whose old heavy results have just
-			// become one-line pointers may no longer be over the threshold at all,
-			// so the check that follows is made against what the next request will
-			// actually weigh.
+			// will be sent next. Its two citizens are the cross-turn stub and the
+			// current-turn fold, which run BEFORE the compaction check. That order is
+			// their whole economy: a transcript whose old results have just become
+			// one-line pointers may no longer be over the threshold at all, so the
+			// check that follows weighs what the next request will actually carry.
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
 			// AND BEFORE THE TURN IS ALLOWED TO END: DID THE ASK END WITH IT?
@@ -709,6 +714,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			return true
 		}
 
+		// The ordinary stub citizen remains an end-of-turn pass: running it here
+		// would rewrite old turns in the middle of this one and change its cache
+		// economics. Only the current-turn fold belongs at every step boundary.
+		a.foldTurnOutputs(episode.seenThrough, hub)
 		a.maybeCompact(ctx, hub)
 	}
 }

@@ -56,6 +56,23 @@ is written to prevent, moved off the turn path and onto the exit. The bargain is
 the file's own: a spending record is worth less than the turn that earned it, and
 less than the exit as well. Pinned by `TestFlushingUsageGivesUpOnAStalledLedger`.
 
+## The in-turn working-set ceiling
+
+A single tool-heavy turn starts folding already-seen tool results at **64,000
+tokens**, or half the trusted context window when that is smaller. It preserves
+the recent **20,000-token** tail (already the compaction tail law) and folds to
+the midpoint between that tail and the trigger. The lower target is part of the
+performance contract: rewriting one result makes the provider cache cold from
+that byte onward, so a pass that stopped just under the trigger would repay the
+whole cold prefix one tool round later.
+
+The pass changes only tool-result messages, in whole oldest-first batches. The
+person's message, assistant text and the newest batch the model has not seen are
+never candidates; every replaced result remains readable through its stub path.
+`TestALongTurnsToolWorkingSetStaysBounded` pins the 60-round request ceiling and
+the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
+the line and the unseen-result horizon.
+
 ## The allocation laws
 
 | Law | Where it is pinned |
