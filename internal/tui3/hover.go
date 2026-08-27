@@ -48,6 +48,7 @@ type hoverKind uint8
 
 const (
 	hoverNothing hoverKind = iota
+	hoverPaste
 	// hoverEntry is a conversation row that belongs to an entry — a tool call,
 	// its expansion, its "more" foot, a thinking block.
 	hoverEntry
@@ -314,6 +315,9 @@ func (a *app) setHover(x, y int) {
 // overlap — three regions can be true of one screen row — so a hover resolved
 // differently from a press is a surface that lights one thing and does another.
 func (a *app) hoverTarget(x, y int) hoverAt {
+	if a.pasteEdit.open {
+		return hoverAt{}
+	}
 	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
 	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is
 	// asked first because none of the ordinary targets below mean anything in a
@@ -506,6 +510,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// line under the block carries no mark and answers to nothing, which is
 			// what [app.parkedMark] already says (park.go).
 			return hoverAt{kind: hoverParked, index: mark.index}
+		case chromeDraft:
+			if n := a.pastePointerAt(x, mark.index); n > 0 {
+				return hoverAt{kind: hoverPaste, index: n}
+			}
 		case chromeOverlay:
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:

@@ -633,6 +633,10 @@ func userLine(text string, chips []chip, pal palette) string {
 // was attached — and a refusal that also lost the person's attachments would
 // make them go and find the files again.
 func (a *app) submitImages(text string) tea.Cmd {
+	return a.submitImagesShown(text, text)
+}
+
+func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
@@ -644,6 +648,7 @@ func (a *app) submitImages(text string) tea.Cmd {
 	// The transcript is drawn from the same string, so what the person reads and
 	// what the model reads are one sentence.
 	text = imageSentence(text, pictures)
+	shown = imageSentence(shown, pictures)
 
 	// AND WHAT THE MODEL IS TOLD ABOUT A FILE IS A PATH, which is a sentence
 	// this surface writes only where the file is not going anywhere. On a local
@@ -677,7 +682,7 @@ func (a *app) submitImages(text string) tea.Cmd {
 	// would be a picture-carrying message the history could not place
 	// (turncontext.go).
 	a.said(entry{
-		kind: entryUser, text: userLine(text, chips, a.pal), turn: a.turn,
+		kind: entryUser, text: userLine(shown, chips, a.pal), turn: a.turn,
 		context: a.turnContext(),
 	})
 	// And it is marked until the far end has it, for [app.submittingShown]'s
