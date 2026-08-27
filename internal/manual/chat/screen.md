@@ -2172,6 +2172,34 @@ window between a request going out and the stream first speaking, so after a thr
 `go test` the request that follows starts the clock at zero rather than inheriting the
 call's runtime.
 
+## Why did it ask a second time in parallel, and does that spend twice
+
+An interactive reply that has produced no first token by its wait bound grows one hedge:
+
+```
+  no first token in 8s — asking a second time in parallel
+```
+
+Both requests carry the same conversation, model, level and tools. The first one is still
+live; this is not the later stall recovery cutting it. Whichever request streams the first
+word of answer or reasoning owns the reply, and the other is cancelled immediately. A
+fully formed tool call also commits its request before the call is shown or allowed to
+start, so two contenders can never run the same tool. Any events the loser produced while
+the race was undecided are discarded, so its text, thought and half-formed tool calls never
+reach the screen or conversation. At most one hedge starts per attempt — there is never a
+third request.
+
+The wait is at least **8 seconds**. When this process has already measured a first-token
+time for the model, aforge waits the larger of 8 seconds or twice that latest time. A new
+model therefore gets the fixed floor; a model whose ordinary start is known to be longer
+is not duplicated prematurely.
+
+The duplicate can spend another completion request, although cancellation stops the loser
+as soon as the winner speaks. Only the watched chat loop hedges. Tasks, adaptive runs,
+tool execution, compaction and the session's other model errands stay single-request: no
+one is sitting in front of those calls waiting for their first word, and tool actions are
+never duplicated.
+
 ## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go
 
 Sometimes the wait line stops naming a model and reads this instead:
@@ -2180,11 +2208,12 @@ Sometimes the wait line stops naming a model and reads this instead:
   ··· trying again · 12s
 ```
 
-That is the session having **cut the request and sent it again**, and it is the one thing
-this line ever says that it did not work out for itself — it is reported, never guessed.
-Two things get a request cut: the model stopped writing (see *Models, context, and what it
-costs* for the exact clocks), or the reply came apart into repetition or jumbled text.
-A dim line lands in the conversation saying which:
+That is the session asking the model again, and it is the one thing this line ever says
+that it did not work out for itself — it is reported, never guessed. Before the first
+token, the TTFT hedge above asks once in parallel and leaves the original live. After a
+stream starts, two things get its request cut and replaced: the model stopped writing
+(see *Models, context, and what it costs* for the exact clocks), or the reply came apart
+into repetition or jumbled text. A dim line lands in the conversation saying which:
 
 ```
   nothing came back from the model — asking again
@@ -2211,11 +2240,12 @@ The rest of the answer arrives from that model, at that model's price, and the w
 above it names it from then on. Your own model is unchanged and your next message goes back
 to it. See *Models, context, and what it costs* for which model it moves to and when.
 
-**Where the text went.** If the reply had started, what you were reading is **removed from
-the screen**, and it is removed because it was removed everywhere: none of it is in the
-conversation, none of it is in the session file, and none of it is sent back to the model
-on the retry. Any tool call that was still arriving when the cut happened stops where it
-is and keeps its row.
+**Where the text went after a cut.** If the reply had started, what you were reading is
+**removed from the screen**, and it is removed because it was removed everywhere: none of
+it is in the conversation, none of it is in the session file, and none of it is sent back
+to the model on the retry. Any tool call that was still arriving when the cut happened
+stops where it is and keeps its row. A TTFT hedge is different: neither contender is shown
+until one streams its first token, so there is no losing text on screen to remove.
 
 This is the one place aforge takes something off the page that you watched arrive, and the
 difference from an interrupt is exactly that. When **you** press `esc`, the half-written
