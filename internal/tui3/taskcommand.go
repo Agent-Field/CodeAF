@@ -147,6 +147,18 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string) tea.Cmd {
 			a.note(line)
 		}
 	}
+	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO NOT SEND. The task works in
+	// a copy cut from the last commit, so unsaved edits stay in front of the
+	// person who made them — and "the task sees what I see" is what everybody
+	// assumes until a worker reports the file as it was this morning. Said in the
+	// same breath as the line above and for the same reason: this is the last
+	// moment before the spend when knowing it can still change what somebody does.
+	//
+	// It costs one `git status` per start and nothing at all per frame, and it is
+	// silent on a clean tree (internal/session's taskpreflight.go).
+	if line := session.UnsavedEditsNote(a.workspace); line != "" {
+		a.note(line)
+	}
 	a.beginPreflight(taskShapingNote, brief)
 	return func() tea.Msg {
 		id, title, err := door.StartTask(ctx, brief)

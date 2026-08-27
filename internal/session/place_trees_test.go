@@ -191,6 +191,52 @@ func TestAnExplicitTaskPlaceIsTheWorkersExactDirectory(t *testing.T) {
 	}
 }
 
+// NAMING A PLACE THAT IS NOT THERE YET IS AN ERRAND, NOT A MISTAKE. `use
+// ~/new-scratch` used to answer "no such file"; a person who names a fresh
+// folder means "work there", so it is made.
+func TestANamedPlaceThatIsNotThereYetIsCreated(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	fresh := filepath.Join(t.TempDir(), "new-scratch", "reports")
+
+	tree, err := prepareTaskTreeAt(place, repo, "fresh", 5, "write the report", fresh)
+	if err != nil {
+		t.Fatalf("prepareTaskTreeAt: %v", err)
+	}
+	if tree.dir != fresh || tree.merge != mergeInPlace {
+		t.Fatalf("fresh tree = %+v, want the named directory %s in place", tree, fresh)
+	}
+	if info, err := os.Stat(fresh); err != nil || !info.IsDir() {
+		t.Fatalf("the named place was not made: %v", err)
+	}
+
+	// A relative name still hangs off the conversation's own workspace, and it
+	// is made there and nowhere else.
+	if _, err := prepareTaskTreeAt(place, repo, "fresh", 6, "write more", "notes/out"); err != nil {
+		t.Fatalf("relative fresh place: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(repo, "notes", "out")); err != nil || !info.IsDir() {
+		t.Fatalf("the relative place was not made under the workspace: %v", err)
+	}
+}
+
+// The one refusal that survives: something IS there and it is not a directory.
+// Creating beside it would be the surface guessing.
+func TestANamedPlaceThatIsAFileIsStillRefused(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	file := filepath.Join(t.TempDir(), "notes.md")
+	writeFile(t, file, "not a folder\n")
+
+	_, err := prepareTaskTreeAt(place, repo, "file", 7, "write there", file)
+	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("error = %v, want the not-a-directory refusal", err)
+	}
+	if info, statErr := os.Stat(file); statErr != nil || info.IsDir() {
+		t.Fatalf("the named file was disturbed: %v", statErr)
+	}
+}
+
 func TestAFailedTaskKeepsItsFolderWithoutAWorktreeRegistration(t *testing.T) {
 	repo := newTestRepo(t)
 	place := Place{Dir: t.TempDir(), Workspace: repo}
