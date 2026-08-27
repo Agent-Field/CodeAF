@@ -96,7 +96,7 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// episode-init is the one hook whose order carries no argument: every
 		// citizen there writes its own field on a struct nobody has read yet.
 		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes"}},
-		{"pre-decision", planeNames(plane.preDecision), []string{"stub"}},
+		{"pre-decision", planeNames(plane.preDecision), []string{"stub", "turn-fold"}},
 		// The write scope and the tree claim are the two citizens that are inert
 		// for an ordinary agent: both are registered on every plane and refuse
 		// nothing until an agent is built with a scope (orchestrate.go), or some
