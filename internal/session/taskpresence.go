@@ -86,6 +86,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -264,6 +265,8 @@ type SessionPresence struct {
 	// it: the resolved project root, or the owned work/ directory. The encoded
 	// bucket the folder sits in is not an identity and is not written here.
 	Workspace string `json:"workspace"`
+	// Build names the aforge that is making this live claim.
+	Build string `json:"build,omitempty"`
 	// PID is the process holding this session, recorded so a person looking at
 	// two windows can tell which is which. IT IS NOT CONSULTED FOR LIVENESS:
 	// pids are reused, and a presence file may be read across a filesystem
@@ -615,6 +618,7 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		Schema:    presenceSchema,
 		SessionID: a.sessionID(),
 		Workspace: a.config.Workspace,
+		Build:     buildinfo.String(),
 		PID:       os.Getpid(),
 		UpdatedAt: now,
 		State:     PresenceIdle,

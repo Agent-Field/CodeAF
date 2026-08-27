@@ -44,6 +44,14 @@ weighed against, and none of it is embedded data a packer could take back. The
 binary measured 50,069,769 and the budget was set to 51,071,000, keeping the
 same two percent of headroom the first figure was given.
 
+It was reset again on 2026-08-27 after the current branch, built with Go
+1.26.5, measured 52,895,586 bytes on darwin/arm64 and 51,380,386 bytes on
+linux/arm64. The build-identity package and its packed manual page landed at the
+same boundary where accumulated branch growth, the newer toolchain and the
+platform difference crossed the former cap. The budget is 53,954,000, two
+percent above the larger measured binary; the exact before-and-after source cost
+is not disguised as the whole reset.
+
 ## The flush ceiling
 
 `FlushUsage` waits at most **2 seconds** (`usageFlushLimit`, `internal/session/usage_ledger.go`)

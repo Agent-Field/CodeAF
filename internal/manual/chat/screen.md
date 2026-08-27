@@ -756,8 +756,10 @@ At phone width, tapping anywhere on the status deck that is not the model chip o
 fullscreen sheet listing every fact the status line can hold, one per line, label then
 value.
 
-Typing `/status` (aliases `/info` and `/context`) prints the same list as a note in the
-conversation. That is the only door if you are on the keyboard with the mouse off.
+Typing `/status` (aliases `/info` and `/context`) prints the list as a note in the
+conversation. It also adds the complete session-file path and the build identity, because
+both are facts meant to be copied rather than permanent rows in a phone-sized sheet. That
+is the only door if you are on the keyboard with the mouse off.
 
 The head is `status` on the left and `esc close` on the right. The foot names the keys:
 `esc close · ↑↓ move`, plus ` · enter model` while the cursor is on the model line.
@@ -778,6 +780,30 @@ list — closes the sheet. The wheel moves the cursor.
 
 The sheet closes itself the moment the frame grows back out of phone width. A sheet
 standing in for a row that is back on screen is a sheet nobody asked for.
+
+## Which aforge build is running — version, commit, dirty build and restart notice
+
+Type `/status` and read the one `build` line. It names the source revision, says `(dirty)`
+when the build included uncommitted files, and gives the local build time:
+
+```
+build  1265feda (dirty) built 2026-08-27 13:28
+```
+
+`aforge --version`, `aforge version` and `aforge -v` print the same identity without
+opening a conversation. On a session opened with `--host`, `/status` names the build on
+the machine holding the conversation, not the surface machine's build.
+
+If the `aforge` file is rebuilt while this process is still open, aforge writes one quiet
+line after the current turn:
+
+```
+a newer aforge was built at 13:28 — restart to use it
+```
+
+It says this once for that newer file, not after every turn. Rebuilding again produces
+one new line. The running conversation is not silently changed underneath you; restart
+aforge to use what was built.
 
 ## Markdown: what aforge renders
 

@@ -281,6 +281,8 @@ the file that was written to most recently: work finishing in the background doe
 change which conversation you were having. A conversation you opened and never said
 anything in is reused rather than piled up, and the leftovers are cleaned away.
 
+## What is saved in a conversation transcript — file contents and line types
+
 **What is in the file:** JSONL, append-only, one header line and then one line per
 **completed** message, per compaction pass, per piece of spending, and per request. The
 line types are `session` (the header: version, id, working directory, model, timestamp),

@@ -442,6 +442,7 @@ type Welcome struct {
 	SessionFile string `json:"sessionFile"`
 	Resumed     bool   `json:"resumed"`
 	Model       string `json:"model"`
+	Build       string `json:"build,omitempty"`
 	Title       string `json:"title,omitempty"`
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.

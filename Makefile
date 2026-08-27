@@ -9,6 +9,15 @@ BINARY := bin/aforge
 # in this Makefile, and PERF.md for the policy around changing it.
 BUDGET := SIZE-BUDGET
 
+# These three words are the build's identity everywhere the program reports
+# one. The timestamp is UTC at the seam and becomes local time only when a
+# person reads it, so the same binary remains unambiguous across machines.
+BUILD_REV := $(shell git rev-parse --short HEAD)
+BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=normal)"; then printf true; else printf false; fi)
+BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILDINFO := github.com/Agent-Field/aforge-v2/internal/buildinfo
+BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+
 # The imported swe-pro engine (internal/swepro) arrived with fifteen tests
 # already failing on macOS in a clean upstream checkout — /var-vs-/private/var,
 # a case-insensitive filesystem, JS float-rounding parity — and fixing them was
@@ -38,18 +47,19 @@ embed:
 # runtime reads them. Stripping costs symbolized panic traces, which is exactly
 # what `debug` keeps — build that when a stack trace is what you need.
 #
-# -trimpath drops the build machine's absolute paths out of the binary and makes
-# the build reproducible: the same tree gives the same bytes on any machine.
-# What it costs is compiled-in repository roots — runtime.Caller in
+# -trimpath drops the build machine's absolute paths out of the binary. The
+# build stamp deliberately gives separate builds separate bytes, but neither
+# carries the machine-specific repository root. What trimming costs is
+# compiled-in repository roots — runtime.Caller in
 # internal/swepro's furrow and weave lookups walks up from its own source file
 # to find vendor/bin/<tool>. There is no vendor/ in this repository, and a
 # shipped binary's compiled-in root never exists on the machine running it, so
 # both lookups already fell through to the cwd copy and then to PATH.
 build: embed
-	go build -trimpath -ldflags="-s -w" -o $(BINARY) ./cmd/aforge
+	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 debug: embed
-	go build -trimpath -o $(BINARY) ./cmd/aforge
+	go build -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 test:
 	go test $(AFORGE_PKGS)

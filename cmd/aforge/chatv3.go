@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
@@ -364,6 +365,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 	return tui3.Run(context.Background(), tui3.Options{
 		Agent: agent,
+		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
 		// conversation remembers into, through two seams that fail apart: memory
 		// turned off in the settings opens no store at all and both are then
@@ -476,13 +478,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Owned:       launch.Place.Owned,
 		SessionFile: transcript,
 		Resumed:     resumed,
-		// AND THE ONE LINE AN UNATTENDED SESSION IS OWED, which is either "this
-		// is what it will carry on under" or "nothing was named, so it will not
-		// carry on at all" (internal/session's UnattendedNotice). It rides the
-		// same lane the session-moved line does — one dim row at the top of the
-		// conversation — rather than a surface of its own, and an attended
-		// session is shown nothing whatever.
-		Notice:        joinV3Notices(notice, session.UnattendedNotice(cfg)),
+		// AND THE LAUNCH FACTS A PERSON CAN ACT ON. The unattended boundary and
+		// a replaced aforge both ride the session-moved line — one dim row at
+		// the top of the conversation — rather than growing surfaces of their
+		// own. An ordinary attended launch with the same file on disk is still
+		// shown nothing whatever.
+		Notice:        joinV3Notices(notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,

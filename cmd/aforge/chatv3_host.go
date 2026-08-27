@@ -526,6 +526,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 
 	options := tui3.Options{
 		Agent:     agent,
+		Build:     welcome.Build,
 		Host:      dest,
 		Workspace: welcome.Workspace,
 		// The engine's own journal path, shown with its machine in front of it

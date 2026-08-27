@@ -811,6 +811,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// holds, and a surface listing every session on disk cannot open every
 	// transcript to find it (placemeta.go's [Agent.stampSpend]).
 	a.stampSpend()
+	a.noticeNewerBuild()
 	return turn
 }
 

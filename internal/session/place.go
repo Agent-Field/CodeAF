@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 )
 
 // The names inside a session folder. They are constants and not configuration:
@@ -128,10 +130,10 @@ func (p Place) Work() string {
 }
 
 // Meta is one session's identity, written where a picker can read it without
-// parsing a journal. It is a citation, not a copy: everything in it is
-// recoverable from the transcript, and a session whose meta.json is missing
-// or corrupt is a session with a blank row, never a session that will not
-// open.
+// parsing a journal. It is a citation, not a copy: every conversation fact in
+// it is recoverable from the transcript, while Build names the aforge that
+// wrote the citation. A session whose meta.json is missing or corrupt is a
+// session with a blank row, never a session that will not open.
 type Meta struct {
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
@@ -152,6 +154,8 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// Build names the aforge that most recently wrote this identity.
+	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —
 	// how hard its turns ask the model to think (internal/effort). Empty is
 	// "nobody set one for this conversation", which is every session until
@@ -251,6 +255,7 @@ func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
+	meta.Build = buildinfo.String()
 	raw, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("save session meta: %w", err)
