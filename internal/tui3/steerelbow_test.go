@@ -27,12 +27,23 @@ import (
 
 // ── the scripted events ─────────────────────────────────────────────────────
 
+// steerAcceptedEvent is the acceptance as the engine sends it, WITH the account
+// of where the words are landing that a real one always carries (session's
+// [Agent.Steer] sets one of three; steerelbow.go draws it as the pending
+// clause). The cut is the ordinary case now that a steer interrupts the
+// generation it was typed into.
 func steerAcceptedEvent(id uint64, words string) session.Event {
 	return session.Event{
-		Kind:  session.EventSteerAccepted,
-		Steer: &session.SteerNote{ID: id, Words: words, At: time.Now()},
+		Kind: session.EventSteerAccepted,
+		Steer: &session.SteerNote{
+			ID: id, Words: words, Landing: steerCutLanding, At: time.Now(),
+		},
 	}
 }
+
+// steerCutLanding is what the engine says when the correction stopped the reply
+// in flight, spelled exactly as internal/session/steer.go spells it.
+const steerCutLanding = "stopped the reply here"
 
 func steerConsumedEvent(id uint64) session.Event {
 	return session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: id}}
@@ -298,17 +309,39 @@ func TestAWideCorrectionWrapsUnderItsOwnFirstCharacter(t *testing.T) {
 // ── 2. the landing moment ───────────────────────────────────────────────────
 
 // NOTHING CLAIMS CONSUMED BEFORE THE ENGINE SAYS SO. Until then the row wears
-// the working idiom every live row on this surface wears.
-func TestAnElbowSaysItIsSteeringUntilTheModelIsGivenIt(t *testing.T) {
+// the working idiom every live row on this surface wears — and its words are
+// THE ENGINE'S OWN ACCOUNT of where the correction is landing, because cutting
+// the reply, adopting a bash and waiting for a short tool are three different
+// things and only the engine knows which one happened.
+func TestAPendingCorrectionWearsTheEnginesAccountOfWhereItLands(t *testing.T) {
 	_, a := steered(t, "port the parser", "use the staging bucket")
 
-	if !strings.Contains(strings.Join(plainRows(a), "\n"), steerPendingWord) {
-		t.Fatalf("a correction the model has not been given says nothing about it:\n%s",
+	if !strings.Contains(strings.Join(plainRows(a), "\n"), steerCutLanding) {
+		t.Fatalf("a correction that cut the reply does not say so:\n%s",
 			strings.Join(plainRows(a), "\n"))
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
-	if strings.Contains(strings.Join(plainRows(a), "\n"), steerPendingWord) {
+	if strings.Contains(strings.Join(plainRows(a), "\n"), steerCutLanding) {
 		t.Fatalf("a landed correction still says it is on its way:\n%s",
+			strings.Join(plainRows(a), "\n"))
+	}
+}
+
+// AND [steerPendingWord] IS THE FALLBACK AND NOT THE HEADLINE. A note with no
+// account at all — which no session sends and a scripted event can — still says
+// something rather than turning a bare spinner.
+func TestACorrectionWithNoAccountFallsBackToTheWorkingWord(t *testing.T) {
+	agent := &fakeAgent{}
+	a := newTestApp(agent)
+	a.height = 60
+	typeLine(t, a, "port the parser")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind:  session.EventSteerAccepted,
+		Steer: &session.SteerNote{ID: 1, Words: "use the staging bucket", At: time.Now()},
+	}})
+
+	if !strings.Contains(strings.Join(plainRows(a), "\n"), steerPendingWord) {
+		t.Fatalf("a correction with no account says nothing about itself:\n%s",
 			strings.Join(plainRows(a), "\n"))
 	}
 }
@@ -520,7 +553,9 @@ func TestAReloadRebuildsTheCorrectionInPlaceFromTheMark(t *testing.T) {
 	sent := time.Now().Add(-time.Hour)
 	past := []session.DisplayEntry{
 		{Role: "user", Text: "port the parser"},
-		{Role: "user", Text: "use the staging bucket", Steer: &session.SteerMark{At: sent, Consumed: true}},
+		{Role: "user", Text: "use the staging bucket", Steer: &session.SteerMark{
+			At: sent, Consumed: true, Landing: steerCutLanding,
+		}},
 		{Role: "assistant", Text: "done"},
 		{Role: "user", Text: "and now write the tests"},
 	}
@@ -537,6 +572,18 @@ func TestAReloadRebuildsTheCorrectionInPlaceFromTheMark(t *testing.T) {
 	}
 	if !correction.steer.consumed {
 		t.Fatal("a replayed correction that landed came back as though it had not")
+	}
+	// AND THE ENGINE'S ACCOUNT OF WHERE IT LANDED COMES WITH IT, so a mark the
+	// journal wrote as still waiting reads on the page exactly as it read live.
+	if correction.steer.landing != steerCutLanding {
+		t.Fatalf("the reloaded correction lost the engine's account: %q", correction.steer.landing)
+	}
+	// It is NOT drawn on a landed one: the clause answers "what is happening to
+	// my words right now", and the block's own position is what says where they
+	// went once they have gone there.
+	if strings.Contains(strings.Join(plainRows(a), "\n"), steerCutLanding) {
+		t.Fatalf("a settled correction still wears its landing clause:\n%s",
+			strings.Join(plainRows(a), "\n"))
 	}
 	// THE TURN COUNT IS THE QUESTIONS', not the messages'. A steer that bumped it
 	// would split one turn's work across two and fold the wrong rows.

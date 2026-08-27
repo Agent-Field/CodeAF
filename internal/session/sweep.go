@@ -278,14 +278,18 @@ func underTempDir(path string) bool {
 // the git commands are skipped entirely rather than run into an error.
 func reapSession(dir string, meta Meta, note func(string)) {
 	if root, ok := repositoryRoot(meta.Workspace); ok {
-		trees, err := os.ReadDir(filepath.Join(dir, placeTrees))
+		treesRoot := (Place{Dir: dir}).Trees()
+		trees, err := os.ReadDir(treesRoot)
 		if err == nil && len(trees) > 0 {
 			release := lockGitRoot(Place{Dir: dir}, root)
 			for _, tree := range trees {
 				if !tree.IsDir() {
 					continue
 				}
-				_, _ = git(root, "worktree", "remove", "--force", filepath.Join(dir, placeTrees, tree.Name()))
+				// The registration carries git's resolved spelling, so removal
+				// must use the same canonical path creation and checkpoints use.
+				path := canonicalPath(filepath.Join(treesRoot, tree.Name()))
+				_, _ = git(root, "worktree", "remove", "--force", path)
 			}
 			_, _ = git(root, "worktree", "prune")
 			release()

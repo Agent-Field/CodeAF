@@ -142,6 +142,10 @@ func claimGitRoot(place Place, root string) *os.File {
 // two in the other, which is why the choice is made HERE and from the Place
 // alone, and why the whole product moves layouts at once.
 func openGitRootLock(place Place, root string) *os.File {
+	// Callers normally arrive through repositoryRoot, but tests, recovery and
+	// future doors may already hold a root. The lock boundary canonicalizes it
+	// again because two spellings of one repository must never make two locks.
+	root = canonicalPath(root)
 	directory, name := filepath.Join(root, filepath.FromSlash(tasksDirName)), gitRootLockName
 	directoryMode, fileMode := os.FileMode(0o755), os.FileMode(0o644)
 	if strings.TrimSpace(place.Dir) != "" {

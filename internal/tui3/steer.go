@@ -11,24 +11,21 @@ import (
 // THE SPLICE, FROM THE KEYBOARD: a sentence sent INTO the answer that is
 // already running.
 //
-// THE GAP THIS FILE CLOSES. Until this wave a person watching an answer go the
-// wrong way had two keys and both of them cost something. Plain enter PARKS the
-// sentence and waits for the turn to end (park.go), so the whole rest of the
-// answer is spent on the wrong thing first. `shift+enter` STOPS the turn and
-// sends (bargein.go), so the work already paid for and watched arrive is thrown
-// away. The third answer — put the correction into the turn that is running,
-// stopping nothing and discarding nothing — existed in the engine
-// ([session.Agent.Steer], internal/session's steer.go) and had no key.
+// Plain enter is the expected chat gesture and therefore the primary door. It
+// cuts the generation that is currently streaming, preserves its arrived text,
+// and sends the draft into the same turn. `cmd+enter` keeps the older choice to
+// park the draft for the next turn, and `shift+enter` still stops the whole turn
+// before sending (bargein.go).
 //
-// A STEER IS NEITHER A NEW QUESTION NOR AN INTERRUPTION. It is more of the same
-// question, arriving late: the words are handed to the running turn and reach
-// the model at its next step boundary, with the original question and
-// everything done about it so far in front of them. Nothing is cancelled and no
-// partial reply is discarded.
+// A STEER INTERRUPTS ONE GENERATION, NOT THE TURN. The person's own line is
+// drawn as soon as EventSteerAccepted arrives, with a muted clause saying
+// whether it cut the reply, preserved a bash job, stopped that command, or is
+// waiting for a short tool boundary (steerelbow.go).
 //
 // ── TWO DOORS, ONE ROAD ─────────────────────────────────────────────────────
 //
-//	cmd+enter   with a sentence in the box: that sentence goes in.
+//	enter       with a sentence in the box: that sentence goes in.
+//	cmd+enter   with a sentence in the box: that sentence waits.
 //	→           with an EMPTY box and a message already waiting: that message
 //	            is promoted out of the queue and goes in (park.go).
 //
@@ -61,14 +58,12 @@ import (
 // note is drawn, because nothing went wrong: what they see is a message that
 // waited, which is what plain enter promises.
 //
-// ── THIS FILE DRAWS NOTHING ─────────────────────────────────────────────────
+// ── THE EVENTS DRAW THE PERSON'S LINE ──────────────────────────────────────
 //
 // The three events a steer produces — [session.EventSteerAccepted],
 // [session.EventSteerConsumed], [session.EventSteerFellThrough] — are sent
 // through the RUNNING TURN'S hub, so they arrive on the stream this surface is
-// already pumping and are drawn by the transcript's own arms, which hang the
-// correction off the question it corrected (steerelbow.go). Nothing here paints
-// a row.
+// already pumping and are drawn by the transcript's own arms (steerelbow.go).
 //
 // AND THE STEER'S OWN CHANNEL IS NOT THIS FILE'S EITHER. [session.Agent.Steer]
 // hands back a stream of its own, and every door here does the same one thing
@@ -78,8 +73,9 @@ import (
 // carry: a steer that fell through starts a turn that speaks on that channel
 // and nowhere else.
 
-// steerKey is the chord as a PERSON spells it, and it is the name the hint slot
-// and the manual use. The two names the WIRE spells it with are below.
+// parkKey is the secondary chord as a PERSON spells it. Plain enter is the
+// primary send and steers while a turn runs; this chord preserves the older
+// choice to hold the sentence for the answer after this one.
 //
 // WHY THIS ONE — WHAT THE AUDIT LEFT. The gesture has to read as a SEND rather
 // than as a letter, which means a modifier on enter, and the other three are
@@ -87,9 +83,9 @@ import (
 // sentence as something to keep true (standmark.go), and `shift+enter` stops the
 // answer and sends (bargein.go). cmd+enter is what is left, and it is the right
 // one on its own merits — it is the "send it now, properly" chord in every chat
-// application a person has ever used, and this is the one send on this surface
-// that reaches the model without waiting for anything.
-const steerKey = "cmd+enter"
+// application a person has ever used. Here it is deliberately secondary: plain
+// enter reaches the model, while this chord says to wait.
+const parkKey = "cmd+enter"
 
 // steerKeySuper and steerKeyMeta are the two names the SAME keystroke arrives
 // under, and both are bound because which one a terminal sends is a fact about
@@ -111,7 +107,7 @@ const (
 // steerSendWord is what this gesture DOES, in the words both lines that name it
 // use — ONE SOURCE OF TRUTH for a person-facing phrase that now appears in two
 // slots on one screen, which is [bargeSendWord]'s own arrangement. The hint
-// under the box says `cmd+enter steers it in`; the waiting message's own dim
+// under the box says `enter steers it in`; the waiting message's own dim
 // line says `→ steers it in`; they are the same three words because they are
 // the same act.
 const steerSendWord = "steers it in"
@@ -199,17 +195,15 @@ func (a *app) steerAvailable() bool {
 	return !a.roomOpen() && !a.copy.on && !a.rew.on && !a.railHold
 }
 
-// steerOffered reports whether the CHORD may be named — which is
-// [app.steerAvailable] plus the two things an advertisement needs and a key does
-// not: a terminal that can deliver it, and a sentence for it to send.
+// steerOffered reports whether plain enter may be named as a steer — which is
+// [app.steerAvailable] plus the sentence it needs to send.
 //
-// A HINT MAY ONLY NAME A KEY THAT WORKS (render.go's [app.hintWord] states the
-// whole law). The terminal question errs in the safe direction here exactly as
-// it does for the barge: a terminal that speaks modifyOtherKeys and not the
-// kitty protocol never answers the query, so the chord WORKS there and is never
-// advertised — a feature quietly present rather than a hint that lies.
+// PLAIN ENTER NEEDS NO TERMINAL CAPABILITY. This predicate deliberately does
+// not share [app.bargeOffered]'s keyboard gate: the primary gesture reaches
+// every terminal, while the two secondary chords are named only when the
+// terminal says it can distinguish them.
 func (a *app) steerOffered() bool {
-	if !a.keysDisambiguated || !a.steerAvailable() {
+	if !a.steerAvailable() {
 		return false
 	}
 	// A TRAY WITH NO WORDS IS NOT A STEER. An empty box with a picture on the
@@ -234,7 +228,8 @@ func (a *app) steerParkOffered() bool {
 
 // ── the chord ───────────────────────────────────────────────────────────────
 
-// steerIn is cmd+enter: the draft goes into the answer that is running.
+// steerIn is plain enter during a running turn: the draft goes into the answer
+// that is running.
 //
 // THE ORDER IS PARK-THEN-PROMOTE AND IT IS THE WHOLE CORRECTNESS ARGUMENT.
 // [app.enterLine] is called while the turn is still open, so [app.parking] is
@@ -408,21 +403,24 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 //
 // It teaches every meaning enter's neighbourhood has in that one state, in the
 // order a person meets them: the key they are about to press, then the two they
-// do not know about — and those two in the order of what they COST, because the
-// gentler one being second would be this line recommending the interrupt.
+// may not know about. The secondary chords appear only when the terminal says
+// it can distinguish them.
 //
-//	enter waits · cmd+enter steers it in · shift+enter stops and sends
+//	enter steers it in · cmd+enter waits · shift+enter stops and sends
 //
-// The steer clause is dropped on a terminal that cannot deliver the chord, which
-// is [app.steerOffered]'s whole job, and what is left is the line bargein.go
-// already drew. The slot is the legend's right end, so a frame too narrow for
-// the longer sentence drops the whole hint rather than wrapping it — the
-// legend's own ladder, unchanged (render.go's [app.legend]).
+// The slot is the legend's right end, so a frame too narrow for the longer
+// sentence uses [steerShortHint] rather than wrapping it — the legend's own
+// ladder, unchanged (render.go's [app.legend]).
+var steerShortHint = "enter " + steerSendWord
+
 func (a *app) typingHint() string {
 	if !a.steerOffered() {
 		return bargeHint
 	}
-	return "enter waits · " + steerKey + " " + steerSendWord +
+	if !a.keysDisambiguated {
+		return steerShortHint
+	}
+	return "enter " + steerSendWord + " · " + parkKey + " waits" +
 		" · " + bargeKey + " " + bargeSendWord
 }
 
@@ -438,8 +436,8 @@ func (a *app) typingHint() string {
 // that works — and render.go's [app.legend] measures it with the same
 // arithmetic it measures everything else with.
 func (a *app) hintShorter(slot string) string {
-	if slot == "" || slot != a.typingHint() || slot == bargeHint {
+	if slot == "" || slot != a.typingHint() || slot == steerShortHint || slot == bargeHint {
 		return ""
 	}
-	return bargeHint
+	return steerShortHint
 }

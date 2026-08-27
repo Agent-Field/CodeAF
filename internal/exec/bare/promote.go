@@ -41,6 +41,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 // bashOutcome is who owns the ending of one foreground bash call.
@@ -68,6 +69,11 @@ type BashCall struct {
 	command string
 	cmd     *exec.Cmd
 	acc     *outputAccumulator
+	// started is when the process successfully began. A promoter reads its age
+	// to decide whether a steer should wait for an ordinary command or hand a
+	// long one to a job; keeping the instant on the call makes process start the
+	// one source of truth for that decision.
+	started time.Time
 	// ctx is the turn's, kept only to answer one question: has the person
 	// already asked for this work to stop? See [BashCall.Adopt].
 	ctx context.Context
@@ -93,6 +99,7 @@ func newBashCall(command string, cmd *exec.Cmd, acc *outputAccumulator, ctx cont
 		command:  command,
 		cmd:      cmd,
 		acc:      acc,
+		started:  time.Now(),
 		ctx:      ctx,
 		exit:     make(chan int, 1),
 		promoted: make(chan struct{}),
@@ -101,6 +108,11 @@ func newBashCall(command string, cmd *exec.Cmd, acc *outputAccumulator, ctx cont
 
 // Command is the shell command this call is running, verbatim.
 func (c *BashCall) Command() string { return c.command }
+
+// RunningFor reports how long this process has been alive. It deliberately
+// reads the clock rather than storing a second elapsed counter: adoption does
+// not restart the process, so its original start remains the only honest age.
+func (c *BashCall) RunningFor() time.Duration { return time.Since(c.started) }
 
 // Process is the running command's frame. An adopter needs it for exactly one
 // thing — signalling the process GROUP, which bash set up with Setpgid — and a
