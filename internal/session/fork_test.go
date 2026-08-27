@@ -1227,12 +1227,12 @@ func TestTheHandLeashCountsRoundsAndThenEndsTheTurn(t *testing.T) {
 	leash := &handLeash{limit: 3}
 	leash.arm(func() { stopped = true })
 	for round := 1; round <= 2; round++ {
-		leash.PostFeedback(context.Background(), nil, nil, nil, nil)
+		leash.PostFeedback(context.Background(), nil, nil, nil, nil, false)
 		if leash.spent() || stopped {
 			t.Fatalf("the leash fired after %d of %d rounds", round, leash.limit)
 		}
 	}
-	leash.PostFeedback(context.Background(), nil, nil, nil, nil)
+	leash.PostFeedback(context.Background(), nil, nil, nil, nil, false)
 	if !leash.spent() || !stopped {
 		t.Fatalf("the leash did not fire at its limit: spent=%v stopped=%v", leash.spent(), stopped)
 	}
