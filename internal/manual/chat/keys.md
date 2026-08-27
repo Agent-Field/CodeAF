@@ -2022,6 +2022,21 @@ count is an estimate at 4 bytes per token.
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.
 
+## Why did aforge add a [silent] note while tools were running?
+
+The chat loop watches for a model that keeps calling tools without putting any visible
+words between the calls. After **6 consecutive tool-using replies with no visible assistant
+text**, it adds one note beginning `[silent]`. The note asks the model to write what it has
+learned, what it will check next, and why before making another call.
+
+That request matters for reasoning models because their streamed thinking is shown on the
+screen but is not put into the next request. Of the model's prose, only visible assistant
+text becomes part of the conversation the following step can read. A visible note resets
+the count. A successful `edit` or `write` resets it too, because the turn is landing work even if the model says
+nothing. The silent warning is issued at most once in a turn; it shares the ordinary loop
+warning limit, so a turn that has already ignored two loop warnings may ask for your input
+instead.
+
 ## What does the indented part mean?
 
 Flush-left text is said to you: your messages and aforge's trailing answer. Text with a
