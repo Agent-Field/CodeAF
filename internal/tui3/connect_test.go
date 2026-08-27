@@ -64,6 +64,7 @@ type fakeConnections struct {
 	err  error
 	// began and dropped are what the panel asked for, in order.
 	began   []string
+	answers []connectAnswer
 	dropped []string
 	// keyed is every (service, key) pair the panel handed over, and keyErr is
 	// what the far end says about them.
@@ -95,8 +96,9 @@ func (f *fakeConnections) Services() []connect.Status {
 	return f.rows
 }
 
-func (f *fakeConnections) BeginAuth(ctx context.Context, id string) (*connect.Flow, error) {
+func (f *fakeConnections) BeginAuth(ctx context.Context, id, answer string) (*connect.Flow, error) {
 	f.began = append(f.began, id)
+	f.answers = append(f.answers, connectAnswer{id: id, key: answer})
 	// A nil flow is what a stubbed engine hands back, and the surface treats it
 	// as nothing to wait on — which is exactly the shape these tests want: the
 	// ASK is what the panel owns, and the answer arrives as its own message.
@@ -599,8 +601,62 @@ func TestTheConnectPanelStartsTheSignIn(t *testing.T) {
 	if len(conns.began) != 1 || conns.began[0] != "google" {
 		t.Fatalf("the panel began %v, want one google sign-in", conns.began)
 	}
+	if len(conns.answers) != 1 || conns.answers[0].key != "" {
+		t.Fatalf("an ordinary browser row carried %+v", conns.answers)
+	}
 	if a.connPanel.open {
 		t.Fatal("the panel stayed up over the sign-in it started")
+	}
+}
+
+func TestTheConnectPanelAsksForABrowserAddressBeforeItStarts(t *testing.T) {
+	row := connect.Status{Service: connect.Service{
+		ID: "datadog", Name: "Datadog", Auth: connect.AuthBrowser,
+		Blank: "Site", Answers: datadogAnswers, KeyAsk: datadogAsk,
+		Blurb: "your metrics, logs and monitors",
+	}}
+	rows := append(bigCatalog(40), row)
+	_, a, conns := panelApp(t, rows)
+	a.width = 80
+	typeLine(t, a, "/connect")
+	for _, r := range "datadog" {
+		drive(t, a, key(string(r)))
+	}
+	panel := strings.Join(plainOverlay(a), "\n")
+	if !strings.Contains(panel, "Datadog") || !strings.Contains(panel, signInTag) {
+		t.Fatalf("the rendered Datadog row does not carry the sign-in tag:\n%s", panel)
+	}
+	drive(t, a, key("enter"))
+	if len(conns.began) != 0 {
+		t.Fatalf("the browser started before the site answer: %v", conns.began)
+	}
+	if a.connPanel.entry == nil || a.connPanel.entry.secret {
+		t.Fatalf("enter opened %+v, want an unmasked entry", a.connPanel.entry)
+	}
+	box, _, _ := a.inputBlock(a.width)
+	shown := plain(strings.Join(box, "\n"))
+	if strings.Count(shown, datadogAsk) != 1 {
+		t.Fatalf("the question appears %d times, want once:\n%s", strings.Count(shown, datadogAsk), shown)
+	}
+	for _, answer := range datadogAnswers {
+		if !strings.Contains(shown, answer) {
+			t.Errorf("the 80-column box does not name %q:\n%s", answer, shown)
+		}
+	}
+	if len(box) != 4 {
+		t.Fatalf("the wrapped question, box and site list take %d rows, want four:\n%s", len(box), shown)
+	}
+	drive(t, a, tea.PasteMsg{Content: "datadoghq.eu"})
+	box, _, _ = a.inputBlock(a.width)
+	if shown := plain(strings.Join(box, "\n")); !strings.Contains(shown, "datadoghq.eu") {
+		t.Fatalf("the site is masked: %s", shown)
+	}
+	drive(t, a, key("enter"))
+	if len(conns.answers) != 1 || conns.answers[0].id != "datadog" || conns.answers[0].key != "datadoghq.eu" {
+		t.Fatalf("BeginAuth received %+v", conns.answers)
+	}
+	if len(conns.keyed) != 0 {
+		t.Fatalf("the browser answer took the key connection path: %+v", conns.keyed)
 	}
 }
 

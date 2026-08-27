@@ -301,7 +301,7 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 		return status.Account, ""
 	}
 
-	url, wait, err := a.connect.BeginAuth(ctx, service.ID)
+	url, wait, err := a.connect.BeginAuth(ctx, service.ID, answer.key)
 	if err != nil {
 		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
 		return "", "Connecting " + service.Name + " did not work: " + err.Error()

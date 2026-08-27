@@ -95,7 +95,10 @@ type flowResult struct {
 //
 // The browser is NOT opened here. Whoever owns the screen decides how the
 // address reaches the person.
-func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
+//
+// answer is the one thing a tool server's address is missing. It is empty for
+// every ordinary browser service and ignored by a tool server with no blank.
+func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, error) {
 	plug, err := m.plug(id)
 	if err != nil {
 		return nil, err
@@ -105,7 +108,7 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 	// it where its sign-in is, rather than from addresses written down here.
 	// The trip that follows is the same trip. See mcp_auth.go.
 	if server, ok := plug.(*toolServer); ok {
-		return m.beginToolServer(ctx, server)
+		return m.beginToolServer(ctx, server, answer)
 	}
 	if service.Auth == AuthKey {
 		// There is nothing to open. Saying so here rather than starting a

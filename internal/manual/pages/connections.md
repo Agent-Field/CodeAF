@@ -221,7 +221,7 @@ what it is about to call.
 ## Some accounts bring their own tools
 
 Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
-GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
+Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
 Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
 Supabase and Todoist sign in through a browser the way Google does, and then they do one
 thing the others do not: **they say for themselves what they can do**. Aforge
@@ -241,6 +241,7 @@ nothing to change here.
 | CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
 | ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| Datadog | `https://mcp.<site>/v1/mcp` | your metrics, logs and monitors |
 | GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
 | Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
 | Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
@@ -261,10 +262,12 @@ nothing to change here.
 | Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
 | Todoist | `https://ai.todoist.net/mcp` | your tasks, projects and labels |
 
-**All 27 work with zero setup here.** GitLab may need its admin to turn its AI
+**All 28 work with zero setup here.** GitLab may need its admin to turn its AI
 features on first, and an Airtable enterprise account may need its admin to
-allow the connection first. Postman's EU workspaces cannot be reached this way:
-Postman signs those in with a key and nothing else, and its row says so.
+allow the connection first. Datadog asks which site the account is on before it
+opens, and a Datadog admin may restrict who may connect this way. Postman's EU
+workspaces cannot be reached this way: Postman signs those in with a key and
+nothing else, and its row says so.
 
 Two things follow from a list nobody here wrote:
 
