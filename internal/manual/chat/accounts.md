@@ -32,13 +32,14 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many services can be connected
 
-**126 services register in this build: 99 are connected with a pasted key, and 27 are
+**127 services register in this build: 99 are connected with a pasted key, and 28 are
 connected in a browser.**
 
-The 27 browser ones are **Google** (Gmail and Calendar) and the 26 tool servers
+The 28 browser ones are **Google** (Gmail and Calendar) and the 27 tool servers
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro, Neon,
-Netlify, Notion, PayPal, PostHog, Railway, Sanity, Sentry, Supabase** and **Todoist**.
+Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry, Supabase** and
+**Todoist**.
 The 99 key services come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
@@ -67,7 +68,7 @@ Google's consent screen is forced every time, because Google only issues a refre
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
 
-**The 26 tool servers listed below need nothing registered first.** aforge introduces
+**The 27 tool servers listed below need nothing registered first.** aforge introduces
 itself to the service at connect time and is issued an identity on the spot, then
 makes the same browser trip.
 
@@ -244,7 +245,7 @@ of you. A tool server appears in `/connect` as a browser connection like any oth
 connected with the same sign-in, forgotten with the same disconnect, and its keys live
 in the same store file.
 
-Twenty-six ship, each at the address on the vendor's own page:
+Twenty-seven ship, each at the address on the vendor's own page:
 
 | Service | Address | What it brings |
 | --- | --- | --- |
@@ -269,6 +270,7 @@ Twenty-six ship, each at the address on the vendor's own page:
 | Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
 | PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
 | PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
 | Railway | `https://mcp.railway.com/` | your projects, services and deployments |
 | Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
 | Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
@@ -277,8 +279,10 @@ Twenty-six ship, each at the address on the vendor's own page:
 
 GitLab's own line adds: "Your GitLab admin may have to turn its AI features on first."
 Airtable's adds: "An enterprise admin may have to allow it first."
+Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
+address signs in with a key and nothing else, so it is deliberately not shipped.
 
-**All 26 work with zero registration.** aforge introduces itself to the service at
+**All 27 work with zero registration.** aforge introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one service cannot be spent at another.
 

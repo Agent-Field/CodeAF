@@ -222,8 +222,8 @@ what it is about to call.
 
 Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
-Neon, Netlify, Notion, PayPal, PostHog, Railway, Sanity, Sentry, Supabase and
-Todoist sign in through a browser the way Google does, and then they do one
+Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
+Supabase and Todoist sign in through a browser the way Google does, and then they do one
 thing the others do not: **they say for themselves what they can do**. Aforge
 asks the account what it brings the moment it picks it up, and what comes back —
 search this, open that, file the other — is what it holds for the rest of the
@@ -254,15 +254,17 @@ nothing to change here.
 | Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
 | PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
 | PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
 | Railway | `https://mcp.railway.com/` | your projects, services and deployments |
 | Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
 | Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
 | Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
 | Todoist | `https://ai.todoist.net/mcp` | your tasks, projects and labels |
 
-**All 26 work with zero setup here.** GitLab may need its admin to turn its AI
+**All 27 work with zero setup here.** GitLab may need its admin to turn its AI
 features on first, and an Airtable enterprise account may need its admin to
-allow the connection first.
+allow the connection first. Postman's EU workspaces cannot be reached this way:
+Postman signs those in with a key and nothing else, and its row says so.
 
 Two things follow from a list nobody here wrote:
 

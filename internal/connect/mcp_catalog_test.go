@@ -17,14 +17,15 @@ var machineryWords = []string{
 	"mcp", "protocol", "server", "token", "client id", "registration",
 }
 
-// The 26, and the laws that hold for every one of them.
+// The 27, and the laws that hold for every one of them.
 func TestTheToolServersAreUsableAsTheyStand(t *testing.T) {
 	entries := mcpCatalog()
 	want := []string{
 		"airtable", "atlassian", "buildkite", "calendly", "canva", "circleci",
 		"clickup", "cloudflare", "gitlab", "grafana", "heroku", "huggingface",
 		"klaviyo", "launchdarkly", "linear", "miro", "neon", "netlify", "notion",
-		"paypal", "posthog", "railway", "sanity", "sentry", "supabase", "todoist",
+		"paypal", "posthog", "postman", "railway", "sanity", "sentry", "supabase",
+		"todoist",
 	}
 	var got []string
 	for _, entry := range entries {
@@ -167,6 +168,7 @@ func TestTheAddressesAreTheOnesTheVendorsPublish(t *testing.T) {
 		"notion":       "https://mcp.notion.com/mcp",
 		"paypal":       "https://mcp.paypal.com/http",
 		"posthog":      "https://mcp.posthog.com/mcp",
+		"postman":      "https://mcp.postman.com/minimal",
 		"railway":      "https://mcp.railway.com/",
 		"sanity":       "https://mcp.sanity.io",
 		"sentry":       "https://mcp.sentry.dev/mcp",
