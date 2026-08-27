@@ -2151,14 +2151,28 @@ func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
 	decision := principal.Decide(remains)
-	if decision.Verb != DecideDone || remains.Acceptance == "" {
-		a.journalDecision(decision, remains)
+	if decision.Verb == DecideDone && remains.Acceptance != "" {
+		checks, found := a.terminalAudit(ctx)
+		remains.Checks = checks
+		decision = principal.Decide(remains)
+		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
+		// checks and carries on may be about to read the very files this would
+		// remove, so what was sorted is acted on only once the session is
+		// actually finished with them (principal_audit.go's [Agent.sweepSession]).
+		if decision.Verb != DecideCarryOn {
+			a.sweepSession(found)
+		}
+		a.journalDecision(decision)
 		return decision
 	}
-	checks, _ := a.terminalAudit(ctx)
-	remains.Checks = checks
-	decision = principal.Decide(remains)
-	a.journalDecision(decision, remains)
+	// A RUN THAT STOPPED IS AN ENDING TOO, and it is the ending most likely to
+	// leave a mess: the budget ran out, or the same thing has failed three times,
+	// and neither of those goes anywhere near the reading above. The tidy is owed
+	// to whoever comes to look at the tree afterwards, however the run ended.
+	if decision.Verb == DecideStop {
+		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+	}
+	a.journalDecision(decision)
 	return decision
 }
 
@@ -2171,7 +2185,7 @@ func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision
 // any of this arrived, and a new line in somebody's transcript is something
 // they can tell. What a person decided is in the conversation, where they said
 // it.
-func (a *Agent) journalDecision(decision Decision, remains Remains) {
+func (a *Agent) journalDecision(decision Decision) {
 	steward := a.steward()
 	if steward == nil {
 		return

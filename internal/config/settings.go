@@ -728,6 +728,15 @@ var OperatorEnvPins = []string{
 	"AFORGE_EXEC_TURNS",
 	"AFORGE_EXEC_BUDGET",
 	"AFORGE_EXEC_TIMEOUT",
+	// The two walls an UNATTENDED conversation carries its own work on under
+	// (--max-hours / --max-cost, internal/session's principal.go). They are
+	// plumbing for exactly the reason the three above are: they are the ceilings
+	// ONE launch runs under, named by whoever started it, and a sheet row
+	// offering to persist them would be offering to make every future
+	// conversation an unattended one. The preference the product has an opinion
+	// about is the daily rail, and it is a row already.
+	"AFORGE_MAX_HOURS",
+	"AFORGE_MAX_COST",
 	"AFORGE_SPINE_SAMPLES",
 	"AFORGE_MAX_DEPTH",
 	"AFORGE_NODE_BUDGET",
