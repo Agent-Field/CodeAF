@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -78,6 +79,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if client == nil {
 		return nil, errors.New("session: completer is required")
+	}
+	if config.newerBuild == nil {
+		config.newerBuild = buildinfo.StaleNotice
 	}
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {

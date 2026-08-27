@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -115,6 +116,9 @@ func TestASubmissionStampsTheFolder(t *testing.T) {
 	}
 	if meta.Model != "test/model" {
 		t.Fatalf("the row names the model %q", meta.Model)
+	}
+	if meta.Build != buildinfo.String() {
+		t.Fatalf("meta.json names build %q, want %q", meta.Build, buildinfo.String())
 	}
 }
 

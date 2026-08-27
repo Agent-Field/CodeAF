@@ -857,6 +857,8 @@ what, into the conversation. Up to five aligned lines:
 | `model calls` | **requests to the provider**, deliberately not "turns" |
 | `time` | how long |
 
+## Why the same conversation can suddenly cost more — one turn can make several model calls
+
 `model calls` is the line people misread. One thing you type can become several requests to
 the provider — every step of a turn is its own request — so this figure is normally larger
 than the number of times you have spoken.

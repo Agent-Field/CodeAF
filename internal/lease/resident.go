@@ -10,11 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
 
@@ -66,9 +66,9 @@ type Resident struct {
 
 // Build is the identity of a running binary, kept deliberately small.
 //
-// The obvious signal is vcs.revision out of runtime/debug.ReadBuildInfo, and it
-// rides along here because it is the only part a human reading the lock file
-// can act on. It cannot be the deciding one: a `go build` of a tree with
+// The obvious signal is the shared build revision, and it rides along here
+// because it is the only part a human reading the lock file can act on. It
+// cannot be the deciding one: a `go build` of a tree with
 // uncommitted work stamps the revision of the commit underneath it, or nothing
 // at all, so the rebuild that actually caused a handover to be needed is the
 // one case where two binaries share a revision. Two revisions also do not
@@ -122,20 +122,11 @@ func (b Build) NewerThan(other Build) bool {
 	return b.ModTime.Equal(other.ModTime) && b.Size != other.Size && b.Revision != other.Revision
 }
 
-// localRevision reads the commit this binary was built from, if the toolchain
-// recorded one. An empty string is the ordinary answer for a `go run`, a test
-// binary, or a build from a tree without git.
+// localRevision reads the same source identity every other build surface uses.
+// An empty string is the ordinary answer for an unstamped test binary with no
+// useful Go build record.
 func localRevision() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	for _, setting := range info.Settings {
-		if setting.Key == "vcs.revision" {
-			return strings.TrimSpace(setting.Value)
-		}
-	}
-	return ""
+	return buildinfo.Revision()
 }
 
 // LockPath is where the lock for one store lives. It is keyed to the store

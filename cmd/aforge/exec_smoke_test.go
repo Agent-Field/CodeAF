@@ -27,7 +27,7 @@ import (
 
 const smokeAnswer = "the smoke test answer"
 
-// buildAforgeStamped compiles the binary under test with a version stamped in,
+// buildAforgeStamped compiles the binary under test with a revision stamped in,
 // which also exercises the -ldflags path the release workflow depends on. An
 // empty stamp builds it exactly as `go build ./cmd/aforge` would.
 func buildAforgeStamped(t *testing.T, stamp string) string {
@@ -49,7 +49,8 @@ func buildAforgeStamped(t *testing.T, stamp string) string {
 	// build outright, and none of that is the subject here.
 	arguments := []string{"build", "-buildvcs=false"}
 	if strings.TrimSpace(stamp) != "" {
-		arguments = append(arguments, "-ldflags=-X main.version="+stamp)
+		arguments = append(arguments,
+			"-ldflags=-X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev="+stamp)
 	}
 	arguments = append(arguments, "-o", binary, ".")
 	build := osexec.Command(goTool, arguments...)
@@ -206,11 +207,11 @@ func TestExecBinaryWithoutJSONPrintsOnlyTheText(t *testing.T) {
 	}
 }
 
-// The release workflow's claim is that the tag it cut is the string the binary
-// reports. This is that claim, tested through a real -ldflags build rather than
-// through the variable.
+// The release workflow's claim is that the revision it stamps is the revision
+// the binary reports. This tests the real -ldflags seam rather than a variable
+// rewritten inside the test process.
 func TestExecBinaryReportsTheStampedVersion(t *testing.T) {
-	binary := buildAforgeStamped(t, "v0.0.0-smoke")
+	binary := buildAforgeStamped(t, "abcdef01")
 	env, _ := smokeEnv(t, "http://127.0.0.1:1")
 
 	for _, spelling := range []string{"version", "--version", "-v"} {
@@ -218,8 +219,8 @@ func TestExecBinaryReportsTheStampedVersion(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("aforge %s exited %d\nstderr:\n%s", spelling, code, stderr)
 		}
-		if strings.TrimSpace(stdout) != "aforge v0.0.0-smoke" {
-			t.Fatalf("aforge %s printed %q, want %q", spelling, stdout, "aforge v0.0.0-smoke")
+		if strings.TrimSpace(stdout) != "aforge abcdef01" {
+			t.Fatalf("aforge %s printed %q, want %q", spelling, stdout, "aforge abcdef01")
 		}
 	}
 }
