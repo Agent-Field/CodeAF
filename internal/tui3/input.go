@@ -978,7 +978,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))
-		return a.edited()
+		cmd := a.edited()
+		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
+		// is the one line every typed character in this program passes through
+		// (dropkeys.go). Some terminals deliver a dragged file as KEYSTROKES
+		// rather than as the bracketed paste [app.paste] already understands, and
+		// nothing above this line is looking at keys. Ordinary typing pays two
+		// integer comparisons for it and nothing else — no clock, no syscall, no
+		// frame — and a run that could not be a path closes the fold at once.
+		if wake := a.dropWatch(at, text); wake != nil {
+			return tea.Batch(cmd, wake)
+		}
+		return cmd
 	}
 	return nil
 }
@@ -1004,6 +1015,13 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if a.openSelectedPaste() {
 		return nil
 	}
+	// A DROP THE FOLD IS STILL HOLDING IS SPENT BEFORE THE LINE IS READ, for
+	// the pointer fold's reason exactly (coalesce.go's press arm): a gesture
+	// this surface has not finished answering must not be read as the text it
+	// happens to have left on the screen. Somebody who dropped a file and
+	// pressed enter inside two frames meant the drop, and the line they send is
+	// the one with the chip in it (dropkeys.go).
+	a.spendDrop()
 	line := strings.TrimSpace(a.input.String())
 	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
 	// empty message — "what is this?" is often the picture itself — so the two
