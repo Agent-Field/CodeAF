@@ -65,6 +65,9 @@ func (a *app) draftPress(x, y int) bool {
 	}
 	col := x - len(inputPad) - head
 	a.input.cursor = draftClickIndex(a.input.value, a.input.cursor, at, col, room, rows)
+	if a.openPasteAt(a.input.cursor) {
+		return true
+	}
 	a.touch()
 	return true
 }

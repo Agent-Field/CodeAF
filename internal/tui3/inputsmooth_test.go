@@ -221,9 +221,9 @@ func bigPaste(lines int) string {
 	return strings.Repeat("goroutine 42 [running]: main.step(0x1400, 0x2)\n", lines)
 }
 
-// A PASTE IS ONE MESSAGE, ONE EDIT AND NO LAYOUT AT ALL, however long it is. The
-// bracket coalesces it (app.go), the box shows the six rows it can, and nothing
-// about its length reaches the transcript.
+// A PASTE IS ONE MESSAGE, ONE CHIP AND NO LAYOUT AT ALL, however long it is. The
+// bracket coalesces it (app.go), the box shows its compact token, and nothing
+// about the held document's length reaches the transcript.
 //
 // NO LAYOUT AT ALL is the stronger ceiling this wave earned. Filling the box
 // changes the CHROME and the chrome is rebuilt every frame anyway; the laid-out
@@ -237,8 +237,11 @@ func TestALargePasteIsOneEditAndNoLayout(t *testing.T) {
 	paste := bigPaste(4000)
 
 	drive(t, a, tea.PasteMsg{Content: paste})
-	if got, want := len(a.input.value), len([]rune(paste)); got != want {
-		t.Fatalf("the draft holds %d runes of a %d-rune paste", got, want)
+	if got, want := a.input.String(), pasteToken(1, pasteLineCount(paste))+" "; got != want {
+		t.Fatalf("the draft holds %q, want the one compact token %q", got, want)
+	}
+	if len(a.pastes) != 1 || a.pastes[0].text != paste {
+		t.Fatal("the compact token did not hold the complete paste")
 	}
 	if a.builds != 0 {
 		t.Fatalf("the paste laid the transcript out %d times before it was drawn", a.builds)

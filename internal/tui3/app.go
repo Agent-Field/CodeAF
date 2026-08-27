@@ -1088,6 +1088,13 @@ type app struct {
 	// second" the moment somebody lifts a big read's cap.
 	codeCache codeBlockCache
 	input     editor
+	// pastes hold the documents represented by the compact tokens in input. The
+	// text stays beside the composer because only submit needs to cross the agent
+	// seam, and a surface-side edit must never become a wire call.
+	pastes []pasteChip
+	// pasteEdit is the one modal editor over the composer. Its zero value is
+	// closed, so an ordinary frame pays only this boolean check.
+	pasteEdit pasteEditor
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
@@ -2258,6 +2265,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if taken {
 			return a, flushed
 		}
+		if a.pasteEdit.open && msg.String() != "ctrl+c" {
+			return a, tea.Batch(flushed, a.pasteEditorKey(msg))
+		}
 		// THE STOP CONFIRMATION READS FIRST of the three below, and only ever
 		// while it is up or while `x` is being pressed at something stoppable
 		// (stop.go). It is a question about ENDING the work the roster and the
@@ -2555,6 +2565,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.pasteEdit.open {
+			return a, nil
+		}
 		if a.copy.on || a.setup.open {
 			// A click in copy mode acts on nothing: the rows under the pointer are
 			// a FROZEN snapshot, and expanding a call in it would be expanding a
@@ -4787,6 +4800,11 @@ func (a *app) submit(text string) tea.Cmd {
 	return a.submitting(text, func() (<-chan session.Event, error) { return agent.Submit(ctx, text) })
 }
 
+func (a *app) submitShown(text, shown string) tea.Cmd {
+	agent, ctx := a.agent, a.ctx
+	return a.submittingShown(text, shown, func() (<-chan session.Event, error) { return agent.Submit(ctx, text) })
+}
+
 // submitting is that body with the CALL left to the caller: everything a
 // message does to this surface — the transcript line, the turn number, the
 // clock, the stream it waits on — happens here once, and what differs between
@@ -6388,6 +6406,19 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	if a.pasteEdit.open {
+		before := a.pasteEdit.box.String()
+		a.pasteEdit.box.insert(text)
+		for i := range a.pastes {
+			if a.pastes[i].n == a.pasteEdit.n {
+				a.pastes[i].text = a.pasteEdit.box.String()
+				a.rewritePasteToken(a.pastes[i].n, before, a.pastes[i].text)
+				break
+			}
+		}
+		a.touch()
+		return nil
+	}
 	// A KEY BOX IS THE PASTE THIS SURFACE MOST EXPECTS, and it reads first. A
 	// key is a thing nobody types — it comes out of a clipboard — so the two
 	// boxes that collect one take the clipboard before anything else does: the
@@ -6463,9 +6494,11 @@ func (a *app) paste(text string) tea.Cmd {
 	// (imagepaste.go). Anything else falls through and is inserted as the text
 	// it plainly is.
 	if !a.pasteFiles(text) {
-		at := a.input.cursor
-		a.input.insert(text)
-		a.editTags(at, at, len([]rune(text)))
+		if !a.pasteText(text) {
+			at := a.input.cursor
+			a.input.insert(text)
+			a.editTags(at, at, len([]rune(text)))
+		}
 	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard
