@@ -300,6 +300,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// It is the transcript's answer for an interrupted step, where no response
 	// ever comes back.
 	partial := &partialBuffer{}
+	// Reasoning is accumulated beside, never inside, the partial answer. A
+	// completed step keeps it for continuation; an interrupted attempt drops it.
+	reasoning := &reasoningBuffer{}
 
 	// warm holds the read-only calls this turn started while their response was
 	// still streaming. It belongs to the turn and is emptied per attempt — see
@@ -352,10 +355,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		case provider.StreamThinking:
 			hub.send(Event{Kind: EventThinking})
 		case provider.StreamReasoning:
-			// Reasoning is NOT written to partial: it is the model's working,
-			// not its answer, and an interrupted step that recorded it would put
-			// the thought in the transcript as something the assistant said.
-			hub.send(Event{Kind: EventReasoning, Text: event.Delta})
+			// Reasoning is NOT written to partial: it is the model's working, not
+			// its answer. The sidecar is recorded only after the response completes.
+			reasoning.write(event)
+			if event.Delta != "" {
+				hub.send(Event{Kind: EventReasoning, Text: event.Delta})
+			}
 		case provider.StreamNotice:
 			// The adapter reshaping the request to get it accepted at all
 			// (internal/provider's endpoints.go). It is not the model speaking and
@@ -496,7 +501,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// nil for a conversation, whose liveness the presence file already carries
 		// (taskpresence.go).
 		a.config.beat.began()
-		response, answered, err := a.completeWithRetry(ctx, hub, model, rung, partial, warm, forming)
+		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -569,7 +574,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					}
 				}
 			} else {
-				a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
+				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
 			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
@@ -651,7 +656,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		severed := a.considerSeverance(calls, store.ClassifyEnd(provider.FinishReason(response), true), &salvages)
 
 		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
-		a.record(assistant)
+		a.recordAssistant(assistant, reasoning.snapshot())
 		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
 		usedTools = true
@@ -1134,6 +1139,10 @@ func (a *Agent) completeAttempt(ctx context.Context, hub *eventHub, model string
 }
 
 func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming)
+}
+
+func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
 	var lastErr error
 	// cuts counts the attempts the STREAM GUARD ended — a stall, or a reply that
 	// stopped being language. They are counted apart from the transport attempts
@@ -1163,6 +1172,7 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		// interrupt during the next one would otherwise record the two halves
 		// concatenated as one answer.
 		partial.reset()
+		reasoning.reset()
 		// And so does the warm batch. A retry is a NEW response — its calls are
 		// its own, ids and all — so nothing the dead attempt started may be
 		// paired with it. The reads that already ran are simply thrown away and
@@ -1183,7 +1193,8 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
-		messages := a.snapshot()
+		messages, carried := a.snapshotWithReasoning()
+		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		response, err := a.completeAttempt(attemptCtx, hub, model, messages,
 			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
 		if err == nil {
@@ -2863,7 +2874,8 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	if a.file != nil {
 		window := make([]ai.Message, len(a.messages)-1)
 		copy(window, a.messages[1:])
-		a.file.appendCompaction(pass, tokensBefore, window)
+		windowReasoning := append([]provider.MessageReasoning(nil), a.messageReasoning[1:]...)
+		a.file.appendCompaction(pass, tokensBefore, window, windowReasoning)
 	}
 	a.mu.Unlock()
 
@@ -2926,6 +2938,7 @@ func compactionHint(pass compactionPass, before, after int) string {
 // foldable material before it gets there still succeeds with what it took —
 // the target is how far to go, never a condition on the pass.
 func (a *Agent) foldLocked(stored bool) (int, string) {
+	a.alignReasoningLocked()
 	limit := a.cutPointLocked()
 	target := a.compactTargetTokens() * bytesPerToken
 	total := 0
@@ -2988,17 +3001,21 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 	}
 	marker := foldMarker(len(folded), from, to, stored)
 	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
+	rebuiltReasoning := make([]provider.MessageReasoning, 0, cap(rebuilt))
 	rebuilt = append(rebuilt, a.messages[0])
+	rebuiltReasoning = append(rebuiltReasoning, a.messageReasoning[0])
 	for index := 1; index < len(a.messages); index++ {
 		if index == first {
 			// The marker sits where the run it replaces sat, so the order the
 			// conversation happened in survives the fold.
 			rebuilt = append(rebuilt, textMessage("user", marker))
+			rebuiltReasoning = append(rebuiltReasoning, provider.MessageReasoning{})
 		}
 		if folded[index] {
 			continue
 		}
 		rebuilt = append(rebuilt, a.messages[index])
+		rebuiltReasoning = append(rebuiltReasoning, a.messageReasoning[index])
 	}
 	// THE RUNNING TURN'S FLOOR MOVES WITH THE REBUILD. A fold always runs inside
 	// a turn, and [Agent.turnFloor] is an index into the list this just replaced:
@@ -3019,6 +3036,7 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 	}
 	a.turnFloor = floor
 	a.messages = rebuilt
+	a.messageReasoning = rebuiltReasoning
 	return len(folded), marker
 }
 

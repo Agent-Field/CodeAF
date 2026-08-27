@@ -53,6 +53,10 @@ type quirksStore struct {
 	// reason they are independent of each other — an endpoint may take the
 	// effort word and refuse the budget, or the other way round.
 	noReasoningBudget map[string]time.Time
+	// noReasoningReplay is learned only from a 400 naming the assistant replay
+	// fields. It is per model because one incompatible endpoint must not erase
+	// continuity for every reasoning model routed through this process.
+	noReasoningReplay map[string]time.Time
 	loaded            bool
 
 	// writes counts saves in flight. The save is deliberately off the request
@@ -69,6 +73,7 @@ var quirks = &quirksStore{
 	mandatory:         map[string]time.Time{},
 	noCacheControl:    map[string]time.Time{},
 	noReasoningBudget: map[string]time.Time{},
+	noReasoningReplay: map[string]time.Time{},
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
@@ -108,6 +113,10 @@ type quirksWire struct {
 	// model per profile — after which the top two ladder rungs are served as the
 	// deepest thing that endpoint has a word for.
 	ReasoningBudgetRejected map[string]time.Time `json:"reasoning_budget_rejected,omitempty"`
+
+	// ReasoningReplayRejected maps a model to when its endpoint refused
+	// assistant reasoning carried back for tool-loop continuity.
+	ReasoningReplayRejected map[string]time.Time `json:"reasoning_replay_rejected,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -126,6 +135,7 @@ func (q *quirksStore) load(path string) {
 	seed(q.mandatory, wire.ReasoningMandatory)
 	seed(q.noCacheControl, wire.CacheControlRejected)
 	seed(q.noReasoningBudget, wire.ReasoningBudgetRejected)
+	seed(q.noReasoningReplay, wire.ReasoningReplayRejected)
 }
 
 // seed folds a loaded set into a live one without ever dropping a fact learned
@@ -169,6 +179,14 @@ func (q *quirksStore) knowsNoReasoningBudget(model string) bool {
 	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningBudget }, model)
 }
 
+func (q *quirksStore) noteNoReasoningReplay(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.noReasoningReplay }, model, at)
+}
+
+func (q *quirksStore) knowsNoReasoningReplay(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningReplay }, model)
+}
+
 func (q *quirksStore) record(set func(*quirksStore) map[string]time.Time, model string, at time.Time) bool {
 	key := normalizeModel(model)
 	if key == "" {
@@ -205,6 +223,7 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 		ReasoningMandatory:      make(map[string]time.Time, len(q.mandatory)),
 		CacheControlRejected:    make(map[string]time.Time, len(q.noCacheControl)),
 		ReasoningBudgetRejected: make(map[string]time.Time, len(q.noReasoningBudget)),
+		ReasoningReplayRejected: make(map[string]time.Time, len(q.noReasoningReplay)),
 	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt
@@ -214,6 +233,9 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 	}
 	for model, learnedAt := range q.noReasoningBudget {
 		wire.ReasoningBudgetRejected[model] = learnedAt
+	}
+	for model, learnedAt := range q.noReasoningReplay {
+		wire.ReasoningReplayRejected[model] = learnedAt
 	}
 	return q.path, wire
 }

@@ -277,13 +277,17 @@ type callKnobs struct {
 	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
 	// which is what keeps a healthy request byte-for-byte what it always was.
 	relaxed relaxSet
+	// reasoning is aligned with the request's messages. It stays outside the SDK
+	// values because ai.Message has no reasoning fields of its own.
+	reasoning []MessageReasoning
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
 	return callKnobs{
-		cacheKey: CacheKeyFrom(ctx),
-		effort:   effortFrom(ctx),
-		intent:   routingIntentFrom(ctx),
+		cacheKey:  CacheKeyFrom(ctx),
+		effort:    effortFrom(ctx),
+		intent:    routingIntentFrom(ctx),
+		reasoning: MessageReasoningFrom(ctx),
 	}
 }
 
@@ -351,14 +355,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 // sendRepaired encodes the request and sends it, recovering once from the 400s
 // this adapter can answer by itself.
 //
-// There are two, and they are the same shape of mistake: a request-shape
-// decision made HERE, on a knob the catalog cannot vouch for. An endpoint that
-// reasons unconditionally refuses the disable the harness sends as a planning
-// economy; an endpoint fronting an Anthropic-family slug that does not in fact
-// carry a cache breakpoint refuses the marker. Both are repaired here because
-// anywhere else they are a failed node the operator has to reconfigure around —
-// which is what MiniMax M2.7 produced: every planning call 400ing on a default
-// the model was never able to honour.
+// They are the same shape of mistake: a request-shape decision made HERE, on a
+// field the catalog cannot vouch for. That includes a disable a model refuses,
+// a thinking budget or cache marker an endpoint does not accept, and assistant
+// reasoning replay an OpenAI-compatible endpoint does not implement. They are
+// repaired here because anywhere else they become a failed node the operator
+// has to reconfigure around.
 //
 // The retry costs nothing: a 400 generated no tokens, and the answer is
 // remembered so only the first call on a model pays for the discovery.
@@ -396,7 +398,8 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 func (c *Client) repairable(model string, knobs callKnobs) bool {
 	return c.resolveEffort(model, knobs.effort) == EffortOff ||
 		c.resolveReasoningBudget(model, knobs.effort) > 0 ||
-		c.dialectFor(model) == cacheDialectBreakpoints
+		c.dialectFor(model) == cacheDialectBreakpoints ||
+		(len(knobs.reasoning) > 0 && !reasoningReplayRefused(model))
 }
 
 // learn reads a refusal for the facts this adapter can remember and reports
@@ -418,6 +421,10 @@ func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
 	}
 	if c.dialectFor(model) == cacheDialectBreakpoints && refusesCacheControl(payload) {
 		noteCacheControlRefused(model)
+		learned = true
+	}
+	if len(knobs.reasoning) > 0 && !reasoningReplayRefused(model) && refusesReasoningReplay(payload, knobs.reasoning) {
+		noteReasoningReplayRefused(model)
 		learned = true
 	}
 	return learned
@@ -793,15 +800,17 @@ func (c *Client) completeWithMessagesStreaming(
 			// The run of reasoning is announced ONCE — that boundary is what a
 			// surface drawing "thinking…" needs — and the text of it follows per
 			// delta as StreamReasoning, for a surface that shows the thought.
-			// Neither is accumulated into the response: reasoning is not part of
-			// the answer, and a later step must not re-send it as if it were.
+			// It is not accumulated into answer Content. Its wire field and details
+			// ride the event so the session can replay it as assistant metadata.
 			if choice.Delta.thinking() {
 				if !thinking {
 					thinking = true
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
 				}
-				if text := choice.Delta.reasoning(); text != "" {
-					observer(StreamEvent{Kind: StreamReasoning, Delta: text, Session: session})
+				events, count := choice.Delta.reasoningEvents()
+				for _, event := range events[:count] {
+					event.Session = session
+					observer(event)
 				}
 			}
 			for _, fragment := range choice.Delta.ToolCalls {
