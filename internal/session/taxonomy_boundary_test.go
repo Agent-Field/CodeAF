@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -413,9 +412,15 @@ func TestADeadlineIsTransportHoweverItArrives(t *testing.T) {
 			t.Fatalf("%v classified as %s", err, got.Class)
 		}
 	}
-	// And a wall the guard put up is the same news arriving a different way.
-	if evidence := wireEvidence(errors.New("the model stopped answering after 15m0s"), 1); !evidence.Wire {
-		_ = evidence
+	// AND A SHAPE WITH NO STATUS AND NO DEADLINE IN IT IS STILL THE WIRE, read
+	// through the one pattern this build has always kept for that ([isRetryable]).
+	if evidence := wireEvidence(errors.New("socket hang up"), 1); !evidence.Wire {
+		t.Fatal("a socket that hung up was not read as the connection")
 	}
-	_ = time.Second
+	// AND A TRANSCRIPT THAT OUTGREW ITS WINDOW IS NOT. The answer to that is a
+	// shorter conversation, which the turn loop already tries; another endpoint
+	// is a guess dressed as a rescue.
+	if evidence := wireEvidence(errors.New("this model's maximum context length is 128000 tokens"), 1); evidence.Wire {
+		t.Fatal("a context overflow was read as the connection")
+	}
 }
