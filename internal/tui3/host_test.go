@@ -211,7 +211,7 @@ func TestSettingsSaysWhoseRowsTheseAre(t *testing.T) {
 	a, _ := hostLab(t)
 	a.openSettings()
 	said := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(said, "this machine's") {
+	if !strings.Contains(said, "belong to this machine") {
 		t.Fatalf("the settings panel opened without saying whose rows it edits: %s", said)
 	}
 	if !a.at(pageSettings) {
