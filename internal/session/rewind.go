@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -173,6 +174,7 @@ func (a *Agent) rewindReadyLocked() error {
 // and established that index is a point; this does the three things a cut is:
 // journal it, shape what is leaving, and let go of it.
 func (a *Agent) cutLocked(index int) []DisplayEntry {
+	a.alignReasoningLocked()
 	dropped := a.messages[index:]
 	removed := displayEntries(dropped)
 	if a.file != nil {
@@ -183,8 +185,10 @@ func (a *Agent) cutLocked(index int) []DisplayEntry {
 	// dropped turn can be several hundred KB of tool results.
 	for at := index; at < len(a.messages); at++ {
 		a.messages[at] = ai.Message{}
+		a.messageReasoning[at] = provider.MessageReasoning{}
 	}
 	a.messages = a.messages[:index]
+	a.messageReasoning = a.messageReasoning[:index]
 	return removed
 }
 

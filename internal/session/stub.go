@@ -44,6 +44,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -135,6 +136,7 @@ func (a *Agent) stubOldOutputs() {
 // result verbatim — a stub pointing at nothing is the one failure this may not
 // have.
 func (a *Agent) stubOldOutputsLocked() int {
+	a.alignReasoningLocked()
 	workspace := strings.TrimSpace(a.config.Workspace)
 	cut := stubCut(a.messages)
 	candidates, reclaim := stubCandidates(a.messages, cut)
@@ -184,6 +186,7 @@ func (a *Agent) stubOldOutputsLocked() int {
 			Content: []ai.ContentPart{{Type: "text", Text: stubLine(
 				toolNameFor(a.messages, index), text, pointer)}},
 		}
+		a.messageReasoning[index] = provider.MessageReasoning{}
 		stubbed++
 	}
 	return stubbed

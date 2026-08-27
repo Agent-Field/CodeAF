@@ -1423,13 +1423,13 @@ func eventStreamOf(payloads ...string) http.Handler {
 }
 
 // A reasoning model's working reaches the surface as EventReasoning, in order,
-// behind the one EventThinking that opened the run — and never reaches the
-// transcript, where it would come back to the model as something it had said.
+// behind the one EventThinking that opened the run — and never reaches answer
+// Content, where it would come back as something the model had said aloud.
 //
 // This runs against the real adapter over a scripted event stream, so what is
 // pinned is the whole path: the wire's "reasoning_content", the provider's
 // StreamReasoning, the session's EventReasoning.
-func TestReasoningTextArrivesAsEventReasoningAndStaysOutOfTheTranscript(t *testing.T) {
+func TestReasoningTextArrivesAsEventReasoningAndStaysOutOfAnswerContent(t *testing.T) {
 	client, err := provider.NewClient(provider.Config{
 		APIKey: "k", BaseURL: "http://provider.test", Model: "test/model",
 		HTTPClient: fakeHTTP(eventStreamOf(
