@@ -13,14 +13,17 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// The elbows' acceptance tests: what a corrected question LOOKS like, and the
-// three ways a correction can end.
+// The corrections' acceptance tests: WHERE a sentence typed into a running turn
+// lands, what it says while it is on its way, and the three ways it can end.
 //
-// Each asserts the fact the design exists for. A steer is part of the question,
-// so the trunk keeps it through every fold a past turn goes through and through
-// a reload. A steer that has not reached the model says so, and one that never
-// reached it at all is not drawn hanging off a question it was never part of.
-// And a conversation nobody steered draws exactly as it always did.
+// Each asserts the fact the design exists for. THE FIRST ONE IS THE DEFECT: a
+// correction belongs at the point in the transcript where it was said, among the
+// tool rows it interrupted, because a correction gathered back up under the
+// question is a correction above the top of the screen on any turn worth
+// steering. A steer that has not reached the model says so, one that never
+// reached it at all leaves the page rather than lying about it, and a fold may
+// never hide any of them. And a conversation nobody steered draws exactly as it
+// always did.
 
 // ── the scripted events ─────────────────────────────────────────────────────
 
@@ -48,11 +51,51 @@ func steered(t *testing.T, question string, words ...string) (*fakeAgent, *app) 
 	t.Helper()
 	agent := &fakeAgent{}
 	a := newTestApp(agent)
+	a.height = 60 // tall enough that nothing under test is scrolled off
 	typeLine(t, a, question)
 	for i, line := range words {
 		drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(uint64(i+1), line)})
 	}
 	return agent, a
+}
+
+// working pushes one finished tool call into the running turn, so a test about
+// WHERE a correction lands has rows for it to land between.
+func working(t *testing.T, a *app, hint string) {
+	t.Helper()
+	drive(t, a, streamEventMsg{gen: a.gen, ev: toolBegin("read", hint)})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: toolEnd("read", "package parse")})
+}
+
+// steerRowAt is which drawn row one correction is on, and -1 when it is not on
+// the page at all — which is the reading the whole of this file turns on.
+func steerRowAt(a *app, words string) int {
+	for i, line := range plainRows(a) {
+		if strings.HasPrefix(line, glyphSteer+words) {
+			return i
+		}
+	}
+	return -1
+}
+
+// toolRowAt is which drawn row one tool call is on.
+func steerToolRowAt(a *app, hint string) int {
+	for i, line := range plainRows(a) {
+		if strings.Contains(line, hint) && strings.Contains(line, "▶") {
+			return i
+		}
+	}
+	return -1
+}
+
+// steerEntryOf is the block one correction is, by the engine's own id.
+func steerEntryOf(t *testing.T, a *app, id uint64) *entry {
+	t.Helper()
+	at := a.elbowOf(id)
+	if at < 0 {
+		t.Fatalf("no correction on the page for id %d:\n%s", id, strings.Join(plainRows(a), "\n"))
+	}
+	return &a.entries[at]
 }
 
 // elbowRowsOf is every row of the transcript that is an elbow — the fold line
@@ -85,46 +128,125 @@ func clipboardOf(t *testing.T, raw string) string {
 	return string(out)
 }
 
-// ── 1. the family ───────────────────────────────────────────────────────────
+// ── 1. where it lands ───────────────────────────────────────────────────────
 
-// THE QUESTION IS THE TRUNK AND THE CORRECTIONS HANG OFF IT, in the order they
-// were sent, directly under it and above everything the turn then did.
-func TestASteeredTurnDrawsTheTrunkAndThenItsElbowsInOrder(t *testing.T) {
-	_, a := steered(t, "port the parser", "use the staging bucket", "and skip the cache")
+// THE DEFECT, PINNED. A correction is drawn at the point in the transcript
+// where it was said — after the work that was already on the page and above the
+// work that came next — so a person who steers a turn that has been running for
+// a minute is looking at their own sentence rather than at a page that swallowed
+// it.
+func TestACorrectionLandsBetweenTheToolRowsItInterrupted(t *testing.T) {
+	agent := &fakeAgent{}
+	a := newTestApp(agent)
+	a.height = 60
+	typeLine(t, a, "port the parser")
+	working(t, a, "read lexer.go")
+	working(t, a, "read parse.go")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+	working(t, a, "read build.go")
 
-	lines := plainRows(a)
-	trunk, first, second := -1, -1, -1
-	for i, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "› port the parser"):
-			trunk = i
-		case strings.HasPrefix(line, glyphSteer+"use the staging bucket"):
-			first = i
-		case strings.HasPrefix(line, glyphSteer+"and skip the cache"):
-			second = i
+	before, said, after := steerToolRowAt(a, "read parse.go"), steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read build.go")
+	if before < 0 || said < 0 || after < 0 {
+		t.Fatalf("a row of the three is missing (%d, %d, %d):\n%s",
+			before, said, after, strings.Join(plainRows(a), "\n"))
+	}
+	if !(before < said && said < after) {
+		t.Fatalf("the correction is not between the calls it interrupted (%d, %d, %d):\n%s",
+			before, said, after, strings.Join(plainRows(a), "\n"))
+	}
+	// AND IT IS BELOW THE QUESTION AND NOT UNDER IT. The question is the top of
+	// the turn; this is the row the defect used to put the correction on.
+	if question := -1; true {
+		for i, line := range plainRows(a) {
+			if strings.HasPrefix(line, "› port the parser") {
+				question = i
+			}
+		}
+		if question < 0 || said == question+1 {
+			t.Fatalf("the correction went back under the question (row %d):\n%s",
+				said, strings.Join(plainRows(a), "\n"))
 		}
 	}
-	if trunk < 0 || first != trunk+1 || second != trunk+2 {
-		t.Fatalf("the family is not trunk-then-elbows (trunk %d, elbows %d and %d):\n%s",
-			trunk, first, second, strings.Join(lines, "\n"))
+}
+
+// AND SO DOES THE SAME GESTURE OVER A CONNECTION. The engine is on another
+// machine and the acceptance is a round trip, and what lands is the same block
+// in the same place — a hosted page reads exactly as the page at the machine
+// does (echo.go's whole argument, applied to the other door words come through).
+func TestOverAConnectionACorrectionLandsInThePlaceItWasSaid(t *testing.T) {
+	agent := &fakeAgent{model: "a/b"}
+	a := hostedApp(agent)
+	a.height = 60
+	typeLine(t, a, "port the parser")
+	working(t, a, "read lexer.go")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+	working(t, a, "read parse.go")
+
+	before, said, after := steerToolRowAt(a, "read lexer.go"), steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read parse.go")
+	if before < 0 || said < 0 || after < 0 || !(before < said && said < after) {
+		t.Fatalf("over a connection the correction is not where it was said (%d, %d, %d):\n%s",
+			before, said, after, strings.Join(plainRows(a), "\n"))
 	}
-	// AND THERE IS NO SECOND `›`. A correction drawn as a question of its own is
-	// the whole defect this file exists to end.
-	if got := strings.Count(strings.Join(lines, "\n"), "› "); got != 1 {
+}
+
+// TWO CORRECTIONS ARE TWO BLOCKS, IN THE ORDER THEY WERE SENT, each where it
+// was sent. A page that gathered them together would be re-arranging the one
+// thing a transcript is for.
+func TestTwoCorrectionsStayInTheOrderAndThePlacesTheyWereSaid(t *testing.T) {
+	agent := &fakeAgent{}
+	a := newTestApp(agent)
+	a.height = 60
+	typeLine(t, a, "port the parser")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+	working(t, a, "read lexer.go")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(2, "and skip the cache")})
+
+	first, work, second := steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read lexer.go"), steerRowAt(a, "and skip the cache")
+	if first < 0 || work < 0 || second < 0 || !(first < work && work < second) {
+		t.Fatalf("the two corrections are not where they were said (%d, %d, %d):\n%s",
+			first, work, second, strings.Join(plainRows(a), "\n"))
+	}
+	// AND NEITHER IS A SECOND `›`. A correction drawn as a question of its own is
+	// the other half of the defect this file exists to end.
+	if got := strings.Count(strings.Join(plainRows(a), "\n"), "› "); got != 1 {
 		t.Fatalf("a correction was drawn as a question of its own (%d `›` rows):\n%s",
-			got, strings.Join(lines, "\n"))
+			got, strings.Join(plainRows(a), "\n"))
+	}
+}
+
+// AND A CORRECTION STANDS IN THE PERSON'S OWN COLUMN. THE INDENT LAW is that
+// flush-left is what was said to the person and two columns in is what was done
+// on their behalf; a thing they typed is theirs.
+func TestACorrectionStandsFlushLeftBesideTheWorkItInterrupted(t *testing.T) {
+	agent := &fakeAgent{}
+	a := newTestApp(agent)
+	a.height = 60
+	typeLine(t, a, "port the parser")
+	working(t, a, "read lexer.go")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+
+	lines := plainRows(a)
+	said := steerRowAt(a, "use the staging bucket")
+	if said < 0 {
+		t.Fatalf("no correction on the page:\n%s", strings.Join(lines, "\n"))
+	}
+	if strings.HasPrefix(lines[said], " ") {
+		t.Fatalf("the correction was stepped in with the machinery: %q", lines[said])
+	}
+	if work := steerToolRowAt(a, "read lexer.go"); work < 0 || !strings.HasPrefix(lines[work], "  ") {
+		t.Fatalf("the work is not in the machinery's column, so this proves nothing: %q", lines[work])
 	}
 }
 
 // THE GLYPH IS FURNITURE AND THE WORDS ARE THE PERSON'S, ONE READING STEP UNDER
 // THE QUESTION'S OWN. This is the whole of the ink decision and it is asserted
 // against the ramp constants rather than against a hex.
-func TestASettledElbowWearsDimFurnitureAndNarrWords(t *testing.T) {
+func TestASettledCorrectionWearsDimFurnitureAndNarrWords(t *testing.T) {
 	_, a := steered(t, "port the parser", "use the staging bucket")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
 	// Past the whole ramp, so what is left is the tier the row RESTS at.
 	a.clock = func() time.Time { return time.Now().Add(hudWarm + time.Second) }
-	a.entries[a.trunkOf(a.turn)].stale = true
+	steerEntryOf(t, a, 1).stale = true
 	a.touch()
 
 	var row string
@@ -134,7 +256,7 @@ func TestASettledElbowWearsDimFurnitureAndNarrWords(t *testing.T) {
 		}
 	}
 	if row == "" {
-		t.Fatalf("no elbow row:\n%s", strings.Join(plainRows(a), "\n"))
+		t.Fatalf("no correction row:\n%s", strings.Join(plainRows(a), "\n"))
 	}
 	if !strings.HasPrefix(row, sgrOf(a.pal.dim)) {
 		t.Fatalf("the elbow glyph is not dim furniture: %q", row)
@@ -142,8 +264,8 @@ func TestASettledElbowWearsDimFurnitureAndNarrWords(t *testing.T) {
 	if !strings.Contains(row, sgrOf(a.pal.narr)+"use the staging bucket") {
 		t.Fatalf("the correction's words are not one step under the question's: %q", row)
 	}
-	// AND THE QUESTION ITSELF IS UNMOVED. The elbow is one step BELOW it, so the
-	// step only means anything while the trunk stays where it was.
+	// AND THE QUESTION ITSELF IS UNMOVED. The correction is one step BELOW it, so
+	// the step only means anything while the question stays where it was.
 	for _, line := range rows(a) {
 		if strings.HasPrefix(plain(line.text), "› port the parser") &&
 			!strings.Contains(line.text, sgrOf(a.pal.muted)) {
@@ -154,17 +276,12 @@ func TestASettledElbowWearsDimFurnitureAndNarrWords(t *testing.T) {
 
 // A WIDE CORRECTION WRAPS ONTO A HANGING INDENT UNDER ITS OWN FIRST CHARACTER,
 // which is the person's own block's rule and [bandClauses]'.
-func TestAWideElbowWrapsUnderItsOwnFirstCharacter(t *testing.T) {
+func TestAWideCorrectionWrapsUnderItsOwnFirstCharacter(t *testing.T) {
 	_, a := steered(t, "port it",
 		"use the staging bucket and not production, and leave the cache alone while you are in there")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
 
-	lines, at := plainRows(a), -1
-	for i, line := range lines {
-		if strings.HasPrefix(line, glyphSteer+"use the staging") {
-			at = i
-		}
-	}
+	lines, at := plainRows(a), steerRowAt(a, "use the staging")
 	if at < 0 || at+1 >= len(lines) {
 		t.Fatalf("the wide correction did not wrap:\n%s", strings.Join(lines, "\n"))
 	}
@@ -268,44 +385,6 @@ func TestACollapsedTurnKeepsTheQuestionsElbows(t *testing.T) {
 	}
 	if !strings.Contains(lines, glyphSteer+"use the staging bucket") {
 		t.Fatalf("the collapse ate the question's corrections:\n%s", lines)
-	}
-}
-
-// PAST THREE THEY FOLD, in the repo's one fold grammar — and the three that
-// stay are the NEWEST three, exactly as a tool cluster keeps the call that is
-// running and the two it followed.
-func TestTheElbowsFoldPastThreeAndKeepTheNewest(t *testing.T) {
-	_, a := steered(t, "port the parser", "one", "two", "three", "four", "five")
-
-	elbows := elbowRowsOf(a)
-	if len(elbows) != 1+steerWindow {
-		t.Fatalf("the elbows did not fold to %d rows and a fold line:\n%s",
-			steerWindow, strings.Join(elbows, "\n"))
-	}
-	if want := glyphSteer + bandFoldWord(2, steerFoldWhat, true); elbows[0] != strings.TrimRight(fit(want, a.width), " ") {
-		t.Fatalf("the fold line is %q, want %q", elbows[0], want)
-	}
-	for i, word := range []string{"three", "four", "five"} {
-		if !strings.HasPrefix(elbows[i+1], glyphSteer+word) {
-			t.Fatalf("the fold kept the wrong three:\n%s", strings.Join(elbows, "\n"))
-		}
-	}
-	if strings.Contains(strings.Join(elbows, "\n"), glyphSteer+"one") {
-		t.Fatalf("a folded correction is still drawn:\n%s", strings.Join(elbows, "\n"))
-	}
-}
-
-// AND THE FOLD LINE IS A DOOR, which opens and shuts on the same press.
-func TestTheElbowFoldLineOpensAndShutsOnAClick(t *testing.T) {
-	_, a := steered(t, "port the parser", "one", "two", "three", "four", "five")
-
-	clickHit(t, a, hitSteerFold)
-	if !strings.Contains(strings.Join(elbowRowsOf(a), "\n"), glyphSteer+"one") {
-		t.Fatalf("the fold did not open:\n%s", strings.Join(elbowRowsOf(a), "\n"))
-	}
-	clickHit(t, a, hitSteerFold)
-	if strings.Contains(strings.Join(elbowRowsOf(a), "\n"), glyphSteer+"one") {
-		t.Fatalf("the fold did not shut again:\n%s", strings.Join(elbowRowsOf(a), "\n"))
 	}
 }
 
@@ -422,25 +501,22 @@ func TestASteerlessTranscriptIsUnchanged(t *testing.T) {
 	// The same conversation through the same renderer with the elbows' whole
 	// machinery inert: no block carries one, so no row may differ.
 	for i := range a.entries {
-		if len(a.entries[i].steers) != 0 || a.entries[i].steerFoldRow != 0 {
-			t.Fatalf("a steerless block grew steer state: %#v", a.entries[i].steers)
+		if a.entries[i].steer != nil {
+			t.Fatalf("a steerless block grew steer state: %#v", a.entries[i].steer)
 		}
 	}
 	for _, r := range drawn {
 		if strings.Contains(plain(r.text), glyphSteer) {
 			t.Fatalf("an elbow appeared in a conversation nobody steered: %q", r.text)
 		}
-		if r.hit == hitSteerFold {
-			t.Fatalf("a steerless row answers to the elbows' fold: %q", r.text)
-		}
 	}
 }
 
-// AND THE TRUNK AND ITS ELBOWS SURVIVE A RELOAD, rebuilt from the journal's own
-// marks. A steer replays as an ordinary user message with a mark on it, and a
-// surface that drew the mark-less shape would put questions in the transcript
-// nobody asked.
-func TestAReloadRebuildsTheTrunkAndItsElbowsFromTheMarks(t *testing.T) {
+// AND THE QUESTION AND ITS CORRECTION SURVIVE A RELOAD, rebuilt from the
+// journal's own marks. A steer replays as an ordinary user message with a mark
+// on it, and a surface that drew the mark-less shape would put questions in the
+// transcript nobody asked.
+func TestAReloadRebuildsTheCorrectionInPlaceFromTheMark(t *testing.T) {
 	sent := time.Now().Add(-time.Hour)
 	past := []session.DisplayEntry{
 		{Role: "user", Text: "port the parser"},
@@ -451,26 +527,29 @@ func TestAReloadRebuildsTheTrunkAndItsElbowsFromTheMarks(t *testing.T) {
 	a := newTestApp(&fakeAgent{past: past})
 	a.replay()
 
-	if got := len(a.entries); got != 3 {
-		t.Fatalf("the reload built %d blocks, want the two questions and the answer:\n%#v",
+	if got := len(a.entries); got != 4 {
+		t.Fatalf("the reload built %d blocks, want two questions, the correction, and the answer:\n%#v",
 			got, a.entries)
 	}
-	trunk := a.entries[0]
-	if len(trunk.steers) != 1 || trunk.steers[0].words != "use the staging bucket" {
-		t.Fatalf("the correction did not come back onto its trunk: %#v", trunk.steers)
+	correction := a.entries[1]
+	if correction.kind != entrySteer || correction.steer == nil || correction.steer.words != "use the staging bucket" {
+		t.Fatalf("the correction did not come back in place: %#v", correction)
 	}
-	if !trunk.steers[0].consumed {
+	if !correction.steer.consumed {
 		t.Fatal("a replayed correction that landed came back as though it had not")
 	}
 	// THE TURN COUNT IS THE QUESTIONS', not the messages'. A steer that bumped it
 	// would split one turn's work across two and fold the wrong rows.
-	if a.entries[2].turn != a.entries[0].turn+1 {
+	if a.entries[3].turn != a.entries[0].turn+1 {
 		t.Fatalf("the second question is %d turns after the first, want one",
-			a.entries[2].turn-a.entries[0].turn)
+			a.entries[3].turn-a.entries[0].turn)
 	}
 	lines := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(lines, "› port the parser\n"+glyphSteer+"use the staging bucket") {
-		t.Fatalf("the reloaded family is not trunk-then-elbow:\n%s", lines)
+	question := strings.Index(lines, "› port the parser")
+	steer := strings.Index(lines, glyphSteer+"use the staging bucket")
+	answer := strings.Index(lines, "done")
+	if question < 0 || steer < 0 || answer < 0 || !(question < steer && steer < answer) {
+		t.Fatalf("the reloaded correction is not in journal order:\n%s", lines)
 	}
 	// AND A REPLAYED LANDING IS A FACT AND NOT NEWS: it comes back settled, never
 	// wearing the ramp's fresh tier for a correction made an hour ago.

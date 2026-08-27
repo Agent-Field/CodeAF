@@ -43,6 +43,7 @@ type fakeAgent struct {
 	sent    []string
 	marked  []string
 	follows []string
+	steered []string
 	images  []session.Image
 
 	model  string
@@ -132,6 +133,16 @@ func (f *fakeAgent) FollowUp(text string) (<-chan session.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.follows = append(f.follows, text)
+	if f.failing != nil {
+		return nil, f.failing
+	}
+	return f.open(), nil
+}
+
+func (f *fakeAgent) Steer(text string) (<-chan session.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steered = append(f.steered, text)
 	if f.failing != nil {
 		return nil, f.failing
 	}
@@ -718,12 +729,15 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 		t.Fatalf("handshake: %s", frame.Error)
 	}
 
-	// The three stream-openers answer with a stream id and nothing else.
+	// The stream-openers answer with a stream id and nothing else.
 	if ref := decode[StreamRef](t, l.ok(1, MethodSubmit, SubmitArgs{Text: "write the readme"}).Payload); ref.Stream == 0 {
 		t.Error("Submit answered with no stream")
 	}
 	if ref := decode[StreamRef](t, l.ok(2, MethodFollowUp, SubmitArgs{Text: "and the changelog"}).Payload); ref.Stream == 0 {
 		t.Error("FollowUp answered with no stream")
+	}
+	if ref := decode[StreamRef](t, l.ok(99, MethodSteer, SubmitArgs{Text: "use staging"}).Payload); ref.Stream == 0 {
+		t.Error("Steer answered with no stream")
 	}
 
 	l.ok(3, MethodInterrupt, nil)
@@ -774,6 +788,9 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 	}
 	if len(agent.follows) != 1 || agent.follows[0] != "and the changelog" {
 		t.Errorf("FollowUp carried %q", agent.follows)
+	}
+	if len(agent.steered) != 1 || agent.steered[0] != "use staging" {
+		t.Errorf("Steer carried %q", agent.steered)
 	}
 	if agent.interrupts != 1 || agent.compacts != 1 || agent.window != 200000 {
 		t.Errorf("interrupts=%d compacts=%d window=%d", agent.interrupts, agent.compacts, agent.window)

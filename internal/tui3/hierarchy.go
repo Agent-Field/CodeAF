@@ -171,8 +171,17 @@ func answerBreath(es []entry, i int) bool {
 	// readings of one span. A divider is stepped over: it is a line about the
 	// session rather than a step in it.
 	for at := i - 1; at >= 0 && es[at].turn == e.turn; at-- {
+		if entryWithdrawn(&es[at]) {
+			// A correction the turn never gave the model draws nothing, so it is
+			// stepped over here for the divider's reason: a block with no rows
+			// cannot be the work this answer came out of (steerelbow.go).
+			continue
+		}
 		switch es[at].kind {
-		case entryUser:
+		// AND A CORRECTION IS ONE OF THE PERSON'S MESSAGES. The walk is looking
+		// for work between this answer and the last thing they said, and a
+		// sentence they typed into the turn is the last thing they said.
+		case entryUser, entrySteer:
 			return false
 		case entryDivider:
 		default:
@@ -205,7 +214,10 @@ func (a *app) cutTurn(turn int) {
 	changed := false
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.turn != turn || e.kind == entryUser || e.cut {
+		// AND A CORRECTION IS NOT MARKED EITHER, for the person's own message's
+		// reason said again: it is a thing they said in full, and only the work
+		// and the prose the turn managed to produce were cut short (steerelbow.go).
+		if e.turn != turn || e.kind == entryUser || e.kind == entrySteer || e.cut {
 			continue
 		}
 		e.cut, e.stale, changed = true, true, true

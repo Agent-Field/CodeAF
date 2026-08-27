@@ -79,6 +79,7 @@ type WrappedAgent interface {
 	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	FollowUp(text string) (<-chan session.Event, error)
+	Steer(text string) (<-chan session.Event, error)
 	Interrupt()
 	Compact(ctx context.Context) error
 	Close() error
@@ -1172,13 +1173,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	if agent == nil {
 		return nil, errors.New("engine: no conversation is open")
 	}
-	// THE FOUR DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
+	// THE DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
 	// the check is here rather than in each of them so that a door added later
 	// cannot forget it. Everything else — reading the transcript, answering a
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSubmitImage, MethodSubmitFiles:
+	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
@@ -1215,6 +1216,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		events, err := agent.FollowUp(args.Text)
+		return s.stream(args.Text, events, err)
+
+	case MethodSteer:
+		args, err := arg[SubmitArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		events, err := agent.Steer(args.Text)
 		return s.stream(args.Text, events, err)
 
 	case MethodSubmitImage:

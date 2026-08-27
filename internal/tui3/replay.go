@@ -497,26 +497,26 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			// as one would put a question in the transcript that nobody asked, in
 			// the middle of the turn it was correcting.
 			//
-			// So it hangs off the block above it, the turn is NOT counted, and the
-			// mark's own instant and outcome come across with it. A file written
-			// before steering existed carries no mark and takes the ordinary road
-			// below, exactly as it always did.
+			// SO IT COMES BACK AS THE BLOCK IT WAS, IN THE PLACE IT WAS. The
+			// journal keeps a steer where it happened — between the turn's own
+			// messages — so replaying it in order is the surface agreeing with the
+			// record rather than gathering the corrections back up under a question
+			// they were said minutes after. The turn is NOT counted, because a steer
+			// never opened one, and the mark's own instant and outcome come across
+			// with it. A file written before steering existed carries no mark and
+			// takes the ordinary road below, exactly as it always did.
+			//
+			// A REPLAYED CORRECTION IS SETTLED AND UNFADED. [steerElbow.landed] is
+			// left zero on purpose: the journal keeps the instant the person SENT
+			// the words and not the boundary the model was given them at, and a
+			// fade measured from the wrong instant would light a row from yesterday
+			// as though it had just landed.
 			if e.Steer != nil && text != "" {
-				at := lastTrunk(blocks)
-				if at < 0 {
-					// THE WINDOW OPENED PART-WAY THROUGH A STEERED TURN and the
-					// question is above its top. The corrections are still drawn —
-					// they are what the person said — hanging from a trunk with no
-					// words of its own rather than promoted into questions of their
-					// own, which is the one thing they are not (render.go's
-					// entryUser draws a wordless trunk as its elbows alone).
-					turn++
-					turns++
-					blocks = append(blocks, entry{kind: entryUser, turn: turn})
-					at = len(blocks) - 1
-				}
-				blocks[at].steers = append(blocks[at].steers, steerElbow{
-					words: text, at: e.Steer.At, consumed: e.Steer.Consumed,
+				blocks = append(blocks, entry{
+					kind: entrySteer, turn: turn,
+					steer: &steerElbow{
+						words: text, at: e.Steer.At, consumed: e.Steer.Consumed,
+					},
 				})
 				continue
 			}
@@ -590,19 +590,6 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 		}
 	}
 	return blocks, turns
-}
-
-// lastTrunk is the person's own block a replayed correction hangs from: the
-// newest one in what has been rebuilt so far (steerelbow.go). It is -1 when the
-// window has not drawn one yet, which is a window that opened part-way through
-// a steered turn and is the case the caller handles.
-func lastTrunk(blocks []entry) int {
-	for at := len(blocks) - 1; at >= 0; at-- {
-		if blocks[at].kind == entryUser {
-			return at
-		}
-	}
-	return -1
 }
 
 // replayUserLine is a replayed message as the person sent it: their words, and
