@@ -119,6 +119,17 @@ func (a *app) roomDoors() (taskRoomAgent, bool) {
 	return doors, ok
 }
 
+// taskSteerDoor is separate from the live-watch door because a hosted room is
+// refreshed by bounded journal reads while its one write still crosses.
+type taskSteerDoor interface {
+	SteerTask(id uint64, text string) (bool, error)
+}
+
+func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
+	door, ok := a.agent.(taskSteerDoor)
+	return door, ok
+}
+
 // taskModelDoor is the fourth door onto a node (internal/session's
 // [Agent.RetargetTask]): the person's explicit pick of another model for THIS
 // node, taking effect on its next turn.
@@ -291,6 +302,10 @@ type roomRecordMsg struct {
 	err    error
 }
 
+// farRoomTickMsg is the room's own beat. It schedules a bounded read as a
+// command; the update loop itself never waits on the other machine.
+type farRoomTickMsg struct{ gen int }
+
 // deck is the page as the renderers take it (render.go). It is a view over the
 // live fields rather than a copy: the row cache each entry carries is written
 // through it.
@@ -435,9 +450,9 @@ const roomTail = 120
 func (a *app) openRoom(id uint64, title string) {
 	doors, ok := a.roomDoors()
 	if !ok {
-		if a.hosted() && a.farRecord != nil {
+		if a.hosted() && (a.farRoomRecord != nil || a.farRecord != nil) {
 			node := a.tasks[id]
-			if node != nil && node.transcript != "" {
+			if node != nil && (a.farRoomRecord != nil || node.transcript != "") {
 				a.openFarRoom(node, title)
 				return
 			}
@@ -516,10 +531,10 @@ func (a *app) openRoom(id uint64, title string) {
 	a.roomPump = tea.Batch(waitRoom(lane, room.gen), a.wake())
 }
 
-// openFarRoom opens a landed hosted node as a read-only page and asks the
-// engine for its bounded journal tail off the program loop. No steering,
-// stopping, or model-changing door is added here: without a wire method those
-// actions are absent, while reading the record is complete in itself.
+// openFarRoom opens a hosted node immediately and asks the engine for its
+// bounded journal tail off the program loop. The id names running work before
+// its record has a transcript URI, which is the gap the record-only door could
+// never cross.
 func (a *app) openFarRoom(node *taskNode, title string) {
 	if title == "" {
 		title = taskIDWord(node.id)
@@ -528,22 +543,29 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	room := &taskRoom{
 		id: node.id, title: title, gen: a.roomGen, unfolded: map[int]bool{},
 		live: -1, think: -1, mdAt: a.now(), stick: true, dirty: true,
-		done: true, loading: true,
+		done:    node.state != session.TaskQueued && node.state != session.TaskRunning,
+		loading: true,
 	}
 	a.room = room
 	a.sel = -1
 	a.dropHover()
 	a.touch()
-	read, uri, gen := a.farRecord, node.transcript, room.gen
+	read, id, uri, gen := a.farRoomRecord, node.id, node.transcript, room.gen
 	a.roomPump = func() tea.Msg {
-		record, err := read(uri, session.TaskJournalTail)
+		var record session.TaskRecord
+		var err error
+		if read != nil {
+			record, err = read(id, session.TaskJournalTail)
+		} else {
+			record, err = a.farRecord(uri, session.TaskJournalTail)
+		}
 		return roomRecordMsg{gen: gen, record: record, err: err}
 	}
 }
 
-func (a *app) farRoomRead(msg roomRecordMsg) {
+func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	if a.room == nil || a.room.gen != msg.gen {
-		return
+		return nil
 	}
 	a.room.loading = false
 	if msg.err == nil {
@@ -551,6 +573,35 @@ func (a *app) farRoomRead(msg roomRecordMsg) {
 	}
 	a.roomResolveUnfinished()
 	a.roomTouched()
+	node := a.tasks[a.room.id]
+	if node != nil && node.kind == session.TaskKindJob {
+		return nil
+	}
+	if node == nil || (node.state != session.TaskQueued && node.state != session.TaskRunning) {
+		a.room.done = true
+		return nil
+	}
+	return farRoomTick(a.room.gen)
+}
+
+// farRoomEvery is deliberately slower than the paint clock: a journal tail is
+// a disk-and-wire reading, not animation. Four reads a second keeps prose live
+// without turning thirty frames a second into thirty calls.
+const farRoomEvery = 250 * time.Millisecond
+
+func farRoomTick(gen int) tea.Cmd {
+	return tea.Tick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
+}
+
+func (a *app) farRoomPoll(gen int) tea.Cmd {
+	if a.room == nil || a.room.gen != gen || a.room.done || a.farRoomRecord == nil {
+		return nil
+	}
+	read, id := a.farRoomRecord, a.room.id
+	return func() tea.Msg {
+		record, err := read(id, session.TaskJournalTail)
+		return roomRecordMsg{gen: gen, record: record, err: err}
+	}
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -1511,7 +1562,7 @@ func (a *app) steer() tea.Cmd {
 		a.raiseGuard(line, "")
 		return nil
 	}
-	doors, ok := a.roomDoors()
+	doors, ok := a.taskSteerDoors()
 	if !ok {
 		a.roomNote(roomUnavailableWord)
 		return nil
@@ -3025,7 +3076,7 @@ func (a *app) roomRecordRows(out []row, width int) []row {
 	// anything else, where the report is prose somebody wrote.
 	if report := strings.TrimSpace(node.report); report != "" {
 		if node.kind == session.TaskKindJob {
-			out = append(out, row{text: a.pal.dim(fit(report, width)), entry: -1})
+			out = append(out, row{text: a.pal.dim(fit(a.hostedJobLog(report), width)), entry: -1})
 		} else {
 			for _, line := range wrap(report, width) {
 				out = append(out, row{text: a.pal.dim(line), entry: -1})

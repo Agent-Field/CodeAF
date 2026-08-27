@@ -1365,21 +1365,29 @@ does in the conversation.
 
 What refuses to open: a proposal whose task has had no update yet (the id is real, but a
 room on it would be an empty page with nothing coming), and a queued task by way of `→`
-(it has no worker yet, so there is nothing to talk to). An agent with no rooms at all
+(it has no worker yet, so there is nothing to talk to). A local agent with no room door
 writes one note in the conversation: `room unavailable — this session has no task rooms`.
+When the rail over `--host` already draws the far task, that refusal is never used: the
+far task id is itself the room door, including while the task is running.
 
 ## Task roster and rooms while running on another machine
 
-Over `--host`, the roster beside the conversation lists that far conversation's landed
-tasks from the far machine's record. `ctrl+g` closes or restores it exactly as it does for
+Over `--host`, the roster beside the conversation lists that far conversation's tasks
+from the far machine's record. `ctrl+g` closes or restores it exactly as it does for
 a local conversation; it never falls back to tasks on the machine holding the screen.
 
-Opening a landed row is asynchronous. The room opens at once with
+Opening a queued, running, or landed row is asynchronous. The room opens at once with
 `bringing this task's transcript from the other machine…`, then replaces that line with
-the bounded end of the task's transcript when it arrives. The calls, results, reasoning,
-and messages use the ordinary room renderer. The room is read-only over `--host`:
-steering, `x` to stop, and changing the task's model are absent because this connection
-does not carry those actions. Leaving with `esc` or `←` works normally.
+the bounded end of the task's transcript when it arrives. While work runs, the room reads
+that bounded tail on its own beat and `nothing on this page yet — it fills in as the task
+works` lasts only until the first block arrives. The calls, results, reasoning, and
+messages use the ordinary room renderer. `enter` steers the far worker; `x` raises the
+ordinary confirmation and stopping uses the far engine's own sentence. Changing the
+task's model remains absent over this connection. Leaving with `esc` or `←` works normally.
+
+A background job still has no transcript. Its room says `a background job keeps a log,
+not a transcript`, and both its row and room prefix the far log path with that machine's
+name; they never offer the same spelling as a local path.
 
 ## What is different inside a room
 

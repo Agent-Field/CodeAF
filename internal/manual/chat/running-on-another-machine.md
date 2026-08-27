@@ -417,16 +417,19 @@ The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
    you would see while sitting at that machine. Opening one first says
    `bringing this task's transcript from the other machine…`, then draws the task's own
-   transcript when it arrives. That hosted room is for reading: steering, stopping, and
-   changing its model are absent because those actions do not cross this connection yet.
+   transcript when it arrives. A running row opens too: its page reads the bounded tail on
+   its own beat, says `nothing on this page yet — it fills in as the task works` before the
+   first block, and fills as the far worker writes. `enter` steers that worker and `x`
+   stops it through the far engine. Changing its model is still absent.
 
 9. **Starting tasks works on the far machine.** `/task <brief>`, `/task solo <brief>` and
    `/task adaptive <brief>` send the brief to that conversation's engine. The far machine
    shapes, admits and records the work, and the surface answers with `single task <id>
    started · <title>` or `adaptive task <id> started · <title>`. A `propose_task` card works
    the same way: answering yes crosses to the engine, which starts and records the task.
-   The rail refreshes from the far `Places.Task` record. A hosted task room is still for
-   reading: steering, stopping, and changing its model do not cross this connection yet.
+   The rail refreshes from the far task record. Opening its running row never answers
+   `room unavailable — this session has no task rooms`; the far task id opens its live
+   room, and steering and stopping cross to that task's engine.
 
 10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes

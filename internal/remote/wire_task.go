@@ -7,7 +7,39 @@ const (
 	MethodTaskStart    = "Task.Start"
 	MethodPlannerStart = "Task.StartPlanner"
 	MethodTaskJudge    = "Task.Judge"
+	MethodTaskRoom     = "Task.Room"
+	MethodTaskSteer    = "Task.Steer"
+	MethodTaskStop     = "Task.Stop"
 )
+
+// TaskRoomArgs names a node in the engine's current conversation. Unlike a
+// record URI, the id exists before the node has written its first journal line.
+type TaskRoomArgs struct {
+	ID   uint64 `json:"id"`
+	Tail int    `json:"tail,omitempty"`
+}
+
+// TaskSteerArgs carries one person's correction to a running node.
+type TaskSteerArgs struct {
+	ID   uint64 `json:"id"`
+	Text string `json:"text"`
+}
+
+// TaskSteered preserves the local door's distinction for a node waiting on
+// its own pieces; the room uses it to say that the line woke the task.
+type TaskSteered struct {
+	Waiting bool `json:"waiting,omitempty"`
+}
+
+// TaskStopArgs uses the session's already-prefixed work id unchanged.
+type TaskStopArgs struct {
+	ID string `json:"id"`
+}
+
+// TaskStopped carries the engine's person-facing sentence without rewriting it.
+type TaskStopped struct {
+	Line string `json:"line,omitempty"`
+}
 
 // TaskStartArgs carries the person's brief without interpreting it locally.
 type TaskStartArgs struct {

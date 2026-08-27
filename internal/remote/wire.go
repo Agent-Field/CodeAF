@@ -146,7 +146,13 @@ import (
 // precisely the guess Decision 3 refuses to let two builds make three turns
 // into a conversation. So the number moves and the mismatch is refused at the
 // door, in the same sentence naming the same fix.
-const Version = 6
+//
+// VERSION 7 opens a running task's room by id and carries its steer and stop
+// verbs. A running node has no record URI yet, so version 5's Places.Task door
+// cannot name it; the node id belongs to the current engine conversation and
+// exists from admission onward. The room read is bounded and the two writes
+// preserve the session agent's own answers.
+const Version = 7
 
 // Frame is one line on the wire, either direction.
 type Frame struct {

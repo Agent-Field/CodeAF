@@ -577,6 +577,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// (internal/tui3's [app.readTaskTail]), so the wire's own deadline is the
 		// only clock it needs.
 		TaskRecord: client.TaskRecord,
+		TaskRoom:   client.Agent().TaskRoom,
 		TaskIndex: func() ([]session.TaskIndexEntry, bool) {
 			far, known := world.world()
 			if !known {
