@@ -10,6 +10,21 @@ const (
 	MethodTaskRoom     = "Task.Room"
 	MethodTaskSteer    = "Task.Steer"
 	MethodTaskStop     = "Task.Stop"
+	// MethodTaskWatch is the surface saying it draws tasks, and it is the only
+	// one of these that asks for nothing back: what it buys is the engine
+	// pushing "task" frames from then on (tasklane.go). It is sent once per
+	// conversation the surface takes up, never on a frame.
+	MethodTaskWatch = "Task.Watch"
+	// MethodTaskResolve answers one task proposal. It is the fourth thing a
+	// hosted rail needs and the one nothing carried: the card drew, the keys
+	// worked, and `y` went nowhere — so the whole task seam failed to assert on
+	// a hosted surface and the rail was never even subscribed.
+	MethodTaskResolve = "Task.Resolve"
+	// MethodTaskPending is the proposals the far engine is still waiting on. A
+	// surface asks it where the local one reads [session.Agent.PendingTasks] —
+	// when a turn ends with a proposal card still on screen — because a card
+	// about a question nobody is asking any more has to stop asking it.
+	MethodTaskPending = "Task.Pending"
 )
 
 // TaskRoomArgs names a node in the engine's current conversation. Unlike a
@@ -69,4 +84,23 @@ type TaskJudged struct {
 	Parallel bool     `json:"parallel,omitempty"`
 	Parts    []string `json:"parts,omitempty"`
 	Why      string   `json:"why,omitempty"`
+}
+
+// TaskPending is the open proposals, oldest id first — [session.Agent.PendingTasks]
+// as it crosses. An empty list is the honest answer that nothing is waiting, and
+// it is why the field is not omitempty: "no proposals" and "this engine did not
+// say" have to stay two different readings on the way back.
+type TaskPending struct {
+	IDs []uint64 `json:"ids"`
+}
+
+// TaskResolveArgs is one person's answer to one proposal, in the engine's own
+// three fields ([session.TaskAnswer]): whether it may run, the correction to
+// append if they redirected it, and the model they picked where the card
+// offered a choice.
+type TaskResolveArgs struct {
+	ID       uint64 `json:"id"`
+	Approved bool   `json:"approved,omitempty"`
+	Redirect string `json:"redirect,omitempty"`
+	Model    string `json:"model,omitempty"`
 }

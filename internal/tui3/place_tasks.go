@@ -85,9 +85,11 @@ type tasksPlace struct {
 	world session.World
 	mine  tasksMine
 	// awayAt stamps the reading of the OTHER WINDOWS that this grouping was
-	// built from ([session.Elsewhere.Read]). It is one comparison, and it is what
-	// [tasksPlace.regroup] hangs on.
+	// built from ([session.Elsewhere.Read]), and mineAt stamps THIS window's own
+	// row-space at the same moment ([app.railStamp]). They are two comparisons,
+	// and they are what [tasksPlace.regroup] hangs on.
 	awayAt time.Time
+	mineAt uint64
 }
 
 // taskSheetRows is the place's own page size: what pgup and pgdown move by, and
@@ -152,6 +154,7 @@ func (a *app) takeTaskReading() tasksPlace {
 		world:  world,
 		mine:   mine,
 		awayAt: a.elsewhere().Read,
+		mineAt: a.railStamp,
 		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays),
 			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
 	}
@@ -169,14 +172,23 @@ func (a *app) takeTaskReading() tasksPlace {
 // would go on withholding the word [taskRecordStoppedWord] from the row that
 // deserves it.
 //
-// It is ONE COMPARISON on the common frame: the reading's own stamp against the
-// held one. Nothing is re-walked and no clock is read unless the answer changed.
+// AND THIS WINDOW'S OWN GRAPH IS THE SECOND AUTHORITY, for the same reason and
+// with more force away from home. A task started while the page is up — by the
+// model, or by somebody typing `/task` — has no row in any file yet; it exists
+// only as a node on this surface's rail, which [app.taskSheetMine] folds in. Over
+// a CONNECTION that is the only authority there is: nothing on the far end
+// answers [session.Agent.Elsewhere], so the stamp above never moves and a page
+// opened before the work started would go on drawing a roster without it until
+// somebody closed and reopened the page.
+//
+// It is TWO COMPARISONS on the common frame: each reading's own stamp against
+// the held one. Nothing is re-walked and no clock is read unless one changed.
 func (p *tasksPlace) regroup(a *app) {
-	at := a.elsewhere().Read
-	if at.Equal(p.awayAt) {
+	at, stamp := a.elsewhere().Read, a.railStamp
+	if at.Equal(p.awayAt) && stamp == p.mineAt {
 		return
 	}
-	p.awayAt = at
+	p.awayAt, p.mineAt = at, stamp
 	p.mine = a.taskSheetMine()
 	p.reading = readTasks(p.world, p.mine, p.reading.win, p.reading.seen, p.reading.now)
 }

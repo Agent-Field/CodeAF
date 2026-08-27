@@ -363,6 +363,13 @@ type Session struct {
 	surfaces map[*server]struct{}
 	pumps    sync.WaitGroup
 
+	// tasklanes is the standing task subscription each surface that asked for
+	// one is holding, keyed by that surface. It is ONE PER WINDOW rather than
+	// one per session because the subscription replays the graph's roster as it
+	// opens, and a window that arrived late needs that replay for itself
+	// (tasklane.go states the whole of it).
+	tasklanes map[*server]*taskFeed
+
 	// driver is the one surface that may put words into this conversation, and
 	// arrivals is what "newest" means when the keyboard has to find one. Both
 	// are driver.go's, and that file is the whole of the rule.
@@ -397,6 +404,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		rings:      map[uint64]*ring{},
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
+		tasklanes:  map[*server]*taskFeed{},
 		empty:      time.Now(),
 	}
 }
@@ -454,6 +462,9 @@ func (sess *Session) Close() error {
 	agent, already := sess.agent, sess.closed
 	sess.closed = true
 	sess.mu.Unlock()
+	// The rails are left BEFORE the agent is, so no lane is still delivering off
+	// a conversation that is being flushed and shut (tasklane.go).
+	sess.closeTaskLanes()
 	if agent == nil || already {
 		return nil
 	}
@@ -569,6 +580,10 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // starts the clock an idle policy reads and turns every unanswered card into a
 // question nobody is looking at.
 func (sess *Session) detach(s *server) {
+	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
+	// else because leaving it is what ends the goroutine pumping frames at a
+	// pipe that is closing (tasklane.go).
+	sess.dropTaskLane(s)
 	sess.mu.Lock()
 	delete(sess.surfaces, s)
 	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
@@ -897,6 +912,12 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 		previous.Interrupt()
 		_ = previous.Close()
 	}
+	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
+	// ACTUALLY OPEN. The subscriptions above belonged to the agent just closed;
+	// each is reopened on the new one, which replays the new graph's roster
+	// (tasklane.go). It happens after the close so no lane can be handed rows
+	// from a conversation on its way out.
+	sess.retakeTaskLanes()
 	return json.Marshal(welcome)
 }
 
@@ -1253,6 +1274,33 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(TaskStopped{Line: line})
+	case MethodTaskWatch:
+		// THE RAIL, SUBSCRIBED. It answers nothing — what it buys is every task
+		// update from here on arriving as a "task" frame, including the roster
+		// replayed the moment the subscription opens (tasklane.go).
+		sess.watchTasks(s)
+		return nil, nil
+	case MethodTaskResolve:
+		args, err := arg[TaskResolveArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ResolveTask(uint64, session.TaskAnswer)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task proposals to answer")
+		}
+		door.ResolveTask(args.ID, session.TaskAnswer{
+			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
+		})
+		return nil, nil
+	case MethodTaskPending:
+		ids, known := sess.pendingTasks()
+		if !known {
+			return nil, errors.New("engine: this session has no task proposals to be waiting on")
+		}
+		return json.Marshal(TaskPending{IDs: ids})
 	case MethodTaskStart:
 		door, ok := agent.(interface {
 			StartTask(context.Context, string) (uint64, string, error)

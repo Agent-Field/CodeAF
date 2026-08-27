@@ -184,7 +184,7 @@ func farRecordEngine(t *testing.T) (*Loop, string, string) {
 			World:      func() session.World { return session.World{} },
 			PlacesRoot: root,
 			TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
-				return session.ReadTaskRecordUnder(root, uri, tail)
+				return session.ReadTaskRecordUnder([]string{root}, uri, tail)
 			},
 		}, nil
 	}})

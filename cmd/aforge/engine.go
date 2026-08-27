@@ -580,7 +580,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// [session.ReadTaskRecordUnder] applies rather than trusting the URI the
 		// other end handed back.
 		TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
-			return session.ReadTaskRecordUnder(session.PlacesRoot(), uri, tail)
+			return session.ReadTaskRecordUnder(session.RecordRoots(), uri, tail)
 		},
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them
