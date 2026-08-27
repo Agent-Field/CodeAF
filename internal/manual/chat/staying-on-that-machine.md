@@ -308,7 +308,7 @@ it is holding nothing — no window attached, no turn running, no question waiti
 was holding is closed properly on the way out and every transcript is flushed. Nothing that
 was still going is cut short for this.
 
-## Stop the thing holding my session — aforge engine --stop
+## How do I stop the old engine holding my session — aforge engine --stop
 
 Run it on the machine that is holding it:
 
@@ -358,7 +358,7 @@ account connections all wait for you now. What is left is not about anybody bein
 room; it is about a road that has not been built. Nothing here half-works: each one is
 absent rather than present and failing.
 
-## Make it not hold the session
+## Make one connection not use the session host
 
 `aforge engine --no-host` serves that one connection on the pipe, the old way, without
 looking for or starting a host. Its help text reads:
