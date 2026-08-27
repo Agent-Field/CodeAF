@@ -1,6 +1,6 @@
 package connect
 
-// The 26 tool servers this build ships, and where each one answers.
+// The 27 tool servers this build ships, and where each one answers.
 //
 // ── THIS FILE IS DATA ──
 //
@@ -282,6 +282,24 @@ func mcpCatalog() []mcpEntry {
 				Blurb:    "PostHog's own tools — your events, insights and feature flags — signed in in your browser.",
 			},
 			address: "https://mcp.posthog.com/mcp",
+		},
+		{
+			// https://learning.postman.com/docs/reference/postman-api/
+			// postman-mcp-server/postman-mcp-remote-server, read 2026-08-27:
+			// "Minimal (default)" answers at "https://mcp.postman.com/minimal",
+			// and the hosted address "supports OAuth … including Dynamic Client
+			// Registration (DCR), OAuth metadata, and PKCE". The same page says
+			// "OAuth isn't supported for the EU Postman MCP server", so the EU
+			// address (https://mcp.eu.postman.com/…) is deliberately not shipped:
+			// it takes a key and nothing else, and a row that connected and then
+			// failed at the first call would be worse than one that says so.
+			service: Service{
+				ID:       "postman",
+				Name:     "Postman",
+				Category: categoryDeveloper,
+				Blurb:    "Postman's own tools — your collections, specs and environments — signed in in your browser. Postman's EU workspaces cannot be reached this way.",
+			},
+			address: "https://mcp.postman.com/minimal",
 		},
 		{
 			// https://developer.clickup.com/docs/connect-an-ai-assistant-to-
