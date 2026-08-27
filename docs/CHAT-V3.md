@@ -843,20 +843,24 @@ pocket the node's does.
 
 **A node stops by a NAMED THRESHOLD, never by wandering.** Argus terminates on
 named thresholds rather than on a reviewer's judgement (§1, arXiv:2608.05144),
-and a node now has three: its 30-minute deadline, a **step budget**
-(`max_steps`, default 40) and a **no-progress count** (`no_progress`, default 6
-consecutive steps that changed no file). A step is one finished tool call —
-the only unit visible from outside the child's loop — and *progress* is
-narrower still: a **successful** `edit` or `write`, because an edit whose
-`oldText` did not match changed nothing and repeating it is the exact spin the
-counter exists to catch. Tripping either cancels the child and the report names
-which (`stopped: 6 steps without a change`), instead of leaving half an hour of
-silence for the deadline to collect. Both are per-node on the wire, because the
-right budget for a one-file rename and for a sweep across forty files is not the
-same number; a negative one is a stated error rather than a silently substituted
-default. The no-progress default is deliberately tight — it catches a spin in a
-minute — and a node with real reading to do before its first edit is expected to
-say so with `no_progress`.
+and a node now has three: its one-hour working deadline, a **step budget**
+(`max_steps`, default 200) and a **no-progress count** (`no_progress`, default 6
+consecutive steps that taught nothing, saved nothing and left nothing new in the
+worktree). A step is one finished tool call — the only unit visible from outside
+the child's loop — while progress includes a new question or answer, a saved
+file, worktree movement, and a handed-out part reporting back. A parent waiting
+on parts is parked: it spends neither clock nor no-progress allowance, and when
+the reports land the counter restarts from zero. **A failed part is still news,
+not an ending for its parent**: the same integration turn reads its failure
+reason beside the successful reports, then folds what landed and names or retries
+what is missing. Delayed tool events from before that report cannot spend the
+fresh allowance before the parent reads it; once the report has been carried
+into a request, genuine spinning over the fold is counted normally. Tripping a
+limit cancels the child and names the limit (`stopped: 6 steps without progress`)
+instead of leaving silence for the deadline to collect. Both counters are
+per-node on the wire because the right budget for a one-file rename and for a
+sweep across forty files is not the same number; a negative one is a stated
+error rather than a silently substituted default.
 
 **The goal contract has two tiers, and the line is admission.** Argus again:
 semantic clarifications move freely, the precise objective moves only with
