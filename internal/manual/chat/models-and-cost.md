@@ -1090,6 +1090,21 @@ above — do not describe this conversation as filling to 60%.
 
 aforge does not jump straight to summarizing. There are rungs before it.
 
+**During one long turn, tool output has its own working-set bound.** Once the live request
+estimate crosses **64,000 tokens** — or half the trusted context window when that is smaller
+— aforge replaces already-seen tool results from that turn with the same readable pointer
+lines described below. It works in whole tool batches, oldest first, while leaving the
+latest **20,000 tokens** verbatim (capped at a quarter of a smaller window). The result from
+the batch that just ran is never folded before the model has seen it, and neither your
+message nor any assistant text is folded.
+
+The pass aims below the trigger, at the midpoint between the kept tail and the working-set
+line. That headroom matters because rewriting a result makes the provider's cached prefix
+cold from that point; one deeper pass is cheaper than another rewrite every round. When it
+runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. The full
+result bytes remain in `logs/stubs/` (or the store), the model can `read` the path in each
+stub, and the session journal keeps the original result bytes.
+
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
 line naming the tool, its first line, its size and where the whole of it lives:
