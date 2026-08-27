@@ -514,8 +514,12 @@ knows which steps changed the deliverable — the files the task's own `write`, 
 generating hands saved — so it can say when that last happened and what the steps since
 brought back. The same line appears in the short account a checkpoint hands to whoever
 looks at the task: `work last changed: step 12 · results since: 9 · new lines since: 4%`.
-It is a description and not a rule: nothing is stopped for that fact alone, and the only
-threshold that ends anything is still the no-progress counter above.
+The clock sentence is a description and not a rule by itself. The session loop separately
+uses the same ledger for one structural rule the sentence makes visible: after five
+consecutive tool rounds in which every result has no fresh line, it adds a `[stuck]` note
+saying the answer is already in the transcript. Fresh information or a successful write
+resets that streak. The task-level no-progress counter above remains the rule that stops an
+entire task run.
 
 Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with

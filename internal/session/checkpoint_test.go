@@ -472,7 +472,11 @@ func grindingSteps(count int, sketch, brief string) []step {
 			arguments, _ := json.Marshal(struct {
 				Path string `json:"path"`
 			}{Path: fmt.Sprintf("./%d", round)})
-			return toolResponse(fmt.Sprintf("call-%d", round), "ls", string(arguments)), nil
+			// Visible progress keeps this fixture about checkpoint pricing rather
+			// than the independent silent-turn ladder, which now ends a turn at its
+			// third warning before the ordinary forty-round ceiling.
+			return toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
+				"Working through the next path."), nil
 		}
 	}
 	return steps

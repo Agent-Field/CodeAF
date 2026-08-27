@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -276,145 +275,31 @@ func TestTheOfferNamesHowManyFilesWouldBeReverted(t *testing.T) {
 	}
 }
 
-// The whole escalation, end to end: seven identical writes climb the ladder to
-// the person, the person takes the offer, the file the turn created is gone,
-// and the model is told — in the transcript — what was reverted and why.
-func TestTheThirdRungOffersTheRevertAndTakingItRestoresTheTurn(t *testing.T) {
+// The old third-rung recovery question must not survive the checkpoint hand-off
+// law. With no consent surface the turn ends honestly and, most importantly,
+// does not spend the dormant revert offer against work on disk.
+func TestTheThirdRungEndsWithoutRevertingTheTurn(t *testing.T) {
 	completer := &scriptedCompleter{steps: repeatedCalls("write", `{"path":"a.md","content":"loop\n"}`, 7)}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		// Prompt mode — somebody is answering — with write itself allowed, so the
-		// only question this turn can raise is the stuck one.
-		config.ApprovalPolicy = &approval.Policy{
-			Default: approval.ActionPrompt,
-			Tools:   map[string]approval.Action{"write": approval.ActionAllow},
-		}
-		config.AskConsent = true
+		config.AskConsent = false
 	})
 
 	events, err := agent.Submit(context.Background(), "go")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	var asked []Event
-	collected := drainAnswering(t, events, func(event Event) {
-		asked = append(asked, event)
-		agent.ResolveConsent(event.ID, true) // yes to the question as asked: revert
-	})
+	collected := collect(t, events)
 
 	if fired := nudgeEvents(collected); len(fired) != 3 {
 		t.Fatalf("nudges: got %d, want 3 — at the third, fifth and seventh call", len(fired))
 	}
-	if len(asked) != 1 {
-		t.Fatalf("the person was asked %d times, want 1 (the third rung)", len(asked))
-	}
-	if !strings.Contains(asked[0].Rule, "revert the 1 file this turn touched") {
-		t.Fatalf("the question did not carry the recovery offer: %q", asked[0].Rule)
-	}
-
-	if _, err := os.Stat(filepath.Join(workspace, "a.md")); !os.IsNotExist(err) {
-		t.Fatalf("the file the turn created survived the revert (%v)", err)
-	}
-	notes := transcriptNotes(agent)
-	if len(notes) != 3 {
-		t.Fatalf("notes: got %d, want 3 (two nudges and the person's choice)", len(notes))
-	}
-	if !strings.Contains(notes[2], "they chose to revert") ||
-		!strings.Contains(notes[2], "changes to a.md were reverted") ||
-		!strings.Contains(notes[2], "re-attempt from the clean base") {
-		t.Fatalf("the person's choice did not reach the model as a clean-base re-attempt: %q", notes[2])
-	}
-}
-
-// The other two answers never touch the disk. "Keep going" is the person
-// vouching for the approach; "stop" is the person ending it.
-func TestContinueAndStopLeaveTheDiskAlone(t *testing.T) {
-	for _, answer := range []struct {
-		name   string
-		choice RecoveryChoice
-		says   string
-	}{
-		{"continue", RecoveryContinue, "said to carry on"},
-		{"stop", RecoveryStop, "said no"},
-	} {
-		t.Run(answer.name, func(t *testing.T) {
-			completer := &scriptedCompleter{steps: repeatedCalls("write", `{"path":"a.md","content":"loop\n"}`, 7)}
-			agent, workspace := newTestAgent(t, completer, func(config *Config) {
-				config.ApprovalPolicy = &approval.Policy{
-					Default: approval.ActionPrompt,
-					Tools:   map[string]approval.Action{"write": approval.ActionAllow},
-				}
-				config.AskConsent = true
-			})
-
-			events, err := agent.Submit(context.Background(), "go")
-			if err != nil {
-				t.Fatalf("Submit: %v", err)
-			}
-			drainAnswering(t, events, func(event Event) {
-				agent.ResolveRecovery(event.ID, answer.choice)
-			})
-
-			if _, err := os.Stat(filepath.Join(workspace, "a.md")); err != nil {
-				t.Fatalf("%s reverted the turn anyway: %v", answer.name, err)
-			}
-			notes := transcriptNotes(agent)
-			if len(notes) != 3 || !strings.Contains(notes[2], answer.says) {
-				t.Fatalf("the answer did not reach the model as %q: %v", answer.says, notes)
-			}
-		})
-	}
-}
-
-// An answer nobody understands is read as the narrowest one: a typo must never
-// be the thing that deletes files.
-func TestAnUnknownRecoveryChoiceStops(t *testing.T) {
-	completer := &scriptedCompleter{steps: repeatedCalls("write", `{"path":"a.md","content":"loop\n"}`, 7)}
-	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.ApprovalPolicy = &approval.Policy{
-			Default: approval.ActionPrompt,
-			Tools:   map[string]approval.Action{"write": approval.ActionAllow},
-		}
-		config.AskConsent = true
-	})
-
-	events, err := agent.Submit(context.Background(), "go")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	drainAnswering(t, events, func(event Event) {
-		agent.ResolveRecovery(event.ID, RecoveryChoice("revert-everything-forever"))
-	})
-
 	if _, err := os.Stat(filepath.Join(workspace, "a.md")); err != nil {
-		t.Fatalf("an unknown answer reverted the turn: %v", err)
+		t.Fatalf("the loop ceiling reverted the turn without consent: %v", err)
 	}
-	if notes := transcriptNotes(agent); len(notes) != 3 || !strings.Contains(notes[2], "said no") {
-		t.Fatalf("an unknown answer was not read as stop: %v", notes)
+	if notice, ok := firstOfKind(collected, EventNotice); !ok || notice.Text != loopLeftUndoneNote {
+		t.Fatalf("left-undone notice = %q, present=%v", notice.Text, ok)
 	}
-}
-
-// The stuck question borrows the consent lane but is not about a tool, so
-// "and stop asking me" may not become a standing approval for whatever the
-// model happened to be repeating.
-func TestTheStuckQuestionNeverWritesAConsentMemo(t *testing.T) {
-	completer := &scriptedCompleter{steps: repeatedCalls("write", `{"path":"a.md","content":"loop\n"}`, 7)}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.ApprovalPolicy = &approval.Policy{
-			Default: approval.ActionPrompt,
-			Tools:   map[string]approval.Action{"write": approval.ActionAllow},
-		}
-		config.AskConsent = true
-	})
-
-	events, err := agent.Submit(context.Background(), "go")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	drainAnswering(t, events, func(event Event) {
-		agent.ResolveConsentRemember(event.ID, true, ConsentToolSession)
-	})
-
-	if _, known := agent.rememberedConsent("write"); known {
-		t.Fatal("answering the stuck question wrote a standing approval for the tool")
+	if notes := transcriptNotes(agent); len(notes) != loopNudgeCeiling {
+		t.Fatalf("notes: got %d, want %d before the ceiling", len(notes), loopNudgeCeiling)
 	}
 }

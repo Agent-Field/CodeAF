@@ -1,16 +1,14 @@
 package session
 
-// Revert-then-refix: the recovery move a stuck turn is offered, and the ledger
-// that makes it possible.
+// Revert-then-refix: the change ledger and the explicit recovery move it can
+// support.
 //
-// The loop detector (looped.go) can say a turn is going in circles. Until this
-// file, everything it could then do was WORDS: a note to the model, and past the
-// ceiling a question to the person whose two answers were also notes. Words are
-// the right first move — a model told what it has been doing often stops doing it
-// — and they are a poor third one, because by the third repetition the thing
-// standing between the model and a working approach is usually not advice. It is
-// the half-finished edit it made on the way in, which it is now reading back,
-// reasoning about, and editing again.
+// The loop detector (looped.go) used to open the recovery question below on its
+// third signal. It no longer does: past two notes the turn ends through the
+// checkpoint hand-off, and a shape that cannot be handed over ends with its work
+// left as-is. The ledger remains the source of file provenance for the session's
+// created-file accounting, while the revert helpers remain explicit operations
+// and are never spent automatically by the loop detector.
 //
 // PMCoder (https://arxiv.org/abs/2608.06811) names the move: on a deterministic
 // stuck signal, RESTORE THE EDITED FILES AND RE-FIX FROM A CLEAN BASE. The model
@@ -21,13 +19,10 @@ package session
 //
 // ── WHO DECIDES ──
 //
-// The person, always, and only when one is there. This is destructive: it
-// deletes files and throws away edits, on the judgement of a counter that says
-// three. So it rides the escalation that already exists — the third repetition
-// in prompt mode goes to the consent lane — and it rides it as the QUESTION's
-// own offer rather than as something that happens when nobody answers. Nothing
-// here runs on a timer, in a task node, or in a headless session; every one of
-// those keeps the note it got before this file existed.
+// The person, always, through an explicit recovery question. This is
+// destructive: it deletes files and throws away edits, so the loop detector's
+// structural threshold is not permission to run it. Nothing here runs on a
+// timer, in a task node, or in a headless session.
 //
 // ── WHAT IT CAN PUT BACK, AND WHAT IT SAYS INSTEAD ──
 //
@@ -276,7 +271,8 @@ const (
 	RecoveryStop RecoveryChoice = "stop"
 )
 
-// ResolveRecovery answers one stuck question with all three options available.
+// ResolveRecovery answers one explicit recovery question with all three options
+// available. The loop detector no longer opens one automatically.
 //
 // A surface that has only yes and no answers with [Agent.ResolveConsent] and the
 // mapping in [Agent.askAboutLoop] applies: yes takes the offer the question
@@ -335,9 +331,8 @@ func (ep *episode) offerFor() recoveryOffer {
 
 // ── the escalation ──────────────────────────────────────────────────────────
 
-// askAboutLoop puts the loop to the person as an ordinary consent question,
-// carrying the recovery offer when there is one, and turns whichever answer
-// comes back into something the model reads.
+// askAboutLoop is the explicit recovery question retained for callers that
+// already chose that destructive road. The loop detector no longer calls it.
 //
 // TWO OF THE THREE ANSWERS ARE NOTES, and that is deliberate: this machinery
 // observes a turn, it does not drive one. Only the revert acts, and only because

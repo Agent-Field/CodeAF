@@ -191,13 +191,13 @@ const (
 	// somebody's behalf and says nothing about it is a gate nobody can audit, so
 	// the event exists whether or not a given surface draws it.
 	EventGuardianAllowed
-	// EventNudge says the turn has been caught going in circles and has been
-	// nudged (looped.go): Tool is the call that repeated, Count is how many times.
-	// A surface renders it as "stuck? nudged · <tool> ×N".
+	// EventNudge says the turn has been caught going in circles (looped.go): Tool
+	// is the call that repeated, Count is how many times. A surface renders it as
+	// "stuck? nudged · <tool> ×N" for the warning rungs.
 	//
-	// The nudge itself is a note in the transcript, not an error and not a
-	// refusal — the model keeps working, having been told what it has been doing.
-	// This event is only how a person gets to SEE that happen.
+	// The first two nudges are notes in the transcript, not errors or refusals.
+	// Past that ceiling the same event accompanies the checkpoint hand-off rather
+	// than a third note. This event is how a person gets to SEE either happen.
 	EventNudge
 	// EventNotice carries one line in Text about what the turn's own machinery is
 	// doing to make the request land — not the model's words, and not a failure.

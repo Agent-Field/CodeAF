@@ -673,6 +673,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// next request has not been assembled, and a note dropped here rides into
 		// it exactly as a person's steering does.
 		episode.postFeedback(ctx, hub, calls, results, visibleText)
+		// A THIRD LOOP SIGNAL ENDS THE TURN. Post-feedback can observe the
+		// trajectory but does not own the request, usage or checkpoint meter, so it
+		// leaves this bit on the episode and the turn spends it here through the
+		// same governed hand-off as the ordinary checkpoint ceiling. If that road
+		// is unavailable, the helper still seals the turn with an honest line about
+		// what was left rather than letting a fourth warning disappear into it.
+		if episode.loopHandoff && a.handOverLoopingTurn(ctx, hub, user, meter, &turn, started, model) {
+			return true
+		}
 
 		// AND THE RACE STARTED AT THE FRONT OF THE TURN IS ASKED WHETHER IT HAS
 		// ANSWERED YET (route_judge.go). It is a non-blocking read: a question still
