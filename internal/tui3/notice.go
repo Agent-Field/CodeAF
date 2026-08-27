@@ -3,8 +3,9 @@ package tui3
 import (
 	"fmt"
 	"regexp"
-	"runtime/debug"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 )
 
 // THE NOTICES: telling a person one thing at the moment it becomes true.
@@ -585,23 +586,8 @@ func (a *app) lastAnswerRunes() int {
 	return 0
 }
 
-// buildStamp is what this binary calls itself, for the news channel: the
-// module version a `go install` recorded, or the commit a checkout was built
-// from, or "" when the toolchain wrote down neither. The Makefile stamps no
-// version of its own, so the commit is what tells one `make build` from the
-// next.
+// buildStamp is the stable source identity for the news channel. It leaves the
+// build time out because rebuilding unchanged source must not repeat old news.
 func buildStamp() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	if v := strings.TrimSpace(info.Main.Version); v != "" && v != "(devel)" {
-		return v
-	}
-	for _, s := range info.Settings {
-		if s.Key == "vcs.revision" {
-			return s.Value
-		}
-	}
-	return ""
+	return buildinfo.Revision()
 }

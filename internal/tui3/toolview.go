@@ -1282,17 +1282,17 @@ func leftWord(left time.Duration) string {
 // Only bash is bounded on the wire, and only a FOREGROUND bash: the session's
 // wrapper starts a background call as a job and returns, and a job runs until
 // it is done (internal/session's backgroundBash). The number is the model's own
-// when it set one, the session's default when it did not, the session's cap
-// above that — the same law internal/session's wrapper applies to the wire
-// args, restated here from the call's original args so the row agrees with the
-// clock the command actually dies on.
+// when it set one, and the session's ceiling when it did not or when it asked
+// for more — the same law internal/session's wrapper applies to the wire args,
+// restated here from the call's original args so the row agrees with the clock
+// the command is actually bounded by.
 func toolLimit(e *entry) time.Duration {
 	if e.tool != "bash" {
 		return 0
 	}
 	raw := strings.TrimSpace(e.detail.Args)
 	if raw == "" {
-		return session.DefaultBashTimeoutSeconds * time.Second
+		return session.BashCeilingSeconds * time.Second
 	}
 	var args struct {
 		Background bool `json:"background"`

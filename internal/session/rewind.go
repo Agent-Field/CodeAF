@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -173,6 +174,7 @@ func (a *Agent) rewindReadyLocked() error {
 // and established that index is a point; this does the three things a cut is:
 // journal it, shape what is leaving, and let go of it.
 func (a *Agent) cutLocked(index int) []DisplayEntry {
+	a.alignReasoningLocked()
 	dropped := a.messages[index:]
 	removed := displayEntries(dropped)
 	if a.file != nil {
@@ -183,8 +185,10 @@ func (a *Agent) cutLocked(index int) []DisplayEntry {
 	// dropped turn can be several hundred KB of tool results.
 	for at := index; at < len(a.messages); at++ {
 		a.messages[at] = ai.Message{}
+		a.messageReasoning[at] = provider.MessageReasoning{}
 	}
 	a.messages = a.messages[:index]
+	a.messageReasoning = a.messageReasoning[:index]
 	return removed
 }
 
@@ -214,7 +218,11 @@ func (a *Agent) rewindPointsLocked() []RewindPoint {
 			turn := false
 			if message.Role == "user" {
 				said = messageContentText(message)
-				if isCompactionNote(said) {
+				// The session's own volatile note is skipped for the compaction
+				// note's reason and no other: it is context handed TO the model
+				// rather than something anybody said, so it is neither a turn to
+				// name nor a boundary worth offering (agent.go's isVolatileNote).
+				if isCompactionNote(said) || isVolatileNote(said) {
 					skipped = true
 				} else {
 					turn = true
@@ -286,11 +294,14 @@ func abs(value int) int {
 // law besides. It stays for [Agent.Why], which wants the same anchor for a
 // different purpose: to quote the instruction the current turn is working on.
 //
-// One user-role message is skipped, and it is this package's own: a compaction
-// note is context handed TO the model rather than something anybody said, and
-// cutting there would drop a whole resumed conversation while leaving the
-// summary that replaced its beginning. It is recognized by the marker
-// [foldMarker] writes, not by guessing at its wording.
+// Two user-role messages are skipped, and both are this package's own. A
+// compaction note is context handed TO the model rather than something anybody
+// said, and cutting there would drop a whole resumed conversation while leaving
+// the summary that replaced its beginning; the session's volatile note is
+// context in the same sense, assembled from the state card and the project index
+// for one request (agent.go's landVolatileLocked). Each is recognized by the
+// marker it is built with — [foldMarker] and [volatileNoteOpening] — and never
+// by guessing at wording.
 //
 // A background job's completion line (jobs.go) rides the user role too and is
 // NOT skipped: it is indistinguishable from typed text without inventing a
@@ -305,7 +316,7 @@ func (a *Agent) lastTurnStartLocked() (int, bool) {
 		if message.Role != "user" {
 			continue
 		}
-		if isCompactionNote(messageContentText(message)) {
+		if text := messageContentText(message); isCompactionNote(text) || isVolatileNote(text) {
 			continue
 		}
 		return index, true

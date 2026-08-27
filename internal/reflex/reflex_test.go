@@ -15,9 +15,10 @@ import (
 // fake is a Completer that answers from a script and keeps every request it was
 // handed. One entry per call: the second entry is what the repair retry gets.
 type fake struct {
-	replies []string
-	err     error
-	calls   []ai.Request
+	replies   []string
+	responses []*ai.Response
+	err       error
+	calls     []ai.Request
 }
 
 func (f *fake) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -32,6 +33,9 @@ func (f *fake) CompleteWithMessages(_ context.Context, messages []ai.Message, op
 		return nil, f.err
 	}
 	index := len(f.calls) - 1
+	if index < len(f.responses) {
+		return f.responses[index], nil
+	}
 	if index >= len(f.replies) {
 		return nil, errors.New("fake: the script ran out of replies")
 	}

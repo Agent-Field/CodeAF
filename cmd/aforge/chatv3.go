@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
@@ -62,6 +64,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	oneModel := flags.Bool("one-model", false,
 		"every text call this session makes runs on the session model: the tier rows, the role pins, "+
 			"the fallback chain and the task model all stand down")
+	// THE TWO CEILINGS AN UNATTENDED SESSION MAY BE GIVEN, and they are floats
+	// rather than durations because a person types `--max-hours 6` and
+	// `--max-hours 0.5`, not `6h0m0s`. Either alone is a budget; neither is the
+	// posture this build has always had. They mean nothing without --yolo, and
+	// the check below says so rather than letting a flag do nothing in silence.
+	maxHours := flags.Float64("max-hours", envFloat("AFORGE_MAX_HOURS"),
+		"how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)")
+	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
+		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
 	if err := flags.Parse(reorder(args, map[string]bool{
 		"model": true, "once": true, "session": true, "reasoning": true, "host": true, "at": true,
 	})); err != nil {
@@ -72,9 +83,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-compact] [--yolo] [--one-model]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -95,6 +106,21 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// name.
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
 		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through a relay: name one or the other, not both")
+	}
+
+	// A BUDGET IS A SENTENCE ABOUT AN UNATTENDED SESSION, so it is refused
+	// rather than ignored on a session somebody is sitting in front of. What it
+	// buys — a goal owner that carries the work on by itself (internal/session's
+	// principal.go) — is the thing --yolo alone must never be read as permission
+	// for, and a ceiling on a session that was never going to carry anything on
+	// is a number that quietly did nothing.
+	//
+	// IT IS ASKED OF A LOCAL LAUNCH ONLY. Over --host and over --at the ceiling
+	// cannot travel at all and each door says so in its own words
+	// (chatv3_host.go's and chatv3_at.go's checks); two refusals for one flag
+	// would send somebody to add --yolo and straight into the second one.
+	if budget := chatBudget(*maxHours, *maxCost); budget.Set() && !*yolo && strings.TrimSpace(*host) == "" && strings.TrimSpace(*at) == "" {
+		return fmt.Errorf("--max-hours and --max-cost bound a session that carries its own work on; say --yolo as well, or leave them off")
 	}
 	// A picker with nobody watching is not a picker. --once is the headless
 	// door, and the two are a contradiction rather than a combination, so it is
@@ -125,6 +151,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			pick:      pickSession,
 			noCompact: *noCompact,
 			yolo:      *yolo,
+			budget:    chatBudget(*maxHours, *maxCost).Set(),
 		})
 	}
 
@@ -143,6 +170,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			pick:      pickSession,
 			noCompact: *noCompact,
 			yolo:      *yolo,
+			budget:    chatBudget(*maxHours, *maxCost).Set(),
 		})
 	}
 
@@ -175,6 +203,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		NoCompact: *noCompact,
 		Yolo:      *yolo,
 		OneModel:  *oneModel,
+		Budget:    chatBudget(*maxHours, *maxCost),
 	}
 	boot := seed
 	boot.Session = *file
@@ -336,6 +365,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 	return tui3.Run(context.Background(), tui3.Options{
 		Agent: agent,
+		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
 		// conversation remembers into, through two seams that fail apart: memory
 		// turned off in the settings opens no store at all and both are then
@@ -377,6 +407,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// there is nothing per-conversation to hand back.
 		Start: seam.start,
 		Open:  seam.resume,
+		AnchorWorkspace: func(path string) (string, error) {
+			return seam.anchor(agent, path)
+		},
 		// The ambient side as this surface reads it: home's item band, the
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).
@@ -445,10 +478,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// project this was opened inside of (Decision 26). The surface uses it
 		// for one thing: what to CALL the place, because an owned workspace's
 		// path is aforge's bookkeeping rather than an answer to "where am I".
-		Owned:         launch.Place.Owned,
-		SessionFile:   transcript,
-		Resumed:       resumed,
-		Notice:        notice,
+		Owned:       launch.Place.Owned,
+		SessionFile: transcript,
+		Resumed:     resumed,
+		// AND THE LAUNCH FACTS A PERSON CAN ACT ON. The unattended boundary and
+		// a replaced aforge both ride the session-moved line — one dim row at
+		// the top of the conversation — rather than growing surfaces of their
+		// own. An ordinary attended launch with the same file on disk is still
+		// shown nothing whatever.
+		Notice:        joinV3Notices(notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -501,6 +539,55 @@ type v3Options struct {
 	// setting and writes nothing — the rows are still there, and the next
 	// session without the flag reads them exactly as before.
 	OneModel bool
+	// Budget is the ceiling an unattended session carries its own work on
+	// under: hours, dollars, or both (internal/session's principal.go). THE
+	// ZERO BUDGET IS THE DEFAULT AND IS NOT A CEILING OF ZERO — it is the
+	// posture every session has always had, where the model stopping is the
+	// session stopping.
+	Budget session.Budget
+}
+
+// joinV3Notices puts the launch's dim lines on one row, in the order they were
+// decided. Either being empty is the ordinary case and leaves the other alone —
+// the emptiness law, applied to a separator.
+func joinV3Notices(lines ...string) string {
+	var kept []string
+	for _, line := range lines {
+		if line = strings.TrimSpace(line); line != "" {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, " · ")
+}
+
+// chatBudget turns what somebody typed into the ceiling internal/session reads.
+//
+// A NEGATIVE FIGURE IS NO CEILING RATHER THAN AN ERROR, which is the same
+// reading every other numeric row in this build makes of one (the repair-round
+// resolver's, the rail's): a person who typed a minus sign has not asked for a
+// session that stops before it starts.
+func chatBudget(hours, cost float64) session.Budget {
+	var budget session.Budget
+	if hours > 0 {
+		budget.Wall = time.Duration(hours * float64(time.Hour))
+	}
+	if cost > 0 {
+		budget.USD = cost
+	}
+	return budget
+}
+
+// envFloat reads one number out of the environment, and answers zero for
+// anything that is not one. It is the default a flag is declared with, so a
+// harness that sets the wall once for a campaign does not have to spell it on
+// every launch — and the command line still wins, because a flag's own value
+// replaces its default.
+func envFloat(name string) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(name)), 64)
+	if err != nil {
+		return 0
+	}
+	return value
 }
 
 // v3Launch is that assembly, done. The pieces are handed back rather than kept
@@ -644,6 +731,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
 		SupportsParameter: models.SupportsParameter,
+		// And the model's own published price, which is what bounds the latency
+		// ask: this session wants the fastest endpoint, not the dearest one
+		// wearing the model's name (internal/provider's latencyPriceCeiling).
+		ModelPrice: models.PriceNow,
 		// Where a conversation goes when nothing serving its model will take the
 		// request at all. Closures again, and for the same reason as the vision
 		// gate: the question is about the model the failing turn was ON, which
@@ -720,6 +811,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	if err != nil {
 		return nil, err
 	}
+	// AND WHO THIS SESSION IS WORKING FOR (internal/session's principal.go). The
+	// two rows are the flag and the ceiling, and they are set together because
+	// neither means anything without the other: --yolo alone is the approval
+	// posture it has always been, and a ceiling on an attended session was
+	// refused at the door. It is the ONE place they reach the engine, on
+	// [applyV3Governance]'s own law — every governance seam already exists on
+	// the other side, so this is a translation and never a second policy.
+	cfg.Unattended = opts.Yolo
+	cfg.Budget = opts.Budget
 	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
 	// leaves the field empty for exactly this reason: an account connected on
 	// the panel must be connected for every conversation's belt in the same
@@ -1025,10 +1125,17 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// process, built at the door and assigned by the launch
 	// (chatv3_process.go's [v3Process.Conns]), because two managers on one store
 	// are two caches with no way to tell each other that a token has moved.
-	// How this session chooses among the endpoints serving its model. The word
-	// is validated by the row; the parse is total, so a word this build does not
-	// know falls back to the default rather than taking routing away.
-	cfg.Routing, _ = provider.ParseRoutingStrategy(config.RoutingAt(profileDir))
+	// How this session chooses among the endpoints serving its model — and it is
+	// read as the CHOICE rather than as the resolved default, so an unwritten row
+	// arrives here empty. The adapter needs to be able to tell "nobody said" from
+	// "somebody said latency": with nothing said it routes a person's own turn by
+	// speed and a task node or an errand by price, and with a word written that
+	// word wins outright (internal/provider's velocity.go). The parse is still
+	// total, so a word this build does not know leaves the row unset rather than
+	// taking routing away.
+	if word := config.RoutingChoiceAt(profileDir); word != "" {
+		cfg.Routing, _ = provider.ParseRoutingStrategy(word)
+	}
 	return cfg, nil
 }
 

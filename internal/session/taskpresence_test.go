@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 )
 
 // newPresenceSession builds one agent that lives in a real-shaped session
@@ -54,6 +56,9 @@ func TestPresenceWritesAWholeFileAnotherWindowCanRead(t *testing.T) {
 	}
 	if presence.Workspace != agent.config.Workspace {
 		t.Fatalf("workspace is %q, want %q", presence.Workspace, agent.config.Workspace)
+	}
+	if presence.Build != buildinfo.String() {
+		t.Fatalf("build is %q, want %q", presence.Build, buildinfo.String())
 	}
 	if presence.PID != os.Getpid() {
 		t.Fatalf("pid is %d, want %d", presence.PID, os.Getpid())

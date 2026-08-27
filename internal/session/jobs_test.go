@@ -79,6 +79,19 @@ func steeringQueue(agent *Agent) []string {
 	return queued
 }
 
+// ambientQueue copies the boundary-held notes under the same lock the turn
+// takes them with. It stays separate from steeringQueue so a test cannot pass
+// while a watch update has regressed onto the mid-turn lane.
+func ambientQueue(agent *Agent) []string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	queued := make([]string, 0, len(agent.ambient))
+	for _, message := range agent.ambient {
+		queued = append(queued, message.text())
+	}
+	return queued
+}
+
 func steeringContains(agent *Agent, substring string) bool {
 	for _, line := range steeringQueue(agent) {
 		if strings.Contains(line, substring) {
@@ -92,23 +105,24 @@ func steeringContains(agent *Agent, substring string) bool {
 // wake has already drained into the transcript, then whatever is still queued
 // behind it.
 //
-// It exists because a job's exit and a watch's delta WAKE an idle session
-// (agent.go's [Agent.enqueueSteering]), and the first act of the turn they start
-// is to drain the queue — so a test that read [steeringQueue] alone would be
-// watching a lane the note leaves microseconds after it lands on it, and would
-// pass or fail on the scheduler. The two halves are ONE fact — the session was
-// told — and every test in this file and in tools_watch_test.go is about the
-// note, never about which of the two places it is sitting in.
+// It exists because a job's exit can wake and drain immediately while a watch's
+// delta waits on the ambient queue. A test that read either queue alone would
+// confuse delivery with loss. The transcript plus both queues are ONE fact —
+// the session was told — and every test in this file and tools_watch_test.go is
+// about that fact rather than which legal place currently holds it.
 func sessionNotes(agent *Agent) []string {
 	agent.mu.Lock()
 	defer agent.mu.Unlock()
-	notes := make([]string, 0, len(agent.steering)+2)
+	notes := make([]string, 0, len(agent.steering)+len(agent.ambient)+2)
 	for _, message := range agent.messages {
 		if message.Role == "user" {
 			notes = append(notes, messageText(message))
 		}
 	}
 	for _, message := range agent.steering {
+		notes = append(notes, message.text())
+	}
+	for _, message := range agent.ambient {
 		notes = append(notes, message.text())
 	}
 	return notes
@@ -369,13 +383,23 @@ func TestExitingJobLandsSteeringNote(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	// The note quotes the last non-empty log line, which is the one thing a
+	// The HEADLINE quotes the last non-empty log line, which is the one thing a
 	// person (or a model) reads a completion for.
-	if !strings.HasSuffix(queued[0], ": build finished") {
+	headline, _, _ := strings.Cut(queued[0], "\n")
+	if !strings.HasSuffix(headline, ": build finished") {
 		t.Fatalf("note does not quote the last line: %q", queued[0])
 	}
-	if length := len(queued[0]); length > 160 {
-		t.Fatalf("note is %d bytes; it is a sentence, not the log", length)
+	if length := len(headline); length > 160 {
+		t.Fatalf("headline is %d bytes; it is a sentence, not the log", length)
+	}
+	// THE NOTE IS ONLY THE HEADLINE. The complete output remains behind the
+	// jobs tool, so a long build cannot interrupt a turn with fifty log lines.
+	if strings.Contains(queued[0], "\n") {
+		t.Fatalf("completion note carried the output tail: %q", queued[0])
+	}
+	output, isError := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d}`, id))
+	if isError || !strings.Contains(output, "build finished") || !strings.Contains(output, "full log: ") {
+		t.Fatalf("jobs output lost the completion detail: %q", output)
 	}
 }
 
@@ -387,46 +411,48 @@ func TestSilentExitingJobReportsCodeOnly(t *testing.T) {
 	waitFor(t, "the completion note", func() bool {
 		return notesContain(agent, fmt.Sprintf("job %d exited 1", id))
 	})
-	if queued := sessionNotes(agent); strings.Contains(queued[0], ":") {
+	if queued := sessionNotes(agent); strings.Contains(queued[0], fmt.Sprintf("job %d exited 1:", id)) {
 		t.Fatalf("a silent job quoted something: %q", queued[0])
 	}
 }
 
-// The note rides the SAME queue a person's steering does, so the two interleave
-// in arrival order and one drain takes both.
-func TestJobNoteSharesTheSteeringLane(t *testing.T) {
+// An owed job note takes boundary-held ambient news with it, but the pair is one
+// authored message rather than two synthetic user rows.
+func TestJobNoteCoalescesWithAmbientNewsAtItsStepBoundary(t *testing.T) {
 	agent, _ := jobsAgent(t)
+	// Hold the session before its public opening so the test can inspect both
+	// queues without racing the owed note's wake.
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
 
-	agent.enqueueAmbientNote("also check the linter")
+	agent.enqueueWatchNote("lint", "watch lint · 1 line new\nalso check the linter")
 	id := startJob(t, agent, "echo done")
 	waitFor(t, "the completion note", func() bool {
-		return len(sessionNotes(agent)) == 2
+		return len(steeringQueue(agent)) == 1
 	})
 
-	queued := sessionNotes(agent)
-	if queued[0] != "also check the linter" {
-		t.Fatalf("the person's message moved: %v", queued)
+	if queued := ambientQueue(agent); len(queued) != 1 || !strings.Contains(queued[0], "also check the linter") {
+		t.Fatalf("the ambient note is not held at the boundary: %v", queued)
 	}
-	if !strings.HasPrefix(queued[1], fmt.Sprintf("job %d exited 0", id)) {
-		t.Fatalf("the job note is not second: %v", queued)
+	if queued := steeringQueue(agent); len(queued) != 1 ||
+		!strings.HasPrefix(queued[0], fmt.Sprintf("job %d exited 0", id)) {
+		t.Fatalf("the owed job note is not on the step lane: %v", queued)
 	}
 
-	// And ONE drain takes both into the transcript as user messages, in that
-	// order. The drain here is the job note's OWN WAKE (agent.go): the exit
-	// starts a turn, and that turn's first act is to empty this queue — which
-	// takes the ambient line waiting in front of it along with it.
-	waitFor(t, "the pair to reach the transcript", func() bool {
-		return len(steeringQueue(agent)) == 0
-	})
+	// One legal boundary takes both queues as one authored batch.
+	agent.drainSteering(nil)
 	var users []string
 	for _, message := range agent.snapshot() {
 		if message.Role == "user" {
 			users = append(users, messageText(message))
 		}
 	}
-	if len(users) != 2 || users[0] != "also check the linter" ||
-		!strings.HasPrefix(users[1], fmt.Sprintf("job %d exited 0", id)) {
-		t.Fatalf("the pair did not reach the transcript in order: %v", users)
+	if len(users) != 1 || !strings.Contains(users[0], "while you worked:") ||
+		!strings.Contains(users[0], "also check the linter") ||
+		!strings.Contains(users[0], "lint watch: 1 update") ||
+		!strings.Contains(users[0], fmt.Sprintf("job %d exited 0", id)) {
+		t.Fatalf("the pair did not reach the transcript as one batch: %v", users)
 	}
 }
 

@@ -80,6 +80,18 @@ func noteReasoningMandatory(model string) {
 	}
 }
 
+// NoteReasoningDisableIgnored remembers that a model accepted the disable but
+// still spent an answer-sized ceiling without returning any answer. The
+// provider adapter cannot infer this from the HTTP exchange alone: the caller
+// owns the promise that the requested ceiling was large enough for its answer.
+func NoteReasoningDisableIgnored(model string) {
+	if quirks.noteDisableIgnored(model, time.Now().UTC()) {
+		// Off the request path for the same reason a rejected disable is: the
+		// caller is about to retry with room and must not wait on the memo.
+		quirks.persist()
+	}
+}
+
 // noteReasoningBudgetRefused remembers that a model's endpoint rejected the
 // thinking budget the two top rungs of the ladder carry.
 //
@@ -94,6 +106,43 @@ func noteReasoningBudgetRefused(model string) {
 		// discovered this is waiting to be re-sent without the field.
 		quirks.persist()
 	}
+}
+
+// noteReasoningReplayRefused remembers the narrow exception to
+// [ReasoningReplayPolicy]: this model's endpoint explicitly rejected the
+// continuation fields, so only this model loses them on the repaired request.
+func noteReasoningReplayRefused(model string) {
+	if quirks.noteNoReasoningReplay(model, time.Now().UTC()) {
+		quirks.persist()
+	}
+}
+
+func reasoningReplayRefused(model string) bool { return quirks.knowsNoReasoningReplay(model) }
+
+// refusesReasoningReplay recognizes a complaint about assistant-message
+// continuation fields. All three halves are required so a 400 about the
+// request-level reasoning knob cannot accidentally erase transcript state.
+func refusesReasoningReplay(payload []byte, carried []MessageReasoning) bool {
+	text := strings.ToLower(string(payload))
+	field := strings.Contains(text, "reasoning_details")
+	for _, reasoning := range carried {
+		if reasoning.Field != "reasoning" && strings.Contains(text, reasoning.Field) {
+			field = true
+		}
+		if reasoning.Field == "reasoning" && strings.Contains(text, "reasoning") &&
+			(strings.Contains(text, "message") || strings.Contains(text, "assistant")) {
+			field = true
+		}
+	}
+	if !field {
+		return false
+	}
+	for _, refusal := range []string{"unsupported", "not supported", "unrecognized", "unrecognised", "unknown", "invalid", "extra", "not allowed"} {
+		if strings.Contains(text, refusal) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReasoningBudgetRefused reports that this model's endpoint rejected a thinking
@@ -143,6 +192,18 @@ func refusesReasoningBudget(payload []byte) bool {
 func ReasoningMandatory(model string) bool { return reasoningMandatory(model) }
 
 func reasoningMandatory(model string) bool { return quirks.knows(model) }
+
+// ReasoningDisableIgnored reports that a model accepted the disable but still
+// consumed the caller's whole answer budget before returning any text.
+func ReasoningDisableIgnored(model string) bool { return quirks.knowsDisableIgnored(model) }
+
+// ReasoningUnavoidable reports either observed way a model has shown that its
+// thinking pass cannot be removed. Callers that reserve a small answer budget
+// need the combined fact; request encoding still reads the two facts separately
+// because only a rejected disable must be omitted from the wire.
+func ReasoningUnavoidable(model string) bool {
+	return reasoningMandatory(model) || quirks.knowsDisableIgnored(model)
+}
 
 // normalizeModel keys the memo on the model itself rather than on how it was
 // written. The leading "~" is Aforge's own routing marker, not part of the
@@ -207,8 +268,8 @@ type wireRequest struct {
 	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
 
 	// Reasoning is omitted entirely unless the model is known to accept it or
-	// the operator asked for it explicitly. An unsupported knob is a 400, and a
-	// 400 on every call is a worse failure than a model thinking too hard.
+	// the caller marked it required. An unsupported knob is a 400, and a 400 on
+	// every optional economy is a worse failure than a model thinking too hard.
 	Reasoning *reasoningKnob `json:"reasoning,omitempty"`
 
 	// Provider is the routing preference object: how to choose among the
@@ -271,6 +332,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
+	if !reasoningReplayRefused(model) {
+		messages, err = attachMessageReasoning(messages, knobs.reasoning)
+		if err != nil {
+			return nil, err
+		}
+	}
 	tools, err := c.encodes.encodeTools(scrubbed.Tools, dialect)
 	if err != nil {
 		return nil, err
@@ -290,7 +357,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
-	wire.Provider = c.providerPreferences(model)
+	wire.Provider = c.providerPreferences(model, knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		// The two fields that can narrow the endpoint set to nothing: the hard
 		// parameter filter, and this process's own refusals. The SORT stays —
@@ -343,8 +410,8 @@ func (c *Client) resolveReasoningBudget(model string, requested effortRequest) i
 
 // requestedEffort applies the catalog gate. The catalog is consulted first
 // because it is the only authority that can say "this model would reject it";
-// when the catalog is cold or silent, only an explicit operator request gets
-// sent, so a default economy can never break a run on an unknown model.
+// when the catalog is cold or silent, only a configured or required request
+// gets sent, so an optional economy can never break a run on an unknown model.
 func (c *Client) requestedEffort(model string, requested effortRequest) Effort {
 	if requested.effort == EffortNone {
 		return EffortNone

@@ -213,6 +213,9 @@ type Conversation struct {
 	Workspace string
 	Place     string
 	Owned     bool
+	// AnchorWorkspace is the one-shot project anchor for an owned conversation.
+	// It travels with the agent because /new and resume replace both together.
+	AnchorWorkspace func(path string) (string, error)
 	// Resumed says the transcript was picked up rather than made, and Notice is
 	// the one sentence the door wants on the entry line about how this
 	// conversation came to be open.
@@ -246,6 +249,11 @@ type Conversation struct {
 type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
+
+	// Build names the aforge process holding the conversation. The door hands
+	// it in because a hosted surface and its conversation run on different
+	// machines, where this process's own build would be the wrong answer.
+	Build string
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
@@ -372,6 +380,12 @@ type Options struct {
 	// what the hosted door and every test that predates this seam are.
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
+
+	// AnchorWorkspace gives a project-less conversation the repository or folder
+	// the person named. It returns the resolved path because a repository subdir
+	// becomes its root, and the surface must draw the same place the engine uses.
+	// Nil means this conversation cannot be re-anchored.
+	AnchorWorkspace func(path string) (string, error)
 
 	// Errand builds the agent behind home's `ask here` (tui3's homeexchange.go):
 	// the same launch config [Fresh] uses, pointed at a transcript inside dir and

@@ -12,12 +12,45 @@ import (
 	"time"
 )
 
-// systemPrompt is omp's normal-chat system prompt, adapted (Decision 2). It is
-// embedded rather than read at runtime so the binary carries its own prompt:
-// a session must open the same way on a machine that has no source tree.
+// systemPromptSource is omp's normal-chat system prompt, adapted (Decision 2).
+// It is embedded rather than read at runtime so the binary carries its own
+// prompt: a session must open the same way on a machine that has no source
+// tree. [systemPrompt] is this with the shared discipline substituted in.
 //
 //go:embed prompts/system.md
-var systemPrompt string
+var systemPromptSource string
+
+// disciplinePrompt is the working discipline itself — how to spend the time —
+// and it lives in a file of its own because TWO SURFACES ARE TAUGHT IT AND ONE
+// WORDING IS ALL THERE MAY BE.
+//
+// THE SURFACE THAT PICKS THE APPROACH CARRIES THE DISCIPLINE FOR PICKING IT.
+// Measured over twelve unattended runs of the same brief, the approach — and
+// with it the whole outcome — was settled in the first couple of minutes of the
+// CONVERSATION, before any task existed: the runs whose chat spent one step
+// asking whether the thing already existed reached a real result three times out
+// of three, and the runs whose chat set about making it by hand reached one none
+// of five times in four hours. These three principles were on the worker's page
+// alone, so the surface that was actually deciding never read them.
+//
+// It is SUBSTITUTED and not appended, at the point in each page where that page
+// teaches working discipline, and it is substituted ONCE: prompts/system.md is
+// read by every surface this package renders — the conversation, a worker that
+// may fan out, and a worker at the floor of the tree that is given no
+// prompts/task.md at all — so a second copy in prompts/task.md would be a
+// paragraph every worker paid for twice and the law stated in two places that
+// can drift apart.
+//
+//go:embed prompts/discipline.md
+var disciplinePrompt string
+
+// systemPrompt is what the model actually reads: [systemPromptSource] with
+// [disciplineToken] replaced by the one wording of [disciplinePrompt]. It is
+// assembled at init rather than at render because it does not depend on the
+// config, the clock or the workspace — and because the fixed-prefix budget
+// weighs THIS string (prefixbudget_test.go).
+var systemPrompt = strings.Replace(systemPromptSource, disciplineToken,
+	strings.TrimRight(disciplinePrompt, "\n"), 1)
 
 // taskPrompt is what a TASK NODE is told on top of it: that nobody is there,
 // and how to decide whether a step of its brief is one it does or one it hands
@@ -55,25 +88,18 @@ var shapePrompt string
 //go:embed prompts/divide.md
 var dividePrompt string
 
-// These three pages describe optional verbs, so each travels on the exact
-// predicate that builds that part of the belt. Keeping them separate prevents
-// a remote session, a task node, or --once from being taught a hand it lacks.
-//
-//go:embed prompts/harness.md
-var harnessPrompt string
-
-//go:embed prompts/subharness.md
-var subharnessPrompt string
-
-//go:embed prompts/adaptive.md
-var adaptivePrompt string
-
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
 // law and the drift it cost). So the page names the token and this substitutes
 // the constant.
 const fanLimitToken = "FAN_LIMIT"
+
+// disciplineToken is where prompts/system.md says the working discipline goes.
+// The page names the place and [disciplinePrompt] holds the words, for the same
+// reason [fanLimitToken] exists: the second place a thing is written is the
+// place it drifts.
+const disciplineToken = "WORKING_DISCIPLINE"
 
 // agentsFileLimit bounds how much of a project's AGENTS.md rides in the system
 // prompt. 8KiB is a page of house rules; a file larger than that is
@@ -84,6 +110,8 @@ const agentsFileLimit = 8 << 10
 // agentsFileName is the project instruction file, discovered at the workspace
 // root exactly as omp discovers it.
 const agentsFileName = "AGENTS.md"
+
+const claudeFileName = "CLAUDE.md"
 
 // clockRefresh is how old the rendered prompt may get before a turn re-renders
 // it to move the `Now` line forward ([Agent.refreshClockLocked]).
@@ -134,27 +162,19 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
 	}
-	if config.HarnessStore != nil && config.RunHarness != nil && config.AskConsent {
-		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(harnessPrompt, "\n"))
-	}
-	if config.AskConsent && config.HarnessCards && len(config.Harnesses) > 0 {
-		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(subharnessPrompt, "\n"))
-	}
-	if config.OrchestrateRunner != nil && config.AskConsent {
-		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(adaptivePrompt, "\n"))
-	}
 
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
 	out.WriteString(nowLine(now))
 
-	if instructions, truncated := readAgentsFile(workspace); instructions != "" {
+	for _, instructionFile := range []string{agentsFileName, claudeFileName} {
+		instructions, truncated := readInstructionFile(workspace, instructionFile)
+		if instructions == "" {
+			continue
+		}
 		fmt.Fprintf(&out, "\n# %s\n\nThe project's own instructions, from %s at the workspace root. They rank above your defaults and below what the person says now.\n\n",
-			agentsFileName, agentsFileName)
+			instructionFile, instructionFile)
 		fence := fenceFor(instructions)
 		out.WriteString(fence + "markdown\n")
 		out.WriteString(instructions)
@@ -164,7 +184,7 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(fence + "\n")
 		if truncated {
 			fmt.Fprintf(&out, "\n(%s is longer than %dKiB; the rest is on disk — read it if you need it.)\n",
-				agentsFileName, agentsFileLimit>>10)
+				instructionFile, agentsFileLimit>>10)
 		}
 	}
 	return out.String()
@@ -237,7 +257,11 @@ func (a *Agent) refreshClockLocked(now time.Time) {
 // AGENTS.md and reports whether it stopped early. A missing or unreadable file
 // is not an error: most workspaces do not have one.
 func readAgentsFile(workspace string) (content string, truncated bool) {
-	file, err := os.Open(filepath.Join(workspace, agentsFileName))
+	return readInstructionFile(workspace, agentsFileName)
+}
+
+func readInstructionFile(workspace, name string) (content string, truncated bool) {
+	file, err := os.Open(filepath.Join(workspace, name))
 	if err != nil {
 		return "", false
 	}

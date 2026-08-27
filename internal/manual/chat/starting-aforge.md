@@ -62,10 +62,57 @@ and writes, and it is shown in the status line so you can always tell.
 | `--once "<text>"` | send one message, print the reply, and exit — no screen, nobody watching |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
+| `--max-hours <n>` | with `--yolo`: how many hours it may carry its own work on |
+| `--max-cost <n>` | with `--yolo`: how many dollars it may carry its own work on |
+| `--one-model` | every text call this session makes runs on the session model |
 
 `--yolo` does not make aforge unstoppable: a small set of destructive commands
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
+
+## Leaving it running on its own · unattended · overnight · nobody watching
+
+`--yolo` on its own only changes what it asks you about. It still stops when the
+model stops talking — which is right when you are sitting there, because you are
+the one who says what happens next.
+
+Give it a budget as well and it carries its own work on:
+
+    aforge chat --yolo --max-hours 6
+    aforge chat --yolo --max-cost 20
+    aforge chat --yolo --max-hours 6 --max-cost 20
+
+Either number alone is enough; both together means whichever runs out first. You
+can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
+`AFORGE_MAX_COST`, and the flag always beats the variable.
+
+With a budget, four things change, and only with a budget:
+
+- **It writes down what finished means.** At the start it turns your ask into one
+  `done when` sentence and shows it to you on a dim line. That sentence is fixed
+  for the whole session — nothing it does later can rewrite it.
+- **A stopped turn is looked at rather than taken at its word.** When it stops
+  talking, it checks whether any piece of work came home unfinished, and whether
+  the checks your work names still pass. If any of that is unmet it carries on by
+  itself instead of going quiet.
+- **A piece of work that came home unfinished starts its own next go.** You used
+  to be offered a follow-up in your own words — with nobody there, that offer went
+  nowhere. Now what was missing becomes the next brief. If the same thing stops it
+  three times in a row it stops for good and says so.
+- **It tidies up after itself before it says it is done.** It re-runs the checks
+  in a fresh shell, then looks at every file it made: anything inside the folder
+  it is working in is part of the answer and is left alone, and anything it wrote
+  outside that folder is scratch and is deleted. It never touches a file it did
+  not create, and it never touches one it only changed.
+
+Without a budget none of that happens, and it tells you so in one line when it
+starts.
+
+If you are sitting there watching it, nothing above applies to you: your session
+is exactly what it has always been, and nothing is ever deleted on your behalf.
+
+`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
+built on the far machine, so set them there.
 
 ## Which folder does aforge work in, and where do my files go
 
@@ -96,12 +143,26 @@ Type `/status` and the `place` line gives you the full path to copy.
 An owned workspace of that kind is quietly made into a git repository, so work
 done there has undo history like work done anywhere else.
 
+## Anchor a conversation to a repository or folder — /workspace and the workspace tool
+
+When a conversation says `aforge` because it opened with no project, type `/workspace
+<path>` to make the repository or folder at that path its project. The path may begin with
+`~`; a path inside a Git repository resolves to the repository root. The place line changes,
+the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
+and future tasks cut their worktrees from that repository into their own task folders.
+
+The model has the conditional `workspace` tool for the same move when you name a repository
+path in ordinary chat. Both doors exist only while the conversation owns a scratch
+workspace. Once it is anchored, it stays on that project and both doors refuse another
+switch. The resolved path is saved in the conversation's `meta.json`, so reopening it keeps
+the anchor.
+
 **And a conversation opened later can be in a different folder from the one you
 started in.** `enter` on home opens a row of any project, and typing a path on
 home starts a conversation there — each on **its own** workspace, with that
 project's approval rules, crew, spend ceiling and saved shapes of work, resolved
-the same way this one's were. A conversation never changes the folder it was born
-in; there is simply more than one conversation. The status line's place word is
+the same way this one's were. An unanchored conversation may acquire its project once with
+`/workspace`; otherwise there is simply more than one conversation. The status line's place word is
 always the folder of the conversation on screen. See home's page under *Open
 another project from home*.
 

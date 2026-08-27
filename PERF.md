@@ -44,6 +44,14 @@ weighed against, and none of it is embedded data a packer could take back. The
 binary measured 50,069,769 and the budget was set to 51,071,000, keeping the
 same two percent of headroom the first figure was given.
 
+It was reset again on 2026-08-27 after the current branch, built with Go
+1.26.5, measured 52,895,586 bytes on darwin/arm64 and 51,380,386 bytes on
+linux/arm64. The build-identity package and its packed manual page landed at the
+same boundary where accumulated branch growth, the newer toolchain and the
+platform difference crossed the former cap. The budget is 53,954,000, two
+percent above the larger measured binary; the exact before-and-after source cost
+is not disguised as the whole reset.
+
 ## The flush ceiling
 
 `FlushUsage` waits at most **2 seconds** (`usageFlushLimit`, `internal/session/usage_ledger.go`)
@@ -55,6 +63,23 @@ returned and the terminal never came back — the one failure the rest of that f
 is written to prevent, moved off the turn path and onto the exit. The bargain is
 the file's own: a spending record is worth less than the turn that earned it, and
 less than the exit as well. Pinned by `TestFlushingUsageGivesUpOnAStalledLedger`.
+
+## The in-turn working-set ceiling
+
+A single tool-heavy turn starts folding already-seen tool results at **64,000
+tokens**, or half the trusted context window when that is smaller. It preserves
+the recent **20,000-token** tail (already the compaction tail law) and folds to
+the midpoint between that tail and the trigger. The lower target is part of the
+performance contract: rewriting one result makes the provider cache cold from
+that byte onward, so a pass that stopped just under the trigger would repay the
+whole cold prefix one tool round later.
+
+The pass changes only tool-result messages, in whole oldest-first batches. The
+person's message, assistant text and the newest batch the model has not seen are
+never candidates; every replaced result remains readable through its stub path.
+`TestALongTurnsToolWorkingSetStaysBounded` pins the 60-round request ceiling and
+the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
+the line and the unseen-result horizon.
 
 ## The allocation laws
 

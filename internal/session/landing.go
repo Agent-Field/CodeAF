@@ -29,6 +29,38 @@ package session
 // Every answer below falls back to <workspace>/.aforge-v3/<kind>, exactly where
 // a flat-layout session has always written, so the folder lands seam-first: a
 // caller that has not adopted a Place keeps the behavior it had.
+//
+// ── A WORKER'S DROPPINGS BELONG TO ITS FAMILY, NEVER TO THE FOLDER IT BORROWED ──
+//
+// A Place belongs to a SESSION, and only a session has one. Every other agent
+// this package runs is deliberately not a second session and carries no Place at
+// all: a task node's worker (task_run.go's [Agent.newTaskAgent]), a part's
+// worker under that one, a fork's hand (fork.go), an adaptive run's child
+// (orchestrate.go), an auditor (task_audit.go), a standing item's probe
+// (standing_run.go). That is the right decision about identity — a Place is a
+// meta.json to stamp, a work/ to paint into and an id to file a transcript
+// under, and a worker owns none of them.
+//
+// IT IS THE WRONG ANSWER ABOUT LITTER, and it was wrong for every dropping every
+// worker ever made. The ladder above read the zero Place, fell to the legacy
+// rung, and wrote <workspace>/.aforge-v3/<kind> — where <workspace> is the
+// PERSON'S REPOSITORY or a worktree of it, which is the one thing the paragraph
+// at the top of this file says must never happen.
+//
+// IT WAS MEASURED. On a SWE-Marathon run a task node's worker read a scoring
+// script; the stub pass filed the result (stub.go) and, having no Place, wrote
+// the whole of that script verbatim to <crate>/.aforge-v3/stubs/<digest>.txt —
+// inside the repository being graded. The benchmark's source scan walks the
+// crate, found files that were not the person's work and were not the person's
+// tools, and zeroed the run. Off a benchmark it is the same fact with a quieter
+// cost: everything long a worker reads is copied into a hidden directory in
+// somebody's project.
+//
+// So a droppings home is asked of the FAMILY and not of the workspace: an agent
+// with no folder of its own writes where the session that commissioned it writes
+// ([Config.droppingsPlace], set at each construction seam from
+// [Agent.familyPlace]). The legacy rung survives for the one caller it was ever
+// meant for — a session that truly has no folder.
 
 import (
 	"path/filepath"
@@ -48,6 +80,26 @@ const (
 	droppingJobs  = "jobs"
 	droppingStubs = "stubs"
 )
+
+// droppingsPlace is the folder THIS agent's droppings land in: its own when it
+// is a session, and its family's when it is a worker of one.
+//
+// It is the ONE question the three writers of droppings ask — the job registry
+// (jobs.go), the stub pass (stub.go) and the store journal's spill (chatlog.go)
+// — so that a fourth kind of dropping added later cannot be given a fourth
+// answer, and so that a fifth kind of worker cannot be built without one. A
+// structural test holds both halves of that (landing_test.go).
+//
+// The ladder is two rungs and they cannot both be right: an agent that HAS a
+// folder is a session, and a session's droppings are its own. [Config.droppings]
+// is only ever consulted below that, which is why setting it on a real session
+// would be harmless and is also why nothing does.
+func (c Config) droppingsPlace() Place {
+	if c.Place.Logs() != "" {
+		return c.Place
+	}
+	return c.droppings
+}
 
 // droppingsDir names the directory one kind of dropping lands in.
 func droppingsDir(place Place, workspace, kind string) string {

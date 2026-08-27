@@ -41,13 +41,14 @@ import (
 // ([deckSheetTitle]). A row that appears on one and not the other would make
 // "what does this session say about itself" a question with two answers.
 //
-// It differs from the sheet in exactly two places, and both differences are
-// about the MEDIUM rather than about the facts:
+// Its differences from the sheet are about the MEDIUM rather than about the
+// facts:
 //
-//	the file      a path is not a status-line segment at any width — it is a
-//	              thing a person copies into another program — and a note is
-//	              selectable text while a sheet at forty-four columns is a path
-//	              with its middle cut out. /help prints it for the same reason.
+//	identity       the build and file path are not status-line segments at any
+//	              width — they are things a person copies into another program
+//	              — and a note is selectable text while a sheet at forty-four
+//	              columns would cut either. /help prints the file for the same
+//	              reason.
 //	a zero bill   the status line keeps "$0.00" because it is a LIVE row, and a
 //	              segment that came into existence on the first priced turn
 //	              would shove every segment beside it sideways. A note is
@@ -102,6 +103,13 @@ func (a *app) statusText() string {
 	// made it the one fact /status carried that the phone's own sheet did not —
 	// on the tier where every other fact had moved into that sheet. It is part of
 	// [app.deckItems] now, so both surfaces say it and neither says it twice.
+	// THE BUILD IS A LOOKUP FACT, NOT LIVE TELEMETRY. It stays off the bottom
+	// row and phone sheet, where an immutable revision would spend a row all
+	// session, and appears here whole when a person asks which aforge is
+	// holding this conversation.
+	if a.build != "" {
+		items = append(items, deckItem{label: "build", value: a.build})
+	}
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it
@@ -177,7 +185,7 @@ func (a *app) costText() string {
 	}
 	a.take(u)
 
-	items := make([]deckItem, 0, 5)
+	items := make([]deckItem, 0, 6)
 	add := func(label, value string) {
 		if value != "" {
 			items = append(items, deckItem{label: label, value: value})
@@ -206,6 +214,9 @@ func (a *app) costText() string {
 	// than the money was spent over.
 	if u.Calls > 0 {
 		add("model calls", itoa(u.Calls))
+	}
+	if u.EmptyReflex > 0 {
+		add("empty reflex answers", itoa(u.EmptyReflex))
 	}
 	add("time", tookWord(u.Duration))
 

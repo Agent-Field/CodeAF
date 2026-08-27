@@ -75,6 +75,10 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	// A project-less conversation needs this once, while /compact is a daily
+	// command everywhere. Keep the one-shot anchor immediately below the eight
+	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
 	// here" and this is "what is there at all" — the same question one size up —
@@ -198,15 +202,21 @@ var commands = []command{
 	{name: "crew", desc: "the four models aforge uses on its own behalf, beside the one you talk to"},
 	{name: "crew", args: "<preset>", desc: "…set the four to frugal, balanced or max · /model stays"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
-	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner", door: sendDoorTask},
-	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts", door: sendDoorTask},
+	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
+	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
+	// `adaptive <brief>`, which opened a planner that drew the whole graph before
+	// any of the work had been looked at. The measured road answers that question
+	// later and from evidence — one worker starts, and hands parts out only once
+	// it has opened the material and found the width is real (internal/splitgate,
+	// internal/session's task_divide.go). Leaving the row here would offer a word
+	// that now starts an ordinary task, which is a menu lying about what it does.
 	// AND THE PAGE THAT SHOWS WHAT THEY ALL CAME TO (taskview.go). It sits with
-	// the three rows that START work because that is the pair of errands a person
+	// the two rows that START work because that is the pair of errands a person
 	// has about tasks — set one going, and go and look at the ones that already
 	// did.
 	//
-	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The three rows
-	// above all mean GIVE AFORGE WORK, and a plural sitting among them shared four
+	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The two rows
+	// above both mean GIVE AFORGE WORK, and a plural sitting among them shared four
 	// characters with every one of them: typing "/task" narrowed the list to both
 	// errands at once, so the muscle memory for starting work kept landing on a
 	// page that starts none. What a person calls this thing is the record of

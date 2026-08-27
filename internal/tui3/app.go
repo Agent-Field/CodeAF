@@ -694,14 +694,16 @@ type app struct {
 	// list in the same breath as the agent. They are preferred over fresh and
 	// resume wherever both are wired; the pair below is what a door that cannot
 	// answer the seam still gets ([app.nextConversation], [app.openConversation]).
-	start func(workspace string) (Conversation, error)
-	open  func(workspace, transcript string) (Conversation, error)
+	start           func(workspace string) (Conversation, error)
+	open            func(workspace, transcript string) (Conversation, error)
+	anchorWorkspace func(path string) (string, error)
 	// workspace is the directory this conversation is about, whole; place is
 	// its base name, which is what the status line has room for. The whole path
 	// is what history is keyed by and what the @ completion walks.
 	workspace string
 	place     string
 	file      string
+	build     string
 	resumed   bool
 	// previews holds the pictures this surface has already drawn as half blocks
 	// (imagepreview.go), keyed by the file, its mtime and the shape it was drawn
@@ -1886,6 +1888,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:            opts.Fresh,
 		start:            opts.Start,
 		open:             opts.Open,
+		anchorWorkspace:  opts.AnchorWorkspace,
 		errand:           opts.Errand,
 		standingRoot:     opts.StandingRoot,
 		leaveAnswer:      opts.Answer,
@@ -1897,6 +1900,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,
+		build:            strings.TrimSpace(opts.Build),
 		resumed:          opts.Resumed,
 		models:           opts.Models,
 		history:          opts.History,
@@ -3172,30 +3176,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.note("could not start the task · this session has no task door")
 			return a, nil
 		}
-		// NOTHING TO SPLIT IS ONE WORKER, whatever the row says. A planner over
-		// work with no independent parts in it is a second model deciding to do
-		// the one thing there was to do, and the worker can still split its own
-		// brief later if it finds parts the sizing call did not.
-		if !msg.parallel {
-			return a, a.startTaskDoor(door, "single", msg.brief, "")
-		}
-		// A PLANNER ONLY WHERE SOMEBODY ASKED FOR ONE. The row set to `adaptive`
-		// is that asking, said once instead of on every command.
-		if msg.preset == config.TaskStartAdaptive {
-			return a, a.startTaskDoor(door, "adaptive", msg.brief, msg.hint())
-		}
-		// AND OTHERWISE THE WIDE WORK STARTS AS ONE WORKER, ARMED. This used to be
+		// EITHER ANSWER STARTS THE SAME THING, AND ONLY ONE OF THEM SAYS ANYTHING.
+		// The sizing call does not pick a road any more — there is one — so what
+		// its yes does is ARM this task to divide (internal/session's
+		// [Agent.armDivision]) and earn the person a line about it. This used to be
 		// the moment a two-row card opened and asked which shape to run, and the
 		// card was the wrong question: it wanted a decision about width before
 		// anybody had opened the material, from the one person in the room who had
 		// not read it. The measured road answers it later and from evidence — the
-		// judge's yes here arms this task to divide (internal/session's
-		// [Agent.armDivision]), the worker hands the parts out only once it has
-		// seen how many there really are, and they ride the same frontier the rest
-		// of the graph does. So the command starts the work, and the note says the
-		// one thing the person could not otherwise know: it may not stay one task.
-		a.note(taskWideNote)
-		return a, a.startTaskDoor(door, "single", msg.brief, "")
+		// worker hands the parts out only once it has seen how many there really
+		// are, and they ride the same frontier the rest of the graph does. So the
+		// command starts the work either way, and the note says the one thing the
+		// person could not otherwise know: it may not stay one task. A no says
+		// nothing, because nothing about narrow work is news.
+		if msg.parallel {
+			a.note(taskWideNote)
+		}
+		return a, a.startTaskDoor(door, msg.brief)
 
 	case taskStartedMsg:
 		a.settleShaping()
@@ -5598,6 +5595,29 @@ func (a *app) slash(line string) tea.Cmd {
 		a.switchModel(rest, 0)
 		return nil
 
+	case "workspace":
+		if rest == "" {
+			a.note("usage: /workspace <path>")
+			return nil
+		}
+		if a.anchorWorkspace == nil {
+			a.note("this conversation already has a workspace")
+			return nil
+		}
+		resolved, err := a.anchorWorkspace(rest)
+		if err != nil {
+			a.note("could not set the workspace: " + err.Error())
+			return nil
+		}
+		a.workspace = resolved
+		a.owned = false
+		a.place = placeShown(resolved, false, a.host)
+		a.branch, a.branchDirty, _ = a.gitProbe(resolved)
+		a.anchorWorkspace = nil
+		a.note("workspace · " + a.hostedPath(resolved))
+		a.touch()
+		return nil
+
 	case "image":
 		// The other door onto the tray, for a picture that is not under this
 		// directory or not in the walk: a path, attached (attach.go).
@@ -5904,6 +5924,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		a.workspace = workspace
 	}
 	a.owned = conv.Owned
+	a.anchorWorkspace = conv.AnchorWorkspace
 	if shown := strings.TrimSpace(conv.Place); shown != "" {
 		a.place = shown
 	} else {

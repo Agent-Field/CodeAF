@@ -15,69 +15,84 @@ declare the goal answered. Nothing waits for it — execution never blocks on th
 watch is the shape of the work crystallising as the planner learns what is there.
 
 Two things bound it: **one fuel tank in dollars** for the whole run, and small nodes.
-Inside a run, parallelism comes from having many nodes, never from a big one. A run is not
-how aforge works on wide things in general — see *Should this be a run, or one worker that
-splits itself* below.
+Inside a run, parallelism comes from having many nodes, never from a big one.
 
-## Should this be a run, or one worker that splits itself — when I use a run instead of a task
+**A run is not how aforge works on wide things, and it is not something a conversation can
+open at all.** Ordinary work — however broad — takes one road: one task, which hands its own
+parts out once it has opened the material. There is no word, no command, no setting and no
+tool that starts a run from a conversation; *How do I start an adaptive run* below is the
+whole of that answer. What the rest of this page describes — the fuel tank, the roster tree,
+the run's own page — is how a run behaves where one exists, and is left here because the
+machinery is still in aforge. See also *Should this be a run, or one worker that splits
+itself*.
 
-**A run is the exception, not the way broad work is done.** Work that is simply wide — a
-sweep across many files, research across many sources, the same change over many separate
-items — starts as **one task**, and the worker hands the parts out itself once it has
-opened the material and can see how many there are. Each part becomes a worker in its own
-copy of the repository, and the first worker stays and folds their reports into one
-deliverable. That is *When a task turns out to be too wide for one worker*, in *work that
-runs on its own*.
+## Should this be a run, or one worker that splits itself — when I use a run instead of a task, why didn't you start an adaptive run for this
+
+**I cannot start one, and that is the answer to why I did not.** The tool that opened a
+planned run is off my belt entirely — not refused, not gated: I do not have the verb — so
+whatever you ask for, work that leaves this conversation leaves it as a **task**.
+
+Work that is simply wide — a sweep across many files, research across many sources, the same
+change over many separate items — starts as **one task**, and the worker hands the parts out
+itself once it has opened the material and can see how many there are. Each part becomes a
+worker in its own copy of the repository, and the first worker stays and folds their reports
+into one deliverable. That is *When a task turns out to be too wide for one worker*, in *work
+that runs on its own*.
 
 The reason is that nobody can see the parts from the request. A planner asked to cut up
 "audit every package for this pattern" is guessing at how many packages there are and what
-is in them; a worker that has just listed them is not guessing.
+is in them; a worker that has just listed them is not guessing. Two roads meant the guessing
+one kept being taken on width alone, so there is one road now.
 
-So a run is for the other case: the work needs its **structure settled up front** because
-its nodes are genuinely different from each other and the later ones are aimed by what the
-earlier ones find — a migration whose second half depends on what the first half turns up —
-or **you asked for a plan** you can watch and steer. Width on its own is never the reason.
+**And there is no phrasing that gets you one either.** The sentence that used to open a run
+outright — a message beginning `orchestrate …` — is an ordinary turn now, so asking for a
+planner in so many words gets you the same thing asking for the work gets you: an answer,
+and a task if what you asked for is work. *How do I start an adaptive run* has the whole of
+it.
 
-## How I start one for you
+## How do I start an adaptive run — the words that used to open one, and why nothing opens one now
 
-Ask for the work. Deciding whether a request is an adaptive run is the model's judgement,
-made with your whole conversation in view — there is no phrasing you have to learn and no
-keyword that triggers it. It is started with the `run_adaptive` tool and you are told in
-one line. What the model is told to reach for it on is the case above: a graph that has to
-be planned before anything starts, or a plan you asked to see. A broad ask by itself gets
-one task instead — "audit every package for this pattern" and "go through the regional
-reports" are one worker that splits itself, not a run.
+**You cannot start one from a conversation. There is no door left.** Not a sentence, not a
+slash command, not a setting, and nothing I can reach for. This is not a refusal you can
+argue with or a switch somebody turned off: there is no code that reads what you type and
+starts a planned run, so there is nothing to say no to you either.
 
-**`/task adaptive <brief>` is the door you can type**, and it is the only way `/task` opens
-a run. A plain `/task <brief>` never does: it reads the brief for width and then starts one
-worker, which hands its work out itself if the material turns out to be wider than one
-worker's share (*work that runs on its own*, under *When a task turns out to be too wide for
-one worker*). There used to be a card offering you `adaptive` or `single` whenever the
-sizing call found parts; it is gone, and the word `adaptive` typed into the command is what
-replaced it. The `starting a task` setting can make it the standing answer.
+What closed, in order:
 
-There is also an older, narrower door: a message that BEGINS with `orchestrate …`,
-`adaptively work on …`, `run an adaptive run on …` starts one directly, without asking the
-model at all. Courtesy openers (`please `, `can you `, …) are stripped first. You can name
-the tank in the same sentence — `with a $5 budget`, `on $2.50`, `$10 cap` — and the money
-clause is taken out of the goal before the run reads it.
+- **`run_adaptive` is off my belt.** I do not have the verb, so there is no phrasing that
+  gets me to reach for a planner and no card where I offer you one.
+- **`/task adaptive` is retired.** The word picks nothing; your brief is kept whole and one
+  ordinary worker starts. *Work that runs on its own* has the line it prints.
+- **No setting turns it on.** The `starting a task` row had an `adaptive` answer once, and
+  it is gone; a profile still holding the word reads as the default.
+- **And the typed sentence is gone too.** A message beginning `orchestrate …`, `adaptively
+  work on …` or `run an adaptive run on …` opened a run directly until this build. It does
+  not now. Those words are an **ordinary turn**: I answer them like any other message, and
+  if what you asked for reads as work, a **task** starts the way it would for any other
+  turn. Nothing is special-cased about them, nothing is stripped out of them, and no note
+  says a door used to be there.
 
-Both doors are off unless there is an interactive screen: a run that empties its tank has
-to ask somebody, and a run nobody can answer is a run that stops halfway and stays there.
-So `--once` has no runs, and neither does a session opened over `--host` — the fuel gate
-travels on a lane a remote connection does not carry. Tasks and background nodes cannot
-start one either: a node is handed no runner.
+**So what happens to `orchestrate the migration off the old client`?** I read it, I answer
+it, and the migration goes out as one task that hands its own parts out once it has opened
+the material. If you named money or a model in the sentence — `with a $5 budget`, `with
+opus` — those words are simply part of what you said; nothing reads a tank out of them any
+more.
 
-**The turn ends immediately, with no answer written.** The run is the answer and it has not
-happened yet. Its write-up arrives later as a line in the conversation.
+**What is left of a run, and where.** The planner, the fuel tank, the run's page and the
+node tree are all still in aforge, and the rest of this page describes them, because work
+that arrives as a planned graph still behaves exactly this way. What no longer exists is a
+way into it from here. For a shape of work that recurs, the thing to reach for is a
+**sub-harness** — built once, saved, offered again (*Saved shapes of work*) — and for one
+job that leaves the conversation, a **task**.
 
 ## What one costs and what happens when the money runs out
 
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
 calls too.
 
-The default tank is **$10.00** when nobody named a figure. Say your own in the goal —
-"with a $5 budget" — and that wins.
+The default tank is **$10.00** when nobody named a figure. **You cannot name one from a
+conversation**, because a conversation cannot start a run at all — a run's cap is settled by
+whatever started it.
 
 - At **80%** the run says so, once.
 - At **100%** it **pauses**: whatever is in flight is allowed to finish, nothing new starts,
@@ -218,7 +233,7 @@ If the naming call cannot answer at all — the provider is having a bad minute,
 comes back as a path — the row falls back to the id, because a row with a poor name is
 still better than a row missing from your project's history.
 
-## Why nothing seems to happen for the first minute of a run — nothing happens for a minute after a run starts, and what `forming the work` means
+## Why nothing seems to happen for the first minute of a run — nothing happens after a run starts, nothing happens for a minute, and what `forming the work` means
 
 A run's row appears on the roster the instant you ask for it, and the workers under it
 cannot exist until the planner has answered — the one call in a run with no work to
@@ -273,34 +288,16 @@ rather than showing an error. Only a long transcript is trimmed, and it says how
 The file itself is a real session journal at
 `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
 
-## Being asked whether that should have been work
+## When a turn should have been work — a run is never what starts
 
-Sometimes an answer arrives in words when the honest answer was work. After a turn that
-called no tools and answered a substantial message, a second small model reads what you
-asked and the first two lines of what came back, and decides one thing: should that have
-been work? A yes raises **one card**, on the same row a harness offer uses:
+A turn answered in words when the honest answer was work does get caught: a second small
+model reads it afterwards and can start the work for you, with one line on the transcript
+saying it did. **What it starts is always a task and never a run** — this judge has no
+planner to reach for any more, and no card either. It is *Why a task started on its own* in
+*work that runs on its own*.
 
-```
-? run harness "task"? · research across every package · [enter] run · [esc] no
-```
-
-The name in quotes is the **shape** being offered — `task` or `adaptive run` — and the dim
-line beside it is the judge's own sentence about why. `task` is what it offers for wide
-work, including a broad sweep like the one above: one worker starts and splits itself if
-the material is wider than one pair of hands. It says `adaptive run` only for a goal whose
-graph has to be planned before anything starts. The row says `run harness` because it
-is the harness offer's row, reused; nothing about a saved harness is involved.
-
-- `enter` or `y` starts it: an adaptive run on the default **$10.00** tank, or one task,
-  admitted straight away from the goal the judge wrote.
-- `esc` or `n` drops it. Nothing started, nothing was written down, and the answer you
-  already have is untouched.
-
-**It never starts anything on its own** — the card is the action. It is asked at most once
-every three turns, so two cards can never arrive back to back, and it is quiet on short
-messages, on turns that called tools, and in any session with no screen to answer it
-(`--once`, a task node). If the judge cannot be reached, or answers with anything that is
-not the small JSON object it was asked for, nothing is said at all.
+This is also what happens to a message that begins `orchestrate …`: it is read by the model
+like any other sentence, and the judge behind it starts a **task** if there is work in it.
 
 ## What a run's planner and its nodes are told — does the run see what I said?
 
@@ -336,13 +333,12 @@ cheap `taskname` call turns a goal that is still a sentence into two or three lo
 words, a few seconds after the run has already started. *Work that runs on its own* has it
 under *Why my task is called something I did not type*.
 
-A run you started with `/task adaptive` has its goal **shaped** first: a model turns what you
-typed into a fuller goal — your words, the constraints the work needs, and a `DONE WHEN` line
-under it — and that shaped text is the goal the planner reads. Your own sentence is still
-carried separately and verbatim, as above, so it still wins where the two disagree, and the
-run's row is named from the work either way. If shaping cannot run, the goal is your sentence
-exactly. The *work that runs on its own* page has it under *Why my task's brief is longer
-than what I typed*.
+**A run's goal is never shaped.** The typed door onto a *task* has a model write a fuller
+brief around your words with a `DONE WHEN` line under it (*work that runs on its own*, under
+*Why my task's brief is longer than what I typed*); a run has nothing of the kind — the door
+that did that was `/task adaptive`, retired, and the last door of any kind onto a run is
+closed too (*How do I start an adaptive run*). What the planner reads is the goal it was
+handed, word for word.
 
 ## What a run's workers may touch
 
@@ -499,6 +495,7 @@ order they were started, each still a family with its nodes hanging under it.
 - A shape of work that will recur is a **sub-harness**: built once, saved, and offered
   again. See *Saved shapes of work*.
 
-A run is for the one-off goal whose graph has to be planned before the work starts, and for
-the plan you asked to see and steer. Several parts on their own are not the reason — those
-are one worker that splits itself.
+A run is for the one-off goal whose graph has to be planned before the work starts — and
+from a conversation you cannot reach one at all, by any words (*How do I start an adaptive
+run*). So every one of the rows above is the answer here, and several parts on their own are
+never the reason to look for a planner: those are one worker that splits itself.

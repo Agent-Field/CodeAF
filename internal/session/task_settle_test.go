@@ -31,7 +31,7 @@ func TestTheLandingNoteAndTheToolOfferTheSameVerbs(t *testing.T) {
 	if verbs != "accept|reaudit|refute" {
 		t.Fatalf("the verbs read %q, want accept|reaudit|refute", verbs)
 	}
-	note := taskNote(settleNotice(), "", TaskSettleAsk)
+	note := taskNote(settleNotice(), "", TaskSettleAsk, landingAddress{person: true})
 	if !strings.Contains(note, "tasks id 9 resolve "+verbs) {
 		t.Fatalf("the note does not offer the tool's own verbs:\n%s", note)
 	}
@@ -48,7 +48,7 @@ func TestTheLandingNoteAndTheToolOfferTheSameVerbs(t *testing.T) {
 // ASK IS INFORMATIONAL. The person has the decision on the card in front of
 // them, so the note says what happened and leaves the choice where it is.
 func TestUnderAskTheNoteLeavesTheDecisionWithThePerson(t *testing.T) {
-	note := taskNote(settleNotice(), "", TaskSettleAsk)
+	note := taskNote(settleNotice(), "", TaskSettleAsk, landingAddress{person: true})
 	if !strings.Contains(note, "waits until somebody decides") {
 		t.Fatalf("the ask note does not say who is waiting:\n%s", note)
 	}
@@ -67,7 +67,7 @@ func TestUnderAskTheNoteLeavesTheDecisionWithThePerson(t *testing.T) {
 // "decide" with no way to say "I cannot" would produce a confident guess about
 // work nobody read.
 func TestUnderAutoTheNoteTellsTheModelToDecide(t *testing.T) {
-	note := taskNote(settleNotice(), "", TaskSettleAuto)
+	note := taskNote(settleNotice(), "", TaskSettleAuto, landingAddress{person: true})
 	for _, want := range []string{
 		"settle it yourself with tasks id 9 resolve " + TaskResolveVerbs(),
 		"Only ask the person when you genuinely cannot tell",
@@ -80,7 +80,7 @@ func TestUnderAutoTheNoteTellsTheModelToDecide(t *testing.T) {
 	// EVERYTHING ELSE ABOUT THE LANDING IS THE SAME. The policy is about who
 	// decides, not about what happened, so the facts a person reads are identical
 	// either way.
-	ask := taskNote(settleNotice(), "", TaskSettleAsk)
+	ask := taskNote(settleNotice(), "", TaskSettleAsk, landingAddress{person: true})
 	for _, shared := range []string{"task 9 needs your look: Port the parser", needsLookLead} {
 		if !strings.Contains(ask, shared) || !strings.Contains(note, shared) {
 			t.Fatalf("the two notes disagree about %q", shared)

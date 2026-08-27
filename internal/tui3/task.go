@@ -52,8 +52,8 @@ import (
 // [app.task], the lane that answers it — so the answer and the row can never
 // disagree about what was decided.
 type taskCard struct {
-	id                                uint64
-	title, summary, brief, acceptance string
+	id                                       uint64
+	title, summary, brief, acceptance, where string
 	// name is the two-or-three-word NAME cut from the title, sub the one-line
 	// sentence under it, and ident the glyph and hue this node is followed by
 	// for the rest of its life (taskident.go). All three are derived once, here,
@@ -165,7 +165,7 @@ type taskNode struct {
 	// minutes later can still say what the work was FOR. All three arrive on the
 	// proposal, not on the updates: an update carries a state, and the contract
 	// is frozen at admission (internal/session's task_room.go says so).
-	assignment, brief, acceptance string
+	assignment, brief, acceptance, where string
 	// ident is the glyph and the hue this node is followed by, keyed on the id
 	// and stable for its whole life (taskident.go).
 	ident taskIdent
@@ -876,6 +876,7 @@ func (a *app) proposeTask(ev session.Event) {
 		summary:    summary,
 		brief:      brief,
 		acceptance: strings.TrimSpace(notice.Acceptance),
+		where:      strings.TrimSpace(notice.Where),
 		name:       name,
 		sub:        taskSubtitleOf(name, firstNonEmpty(summary, brief)),
 		ident:      identFor(notice.ID),
@@ -1411,6 +1412,9 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 		// thing keeping this line worth reading: a proposal that carried it every
 		// time would be carrying furniture.
 		out = append(out, stem+a.pal.dim(fit(card.elsewhere, room)))
+	}
+	if card.where != "" {
+		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
 	if point := a.taskBranchPoint(); point != "" {
 		// The branch point sits with the assignment and above the answers, because
@@ -5097,7 +5101,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if card := a.cardFor(notice.ID); card != nil {
 			node.label = card.title
 			node.assignment = firstNonEmpty(card.summary, card.brief)
-			node.brief, node.acceptance = card.brief, card.acceptance
+			node.brief, node.acceptance, node.where = card.brief, card.acceptance, card.where
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
@@ -5143,6 +5147,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Merge != "" {
 		node.merge = notice.Merge
+	}
+	if where := strings.TrimSpace(notice.Where); where != "" {
+		node.where = where
 	}
 	// WHO ENDED IT IS KEPT AND NEVER UNSET, on the rule the branch and the price
 	// are kept by: a person stopping this node is a fact about the work, and an

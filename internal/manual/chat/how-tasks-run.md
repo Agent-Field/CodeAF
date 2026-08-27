@@ -5,8 +5,8 @@
 `/task <brief>` first raises one forming block at the transcript tail. Its dim `▏ `
 hairline joins the word `task`, your verbatim quoted brief, and the live phase. The phase
 begins as `sizing it up…` for the plain sized form and advances in place to
-`shaping the brief…`; `/task solo`, `/task adaptive`, and the preset `single` road skip
-straight to shaping. The spinner and count-up keep moving on the same frame clock as the
+`shaping the brief…`; `/task solo` and the preset `single` road skip straight to
+shaping. The spinner and count-up keep moving on the same frame clock as the
 other live rows. When the start succeeds, the block is replaced in that same frame by
 the normal started-task row and the task appears on its rail. When it fails, the block is
 replaced by the error sentence. The hairline never remains on settled work.
@@ -21,31 +21,122 @@ to the proposed one.
 
 ## Does a task touch my working copy?
 
-No. Each task gets its own checkout of the repository, on its own branch, so you can keep
-working in yours while it runs.
+By default, no. Each code task gets its own checkout of the repository the conversation is
+about, on its own branch, so you can keep working in yours while it runs. If your request
+explicitly names another folder, the task works in that exact folder instead; its card and
+its `/history` record show the resolved `where`.
 
 aforge runs `git worktree add -b <branch> <dir> HEAD` off your **current HEAD**.
 
-- **Directory:** `<repo root>/.aforge-v3/tasks/<session-slug>/<task id>`. The session
-  segment is the conversation's own id. A conversation with no session file on disk gets
-  `unfiled-<6 hex>`, minted once per process, so two windows never collide.
+- **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home,
+  while the worktree is registered in the repository it was cut from.
 - **Branch:** `task/<title slugified, at most 32 characters>-<6 hex>` — for example
   `task/fix-the-nil-map-crash-9c1a2f`. The random tail lets the same title be proposed
   twice.
 
-The worktree lives **inside** the repository, so you will see it in `git worktree list` and
-in your file browser. `.aforge-v3` is reset out of every task commit, so it never merges.
+The worktree lives inside the conversation's session folder. You will see its registration
+in the repository's `git worktree list`, but aforge puts no task directory in your repo.
 
 If a directory is already at that name it can only be this session's own dead run, so it is
 removed with `git worktree remove --force`, pruned and deleted before the add.
 
 Two limits:
 
-- A workspace that is **not a repository**, or a repository with **no commit to branch
-  from**, runs **in place** in your own directory, and says so:
-  `it worked directly in the workspace: there was no repository to branch`
+- An explicitly named folder, or a task shaped as non-code work with `where: in place`,
+  runs **in place** in that directory and says so:
+  `it worked directly in the workspace: there was no repository to branch`.
+  While that task runs, **the chat cannot write in that directory** — see *A task working
+  in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
+
+An `aforge` conversation opened from your home directory owns a scratch workspace. That
+scratch repository is never treated as the project a code task should branch from. A code
+task with no named place stops with `this task needs a project; use /workspace <path> or
+name where it should work`; use `/workspace` once to anchor the conversation, or name the
+folder in the request. Non-code work may deliberately use the scratch workspace in place.
+
+## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
+
+When a task got a checkout of its own, you and it are in different directories and nothing
+either of you writes can reach the other. **When a task is running in place there is only
+one directory**, and two writers in one directory do not produce either person's work.
+
+So a task running in place **holds that directory for as long as it runs**, including
+while its work is being checked and repaired. Anything else that tries to write a file
+there — this conversation, one of the hands inside a reply, another task — is refused
+before the write happens, and told who has it:
+
+```
+src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
+nothing was written. That work is writing there until it finishes — wait for its report and
+make this change on top of what it did, or change something outside /workspace/rust-java-lsp.
+```
+
+Three things this does **not** stop:
+
+- **Reading.** Everything can still read every file in there. The hold is on writing only.
+- **The task's own family.** The task itself, its sub-tasks, and the hands its worker forks
+  are all that task writing, and they are never refused.
+- **`bash`.** A shell command's effects are whatever the command did, so a command that
+  writes is not caught. Only `write` and `edit` — the two hands whose file is known before
+  they run — are held back.
+
+The hold ends the moment the task does: it lands, fails, is stopped, or the process closes,
+and the next write goes straight through. Nothing has to be released and there is nothing to
+clear by hand.
+
+**Two tasks cannot both run in place in one directory.** Whichever started first has it;
+the second is refused its writes and told which task to wait for. When the first lands, the
+second gets the directory.
+
+## What a finished task brings home, and what it leaves behind
+
+A task lands **the files it wrote** — every path it handed to its `write` or `edit` hand,
+plus anything its own report names on a `files:` line. Nothing else is committed and
+nothing else merges.
+
+That is why a task's branch is a change you can read. Its checkout is its own to make a
+mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
+`node_modules`, a `target/`, a `.pytest_cache`, a downloaded model — none of those is
+something the task wrote, so none of them reaches your branch. Tasks used to land with the
+virtualenv attached and the actual change buried inside it.
+
+What it leaves behind is named in the landing, and the sentence says where it went:
+
+`it left files it did not write, and they went with its working copy rather than onto your branch: .venv/bin/activate, .venv/pyvenv.cfg and 812 more`
+
+A task's checkout is removed once its work is merged, and the leavings go with it — that is
+what a throwaway checkout is for. When the branch is kept instead, its Git worktree is
+unregistered but the ordinary task folder and leavings stay, and the sentence reads `they
+are still in its task folder rather than on its branch`. The first few files are named and
+the rest are counted. Your `.gitignore` is respected exactly as it always was: a path your
+repository ignores is not committed and is not mentioned.
+
+**When a command made the deliverable.** A task that runs a scaffold, a code generator or a
+formatter produces real files it never typed. It brings them home by naming them on the last
+line of its report — `files: site/index.html, site/app.css` — and only names that really
+exist in its checkout are believed. A task that says nothing about them has left them
+behind, and that is the difference between a deliverable and a dropping.
+
+## My task's branch would not merge — what happens then
+
+Nothing is forced onto your branch. A merge that hits a conflict is **abandoned** and your
+checkout is put back exactly as it was: no `<<<<<<<` markers in your files, no half-finished
+merge to get yourself out of.
+
+The task then lands as **needs your look** rather than finished, and the report names the
+files that changed on both sides:
+
+`finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
+
+The work is committed on that branch, so `git merge task/…` is a real offer whenever you are
+ready to reconcile the two versions. Nothing waiting on the task fails — it waits until you
+decide, exactly as with any other task that needs a look.
+
+Pressing **accept** on the card does not change this. Accepting says the work is good, and
+it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
+leaves the task needing your look with the same sentence.
 
 ## What a task can do while it runs
 
@@ -76,6 +167,13 @@ outside them with `No task "…" among the pieces you handed out.` Its brief is 
 whole world; the project's history is not its to read. The tasks page has the whole of it,
 under *When a task splits its own work*.
 
+**And it can use hands.** `fork` is on a task's belt for the same reason it is on the
+conversation's: a task worker is a mind in the middle of its own work, so it can copy
+itself into two to four hands inside one of its own turns, in its own copy of the
+repository, and stitch what they bring back. The tasks page has the whole of it, under
+*Hands*. The one agent that cannot fork is a hand — the fork is one level deep, and a hand
+simply does not have the tool.
+
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that
 floor there is nobody to ask, so the task reads the refusal
@@ -85,7 +183,85 @@ connect a new account inside a task.
 A task is also a job. It shows in `jobs list` labelled `task 7` with the title as detail,
 `jobs kill` ends it exactly as a time limit does, and closing the session kills every
 running task. Its step-by-step log is the job log, at
-`<workspace>/.aforge-v3/jobs/<job id>.log`.
+`<session folder>/logs/jobs/<job id>.log`.
+
+**A task's own droppings are kept with the conversation, never in the checkout it works
+in.** The job log above, and the bytes of any long tool result lifted out of a worker's
+live context to save room, both land under the conversation's `logs/` — the same place the
+conversation's own do. A worker reads a lot of files, and none of what the harness keeps
+about that reading is your work: nothing of aforge's is written into your repository or
+into the task's copy of it. Only a conversation with no folder at all falls back to
+`<workspace>/.aforge-v3/`.
+
+## How a task is told to spend its time — the measure, a zero, and not remaking what exists
+
+Beyond the tools, a task is given three working habits in its instructions. They are
+written as principles rather than examples, because aforge hands tasks prose, research,
+data, operations and code through the same door and a habit written in one trade's words
+is a habit that is wrong for the next job. **The chat is given the same three, in the
+same words** — see *What aforge can do for you* — because the approach to a piece of work
+is usually chosen in the conversation, before the task exists.
+
+- **When the work comes with its own measure, that measure is the loop, not the report.**
+  A check to run, a count to reach, a reading somebody will take — the task is told to
+  work *between* readings rather than saving the reading for the end, and that the
+  interval between two of them **shrinks when the reading is zero** rather than growing.
+  A result it cannot explain is the moment to take the reading more often and change less
+  in between. Anything changed but never measured is called what it is: a guess.
+- **Nothing on every count is one shared fault, not many separate ones.** Parts that do
+  not depend on each other do not all fail at once by coincidence, so a task reading zero
+  everywhere is told to find what they have in common — how they are reached, where they
+  are looked for, the step before any of them runs — and to prove that shared path carries
+  one case end to end **before** it touches any single part. Uneven readings say the
+  opposite, and there it starts with the worst one.
+- **Before making a thing itself, it spends one step asking whether it already exists** in
+  a form it can use: a tool, a source, a service, something the work already carries,
+  something done here before. Asking costs one step; not asking costs the whole thing.
+  And it asks *before* the first piece exists, because the answer stops being welcome once
+  there is something to be attached to.
+
+These came out of two unattended runs of the same brief measured against each other: the
+one that hunted for what every zero had in common was off zero eleven minutes later, and
+the one that answered the same zero by reading its own work spent most of its calls
+changing things it had never measured — and built from scratch something that already
+existed, without ever spending the one step it would have cost to ask.
+
+## What git a task may run — merge, pull, checkout, stash, reset are refused
+
+A task works in **its own copy of the repository**, and its copy shares the repository's
+object store with yours: every branch you have is visible from inside it. So the line
+aforge draws around a task's `git` is about **whose work it may take**, not about which
+directory it is standing in.
+
+**It may read anything.** `git status`, `git diff`, `git log`, `git show`, `git branch
+--list`, `git rev-parse`, `git merge-base` — against any branch, including `main` and any
+other task's branch. Knowing what is around it is how it does the work.
+
+**It does not have to save anything.** What lands on your branch is every path the task
+passed to `write` or `edit`, staged by name on the way home — the task is told not to stage
+its own work, and `git add` and `git commit` are neither needed nor refused.
+
+**It may not move its copy onto work it did not do, and may not reach a remote.** These are
+refused before they run, and the task reads the refusal and keeps working:
+
+| Refused | Because |
+| --- | --- |
+| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
+| `pull`, `fetch`, `push`, `clone`, `remote`, `submodule` | a task's copy is a copy of what **you** have, and it reaches no remote |
+| `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
+| `reset --hard`, `--merge`, `--keep`, and `restore --source` | they throw the working copy away or fetch a file off another branch (plain `git reset` to unstage, and `git restore <path>`, are fine) |
+
+The wording it reads names the verb and what it may do instead, for example:
+
+> git merge is not yours to run: it would put work this task did not do into your copy, and
+> only what you write here comes home. Look with git status, diff, log and show — any
+> branch, as much as you want. What you write with write and edit in this copy comes home
+> on its own.
+
+**None of this applies to you.** In your own conversation, in your own checkout, aforge
+runs whatever git you ask for. The rule exists because a task reports work as *its own*,
+and one that fast-forwarded onto `main` really did report somebody else's fixes as the
+thing it had just built.
 
 ## How a task reports back to you
 
@@ -123,12 +299,14 @@ door onto that page. `enter` on an `earlier` row goes inside it, and the card
 carries the whole of that final message — read back off the task's own journal — under
 `what it said at the end`.
 
-When a task's work does come home, everything it wrote is staged with `.aforge-v3` reset
-out, committed on its own branch as `task: <first line of title, at most 72 chars>` with
-the identity `aforge <aforge@localhost>`, then merged into your branch with
-`git merge --no-edit`. The merge is attempted whatever your tree looks like — a dirty
-checkout is normal. On success the worktree is removed and the branch is deleted. Two
-tasks finishing at once are serialized, so a merge is never lost.
+When a task's work does come home, the paths it wrote are staged by name — never
+`git add -A`, and never `.aforge-v3` — then committed on its own branch as
+`task: <first line of title, at most 72 chars>` with the identity
+`aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
+merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
+the worktree is removed and the branch is deleted. A merge that conflicts is abandoned, the
+branch is kept, the task worktree is unregistered, and the task needs your look. Two tasks finishing at
+once are serialized, so a merge is never lost.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
 
@@ -156,6 +334,11 @@ An ordinary reply to something you typed has no such line. If an old task has no
 request, the line shows its identity mark and name alone rather than an empty quotation.
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
+
+**That reply is priced exactly like one you typed.** It climbs the same three points, has the
+same ceiling, and is handed to a task the same way — see *An answer that runs long is read and
+moved* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
+minutes with nobody watching and then leave the session idle for seven and a half hours.
 
 ## Which task is this answer about
 
@@ -218,13 +401,42 @@ There are two step limits as well, and they work the same way — checkpoints, n
 | Limit | Per checkpoint | Backstop | Report when it finally stops |
 | --- | --- | --- | --- |
 | `max_steps` — finished tool calls | 200 | 1000 (200 × 5) | `stopped: 200 steps and no finish` |
-| `no_progress` — calls in a row that teach nothing, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
+| `no_progress` — calls in a row that teach nothing, ask nothing new, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
 
 At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
 to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
 writes up what it has — so nothing is ever lost mid-flight. And a task stopped this way is
 still checked against its acceptance afterwards: if the work holds it lands finished and
 merges, and the `stopped:` line never reaches you.
+
+## What "bringing the work home" tells the task, and why a tool says it was withdrawn
+
+When the landing turn takes a tool away, a task that reaches for it anyway is not told the
+tool is unknown. It is told it was **withdrawn**, and the answer carries three things: why
+it is gone (`bash was withdrawn from your tools: the work is being brought home`), the
+**exact list of what it still has** by name, and what to do with them — finish what it is
+saving and stop, because calling it again cannot bring it back and there is nothing left to
+run or poll.
+
+This is the difference between an eighteen-byte `Unknown tool: bash` and a sentence. One
+really happened: a task lost `bash`, `read` and `grep` when it was landed, was answered
+`Unknown tool` eight times, retried each call because nothing told it the hand was gone for
+good, and worked out what had happened only in its very last words. A name that was **never**
+on the belt still answers `Unknown tool: <name>` — that one is a genuine mistake by the
+model, and the two are deliberately worded differently.
+
+**Nothing the harness refuses is counted against the task.** A withdrawn tool and a call a
+permission rule turned down are the harness's own answers, not the task working badly: they
+never advance the no-progress counter, never reset it, and never earn a `[stuck]` note. They
+are still steps, they still cost, and they are still in the task's transcript.
+
+**Files saved after a withdrawal are reported as unverified.** If a task had been running
+its work with `bash`, lost it to the landing turn, and then saved something anyway, its
+report says `incomplete — nothing checked the files it saved after its tools were withdrawn
+— they were never built or run`. It stands at the head of the report, directly under the
+limit that fired, so nobody reading it — you, or the conversation that started the task —
+takes those last edits for finished work. It says nothing about whether they are right,
+only that nothing looked at them.
 
 ## What counts as progress, and what gets a task stopped as stuck
 
@@ -239,24 +451,86 @@ generates them again has never called `edit` in its life, and is not stuck.
 **It changed the worktree.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under
 everything else, so a tool nobody classified still counts when it actually produced
-something. Job logs under `.aforge-v3` are excluded: the harness's own droppings are not
-the task's work.
+something. Anything under `.aforge-v3` is excluded: what the harness leaves there is not
+the task's work. Job logs and stubbed tool results are not even there any more — they are
+kept with the conversation, under its own `logs/` — and the exclusion stays as the floor
+under everything else aforge may leave in a checkout.
 
-**It learned something.** A read-only call aimed at a target the task has not aimed at
-before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,
-`recall`, `view_image`, `manual`, `tasks`, `settings`, `list_harnesses`, `services`,
-`gmail_read`, `gmail_search`, `calendar_list` — or a `bash` running a command not run
-before. A failed one still counts as learning: finding out that something does not work is
-finding something out.
+**It learned something.** A read-only call — `read`, `read_document`, `ls`, `grep`, `find`,
+`web_search`, `web_fetch`, `jobs`, `recall`, `view_image`, `manual`, `tasks`, `settings`,
+`list_harnesses`, `services`, `gmail_read`, `gmail_search`, `calendar_list` — or a `bash`,
+**whose answer was more new than old**. A failed one still counts as learning: finding out
+that something does not work is finding something out.
 
-So what actually fires the counter is **the same call again, changing nothing and teaching
-nothing** — the same search six times, the same failing edit retried, a command already
-run. `note`, `forget`, `track`, `commit` and `change_setting` are deliberately not
-progress: a task writing its own memory again has not learned anything.
+"Whose answer was more new than old" is measured **line by line, not result by result**.
+aforge remembers the lines a task has already been shown, and counts how many of a
+result's lines are ones it has never been given. Nothing is stripped out or excused first:
+a line is the same line, or it is not.
+
+The reason is a shape that looks like work and is not. A task re-runs its own check
+against something it has stopped changing; the check prints the time it started, so every
+run comes back with one new line in sixteen and fifteen the task already had. Counting
+whole results, that is six discoveries in a row and the task can spin for hours. Counting
+lines, it is what it is — six per cent new — and the counter fires.
+
+**But that count only decides a re-measurement, and two other things count on their own.**
+Half a rule was landing tasks in the middle of real work, so the whole rule is:
+
+- **A reading taken over work that has just changed is information whatever it says.** Edit
+  a file, rebuild, run the check: the build reprints the same warnings and the check
+  reprints the same table with three numbers moved. Almost nothing in either is new, and
+  both told the task something — it measured a state that had never existed before, and
+  finding out that an edit moved little is finding something out. One reading gets this;
+  the second re-run of an unchanged check is a re-measurement again.
+- **A question the task has never asked, whose answer brought something back, is
+  information.** Pulling six different records out of a corpus of pretty-printed JSON gives
+  six answers that are mostly `    {` and `  }` — twenty per cent new lines at best — and
+  the task is learning six things it did not know. What is *not* information is a new
+  question whose answer holds nothing new at all: nine different `sleep N && tail` commands
+  answered `(no output)` nine times are nine steps of nothing, and that is the counter's
+  oldest catch.
+
+So what actually fires the counter is **a step that changed nothing, asked nothing new, and
+brought back almost nothing new** — the same search six times, the same failing edit
+retried, a measurement re-run over work that has not moved. `note`, `forget`, `track`,
+`commit` and `change_setting` are deliberately not progress: a task writing its own memory
+again has not learned anything.
 
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
 stuck and is stopped — which is what the counter is for.
+
+**A failure aforge itself produced is never counted, in either direction.** A tool that was
+withdrawn from the task's belt, and a call a permission rule refused before it ran, are
+answers written on this side of the wall: the tool never ran and the world never saw the
+call. Those steps do not advance the counter, do not reset it, and do not earn the task a
+`[stuck]` note telling it to stop repeating itself. The reason is the run that produced this
+rule: a task was disarmed mid-flight, answered `Unknown tool` eight times, and was then
+nudged three times for the retries the harness had just manufactured.
+
+**A task that handed parts of its work out waits for them, and that wait is never counted
+as being stuck.** While any part is still running the counter does not advance, nothing is
+asked of the task, and its clock does not run: its row shows `waiting · its parts`, and the
+next thing it is asked is the one turn that carries every part's report at once. The counter
+starts again from zero when the last report lands, so a task that spins over the *fold* is
+caught exactly as any other is. A failed part is a report too: its failure reason reaches
+that same turn beside the successful reports, so the parent integrates what landed and says
+what is missing or retries it. The failed part does not stop the parent, and delayed steps
+from before the report landed cannot spend the fresh allowance before the parent reads it.
+
+**A task that repeats itself is told what the work has been doing.** Before it is stopped it
+gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
+*the work has not changed since step 12; nine results since brought nothing new*. aforge
+knows which steps changed the deliverable — the files the task's own `write`, `edit` or
+generating hands saved — so it can say when that last happened and what the steps since
+brought back. The same line appears in the short account a checkpoint hands to whoever
+looks at the task: `work last changed: step 12 · results since: 9 · new lines since: 4%`.
+The clock sentence is a description and not a rule by itself. The session loop separately
+uses the same ledger for one structural rule the sentence makes visible: after five
+consecutive tool rounds in which every result has no fresh line, it adds a `[stuck]` note
+saying the answer is already in the transcript. Fresh information or a successful write
+resets that streak. The task-level no-progress counter above remains the rule that stops an
+entire task run.
 
 Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with
@@ -293,20 +567,26 @@ stopped.
 ## How aforge knows a task really finished
 
 A task is never done on its own say-so. When the work finishes, a **separate, fresh,
-read-only checker** is put in the task's worktree, runs the repository's own checks, reads
-the diff, and answers. Only a pass merges.
+read-only checker** is put in a clean restore of what the task wrote, runs the repository's
+own checks, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
 acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
 of files written, and where to look. **The brief is deliberately withheld** so it grades
 the contract, not the effort.
 
-What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist —
-`go test`, `go build`, `go vet`, `git diff`, `git log`, `git status`, `git show`, `pwd`,
-`wc`, `head`, `cat`. It cannot edit, write, install, fetch or paint. Shell composition is
-refused outright: any of `; | & < > $ ( ) { }`, a backtick or a newline in the command is
-turned away before the allowlist is even consulted. Every result it reads is capped at
-8000 bytes.
+**On work that started itself, the acceptance is your own message.** Nobody groomed a
+done-condition for a task aforge started out of a reply, so what the checker is held against
+is your request in full, framed as "everything asked for below is actually done — all of it,
+not the part that was easiest to reach". Before that it was a generic line pointing at the
+task's name, and on a long piece of work that meant a request being accepted as met the moment
+the small piece the reply happened to be holding was finished.
+
+What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist
+built for **that one task** — see the next section. It cannot edit, write, install, fetch or
+paint. Shell composition is refused outright: any of `; | & < > $ ( ) { }`, a backtick or a
+newline in the command is turned away before the allowlist is even consulted. Every result
+it reads is capped at 8000 bytes.
 
 Before the check, new files are staged so the diff shows everything including brand-new
 files. Staging happens once, so every look judges the same tree. In a workspace that is
@@ -317,6 +597,134 @@ This is controlled by `task.audit`, **on by default**, and settable in your prof
 With it off, the gate stands open, the task's own account merges, the task lands done, and
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
+
+## Which commands the checker is allowed — the task's own check, not a fixed list
+
+**The checker is allowed the checks the work itself names.** There is no list of build tools
+in aforge, and no setting that holds one. The commands its `bash` will accept come from three
+places, and nothing else gets through:
+
+- **the check your task declares** — every command named in the brief or the acceptance,
+  read out of the text: a span in backticks (`` `bash verify.sh` ``, `` `make check` ``) or a
+  line that opens with a shell prompt (`$ ./verify --quiet`). A wildcard you wrote is
+  honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
+- **the check the task itself used** — any command its worker issued, taken from the same
+  tool results the checker is shown, read for **the one command that line runs**. A leading
+  `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
+  working in — and so is everything after the first pipe, along with the redirections of output
+  at the end of the line (`2>&1`, `> log`). So
+  `cd /workspace/thing && cargo build --release 2>&1 | tail -3` contributes
+  `cargo build --release`, which the checker then runs as one command, composing nothing. A
+  `cd` to somewhere outside your tree contributes nothing at all, an arrow in the middle of the
+  line leaves it composed and it contributes nothing, and a command that even a
+  permit-everything policy would still stop and ask about — `rm -rf /`, `shutdown`, `mkfs` —
+  never becomes one either;
+- **the always-safe reading commands** — `git diff`, `git log`, `git status`, `git show`,
+  `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
+  not verification, so a checker holding only these can read your work but cannot exercise
+  it.
+
+A check that names no file is matched as a prefix, field by field, so `make check` admits
+`make check ./...` and does not admit `make checkout`. A check that **names a file in your
+tree** is matched by which file it is instead — see the next section. **Every refusal names
+what this particular check is allowed**, listing the task's own check first and the reading
+commands after it, so the model reads the door in the same breath as the no.
+
+**When the work names no check and issued nothing that looks like one**, the checker is told
+so in as many words, told to judge from reading and answer, and given a much shorter window —
+one minute rather than five. There is no slow command for it to wait on, and the failure this
+replaced was a checker spending the full five minutes reaching for a door that was never
+going to open. That was measured on a Rust deliverable: the allowlist used to be a fixed set
+of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
+all, exhausted its five minutes on all six attempts, and every one of them landed the task
+needing your look.
+
+## How the check is spelled — one file, and the ways that really start it
+
+**A check that names a file in your tree is allowed under every spelling that really starts
+that file.** If your brief says the check is `bash verify.sh` and `verify.sh` is really there,
+the checker may run it as `verify.sh`, as `./verify.sh`, by its full path, or behind **the
+interpreter the file itself names** — the program on its `#!` first line, or the program that
+line hands to `/usr/bin/env`. So a file beginning `#!/usr/bin/env bash` is allowed
+`bash verify.sh`, one beginning `#!/usr/bin/python3` is allowed `python3 check.py`, and any
+path to that same program counts. **aforge holds no list of launchers**: the file answers the
+question, which is why `rm verify.sh` is not a spelling of your check. Paths are resolved
+against the directory the checker stands in and compared as files, so anything that starts the
+same file is the same check, and a wildcard you wrote is resolved the same way — `verify.*`
+names the file it actually matches on disk.
+
+**A file that says nothing about being run** — no `#!` line and no executable bit — gets no
+program word at all. It is run **the way your work ran it**: the exact spelling your brief
+declared, or the exact command its worker issued. The refusal says so, as "the check
+/path/data.txt declares no interpreter; run it the way the work ran it". A file with the
+executable bit but no `#!` line is allowed its own bare spellings and nothing in front of them.
+
+**What is still refused:** a different file (`bash other.sh`), the wrong interpreter
+(`python3 verify.sh` for a bash script), arguments your brief never declared
+(`bash verify.sh --flag` — one word, then the file, and nothing after it), an option where the
+program word should be (`bash -x verify.sh`), and anything composed (`cd x && bash verify.sh`).
+Where a check can be spelled, the refusal spells it out — "the check /path/verify.sh — run it
+as `/path/verify.sh` or `bash /path/verify.sh`" — and the checker is told the same thing before
+it types anything.
+
+This was measured. On a Rust deliverable the checker was handed a door naming the project's own
+script and then had five spellings of that one file refused in a row — the directory stated
+first, the absolute path, the bare name, the name behind a program word, the name behind `./` —
+so it gave up and read source code until its window ran out.
+
+## Where the check runs — a clean restore, not the task's messy checkout
+
+**The check does not run where the work happened.** It runs in a **clean restore**: the
+repository as it stood before the task began, with exactly the files the task wrote laid
+over it, and nothing else the run left lying about. The checker installs and builds there
+itself — that is what its five minutes are for.
+
+The reason is one measured failure. A task was asked to make a scorer pass; the scorer
+looked for files at a path the repository did not keep them at, and instead of changing the
+source the task made the path exist with `ln -sf`. It re-ran the scorer against its own
+symlink, watched it pass, and reported the job finished — and the checker, standing in the
+same directory with the same symlink under it, saw the same pass. What would have landed on
+your branch was a change that stops working the moment it leaves that machine.
+
+So **a passing check may not depend on state your branch does not carry**. A fixture the
+task dropped somewhere by hand, a link it made so a path would resolve, a directory it
+created outside its own writes, a value it set in the environment: none of it is in the
+restore, so a check leaning on it fails there and the task comes back incomplete naming what
+is missing. Installs, builds and caches are exempt — the checker makes those again.
+
+How the restore is built depends on your workspace:
+
+- **In a repository**, it is a fresh detached checkout of the task's own branch with the
+  written files laid over it and staged, so `git diff --cached` still shows the whole change.
+  It sits beside the task's own checkout with `-check` on the end of the name and shows up in
+  `git worktree list` while the check runs, then is removed and pruned.
+- **In a workspace that is not a repository**, it is copied by the clock: everything that
+  predates the task's start is the original tree, and everything younger that the task did
+  not write is left out. A directory in which nothing predates the task — a `target/`, a
+  `node_modules/` — is skipped whole.
+- **When the restore cannot be made** — no repository and no record of when the work began,
+  or a working copy of more than 20000 files — the check runs where it always did, in the
+  task's own checkout, and the job log says why.
+
+The task's own checkout is untouched by any of this, and the restore is removed as soon as
+the answer is in.
+
+## What the checker is shown of what the task already ran
+
+The checker is also handed the **last few tool results of the task's own worker** — up to
+six, each cut at 1200 bytes: what was called, with what, and what came back. It is the real
+result the worker read, not a display copy.
+
+That exists because a check is often the most expensive thing in the whole task. A checker
+made to rediscover the command and run it twice from scratch spends its whole five minutes
+and the task lands needing your look, which is exactly what was measured. Seeing what
+already happened tells it which command the check even is.
+
+It is **not** a shortcut to a pass. The checker is told where those results came from: in a
+restore they came from the task's own copy — the one a verdict may not rest on — so they can
+settle a refusal outright (a check that failed, or a check nobody ever ran, needs no second
+run to be believed) while anything that could pass there and fail in the restore has to be
+settled in the restore. A task that never ran a tool leaves this out of the packet entirely.
 
 ## What happens when the work is not right yet
 
@@ -330,6 +738,20 @@ The work so far stands and is already in this working copy. Do not start it agai
 
 The worker is fresh; the worktree is not. The task stays *running* while a round is under
 way, and you see one plain line of what is being closed.
+
+**A correction round is attempted by a more capable model.** The first attempt runs on the
+task's own model; when a check finds gaps, the worker sent back to close them runs on your
+crew's **careful work** model — the `repair` role, in `/crew`. It is the one place aforge
+spends more than you asked it to, and it is spent only after something has actually gone
+wrong, on a job the check has already narrowed to named gaps in a working copy that is
+already most of the way there. Two things turn it off by themselves: a crew whose careful
+model is the same as the model the work is on repairs on that model and costs nothing
+extra, and a task whose model **you named** — on the card or from inside its room — keeps
+your model for the correction round too.
+
+The correction worker is also handed the change as it stands: the files the first attempt
+wrote, `git diff --cached --stat` over them, and the sentence that `git diff --cached`
+shows the whole thing. It reads the diff rather than the repository.
 
 **How many rounds:** `task.repair_rounds`, default **1**, profile-only. 0 turns correction
 off. With the default, a task is worth at most **2 checks and 1 correction worker**.
@@ -366,7 +788,8 @@ stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
+its own section below — or the work held and its branch would not merge cleanly. The task
+is neither done nor failed: nothing merges, the branch is kept, and nothing
 waiting on it fails. The report leads
 `finished, but needs your look — ` and then what was said, or
 `finished, but needs your look — nobody could say whether it holds` when nothing was said.
@@ -375,7 +798,9 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. When two
+`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. The time
+in that third one is the window the check actually had — `5m0s` when it had a command to
+run, `1m0s` when the work named no check and there was nothing for it to run. When two
 tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
@@ -386,6 +811,15 @@ the choice with you; the four choices on the landed card are the door. With it o
 same note tells aforge to read the report and the work and settle the task itself, and to
 come back to you only when it genuinely cannot tell. Everything else in the landing is
 identical either way.
+
+**A session with nobody watching reads as `auto` whatever the row says.** `aforge --once`
+and every other headless door run with no surface to raise a card on, no settings panel and
+nobody to read a landing that says it is waiting on somebody — so a task that needs a look
+there would stop the run for good, and that was measured stopping a ten-hour run. Such a
+session takes the same road your own `[d] decide these for me` takes: aforge reads the
+report and the work and settles the task itself, with the same standing escape to say it
+cannot tell. It never goes the other way — a session you are sitting in front of keeps the
+row you set, and a blank row still means aforge asks you.
 
 ## Why my task needs my look when it finished fine — another window changed the same file
 
@@ -458,8 +892,11 @@ without exception:
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
   "Not proven" is not "throw it away";
 - a task that needs your look keeps its branch;
-- a task whose merge conflicted keeps its branch, and you are told
+- a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
+  finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+- a task that left files it did not write keeps them too — in its task folder, named in the
+  report, never on your branch, after unregistering the Git worktree;
 - a session that ended mid-run keeps the branch, and says where it is.
 
 A task that ran **in place** — no repository to branch from — is never described as
@@ -735,7 +1172,7 @@ re-tell the model about work it already read about.
 
 ## Where task state is written on disk
 
-Three places.
+Four places.
 
 **The checkpoint**, one per conversation, in the conversation's own folder:
 
@@ -792,6 +1229,44 @@ task itself. A conversation that has a session folder keeps them inside it inste
 `<session folder>/tasks/`, and that pointer is written on the conversation's task
 checkpoint, which is what lets a finished task's room replay its transcript after a
 restart.
+
+## The heartbeat — telling a working task from a hung one, is my task still alive, why does the file keep changing
+
+The checkpoint is written when a task is **admitted** and when it **lands**, and a task can
+spend eleven minutes between those two moments. From outside the process that leaves
+`"state": "running"` and nothing else, so a task calling a model every twenty seconds and a
+task wedged on a build that will never return look identical.
+
+**So every running task writes its own heartbeat**, one small file per task, beside its
+transcript:
+
+```
+<session folder>/tasks/<task id>.beat.json
+```
+
+The running task's row in `tasks.json` names the file in a `beat` field, so anything that
+already has the checkpoint open can find it without guessing.
+
+It holds:
+
+| field | what it says |
+| --- | --- |
+| `phase` | `working`, `checking` or `repairing` — which of the task's three lives this is |
+| `request_started` | when its last model request went out |
+| `request_finished` | when that request came back; earlier than `request_started` means one is in flight |
+| `requests` | how many requests the task's workers, checkers and repair rounds have made between them |
+| `started` | when the task itself began |
+| `updated_at` | when the file was last written |
+
+**It is written at every model request boundary** — the cadence of the work itself, not a
+clock. There is no ticker, so a task that is genuinely wedged writes nothing new, and that
+is the news: a `request_started` four minutes old with no finish beside it is a task inside
+one long call, and a `request_finished` four minutes old with nothing since is a task inside
+one long command.
+
+**The file goes away when the task lands**, because the checkpoint's own row is the answer
+from then on. A process that is killed removes nothing, so a heartbeat left behind is
+believed only by its age — the same bargain the session's presence file makes.
 
 ## What happens when a task fails
 
@@ -957,7 +1432,7 @@ and only then a stop with `stopped: 200 steps and no finish`, the number being t
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
 
-**`no_progress`** — how many tool calls in a row may teach nothing, save nothing and leave
+**`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in the worktree before the task is stopped as spinning. Default **6**. On the
 limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
 the task made is committed onto its kept branch. A negative value answers

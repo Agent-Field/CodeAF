@@ -1002,7 +1002,13 @@ func TestLsSchemaVerbatim(t *testing.T) {
 
 func TestGrepFindLsDescriptionsVerbatim(t *testing.T) {
 	tools := AllTools(t.TempDir())
-	if tools[4].Description != grepDescription {
+	// grep's is pi's verbatim on a machine that HAS ripgrep, and the fallback's
+	// on one that does not — the same tool with two honest accounts of its own
+	// engine, chosen by one probe (grepfindls.go). Compared against the probe
+	// rather than against a literal, because a test that demanded pi's sentence
+	// everywhere would be demanding a description that lies about half the
+	// machines it ships to.
+	if tools[4].Description != grepToolDescription() {
 		t.Errorf("grep description mismatch")
 	}
 	if tools[5].Description != findDescription {
