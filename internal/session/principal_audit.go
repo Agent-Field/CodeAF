@@ -301,41 +301,48 @@ func sweepScratch(found reconciliation) reconciliation {
 	return found
 }
 
-// terminalAudit is the whole of the last reading, run once, by a Steward, at
-// the one moment its answer can change anything: after the principal has said
-// the ask is met.
+// terminalAudit is the whole of the last reading, taken at the one moment its
+// answer can change anything: after the principal has said the ask is met.
 //
-// IT RETURNS THE CHECKS AND LEAVES THE DECIDING TO THE PRINCIPAL. This file
+// IT RETURNS THE READINGS AND LEAVES THE DECIDING TO THE PRINCIPAL. This file
 // takes readings; whether an unmet check means carry on or stop is
 // [Steward.Decide]'s to say, and putting that judgement here would be a second
 // policy over the same facts.
 //
-// THE SWEEP RUNS EITHER WAY, and it runs LAST. A session that is about to carry
-// on has still left the scratch behind it, and the whole reason two runs were
-// zeroed is that nothing ever picked it up; waiting for a clean ending to tidy
-// would mean the tidy never happens on exactly the runs that need it. It runs
-// after the checks because a check may legitimately read a file the session
-// wrote outside the tree, and sweeping first would be this pass breaking the
-// reading it is about to take.
+// THE SWEEP IS SORTED HERE AND CARRIED OUT ELSEWHERE ([Agent.sweepSession]),
+// and the seam is not tidiness. A stopped turn is not necessarily an ENDING —
+// the principal may read the checks and carry on — and a session that is about
+// to carry on may be about to read the very file this pass is looking at. A
+// sweep on every stopped turn would be this feature deleting the run's own
+// working material halfway through, which is a worse failure than the one it
+// was built to fix.
 func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation) {
-	checks := a.sessionChecks()
-	ran := a.runSessionChecks(ctx, checks)
+	ran := a.runSessionChecks(ctx, a.sessionChecks())
 	found := reconcile(a.createdList(), a.deliverableTree())
-	if a.steward() != nil {
-		found = sweepScratch(found)
-	}
-	a.journalTerminalAudit(ran, found)
+	a.journalChecks(ran)
 	return ran, found
 }
 
-// journalTerminalAudit writes down both readings, because a run that ended
-// clean and a run that ended after deleting eleven files read identically in
+// sweepSession carries out what [reconcile] sorted, and it is called at the END
+// — the turn on which the principal said done, or said stop.
+//
+// A PERSON'S SESSION SWEEPS NOTHING. They are offered the list and that is all:
+// somebody who is sitting there can see their own directory, and a harness
+// quietly removing files behind them is the opposite of what the emptiness of
+// [Person] means everywhere else.
+func (a *Agent) sweepSession(found reconciliation) reconciliation {
+	if a.steward() != nil {
+		found = sweepScratch(found)
+	}
+	a.journalReconciliation(found)
+	return found
+}
+
+// journalChecks writes down what the tree said about itself, because a session
+// that was checked and a session that was taken at its word read identically in
 // the journal before this line existed.
-func (a *Agent) journalTerminalAudit(ran []CheckRun, found reconciliation) {
-	a.mu.Lock()
-	file := a.file
-	a.mu.Unlock()
-	if file == nil {
+func (a *Agent) journalChecks(ran []CheckRun) {
+	if len(ran) == 0 {
 		return
 	}
 	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked"}
@@ -345,17 +352,33 @@ func (a *Agent) journalTerminalAudit(ran []CheckRun, found reconciliation) {
 			moment.Failed = append(moment.Failed, check.Command)
 		}
 	}
-	file.appendPrincipal(moment)
+	a.journalFile().appendPrincipal(moment)
+}
+
+// journalReconciliation writes down what the session left behind and what
+// became of it, because a run that ended clean and a run that ended after
+// deleting eleven files read identically in the journal before this line
+// existed.
+func (a *Agent) journalReconciliation(found reconciliation) {
 	if len(found.kept) == 0 && len(found.scratch) == 0 {
 		return
 	}
-	file.appendPrincipal(journalPrincipal{
+	a.journalFile().appendPrincipal(journalPrincipal{
 		Who:     principalWord(a.who()),
 		Event:   "reconciled",
 		Kept:    found.kept,
 		Removed: found.removed,
 		Failed:  found.failed,
 	})
+}
+
+// journalFile is this session's journal, or nil. Every append door in
+// sessionfile.go declines a nil receiver, which is what lets the callers above
+// read as one line each.
+func (a *Agent) journalFile() *sessionFile {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.file
 }
 
 // principalWord names which principal a journal line belongs to, in the

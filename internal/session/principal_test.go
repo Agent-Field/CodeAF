@@ -1,11 +1,14 @@
 package session
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── the fixtures, one per ending this road has ──────────────────────────────
@@ -407,4 +410,63 @@ func TestAnUnattendedSessionSettlesItsOwnUnverifiedWork(t *testing.T) {
 	if unattended.settlePolicy() != TaskSettleAuto {
 		t.Fatalf("an unattended session is still waiting on a card nobody will answer: %v", unattended.settlePolicy())
 	}
+}
+
+// ── the standing road ───────────────────────────────────────────────────────
+
+// A CARD ADDRESSED TO A GOAL OWNER IS ANSWERED BY IT.
+//
+// "Nobody present means no" is the right law for a session somebody walked away
+// from and the wrong one for a session somebody deliberately left running with a
+// ceiling: it leaves the one road this build has for noticing that work has
+// stalled unreachable from exactly the runs that need it. What the yes may cover
+// is bounded by [standing.Item.Validate] and by the ticker's own rails, neither
+// of which this touches.
+func TestAnUnattendedSessionAnswersItsOwnStandingCard(t *testing.T) {
+	agent, _ := questionSession(t, "dddd1111dddd2222", func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: 6 * time.Hour}
+	})
+	events := watched(agent)
+
+	answer, err := agent.askStanding(context.Background(), standingProbe())
+	if err != nil {
+		t.Fatalf("the goal owner's own card ended in an error: %v", err)
+	}
+	if !answer.Approved {
+		t.Fatalf("the goal owner did not answer its own card: %+v", answer)
+	}
+	// AND NO CARD WAS RAISED INTO AN EMPTY ROOM. The proposal event is what a
+	// surface draws and what another window is told to go and look at; a session
+	// with nobody in it must not produce one it will never take down.
+	select {
+	case event := <-events:
+		t.Fatalf("a card was raised for nobody to answer: %v", event.Kind)
+	default:
+	}
+}
+
+// AND A WATCHED SESSION STILL WAITS FOR THE PERSON, which is the half of this
+// law that does not change.
+func TestAWatchedSessionStillWaitsForThePersonsAnswer(t *testing.T) {
+	agent, _ := questionSession(t, "eeee1111eeee2222", nil)
+	events := watched(agent)
+	ctx, stop := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := agent.askStanding(ctx, standingProbe()); err == nil {
+			t.Error("the card was answered by something other than a person")
+		}
+	}()
+	if event := <-events; event.Kind != EventStandingProposal {
+		t.Fatalf("the standing lane sent %v", event.Kind)
+	}
+	stop()
+	<-done
+}
+
+func standingProbe() *StandingNotice {
+	return &StandingNotice{Item: standing.Item{Words: "tell me when a piece of work stalls"}}
 }

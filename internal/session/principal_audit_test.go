@@ -94,6 +94,7 @@ func TestAPersonsSessionIsOfferedTheScratchAndNeverLosesIt(t *testing.T) {
 	if len(found.scratch) != 1 || found.scratch[0] != scratch {
 		t.Fatalf("the scratch was not found: %+v", found.scratch)
 	}
+	found = agent.sweepSession(found)
 	if len(found.removed) != 0 {
 		t.Fatalf("a person's session deleted %v", found.removed)
 	}
@@ -119,6 +120,7 @@ func TestAnUnattendedSessionPicksUpItsOwnScratch(t *testing.T) {
 	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
 
 	_, found := agent.terminalAudit(context.Background())
+	found = agent.sweepSession(found)
 	if len(found.removed) != 1 || found.removed[0] != scratch {
 		t.Fatalf("the scratch was not picked up: %+v", found)
 	}
@@ -295,4 +297,61 @@ func principalLines(t *testing.T, mutate func(*Config)) string {
 		t.Fatalf("reading the journal: %v", err)
 	}
 	return string(content)
+}
+
+// A RUN THAT STOPPED STILL PICKS UP AFTER ITSELF.
+//
+// The budget running out is the ending most likely to leave a mess, and it goes
+// nowhere near the "is the ask met" reading — so the tidy is owed to whoever
+// comes to look at the tree afterwards however the run ended.
+func TestARunThatStoppedOnItsBudgetStillPicksUpAfterItself(t *testing.T) {
+	tree := t.TempDir()
+	elsewhere := t.TempDir()
+	scratch := filepath.Join(elsewhere, "fixtures.jsonl")
+	if err := os.WriteFile(scratch, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{USD: 1}
+	})
+	agent.mu.Lock()
+	agent.usage.CostUSD = 5
+	agent.mu.Unlock()
+	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
+
+	got := agent.decideRemains(context.Background(), "there is plenty left to do", "I have made a start.")
+	if got.Verb != DecideStop {
+		t.Fatalf("a spent budget did not stop the run: %+v", got)
+	}
+	if _, err := os.Stat(scratch); err == nil {
+		t.Fatalf("the run stopped and left %s behind", scratch)
+	}
+}
+
+// AND A RUN THAT IS CARRYING ON DOES NOT, which is the failure the split
+// exists to avoid: a session about to read its own working material would
+// otherwise have this feature delete it halfway through.
+func TestARunThatIsCarryingOnKeepsItsOwnWorkingMaterial(t *testing.T) {
+	tree := t.TempDir()
+	elsewhere := t.TempDir()
+	working := filepath.Join(elsewhere, "half-done.jsonl")
+	if err := os.WriteFile(working, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberCreated(fileChange{path: working, shown: working, created: true})
+
+	got := agent.decideRemains(context.Background(), "the handlers are still unwired", "I have made a start.")
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("the run did not carry on: %+v", got)
+	}
+	if _, err := os.Stat(working); err != nil {
+		t.Fatalf("a run that is still working lost its own material: %v", err)
+	}
 }
