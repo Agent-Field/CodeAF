@@ -3827,9 +3827,9 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 	switch {
 	case row.Transcript == "":
 		return markNone
-	case convKey(row.Transcript) == convKey(a.file):
+	case a.convKey(row.Transcript) == a.convKey(a.file):
 		return markHere
-	case a.behind[convKey(row.Transcript)] != nil:
+	case a.behind[a.convKey(row.Transcript)] != nil:
 		return markOurs
 	}
 	return markNone
@@ -3847,7 +3847,7 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 // Every other row is returned untouched, because the file is the only thing that
 // knows about another terminal.
 func (a *app) homeTrue(row session.SessionRow) session.SessionRow {
-	held := a.behind[convKey(row.Transcript)]
+	held := a.behind[a.convKey(row.Transcript)]
 	if held == nil || held.conv.Agent == nil {
 		return row
 	}
