@@ -96,9 +96,9 @@ func composeBrief(request, work, deliverable, acceptance string) string {
 // rememberAskLocked keeps the last thing THE PERSON said, so that work handed
 // out later in the turn can carry it verbatim.
 //
-// It is the same test three other lanes in this package already make of a user
-// message — routeOrchestrate, routeJudge and routeHarness all ask "did somebody
-// actually type this" the same way — and it is made here for the same reason: a
+// It is the same test the other lanes in this package make of a user message —
+// routeJudge and routeHarness both ask "did somebody actually type this" the
+// same way — and it is made here for the same reason: a
 // wake note is the session talking to itself, and a task briefed with "task 4
 // has finished" as the person's request would be quoting a sentence nobody
 // said.
@@ -112,21 +112,21 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
 		a.personAsk = text
+		// AND THE SESSION'S GOAL OWNER IS TOLD THE SAME THING, in the same
+		// place, on the same test (principal.go). It is one writer rather than
+		// two for the reason stated directly below: a second recorder of the
+		// person's words is a second answer to what was asked, and the two
+		// answers drift on exactly the sessions where it matters.
+		a.hearAsk(text)
 	}
 }
 
-// rememberAsk is the same record for words that never became a chat message:
-// what somebody typed into a command that starts work (task_person.go). It is
-// still the person asking, in still their own words, and the work it starts must
-// carry it for the same reason a proposal made mid-conversation does.
-func (a *Agent) rememberAsk(text string) {
-	if text = strings.TrimSpace(text); text == "" {
-		return
-	}
-	a.mu.Lock()
-	a.personAsk = text
-	a.mu.Unlock()
-}
+// THERE IS NO SECOND RECORDER ANY MORE. `rememberAsk` sat here for words that
+// never became a chat message — what somebody typed into a command that starts
+// work — and its only caller was the planner door in task_person.go, which went
+// with `/task adaptive`. Every road left records the ask where the message
+// itself is recorded, above, so this is the one writer of [Agent.personAsk] and
+// there is nowhere a second one could disagree with it.
 
 // taskRequest is the person's ask AS THIS AGENT KNOWS IT, and the two answers
 // are the two kinds of agent there are.

@@ -284,3 +284,34 @@ func TestNearestModelsKeepsTheOnesThatCouldActuallyTakeTheConversation(t *testin
 		t.Fatalf("NearestModels(limit 0) = %v, want nothing", got)
 	}
 }
+
+// PriceNow is the request-path read: it never waits, and it separates "the
+// provider published nothing" from "the provider published zero". The adapter
+// bounds a latency-sorted request against the figure it returns, and a ceiling
+// derived from a price nobody published would refuse endpoints on a number that
+// does not exist (internal/provider's velocity.go).
+func TestPriceNowSeparatesAPublishedZeroFromNoPriceAtAll(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, cachePricePayload, nil),
+	})
+
+	prompt, completion, known := c.PriceNow("warm/model")
+	if !known || prompt != 0.00001 {
+		t.Fatalf("warm/model = %v/%v known=%v, want the published per-token figures", prompt, completion, known)
+	}
+	// OpenRouter's "-1" is "it depends", which is not a price.
+	if _, _, known := c.PriceNow("router/model"); known {
+		t.Fatal("a row that published no price answered as though it had")
+	}
+	// A model this catalog has never heard of is the same answer.
+	if _, _, known := c.PriceNow("nobody/model"); known {
+		t.Fatal("an unknown model answered with a price")
+	}
+	// And a catalog still warming — every lazy one, on the first call of a run —
+	// is one more way of not knowing rather than a wait.
+	var cold *Catalog
+	if _, _, known := cold.PriceNow("warm/model"); known {
+		t.Fatal("a catalog that has not resolved answered with a price")
+	}
+}

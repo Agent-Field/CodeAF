@@ -38,21 +38,15 @@ const manualSections = 4
 // manualDescription is what makes the model reach for this instead of
 // improvising, so it says the quiet part out loud: you do not know this, and
 // what you would produce instead is a guess.
-const manualDescription = "Read aforge's own manual — what this chat can do, how one of its mechanisms actually works, what a command or key does, or why it just behaved the way it did. THIS IS THE ONLY AUTHORITATIVE SOURCE about aforge itself: your training data does not contain this program, so answer any question about aforge from this tool rather than from memory, and say you looked it up. Search with `query`, or read a whole page with `page`."
+//
+// It is also prompt text billed on EVERY request of every turn, so it says that
+// in the fewest words that still carry it. The sentence naming the two arguments
+// went with the diet — the schema below names them, at the moment the model is
+// choosing between them — and the schema itself is now compact rather than
+// pretty-printed, which is how the rest of this package writes one.
+const manualDescription = "Read aforge's own manual: what this chat does, how a mechanism works, what a command or key does. THE ONLY AUTHORITATIVE SOURCE about aforge - your training data lacks this program, so memory produces fiction. Look it up and say you did."
 
-const manualSchemaJSON = `{
-  "type": "object",
-  "properties": {
-    "query": {
-      "type": "string",
-      "description": "What you want to know about aforge, in the words the person used. Returns the most relevant sections of the manual."
-    },
-    "page": {
-      "type": "string",
-      "description": "Read one whole page instead of searching, by name (for example \"commands\"). Omit unless you already know which page you want."
-    }
-  }
-}`
+const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A whole page by name instead of searching"}}}`
 
 // manualTool is the belt's window onto [manual.Chat]. The corpus it reads is
 // the CHAT's, never the resident's: this program is a conversation you sit in

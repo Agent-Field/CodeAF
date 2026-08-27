@@ -103,8 +103,34 @@ func TestSessionFileRoundTrip(t *testing.T) {
 	if turns := turnUsageLines(t, path); len(turns) != 1 {
 		t.Fatalf("journal holds %d turn usage lines, want exactly 1 for one turn", len(turns))
 	}
+	// And one more line per RESPONSE beside the seal that SUMS them (loop.go's
+	// addUsage). This one turn took two requests — the answer that asked for a
+	// tool and the answer that followed the result — which is exactly the shape
+	// a single seal cannot show. Counted here for the reason the title and the
+	// seal are: the journal holds the messages plus the facts about the session,
+	// and nothing is filtered out in silence.
+	//
+	// AND THE ERRANDS WRITE THEIRS TOO (auxiliary.go's [Agent.callRole]), which is
+	// what makes the call lines sum to the BILL rather than to the conversation's
+	// share of it — a session's namer is money like any other. They are told apart
+	// by the role on the line, so the count of the turn's own requests is still
+	// exactly the count of its answers.
+	called, errands := 0, 0
+	for _, line := range lines {
+		if !strings.Contains(line, `"type":"call"`) {
+			continue
+		}
+		called++
+		if strings.Contains(line, `"role":`) {
+			errands++
+		}
+	}
+	if called-errands != 2 {
+		t.Fatalf("journal holds %d call lines of the conversation's own, want one per answered request (2)",
+			called-errands)
+	}
 	// system is never journaled: it is rendered fresh on every open.
-	if got, want := len(lines)-titles-used, 1+len(want)-1; got != want {
+	if got, want := len(lines)-titles-used-called, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }

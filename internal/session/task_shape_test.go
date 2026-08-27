@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -276,75 +275,6 @@ func TestAnEmptyShapedBriefIsNotAnAnswer(t *testing.T) {
 	shaped, ok := parseShapedBrief("```json\n{\"brief\":\"do the thing\"}\n```")
 	if !ok || shaped.Brief != "do the thing" || shaped.Acceptance != taskPersonAcceptance {
 		t.Fatalf("fenced answer = %+v ok=%v", shaped, ok)
-	}
-}
-
-// shapingRun answers the shaper and then plays the smallest whole adaptive run.
-type shapingRun struct {
-	mu      sync.Mutex
-	shaped  int
-	plainer []string
-}
-
-func (s *shapingRun) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
-	s.mu.Lock()
-	if isShapeCall(messages) {
-		s.shaped++
-		s.mu.Unlock()
-		return textResponse(shapedAnswer), nil
-	}
-	s.plainer = append(s.plainer, lastUserText(messages))
-	s.mu.Unlock()
-	return textResponse(oneNodeRun(messages)), nil
-}
-
-func (s *shapingRun) sawShapedGoal() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, text := range s.plainer {
-		if strings.Contains(text, "No opening that restates the question") {
-			return true
-		}
-	}
-	return false
-}
-
-// THE ADAPTIVE SHAPE IS SHAPED TOO — "this is true for all tasks". A run's nodes
-// have the same silence around them as a single task's, and a planner handed one
-// unshaped sentence cuts the same ambiguity into several pieces.
-func TestTheAdaptiveTaskShapesItsBriefToo(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	client := &shapingRun{}
-	agent, _ := newTestAgent(t, client, func(c *Config) {
-		c.AskConsent = true
-		c.RolesSource = shaperSettings()
-	})
-
-	id, title, err := agent.StartPlannerRun(t.Context(), shapedAsk, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if title != shapedTitle {
-		t.Fatalf("title = %q, want the shaped name %q", title, shapedTitle)
-	}
-	// The run's REQUEST is the raw sentence, recorded before the shaping call and
-	// from what they typed: it is the one thing on this path no model may write.
-	agent.mu.Lock()
-	ask := agent.personAsk
-	agent.mu.Unlock()
-	if ask != shapedAsk {
-		t.Fatalf("the run remembered %q as the ask", ask)
-	}
-	waitForRun(t, agent, id)
-
-	client.mu.Lock()
-	shaped := client.shaped
-	client.mu.Unlock()
-	if shaped != 1 {
-		t.Fatalf("the adaptive path made %d shaping calls, want one", shaped)
-	}
-	if !client.sawShapedGoal() {
-		t.Fatal("the run was given the raw sentence rather than the shaped brief")
 	}
 }
 

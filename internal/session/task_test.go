@@ -26,6 +26,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -624,7 +625,7 @@ func TestNonRepositoryRunsInPlace(t *testing.T) {
 	if tree.merge != mergeInPlace || tree.branch != "" {
 		t.Fatalf("tree = %+v, want inplace with no branch", tree)
 	}
-	if merge, _ := tree.comeHome("do the thing"); merge != mergeInPlace {
+	if merge, _ := tree.comeHome("do the thing", nil); merge != mergeInPlace {
 		t.Fatalf("comeHome = %q, want inplace", merge)
 	}
 }
@@ -644,7 +645,7 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
-	merge, detail := tree.comeHome("edit the shared file")
+	merge, detail := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}
@@ -918,7 +919,7 @@ func TestAuditOffMergesUnaudited(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test"),
+			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -972,7 +973,7 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test"),
+			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1063,7 +1064,7 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Fix the failing test", "make TestHollow pass"),
+			proposeCall("Fix the failing test", "make TestHollow pass; the check is `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1242,7 +1243,12 @@ func TestAuditRetryRecoversAVerdict(t *testing.T) {
 			finalText("Wrote greet.go."),
 		},
 		audit: []step{
-			verdict(""),
+			// A REPLY THAT ARRIVED AND MISSED THE WORD, which is what the nudge
+			// ladder is for. It is deliberately not an empty 200: that is a call
+			// that did not happen, the response boundary reads it as the wire and
+			// asks again on the spot, and the auditor is never nudged because it
+			// was never heard from (taxonomy_boundary.go).
+			verdict("I read the diff and it looks about right to me."),
 			verdict("VERIFIED — go test ./... ok · 1 file"),
 		},
 	}
@@ -1510,7 +1516,14 @@ func TestRefutingAnUnverifiedNodeCascades(t *testing.T) {
 // including a destructive command, a command that runs the node's own code, and
 // a verification with a second command chained onto it.
 func TestAuditBeltIsReadOnly(t *testing.T) {
-	belt := auditBelt(t.TempDir(), auditCommands)
+	// The door is built the way a real audit builds it: the checks the work
+	// itself named, and the always-safe reading commands under them
+	// (task_checks.go). Nothing about the belt knows what `go test` is.
+	door := auditDoor{
+		checks:  []string{"go test", "go build", "go vet"},
+		allowed: append([]string{"go test", "go build", "go vet"}, auditReadCommands...),
+	}
+	belt := auditBelt(t.TempDir(), door)
 
 	byName := map[string]bare.Tool{}
 	for _, tool := range belt {
@@ -1555,12 +1568,12 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 		"go test ./...", "go  test ./... -run TestX", "go build ./...", "go vet ./...",
 		"git diff --cached", "git status --porcelain", "git log --oneline -5",
 	} {
-		if refusal, ok := auditRefusal(allowed, auditCommands); !ok {
+		if refusal, ok := auditRefusal(allowed, door.allowed); !ok {
 			t.Fatalf("the auditor may not run %q: %s", allowed, refusal)
 		}
 	}
 	// A prefix is matched at a word boundary, not as a string prefix.
-	if _, ok := auditRefusal("go testify", auditCommands); ok {
+	if _, ok := auditRefusal("go testify", door.allowed); ok {
 		t.Fatal("the allowlist matched a command that merely starts like one")
 	}
 }
@@ -1615,9 +1628,28 @@ func TestAuditVerdictFailsClosed(t *testing.T) {
 	}
 }
 
+// answeringSearch is a back end that ANSWERS DIFFERENTLY per query, which is
+// what makes a run of distinct searches a run of distinct findings.
+//
+// A back end that returned the same nothing to every query would be a back end
+// that taught the node nothing seven times, and the counter is right to say so
+// — PROGRESS IS INFORMATION, NEVER ACTIVITY — so a test about exploration has to
+// supply the information for the exploration to find.
+type answeringSearch struct{}
+
+func (*answeringSearch) Name() string { return "answering" }
+
+func (*answeringSearch) Search(_ context.Context, query string, _ int) ([]search.Result, error) {
+	return []search.Result{{
+		Title:   "About " + query,
+		URL:     "https://example.com/" + query,
+		Snippet: "Everything anybody knows about " + query + ".",
+	}}, nil
+}
+
 // EXPLORATION IS PROGRESS: a research node that never writes a file is doing
 // its job, and the no-progress threshold must read NEW INFORMATION as the
-// progress it is. What the threshold kills is the spin — the same query
+// progress it is. What the threshold kills is the spin — the same answer
 // again — not the searching.
 func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 	build := func(queries ...string) *routedCompleter {
@@ -1646,7 +1678,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 			config.AskConsent = false
 			config.TaskAutoApproveSeconds = 0
 			config.TaskAudit = false
-			config.SearchProvider = &scriptedSearch{}
+			config.SearchProvider = &answeringSearch{}
 		})
 		graph := agent.graph()
 		collect(t, mustSubmit(t, agent, "research"))
@@ -1659,16 +1691,30 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 
 	t.Run("paging one file is exploration", func(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())
-		// The same path at six offsets: every call is new information, and a
+		// The same path at six offsets: every page is new information, and a
 		// node reading a long document to its end must not die as a spinner.
+		//
+		// THE FILE IS REAL AND ITS LINES ARE DISTINCT, because the pages have to
+		// come back different for the reading to be exploration. A missing file
+		// answers the same error six times, and a node repeating a read that
+		// keeps failing is spinning — correctly.
+		var document strings.Builder
+		for line := 1; line <= 600; line++ {
+			fmt.Fprintf(&document, "line %d of the long document\n", line)
+		}
+		notes := filepath.Join(t.TempDir(), "notes.md")
+		if err := os.WriteFile(notes, []byte(document.String()), 0o644); err != nil {
+			t.Fatalf("could not write the document: %v", err)
+		}
 		child := make([]step, 0, 7)
 		for index := 0; index < 6; index++ {
-			offset := index * 100
+			offset := index*100 + 1
 			child = append(child, func(context.Context, []ai.Message) (*ai.Response, error) {
 				arguments, _ := json.Marshal(struct {
 					Path   string `json:"path"`
 					Offset int    `json:"offset"`
-				}{Path: "notes.md", Offset: offset})
+					Limit  int    `json:"limit"`
+				}{Path: notes, Offset: offset, Limit: 100})
 				return toolResponse("call-page", "read", string(arguments)), nil
 			})
 		}
@@ -1724,52 +1770,66 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 // READ-HEAVY EXPLORATION IS NOT A STALL, and the counter has to know the WHOLE
 // read-only belt to say so. A node that reads a scanned page, asks after the
 // build it started, recalls its own state, or runs a command that only inspects
-// is working; what the counter kills is the same call again, changing nothing.
+// is working; what the counter kills is the same ANSWER again, learning nothing.
 func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
-	seen := map[string]bool{}
-	step := func(tool, args string) bool {
-		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args}, seen)
+	seen := newProgressLedger()
+	step := func(tool, args, output string) bool {
+		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args, Output: output}, seen)
 	}
 
-	for _, call := range []struct{ tool, args string }{
-		{"read", `{"path":"a.go"}`},
-		{"read_document", `{"path":"scan.pdf"}`},
-		{"grep", `{"pattern":"belt"}`},
-		{"ls", `{"path":"internal"}`},
-		{"find", `{"pattern":"*.go"}`},
-		{"web_search", `{"query":"argus"}`},
-		{"web_fetch", `{"url":"https://example.com"}`},
-		{"jobs", `{"id":1}`},
-		{"recall", `{}`},
-		{"view_image", `{"path":"marketing/linkedin.png"}`},
-		{"manual", `{"question":"what does /cost show"}`},
-		{"tasks", `{}`},
-		{"settings", `{}`},
-		{"list_harnesses", `{}`},
-		{"services", `{}`},
-		{"gmail_search", `{"query":"invoice"}`},
-		{"gmail_read", `{"id":"abc"}`},
-		{"calendar_list", `{}`},
-		{"bash", `{"command":"go test ./..."}`},
-		{"bash", `{"command":"git log -1"}`},
+	for _, call := range []struct{ tool, args, output string }{
+		{"read", `{"path":"a.go"}`, "package a"},
+		{"read_document", `{"path":"scan.pdf"}`, "invoice 4471"},
+		{"grep", `{"pattern":"belt"}`, "tools.go:12: belt"},
+		{"ls", `{"path":"internal"}`, "session/\ntui3/"},
+		{"find", `{"pattern":"*.go"}`, "main.go"},
+		{"web_search", `{"query":"argus"}`, "argus — the hundred-eyed"},
+		{"web_fetch", `{"url":"https://example.com"}`, "Example Domain"},
+		{"jobs", `{"id":1}`, "job 1 · running · 3.0s"},
+		{"recall", `{}`, "the workspace is a monorepo"},
+		{"view_image", `{"path":"marketing/linkedin.png"}`, "a blue banner"},
+		{"manual", `{"question":"what does /cost show"}`, "/cost prints the session's spend"},
+		{"tasks", `{}`, "no tasks"},
+		{"settings", `{}`, "model: opus"},
+		{"list_harnesses", `{}`, "none saved"},
+		{"services", `{}`, "gmail: connected"},
+		{"gmail_search", `{"query":"invoice"}`, "3 threads"},
+		{"gmail_read", `{"id":"abc"}`, "Dear customer"},
+		{"calendar_list", `{}`, "standup 09:30"},
+		{"bash", `{"command":"go test ./..."}`, "ok  github.com/x  0.4s"},
+		{"bash", `{"command":"git log -1"}`, "commit 36e058e9"},
 	} {
-		if !step(call.tool, call.args) {
+		if !step(call.tool, call.args, call.output) {
 			t.Fatalf("%s %s counted as a stall", call.tool, call.args)
 		}
 	}
 
-	// The spin is the SAME target again, and it is the spin for bash on exactly
+	// The spin is the SAME ANSWER again, and it is the spin for bash on exactly
 	// the terms it is for everything else.
-	if step("bash", `{"command":"go test ./..."}`) {
+	if step("bash", `{"command":"go test ./..."}`, "ok  github.com/x  0.4s") {
 		t.Fatal("the same command twice counted as progress")
 	}
-	if step("read", `{"path":"a.go"}`) {
+	if step("read", `{"path":"a.go"}`, "package a") {
 		t.Fatal("the same file twice counted as progress")
 	}
 	// LOOKING AT THE SAME PICTURE AGAIN IS THE SPIN, exactly as re-reading the
 	// same file is. Novelty is the whole test, for every hand on this half.
-	if step("view_image", `{"path":"marketing/linkedin.png"}`) {
+	if step("view_image", `{"path":"marketing/linkedin.png"}`, "a blue banner") {
 		t.Fatal("the same picture twice counted as progress")
+	}
+	// AND A NEW COMMAND THAT ANSWERS SOMETHING ALREADY KNOWN IS NOT A DISCOVERY.
+	// This is the whole of the rule and the defect it was written for: a model
+	// waiting on a job wrote `sleep 30 && tail`, then `sleep 45 && tail`, then
+	// `sleep 60 && tail` — every command string different, every answer the same
+	// — and the counter used to read each one as a step forward.
+	if step("bash", `{"command":"sleep 45 && tail jobs/1.log"}`, "ok  github.com/x  0.4s") {
+		t.Fatal("a new command with an answer already seen counted as progress")
+	}
+	// THE SAME COMMAND WITH A DIFFERENT ANSWER IS A DISCOVERY, which is the same
+	// rule read from the other side: `go test` after an edit is the node finding
+	// out whether the edit worked.
+	if !step("bash", `{"command":"go test ./..."}`, "FAIL github.com/x [build failed]") {
+		t.Fatal("the same command with a new answer counted as a stall")
 	}
 	// A hand that saves a file is counted as the file it saved, one branch up —
 	// it must not also be spendable here as a fresh target.
@@ -1780,13 +1840,13 @@ func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
 		{"generate_video", `{"prompt":"a reel","path":"marketing/x.mp4"}`},
 		{"speak", `{"text":"hello","path":"voice.wav"}`},
 	} {
-		if step(saving.tool, saving.args) {
+		if step(saving.tool, saving.args, "wrote 12 lines") {
 			t.Fatalf("%s counted as knowledge", saving.tool)
 		}
 	}
 	// And the node's own bookkeeping is neither half.
 	for _, own := range []string{"note", "forget", "track", "commit", "change_setting"} {
-		if step(own, `{}`) {
+		if step(own, `{}`, "done") {
 			t.Fatalf("%s counted as knowledge", own)
 		}
 	}
@@ -2109,7 +2169,7 @@ func TestGoalContractFreezesAtAdmission(t *testing.T) {
 	// And the auditor reads that same frozen text — one acceptance, two
 	// readers, so the work cannot be finished against one and judged against
 	// another.
-	question := auditQuestion(node, taskTree{root: "/repo"}, nil, "it claims it is done")
+	question := auditQuestion(node, taskTree{root: "/repo"}, auditGround{}, auditDoor{}, nil, "it claims it is done")
 	if !strings.Contains(question, admittedAcceptance) {
 		t.Fatalf("the auditor was given a different acceptance:\n%s", question)
 	}

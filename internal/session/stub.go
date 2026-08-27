@@ -66,6 +66,31 @@ const (
 	// is a terminal's width: enough for a compiler's first error or a shell's
 	// exit line, short enough that a stub of a 200KB read is still one line.
 	stubOutcomeRunes = 80
+
+	// stubPrefixShare is the least a pass may RECLAIM, as a fraction of the
+	// bytes it puts back on the meter, before it is allowed to run at all.
+	//
+	// REWRITING A MESSAGE IN PLACE MAKES EVERY BYTE AFTER IT COLD. A prompt
+	// cache is keyed on the exact leading bytes of a request (internal/provider's
+	// caching.go), so replacing a result half-way down the transcript does not
+	// shrink the request by the difference — it re-prices the whole tail behind
+	// it at the uncached rate on the very next call. The arithmetic that
+	// followed: a cache-served prompt token is about a fifth of a fresh one on
+	// the published prices, so a pass that turns C bytes cold to save S bytes
+	// costs about 4C once and returns S on each later request, and it has not
+	// paid for itself until roughly 4C/S of them have gone by. An eighth is that
+	// break-even set at about thirty requests — a handful of tool rounds, well
+	// inside one working conversation. A FIFTH IS THE CONSERVATIVE END of what
+	// endpoints actually charge: a shallower discount makes the re-send cheaper
+	// relative to the saving and so makes a pass pay sooner, never later.
+	//
+	// It is a SHARE and not a byte count because both halves move: the same
+	// 2KB result is obviously worth stubbing out of a small transcript and
+	// obviously not worth disturbing a hundred-thousand-token one for. Below the
+	// share nothing is written and nothing is replaced; the candidates are simply
+	// looked at again at the end of the next turn, by which time they are usually
+	// part of a batch that clears it.
+	stubPrefixShare = 8
 )
 
 // stubOldOutputs replaces the heavy tool results of older turns with pointers to
@@ -112,24 +137,38 @@ func (a *Agent) stubOldOutputs() {
 func (a *Agent) stubOldOutputsLocked() int {
 	workspace := strings.TrimSpace(a.config.Workspace)
 	cut := stubCut(a.messages)
+	candidates, reclaim := stubCandidates(a.messages, cut)
+	if len(candidates) == 0 {
+		return 0
+	}
+	// AND IS IT WORTH THE COLD PREFIX? Everything from the first message this
+	// pass would rewrite to the end of the transcript stops matching the cached
+	// prefix the moment it is replaced, so that is what the reclaim is weighed
+	// against (stubPrefixShare states the arithmetic). The reclaim is measured
+	// before the stub lines exist and so counts each result's whole text rather
+	// than the difference — an overshoot of a hundred-odd bytes per result,
+	// which errs toward letting a marginal pass run.
+	cold := 0
+	for index := candidates[0]; index < len(a.messages); index++ {
+		cold += messageBytes(a.messages[index])
+	}
+	if reclaim*stubPrefixShare < cold {
+		return 0
+	}
 	stubbed := 0
-	// index 0 is the system message and is not a tool result; starting at 1 says
-	// so out loud rather than relying on the role check below.
-	for index := 1; index < cut; index++ {
+	for _, index := range candidates {
 		message := a.messages[index]
-		if message.Role != "tool" {
-			continue
-		}
 		text := messageContentText(message)
-		if len(text) <= stubMinBytes || strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
-			continue
-		}
 		pointer := a.chatlog.ref(message)
 		if pointer == "" {
 			if workspace == "" {
 				continue
 			}
-			path, err := writeStub(a.config.Place, workspace, text)
+			// The FAMILY'S folder, which is this agent's own when it is a session
+			// and the commissioning conversation's when it is a worker. A worker
+			// asked for its Place instead, got the zero one, and filed every long
+			// result it read into the repository it borrowed (landing.go).
+			path, err := writeStub(a.config.droppingsPlace(), workspace, text)
 			if err != nil {
 				continue
 			}
@@ -148,6 +187,30 @@ func (a *Agent) stubOldOutputsLocked() int {
 		stubbed++
 	}
 	return stubbed
+}
+
+// stubCandidates is the eligibility half of the pass, split out from the
+// replacement half so that WHETHER to run can be decided before a single byte is
+// written to disk. It answers which messages below `cut` are old, heavy,
+// unstubbed tool results, and how many bytes replacing all of them would take
+// out of the live context.
+//
+// Index 0 is the system message and is not a tool result; starting at 1 says so
+// out loud rather than relying on the role check.
+func stubCandidates(messages []ai.Message, cut int) (indices []int, reclaim int) {
+	for index := 1; index < cut; index++ {
+		message := messages[index]
+		if message.Role != "tool" {
+			continue
+		}
+		text := messageContentText(message)
+		if len(text) <= stubMinBytes || strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
+			continue
+		}
+		indices = append(indices, index)
+		reclaim += len(text)
+	}
+	return indices, reclaim
 }
 
 // toolNameFor answers which tool produced the result at index, by finding the
