@@ -172,6 +172,7 @@ func quirksAt(t *testing.T, models ...string) string {
 			// behind by one test silently changes the request shape of the next.
 			delete(quirks.noCacheControl, normalizeModel(model))
 			delete(quirks.noReasoningBudget, normalizeModel(model))
+			delete(quirks.noReasoningReplay, normalizeModel(model))
 		}
 		quirks.path = ""
 	})

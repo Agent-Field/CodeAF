@@ -150,6 +150,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent.definitions = definitions
 	agent.messages = []ai.Message{textMessage("system", system)}
+	agent.messageReasoning = make([]provider.MessageReasoning, 1)
 	agent.refreshSystemLocked()
 
 	if strings.TrimSpace(config.SessionFile) != "" {
@@ -186,6 +187,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// and AGENTS.md in the footer are facts about now, not about the
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
+		agent.messageReasoning = append(agent.messageReasoning, replayed.reasoning...)
 		// AND THE CONVERSATION ABOVE THE LATEST COMPACTION IS SHAPED HERE, ONCE,
 		// while the replayed messages are still in hand. It is shaped rather than
 		// kept as messages so the pictures a compacted region held are let go of
@@ -1367,7 +1369,9 @@ func (a *Agent) Close() error {
 // order is the transcript order by construction; it is one buffered append to
 // an already-open file, not a place a turn waits.
 func (a *Agent) recordLocked(message ai.Message) {
+	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	if a.file != nil {
 		a.file.appendMessage(message)
 	}
@@ -1386,7 +1390,9 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
+	a.alignReasoningLocked()
 	a.messages = append(a.messages, user.message)
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	// AND WHAT IS KEPT IS WHAT THEY SAID. A marked draft's message carries an
 	// instruction the person never typed and never sees (standing_mark.go); the
 	// turn reasons from it and nothing outlives it, because a replay is a
@@ -1553,6 +1559,7 @@ func (a *Agent) volatileBlockLocked() string {
 // behind it. Neither is worth a message: what an old note says was true when it
 // was said, and a retraction would cost a message to tell the model nothing.
 func (a *Agent) landVolatileLocked() {
+	a.alignReasoningLocked()
 	// A transcript with no system message is one nothing has opened yet, and a
 	// note that landed there would BE message[0].
 	if len(a.messages) == 0 {
@@ -1573,6 +1580,7 @@ func (a *Agent) landVolatileLocked() {
 	// request, and a resume rebuilds it from the card and the index on the first
 	// turn that needs it.
 	a.messages = append(a.messages, textMessage("user", note))
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 }
 
 // lastVolatileNoteLocked is the newest volatile note in the transcript, or ""
@@ -2461,8 +2469,9 @@ func (s *eventStream) pump() {
 
 // DisplayEntry is one journaled message shaped for surface replay: who spoke
 // and what they said, with tool calls flattened to their gloss and carrying the
-// payload the journal kept for them. No reasoning — that is never recorded — and
-// nothing about the wire itself.
+// payload the journal kept for them. Reasoning metadata is deliberately absent
+// from this display shape even though the journal keeps it for model continuity;
+// nothing about the wire itself is shown to the person.
 type DisplayEntry struct {
 	// Role is "user" | "assistant" | "tool" | "note" | "aside".
 	//

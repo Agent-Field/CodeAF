@@ -97,10 +97,10 @@ const (
 	// It follows the EventThinking that opened the run rather than replacing it:
 	// a surface that only draws "thinking…" ignores this kind and is unchanged,
 	// and a surface that shows the thought has the words and the boundary both.
-	// The text is NOT part of the answer — it is never accumulated into the
-	// partial reply and never recorded in the transcript, because a later step
-	// re-sending it would be sending the model its own working as if it had said
-	// it out loud.
+	// The text is NOT part of the answer and never enters the partial reply.
+	// Completed steps record it as hidden provider metadata and replay it under
+	// the same wire field, so the next tool step can continue the model's work
+	// without presenting that work as something the assistant said out loud.
 	EventReasoning
 	// EventConsentRequest asks the person whether one tool call may run
 	// (consent.go). It carries the call's ID, Tool, Args and gloss in Hint, and
@@ -1795,6 +1795,10 @@ type Agent struct {
 	// session, whatever they switch the model to inside it.
 	effort   effort.Rung
 	messages []ai.Message
+	// messageReasoning is aligned one-for-one with messages and carries the
+	// provider fields ai.Message cannot represent. Rewrites clear or move the
+	// matching slot; no model working is ever smuggled into visible Content.
+	messageReasoning []provider.MessageReasoning
 	// earlier is the conversation ABOVE the latest compaction marker, shaped for
 	// a surface's scrollback and held for no other reason: nothing here ever
 	// sends it, and the model does not carry it (see [Agent.EarlierTranscript]).

@@ -171,11 +171,10 @@ func parseSSEMessage(message []byte) (payload []byte, delivered, done bool) {
 // calls, which made tool-calling dead on the streamed path and turned the head's
 // control belt into a round trip that could not succeed.
 //
-// The fields below are the OpenAI streaming shape plus the two names reasoning
-// travels under — OpenRouter's "reasoning" and the "reasoning_content" the
-// DeepSeek-family endpoints send. Both are read into one vocabulary: the text
-// leaves as StreamReasoning deltas and is still never accumulated into the
-// response, because reasoning is not part of the answer a later step re-sends.
+// The fields below are the OpenAI streaming shape plus the names reasoning
+// travels under. They leave as StreamReasoning events with their wire spelling
+// intact because a later tool step must replay model working as continuation
+// metadata, never as answer content.
 type streamChunk struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -249,24 +248,39 @@ type streamDelta struct {
 	ToolCalls        []toolCallDelta `json:"tool_calls,omitempty"`
 	Reasoning        string          `json:"reasoning,omitempty"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ReasoningText    string          `json:"reasoning_text,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // thinking reports that this delta carried thought rather than answer.
 func (d streamDelta) thinking() bool {
-	return d.Reasoning != "" || d.ReasoningContent != ""
+	return d.Reasoning != "" || d.ReasoningContent != "" || d.ReasoningText != "" || len(d.ReasoningDetails) > 0
 }
 
-// reasoning is the thought itself, under whichever of the two names this
-// endpoint spells it. An endpoint that somehow sent both is read as one run of
-// text in the order the fields are declared, which is the only order there is.
-func (d streamDelta) reasoning() string {
-	if d.ReasoningContent == "" {
-		return d.Reasoning
+// reasoningEvents keeps the field signature attached to each piece. Providers
+// use one spelling consistently; retaining all three here also makes an odd
+// mixed stream lossless instead of silently choosing one.
+func (d streamDelta) reasoningEvents() ([3]StreamEvent, int) {
+	var events [3]StreamEvent
+	count := 0
+	for _, item := range []struct{ field, text string }{
+		{"reasoning", d.Reasoning},
+		{"reasoning_content", d.ReasoningContent},
+		{"reasoning_text", d.ReasoningText},
+	} {
+		if item.text != "" {
+			events[count] = StreamEvent{Kind: StreamReasoning, Delta: item.text, ReasoningField: item.field}
+			count++
+		}
 	}
-	if d.Reasoning == "" {
-		return d.ReasoningContent
+	if len(d.ReasoningDetails) > 0 {
+		if count == 0 {
+			count = 1
+			events[0] = StreamEvent{Kind: StreamReasoning}
+		}
+		events[count-1].ReasoningDetails = append(json.RawMessage(nil), d.ReasoningDetails...)
 	}
-	return d.Reasoning + d.ReasoningContent
+	return events, count
 }
 
 // toolCallDelta is one fragment of one tool call. Index is a pointer because
