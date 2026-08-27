@@ -173,6 +173,10 @@ func (a *Agent) belt() []bare.Tool {
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	// An owned conversation has no project until the person names one. The
+	// anchoring hand exists only in that state; after it succeeds the rebuilt
+	// belt omits it, because a capability whose job is already done is absent.
+	tools = append(tools, a.anchorWorkspaceTools()...)
 	// The workspace's own history — restore points over the FILES, forks to try
 	// something risky in, and the merge that lands one (tools_workspace.go).
 	// They are furrow's verbs and they are absent on a machine that does not

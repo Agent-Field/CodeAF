@@ -21,33 +21,40 @@ to the proposed one.
 
 ## Does a task touch my working copy?
 
-No. Each task gets its own checkout of the repository, on its own branch, so you can keep
-working in yours while it runs.
+By default, no. Each code task gets its own checkout of the repository the conversation is
+about, on its own branch, so you can keep working in yours while it runs. If your request
+explicitly names another folder, the task works in that exact folder instead; its card and
+its `/history` record show the resolved `where`.
 
 aforge runs `git worktree add -b <branch> <dir> HEAD` off your **current HEAD**.
 
-- **Directory:** `<repo root>/.aforge-v3/tasks/<session-slug>/<task id>`. The session
-  segment is the conversation's own id. A conversation with no session file on disk gets
-  `unfiled-<6 hex>`, minted once per process, so two windows never collide.
+- **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home,
+  while the worktree is registered in the repository it was cut from.
 - **Branch:** `task/<title slugified, at most 32 characters>-<6 hex>` — for example
   `task/fix-the-nil-map-crash-9c1a2f`. The random tail lets the same title be proposed
   twice.
 
-The worktree lives **inside** the repository, so you will see it in `git worktree list` and
-in your file browser. `.aforge-v3` is reset out of every task commit, so it never merges.
+The worktree lives inside the conversation's session folder. You will see its registration
+in the repository's `git worktree list`, but aforge puts no task directory in your repo.
 
 If a directory is already at that name it can only be this session's own dead run, so it is
 removed with `git worktree remove --force`, pruned and deleted before the add.
 
 Two limits:
 
-- A workspace that is **not a repository**, or a repository with **no commit to branch
-  from**, runs **in place** in your own directory, and says so:
+- An explicitly named folder, or a task shaped as non-code work with `where: in place`,
+  runs **in place** in that directory and says so:
   `it worked directly in the workspace: there was no repository to branch`.
   While that task runs, **the chat cannot write in that directory** — see *A task working
   in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
+
+An `aforge` conversation opened from your home directory owns a scratch workspace. That
+scratch repository is never treated as the project a code task should branch from. A code
+task with no named place stops with `this task needs a project; use /workspace <path> or
+name where it should work`; use `/workspace` once to anchor the conversation, or name the
+folder in the request. Non-code work may deliberately use the scratch workspace in place.
 
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 
@@ -100,10 +107,11 @@ What it leaves behind is named in the landing, and the sentence says where it we
 `it left files it did not write, and they went with its working copy rather than onto your branch: .venv/bin/activate, .venv/pyvenv.cfg and 812 more`
 
 A task's checkout is removed once its work is merged, and the leavings go with it — that is
-what a throwaway checkout is for. When the branch is kept instead, the checkout is kept too
-and the sentence reads `they are still in its working copy rather than on its branch`. The
-first few files are named and the rest are counted. Your `.gitignore` is respected exactly as
-it always was: a path your repository ignores is not committed and is not mentioned.
+what a throwaway checkout is for. When the branch is kept instead, its Git worktree is
+unregistered but the ordinary task folder and leavings stay, and the sentence reads `they
+are still in its task folder rather than on its branch`. The first few files are named and
+the rest are counted. Your `.gitignore` is respected exactly as it always was: a path your
+repository ignores is not committed and is not mentioned.
 
 **When a command made the deliverable.** A task that runs a scaffold, a code generator or a
 formatter produces real files it never typed. It brings them home by naming them on the last
@@ -297,7 +305,7 @@ When a task's work does come home, the paths it wrote are staged by name — nev
 `aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
 merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the worktree is removed and the branch is deleted. A merge that conflicts is abandoned, the
-worktree and the branch are both kept, and the task needs your look. Two tasks finishing at
+branch is kept, the task worktree is unregistered, and the task needs your look. Two tasks finishing at
 once are serialized, so a merge is never lost.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
@@ -884,8 +892,8 @@ without exception:
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
-- a task that left files it did not write keeps them too — in its own checkout, named in the
-  report, never on your branch;
+- a task that left files it did not write keeps them too — in its task folder, named in the
+  report, never on your branch, after unregistering the Git worktree;
 - a session that ended mid-run keeps the branch, and says where it is.
 
 A task that ran **in place** — no repository to branch from — is never described as

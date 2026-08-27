@@ -693,8 +693,9 @@ type app struct {
 	// list in the same breath as the agent. They are preferred over fresh and
 	// resume wherever both are wired; the pair below is what a door that cannot
 	// answer the seam still gets ([app.nextConversation], [app.openConversation]).
-	start func(workspace string) (Conversation, error)
-	open  func(workspace, transcript string) (Conversation, error)
+	start           func(workspace string) (Conversation, error)
+	open            func(workspace, transcript string) (Conversation, error)
+	anchorWorkspace func(path string) (string, error)
 	// workspace is the directory this conversation is about, whole; place is
 	// its base name, which is what the status line has room for. The whole path
 	// is what history is keyed by and what the @ completion walks.
@@ -1877,6 +1878,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:            opts.Fresh,
 		start:            opts.Start,
 		open:             opts.Open,
+		anchorWorkspace:  opts.AnchorWorkspace,
 		errand:           opts.Errand,
 		standingRoot:     opts.StandingRoot,
 		leaveAnswer:      opts.Answer,
@@ -5565,6 +5567,29 @@ func (a *app) slash(line string) tea.Cmd {
 		a.switchModel(rest, 0)
 		return nil
 
+	case "workspace":
+		if rest == "" {
+			a.note("usage: /workspace <path>")
+			return nil
+		}
+		if a.anchorWorkspace == nil {
+			a.note("this conversation already has a workspace")
+			return nil
+		}
+		resolved, err := a.anchorWorkspace(rest)
+		if err != nil {
+			a.note("could not set the workspace: " + err.Error())
+			return nil
+		}
+		a.workspace = resolved
+		a.owned = false
+		a.place = placeShown(resolved, false, a.host)
+		a.branch, a.branchDirty, _ = a.gitProbe(resolved)
+		a.anchorWorkspace = nil
+		a.note("workspace · " + a.hostedPath(resolved))
+		a.touch()
+		return nil
+
 	case "image":
 		// The other door onto the tray, for a picture that is not under this
 		// directory or not in the walk: a path, attached (attach.go).
@@ -5860,6 +5885,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		a.workspace = workspace
 	}
 	a.owned = conv.Owned
+	a.anchorWorkspace = conv.AnchorWorkspace
 	if shown := strings.TrimSpace(conv.Place); shown != "" {
 		a.place = shown
 	} else {

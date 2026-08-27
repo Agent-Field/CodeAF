@@ -111,7 +111,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	graph.admit(id, taskSpec{
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, brief: work,
-		acceptance: acceptance, model: a.resolveTaskModel("").model,
+		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
 	})
 	return id, title, nil
 }

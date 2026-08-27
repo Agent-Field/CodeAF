@@ -220,6 +220,18 @@ func TestAnOwnedSessionWorksInItsOwnFolder(t *testing.T) {
 	}
 }
 
+func TestAResumedAnchorOverridesTheLaunchWorkspace(t *testing.T) {
+	anchor := t.TempDir()
+	place := session.Place{Dir: t.TempDir(), Workspace: anchor}
+	cfg, err := v3PointAt(session.Config{Workspace: "/the/launch/directory"}, place)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Workspace != anchor || cfg.Place.Workspace != anchor {
+		t.Fatalf("reopened config = %+v, want persisted anchor %s", cfg.Place, anchor)
+	}
+}
+
 // A path a person named is a path they mean, and an old flat transcript opens
 // as what it is: no folder, and every sidecar derived the way it always was.
 func TestANamedFlatTranscriptKeepsTheLegacyLayout(t *testing.T) {

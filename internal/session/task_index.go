@@ -154,6 +154,9 @@ type TaskIndexEntry struct {
 	// spelled in [TaskKindWord] so that a live row merged in from a graph reads
 	// the same way as a landed one, not because the file holds any.
 	Kind TaskKind `json:"kind,omitempty"`
+	// Where is the worker's resolved directory, or the explicit placement from a
+	// restored proposal that has not started yet.
+	Where string `json:"where,omitempty"`
 	// Status is the node's final state — "done", "failed", "unverified" — or its
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
@@ -670,6 +673,7 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// re-deriving it from the spec is what keeps the row and the roster from
 		// ever disagreeing about one piece of work.
 		Kind:         n.kind,
+		Where:        strings.TrimSpace(n.worktree),
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,
@@ -696,6 +700,9 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		SessionID:     session,
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),
 		TranscriptURI: taskURI(n.journal),
+	}
+	if entry.Where == "" {
+		entry.Where = strings.TrimSpace(n.spec.where)
 	}
 	// A LIVE ROW SAYS WHAT IS HAPPENING IN IT. The recorder is read here, under
 	// the graph's lock, because this is the one place a row is built and both

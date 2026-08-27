@@ -125,6 +125,24 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	}
 }
 
+func TestTheShaperCarriesThePlaceNamedInTheRequest(t *testing.T) {
+	named := t.TempDir()
+	request := "make the change in " + named
+	answer := `{"title":"named change","brief":"Make the requested change.","acceptance":"The change is present.","where":"` + named + `"}`
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, ran := shapeAgent(t, client)
+	id, _, err := agent.StartTask(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled(t, ran)
+	if got := agent.graph().node(id).spec.where; got != named {
+		t.Fatalf("shaped where = %q, want the named directory %q", got, named)
+	}
+}
+
 // IT IS BILLED THE WAY EVERY CALL NOBODY TYPED IS: to the session's total and
 // its call count, never to a turn.
 func TestShapingIsBilledAsAnAuxiliaryCall(t *testing.T) {
