@@ -65,7 +65,7 @@ func (r *recorder) saw(where string) bool {
 
 func (r *recorder) EpisodeInit(*episode)                  { r.mark("init") }
 func (r *recorder) PreDecision(context.Context, *episode) { r.mark("decision") }
-func (r *recorder) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult) {
+func (r *recorder) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult, bool) {
 	r.mark("feedback")
 }
 
@@ -280,7 +280,7 @@ func TestTheLoopDetectorRunsThroughPostFeedback(t *testing.T) {
 	hub := newEventHub()
 	events := hub.subscribe()
 	for attempt := 1; attempt <= 3; attempt++ {
-		episode.postFeedback(context.Background(), hub, []ai.ToolCall{call}, results)
+		episode.postFeedback(context.Background(), hub, []ai.ToolCall{call}, results, true)
 	}
 	hub.close()
 

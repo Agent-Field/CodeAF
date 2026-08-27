@@ -11,7 +11,7 @@ package session
 //
 // ── WHAT IS WATCHED ──
 //
-// Two signals, per turn, over a sliding window of the last dozen calls:
+// Three signals, per turn, over a sliding window of the last dozen calls:
 //
 //   - THE SAME CALL THREE TIMES IN A ROW. Consecutive, because a call repeated
 //     with other work between the repeats is usually a person's transcript being
@@ -20,6 +20,9 @@ package session
 //   - THE SAME ERROR THREE TIMES IN THE TURN. Total rather than consecutive, and
 //     across tools rather than per tool, because this is the shape a real loop
 //     takes: the model varies the call, the failure does not move.
+//   - SIX SILENT TOOL BATCHES IN A ROW. A reasoning model can keep re-deriving
+//     a plan that vanishes at every step boundary while every individual call
+//     remains distinct. The note asks it to put that plan in visible text.
 //
 // ── WHAT A NUDGE IS ──
 //
@@ -85,6 +88,12 @@ const (
 	// Three is a habit.
 	loopRepeats = 3
 
+	// silentStreakLimit is how many consecutive tool-using steps may carry no
+	// visible assistant text before the model is asked to externalize its plan.
+	// Six leaves room for a short inspect-decide sequence; beyond that, silence
+	// is more likely lost cross-step reasoning than useful brevity.
+	silentStreakLimit = 6
+
 	// loopNudgeCeiling is how many notes a turn gets before the person is asked
 	// instead. Two, because a third note would be the third time the same
 	// sentence failed to change anything.
@@ -110,9 +119,13 @@ type nudge struct {
 	// times the error came back).
 	tool  string
 	count int
-	// failing distinguishes the two rules: a repeated CALL, or a repeated ERROR.
-	// They read differently to the model, so they are worded differently.
+	// failing distinguishes a repeated CALL from a repeated ERROR. They read
+	// differently to the model, so they are worded differently.
 	failing bool
+	// silent distinguishes the batch-streak rule from the two identity rules.
+	// It gets its own note and event hint because the remedy is to write the plan
+	// down, not merely to choose a different call.
+	silent bool
 	// nth is which nudge of this turn it is, 1-based. It is what the escalation
 	// law reads.
 	nth int
@@ -138,6 +151,13 @@ type loopWatch struct {
 	// signature has repeated since its last nudge. It is what
 	// [loopHysteresis] is counted against, and forward progress empties it.
 	streak map[string]int
+	// silentStreak counts consecutive tool-using batches with no visible text;
+	// silentCalls is the number of calls those batches contained, for the note.
+	silentStreak int
+	silentCalls  int
+	// silentNudged makes this rule one-shot per turn. The shared nudges count
+	// still advances, so it participates in the ordinary escalation ceiling.
+	silentNudged bool
 	// nudges is how many nudges this turn has produced.
 	nudges int
 }
@@ -153,16 +173,16 @@ func newLoopWatch() *loopWatch {
 // observe folds one finished batch into the watch and reports a nudge if this
 // batch is the one that tipped a rule over.
 //
-// AT MOST ONE NUDGE PER BATCH, even when both rules fire: two notes about the
-// same moment is the harness being noisy about its own cleverness, and the call
-// rule is the more specific of the two, so it wins.
+// AT MOST ONE NUDGE PER BATCH, even when several rules fire: two notes about the
+// same moment is the harness being noisy about its own cleverness. The identity
+// rules are more specific than silence, so they are read first.
 //
 // FORWARD EVIDENCE IS READ FIRST, before any rule is tested, so a batch that
 // both progressed and repeated cannot escalate. That ordering is the hysteresis
 // law's "immediately": a model that got something done this step is not a model
 // the harness interrupts this step, even if it also re-ran the thing it was
 // nudged about.
-func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, bool) {
+func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleText bool) (nudge, bool) {
 	if w == nil || len(calls) == 0 {
 		return nudge{}, false
 	}
@@ -171,6 +191,13 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 
 	if w.sawProgress(calls, results) {
 		clear(w.streak)
+	}
+	if visibleText || sawMaterialProgress(calls, results) {
+		w.silentStreak = 0
+		w.silentCalls = 0
+	} else {
+		w.silentStreak++
+		w.silentCalls += len(calls)
 	}
 
 	var found nudge
@@ -194,12 +221,44 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 			found, ok = nudge{call: call, tool: call.Function.Name, count: count, failing: true}, true
 		}
 	}
+	if w.silentStreak >= silentStreakLimit && !w.silentNudged {
+		// An identity nudge from this same batch already told the model the turn
+		// is stuck. Booking silence with it avoids two rules taking turns to say
+		// the same moment is bad, while distinct-call silence gets its own words.
+		w.silentNudged = true
+		if !ok {
+			last := calls[len(calls)-1]
+			found, ok = nudge{
+				call:   last,
+				tool:   last.Function.Name,
+				count:  w.silentCalls,
+				silent: true,
+			}, true
+		}
+	}
 	if !ok {
 		return nudge{}, false
 	}
 	w.nudges++
 	found.nth = w.nudges
 	return found, true
+}
+
+// sawMaterialProgress reports the kind of forward evidence that breaks a
+// silent streak: a successful call through a belt hand known to write a file.
+// [loopWatch.sawProgress] remains deliberately broader for signature
+// hysteresis, but using it here would let a run of distinct successful greps
+// reset forever — precisely the silent loop this rule exists to catch.
+func sawMaterialProgress(calls []ai.ToolCall, results []toolResult) bool {
+	for index, call := range calls {
+		if index >= len(results) || results[index].isError {
+			continue
+		}
+		if mutatingTools[call.Function.Name] {
+			return true
+		}
+	}
+	return false
 }
 
 // speakAbout reports whether a signature that has just tipped a rule over is
@@ -280,6 +339,12 @@ func errorSignature(text string) string {
 // nudgeNote is what the model reads. It states the fact, then asks the two
 // questions a stuck model has stopped asking itself.
 func nudgeNote(n nudge) string {
+	if n.silent {
+		return fmt.Sprintf("[silent] You have made %d tool calls without writing anything down. "+
+			"Before your next tool call, write a short visible note: what you've learned so far, "+
+			"what you're checking next, and why. Your reasoning between steps is not saved — "+
+			"if it isn't in your visible reply, it's gone.", n.count)
+	}
 	what := "the same " + n.tool + " call"
 	outcome := "with the same result"
 	if n.failing {
@@ -295,6 +360,9 @@ func nudgeNote(n nudge) string {
 // loopRule is how the escalated question names itself to the person, in the slot
 // the approval policy's own wording usually occupies.
 func loopRule(n nudge) string {
+	if n.silent {
+		return fmt.Sprintf("silent: %d tool calls without visible assistant text", n.count)
+	}
 	if n.failing {
 		return fmt.Sprintf("stuck: %s has failed the same way %d times", n.tool, n.count)
 	}
@@ -312,8 +380,8 @@ func loopRule(n nudge) string {
 // It NEVER fails the turn. Everything here — the note, the event, the question —
 // is an aside about work that is already recorded; a turn that could be ended by
 // its own loop detector would be a detector nobody could afford to trust.
-func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult) {
-	looping, ok := ep.watch.observe(calls, results)
+func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult, visibleText bool) {
+	looping, ok := ep.watch.observe(calls, results, visibleText)
 	if !ok {
 		return
 	}

@@ -126,14 +126,15 @@ type preActionHook interface {
 // before the next request is assembled — the one moment a note can ride into the
 // next request the way a person's steering does (looped.go).
 //
-// It sees the calls and their results in call order, paired by index. It sees
-// nothing else on purpose: a detector that read the whole transcript would be a
-// second model's worth of judgement about a turn, and the deterministic stuck
-// signals are the cheap half of recovery that works without one
-// (PMCoder, https://arxiv.org/abs/2608.06811).
+// It sees the calls and their results in call order, paired by index, plus the
+// one batch-level fact of whether the assistant message carried visible text.
+// It sees nothing else on purpose: a detector that read the whole transcript
+// would be a second model's worth of judgement about a turn, and the
+// deterministic stuck signals are the cheap half of recovery that works
+// without one (PMCoder, https://arxiv.org/abs/2608.06811).
 type postFeedbackHook interface {
 	Name() string
-	PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult)
+	PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool)
 }
 
 // ── the registry ────────────────────────────────────────────────────────────
@@ -272,12 +273,12 @@ func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCal
 }
 
 // postFeedback runs the post-feedback chain.
-func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.ToolCall, results []toolResult) {
+func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	if ep == nil {
 		return
 	}
 	for _, hook := range ep.plane.postFeedback {
-		hook.PostFeedback(ctx, ep, hub, calls, results)
+		hook.PostFeedback(ctx, ep, hub, calls, results, visibleText)
 	}
 }
 
@@ -312,6 +313,6 @@ func (loopDetector) Name() string { return "loop" }
 
 func (loopDetector) EpisodeInit(ep *episode) { ep.watch = newLoopWatch() }
 
-func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult) {
-	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results)
+func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
+	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results, visibleText)
 }
