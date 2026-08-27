@@ -220,19 +220,22 @@ asked. A finished or killed job drops off the list immediately.
 [job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
 ```
 
-**When a job ends**, its exit code and the last 50 lines of its output arrive in
-the conversation on their own:
+**When a job ends**, its exit code and last non-empty output line arrive in the
+conversation on their own:
 
 ```
-job 3 exited 0: BUILD OK
-
-… the last fifty lines …
-
-[job 3 · last 50 lines · full log: ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log]
+while you worked: job 3 exited 0: BUILD OK
 ```
 
 If aforge is mid-turn the note lands at the next step; if the turn had already
-ended, the note starts a new one, exactly as a finished task does.
+ended, the note starts a new one, exactly as a finished task does. Several
+session notes waiting at that boundary are one `while you worked:` message, not
+several synthetic user messages between tool calls.
+
+The rest stays behind `jobs output`: its default is the last 50 lines and its
+footer names the whole log. This keeps a long build tail from dragging the model
+away from the work it was already doing while preserving every line when it
+needs the detail.
 
 So you should never see aforge running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
@@ -289,9 +292,11 @@ job 3 started; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
 
 A background job never times out and is not tied to the turn that started it.
 Everything it writes goes to that log file; the last **64KB** is also held in
-memory for quick reads. When the job exits, aforge is told at the next step,
-e.g. `job 3 exited 1: make: *** [build] Error 1` — the last non-empty log line,
-clipped to 120 characters.
+memory for quick reads. When the job exits, aforge is told at the next step in
+one boundary batch, e.g.
+`while you worked: job 3 exited 1: make: *** [build] Error 1` — the last
+non-empty log line, clipped to 120 characters. Use `jobs output` for the output
+behind that headline.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 
@@ -371,8 +376,12 @@ with `jobs kill`. Starting one answers
 **At most 3 watches run at once.** Over that:
 `this session already has 3 watches running, which is the limit — stop one with jobs kill first, or use bash background:true for a command that ends on its own`
 
-Three identical failures in a row end a watch. A watch note wakes an idle
-session, and watches die with the session like any other job.
+Three identical failures in a row end a watch. Watch updates never interrupt a
+running turn and do not wake an idle session. At the next turn boundary they
+arrive as one compact item such as
+`codex-jobs watch: 3 updates — latest: 7 lines new — fixed the parser`; every
+tick remains available through `jobs output`. Watches die with the session like
+any other job.
 
 For something that has to keep an eye on the world **after** this window is
 closed — "tell me when CI goes red", "every Monday draft the update", "keep main

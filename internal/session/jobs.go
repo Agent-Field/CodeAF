@@ -26,15 +26,14 @@ package session
 //     superseded and was never the point: the tool takes an absolute path, and
 //     the job card prints one.
 //
-//   - THE STEERING LANE, not a tool and not an event. When a job ends, the
-//     model learns about it the way it learns anything a person types
-//     mid-turn: a line appended to the steering queue (agent.go), drained into
-//     the transcript at the next step boundary. A completion is news, not an
-//     answer to a question, and the alternative — the model polling `jobs` on
-//     a hunch — costs a round trip per hunch and still misses the exit it did
-//     not think to check for.
+//   - THE OWED LANE, not a tool and not an event. When a job ends, its headline
+//     joins the session's boundary batch (agent.go), drained at the next step.
+//     The complete output remains here behind `jobs output` and on disk. A
+//     completion is news, not an answer to a question, and the alternative —
+//     the model polling `jobs` on a hunch — costs a round trip per hunch and
+//     still misses the exit it did not think to check for.
 //
-//   - NO PUSH MID-BATCH. The note lands at a step boundary and never inside
+//   - NO PUSH MID-BATCH. The headline lands at a step boundary and never inside
 //     one, for the same reason user steering does: the transcript's tail
 //     mid-batch sits between an assistant's tool_calls and their results, and
 //     a user message spliced in there is a shape every provider rejects. A job
@@ -313,12 +312,16 @@ type jobRegistry struct {
 	// legacy layout and the only thing a caller that has not adopted a folder
 	// can mean.
 	place Place
-	// notify carries a completion note to the steering queue — the WAKING lane
-	// (agent.go's [Agent.enqueueSteering]), which queues while a turn runs and
-	// starts one when none does. It is a function rather than the Agent itself so
-	// the registry has no idea what a turn is — it reports, and the lane decides
-	// whether anybody has to answer.
+	// notify carries a completion note to the OWED lane (agent.go's
+	// [Agent.enqueueJobNote]), which queues while a turn runs and starts one when
+	// none does. It is a function rather than the Agent itself so the registry
+	// has no idea what a turn is — it reports, and the lane decides whether
+	// anybody has to answer.
 	notify func(string)
+	// notifyWatch carries watch updates to the AMBIENT lane. It is separate
+	// because a periodic tick must never interrupt a running model turn, while a
+	// job ending after the model was told to wait remains owed.
+	notifyWatch func(string, string)
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -349,8 +352,12 @@ type jobRegistry struct {
 	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string)) *jobRegistry {
-	return &jobRegistry{workspace: workspace, place: place, notify: notify}
+func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string)) *jobRegistry {
+	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
+	if len(watch) > 0 {
+		registry.notifyWatch = watch[0]
+	}
+	return registry
 }
 
 // newJob makes the shell every job shares — an id, a log file on disk, a sink
