@@ -80,6 +80,18 @@ func noteReasoningMandatory(model string) {
 	}
 }
 
+// NoteReasoningDisableIgnored remembers that a model accepted the disable but
+// still spent an answer-sized ceiling without returning any answer. The
+// provider adapter cannot infer this from the HTTP exchange alone: the caller
+// owns the promise that the requested ceiling was large enough for its answer.
+func NoteReasoningDisableIgnored(model string) {
+	if quirks.noteDisableIgnored(model, time.Now().UTC()) {
+		// Off the request path for the same reason a rejected disable is: the
+		// caller is about to retry with room and must not wait on the memo.
+		quirks.persist()
+	}
+}
+
 // noteReasoningBudgetRefused remembers that a model's endpoint rejected the
 // thinking budget the two top rungs of the ladder carry.
 //
@@ -181,6 +193,18 @@ func ReasoningMandatory(model string) bool { return reasoningMandatory(model) }
 
 func reasoningMandatory(model string) bool { return quirks.knows(model) }
 
+// ReasoningDisableIgnored reports that a model accepted the disable but still
+// consumed the caller's whole answer budget before returning any text.
+func ReasoningDisableIgnored(model string) bool { return quirks.knowsDisableIgnored(model) }
+
+// ReasoningUnavoidable reports either observed way a model has shown that its
+// thinking pass cannot be removed. Callers that reserve a small answer budget
+// need the combined fact; request encoding still reads the two facts separately
+// because only a rejected disable must be omitted from the wire.
+func ReasoningUnavoidable(model string) bool {
+	return reasoningMandatory(model) || quirks.knowsDisableIgnored(model)
+}
+
 // normalizeModel keys the memo on the model itself rather than on how it was
 // written. The leading "~" is Aforge's own routing marker, not part of the
 // slug, so "~minimax/minimax-m2.7" and "minimax/minimax-m2.7" are one model.
@@ -244,8 +268,8 @@ type wireRequest struct {
 	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
 
 	// Reasoning is omitted entirely unless the model is known to accept it or
-	// the operator asked for it explicitly. An unsupported knob is a 400, and a
-	// 400 on every call is a worse failure than a model thinking too hard.
+	// the caller marked it required. An unsupported knob is a 400, and a 400 on
+	// every optional economy is a worse failure than a model thinking too hard.
 	Reasoning *reasoningKnob `json:"reasoning,omitempty"`
 
 	// Provider is the routing preference object: how to choose among the
@@ -386,8 +410,8 @@ func (c *Client) resolveReasoningBudget(model string, requested effortRequest) i
 
 // requestedEffort applies the catalog gate. The catalog is consulted first
 // because it is the only authority that can say "this model would reject it";
-// when the catalog is cold or silent, only an explicit operator request gets
-// sent, so a default economy can never break a run on an unknown model.
+// when the catalog is cold or silent, only a configured or required request
+// gets sent, so an optional economy can never break a run on an unknown model.
 func (c *Client) requestedEffort(model string, requested effortRequest) Effort {
 	if requested.effort == EffortNone {
 		return EffortNone

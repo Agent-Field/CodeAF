@@ -125,6 +125,24 @@ func TestCostCountsEveryModelCallAndNotJustTheTurns(t *testing.T) {
 	}
 }
 
+func TestCostNamesTheReflexCallsThatSpentTheirCeilingOnNoAnswer(t *testing.T) {
+	a := newTestApp(&fakeAgent{usage: session.Usage{
+		Input: 2_000, Output: 400, Calls: 4, EmptyReflex: 2,
+	}})
+
+	a.slash("/cost")
+	text := lastNote(t, a)
+	line := ""
+	for _, row := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(row), "empty reflex answers") {
+			line = strings.TrimSpace(row)
+		}
+	}
+	if line == "" || !strings.HasSuffix(line, " 2") {
+		t.Fatalf("the empty reflex line reads %q in:\n%s", line, text)
+	}
+}
+
 // THE CACHE LINE IS WHAT WAS READ, AND WHAT THAT WAS WORTH — and the money half
 // appears only when a price was published while the reads were happening
 // (app.go's [app.cacheSaved], which is not derivable afterwards).
