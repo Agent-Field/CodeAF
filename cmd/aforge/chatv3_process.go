@@ -527,16 +527,23 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		recall = s.proc.history()
 	}
 	bucket := launch.Bucket
+	var anchor func(string) (string, error)
+	if anchored, ok := agent.(interface {
+		AnchorWorkspace(path string) (string, error)
+	}); cfg.Place.Owned && ok {
+		anchor = func(path string) (string, error) { return s.anchor(anchored, path) }
+	}
 	return tui3.Conversation{
-		Agent:         agent,
-		SessionFile:   cfg.SessionFile,
-		Workspace:     workspace,
-		Owned:         cfg.Place.Owned,
-		Resumed:       resumed,
-		Notice:        notice,
-		ContextWindow: cfg.ContextWindow,
-		DraftFile:     draft,
-		History:       recall,
+		Agent:           agent,
+		SessionFile:     cfg.SessionFile,
+		Workspace:       workspace,
+		Owned:           cfg.Place.Owned,
+		AnchorWorkspace: anchor,
+		Resumed:         resumed,
+		Notice:          notice,
+		ContextWindow:   cfg.ContextWindow,
+		DraftFile:       draft,
+		History:         recall,
 		// This project's conversations, walked on the keystroke that asks for
 		// them and never at boot — and this PROJECT's, which is what makes the
 		// closure per conversation rather than per process.
@@ -545,4 +552,22 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		SaveBashApproval: bankBashApproval(agent, workspace, profileDir, s.seed.Yolo),
 		ApplyApprovals:   applyV3Approvals(agent, workspace, profileDir, s.seed.Yolo),
 	}, nil
+}
+
+func (s *v3Seam) anchor(agent interface {
+	AnchorWorkspace(path string) (string, error)
+}, path string) (string, error) {
+	resolved, err := agent.AnchorWorkspace(path)
+	if err != nil {
+		return "", err
+	}
+	s.boot.Workspace = resolved
+	s.boot.Config.Workspace = resolved
+	s.boot.Config.Place.Workspace = resolved
+	s.boot.Config.Place.Owned = false
+	s.boot.Place = s.boot.Config.Place
+	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {
+		s.boot.Bucket = bucket
+	}
+	return resolved, nil
 }

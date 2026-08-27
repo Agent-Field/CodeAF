@@ -1251,7 +1251,7 @@ Where a model publishes no price, no cap is sent at all rather than one guessed 
 
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
-## Keeping the prompt cache warm — why aforge stays with one endpoint instead of hopping between providers
+## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 
 Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the endpoint that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one machine**. An endpoint that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold endpoint than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
 

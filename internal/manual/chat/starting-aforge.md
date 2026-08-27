@@ -143,12 +143,26 @@ Type `/status` and the `place` line gives you the full path to copy.
 An owned workspace of that kind is quietly made into a git repository, so work
 done there has undo history like work done anywhere else.
 
+## Anchor a conversation to a repository or folder — /workspace and the workspace tool
+
+When a conversation says `aforge` because it opened with no project, type `/workspace
+<path>` to make the repository or folder at that path its project. The path may begin with
+`~`; a path inside a Git repository resolves to the repository root. The place line changes,
+the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
+and future tasks cut their worktrees from that repository into their own task folders.
+
+The model has the conditional `workspace` tool for the same move when you name a repository
+path in ordinary chat. Both doors exist only while the conversation owns a scratch
+workspace. Once it is anchored, it stays on that project and both doors refuse another
+switch. The resolved path is saved in the conversation's `meta.json`, so reopening it keeps
+the anchor.
+
 **And a conversation opened later can be in a different folder from the one you
 started in.** `enter` on home opens a row of any project, and typing a path on
 home starts a conversation there — each on **its own** workspace, with that
 project's approval rules, crew, spend ceiling and saved shapes of work, resolved
-the same way this one's were. A conversation never changes the folder it was born
-in; there is simply more than one conversation. The status line's place word is
+the same way this one's were. An unanchored conversation may acquire its project once with
+`/workspace`; otherwise there is simply more than one conversation. The status line's place word is
 always the folder of the conversation on screen. See home's page under *Open
 another project from home*.
 

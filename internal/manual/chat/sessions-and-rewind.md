@@ -254,7 +254,7 @@ session: 12 is not a rewind point; the nearest is 10
 - The "not a rewind point" sentence names the nearest legal point. The index is never
   rounded to it for you.
 
-## Where your conversations are saved, kept, and stored
+## Where are my conversations saved, kept, and stored?
 
 Every conversation is one folder on disk, and the transcript inside it is one JSONL file.
 The path shape is:

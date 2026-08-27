@@ -268,6 +268,9 @@ type TaskNotice struct {
 	Brief string
 	// Acceptance is the observable done-condition, in the model's own words.
 	Acceptance string
+	// Where says where the task will work. A proposal carries the resolved task
+	// folder or explicit path; later notices carry the worker's actual directory.
+	Where string
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64

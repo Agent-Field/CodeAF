@@ -514,6 +514,29 @@ func TestTheRecordCardDrawsOnlyTheFactsItHas(t *testing.T) {
 	}
 }
 
+// The resolved placement is a separate fact only when it is not already the
+// surviving worktree. Showing the same path twice makes `where` look like a
+// second directory rather than the answer to where the task ran.
+func TestTheRecordCardShowsAResolvedWhereOnce(t *testing.T) {
+	a, _, _ := taskApp(t)
+	dir := t.TempDir()
+	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
+	entry.ArtifactURI = "file://" + dir
+	entry.Where = dir
+	a.comp.tasks = []session.TaskIndexEntry{entry}
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the page refused to open")
+	}
+	drive(t, a, key("enter"))
+	card := taskSheetText(a)
+	if strings.Count(card, taskCardShown(dir, a.tilde)) != 1 {
+		t.Fatalf("the resolved task directory is not shown exactly once:\n%s", card)
+	}
+	if strings.Contains(card, taskCardPlaceWord+railSep) {
+		t.Fatalf("the worktree path was repeated as a second where row:\n%s", card)
+	}
+}
+
 // THE LAST THING THE TASK SAID IS READ OFF ITS OWN JOURNAL, which is what the
 // row's transcript address was carried for: the outcome above it is that
 // message's first sentence and nothing more (session's PeekReport).
