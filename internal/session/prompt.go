@@ -111,6 +111,8 @@ const agentsFileLimit = 8 << 10
 // root exactly as omp discovers it.
 const agentsFileName = "AGENTS.md"
 
+const claudeFileName = "CLAUDE.md"
+
 // clockRefresh is how old the rendered prompt may get before a turn re-renders
 // it to move the `Now` line forward ([Agent.refreshClockLocked]).
 //
@@ -166,9 +168,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
 	out.WriteString(nowLine(now))
 
-	if instructions, truncated := readAgentsFile(workspace); instructions != "" {
+	for _, instructionFile := range []string{agentsFileName, claudeFileName} {
+		instructions, truncated := readInstructionFile(workspace, instructionFile)
+		if instructions == "" {
+			continue
+		}
 		fmt.Fprintf(&out, "\n# %s\n\nThe project's own instructions, from %s at the workspace root. They rank above your defaults and below what the person says now.\n\n",
-			agentsFileName, agentsFileName)
+			instructionFile, instructionFile)
 		fence := fenceFor(instructions)
 		out.WriteString(fence + "markdown\n")
 		out.WriteString(instructions)
@@ -178,7 +184,7 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(fence + "\n")
 		if truncated {
 			fmt.Fprintf(&out, "\n(%s is longer than %dKiB; the rest is on disk — read it if you need it.)\n",
-				agentsFileName, agentsFileLimit>>10)
+				instructionFile, agentsFileLimit>>10)
 		}
 	}
 	return out.String()
@@ -251,7 +257,11 @@ func (a *Agent) refreshClockLocked(now time.Time) {
 // AGENTS.md and reports whether it stopped early. A missing or unreadable file
 // is not an error: most workspaces do not have one.
 func readAgentsFile(workspace string) (content string, truncated bool) {
-	file, err := os.Open(filepath.Join(workspace, agentsFileName))
+	return readInstructionFile(workspace, agentsFileName)
+}
+
+func readInstructionFile(workspace, name string) (content string, truncated bool) {
+	file, err := os.Open(filepath.Join(workspace, name))
 	if err != nil {
 		return "", false
 	}

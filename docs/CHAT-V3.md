@@ -758,12 +758,13 @@ checkpoint so a resumed graph starts where it was sent.
 
 **A worktree is a branch of the tree, and merging is how work bubbles up.**
 Each node runs in `git worktree add` on `task/<slug>-<shortid>` off the
-person's current HEAD, under `<repo>/.aforge-v3/tasks/<id>/`, so its
+conversation project's current HEAD, under `<session>/trees/<id>/`, so its
 half-finished sweep is never what the person's build compiles. On success the
 node's work is committed on its branch and merged into the person's — clean
 means the worktree and branch are removed (`merged`), a conflict means
-`merge --abort` and the **branch and worktree are kept** and named in the
-report (`conflicted`). The merge is attempted whatever the person's tree looks
+`merge --abort`, the **branch is kept**, and the task worktree is unregistered; the branch
+is named in the report (`conflicted`). An explicit `where` works in that exact directory
+instead of making a worktree. The merge is attempted whatever the person's tree looks
 like: a dirty checkout is the normal state of somebody working, and nothing a
 node wrote is ever thrown away. A workspace that is not a repository (or has
 no commit to branch from) runs **in place** and says so — pretending to
@@ -1192,11 +1193,11 @@ sweep rule: a session whose recorded workspace was under a temp directory is
 litter, and the idle sweep reaps it.
 
 **Every owned workspace is silently `git init`-ed.** The person never has to
-know. What it buys, from machinery that already exists: task nodes get
-worktrees, isolation, the auditor and the merge (Decision 19) for research
-sessions that today run "in place" with none of that — and every document the
-agent touches gets undo history. The in-place fallback survives only for its
-one honest case: a borrowed folder that is not a repository.
+know; it gives scratch documents undo history. It is never a task's branch source. A code
+task in an unanchored owned conversation asks for the repository; `/workspace <path>` or
+the conditional `workspace` tool persists that anchor, reloads project instructions and
+makes future tasks branch from it. A task explicitly shaped with another `where` works
+there, and non-code work may explicitly run in the owned workspace in place.
 
 **Nothing of ours lives in the person's folder.** `<repo>/.aforge-v3/` dies
 entirely. Worktrees move to `trees/<node-id>/` in the session folder — git

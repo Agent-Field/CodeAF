@@ -156,6 +156,7 @@ type taskRecord struct {
 	// no deliverable separately, and a heading over nothing is not written
 	// (task_person.go).
 	Deliverable string   `json:"deliverable,omitempty"`
+	Where       string   `json:"where,omitempty"`
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on,omitempty"`
 
@@ -597,6 +598,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Request:     n.spec.request,
 		Brief:       n.spec.brief,
 		Deliverable: n.spec.deliverable,
+		Where:       n.spec.where,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -1067,6 +1069,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			request:     record.Request,
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
+			where:       record.Where,
 			acceptance:  record.Acceptance,
 			dependsOn:   record.DependsOn,
 			model:       record.Model,

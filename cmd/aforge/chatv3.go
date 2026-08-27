@@ -405,6 +405,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// there is nothing per-conversation to hand back.
 		Start: seam.start,
 		Open:  seam.resume,
+		AnchorWorkspace: func(path string) (string, error) {
+			return seam.anchor(agent, path)
+		},
 		// The ambient side as this surface reads it: home's item band, the
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).

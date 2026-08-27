@@ -1825,10 +1825,15 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	case n.paced > 0:
 		waiting = waitingRateLimited
 	}
+	where := strings.TrimSpace(n.worktree)
+	if where == "" {
+		where = n.spec.where
+	}
 	return TaskNotice{
 		ID:        n.id,
 		Title:     n.spec.title,
 		Kind:      n.kind,
+		Where:     where,
 		DependsOn: n.dependsOn,
 		Parent:    n.parent,
 		State:     n.state,
@@ -2589,7 +2594,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTree(place, a.config.Workspace, a.journalID(), node.id, node.title())
+		tree, err = prepareTaskTreeAt(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.spec.where)
 	}
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
@@ -3091,7 +3096,42 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	return mergeAborted, alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
+	changed = alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
+	tree.releaseKept()
+	return mergeAborted, changed
+}
+
+// releaseKept unregisters a settled task's worktree while preserving its
+// branch. THE BRANCH IS THE RECOVERY ARTIFACT; a registered task directory is
+// only live machinery, and failed or aborted machinery must not remain in the
+// person's repository after the node has stopped.
+func (t taskTree) releaseKept() {
+	if t.root == "" || t.dir == "" || t.merge == mergeInPlace {
+		return
+	}
+	defer lockGitRoot(t.place, t.root)()
+	t.releaseKeptLocked()
+}
+
+// releaseKeptLocked is the same cleanup for a caller already holding the root
+// lock, which is the conflict arm inside [taskTree.comeHome].
+func (t taskTree) releaseKeptLocked() {
+	left := leftBehind(t.dir)
+	rememberLeftBehind(t.dir, left)
+	// Keep the task folder's uncommitted leavings without keeping a git
+	// registration. Moving it aside lets git remove its administrative record;
+	// removing the pointer file then turns the restored directory into ordinary
+	// files rather than a broken worktree.
+	aside := t.dir + ".unregistering"
+	if err := os.Rename(t.dir, aside); err == nil {
+		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
+		_ = os.Remove(filepath.Join(aside, ".git"))
+		_ = os.Rename(aside, t.dir)
+	} else {
+		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
+	}
+	_, _ = git(t.root, "worktree", "prune")
+	_ = os.Remove(filepath.Dir(t.dir))
 }
 
 // runTaskChild submits the brief, consumes the node's own events internally,
@@ -4624,6 +4664,27 @@ var gitRoot sync.Mutex
 // one session's folder, so the forced remove below can only ever be reclaiming
 // after ourselves.
 func prepareTaskTree(place Place, workspace, session string, id uint64, title string) (taskTree, error) {
+	return prepareTaskTreeAt(place, workspace, session, id, title, "")
+}
+
+// prepareTaskTreeAt applies the placement contract before it touches git. An
+// explicit place is worked in exactly as named; only an empty where takes the
+// default road of cutting a worktree from the conversation's repository.
+func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
+	where = strings.TrimSpace(where)
+	if strings.EqualFold(where, "in place") {
+		return taskTree{dir: workspace, merge: mergeInPlace}, nil
+	}
+	if where != "" {
+		dir, err := resolveTaskWhere(where, workspace)
+		if err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
+		return taskTree{dir: dir, merge: mergeInPlace}, nil
+	}
+	if place.Owned {
+		return taskTree{}, fmt.Errorf("this task needs a project; use /workspace <path> or name where it should work")
+	}
 	root, ok := repositoryRoot(workspace)
 	if !ok {
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
@@ -4667,6 +4728,31 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
 	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
+}
+
+func resolveTaskWhere(where, workspace string) (string, error) {
+	if where == "~" || strings.HasPrefix(where, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		where = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(where, "~"), string(filepath.Separator)))
+	}
+	if !filepath.IsAbs(where) {
+		where = filepath.Join(workspace, where)
+	}
+	dir, err := filepath.Abs(where)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", dir)
+	}
+	return filepath.Clean(dir), nil
 }
 
 // taskTreeSession is the path segment that keeps one window's worktrees away
@@ -4738,8 +4824,10 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 		// changed on both sides, and one second later nothing does.
 		clashing := conflictedPaths(t.root)
 		abandonMerge(t.root)
-		// The working copy outlives a conflict, so the sentence says the leavings
-		// are still in it.
+		// The committed branch is the durable recovery point. Keeping the failed
+		// worktree registered would leave the person's repository pointing into a
+		// task folder that a later sweep may remove underneath it.
+		t.releaseKeptLocked()
 		return mergeConflicted, withReport(conflictSentence(t.branch, clashing, out),
 			leftBehindSentence(left, true))
 	}
@@ -4829,6 +4917,14 @@ func abandonMerge(root string) {
 // this question, and repeating it in the report would be the harness arguing
 // with the person's .gitignore.
 func leftBehind(dir string) []string {
+	// Once a failed task has been unregistered, this ordinary directory may sit
+	// beneath the repository and `git status` would report paths from that
+	// parent. The snapshot was taken while the worktree still knew its own root.
+	if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {
+		if paths := rememberedLeftBehind(dir); paths != nil {
+			return paths
+		}
+	}
 	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
 		"--", ".", ":(exclude)"+aforgeDroppings)
 	if err != nil {
@@ -4852,6 +4948,40 @@ func leftBehind(dir string) []string {
 	return paths
 }
 
+const leftBehindRecord = "left-behind.json"
+
+// rememberLeftBehind keeps the answer in aforge's private task metadata before
+// Git forgets the worktree. It writes an empty array too: that distinguishes a
+// task known to have no leavings from an older folder with no snapshot.
+func rememberLeftBehind(dir string, paths []string) {
+	metadata := filepath.Join(dir, aforgeDroppings)
+	if err := os.MkdirAll(metadata, 0o755); err != nil {
+		return
+	}
+	if paths == nil {
+		paths = []string{}
+	}
+	contents, err := json.Marshal(paths)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(metadata, leftBehindRecord), contents, 0o600)
+}
+
+// rememberedLeftBehind distinguishes no record from a recorded empty answer:
+// nil means the folder predates this cleanup law and should use Git's answer.
+func rememberedLeftBehind(dir string) []string {
+	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, leftBehindRecord))
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	if err := json.Unmarshal(contents, &paths); err != nil {
+		return nil
+	}
+	return paths
+}
+
 // leftBehindSentence is the one line a person gets about those files, and WHERE
 // THEY ARE NOW is the half of it that has to be true.
 //
@@ -4866,7 +4996,7 @@ func leftBehindSentence(paths []string, kept bool) string {
 	}
 	line := "it left files it did not write, and they went with its working copy rather than onto your branch: "
 	if kept {
-		line = "it left files it did not write, and they are still in its working copy rather than on its branch: "
+		line = "it left files it did not write, and they are still in its task folder rather than on its branch: "
 	}
 	return line + namedFew(paths, leftBehindNamesShown)
 }
