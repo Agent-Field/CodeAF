@@ -177,7 +177,7 @@ func (a *app) costText() string {
 	}
 	a.take(u)
 
-	items := make([]deckItem, 0, 5)
+	items := make([]deckItem, 0, 6)
 	add := func(label, value string) {
 		if value != "" {
 			items = append(items, deckItem{label: label, value: value})
@@ -206,6 +206,9 @@ func (a *app) costText() string {
 	// than the money was spent over.
 	if u.Calls > 0 {
 		add("model calls", itoa(u.Calls))
+	}
+	if u.EmptyReflex > 0 {
+		add("empty reflex answers", itoa(u.EmptyReflex))
 	}
 	add("time", tookWord(u.Duration))
 

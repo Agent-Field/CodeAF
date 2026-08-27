@@ -36,6 +36,7 @@ type scriptedCompleter struct {
 	seen    [][]ai.Message
 	models  []string
 	efforts []provider.Effort
+	max     []int
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -53,6 +54,11 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)
 	s.efforts = append(s.efforts, provider.ReasoningEffortFrom(ctx))
+	ceiling := 0
+	if request.MaxTokens != nil {
+		ceiling = *request.MaxTokens
+	}
+	s.max = append(s.max, ceiling)
 	var next step
 	if index < len(s.steps) {
 		next = s.steps[index]

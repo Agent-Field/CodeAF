@@ -748,6 +748,12 @@ type Usage struct {
 	// a different question and the one a person asking about the bill is asking.
 	Calls int
 
+	// EmptyReflex is how many paid memory-reflex requests ended at their output
+	// ceiling without returning any answer. They remain in every token and cost
+	// total above; this count is the reason that spend bought no routing or
+	// extraction decision.
+	EmptyReflex int
+
 	// CacheRead and CacheWrite are the provider's prompt-cache accounting:
 	// tokens served from a warm prefix, and tokens written into one. Both are
 	// zero when the provider says nothing, which is a different fact from a
