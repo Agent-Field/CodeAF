@@ -147,8 +147,8 @@ func TestAResultWhoseOnlyNewLineIsItsClockTeachesNothing(t *testing.T) {
 // measuring nothing.
 func TestANodeThatRemeasuresAnUnchangedDeliverableIsStopped(t *testing.T) {
 	report := runScriptedNode(t, bashSteps(repeated(remeasuring, 10)), 6, 40)
-	if !strings.Contains(report, "stopped: 6 steps without progress") {
-		t.Fatalf("re-measuring an unchanged deliverable was not read as a spin: %q", report)
+	if !strings.Contains(report, loopLeftUndoneNote) {
+		t.Fatalf("re-measuring an unchanged deliverable did not end at the loop ceiling: %q", report)
 	}
 }
 

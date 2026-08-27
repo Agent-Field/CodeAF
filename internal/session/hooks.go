@@ -56,9 +56,10 @@ package session
 // A hook is an ASIDE, with one exception. episode-init, pre-decision and
 // post-feedback may not fail a turn and have no way to say so: they return
 // nothing, and a panic in one is a bug in this package, not a turn the person
-// loses. pre-action is the exception and the reason the seam is worth having —
-// it is the one hook that may STOP something, and it says so in its signature by
-// handing back the refusal the model will read.
+// loses. pre-action is the exception inside the plane and may STOP one call.
+// Post-feedback may leave a terminal observation on the episode, but loop.go is
+// the only owner allowed to spend it and end the turn because it owns the usage,
+// request and checkpoint meter that a governed hand-off requires.
 
 import (
 	"context"
@@ -251,6 +252,9 @@ type episode struct {
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
+	// loopHandoff is the post-feedback detector's terminal observation. The hook
+	// cannot end a turn; loop.go reads this immediately after the chain returns.
+	loopHandoff bool
 	// changes is what this turn's successful edits and writes touched
 	// (recovery.go), and what a revert would restore.
 	changes *fileLedger

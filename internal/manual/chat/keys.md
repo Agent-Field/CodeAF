@@ -2026,16 +2026,29 @@ answers, not the thinking.
 
 The chat loop watches for a model that keeps calling tools without putting any visible
 words between the calls. After **6 consecutive tool-using replies with no visible assistant
-text**, it adds one note beginning `[silent]`. The note asks the model to write what it has
-learned, what it will check next, and why before making another call.
+text**, it adds a note beginning `[silent]`. If the silence continues, stronger notes arrive
+at **12** and **24** replies. The last says the harness will hand the turn over. Each note asks
+the model to write what it has learned, what it will check next, and why before making
+another call.
 
 That request matters for reasoning models because their streamed thinking is shown on the
 screen but is not put into the next request. Of the model's prose, only visible assistant
 text becomes part of the conversation the following step can read. A visible note resets
-the count. A successful `edit` or `write` resets it too, because the turn is landing work even if the model says
-nothing. The silent warning is issued at most once in a turn; it shares the ordinary loop
-warning limit, so a turn that has already ignored two loop warnings may ask for your input
-instead.
+the count. A successful `edit` or `write` resets it too, because the turn is landing work
+even if the model says nothing. Each rung is issued once in one silent stretch; after a
+reset, a later silent stretch begins again at 6.
+
+The loop also notices command variants that keep returning information already seen. After
+**5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
+note says: `the last 5 rounds read nothing new; what you are looking for is already in the
+transcript`. A result with a fresh line or a successful write resets that count.
+
+All loop signals share one warning limit. After two notes, another loop signal ends the
+turn instead of adding a third ineffective note. In an interactive conversation, aforge
+uses the same checkpoint hand-off as any other overlong turn and moves the remains to a
+watched task. If that hand-off cannot be made — for example inside a task or without a
+consent surface — it ends the turn with
+`this turn is going in circles · stopping here with anything remaining left undone`.
 
 ## What does the indented part mean?
 
