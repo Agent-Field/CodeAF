@@ -50,6 +50,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
@@ -57,6 +58,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -522,8 +524,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// the SAME store this session proposes into. What a surface does with
 		// them is the surface's business and is stated where it wires them
 		// (chatv3_host.go's [hostStanding]: over --host the live reader is the
-		// status line's `keeping an eye on` segment, because home does not open
-		// on a remote session at all). They are closures on the store rather
+		// status line and home's far project bands). They are closures on the store rather
 		// than the store itself for [tui3.StandingSeam]'s own reason — the door
 		// owns where it lives and how it is opened — and they are absent
 		// entirely when the ambient side could not be built, which the surface
@@ -547,6 +548,26 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		World: func() session.World {
 			return session.ReadWorld(session.PlacesRoot())
 		},
+		Ledger: func(since time.Time) remote.LedgerReading {
+			lines, _ := session.ReadUsage(session.UsageLedgerPath(), since)
+			all, _ := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+			held := false
+			for _, line := range all {
+				if line.USD > 0 {
+					held = true
+					break
+				}
+			}
+			return remote.LedgerReading{Lines: lines, Held: held}
+		},
+		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
+			if proc.Memory == nil {
+				return nil, errors.New("memory is off")
+			}
+			return proc.Memory.SearchConversations(terms, limit)
+		},
+		Memory:     v3MemorySeam(proc.Memory),
+		Archive:    session.SetArchived,
 		PlacesRoot: session.PlacesRoot(),
 		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
 		// card behind a task row draws the last thing that piece of work said,

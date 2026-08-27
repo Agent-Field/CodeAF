@@ -1119,6 +1119,8 @@ type app struct {
 	// and an empty ledger draws the spend place's own teaching.
 	searchStore SearchStore
 	usageLedger string
+	ledger      func(time.Time) ([]session.UsageLine, bool, bool)
+	archive     func(string, bool) error
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -1907,6 +1909,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		memory:           opts.Memory,
 		searchStore:      opts.Search,
 		usageLedger:      opts.UsageLedger,
+		ledger:           opts.Ledger,
+		archive:          opts.Archive,
 		world:            opts.World,
 		farPlaces:        opts.WorldRoot,
 		farRecord:        opts.TaskRecord,

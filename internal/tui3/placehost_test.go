@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // ── THE PLACES OVER --host ──────────────────────────────────────────────────
@@ -20,11 +21,9 @@ import (
 // aforge ran on its own. 8, $22.54 of it." was the laptop's eight tasks and the
 // laptop's money, on a session on a server.
 //
-// THREE OF THE SEVEN HAVE CROSSED THE WIRE SINCE and are tested elsewhere: home
-// and tasks read the far machine's world (home_test.go, tasks_host_test.go), and
-// standing always read the far machine's items. What is left here is the three
-// that have not, and each one asserts BOTH halves: the sentence is on the frame,
-// and the wrong machine's rows are not.
+// EVERY READING HAS A FAR DOOR NOW. These tests keep the compatibility floor as
+// well: when an older engine lacks a door, the place says its honest sentence
+// and never falls through to this machine's files.
 
 // placeText is whatever place is standing, drawn and stripped of its paint.
 func placeText(a *app) string {
@@ -171,6 +170,27 @@ func TestTheSettingsPlaceIsNotGatedOverHost(t *testing.T) {
 	if line := placeFor(pageSettings).remote(a); line != "" {
 		t.Fatalf("settings drew a refusal over --host: %q", line)
 	}
+}
+
+func TestHostedLatePlacesArePresentOnlyWhenTheirFarSeamsAreWired(t *testing.T) {
+	a := hostedPlaceLab(t)
+	if placeFor(pageSpend).remote(a) == "" || placeFor(pageSearch).remote(a) == "" {
+		t.Fatal("an unwired hosted reading did not keep its honest sentence")
+	}
+	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) { return nil, false, true }
+	a.searchStore = hostSearchStub{}
+	if got := placeFor(pageSpend).remote(a); got != "" {
+		t.Fatalf("wired spend still refused: %q", got)
+	}
+	if got := placeFor(pageSearch).remote(a); got != "" {
+		t.Fatalf("wired search still refused: %q", got)
+	}
+}
+
+type hostSearchStub struct{}
+
+func (hostSearchStub) SearchConversations(string, int) ([]store.ConversationHit, error) {
+	return nil, nil
 }
 
 // THE WORLD IS THE ONE SEAM, and over a connection it is the seam's answer

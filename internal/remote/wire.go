@@ -116,6 +116,11 @@ import (
 // disk, at a path that only exists on the other one. The door that ends it is
 // one. The method also carries the bounded journal tail a hosted task room
 // needs, so both halves must agree on its meaning at the version door.
+//
+// AND THE OTHER PLACES METHODS RIDE THE SAME NUMBER. Places.Task moved the door once; the
+// ledger, search, memory and archive methods in wire_places.go stay on that
+// same version because an older engine's no-such-method answer has an explicit
+// honest fallback on the surface.
 const Version = 5
 
 // Frame is one line on the wire, either direction.

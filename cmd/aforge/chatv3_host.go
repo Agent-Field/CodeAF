@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -510,6 +511,10 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 	// ([hostWorld] holds both laws).
 	world := newHostWorld(client)
 	world.prime()
+	ledger := newHostLedger(client)
+	ledger.prime()
+	memory := newHostMemory(client)
+	memory.prime()
 
 	options := tui3.Options{
 		Agent:     agent,
@@ -584,6 +589,10 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			}
 			return nil, true
 		},
+		Ledger:  ledger.read,
+		Memory:  memory,
+		Search:  client,
+		Archive: client.Archive,
 		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
 		// the machine that runs them, so both halves go over the wire and
 		// neither reads a store on this laptop — the far end answers about the
@@ -591,10 +600,9 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// there ([standing.Item.Workspace] is always the engine's own path,
 		// which is exactly what welcome.Workspace is too).
 		//
-		// WHAT THIS LIGHTS UP HERE is the status line's `keeping an eye on`
-		// segment and not home's item band: /home does not open over a
-		// connection at all, so the band and the `p` and `s` keys have no
-		// keystroke that reaches them, while the segment asks about this
+		// WHAT THIS LIGHTS UP HERE is both home's item band and the status line's
+		// `keeping an eye on` segment. Home reads the far world, so its project
+		// paths are paths this far store can answer, while the segment asks about this
 		// window's workspace — which over --host is the engine's own path, so
 		// the count is about the right machine ([hostStanding] has the longer
 		// version, and internal/tui3's host.go states it in the honesty table).
@@ -1216,4 +1224,115 @@ func (h *hostWorld) prime() {
 	h.fetching = true
 	h.mu.Unlock()
 	guard.Go("chatv3/host-world-prime", func() { h.fetch() })
+}
+
+// hostLedger keeps the far ledger off the surface goroutine. A wider window
+// replaces the held floor; paging forward then reads the same held slice.
+type hostLedger struct {
+	ask                   func(time.Time) (remote.LedgerReading, error)
+	mu                    sync.Mutex
+	lines                 []session.UsageLine
+	held, known, fetching bool
+	floor                 time.Time
+}
+
+func newHostLedger(c *remote.Client) *hostLedger { return &hostLedger{ask: c.Ledger} }
+func (h *hostLedger) prime()                     { h.start(time.Now().AddDate(0, 0, -14)) }
+func (h *hostLedger) read(since time.Time) ([]session.UsageLine, bool, bool) {
+	h.mu.Lock()
+	lines, held, known := append([]session.UsageLine(nil), h.lines...), h.held, h.known
+	need := !h.fetching && (!known || since.Before(h.floor))
+	h.mu.Unlock()
+	if need {
+		h.start(since)
+	}
+	return lines, held, known
+}
+func (h *hostLedger) start(since time.Time) {
+	h.mu.Lock()
+	if h.fetching {
+		h.mu.Unlock()
+		return
+	}
+	h.fetching = true
+	h.mu.Unlock()
+	guard.Go("chatv3/host-ledger", func() {
+		reading, err := h.ask(since)
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.fetching = false
+		if err == nil {
+			h.lines, h.held, h.known, h.floor = reading.Lines, reading.Held, true, since
+		}
+	})
+}
+
+// hostMemory caches the two readings used by drawing. The deliberate write and
+// provenance methods remain synchronous because they are reached only by an
+// explicit key and their answer decides what the surface may say happened.
+type hostMemory struct {
+	client          *remote.Client
+	mu              sync.Mutex
+	shelves         store.MemoryShelves
+	learned, letGo  int
+	known, fetching bool
+}
+
+func newHostMemory(c *remote.Client) *hostMemory { return &hostMemory{client: c} }
+func (h *hostMemory) prime()                     { h.refresh(500, time.Time{}) }
+func (h *hostMemory) refresh(limit int, at time.Time) {
+	h.mu.Lock()
+	if h.fetching {
+		h.mu.Unlock()
+		return
+	}
+	h.fetching = true
+	h.mu.Unlock()
+	guard.Go("chatv3/host-memory", func() {
+		s, err := h.client.Snapshot(limit)
+		learned, letGo, changedErr := h.client.ChangedSince(at)
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.fetching = false
+		if err == nil && changedErr == nil {
+			h.shelves, h.learned, h.letGo, h.known = s, learned, letGo, true
+		}
+	})
+}
+func (h *hostMemory) Snapshot(limit int) (store.MemoryShelves, error) {
+	h.mu.Lock()
+	s, known := h.shelves, h.known
+	h.mu.Unlock()
+	if !known {
+		h.refresh(limit, time.Time{})
+	}
+	return s, nil
+}
+func (h *hostMemory) ChangedSince(at time.Time) (int, int, error) {
+	h.mu.Lock()
+	learned, letGo := h.learned, h.letGo
+	h.mu.Unlock()
+	h.refresh(500, at)
+	return learned, letGo, nil
+}
+func (h *hostMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	return h.client.ListMemories(scope, limit)
+}
+func (h *hostMemory) UpdateMemory(id, title, text string, tags []string) error {
+	err := h.client.UpdateMemory(id, title, text, tags)
+	h.refresh(500, time.Time{})
+	return err
+}
+func (h *hostMemory) ForgetMemory(id string) error {
+	err := h.client.ForgetMemory(id)
+	h.refresh(500, time.Time{})
+	return err
+}
+func (h *hostMemory) RestoreMemory(id string) error {
+	err := h.client.RestoreMemory(id)
+	h.refresh(500, time.Time{})
+	return err
+}
+func (h *hostMemory) MemoryProvenance(id string) (string, string, time.Time, error) {
+	return h.client.MemoryProvenance(id)
 }
