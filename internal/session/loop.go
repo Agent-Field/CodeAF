@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -3150,6 +3151,13 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 	a.addAuxiliaryUsageAs(response, model, calls, "")
 }
 
+// addEmptyReflexUsage is the paid-call door for a reflex request that consumed
+// its whole output ceiling without answering. The tokens and price stay in the
+// ordinary totals; the extra count says what that spend failed to buy.
+func (a *Agent) addEmptyReflexUsage(response *ai.Response, model string) {
+	a.addUsageAs(response, model, 1, string(roles.RoleReflex), true, true)
+}
+
 // addFoldedUsage is [Agent.addAuxiliaryUsage] for a tally SOMEBODY ELSE ALREADY
 // JOURNALED — a task node's whole life folded into the conversation that
 // spawned it ([Agent.foldTaskUsage]) — and it exists to keep that fold out of
@@ -3162,7 +3170,7 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 // whole purpose is "what did this machine spend". So the session's counters and
 // the session's journal move exactly as before, and the ledger hears nothing.
 func (a *Agent) addFoldedUsage(response *ai.Response, model string, calls int) {
-	a.addUsageAs(response, model, calls, "", false)
+	a.addUsageAs(response, model, calls, "", false, false)
 }
 
 // The roles an auxiliary line can name. A line is journaled with the role that
@@ -3202,14 +3210,14 @@ const (
 // empty role journals no field at all, by the emptiness law the rest of the
 // line keeps.
 func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls int, role string) {
-	a.addUsageAs(response, model, calls, role, true)
+	a.addUsageAs(response, model, calls, role, true, false)
 }
 
 // addUsageAs is the body both auxiliary doors share, with one bit of difference:
 // whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
 // machine's ledger — or a fold of work that already wrote its own
 // ([Agent.addFoldedUsage]).
-func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger bool) {
+func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -3224,6 +3232,9 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	if usage.Cost != nil {
 		aux.CostUSD = *usage.Cost
 	}
+	if emptyReflex {
+		aux.EmptyReflex = calls
+	}
 	a.mu.Lock()
 	a.usage.Input += aux.Input
 	a.usage.Output += aux.Output
@@ -3234,6 +3245,7 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	a.usage.CacheWrite += aux.CacheWrite
 	a.usage.CostUSD += aux.CostUSD
 	a.usage.Calls += aux.Calls
+	a.usage.EmptyReflex += aux.EmptyReflex
 	a.mu.Unlock()
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put

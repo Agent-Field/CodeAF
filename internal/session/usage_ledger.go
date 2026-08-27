@@ -126,6 +126,10 @@ type UsageLine struct {
 	// USD is what it cost, and zero means nobody could price it rather than that
 	// it was free — the same reading [TaskIndexEntry.Cost] has.
 	USD float64 `json:"usd,omitempty"`
+	// Empty marks a paid request that returned no answer at its output ceiling.
+	// The role beside it names the reflex, so the row remains useful even to a
+	// reader that does not know this build's aggregate counters.
+	Empty bool `json:"empty,omitempty"`
 	// Session is the 16-hex id of the conversation the call was made in. For a
 	// piece of work it is the NODE's own journal id and not the conversation
 	// that asked for it, which is why Task sits beside it: the pair is what
@@ -464,6 +468,7 @@ func (a *Agent) recordUsageLine(used Usage, model, role string) {
 		Input:  used.Input,
 		Output: used.Output,
 		USD:    used.CostUSD,
+		Empty:  used.EmptyReflex > 0,
 
 		Session: session,
 		// The node this agent IS, and nothing for a conversation — the same

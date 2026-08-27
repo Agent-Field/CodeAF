@@ -98,6 +98,10 @@ const (
 // take.
 type memoryBrain struct {
 	store *store.Store
+	// reflex is the failover memory for this conversation. It lives with the
+	// store because every reflex call is a memory call, and because the
+	// post-turn writer and next turn's router can overlap.
+	reflex *reflex.Session
 
 	mu sync.Mutex
 	// injected is what the router asked for on the LAST routed turn — id and
@@ -117,7 +121,9 @@ type memoryBrain struct {
 	imported bool
 }
 
-func newMemoryBrain(s *store.Store) *memoryBrain { return &memoryBrain{store: s} }
+func newMemoryBrain(s *store.Store) *memoryBrain {
+	return &memoryBrain{store: s, reflex: &reflex.Session{}}
+}
 
 // remembers reports whether this session has a brain at all. Every entry point
 // in this file asks it first, and the answer is a fact about the wiring rather
@@ -151,7 +157,8 @@ func (a *Agent) reflexClient() reflex.Completer {
 	if err != nil {
 		return nil
 	}
-	return reflex.Bind(billedCompleter{agent: a, inner: a.client, model: named}, named)
+	fallback := reflex.FallbackModel(roles.Source(source), model)
+	return a.memory.reflex.Bind(billedCompleter{agent: a, inner: a.client}, named, fallback, a.sayMemory)
 }
 
 // billedCompleter is what makes a reflex call cost something a person can see.
@@ -169,17 +176,25 @@ func (a *Agent) reflexClient() reflex.Completer {
 type billedCompleter struct {
 	agent *Agent
 	inner Completer
-	// model is the reflex's own model, carried here because the accounting needs
-	// a name and the wrapper is the only thing holding one: [reflex.Bind] takes
-	// the model and stamps it on the request itself, so by the time the response
-	// comes back there is nothing left to read it off.
-	model string
 }
 
 func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	response, err := b.inner.CompleteWithMessages(ctx, messages, options...)
 	if err == nil {
-		b.agent.addAuxiliaryUsage(response, b.model, 1)
+		// The active model is read from the same options the provider reads.
+		// Reflex may have moved this session to the low tier, and a fixed name
+		// here would charge that answer to the model that failed.
+		var request ai.Request
+		for _, option := range options {
+			if optionErr := option(&request); optionErr != nil {
+				continue
+			}
+		}
+		if reflex.EmptyAtCeiling(response, request.MaxTokens) {
+			b.agent.addEmptyReflexUsage(response, request.Model)
+		} else {
+			b.agent.addAuxiliaryUsageAs(response, request.Model, 1, string(roles.RoleReflex))
+		}
 	}
 	return response, err
 }

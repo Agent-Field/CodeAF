@@ -509,19 +509,24 @@ an instruction in the prompt: the call carries the reasoning knob set to *off*,
 so a reasoning model spends the 200 tokens on the answer instead of deliberating
 first. It matters because the ceiling is otherwise a lie — a model left free to
 think spends the whole 200 doing it and answers nothing, on every call of every
-turn, billed in full for an empty reply. The knob is only sent to a model whose
-catalog row says it accepts one; where the endpoint refuses to have thinking
-turned off, the ceiling is raised to **2,000 tokens** instead so the answer has
-room in front of it.
+turn, billed in full for an empty reply. This call requires the knob even while
+the catalog is still warming; where an endpoint refuses to have thinking turned
+off, the ceiling is raised to **2,000 tokens** instead so the answer has room in
+front of it.
 
-An unusable answer costs **one** retry and no more, and an *empty* answer costs
-none — there is nothing to ask the model to fix. Either way the turn happens
-exactly as it would have if the pair had never run.
+An unreadable answer costs **one** repair retry and no more. An empty answer that
+ended at the 200-token ceiling is different: aforge retries the same question
+once with 2,000 tokens. If that answers, later calls on that model start with the
+larger budget. If it is empty again, this conversation stops using the reflex
+model and uses the configured **small work** model instead, with one line saying
+so. There is no loop. If no usable answer arrives, the turn still happens exactly
+as it would have if the pair had never run.
 
 Both are charged to the **session** total rather than to the message that
 happened to trigger them, exactly as the session's own title and a compaction
 summary are, so `/cost` and `/status` include them without any one message
-reading as three times the price of its neighbours.
+reading as three times the price of its neighbours. `/cost` also names how many
+of those paid requests were empty at their ceiling.
 
 You can point that class at a different model — the **reflex** row in
 `/settings` → Providers, or the whole crew in one word with `/crew` — or pin the
