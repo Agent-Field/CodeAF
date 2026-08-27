@@ -1243,7 +1243,12 @@ func TestAuditRetryRecoversAVerdict(t *testing.T) {
 			finalText("Wrote greet.go."),
 		},
 		audit: []step{
-			verdict(""),
+			// A REPLY THAT ARRIVED AND MISSED THE WORD, which is what the nudge
+			// ladder is for. It is deliberately not an empty 200: that is a call
+			// that did not happen, the response boundary reads it as the wire and
+			// asks again on the spot, and the auditor is never nudged because it
+			// was never heard from (taxonomy_boundary.go).
+			verdict("I read the diff and it looks about right to me."),
 			verdict("VERIFIED — go test ./... ok · 1 file"),
 		},
 	}

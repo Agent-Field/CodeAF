@@ -251,6 +251,7 @@ func (a *Agent) readFinding(node *TaskNode, log io.Writer) taxonomy.Verdict {
 	tally := a.tallyFor(node)
 	clean := tally.Refuted()
 	evidence := tally.Evidence()
+	evidence.Found = true
 	if !clean {
 		// The round is closed and its wire failures are spent, but the gate still
 		// has to be told they happened — otherwise a finding with four dead calls
