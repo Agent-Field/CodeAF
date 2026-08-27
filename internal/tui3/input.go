@@ -232,6 +232,9 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	if cmd, taken := a.pasteChipKey(msg); taken {
+		return cmd
+	}
 	// THE OPTION-AS-META CHECK READS EVERY KEY AND CLAIMS NONE OF THEM. It is
 	// here, above the pointer handover and above every modal, because both of the
 	// things it watches for can arrive anywhere: a real `alt+` chord settles the
@@ -998,6 +1001,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if a.watching() {
 		return a.takeKeyboard()
 	}
+	if a.openSelectedPaste() {
+		return nil
+	}
 	line := strings.TrimSpace(a.input.String())
 	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
 	// empty message — "what is this?" is often the picture itself — so the two
@@ -1090,13 +1096,15 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		// this gesture exists to rule out (park.go).
 		return a.park(line, marked)
 	}
+	shownLine := line
+	line = a.expandPastes(line)
 	if held {
-		return a.submitImages(line)
+		return a.submitImagesShown(line, shownLine)
 	}
 	if marked {
-		return a.submitStanding(line)
+		return a.submitStandingShown(line, shownLine)
 	}
-	return a.submit(line)
+	return a.submitShown(line, shownLine)
 }
 
 // completePath is tab: the file list over a command's path argument, opened if
@@ -1209,7 +1217,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the
 	// filter boxes above stand in this position while an overlay has the keyboard,
 	// and none of them sends a word anywhere.
-	block, caretX, caretRow := draftBlockWithTags(&a.input, a.pal, width, rows, "", a.roomLead(width), a.input.demotedTags)
+	block, caretX, caretRow := a.pasteDraftBlock(width, rows)
 	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
 	// (attach.go). It is one row above the draft, so it is one row of this
 	// block: every geometric question below the conversation already goes

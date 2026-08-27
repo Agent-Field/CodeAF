@@ -228,6 +228,9 @@ func (a *app) View() tea.View {
 // frame is the whole screen and where the caret sits in it.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
+	if a.pasteEdit.open {
+		return a.pasteEditorFrame(width, height)
+	}
 	// The caret is shown by default and hidden only by the surfaces that have
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.

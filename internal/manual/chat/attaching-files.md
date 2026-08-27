@@ -1,5 +1,48 @@
 # Attaching files
 
+## Pasting a lot of text
+
+A paste of **3 or more lines** becomes one compact `[paste 1 · 42 lines]` chip in the
+message box. One- and two-line pastes stay ordinary text. A paste made only of real file
+paths is still attached as files, and a paste into a box whose text starts with `/` stays
+plain text so command arguments remain usable.
+
+The chip holds the complete text locally. When you send, aforge puts that complete text
+into the message where the chip stood, headed `paste 1:` and enclosed in a text fence.
+The model receives every character; your transcript keeps the short chip instead of
+dumping the pasted document onto the screen. Sent paste chips cannot currently be opened
+from the transcript.
+
+## Paste chip — why did my paste turn into a tag
+
+`[paste 1 · 42 lines]` means a large paste is folded, not lost. The number lets you refer
+to it in the rest of the message, and the line count says how much it holds. The threshold
+is **3 lines**. Arrowing onto the chip selects it as one unit; the selected chip is drawn
+inverted. `left` and `right` cross the whole chip rather than walking through its label.
+Typing while it is selected clears the selection and inserts after it.
+
+Move the pointer over a paste chip to tint it. Click it to edit it. With the chip selected,
+`enter` opens it instead of sending; `enter` sends normally whenever no paste chip is
+selected.
+
+## Edit what I pasted
+
+Click a paste chip, or use `left` or `right` to select it and press `enter`. A centered
+editor opens with the whole paste and a live `paste 1 · 42 lines` title. The ordinary
+composer movement keys work there, including `alt+b` / `alt+f`, `ctrl+a` / `ctrl+e`,
+the arrow keys, `home`, and `end`. `enter`, `alt+enter`, and `ctrl+j` insert a newline.
+
+The footer says `esc keeps and closes · ctrl+x discards this paste`. `esc` keeps edits and
+returns to the message. `ctrl+x` removes the chip and its held text.
+
+## Remove a paste
+
+Select a paste chip with `left` or `right`, then press `backspace` (from its right edge) or
+`delete` (from its left edge). The whole chip and the text it holds are removed together.
+Inside the paste editor, `ctrl+x` does the same thing. There is no recovery after the chip
+is discarded, though ordinary unsent draft recovery still applies to the rest of the
+message.
+
 ## Send a file with your message — /attach
 
 `/attach <path>` puts an ordinary file — a log, a CSV, a PDF, a stack trace you saved —
