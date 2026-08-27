@@ -152,20 +152,56 @@ import (
 // cannot name it; the node id belongs to the current engine conversation and
 // exists from admission onward. The room read is bounded and the two writes
 // preserve the session agent's own answers.
-const Version = 7
+//
+// VERSION 8 PUSHES THE TASK LANE, and it is the last half of version 6's task
+// door. Version 6 let a hosted surface COMMISSION work on the far machine and
+// left it with no way to watch what it had commissioned: a node's life — queued,
+// running, done — is emitted on the session's STANDING task subscription, which
+// no frame carried, so `/task solo …` over a connection answered "started", ran
+// to completion on the far machine, and never put a row on the rail of the person
+// who typed it. A model's proposal looked like it worked only because a proposal
+// happens inside a turn and the turn's stream carried its updates by accident of
+// where it was raised.
+//
+// The delta is one intent up and one fact down, on the shape version 4 named:
+//
+//   - [MethodTaskWatch] is the surface saying it draws tasks. The engine opens
+//     one standing subscription per surface that asks, which REPLAYS THE WHOLE
+//     ROSTER before its first live event (session's [Agent.WatchTaskUpdates]),
+//     so a window that attached an hour into the work still learns every row.
+//   - the "task" frame carries each of that lane's events onward. It belongs to
+//     the CONNECTION and not to a stream, exactly as "facts" does, because a
+//     node's landing happens when no turn is running and there is no stream left
+//     for it to land on.
+//   - [MethodTaskPending] answers the one question the lane cannot: which
+//     proposals are still open. It is asked only while a card is on screen and a
+//     turn has just ended, never on a frame and never on a pointer.
+//   - [MethodTaskResolve] carries the answer to a proposal, and it is the door
+//     whose absence broke everything else. The surface asserts the task seam as
+//     ONE interface — the lane, the pending reading, and this — so a wire holding
+//     three of the four left a hosted rail unsubscribed rather than partly
+//     working, with nothing on any screen saying why. internal/tui3's DrawsTasks
+//     is that assertion made checkable, and cmd/aforge makes it.
+//
+// The number moves rather than riding version 7 for [MethodTaskStart]'s reason:
+// an engine that does not know Task.Watch would answer the surface's one
+// subscription with "no such method" and leave the rail permanently empty with
+// nothing on the screen saying so.
+const Version = 8
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "fatal".
+	// "event", "closed", "facts", "task", "turn", "driver", "fatal".
 	//
-	// "facts" is the ONE KIND THAT ANSWERS NOTHING. Every other frame from the
-	// engine either replies to a call or belongs to a stream a call opened;
-	// this one is the engine saying something the surface did not ask for,
-	// because the whole point of it is that the surface never has to ask. It
-	// carries a [FactsPush] and no ID, and a build that does not know the kind
-	// ignores it, which is what the reader in client.go already does with every
-	// kind it has no case for.
+	// "facts" and "task" are the TWO KINDS THAT ANSWER NOTHING. Every other
+	// frame from the engine either replies to a call or belongs to a stream a
+	// call opened; these two are the engine saying something the surface did
+	// not ask for on that frame, because the whole point of them is that the
+	// surface never has to ask. "facts" carries a [FactsPush]; "task" carries
+	// one [EventWire] off the standing task lane (tasklane.go). Neither has an
+	// ID, and a build that does not know the kind ignores it, which is what the
+	// reader in client.go already does with every kind it has no case for.
 	Kind string `json:"kind"`
 	// ID correlates a call with its result, and an event with the Submit that
 	// opened its stream. The client mints call ids; the server mints stream ids

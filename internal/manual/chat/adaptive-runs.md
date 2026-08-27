@@ -288,6 +288,30 @@ rather than showing an error. Only a long transcript is trimmed, and it says how
 The file itself is a real session journal at
 `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
 
+## it could not be read on that machine — a run's transcript over --host
+
+A run's rows on the task page each name a transcript, and over `--host` that name is drawn
+with the far machine in front of it — `spark:/home/you/.aforge/v3/runs/<session>/<run>/n3.jsonl`.
+The card then peeks the end of that file over the connection.
+
+Two things used to go wrong here and both are fixed:
+
+- **Every adaptive transcript was refused.** The engine only opens a record under the roots
+  it answers for, and it was holding one of the two: a run's node journals live under
+  `~/.aforge/v3/runs` while conversations live under `~/.aforge/v3/projects`. So a card that
+  named a perfectly readable `n3.jsonl` was answered `it could not be read on <machine>` —
+  the file was there, and the boundary was wrong. The engine now answers for both roots.
+- **A run's own row named a folder.** The root row of a run pointed at the run's *directory*,
+  which is not a transcript and can never be opened, so the card drew a `transcript ·` line
+  for it and then said the file was gone. It now points at the run's closing node,
+  `…/<run>/synthesis.jsonl` — the call that reads what every worker produced and writes the
+  run's report. A run still in flight has not written that file yet, and the card says so
+  rather than pretending.
+
+`it could not be read on <machine>` still has an honest use: the machine could not be
+asked. It is not the same claim as the file being gone — every other fact on the card came
+over on the world walk and is still true, and only that one read failed.
+
 ## When a turn should have been work — a run is never what starts
 
 A turn answered in words when the honest answer was work does get caught: a second small

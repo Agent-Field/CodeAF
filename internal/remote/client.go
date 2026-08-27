@@ -152,6 +152,12 @@ type Client struct {
 	// the wire calling into a draw.
 	driverWake chan struct{}
 
+	// tasks is the surface's standing task lane — the far conversation's rail,
+	// arriving unasked. It is ONE at a time and replaced rather than added to
+	// (tasklane.go's [Agent.WatchTaskUpdates]), and nil is a surface that draws
+	// no tasks or a connection that has ended.
+	tasks *stream
+
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
 	// never block, and a surface that is not draining this is one that does not
@@ -708,6 +714,13 @@ func (c *Client) read() {
 			if err := json.Unmarshal(frame.Payload, &note); err == nil {
 				c.drives(note)
 			}
+		case "task":
+			// One task update off the far conversation's standing lane — a node
+			// admitted, running, or come home. It is the one push that is NOT
+			// taken on the reader goroutine's own terms: the surface draws rows
+			// from it, so it is queued onto the lane and drained by the surface's
+			// loop, exactly as a turn's events are (tasklane.go).
+			c.taskFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine and never handed to the surface as an event: the
@@ -817,6 +830,12 @@ func (c *Client) bury(cause error) {
 		s.fail(dead)
 		s.finish()
 	}
+	// AND THE RAIL'S LANE ENDS WITHOUT AN ERROR EVENT ON IT. A task lane is not
+	// a turn: nothing on it is mid-sentence, the rows it drew are still true of
+	// the far machine, and the one sentence about a connection that died belongs
+	// to the connection and is already being drawn. So it simply closes, and the
+	// surface reads that as the lane it no longer has (tasklane.go).
+	c.buryTasks()
 }
 
 // call is one round trip: a frame out, a result back, or the deadline.

@@ -1050,6 +1050,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did pressing alt+enter not send my task straight away", "places"},
 		{"how much money can a task spend before it stops and asks me", "tasks"},
 		{"how do I set a spend limit on a task before I send it", "tasks"},
+		// The hosted rail, met the way it was actually reported: work that ran on
+		// the far machine with nothing on the column beside the conversation.
+		{"I started a task over ssh and the sidebar stayed empty", "tasks"},
+		{"my task ran on the remote machine but there is no row for it", "tasks"},
+		{"task started over host does not show on the roster", "tasks"},
+		{"the task page does not list the task I just started", "tasks"},
+		{"a run's transcript could not be read on that machine", "adaptive-runs"},
 
 		// The wave that gave the room one keyboard. Two windows on one hosted
 		// conversation used to race each other in silence; now the newest one

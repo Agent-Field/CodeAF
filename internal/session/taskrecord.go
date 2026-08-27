@@ -163,16 +163,22 @@ func readTail(path string, size int64, n int) []byte {
 }
 
 // ReadTaskRecordUnder is that reading with the one boundary an ENGINE has to
-// apply: the journal must be a file under the places root this machine answers
-// for.
+// apply: the journal must be a file under one of the roots this machine answers
+// for ([RecordRoots]).
 //
 // THE PATH CAME FROM HERE IN THE FIRST PLACE. A remote surface only ever asks
 // about a URI this machine wrote into its own index and handed over on the world
 // walk — but a door that trusted that would be a permission decision taken on
-// the strength of what the other end says, so the root is checked here, on the
-// machine that owns it. It is internal/remote's two-roots law restated for the
-// one directory this door answers about.
-func ReadTaskRecordUnder(root, uri string, tail int) (TaskRecord, error) {
+// the strength of what the other end says, so the roots are checked here, on the
+// machine that owns them. It is internal/remote's two-roots law restated for the
+// directories this door answers about.
+//
+// IT TAKES A LIST BECAUSE THE RECORD IS IN MORE THAN ONE PLACE, and taking one
+// root was a bug and not a simplification: an adaptive run's node journals live
+// under the runs root, so a door holding only the places root refused every one
+// of them — the file was on the disk, this machine had written its path into its
+// own index, and the surface was told it could not be read.
+func ReadTaskRecordUnder(roots []string, uri string, tail int) (TaskRecord, error) {
 	path := TaskRecordPath(uri)
 	if path == "" {
 		return TaskRecord{}, fmt.Errorf("engine: %s does not name a file on this machine", strings.TrimSpace(uri))
@@ -181,17 +187,29 @@ func ReadTaskRecordUnder(root, uri string, tail int) (TaskRecord, error) {
 	if err != nil {
 		// A JOURNAL THAT IS GONE IS AN ANSWER AND NOT A REFUSAL. The row still
 		// names it, the card still says where it was, and `Kept` false is the
-		// sentence the card has for exactly this. A path that never was under the
+		// sentence the card has for exactly this. A path that never was under any
 		// root is a different matter and falls through to the refusal below.
-		if !underRoot(root, path) {
+		if !underAnyRoot(roots, path) {
 			return TaskRecord{}, outsideTheRecord(uri)
 		}
 		return TaskRecord{}, nil
 	}
-	if !underRoot(root, real) {
+	if !underAnyRoot(roots, real) {
 		return TaskRecord{}, outsideTheRecord(uri)
 	}
 	return ReadTaskRecord("file://"+real, tail), nil
+}
+
+// underAnyRoot is [underRoot] asked of every root this machine answers for. An
+// empty list admits nothing, which is the same refusal an empty root has always
+// been: a door with no boundary set is a door that is not open.
+func underAnyRoot(roots []string, path string) bool {
+	for _, root := range roots {
+		if underRoot(root, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func outsideTheRecord(uri string) error {
