@@ -335,6 +335,8 @@ type Options struct {
 	// the surface never calls it anywhere but off the loop, in a [tea.Cmd]
 	// (taskrecord.go's [app.readTaskTail]).
 	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
+	// TaskRoom reads a node by id, including before its transcript URI lands.
+	TaskRoom func(id uint64, tail int) (session.TaskRecord, error)
 
 	// TaskIndex is this conversation's rows from the same far world. False says
 	// the cache has not answered yet, so the roster waits instead of deciding

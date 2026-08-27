@@ -200,6 +200,61 @@ func TestAHostedRoomReadsTheFarJournalOnce(t *testing.T) {
 	}
 }
 
+// A running row has no transcript URI yet. Its id still opens the room, and
+// only the room's own command reads the far journal; frames merely redraw what
+// the last read supplied.
+func TestAHostedRunningRoomFillsOnItsOwnBoundedBeat(t *testing.T) {
+	a := hostedPlaceLab(t)
+	now := time.Now()
+	entry := farCardEntry(now)
+	entry.Status, entry.TranscriptURI, entry.EndedAt = string(session.TaskRunning), "", time.Time{}
+	a.adoptFarTaskRows([]session.TaskIndexEntry{entry})
+	var reads atomic.Int64
+	a.farRoomRecord = func(id uint64, tail int) (session.TaskRecord, error) {
+		at := reads.Add(1)
+		if id != 9 || tail != session.TaskJournalTail {
+			t.Fatalf("running room asked for %d tail %d", id, tail)
+		}
+		if at == 1 {
+			return session.TaskRecord{}, nil
+		}
+		journal := []byte(`{"type":"message","role":"user","content":"widen the pipe"}` + "\n" +
+			`{"type":"message","role":"assistant","content":"checking the far lock now"}` + "\n")
+		return session.TaskRecord{Journal: journal, Kept: true}, nil
+	}
+	a.openRoomFor(9, entry.Title)
+	if a.room == nil || a.room.done {
+		t.Fatal("the running hosted row did not open as a live room")
+	}
+	first := a.takeRoomPump()().(roomRecordMsg)
+	cmd := a.farRoomRead(first)
+	if cmd == nil || !strings.Contains(farRoomText(a), roomYetWord) {
+		t.Fatalf("the empty running room did not arm its beat:\n%s", farRoomText(a))
+	}
+	before := reads.Load()
+	for range 20 {
+		a.Update(frameMsg{})
+		_ = a.roomRows(a.bodyWidth())
+	}
+	if reads.Load() != before {
+		t.Fatalf("frames made %d room reads", reads.Load()-before)
+	}
+	poll := a.farRoomPoll(a.room.gen)
+	msg := poll().(roomRecordMsg)
+	a.farRoomRead(msg)
+	if text := farRoomText(a); !strings.Contains(text, "checking the far lock now") || strings.Contains(text, roomYetWord) {
+		t.Fatalf("the running room did not fill from its beat:\n%s", text)
+	}
+}
+
+func TestAHostedJobNamesTheMachineOnItsFarLog(t *testing.T) {
+	a := hostedPlaceLab(t)
+	node := &taskNode{kind: session.TaskKindJob, report: "job 3 · log /srv/.aforge/jobs/3.log"}
+	if got := plain(a.railJobLog(node, 100)[0]); !strings.Contains(got, "log box:/srv/.aforge/jobs/3.log") {
+		t.Fatalf("hosted job log = %q", got)
+	}
+}
+
 // AND IT NEVER OPENS A FILE ON THIS DISK. The path on the row is the engine's; a
 // read of it here is either nothing or a stranger's file, and it is the read that
 // produced the wrong sentence in the first place. The pin is a REAL journal at

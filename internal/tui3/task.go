@@ -4653,7 +4653,22 @@ func (a *app) railJobLog(node *taskNode, width int) []string {
 	if node.kind != session.TaskKindJob || strings.TrimSpace(node.report) == "" {
 		return nil
 	}
-	return []string{a.pal.dim(fit(node.report, width))}
+	return []string{a.pal.dim(fit(a.hostedJobLog(node.report), width))}
+}
+
+// hostedJobLog marks the path as belonging to the engine machine. The report's
+// `job N` handle stays unchanged; only the path after the stable log label is a
+// place, and prefixing the whole sentence would turn the machine into a job id.
+func (a *app) hostedJobLog(report string) string {
+	const logSep = " · log "
+	if !a.hosted() {
+		return report
+	}
+	before, path, ok := strings.Cut(report, logSep)
+	if !ok || strings.TrimSpace(path) == "" {
+		return report
+	}
+	return before + logSep + a.hostedPath(path)
 }
 
 // railDoing is the row a node wears while it is in a phase of its own kind's

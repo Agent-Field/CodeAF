@@ -492,6 +492,26 @@ by the engine agent and its existing consent answer already returns to that
 same agent. Saying yes therefore starts and records the far task without the
 surface commissioning it a second time.
 
+## Decision 15 — Version 7 opens a running task by id
+
+**Decision.** `Task.Room` reads the bounded journal tail for a node in the
+engine's current conversation, and `Task.Steer` and `Task.Stop` carry the two
+room actions to that same engine. The room re-reads on its own 250ms beat while
+the row is queued or running. Each read is a command off the update loop; a
+frame, pointer motion, key, and the frame clock itself still make no call.
+
+**Why id rather than the record URI.** The task id exists when work is admitted.
+Its transcript URI is published only after the work lands, which made the old
+`Places.Task` fallback capable of opening exactly the rooms that were already
+over. The engine resolves the id through `TaskJournal`, then applies its existing
+places-root boundary before returning at most `TaskJournalTail` bytes.
+
+**Why poll rather than a live event watch.** The wire already carried the
+bounded journal reading and did not carry task events or subscriber lifetimes.
+A room-only poll adds three small request verbs and no long-lived stream state;
+it also reconstructs from the journal after a reconnect. The 250ms cadence is
+fast enough for prose to fill visibly and is independent of the 30Hz painter.
+
 ---
 
 ## What runs where
