@@ -12,9 +12,10 @@ the copy that lands on this machine is a copy.
 ## Click a path over --host to open a file on the other machine
 
 **A path in a reply is a real link again over a connection.** cmd+click it on a Mac,
-ctrl+click on Linux — the same gesture that opens a path in a local conversation — and
-the file opens in your browser: an image appears, a log or a source file is shown, a PDF
-opens in the tab's own reader. What the browser cannot draw it offers to save.
+ctrl+click on Linux — the same gesture that opens a path in a local conversation. aforge
+fetches the bytes into this machine's read-only cache and opens that local named copy in
+your desktop viewer: Preview, your editor, your spreadsheet, or whatever owns that kind
+of file here.
 
 The link is underlined, which is how you can tell there is something to click before you
 hold the modifier down. A path with no underline is not a link, and the next section says
@@ -37,9 +38,7 @@ the file. If either has moved, the file crosses again and you open the new one. 
 file has been deleted over there, you get that machine's own sentence about it rather than
 the copy aforge was holding.
 
-The browser is where a click lands because that is what a terminal hands a web address to.
-If you want the file in **your own** program — Preview, an editor, a spreadsheet — use
-`/files <path>` instead.
+`/files <path>` takes the same fetch-and-open road when you prefer to type the path.
 
 ## My click does nothing on the server — why is that file path not clickable over --host
 
@@ -73,9 +72,10 @@ and the file is on the other one.
 
 ## Where cmd+click opens it — the little door on this machine
 
-The link does not point at the file. It points at `http://127.0.0.1:<port>/f/<a long
-random id>` — a small web address served by aforge **inside this window**, which fetches
-the bytes over the same connection the conversation uses and hands them to your browser.
+The link does not point at the file. It points at `http://127.0.0.1:<port>/o/<a long
+random id>` — a small web address served by aforge **inside this window**. A click spends
+that capability, fetches the bytes over the conversation's connection, makes the
+read-only local mirror, and hands that local path to this machine's viewer.
 
 There is a reason it is not a plain `file://` link. `file:///srv/app/main.go` given to the
 terminal in front of you means **this** machine's `/srv/app/main.go`, which is either
@@ -100,11 +100,11 @@ the file door did not open on this machine
 Ask for the picture as usual. What is different over a connection is only where it is:
 the file is written on the far machine, and the row that names it is your way in.
 
-**The picture is not painted into the terminal over a connection.** That drawing reads a
-file on the machine you are sitting at, and this one is somewhere else. What you get is
-the row naming the file, its size and its dimensions, with the path as a link. Click the
-path and the picture opens in a browser tab; `/files <path>` hands it to your usual image
-viewer instead.
+**The picture is painted into the terminal over a connection once its tool finishes.**
+aforge fetches the far bytes into this machine's cache, decodes that copy, and keeps the
+path under it as the far path. Click that path, or use `/files <path>`, and the same cached
+copy opens in your usual image viewer. If the file cannot cross or this terminal cannot
+paint pictures, the row keeps the far path and the other machine's honest refusal applies.
 
 The same is true of anything else a turn produces: a report, a chart, an export, a log.
 The path in the reply is the door.
@@ -151,11 +151,8 @@ What the page gives you:
 - **Folders first, then files**, each with its size and when it was last changed. A time
   nobody knows is left blank rather than invented.
 - **Click a folder** to go into it; the trail along the top walks you back out.
-- **Click a file** to open it in a new tab — the same door a clicked path in a reply uses.
-  Your browser's own "save" is the download. A picture, a log, a PDF, a video opens in the
-  tab; **a page or a drawing — `.html`, `.svg` — is saved instead of shown**, because a
-  file written on the other machine is not allowed to run at the address this door answers
-  on.
+- **Click a file** to fetch it and open the read-only local copy in this machine's desktop
+  viewer — the same door a clicked path in a reply uses.
 - **A file too big to cross is not a link.** Its row says `too big to cross` beside it
   rather than letting you click something that would fail.
 - **A very large folder is cut**, and the last row says how many entries you were given.

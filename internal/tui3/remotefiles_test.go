@@ -3,6 +3,7 @@ package tui3
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -162,6 +163,8 @@ func (d *fakeDoor) FileURL(path string) (string, error) {
 	d.minted = append(d.minted, path)
 	return fmt.Sprintf("http://127.0.0.1:9999/f/%d", len(d.minted)), nil
 }
+
+func (d *fakeDoor) OpenURL(path string) (string, error) { return d.FileURL(path) }
 
 func (d *fakeDoor) BrowseURL() string { return d.browse }
 
@@ -472,6 +475,60 @@ func TestPrefetchCachesAndLinksWhatTheModelWrote(t *testing.T) {
 	}
 	if _, held := a.rfiles.ref("/srv/app/out/report.md"); !held {
 		t.Fatal("the bytes are not in the cache")
+	}
+}
+
+// A picture tool ending is the remote preview's transfer trigger. The surface
+// decodes the cached bytes while continuing to label and link the far path.
+func TestPrefetchCachesAPictureForTheHostedTerminalPreview(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	local := writePicture(t, t.TempDir(), "far.png", tinyPicture())
+	data, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire.farFile("/srv/app/out/far.png", "image/png", string(data), 1700)
+	ev := session.Event{Kind: session.EventToolEnd, Tool: "generate_image",
+		Args:   `{"path":"out/far.png","prompt":"harbour"}`,
+		Output: "out/far.png — 2×2 png, generated on paint/model"}
+	msg := run(a.prefetchWritten(ev)).(remotePrefetchedMsg)
+	if !msg.ok {
+		t.Fatalf("the picture did not cross: %#v", msg)
+	}
+	a.remotePrefetched(msg)
+	e := &entry{tool: ev.Tool, detail: toolDetail{Args: ev.Args, Output: ev.Output}}
+	if _, _, drawn := a.drawPicture(e, 40, pictureRowsMax); !drawn {
+		t.Fatal("the cached far picture was not painted")
+	}
+}
+
+func TestAPictureThatCannotCrossNamesTheMachineHoldingIt(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
+	wire.fetchErr = errors.New("engine: far.png is over the file limit")
+	ev := session.Event{Kind: session.EventToolEnd, Tool: "view_image", Args: `{"path":"out/far.png"}`}
+	msg := run(a.prefetchWritten(ev)).(remotePrefetchedMsg)
+	if !msg.required || msg.err == nil {
+		t.Fatalf("the required picture failure was lost: %#v", msg)
+	}
+	a.remotePrefetched(msg)
+	if said := a.entries[len(a.entries)-1].text; said != "engine: far.png is over the file limit · the picture remains on devbox" {
+		t.Fatalf("the refusal reads %q", said)
+	}
+}
+
+func TestAReplayedHostedPictureStartsItsFetchAtInit(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
+	wire.farFile("/srv/app/out/far.png", "image/png", "picture bytes", 1700)
+	a.entries = []entry{{kind: entryTool, tool: "view_image", status: toolOK,
+		detail: toolDetail{Args: `{"path":"out/far.png"}`}}}
+	answer := run(a.prefetchReplayedPictures())
+	if batch, ok := answer.(tea.BatchMsg); ok && len(batch) == 1 {
+		answer = batch[0]()
+	}
+	msg, ok := answer.(remotePrefetchedMsg)
+	if !ok || !msg.ok || !msg.required {
+		t.Fatalf("the replay fetch answered %#v", msg)
 	}
 }
 

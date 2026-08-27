@@ -27,7 +27,7 @@ the terminal, draft, input history, browser and downloaded copies.
 | `/rewind` | WORKS | The remote rewind seam reads and applies the far conversation's journal. |
 | `/copy` and `/select` | WORKS | These are local ways to select the transcript already held by the surface. |
 | `/image` and pasted images | WORKS | The path is local; bytes cross and are remade in the far session folder. |
-| `/attach` and attached files | WORKS | Local bytes cross, land in the far session's `attachments/`, and accompany the message. |
+| `/attach`, terminal drops and attached files | WORKS | A drop made only of local files becomes visible tray chips; on send the local bytes cross, land in the far session's `attachments/`, and accompany the message. |
 | `/export` | WORKS | Export is intentionally local and confirms `exported · <short path> · on this machine`. |
 | `/files` | WORKS | Bare opens a local browse door onto the far workspace; a path fetches one far file and opens the local copy. |
 | clicked reply paths | WORKS | `StatPaths` confirms files on the engine and a local loopback door fetches them. Confirmed directories are not links. |
@@ -54,8 +54,8 @@ the terminal, draft, input history, browser and downloaded copies.
 | home conversation card | WORKS | `Session.Open` switches the far host to the selected conversation. |
 | task, standing, memory, spend and search row actions | WORKS | Navigation remains local; actions on far home/tasks/standing rows use far data. The three honest-empty places have no actionable rows. |
 | settings row click or `enter` | HONEST | The panel is usable for surface settings, but its opening sentence warns that conversation governance is read on the other machine. |
-| file browse page click and drag | WORKS | Click fetches a far file; drag deposits one file in the far session folder without starting a turn. |
-| generated image preview in the terminal | HONEST | The far path is linked, but the terminal preview is not drawn because the bytes are not a local render input. |
+| named-path and file browse page click or drag | WORKS | Click fetches a far file into the surface cache and opens that named local copy; drag deposits one file in the far session folder without starting a turn. |
+| generated image preview in the terminal | WORKS | Finished `generate_image` and `view_image` calls fetch eligible far bytes into the surface cache and paint that copy while continuing to name the far path. |
 | terminal title, transcript, markdown and tool cards | WORKS | Events and pushed facts render through the ordinary v3 surface. |
 | workspace, session and tool paths | WORKS | Person-facing remote paths are prefixed with `<machine>:`. The git branch is left empty because probing locally would be false. |
 | YOLO badge and approval posture | WORKS | The posture is carried from the engine in the welcome. |
