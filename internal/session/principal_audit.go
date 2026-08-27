@@ -72,11 +72,19 @@ const (
 // sessionChecks are the commands this session's work names, in the order a
 // person would read them.
 //
-// THE TWO SOURCES ARE THE SESSION'S OWN DOCUMENTS. The ask in the person's own
+// THE SESSION'S OWN DOCUMENTS ARE THE FIRST SOURCE. The ask in the person's own
 // words and the acceptance written for the whole of it are what a session has
-// instead of a node's brief, and every unit of work that landed contributes the
-// checks ITS document named — which is how a check somebody wrote into one
-// task's acceptance still guards the session that task was part of.
+// instead of a node's brief, and they are read with [declaredChecks] — the same
+// reading a unit of work's own document gets, so the two can never disagree
+// about what a check is.
+//
+// AND EVERY UNIT OF WORK THAT LANDED CONTRIBUTES ITS OWN DOOR, which is BOTH of
+// task_checks.go's sources at once ([auditDoorFor]): the checks that node's
+// document named AND the ones its worker actually ran. The second is the one
+// worth having — a worker that hammered a build for an hour has said what the
+// check is more clearly than any document — and reading it through the same
+// door the node's auditor used is what keeps the session and its nodes checking
+// the same things.
 //
 // IT NAMES NO COMMAND OF ITS OWN. A list this file knew would be the constant
 // task_checks.go was written to replace, and it would be wrong in exactly the
@@ -88,6 +96,8 @@ func (a *Agent) sessionChecks() []string {
 	if graph == nil {
 		return trimChecks(checks)
 	}
+	// The nodes are taken under the graph lock and read without it, for
+	// [Agent.landings]'s reason: every accessor below takes that same lock.
 	graph.mu.Lock()
 	nodes := make([]*TaskNode, 0, len(graph.order))
 	for _, id := range graph.order {
@@ -96,11 +106,12 @@ func (a *Agent) sessionChecks() []string {
 		}
 	}
 	graph.mu.Unlock()
+	tree := a.deliverableTree()
 	for _, node := range nodes {
 		if !node.stateNow().settled() {
 			continue
 		}
-		checks = appendChecks(checks, declaredChecks(node.instruction()))
+		checks = appendChecks(checks, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks)
 	}
 	return trimChecks(checks)
 }

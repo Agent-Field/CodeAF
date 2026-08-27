@@ -355,3 +355,34 @@ func TestARunThatIsCarryingOnKeepsItsOwnWorkingMaterial(t *testing.T) {
 		t.Fatalf("a run that is still working lost its own material: %v", err)
 	}
 }
+
+// AND THE CHECKS A WORKER ACTUALLY RAN ARE THE SESSION'S CHECKS TOO.
+//
+// A worker that hammered one command for an hour has said what the check is
+// more clearly than any document, and reading it through the same door that
+// node's own auditor used ([auditDoorFor]) is what keeps a session and its
+// units of work checking the same things.
+func TestTheSessionAlsoChecksWhatItsWorkersRan(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().hear("port the parser")
+	node := landOne(agent, TaskDone, "port the parser", "done")
+	node.graph.mu.Lock()
+	node.spec.brief = "port it"
+	node.brief = "port it"
+	node.spec.acceptance = "it is ported"
+	node.receipts = []toolReceipt{{command: "go test ./parser"}}
+	node.graph.mu.Unlock()
+
+	var found bool
+	for _, check := range agent.sessionChecks() {
+		if check == "go test ./parser" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the session does not check what its own worker ran: %v", agent.sessionChecks())
+	}
+}
