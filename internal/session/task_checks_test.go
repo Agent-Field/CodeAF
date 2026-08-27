@@ -231,7 +231,7 @@ func TestAnUnattendedSessionNeverEndsTheLadderOnAPerson(t *testing.T) {
 	if settle := unattended.settlePolicy(); settle != TaskSettleAuto {
 		t.Fatalf("an unattended session settles %q, so the run waits for somebody who is not there", settle)
 	}
-	note := taskNote(notice, "", unattended.settlePolicy())
+	note := taskNote(notice, "", unattended.settlePolicy(), landingAddress{person: true})
 	if !strings.Contains(note, settleAutoLead) {
 		t.Fatalf("the unattended landing never hands the decision on:\n%s", note)
 	}
@@ -245,7 +245,7 @@ func TestAnUnattendedSessionNeverEndsTheLadderOnAPerson(t *testing.T) {
 	if settle := watched.settlePolicy(); settle != TaskSettleAsk {
 		t.Fatalf("a watched session with a blank row settles %q, want ask", settle)
 	}
-	if asked := taskNote(notice, "", watched.settlePolicy()); !strings.Contains(asked, settleAskTail) {
+	if asked := taskNote(notice, "", watched.settlePolicy(), landingAddress{person: true}); !strings.Contains(asked, settleAskTail) {
 		t.Fatalf("a watched landing stopped offering the person the choice:\n%s", asked)
 	}
 	told := &Agent{config: Config{AskConsent: true, TaskSettle: string(TaskSettleAuto)}}
@@ -255,7 +255,7 @@ func TestAnUnattendedSessionNeverEndsTheLadderOnAPerson(t *testing.T) {
 
 	// THE VOCABULARY LAW HOLDS ON BOTH ROADS. Nothing a person or the model
 	// reads off a landing says auditor, verdict, verified or refuted.
-	for _, text := range []string{note, taskNote(notice, "", watched.settlePolicy())} {
+	for _, text := range []string{note, taskNote(notice, "", watched.settlePolicy(), landingAddress{person: true})} {
 		for _, banned := range []string{"auditor", "verdict", "verified", "refuted"} {
 			if strings.Contains(strings.ToLower(text), banned) {
 				t.Fatalf("the landing says %q to a person:\n%s", banned, text)

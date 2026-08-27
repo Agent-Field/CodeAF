@@ -90,6 +90,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// file deciding what another door's worker is told.
 		systemAt:  time.Now(),
 		systemOwn: own,
+		// THIS LAUNCH'S WALL CLOCK, and the only one this package keeps
+		// ([Agent.startedAt] says why the summed turn durations are not it).
+		startedAt: time.Now(),
 		model:     config.Model,
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
@@ -97,6 +100,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		id: NewSessionID(),
 	}
 	agent.cacheKey = sessionCacheKey(agent.id)
+	// AND WHO THIS SESSION IS WORKING FOR, before anything else is built
+	// (principal.go). It is written once here and never again, which is what
+	// lets every road that consults it read the field without the lock; the
+	// posture that picks it — attended or not, with a ceiling or without — is
+	// entirely the door's, and a config that says nothing gets the [Person] this
+	// package has always answered to.
+	agent.principal = newPrincipalFor(agent)
 	// Memory is built before the belt for the same reason the registry is: the
 	// belt carries `remember` only when there is a brain to write into, so the
 	// store has to exist before the tools are assembled (memory.go). The
@@ -153,6 +163,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
+		// in the journal that cannot be re-derived from the transcript — whether
+		// a file was there before the session touched it is a measurement, taken
+		// once, at the moment of the call — so a resumed session carries it
+		// forward rather than starting the sweep's list empty (principal_audit.go).
+		agent.createdFiles = replayed.created
 		// A resumed session keeps the name it was given: the title is a fact
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
