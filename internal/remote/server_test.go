@@ -39,11 +39,13 @@ func TestMain(m *testing.M) {
 type fakeAgent struct {
 	mu sync.Mutex
 
-	streams []chan session.Event
-	sent    []string
-	marked  []string
-	follows []string
-	images  []session.Image
+	streams  []chan session.Event
+	sent     []string
+	marked   []string
+	follows  []string
+	images   []session.Image
+	tasks    []string
+	planners []string
 
 	model  string
 	window int
@@ -76,6 +78,21 @@ type fakeAgent struct {
 	compactBy error
 	rewindBy  error
 	panicking bool
+}
+
+func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, error) {
+	f.tasks = append(f.tasks, brief)
+	return 17, "far task", f.failing
+}
+
+func (f *fakeAgent) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
+	f.planners = append(f.planners, brief+"|"+hint)
+	return "run-8", "far plan", f.failing
+}
+
+func (f *fakeAgent) JudgeDecomposable(_ context.Context, brief string) (bool, []string, string) {
+	f.tasks = append(f.tasks, "judge:"+brief)
+	return true, []string{"one", "two"}, "independent"
 }
 
 func (f *fakeAgent) PendingConnect() []string { return nil }
