@@ -72,8 +72,7 @@ Last full runs: **4 pass, 1 skip, 60s** on darwin/arm64 → linux/amd64 containe
 
 Also relevant, and expected to fail for reasons that predate this branch: `internal/plan`,
 four `internal/swepro` packages, `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui
-TestSettingsSheetIsOneCalmColumnAtEveryWidth`, and `internal/session
-TestTheLegacyWorktreeStaysUnderTheRepository`. `cmd/aforge`'s two `TestTick*` need
+TestSettingsSheetIsOneCalmColumnAtEveryWidth`. `cmd/aforge`'s two `TestTick*` need
 `OPENROUTER_API_KEY` in the environment. See CLAUDE.md.
 
 ---

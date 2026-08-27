@@ -123,7 +123,9 @@ func TestAFailedTaskKeepsItsFolderWithoutAWorktreeRegistration(t *testing.T) {
 // The zero Place is the legacy layout and it has not moved: a caller that has
 // not adopted the folder gets exactly what it got yesterday.
 func TestTheLegacyWorktreeStaysUnderTheRepository(t *testing.T) {
-	repo := newTestRepo(t)
+	// The repository root is an identity, so the containment law compares the
+	// two canonical paths production records rather than two aliases for it.
+	repo := canonicalPath(newTestRepo(t))
 	tree, err := prepareTaskTree(Place{}, repo, "bbbb2222bbbb2222", 3, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
@@ -134,21 +136,56 @@ func TestTheLegacyWorktreeStaysUnderTheRepository(t *testing.T) {
 	}
 }
 
+// The canonical spelling is chosen before the task directory exists. This is
+// the cross-platform form of macOS's /var → /private/var path: the explicit
+// symlink makes every builder prove the same law.
+func TestWorktreePathsResolveSymlinkedParentsBeforeRecording(t *testing.T) {
+	repo := newTestRepo(t)
+	alias := filepath.Join(t.TempDir(), "repository")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := prepareTaskTree(Place{}, alias, "cccc3333cccc3333", 4, "do the thing")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	root := canonicalPath(repo)
+	want := filepath.Join(root, filepath.FromSlash(tasksDirName), "cccc3333cccc3333", "4")
+	if tree.root != root || tree.dir != want {
+		t.Fatalf("the canonical tree is root %q at %q, want root %q at %q", tree.root, tree.dir, root, want)
+	}
+	if !treeCovers(root, tree.dir) {
+		t.Fatalf("the legacy worktree escaped its repository: root %q, tree %q", root, tree.dir)
+	}
+
+	realPlace := t.TempDir()
+	placeAlias := filepath.Join(t.TempDir(), "conversation")
+	if err := os.Symlink(realPlace, placeAlias); err != nil {
+		t.Fatal(err)
+	}
+	place := Place{Dir: filepath.Join(placeAlias, "not-made-yet")}
+	if got, want := place.Trees(), filepath.Join(canonicalPath(realPlace), "not-made-yet", placeTrees); got != want {
+		t.Fatalf("Trees() = %q, want canonical missing path %q", got, want)
+	}
+}
+
 // The cross-process lock moves out of the person's repository with the
 // worktrees, and it is keyed on the REPOSITORY: two sessions working over one
 // checkout must meet on one file or the lock serializes nothing.
 func TestTheGitRootLockLivesUnderTheStateRoot(t *testing.T) {
-	root := t.TempDir()
+	writtenRoot := t.TempDir()
 	state := t.TempDir()
 	t.Setenv(home.EnvVar, state)
 
 	first := Place{Dir: filepath.Join(state, "v3", "projects", "-repo", "aaaa")}
 	second := Place{Dir: filepath.Join(state, "v3", "projects", "-repo", "bbbb")}
 
+	root := canonicalPath(writtenRoot)
 	digest := sha256.Sum256([]byte(filepath.Clean(root)))
 	want := filepath.Join(state, "v3", "locks", hex.EncodeToString(digest[:])[:gitRootLockStem]+".lock")
 
-	release := lockGitRoot(first, root)
+	release := lockGitRoot(first, writtenRoot)
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("no lock at %s: %v", want, err)
 	}
