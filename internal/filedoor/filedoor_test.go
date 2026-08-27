@@ -35,6 +35,7 @@ type fakeSource struct {
 
 	mutex    sync.Mutex
 	deposits map[string][]byte
+	opened   string
 }
 
 func newFake() *fakeSource {
@@ -74,6 +75,14 @@ func (f *fakeSource) Fetch(path string) (File, error) {
 		return File{}, fmt.Errorf("engine: %s is not a file this session may hand over", path)
 	}
 	return file, nil
+}
+
+func (f *fakeSource) Open(path string) error {
+	if sentence, no := f.refuse[path]; no {
+		return errors.New(sentence)
+	}
+	f.opened = path
+	return nil
 }
 
 func (f *fakeSource) Deposit(name string, data []byte) (string, error) {
@@ -378,12 +387,12 @@ func TestTheFileCallMintsAnIDAndSendsTheBrowserToIt(t *testing.T) {
 		t.Fatalf("the file call answered %d, wanted a 302 onto the byte lane", answer.StatusCode)
 	}
 	where := answer.Header.Get("Location")
-	if !strings.Contains(where, "/f/") {
-		t.Fatalf("the redirect went to %q, wanted /f/<id>", where)
+	if !strings.Contains(where, "/o/") {
+		t.Fatalf("the redirect went to %q, wanted /o/<id>", where)
 	}
-	// The minted id is the SAME one FileURL hands the surface, because both go
+	// The minted id is the SAME one OpenURL hands the surface, because both go
 	// through the one path index.
-	link, _ := door.FileURL("out/log.txt")
+	link, _ := door.OpenURL("out/log.txt")
 	if !strings.HasSuffix(link, strings.TrimPrefix(where, base)) {
 		t.Fatalf("the page's id (%q) and the surface's link (%q) disagree", where, link)
 	}
@@ -392,9 +401,8 @@ func TestTheFileCallMintsAnIDAndSendsTheBrowserToIt(t *testing.T) {
 		t.Fatalf("walking the redirect: %v", err)
 	}
 	defer served.Body.Close()
-	body, _ := io.ReadAll(served.Body)
-	if string(body) != "the whole log" {
-		t.Fatalf("the redirect served %q, wanted the file", body)
+	if source.opened != "out/log.txt" {
+		t.Fatalf("the redirect opened %q", source.opened)
 	}
 }
 
@@ -508,6 +516,26 @@ func TestFileURLIsIdempotentPerPath(t *testing.T) {
 	}
 	if _, err := door.FileURL(""); err == nil {
 		t.Fatal("a link with no path behind it was minted anyway")
+	}
+}
+
+func TestOpenURLHandsTheConfirmedPathToTheSurfaceViewer(t *testing.T) {
+	source := newFake()
+	door, client := openDoor(t, source)
+	link, err := door.OpenURL("out/report.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Get(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("open answered %s", response.Status)
+	}
+	if source.opened != "out/report.md" {
+		t.Fatalf("the viewer was handed %q", source.opened)
 	}
 }
 
