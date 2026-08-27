@@ -388,7 +388,7 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
-	if chosen.File != "" && convKey(chosen.File) == convKey(a.file) {
+	if chosen.File != "" && a.convKey(chosen.File) == a.convKey(a.file) {
 		// The conversation this window is already in. It is the picker's rule
 		// (resume.go), and here it is also what keeps [app.openSession]'s
 		// open-before-close safe: asking the door for our own journal would meet

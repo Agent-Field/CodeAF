@@ -79,6 +79,27 @@ func TestDeliverablesBandFiltersSessionFoldsAndFits(t *testing.T) {
 	}
 }
 
+func TestHostedDeliverablesBandReadsTheFarWorldNotTheLocalIndex(t *testing.T) {
+	dir := t.TempDir()
+	index := filepath.Join(dir, session.ArtifactsIndexName)
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	session.RecordArtifact(index, session.Artifact{
+		Path: filepath.Join(dir, "laptop.txt"), Session: "mine", Title: "from this machine", Created: now,
+	})
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "devbox"
+	a.artifacts = index
+	a.home.world = session.World{Artifacts: []session.Artifact{{
+		Path: "/srv/app/chart.png", Session: "mine", Title: "from the other machine", Kind: "image", Created: now,
+	}}}
+	row := session.SessionRow{ID: "mine", Transcript: "/srv/.aforge/v3/projects/app/mine/transcript.jsonl"}
+
+	got := plain(strings.Join(drawDeliverablesBand(a, ambientBandContext(a, row, now, 50)), "\n"))
+	if !strings.Contains(got, "chart.png") || strings.Contains(got, "laptop.txt") {
+		t.Fatalf("hosted deliverables read the wrong machine:\n%s", got)
+	}
+}
+
 func TestLeftOffBandDrawsThePairAndFits(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, session.TranscriptName)

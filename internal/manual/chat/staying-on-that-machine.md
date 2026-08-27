@@ -301,6 +301,42 @@ their pass is done by whichever aforge is up — any open window, or the timer o
 machine that calls `aforge tick` with nobody sitting anywhere. A host going away hands
 their timing back to that timer exactly as closing a terminal always did.
 
+**And it goes early when aforge on that machine is rebuilt under it.** It is a running copy
+of the build that started it, so a new binary at the same path does not replace it; it
+notices the file it was started from has been removed or rebuilt and retires the next time
+it is holding nothing — no window attached, no turn running, no question waiting. What it
+was holding is closed properly on the way out and every transcript is flushed. Nothing that
+was still going is cut short for this.
+
+## How do I stop the old engine holding my session — aforge engine --stop
+
+Run it on the machine that is holding it:
+
+```
+aforge engine --stop
+```
+
+Its help text reads:
+
+```
+stop whatever is holding this workspace's conversations on this machine
+```
+
+It stops whatever holds that workspace, whichever build it is — including one too old to be
+asked politely — after closing its conversations and flushing their transcripts. A turn it
+catches stops where it is and keeps its partial reply, the same thing ctrl+c does locally.
+Then it says one of these, naming the directory:
+
+```
+stopped holding /home/you/api — the next connection starts fresh from this build
+nothing is holding /home/you/api here
+```
+
+`--workspace` picks which one; with no flag it means your home directory, exactly as it does
+for `aforge engine` itself. The reason to type it is that a connection told you to: both
+refusals about an older aforge still holding a machine name this command (*Running on
+another machine*).
+
 ## What still does not work, even though the session stays open
 
 Three things, and all three for the same reason: their questions do not travel this
@@ -322,7 +358,7 @@ account connections all wait for you now. What is left is not about anybody bein
 room; it is about a road that has not been built. Nothing here half-works: each one is
 absent rather than present and failing.
 
-## Make it not hold the session
+## Make one connection not use the session host
 
 `aforge engine --no-host` serves that one connection on the pipe, the old way, without
 looking for or starting a host. Its help text reads:
@@ -342,6 +378,7 @@ hold this workspace's conversations and answer surfaces on a socket
 ```
 
 That one is machinery: it is how a host is started, by the attaching process, and there is
-nothing a person accomplishes by typing it. Neither flag appears in `aforge`'s usage text,
-because `aforge engine` itself does not — it is the far half of `--host` and a surface
-dials it.
+nothing a person accomplishes by typing it. The third flag beside them is `--stop`, which is
+the one a person really does type; it has its own section above. None of them appear in
+`aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
+`--host` and a surface dials it.

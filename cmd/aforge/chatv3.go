@@ -630,7 +630,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
 		// moment the catalog resolves.
-		ContextWindow: v3Window(models, chosen),
+		ContextWindow:    v3Window(models, chosen),
+		ContextWindowFor: models.ContextLength,
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this

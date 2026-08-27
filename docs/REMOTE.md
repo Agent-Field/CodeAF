@@ -91,6 +91,42 @@ machines whose clocks may disagree. This is still a protocol change, so the
 version moved and the mismatch is still refused here, at the door, with the
 same sentence naming the fix.
 
+**The half in the middle, and the question that finds it.** A session host
+(Decision 5) outlives the binary that started it, so after `rm bin/aforge &&
+make build` on the far machine the *new* aforge answers `aforge version` while
+the *old* one still holds the socket — and `aforge engine` spliced the new
+surface straight onto it. The refusal that came back told the person to update a
+machine they had just updated. Two builds were the same build; the third was
+not.
+
+So the splice stopped being a blind copy of bytes. `internal/remote/whois.go`
+adds one exchange that is not about a conversation: a first frame of `whois`,
+answered with `whoami` carrying the host's own `Version`, whether it is `Busy`,
+and whether it is `Retiring`. It is asked **before** the version check, on a
+connection that never says hello, because the build that must be able to answer
+it is precisely the one the door would refuse.
+
+- Same build → splice, as before.
+- Another build, holding nothing → asked to stand down; it closes its
+  conversations, flushes their journals, drops the socket, and the next line
+  starts a fresh host from the binary on disk.
+- Another build, holding a turn, a surface or a held question → **refused**,
+  never killed. The host is the only process that can see the work, so the host
+  decides; the door only carries the sentence.
+- A build from before the exchange answers `the first frame was "whois", not a
+  hello`, which is read as "not this build" and refused the same way. It is
+  never signalled from a connection that could not ask it anything.
+
+The refusal does not fall back to the pipe, which is the one place on that road
+that does not. The stale host holds the session file's lock, so a pipe engine
+would fail on the journal and say so in a sentence about a path.
+
+Two things keep it from recurring: a host retires itself once it notices the
+file it was started from was removed or rebuilt and it is holding nothing
+(`internal/enginehost/binary.go`), and `aforge engine --stop` ends whatever
+holds a workspace on that machine — asking politely first, and naming the
+process through the socket's peer credentials when it is too old to be asked.
+
 ## Decision 4 — Version 2 separates a conversation's life from a pipe's
 
 **Decision.** In version 1 the engine *was* the ssh command: it read frames on
@@ -151,6 +187,11 @@ connected accounts, the session file, standing items, and every path on the
 wire belong to the machine that runs the work. The surface owns the screen, the
 keyboard, the draft, and the input history.
 
+The model catalog follows the same split. The surface catalog supplies picker rows and
+display facts; the engine catalog supplies execution facts. In particular SetModel makes
+the engine resolve its own context window, and a remote surface's context-window hint is
+ignored, so compaction cannot be sized by a stale or different laptop cache.
+
 **Why it is stated as an architecture decision and not left to taste.** Every
 honesty bug this lane has had came from a screen answering for the wrong
 machine. The YOLO badge is drawn from the engine's own profile because a badge
@@ -186,6 +227,21 @@ spend the context window on bytes nothing has asked for yet.
 **Why the reverse door is the engine's refusal to make.** A surface cannot know
 the far machine's boundaries, so a client-side check on `Fetch.File` would be a
 permission decision taken on the wrong machine.
+
+**What a click means on the surface machine.** A confirmed far path is never a
+`file://` link: that would ask the terminal to open the same spelling on the
+wrong disk. Its OSC-8 link points to a loopback `/o/<id>` capability owned by
+the surface. Spending it runs `Stat.Paths`, fetches changed bytes with
+`Fetch.File`, mirrors the cached object under its real name, and hands that
+local read-only path to the surface OS. Finished picture tools take the same
+fetch road before the terminal preview tries to decode them.
+
+**What a terminal drop means.** Desktop terminals express a dropped file as a
+bracketed paste of its local path. When the paste consists only of real local
+files, the surface turns them into attachment chips. On send their bytes travel
+through the existing attachment call and are remade in the far conversation's
+`attachments/` folder; an ordinary local path is never sent as though the far
+engine could read it.
 
 ## Decision 8 — The pairing crypto is borrowed, and the one piece nobody maintains is owned
 
@@ -246,6 +302,12 @@ the root it was walked under. The surface reads it through one seam
 (`cmd/aforge`'s `hostWorld`), and **a hosted surface with no seam reads nothing
 at all** rather than falling back to its own disk.
 
+The engine door also adds that machine's deliverables index to the world. Home
+draws those rows under the far conversation that made them and opens their paths
+through the same fetch door as a path in a reply; it never joins a far session
+id to the surface machine's index. `/export` remains deliberately local and
+records into the surface machine's index because that is where its file lands.
+
 **Why one door and not one per place.** Five of the seven are built from that
 single walk — home lists it, tasks reads the task rows inside it, standing walks
 its projects to ask the far store what else stands there, spend joins its titles
@@ -281,6 +343,16 @@ are kept per machine, in `~/.aforge/v3/looks/<machine>` on the SURFACE's disk:
 what changed belongs to the far machine, when you last looked belongs to this
 terminal, and one stamp answering for both would let a glance at the server clear
 the badge over the laptop's own tab.
+
+**The task roster and its rooms follow the same rule.** The far world already
+carries each conversation's task rows, so the surface selects the row whose
+transcript matches `Welcome.SessionFile` and builds the roster without another
+round trip. A landed row's room asks `Places.Task` for a bounded, whole-line
+journal tail and draws it asynchronously; while that call is in flight the room
+says it is bringing the transcript from the other machine. The remote agent
+still offers no local room-action interfaces, so steering, stopping, and model
+changes are absent rather than sent to the wrong disk or exposed as broken.
+This completes protocol version 5 without another version move.
 
 ## Decision 11 — The room has one keyboard, and the engine says whose
 

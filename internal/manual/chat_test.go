@@ -24,6 +24,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"does status show background checks on the remote machine", "keeping-an-eye"},
+		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
@@ -93,6 +95,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my google account", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
+		{"why is the task roster empty over host", "running-on-another-machine"},
+		{"can I read a task room from another machine", "tasks"},
+		// Host parity is asked from the symptom, not from the name of the wire
+		// door. Each phrase therefore has to retrieve the page that owns the
+		// visible answer.
+		{"why is home empty over ssh", "places"},
+		{"someone else is typing", "staying-on-that-machine"},
+		{"how fast is the connection", "screen"},
+		{"my click does nothing on the server", "opening-files-from-that-machine"},
+		{"does export save to my laptop", "commands"},
+		{"which machine's settings are these", "commands"},
+		{"the far machine says a different version", "running-on-another-machine"},
+		{"how do I stop the old engine", "staying-on-that-machine"},
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
@@ -157,6 +172,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asker's own words were written into a heading, which is the fix this
 		// test is meant to provoke.
 		{"can you delete files", "what-i-can-do"},
+		{"do write edit and ls use the far disk over --host", "what-i-can-do"},
 		{"can you run tests for me", "what-i-can-do"},
 		{"can you start a dev server", "what-i-can-do"},
 		{"how do I see what a background job printed", "what-i-can-do"},
@@ -281,6 +297,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you change my settings", "what-i-can-do"},
 		{"set my daily budget to 5", "what-i-can-do"},
 		{"why won't you change my approval mode", "permissions"},
+		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
+		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
+		{"why didn't crew max change the crew on the remote machine", "running-on-another-machine"},
+		{"why does remember over host not say whether memory is off", "running-on-another-machine"},
+		{"does subharness know whether the remote machine has saved programs", "running-on-another-machine"},
 		{"what does the indented part mean", "keys"},
 		{"how do I see what aforge did", "keys"},
 		{"how do I keep everything expanded", "keys"},
@@ -356,6 +377,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I see the picture you made without opening the row",
 			"making-pictures-audio-and-video"},
 		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
+		{"why is the picture you generated over --host not painted in my terminal", "making-pictures-audio-and-video"},
 		// Written from a real run: twelve clips rendered in parallel with
 		// nothing shared, stitched with a video-only crossfade — the person
 		// asked all three of these, in these words, and the answers were
@@ -787,6 +809,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answers rather than somewhere that used to.
 		{"i pressed space space over --host and got one line", "places"},
 		{"why is home empty when I connect to another machine", "places"},
+		{"can I search old chats on the machine I connected to", "places"},
+		{"can I put away a conversation on the other machine", "places"},
 		{"whose projects am I looking at over --host", "places"},
 		{"does the tasks page show the other machine's work", "places"},
 		{"the tasks tab showed work that is not on this machine", "places"},
@@ -802,17 +826,35 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
 
+		// The wave that stopped a rebuild on the far machine from trapping
+		// somebody. These are the words a person actually uses at the moment it
+		// happens: they updated aforge over there, `aforge version` agreed, and
+		// the connection still told them to update the older half.
+		{"I updated aforge on that machine and it still says the versions differ", "running-on-another-machine"},
+		{"I rebuilt aforge on my dev box and --host still refuses", "running-on-another-machine"},
+		{"it says the two halves have to be the same build but they are", "running-on-another-machine"},
+		{"it says spark is still running an older aforge", "running-on-another-machine"},
+		{"how do I stop the thing holding my session on that machine", "staying-on-that-machine"},
+		{"what does aforge engine --stop do", "staying-on-that-machine"},
+		{"does the session host notice when I rebuild aforge", "staying-on-that-machine"},
+
 		// The wave that made the files on the far machine things this one can
 		// open. These are the sentences somebody types with a hosted session in
 		// front of them: the click, the download, the drag, the picture they
 		// cannot see, and the two questions the copies provoke.
 		{"how do I open a file that is on the other machine", "opening-files-from-that-machine"},
 		{"why is that path not clickable over --host", "opening-files-from-that-machine"},
+		{"can I tab complete a path for /attach", "attaching-files"},
+		{"where does an attached file go over --host", "attaching-files"},
+		{"I dropped a file and nothing happened", "attaching-files"},
+		{"can I attach a whole folder", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
 		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},
 		{"if I edit the copy does it change the file over there", "opening-files-from-that-machine"},
 		{"how do I see the picture it made on the far machine", "opening-files-from-that-machine"},
+		{"cmd click does not open the file on the server", "opening-files-from-that-machine"},
+		{"where did my picture go over ssh", "making-pictures-audio-and-video"},
 		{"how do I browse the folders on the other machine", "opening-files-from-that-machine"},
 		{"can anyone else open these 127.0.0.1 links", "opening-files-from-that-machine"},
 		{"how big a file can I bring back over a connection", "opening-files-from-that-machine"},

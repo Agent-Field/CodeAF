@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
@@ -955,6 +956,106 @@ func (c *Client) World() (session.World, error) {
 	return world, nil
 }
 
+// TaskRecord is ONE ROW of the engine machine's record, read deeper than
+// [Client.World] reads it: the last thing that piece of work said, and whether
+// its journal is still on that machine's disk ([MethodPlacesTask]).
+//
+// THE ERROR IS ANSWERED AND NOT SWALLOWED, for [Client.World]'s reason narrowed
+// to one card: a record that came back empty is a piece of work that said
+// nothing at the end, and a call that failed is a card that has not been told
+// yet. The surface draws a different line for each, and only an error can carry
+// the second.
+func (c *Client) TaskRecord(uri string, tail int) (session.TaskRecord, error) {
+	payload, err := c.call(nil, MethodPlacesTask, PlacesTaskArgs{Transcript: uri, Tail: tail})
+	if err != nil {
+		return session.TaskRecord{}, err
+	}
+	var record session.TaskRecord
+	if err := json.Unmarshal(payload, &record); err != nil {
+		return session.TaskRecord{}, err
+	}
+	return record, nil
+}
+
+func (c *Client) Ledger(since time.Time) (LedgerReading, error) {
+	payload, err := c.call(nil, MethodPlacesLedger, LedgerArgs{Since: since})
+	if err != nil {
+		return LedgerReading{}, err
+	}
+	var out LedgerReading
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+func (c *Client) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
+	payload, err := c.call(nil, MethodPlacesSearch, SearchArgs{Terms: terms, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var out []store.ConversationHit
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+func (c *Client) Archive(dir string, archived bool) error {
+	_, err := c.call(nil, MethodPlacesArchive, ArchiveArgs{Dir: dir, Archived: archived})
+	return err
+}
+
+func (c *Client) Snapshot(limit int) (store.MemoryShelves, error) {
+	var out store.MemoryShelves
+	payload, err := c.call(nil, MethodMemorySnapshot, limit)
+	if err == nil {
+		err = json.Unmarshal(payload, &out)
+	}
+	return out, err
+}
+
+func (c *Client) ChangedSince(at time.Time) (int, int, error) {
+	payload, err := c.call(nil, MethodMemoryChanged, at)
+	if err != nil {
+		return 0, 0, err
+	}
+	var out MemoryChange
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return 0, 0, err
+	}
+	return out.Learned, out.LetGo, nil
+}
+
+func (c *Client) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	var out []store.Memory
+	payload, err := c.call(nil, MethodMemoryList, MemoryListArgs{Scope: scope, Limit: limit})
+	if err == nil {
+		err = json.Unmarshal(payload, &out)
+	}
+	return out, err
+}
+
+func (c *Client) UpdateMemory(id, title, text string, tags []string) error {
+	_, err := c.call(nil, MethodMemoryUpdate, MemoryUpdateArgs{ID: id, Title: title, Text: text, Tags: tags})
+	return err
+}
+func (c *Client) ForgetMemory(id string) error {
+	_, err := c.call(nil, MethodMemoryForget, id)
+	return err
+}
+func (c *Client) RestoreMemory(id string) error {
+	_, err := c.call(nil, MethodMemoryRestore, id)
+	return err
+}
+func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) {
+	payload, err := c.call(nil, MethodMemoryProvenance, id)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	var out MemoryOrigin
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", "", time.Time{}, err
+	}
+	return out.Session, out.Title, out.At, nil
+}
+
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 	payload, err := c.call(nil, MethodStandingItems, workspace)
 	if err != nil {
@@ -978,6 +1079,19 @@ func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 func (c *Client) SaveStanding(item standing.Item) error {
 	_, err := c.call(nil, MethodStandingSave, item)
 	return err
+}
+
+// StandingWatch reads the scheduler on the engine machine.
+func (c *Client) StandingWatch() (standing.WatchStatus, bool) {
+	payload, err := c.call(nil, MethodStandingWatch, nil)
+	if err != nil {
+		return standing.WatchStatus{}, false
+	}
+	var result StandingWatchResult
+	if json.Unmarshal(payload, &result) != nil {
+		return standing.WatchStatus{}, false
+	}
+	return result.Status, result.Known
 }
 
 // HeldQuestions is what this session asked while nobody was attached, asked for
@@ -1143,8 +1257,11 @@ func (a *Agent) SetModel(model string) {
 	_, _ = a.c.call(nil, MethodSetModel, model)
 }
 
-// SetContextWindow says how many tokens the model now in use accepts.
-func (a *Agent) SetContextWindow(tokens int) { _, _ = a.c.call(nil, MethodSetContext, tokens) }
+// SetContextWindow is deliberately a no-op here. The surface's catalog belongs
+// to the laptop; SetModel makes the engine consult its own catalog and move its
+// own compaction point. The method remains on the interface for local agents
+// and on the version-5 wire for compatibility with builds already in flight.
+func (a *Agent) SetContextWindow(int) {}
 
 // ReasoningFor is how hard one model is asked to think.
 //

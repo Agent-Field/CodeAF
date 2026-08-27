@@ -207,6 +207,10 @@ func (p *harnessPanel) draw(width, n int, pal palette, hover int) []string {
 // its services: a harness registered in another window ten minutes ago is a
 // harness this list has to know about, and asking costs a directory walk.
 func (a *app) openHarness() {
+	if a.hosted() {
+		a.note(a.remoteProfileWord("harnesses"))
+		return
+	}
 	if a.harn == nil {
 		a.note(harnessUnavailableWord)
 		return

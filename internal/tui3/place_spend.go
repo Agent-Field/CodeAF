@@ -192,7 +192,16 @@ func (a *app) refreshSpend() {
 // page that threw away a fortnight of true figures because one row was half
 // written would be the worse of the two wrong answers.
 func (a *app) readSpendLines(now time.Time) {
-	lines, _ := a.spend.cache.Read(time.Time{})
+	lines, held := []session.UsageLine(nil), false
+	if a.ledger != nil {
+		var known bool
+		lines, held, known = a.ledger(a.spend.win.From)
+		if !known {
+			return
+		}
+	} else {
+		lines, _ = a.spend.cache.Read(time.Time{})
+	}
 	a.spend.lines, a.spend.read = lines, now
 	// AND THE WORLD WITH THE LINES, on the same beat and for the same reason the
 	// bands and the world are read together on home: a ledger line minted by work
@@ -203,11 +212,13 @@ func (a *app) readSpendLines(now time.Time) {
 	// that every keystroke after it, the window arrows included, is arithmetic
 	// over what these two lines left behind.
 	a.spend.names = a.spendNames(a.spend.world)
-	a.spend.held = false
-	for _, line := range lines {
-		if line.USD > 0 {
-			a.spend.held = true
-			break
+	a.spend.held = held
+	if a.ledger == nil {
+		for _, line := range lines {
+			if line.USD > 0 {
+				a.spend.held = true
+				break
+			}
 		}
 	}
 	a.rebuildSpend()
@@ -493,7 +504,7 @@ const spendTeach = "What this machine has cost, by the day, by the model, and by
 // window on THIS machine appends a model call to, and the calls this session
 // makes are billed on the other one (pages.go's [place.remote]).
 func (placeSpend) remote(a *app) string {
-	if a.hosted() {
+	if a.hosted() && a.ledger == nil {
 		return spendRemoteWord
 	}
 	return ""

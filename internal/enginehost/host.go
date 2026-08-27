@@ -61,6 +61,19 @@ const (
 	sweepEvery  = 30 * time.Second
 )
 
+// The two numbers a stand-down is measured in.
+//
+// A HOST THAT AGREED TO GO WRITES ITS ANSWER BEFORE IT GOES. The frame saying
+// so has not left the process when the retirement is armed — the connection's
+// own goroutine writes it on the way back out of the exchange — so the listener
+// is closed only once every connection has hung up, and [standDownGrace] is the
+// ceiling for one that never does. Two seconds because the only thing waiting
+// on it is a local unix socket that is about to be dialled again.
+const (
+	standDownGrace = 2 * time.Second
+	standDownPoll  = 20 * time.Millisecond
+)
+
 // Options is what a host needs from the door that starts it, which is the same
 // two things every version of this has needed: how to open a conversation, and
 // which conversation a hello is asking for.
@@ -92,9 +105,24 @@ type Host struct {
 	listener net.Listener
 	lock     *os.File
 
+	// binary is the file this host was started from, as it looked when it
+	// started. A host whose own binary has been replaced retires the moment it
+	// is holding nothing (binary.go states why).
+	binary hostBinary
+
 	mu       sync.Mutex
 	sessions map[string]*remote.Session
 	live     int
+	// probes is how many of those live connections turned out to be the version
+	// exchange rather than a surface (whois.go). THE QUESTION MUST NOT COUNT AS
+	// THE WORK: a connection asking "are you busy" is not what busy means, and
+	// counting it would make every host answer yes to the one question the
+	// answer matters for.
+	probes int
+	// retiring is a stand-down that has been agreed to and not yet finished. It
+	// closes the door on new conversations, because a conversation opened into
+	// a process that is leaving is one the person watches vanish.
+	retiring bool
 	// quiet is when the host last had nothing to do, and zero while it has
 	// something. It is what [hostIdle] is measured against.
 	quiet  time.Time
@@ -148,6 +176,7 @@ func Run(workspace string, opts Options) error {
 		workspace: workspace,
 		dir:       dir,
 		opts:      opts,
+		binary:    thisBinary(),
 		listener:  listener,
 		lock:      lock,
 		sessions:  map[string]*remote.Session{},
@@ -199,16 +228,30 @@ func (h *Host) serve() error {
 // attach serves one connection. The frames are internal/remote's from the first
 // byte — this side contributes only the answer to "which conversation".
 func (h *Host) attach(conn net.Conn) {
+	// asked is this connection turning out to be the version exchange and not a
+	// surface. It is written by the closure below and read after ServeAttach
+	// has returned, both on THIS goroutine, which is the whole of why it needs
+	// no lock of its own.
+	asked := false
 	defer func() {
 		_ = conn.Close()
 		h.mu.Lock()
 		h.live--
+		if asked {
+			h.probes--
+		}
 		if h.live == 0 && len(h.sessions) == 0 {
 			h.quiet = time.Now()
 		}
 		h.mu.Unlock()
 	}()
-	if err := remote.ServeAttach(conn, conn, remote.AttachOptions{Open: h.open}); err != nil {
+	if err := remote.ServeAttach(conn, conn, remote.AttachOptions{
+		Open: h.open,
+		Host: func(ask remote.WhoIs) remote.HostSelf {
+			asked = true
+			return h.whois(ask)
+		},
+	}); err != nil {
 		// A host has no terminal and no person to tell, so a broken connection
 		// goes to a file an operator can read afterwards — the same destination
 		// and the same reason the standing pass's failures have.
@@ -225,7 +268,7 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.closed || h.retiring {
 		return nil, errors.New("engine host: this host is shutting down")
 	}
 	if existing := h.sessions[key]; existing != nil && !existing.Ended() {
@@ -247,6 +290,78 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	return sess, nil
 }
 
+// whois is the host answering what it is and what it will do about a request to
+// go — the host's half of internal/remote's version exchange.
+//
+// THE HOST DECIDES, AND THAT IS THE WHOLE OF WHY THIS IS SAFE. The process
+// asking cannot see a turn in flight, a surface in another window or a card
+// waiting for an answer; this one can, and a host holding any of them says so
+// and stays exactly where it is. Nothing on the asking side can end somebody
+// else's work by accident, because nothing on the asking side does the ending.
+func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
+	h.mu.Lock()
+	// This connection is the question and not the work — counted before
+	// anything is measured, so that the measurement is right.
+	h.probes++
+	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleLocked()}
+	going := ask.StandDown && (ask.Anyway || !self.Busy)
+	switch {
+	case h.closed || h.retiring:
+		// Already leaving, which is the answer the asker wanted either way.
+		self.Retiring = true
+		going = false
+	case going:
+		h.retiring, self.Retiring = true, true
+	}
+	h.mu.Unlock()
+	if going {
+		h.standDown()
+	}
+	return self
+}
+
+// idleLocked is this host holding nothing: no connection attached that is not
+// the question itself, and no conversation with a surface, a running turn or a
+// question waiting to be answered ([remote.Session.IdleSince] draws that last
+// line and is the same reading the sweep uses).
+//
+// IT IS NOT THE IDLE POLICY. The clocks above are about a host that has been
+// quiet for LONG ENOUGH to be worth retiring; this is about a host that could
+// be retired RIGHT NOW without taking anything down with it, which is a
+// different question with a different answer.
+func (h *Host) idleLocked() bool {
+	if h.live-h.probes > 0 {
+		return false
+	}
+	for _, sess := range h.sessions {
+		if sess.IdleSince().IsZero() {
+			return false
+		}
+	}
+	return true
+}
+
+// standDown ends the host once the connections it is talking to have gone.
+//
+// The wait is what makes the answer arrive: the frame agreeing to retire is
+// written by the asking connection's own goroutine after this returns, so a
+// listener closed here would close it under the sentence it was carrying.
+func (h *Host) standDown() {
+	guard.Go("enginehost/standdown", func() {
+		deadline := time.Now().Add(standDownGrace)
+		for {
+			h.mu.Lock()
+			empty := h.live == 0
+			h.mu.Unlock()
+			if empty || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(standDownPoll)
+		}
+		h.stop()
+	})
+}
+
 // sweep is the idle policy, run on a clock: retire the conversations nobody
 // wants any more, and then retire the host when there is nothing left to hold.
 func (h *Host) sweep() {
@@ -258,32 +373,57 @@ func (h *Host) sweep() {
 			return
 		case <-ticker.C:
 		}
-		var retiring []*remote.Session
-		h.mu.Lock()
-		for key, sess := range h.sessions {
-			idle := sess.IdleSince()
-			if sess.Ended() || (!idle.IsZero() && time.Since(idle) > sessionIdle) {
-				delete(h.sessions, key)
-				retiring = append(retiring, sess)
-			}
-		}
-		if h.live == 0 && len(h.sessions) == 0 && h.quiet.IsZero() {
-			h.quiet = time.Now()
-		}
-		leaving := h.live == 0 && len(h.sessions) == 0 &&
-			!h.quiet.IsZero() && time.Since(h.quiet) > hostIdle
-		h.mu.Unlock()
-
-		for _, sess := range retiring {
-			// Closing flushes the journal, which is the only thing that has to
-			// happen before a conversation is let go of.
-			_ = sess.Close()
-		}
-		if leaving {
+		if h.sweepOnce() {
 			h.stop()
 			return
 		}
 	}
+}
+
+// sweepOnce is one pass of the policy, and it answers whether this was the host's
+// last one. It is a function rather than the body of the loop above so that a
+// test can ask what the policy decides without waiting out a clock.
+func (h *Host) sweepOnce() bool {
+	var retiring []*remote.Session
+	h.mu.Lock()
+	for key, sess := range h.sessions {
+		idle := sess.IdleSince()
+		if sess.Ended() || (!idle.IsZero() && time.Since(idle) > sessionIdle) {
+			delete(h.sessions, key)
+			retiring = append(retiring, sess)
+		}
+	}
+	if h.live == 0 && len(h.sessions) == 0 && h.quiet.IsZero() {
+		h.quiet = time.Now()
+	}
+	leaving := h.live == 0 && len(h.sessions) == 0 &&
+		!h.quiet.IsZero() && time.Since(h.quiet) > hostIdle
+	// AND A HOST WHOSE BINARY WAS REPLACED LEAVES AS SOON AS IT IS HOLDING
+	// NOTHING, without waiting out either clock. The clocks exist to keep a
+	// conversation warm for somebody who will come back to it; there is nothing
+	// warm about a build nobody is running any more, and staying is how a stale
+	// host comes to be spliced onto a surface an hour later (binary.go). The
+	// conversations it is holding are NOT taken down for this — idleLocked is
+	// the same "nothing in flight" the version exchange answers with, and a
+	// journal is flushed on the way out either way.
+	replaced := !leaving && h.binary.replaced() && h.idleLocked()
+	if replaced {
+		// The door closes under the same lock that decided, so a surface
+		// arriving in the moment between here and the stop is refused rather
+		// than handed a conversation that is about to end.
+		leaving, h.retiring = true, true
+	}
+	h.mu.Unlock()
+
+	if replaced {
+		h.note("the file this host was started from has been replaced; retiring so the next connection starts the current one")
+	}
+	for _, sess := range retiring {
+		// Closing flushes the journal, which is the only thing that has to
+		// happen before a conversation is let go of.
+		_ = sess.Close()
+	}
+	return leaving
 }
 
 // stop asks the host to end. It is idempotent because the signal handler, the

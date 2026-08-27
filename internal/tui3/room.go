@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -277,10 +278,17 @@ type taskRoom struct {
 	// no other time — and, unlike the conversation's, on the HEIGHT too, because
 	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
 	// and a taller view is a different row list.
-	rows   []row
-	width  int
-	height int
-	dirty  bool
+	rows    []row
+	width   int
+	height  int
+	dirty   bool
+	loading bool
+}
+
+type roomRecordMsg struct {
+	gen    int
+	record session.TaskRecord
+	err    error
 }
 
 // deck is the page as the renderers take it (render.go). It is a view over the
@@ -356,6 +364,7 @@ const (
 	// roomUnavailableWord is the degraded case: an agent under this surface with
 	// no room doors on it at all.
 	roomUnavailableWord = "room unavailable — this session has no task rooms"
+	roomLoadingWord     = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -426,6 +435,13 @@ const roomTail = 120
 func (a *app) openRoom(id uint64, title string) {
 	doors, ok := a.roomDoors()
 	if !ok {
+		if a.hosted() && a.farRecord != nil {
+			node := a.tasks[id]
+			if node != nil && node.transcript != "" {
+				a.openFarRoom(node, title)
+				return
+			}
+		}
 		// THE BUILD GUARD. The doors are an assertion and not a compile-time
 		// requirement, so a surface driven by an agent that has never heard of a
 		// room says so and stays in the conversation.
@@ -498,6 +514,43 @@ func (a *app) openRoom(id uint64, title string) {
 	}
 	room.lane, room.stop = lane, stop
 	a.roomPump = tea.Batch(waitRoom(lane, room.gen), a.wake())
+}
+
+// openFarRoom opens a landed hosted node as a read-only page and asks the
+// engine for its bounded journal tail off the program loop. No steering,
+// stopping, or model-changing door is added here: without a wire method those
+// actions are absent, while reading the record is complete in itself.
+func (a *app) openFarRoom(node *taskNode, title string) {
+	if title == "" {
+		title = taskIDWord(node.id)
+	}
+	a.roomGen++
+	room := &taskRoom{
+		id: node.id, title: title, gen: a.roomGen, unfolded: map[int]bool{},
+		live: -1, think: -1, mdAt: a.now(), stick: true, dirty: true,
+		done: true, loading: true,
+	}
+	a.room = room
+	a.sel = -1
+	a.dropHover()
+	a.touch()
+	read, uri, gen := a.farRecord, node.transcript, room.gen
+	a.roomPump = func() tea.Msg {
+		record, err := read(uri, session.TaskJournalTail)
+		return roomRecordMsg{gen: gen, record: record, err: err}
+	}
+}
+
+func (a *app) farRoomRead(msg roomRecordMsg) {
+	if a.room == nil || a.room.gen != msg.gen {
+		return
+	}
+	a.room.loading = false
+	if msg.err == nil {
+		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail)
+	}
+	a.roomResolveUnfinished()
+	a.roomTouched()
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -727,6 +780,14 @@ func readRoomJournal(path string, pal palette) ([]entry, int) {
 // its final line cap after wrapping.
 func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
 	lines := readJournalLines(path)
+	return shapeRoomJournal(lines, pal, limit)
+}
+
+func readRoomJournalBytes(data []byte, pal palette, limit int) ([]entry, int) {
+	return shapeRoomJournal(scanJournalLines(bytes.NewReader(data)), pal, limit)
+}
+
+func shapeRoomJournal(lines []journalLine, pal palette, limit int) ([]entry, int) {
 	// The results, indexed by the call each one answered. A result with no id is
 	// skipped rather than kept under "", for the reason session's own index skips
 	// it: it is a message no call can claim.
@@ -832,8 +893,12 @@ func readJournalLines(path string) []journalLine {
 	}
 	defer file.Close()
 
+	return scanJournalLines(file)
+}
+
+func scanJournalLines(reader io.Reader) []journalLine {
 	var out []journalLine
-	scan := bufio.NewScanner(file)
+	scan := bufio.NewScanner(reader)
 	// A journaled message can be a whole file's content, and the default token
 	// is 64k. The cap is what one line may weigh, not what the file may.
 	scan.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -2933,6 +2998,9 @@ func (a *app) roomRows(width int) []row {
 // It takes [roomYetWord], which is the same shape of answer said about a page
 // that is not finished being written.
 func (a *app) roomRecordRows(out []row, width int) []row {
+	if a.room != nil && a.room.loading {
+		return append(out, row{text: a.pal.dim(fit(roomLoadingWord, width)), entry: -1})
+	}
 	node := a.roomNode()
 	// WHY THERE IS NOTHING UNDER THE HEADER, in the vocabulary that is true of
 	// this kind of work in this state. The job's answer outranks the unlanded one

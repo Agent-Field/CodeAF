@@ -345,7 +345,7 @@ func (a *app) behindStir(key string) tea.Cmd {
 // with three conversations open should give all three boxes back, and the
 // sidecar is memory (draft.go).
 func (a *app) stow(conv Conversation, side *aside) {
-	key := convKey(conv.SessionFile)
+	key := a.convKey(conv.SessionFile)
 	if key == "" || conv.Agent == nil {
 		return
 	}
@@ -407,11 +407,11 @@ func (a *app) lastBehind() (string, bool) {
 // process — so a transcript this process already holds conflicts with itself and
 // reports `open in another window` about a conversation one keystroke away.
 func (a *app) holding(file string) bool {
-	key := convKey(file)
+	key := a.convKey(file)
 	if key == "" {
 		return false
 	}
-	return key == convKey(a.file) || a.behind[key] != nil
+	return key == a.convKey(a.file) || a.behind[key] != nil
 }
 
 // bringForward points the surface at a conversation this process is already
@@ -422,11 +422,11 @@ func (a *app) holding(file string) bool {
 // conversation in the keeper is not something to open. It is something to look
 // at again.
 func (a *app) bringForward(file string) (tea.Cmd, bool) {
-	key := convKey(file)
+	key := a.convKey(file)
 	if key == "" {
 		return nil, false
 	}
-	if key == convKey(a.file) {
+	if key == a.convKey(a.file) {
 		// Already the one on screen. Every door answers this by staying where it
 		// is rather than reopening, which would drop the lock, replay the journal
 		// and land exactly here.
@@ -458,10 +458,14 @@ func (a *app) openBeside(workspace, transcript string) (tea.Cmd, string) {
 		return nil, resumeUnavailableWord
 	}
 	if a.open == nil {
-		// The older seam cannot be asked about another project: it takes a
-		// transcript and resolves the workspace from the launch this process
-		// booted in. A capability that cannot work is absent, not broken.
-		return nil, resumeUnavailableWord
+		if a.resume == nil {
+			return nil, resumeUnavailableWord
+		}
+		agent, err := a.resume(transcript)
+		if err != nil {
+			return nil, err.Error()
+		}
+		return a.takeBeside(Conversation{Agent: agent, Workspace: workspace, SessionFile: transcript}), ""
 	}
 	conv, err := a.open(workspace, transcript)
 	if err != nil {
@@ -492,7 +496,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 	leaving, side := a.front(), a.detachConversation()
 	a.stow(leaving, side)
 	cmd := a.attachConversation(conv, nil)
-	if key := convKey(conv.SessionFile); key != "" {
+	if key := a.convKey(conv.SessionFile); key != "" {
 		a.rememberOpen(key)
 	}
 	if conv.Notice != "" {
@@ -544,7 +548,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	delete(a.behind, next)
 	held.watch.stop()
 	leaving, file := a.agent, a.file
-	a.forget(convKey(file))
+	a.forget(a.convKey(file))
 	a.detachConversation()
 	if leaving != nil {
 		leaving.Interrupt()
@@ -660,7 +664,7 @@ func (a *app) behindTasks() int {
 // measures "since you last looked" from. Zero for one this process does not
 // hold.
 func (a *app) behindSince(file string) time.Time {
-	held := a.behind[convKey(file)]
+	held := a.behind[a.convKey(file)]
 	if held == nil || held.side == nil {
 		return time.Time{}
 	}

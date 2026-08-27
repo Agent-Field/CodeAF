@@ -876,6 +876,9 @@ func (a *app) watchLine() (string, bool) {
 	if !a.standingHere() {
 		return "", false
 	}
+	if a.stands.Watch == nil && a.stands.Ticking == nil {
+		return "", false
+	}
 	status, known := standing.WatchStatus{}, false
 	if a.stands.Watch != nil {
 		status, known = a.stands.Watch()
@@ -1035,7 +1038,14 @@ func (a *app) readStandBands() {
 // ([standing.Item.Workspace]), and the directory THIS window is standing in.
 func (a *app) readBareBands(bands map[string][]StandingItemView, known map[string]bool) []homeBare {
 	var out []homeBare
-	for _, path := range []string{errandHomeDir(), strings.TrimSpace(a.workspace)} {
+	paths := []string{errandHomeDir(), strings.TrimSpace(a.workspace)}
+	if a.hosted() {
+		// The home directory belongs to the surface machine and is not a path the
+		// far standing store can answer. Until Standing.All can enumerate bare
+		// far workspaces, the current far workspace is the honest floor.
+		paths = []string{strings.TrimSpace(a.workspace)}
+	}
+	for _, path := range paths {
 		if path == "" {
 			continue
 		}
