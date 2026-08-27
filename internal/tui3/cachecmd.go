@@ -37,6 +37,10 @@ type cacheNoteMsg struct{ line string }
 
 // runCacheCommand consumes /cache and its forms.
 func (a *app) runCacheCommand(rest string) tea.Cmd {
+	if a.hosted() {
+		a.note(a.remoteProfileWord("the build cache"))
+		return nil
+	}
 	tilde := a.tilde
 	switch strings.ToLower(strings.TrimSpace(rest)) {
 	case "":

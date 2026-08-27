@@ -108,6 +108,11 @@ import (
 //	                  the ordinary room renderer draws it. Steering, stopping,
 //	                  and changing its model stay absent because the wire has no
 //	                  such doors; no path from the far row is opened here.
+//	                  //	the task rail     DRAWN from Places.Task, carried by the same far-machine
+//	                  seam as the tasks place. The remote agent still has no task
+//	                  door, so /task refuses honestly; the rail is a reading of
+//	                  work already reported by the far world, not a promise that
+//	                  this surface can start another task.
 //	/image and @      LOCAL, and deliberately: the picture is on the machine the
 //	                  person is sitting at, and the bytes travel with the message
 //	                  (internal/remote's SubmitImage). So a relative path and the
@@ -341,6 +346,14 @@ const (
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
 )
+
+// remoteProfileWord is the honest floor for commands whose setting or store
+// belongs to the session's machine but has no wire door yet. The machine is
+// named because "another machine" makes a destructive refusal needlessly
+// vague when the surface already knows exactly which one it is connected to.
+func (a *app) remoteProfileWord(thing string) string {
+	return a.host + " owns " + thing + " · change it on that machine"
+}
 
 // ── THE PLACES AND THE MACHINE THE SESSION IS ON ────────────────────────────
 //
