@@ -152,6 +152,15 @@ func (a *Agent) callRole(
 		// word of why the worker started blind. A deadline is a failure like any
 		// other and it is now recorded like one.
 		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
+		// AND THE BOUNDARY READS IT, on the same row shape and for the same
+		// reason the turn's own failures are read: an errand cut by a deadline
+		// and an errand refused by an upstream are two different pieces of news
+		// and the file could not tell them apart. The verdict is not acted on —
+		// the rung below IS the retry this ladder has, and one rung is the whole
+		// of an errand's patience (see the header) — but a transport failure
+		// dropped without a class is a failure nobody can count
+		// (taxonomy_boundary.go's [Agent.readErrandFailure]).
+		a.readErrandFailure(lastErr, role, rung.Model, attempt+1)
 		// The person's own interrupt, or the caller's deadline, ends the errand
 		// where it stands. Walking a ladder on a context that is already over is
 		// two more requests that cannot land — and the caller is handed the

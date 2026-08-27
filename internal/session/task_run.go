@@ -2686,10 +2686,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// of what this node produced ([declaredFiles]).
 		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
 
-		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !terminalProviderFailure(runErr) {
+		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !a.movesForFailure(node, runErr, log) {
 			break
 		}
-		next, moved := a.nextNodeModel(node)
+		next, moved := a.escalateNodeModel(node)
 		if !moved {
 			break
 		}
@@ -4260,6 +4260,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// outside the process must see one heartbeat across all of them rather
 		// than three files appearing and disappearing (task_beat.go).
 		beat: node.beatWriter(),
+		// AND SO DOES THE NODE'S TALLY OF ITS OWN FAILURES, for the pulse's
+		// reason one layer in: the worker, each repair round and the gate are the
+		// same NODE, and the one question the gate cannot answer alone is whether
+		// the round it is judging lost its calls on the wire
+		// (taxonomy_boundary.go).
+		failures: a.tallyFor(node),
 		// AND A DESIGN THREAD IS A ROOM RATHER THAN A WORKER, which is the one
 		// place the two node kinds want different agents. A worker's turns belong
 		// to the runner driving it, so a line steered at it lands in the turn it
