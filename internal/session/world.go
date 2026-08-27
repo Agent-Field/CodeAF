@@ -67,6 +67,46 @@ import (
 // that wants the whole machine — the same directory, asked a different question.
 func PlacesRoot() string { return home.Join("v3", placesDirName) }
 
+// RunsRoot is where an adaptive run's node transcripts live under the same state
+// root — the directory [orchestrateJournalPath] writes into.
+//
+// IT IS A SIBLING OF THE PLACES ROOT AND NOT A CHILD OF IT, which is the whole
+// reason this name exists. A run's rows are filed in a project's index like every
+// other piece of work, and the transcript each row points at is over here; a door
+// that took the places root for the machine's whole record therefore refused
+// every adaptive journal it had itself written down ([RecordRoots] is the fix).
+func RunsRoot() string { return home.Join("v3", runsDirName) }
+
+// runsDirName is that folder's name, spelled once, because
+// [orchestrateJournalPath] builds paths into it and this reads them back out —
+// two spellings would be a boundary that stops matching the day one moved.
+const runsDirName = "runs"
+
+// LooseTasksRoot is the third place a node transcript can be: the parallel tree
+// [taskJournalDir] writes into for a session that has no folder of its own.
+//
+// A CONVERSATION WITH NO PLACE STILL RUNS TASKS, and its nodes' journals go here
+// rather than under a project bucket that does not exist. It is a real,
+// currently-written directory and not an archaeological one, so a record
+// boundary that left it out refused a hosted room its own live transcript.
+func LooseTasksRoot() string { return home.Join("v3", looseTasksDirName) }
+
+// looseTasksDirName is spelled once, for runsDirName's reason.
+const looseTasksDirName = "tasks"
+
+// RecordRoots is every directory this machine's task transcripts live under, and
+// it is what an ENGINE measures a record read against ([ReadTaskRecordUnder]).
+//
+// THREE ROOTS BECAUSE THE RECORD IS IN THREE PLACES. An ordinary task writes its
+// journal beside the conversation that ran it, under the places root; a
+// conversation with no folder writes its nodes' journals into the parallel tree
+// instead; and an adaptive run's nodes write theirs under the runs root. Every
+// one of those rows is handed to a surface on the same world walk, so a door that
+// admitted only the first told a person over a connection that most of their own
+// machine's work "could not be read" — the file was there, and the boundary was
+// wrong.
+func RecordRoots() []string { return []string{PlacesRoot(), RunsRoot(), LooseTasksRoot()} }
+
 // World is every project on this machine, newest first.
 type World struct {
 	// Projects are the buckets under the places root, ordered by when somebody

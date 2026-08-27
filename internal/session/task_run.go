@@ -87,7 +87,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -3750,7 +3749,7 @@ func taskJournalDir(place Place, session string) string {
 	// The legacy tree, through the one seam: os.UserHomeDir was read directly
 	// here, which is why AFORGE_HOME moved every other v3 file and left a node's
 	// transcript behind in the real home (Decision 26, "one home, one seam").
-	return filepath.Join(home.Dir(), "v3", "tasks", session)
+	return filepath.Join(LooseTasksRoot(), session)
 }
 
 // findTaskJournal is the node's transcript found by its id rather than by its

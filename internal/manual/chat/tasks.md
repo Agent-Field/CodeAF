@@ -1171,6 +1171,24 @@ for a reason you cannot see.
 - With nothing matching, the foot reads `filter · zzz · nothing matches`.
 - `↑`/`↓` and `enter` keep working over exactly the rows the filter left.
 
+## A task I just started is not on the task page — the page while it is open
+
+The page re-files itself on its own beat while it is up, so work that starts *after* you
+opened it grows a row under `running` without you closing and reopening the page. That is
+true whether the task was proposed by the model or typed as `/task`, and it is true over
+`--host`.
+
+It used to be true only at home. The page re-filed itself when the reading of *other
+windows on this machine* changed, and nothing over a connection answers that question — so
+away from home the reading stood still for ever and a page opened before the work started
+never grew the row. It now also watches this window's own roster, which is the only
+authority a hosted page has for work that has not landed anywhere yet.
+
+**A task that has not landed exists nowhere but this window.** No file on any machine has a
+row for it until it finishes, so it reaches the page through the roster beside the
+conversation and through nothing else. If the roster is empty, the page will be missing it
+too — see *I started a task over ssh and the sidebar stayed empty* above.
+
 ## Keys and clicks on the task page
 
 | key | what it does |
@@ -1375,6 +1393,34 @@ far task id is itself the room door, including while the task is running.
 Over `--host`, the roster beside the conversation lists that far conversation's tasks
 from the far machine's record. `ctrl+g` closes or restores it exactly as it does for
 a local conversation; it never falls back to tasks on the machine holding the screen.
+
+The far engine **pushes** every task update to every window attached to that
+conversation, so a row appears when the work is admitted, moves when it starts running,
+and stays when it lands — with nothing on your screen asking for it. When a window
+attaches, the engine replays the whole roster onto it first, so a terminal you opened an
+hour into the work still draws every row rather than only the ones that moved after you
+arrived. This is the same subscription a local surface holds; the only difference is that
+it crosses a connection.
+
+## I started a task over ssh and the sidebar stayed empty — my task ran on the remote machine but there is no row for it
+
+This was a real defect and it is fixed. Before it was, `/task solo <brief>` over `--host`
+answered `single task 1 started · …`, the far worker ran and finished — and the column
+beside the conversation stayed empty with only `+ /task` on it, so the person who started
+the work could not watch it, could not click into its room, and could not stop it. Tasks
+the model proposed inside a turn did appear, which made it look like the roster worked.
+
+The cause was two things in the same seam. A typed `/task` is a **call** and not a turn, so
+a task node's life goes out on the session's standing subscription — which nothing carried
+across the connection. And the connection was missing the door a proposal's `y` goes back
+through, which mattered more than it sounds: the surface asks for the whole task seam in one
+question, so one missing door left the rail not subscribed at all rather than partly
+working. Both halves cross now, and answering a proposal card over `--host` works.
+
+If you are on a build where it is still empty, the two halves are speaking different
+protocols. The engine refuses a mismatch at the door with a sentence naming both numbers;
+if you get that instead, run `aforge engine --stop` on the far machine so the older
+process holding your session retires, and connect again.
 
 Opening a queued, running, or landed row is asynchronous. The room opens at once with
 `bringing this task's transcript from the other machine…`, then replaces that line with
