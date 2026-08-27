@@ -678,7 +678,7 @@ file — the model, the endpoint, the status, the endpoint's name, its own words
 attempt it was and how big the request was. Nothing like this was written down before, so a
 turn that died left the file saying only that it had ended.
 
-## My reply stopped and nothing was retried — a reply that broke is not carried on
+## My reply stopped and nothing was retried — a reply that broke is not carried on, and an empty reply is asked again
 
 A reply that ends **because a call failed** is not a reply that stopped early, and aforge no
 longer treats it as one. Two endings count as broken: the provider said it stopped on an
@@ -691,6 +691,44 @@ and the retry above already owns it. A measured run read a broken reply three ti
 fifteen seconds, paid a thinking-tier model each time, and re-opened a reply that could not
 move. An empty reply is also written down as a **failed request** rather than as an empty
 answer from the model, so what is on the file matches what happened.
+
+**An empty reply is asked again, straight away, and your turn carries on.** An endpoint that
+answers with nothing did not answer, so aforge sends the same request again — up to four
+tries in all — and there is no pause between them: the endpoint is up and fast and simply
+broken, and waiting eight seconds gets you the same nothing. What helps is being served by a
+different machine, which is what the next try asks for. Only when all four come back empty
+does the turn end. Before this, one empty reply ended a whole turn, and a measured run
+stopped eighteen minutes in with hours of budget unspent.
+
+## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
+
+Three different things used to look the same to aforge: **the connection** failed, **the
+model** was not good enough, or **the work** could not be done. Only the middle one is worth
+paying more for, and aforge now tells them apart before it spends anything.
+
+- **The connection.** Nobody answered, an endpoint refused, a reply came back empty, or a
+  tool call arrived mangled. aforge asks again on the *same* model and lets the router send
+  it somewhere else. It never ends your turn and it never buys a dearer model — nothing
+  about *who served* a request says anything about *who was asked*.
+- **The model.** The check read the finished work and said something was missing, and the
+  run it read had no connection trouble under it. That, and only that, sends the work back
+  on the careful class.
+- **The work.** The job could not be done, or the request itself is what your router is
+  refusing. There is nothing to buy; you get the report.
+
+Three runs of a measured comparison read the first as the second — four bad responses in a
+row, and the task moved onto a model seven times the price for the rest of the run — and
+that was between 57% and 82% of each bill. The run that never rolled four bad responses in a
+row cost a fifth as much.
+
+**And a dearer model is given back.** When the next check passes, the work goes back to the
+model it started on, so one bad minute at a provider cannot become the price of the whole
+job. There is also a ceiling of **$2** on what the careful class may spend on one task; past
+it the task comes back to you with its report instead of buying another round.
+
+**Where to read it afterwards.** Every one of these decisions writes a line into the session
+file saying which of the three it was and what aforge did about it, beside the failed
+request it was made about.
 
 ## The model was printing garbage — a reply that repeats itself, started repeating the same line over and over, or comes back as gibberish
 

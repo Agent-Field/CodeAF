@@ -191,6 +191,54 @@ structural read on stderr so silence is diagnosable. Those are contracts, not
 conveniences — [HEADLESS.md](HEADLESS.md) is where they are written down and
 what every harness is programmed against.
 
+## Decision 8 — One boundary reads what a bad response meant
+
+**Decision.** Three things used to arrive at the harness looking the same, and
+every site answered for itself: the **transport** (nobody answered, or somebody
+answered with something that was not an answer), the **capability** of the model
+(a check read the finished work and named gaps), and the **work** (the job could
+not be done, or the request itself is what is refused). `internal/taxonomy` is
+the one place that tells them apart. `Classify(evidence, limits)` reads a small
+evidence struct into one of the three classes and returns the single policy
+registered for that class.
+
+**The three policies.** *Transport* retries on the same tier with the endpoint
+rotated underneath, N attempts doubling off one backoff — with **no** wait for an
+empty 200 or a mangled tool call, which are instant failures from a healthy
+endpoint that waiting does not mend. It never ends a turn and it never counts
+toward a lift. *Capability* buys **one** tier after K findings on the same tier
+with the wire ruled out, under a per-work cost cap, and hands the tier back the
+moment a check passes. *Work* takes no action and is returned to the caller with
+the evidence on it — which is where the landing machinery picks it up.
+
+**Why.** Nothing about who *served* a request is evidence about who was *asked*.
+On a five-run comparison the three runs that happened to roll four consecutive
+malformed refusals read them as the model being unable, bought a model seven
+times the price for the rest of the run and never came back down — 57–82% of
+bills of $9.50–15.80, against $2.33 for the run that never rolled four.
+
+**The knobs** are `internal/config`'s `ResponseLimitsAt`: `response.attempts`
+(N, default 4), `response.lift_after` (K, default 1 — the count was never what
+was wrong), `response.lift_cap_usd` (default $2 on a lifted tier per piece of
+work), each with an `AFORGE_RESPONSE_*` pin. They are values in one struct, not
+constants at the sites that need them.
+
+**Where it is wired.** `internal/session/taxonomy_boundary.go` is the adapter and
+the only file in that package allowed to call `Classify` or to buy a dearer
+model. It is asked at the turn loop's retry ladder, at the turn loop's empty 200
+(which no longer ends the turn), at the errand ladder's deadline, at the node's
+model move after a run ends on a provider failure, and at the repair gate. Each
+classification writes one journal line, `type: "failure"`, carrying the class,
+the reason, the action and whatever evidence was there — so a bench counts the
+ratio of transport to capability rather than reconstructing it.
+
+**Why a registry and not a switch.** A switch on the class at each site is three
+answers that start the same and drift the first time one is fixed. Two structural
+tests hold the line (`internal/session/taxonomy_law_test.go`): `Classify` may be
+called only from the boundary file, and so may the two functions that put work on
+a dearer model. A new escalation trigger added anywhere else fails the build with
+its line number.
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and
