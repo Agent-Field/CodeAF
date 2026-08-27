@@ -100,6 +100,15 @@ func (b *formingBatch) reset() {
 	b.mu.Unlock()
 }
 
+func (b *formingBatch) any() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.calls) > 0
+}
+
 // note folds one provider forming event in and answers with the Event to send,
 // or false to stay quiet this fragment.
 //

@@ -582,6 +582,7 @@ type journalUsage struct {
 type journalSteer struct {
 	At       string `json:"at,omitempty"`
 	Consumed bool   `json:"consumed"`
+	Landing  string `json:"landing,omitempty"`
 }
 
 // journalPartImage names the one non-text part a person's message can carry
@@ -1202,6 +1203,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 				rememberSteer(steers, message, SteerMark{
 					At:       steerInstant(entry.Steer.At),
 					Consumed: entry.Steer.Consumed,
+					Landing:  entry.Steer.Landing,
 				})
 			}
 			messages = append(messages, message)
@@ -1737,11 +1739,11 @@ func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
 //
 // A steer carries no pictures ([Agent.Steer] takes words only), which is why
 // this door takes no references.
-func (s *sessionFile) appendSteer(message ai.Message, at time.Time) {
+func (s *sessionFile) appendSteer(message ai.Message, note SteerNote) {
 	if s == nil {
 		return
 	}
-	mark := SteerMark{At: at, Consumed: true}
+	mark := SteerMark{At: note.At, Consumed: true, Landing: note.Landing}
 	s.mu.Lock()
 	if s.steers == nil {
 		s.steers = make(map[string]SteerMark, 4)
@@ -1752,7 +1754,7 @@ func (s *sessionFile) appendSteer(message ai.Message, at time.Time) {
 		Type:      "message",
 		Role:      message.Role,
 		Content:   messageContentText(message),
-		Steer:     &journalSteer{At: steerStamp(at), Consumed: true},
+		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: true, Landing: note.Landing},
 		Timestamp: stamp(),
 	})
 }
@@ -1779,7 +1781,7 @@ func (s *sessionFile) appendSteerFellThrough(note SteerNote) {
 		Type:      "steer",
 		Role:      "user",
 		Content:   note.Words,
-		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: false},
+		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: false, Landing: note.Landing},
 		Timestamp: stamp(),
 	})
 }
@@ -1892,7 +1894,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// its mark would come back from the next resume as a question of its own,
 		// and the turn it was typed into would lose the correction that shaped it.
 		if mark := s.steerMark(message); mark != nil {
-			s.appendSteer(message, mark.At)
+			s.appendSteer(message, SteerNote{At: mark.At, Landing: mark.Landing})
 			continue
 		}
 		var reasoning provider.MessageReasoning

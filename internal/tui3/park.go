@@ -223,12 +223,12 @@ func (a *app) recallParkedAt(i int) bool {
 //
 // AND THE THIRD PIECE IS THE OTHER THING THAT CAN HAPPEN TO A WAITING MESSAGE:
 // it does not have to wait. `→` over an empty box promotes it INTO the answer
-// that is running, where it lands at the next step boundary with nothing
-// stopped and nothing thrown away (steer.go). It is drawn between the stop and
-// the edit because that is the order of what the three cost — the answer is
-// kept, the answer is kept and the message goes now, the message comes back to
-// be changed — and it is dropped by the same question the stop is, because a
-// turn that is winding down has no boundary left to steer into either.
+// that is running. A streaming generation stops there and keeps what arrived;
+// a long bash becomes a job; a short tool is allowed to reach its boundary
+// (steer.go). It is drawn between the stop and the edit because those are the
+// three available choices for the waiting sentence, and it is dropped by the
+// same question the stop is, because a turn that is winding down has no
+// boundary left to steer into either.
 var parkedHint = []string{
 	"waits for this answer", "esc " + bargeSendWord, steerArrowWord, "↑ or click to edit",
 }

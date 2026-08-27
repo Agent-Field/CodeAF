@@ -511,11 +511,18 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			// the words and not the boundary the model was given them at, and a
 			// fade measured from the wrong instant would light a row from yesterday
 			// as though it had just landed.
+			//
+			// THE ENGINE'S OWN ACCOUNT OF WHERE IT LANDED comes back with it
+			// ([session.SteerMark.Landing]) — the reply it cut, the bash it adopted
+			// — so a mark the journal wrote as still waiting reads on the page
+			// exactly as it read live. On a landed correction the clause is gone
+			// already, because the block's position is what says where it went.
 			if e.Steer != nil && text != "" {
 				blocks = append(blocks, entry{
 					kind: entrySteer, turn: turn,
 					steer: &steerElbow{
 						words: text, at: e.Steer.At, consumed: e.Steer.Consumed,
+						landing: strings.TrimSpace(e.Steer.Landing),
 					},
 				})
 				continue

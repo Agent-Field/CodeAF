@@ -2978,10 +2978,12 @@ func (a *app) hintWord() string {
 		// NAME A KEY THAT WORKS forbids. The block's own dim line drops the same
 		// piece on the same question (park.go's [parkedWord]).
 		return parkedHint[1]
-	case a.bargeOffered():
+	case a.steerOffered() || a.bargeOffered():
 		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches
-		// the two things enter's neighbourhood now means — it waits, or the chord
-		// stops the answer and sends it (bargein.go). It is the ONE state this line
+		// the things enter's neighbourhood now means. On a steerable session enter
+		// stops the current generation and sends the correction into the same turn;
+		// a secondary chord can instead stop the whole turn or park the sentence.
+		// It is the ONE state this line
 		// is drawn in, which is the emptiness law: over an empty box there is
 		// nothing to send, at rest there is nothing to stop, and in either the line
 		// would be a permanent cheatsheet in the slot this surface stopped keeping
@@ -2994,18 +2996,10 @@ func (a *app) hintWord() string {
 		// a message has already found the queue; this line is for somebody who has
 		// not.
 		//
-		// AND IT IS ABSENT WHERE THE CHORD IS. [app.bargeOffered] asks the terminal
-		// before it asks anything else, so on a terminal that cannot spell
-		// `shift+enter` this case never fires and the plain interrupt below keeps
-		// the slot — the capability law reaching the advertisement and not only the
-		// key.
-		//
-		// AND THE THIRD MEANING IS SPLICED IN WHERE IT CAN BE DELIVERED (steer.go's
-		// [app.typingHint]): `cmd+enter` puts the sentence INTO the running answer,
-		// stopping nothing. It makes the same conditional about the same terminal
-		// answer that the chord beside it does, so a terminal that can spell
-		// neither never reaches this case and one that can spell both is told
-		// about both.
+		// PLAIN ENTER IS STILL NAMED ON THE SIMPLEST TERMINAL. [app.typingHint]
+		// removes only the secondary chords when the terminal cannot distinguish
+		// them, because hiding the universally available steer would recreate the
+		// discoverability failure this line exists to prevent.
 		return a.typingHint()
 	case a.state == stateWorking:
 		return "esc interrupt"

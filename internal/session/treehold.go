@@ -150,7 +150,7 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 
 // treeCovers reports whether `path` is the tree `dir` or something under it.
 func treeCovers(dir, path string) bool {
-	relative, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	relative, err := filepath.Rel(canonicalPath(dir), canonicalPath(path))
 	if err != nil {
 		return false
 	}
@@ -161,7 +161,7 @@ func treeCovers(dir, path string) bool {
 // is not a copy of its own.
 func strictlyInside(inner, outer string) bool {
 	inner, outer = strings.TrimSpace(inner), strings.TrimSpace(outer)
-	if inner == "" || outer == "" || filepath.Clean(inner) == filepath.Clean(outer) {
+	if inner == "" || outer == "" || canonicalPath(inner) == canonicalPath(outer) {
 		return false
 	}
 	return treeCovers(outer, inner)

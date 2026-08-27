@@ -20,14 +20,18 @@ import (
 //	  ├─▶ read lexer.go
 //	  ╰─▶ read parse.go
 //
-//	└ use the staging bucket, not production · ⠋ steering
+//	…the reply the correction cut, as far as it got…
+//
+//	└ use the staging bucket, not production · ⠋ stopped the reply here
 //
 //	  ╰─▶ bash go build
 //
 // The engine's account of this is internal/session/steer.go, and the sentence
-// that matters up here is its first: A STEER IS NEITHER A NEW QUESTION NOR AN
-// INTERRUPTION. It is more of the same question, arriving late. So it keeps the
-// ELBOW rather than the person's own `›` — the mark says "still the same
+// that matters up here is its first: A STEER INTERRUPTS THE CURRENT GENERATION
+// AND NOT THE TURN. The request in flight is cut, the assistant text that had
+// already arrived stays where it is, and the SAME question carries on from the
+// person's words. So the correction is not a new question — it keeps the ELBOW
+// rather than the person's own `›`, because the mark says "still the same
 // question" where a turn glyph would say "a new one" — and it is a block of the
 // transcript like any other, at the position it arrived at.
 //
@@ -89,10 +93,27 @@ import (
 // facts about the same row and the row says both:
 //
 //	accepted, not yet consumed   the working idiom — the spinner every live row
-//	                             on this surface turns, and the word `steering`
+//	                             on this surface turns, and the engine's own
+//	                             account of where the words are landing
 //	consumed                     the reading ladder's own fade: ink while it is
 //	                             news, muted while it is recent, then the
 //	                             settled narr forever ([hudFresh], [hudWarm])
+//
+// THE CLAUSE IS THE ENGINE'S SENTENCE AND NOT THIS FILE'S GUESS. Cutting the
+// generation is one of three things the engine can do with a correction, and it
+// says which in [session.SteerNote.Landing]: `stopped the reply here` when the
+// request in flight was cut, `kept bash running as job 3` or `stopped the
+// running command` when a long foreground bash was adopted or killed, and
+// `waiting for the running step` when a short tool is being allowed to finish.
+// A surface that drew its own word for all three would be describing a machine
+// it cannot see; [steerPendingWord] is the fallback for a note that carries no
+// account at all, which no session sends and a scripted event can.
+//
+// THE CLAUSE IS NEWS AND GOES WHEN THE NEWS DOES. It answers "what is happening
+// to my words RIGHT NOW", so it is drawn while they are still waiting and is
+// gone once they land — after that the block's own POSITION says where they
+// landed, which is the whole of this file's design, and a clause repeating it
+// forever would be furniture rather than an answer.
 //
 // NOTHING CLAIMS CONSUMED BEFORE [session.EventSteerConsumed]. The whole worth
 // of the three events is that the surface can stop guessing, and a row that
@@ -155,10 +176,11 @@ const (
 )
 
 // steerPendingWord is what an elbow says while the model has NOT been given it
-// yet. It is the verb the engine and the person both already use for the act,
-// and it is a word rather than a bare spinner because every mark on this
-// surface has a word near it (docs/DESIGN-LANGUAGE.md's refusal of icon-only
-// minimalism).
+// yet AND the engine sent no account of where the words are landing
+// ([session.SteerNote.Landing] is the sentence it sends when it has one). It is
+// the verb the engine and the person both already use for the act, and it is a
+// word rather than a bare spinner because every mark on this surface has a word
+// near it (docs/DESIGN-LANGUAGE.md's refusal of icon-only minimalism).
 const steerPendingWord = "steering"
 
 // steerFellWord is the honesty line, in the dim "· " lane this surface says
@@ -181,6 +203,12 @@ type steerElbow struct {
 	// given these words, and the anchor the fade above is measured from. Zero
 	// while the steer is still waiting for a boundary.
 	landed time.Time
+	// landing is the ENGINE'S OWN account of where these words are going to
+	// arrive, carried on the acceptance ([session.SteerNote.Landing]): the reply
+	// in flight was cut, a long bash was adopted as a job or killed, or a short
+	// tool is being allowed to finish. It is the clause the row wears while it
+	// waits, and it is empty on a note that carried none.
+	landing string
 	// consumed is the fact itself. It is a field beside the instant rather than
 	// `!landed.IsZero()` because a REPLAYED elbow knows it landed and does not
 	// know when the surface would have said so — the journal keeps the SEND's
@@ -216,7 +244,10 @@ func (a *app) steerAccepted(note *session.SteerNote) tea.Cmd {
 	}
 	a.said(entry{
 		kind: entrySteer, turn: a.turn,
-		steer: &steerElbow{id: note.ID, words: strings.TrimSpace(note.Words), at: note.At},
+		steer: &steerElbow{
+			id: note.ID, words: strings.TrimSpace(note.Words), at: note.At,
+			landing: strings.TrimSpace(note.Landing),
+		},
 	})
 	a.follow()
 	a.touch()
@@ -410,9 +441,15 @@ func (a *app) elbowRows(elbow steerElbow, width int) []string {
 	}
 	// THE WORKING CLAUSE, on the row the sentence ended on when there is room —
 	// the spacing ladder's clause step, exactly as the turn's context mark takes
-	// it (turncontext.go) — and on a row of its own when there is not.
-	spin, tail := a.pal.muted(a.steerSpin()), a.pal.dim(" "+steerPendingWord)
-	room := ansi.StringWidth(steerClauseSep) + 1 + ansi.StringWidth(" "+steerPendingWord)
+	// it (turncontext.go) — and on a row of its own when there is not. Its words
+	// are the engine's account of where this correction is landing, and
+	// [steerPendingWord] only when it sent none.
+	word := elbow.landing
+	if word == "" {
+		word = steerPendingWord
+	}
+	spin, tail := a.pal.muted(a.steerSpin()), a.pal.dim(" "+word)
+	room := ansi.StringWidth(steerClauseSep) + 1 + ansi.StringWidth(" "+word)
 	if ansi.StringWidth(out[len(out)-1])+room <= width {
 		out[len(out)-1] += a.pal.dim(steerClauseSep) + spin + tail
 		return out

@@ -147,8 +147,8 @@ Several Claude sessions often work this repo at once, in the same working tree.
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
 `TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, four `internal/swepro`
-packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, four
-`cmd/harness-design` tests, `internal/config TestRegistryCoversEveryUserFacingEnvironmentPin`
+packages, four `cmd/harness-design` tests, `internal/config
+TestRegistryCoversEveryUserFacingEnvironmentPin`
 (`AFORGE_RELAY` in `internal/pair/service.go` is not in the registry), two `internal/guard`
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
 `internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
