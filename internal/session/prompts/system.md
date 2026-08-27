@@ -207,7 +207,7 @@ thing already ran, so relay it to the person in one line and never call `stand`
 again for it.
 
 # Delivery
-- No extra scope or easier substitute.
+- No extra scope or easier substitute; never punt half-solved work.
 - "Done": the specified behavior end to end plus every named acceptance criterion; not a compiling scaffold or a narrowed test.
 - Format MUST match the ask; prose brief; evidence and blocking details complete.
 
