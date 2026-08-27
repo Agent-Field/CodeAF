@@ -22,6 +22,19 @@ terminal that cannot draw the box — and the message box stays the sentence you
 writing. The tray already holds pictures; files sit on the same row, and a file's chip
 carries no number because there is nothing in the sentence for a number to point at.
 
+## I dropped a file and nothing happened
+
+Dropping a file onto the terminal is the same as `/attach <path>`. The terminal sends its
+local path as a paste; aforge recognizes a paste made only of real files, removes the path
+from the message box, and shows each file on the tray. Over `--host`, pressing `enter`
+sends those local bytes to the other machine before the turn starts. A picture gets its
+numbered picture chip and `[image #n]`; an ordinary file gets its unnumbered file chip.
+
+A folder is not attached, and a paste containing prose or a path that is not a real local
+file remains ordinary text. The same 10MB picture limit, 16MB ordinary-file limit, and
+32MB total ordinary-file limit apply. The visible chip is the confirmation that the drop
+landed; if there is no chip, no file will be sent.
+
 A full tray does not stop the command: `/attach` adds a second file rather than sending
 the first.
 

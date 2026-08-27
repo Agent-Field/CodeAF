@@ -2147,7 +2147,7 @@ func (a *app) Init() tea.Cmd {
 	// round trip to measure and because no frame is permission to call the wire.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		a.linkPingTick(), tea.RequestBackgroundColor}
+		a.linkPingTick(), a.prefetchReplayedPictures(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -6462,7 +6462,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// so the model gets the pixels rather than a string it has to guess about
 	// (imagepaste.go). Anything else falls through and is inserted as the text
 	// it plainly is.
-	if !a.pasteImages(text) {
+	if !a.pasteFiles(text) {
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))

@@ -460,7 +460,7 @@ The task roster lists this far conversation's work. Its rows come from the far
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
     same name on this machine. Now the far machine is asked whether the file is really
-    there, and a path it confirms is a link that opens the file itself — through a small
+    there, and a path it confirms is a link that fetches a read-only copy and opens that local copy — through a small
     door this window owns on `127.0.0.1`, never through `file://`. A path it has not
     confirmed stays plain text, exactly as at home, and a folder is not linked. `/files`
     opens that machine's folder as a page in your browser, `/files <path>` brings one file
@@ -468,6 +468,12 @@ The task roster lists this far conversation's work. Its rows come from the far
     conversation's `attachments/`. The whole of it — what turns into a link and what does
     not, where the copies live, the 16MB ceiling, who else can reach those addresses — is
     on *Opening files from that machine*.
+
+15. **A file dropped onto the terminal joins the attachment tray.** A terminal sends a
+    drop as a pasted local path. When the paste is only real files, aforge shows their
+    chips instead of putting those paths into the message. Pressing `enter` carries the
+    bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
+    take the reverse road automatically so their far bytes can be painted in this terminal.
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 

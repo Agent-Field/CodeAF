@@ -49,6 +49,34 @@ func TestDroppingAPictureLeavesATokenAndAttachesTheFile(t *testing.T) {
 	}
 }
 
+// An ordinary file dropped on the terminal takes the same visible tray road as
+// /attach. In a hosted conversation that tray is what makes the bytes cross
+// when the person sends, instead of leaving a local path in the draft.
+func TestDroppingAnOrdinaryFileAttachesItInsteadOfPastingItsPath(t *testing.T) {
+	a, _, dir := attachLab(t, map[string]int{"server.log": 12})
+	pasteText(t, a, filepath.Join(dir, "server.log"))
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the local path remained in the draft: %q", got)
+	}
+	if want := []string{"server.log"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+	if !a.chips[0].file {
+		t.Fatal("the dropped log became a picture chip")
+	}
+}
+
+func TestDroppingAFolderUsesTheAttachRefusal(t *testing.T) {
+	a, _, dir := attachLab(t, nil)
+	pasteText(t, a, dir)
+	if len(a.chips) != 0 || a.input.String() != "" {
+		t.Fatalf("the folder became draft or tray content: %q %v", a.input.String(), chipNames(a))
+	}
+	if said := strings.Join(plainRows(a), "\n"); !strings.Contains(said, filepath.Base(dir)+" is a folder · attach a file") {
+		t.Fatalf("the folder refusal was not shown:\n%s", said)
+	}
+}
+
 // A TERMINAL ESCAPES THE SPACES IN A DROPPED PATH, because the text it is
 // writing is meant for a shell. A screenshot is the file this matters most for:
 // macOS names them with four spaces in them, and a splitter that took every

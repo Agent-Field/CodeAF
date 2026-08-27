@@ -50,12 +50,22 @@ passed to the image model untouched. Leave them out for its own default.
 
 **You see it, in colour, in the terminal, without doing anything at all.**
 
-That automatic preview is for a session running on this machine. **Over `--host`, the
-generated picture is on the other machine, so the row stays as its full path instead of
-painting pixels from a path this terminal cannot read.** The path is clickable: opening
-it fetches the file and hands the local copy to your desktop. Home's `made for you` band
+Over `--host`, aforge fetches the generated picture from the other machine into this
+machine's cache and paints that local copy in the terminal when the tool finishes. The
+line under it remains the far path, because that is where the conversation wrote it. The
+path is clickable: opening it hands the read-only local copy to your desktop. Home's `made for you` band
 also lists the far machine's generated pictures, audio, music and video under the
 conversation that made them, and those paths open through the same file door.
+
+## Where did my picture go over ssh
+
+Over `--host`, the picture is written on the other machine and then its bytes are fetched
+back for the terminal preview. The row paints the fetched copy and names the far path
+under it. cmd+click that path on a Mac, ctrl+click it on Linux, or type `/files <path>`;
+aforge opens the read-only cached copy with the viewer on the machine you are sitting at.
+If the picture is over the connection's 16MB fetch limit, the far machine refuses the
+transfer by name and the path remains the honest answer. The refusal ends with the machine
+that still has it, exactly: ` · the picture remains on <machine>`.
 
 The line above is what aforge itself reads — a path is all that goes into the
 conversation — but the screen does more with it. The moment the call finishes,

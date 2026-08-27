@@ -228,6 +228,21 @@ spend the context window on bytes nothing has asked for yet.
 the far machine's boundaries, so a client-side check on `Fetch.File` would be a
 permission decision taken on the wrong machine.
 
+**What a click means on the surface machine.** A confirmed far path is never a
+`file://` link: that would ask the terminal to open the same spelling on the
+wrong disk. Its OSC-8 link points to a loopback `/o/<id>` capability owned by
+the surface. Spending it runs `Stat.Paths`, fetches changed bytes with
+`Fetch.File`, mirrors the cached object under its real name, and hands that
+local read-only path to the surface OS. Finished picture tools take the same
+fetch road before the terminal preview tries to decode them.
+
+**What a terminal drop means.** Desktop terminals express a dropped file as a
+bracketed paste of its local path. When the paste consists only of real local
+files, the surface turns them into attachment chips. On send their bytes travel
+through the existing attachment call and are remade in the far conversation's
+`attachments/` folder; an ordinary local path is never sent as though the far
+engine could read it.
+
 ## Decision 8 — The pairing crypto is borrowed, and the one piece nobody maintains is owned
 
 **Decision.** Pairing runs CPace over the six-digit code; the pairing channel and every
