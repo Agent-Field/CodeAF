@@ -28,6 +28,10 @@ import (
 func farWorld(now time.Time) session.World {
 	return session.World{
 		Read: now,
+		Artifacts: []session.Artifact{{
+			Path:    "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002/artifacts/chart.png",
+			Session: "bbbb000000000002", Title: "the sales chart", Kind: "image", Created: now,
+		}},
 		Projects: []session.Project{{
 			Dir: "-srv-code-api", Path: "/srv/code/api", Name: "api",
 			Sessions: []session.SessionRow{{
@@ -114,6 +118,9 @@ func TestTheWorldCrossesTheWire(t *testing.T) {
 	}
 	if !world.Read.Equal(now) {
 		t.Fatalf("the reading's own instant did not cross: %v want %v", world.Read, now)
+	}
+	if len(world.Artifacts) != 1 || world.Artifacts[0].Title != "the sales chart" {
+		t.Fatalf("the deliverables did not cross: %+v", world.Artifacts)
 	}
 	rows := world.Projects[0].Sessions
 	if len(rows) != 1 || rows[0].Title != "rewriting the importer" {

@@ -26,7 +26,15 @@ func drawDeliverablesBand(a *app, ctx bandContext) []string {
 	if !ok || ctx.now.Sub(cached.at) >= homeEvery {
 		sessionID := ctx.subject.row.ID
 		var rows []session.Artifact
-		for _, artifact := range session.ReadArtifacts(a.artifactsIndex()) {
+		artifacts := session.ReadArtifacts(a.artifactsIndex())
+		if a.hosted() {
+			// The index belongs to the machine that made the files. A hosted
+			// surface receives those rows with the cached world; reading the path
+			// above would read this machine's index and join unrelated rows to far
+			// conversation ids.
+			artifacts = a.home.world.Artifacts
+		}
+		for _, artifact := range artifacts {
 			if artifact.Session == sessionID {
 				rows = append(rows, artifact)
 			}

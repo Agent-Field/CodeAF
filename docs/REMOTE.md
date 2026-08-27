@@ -282,6 +282,12 @@ the root it was walked under. The surface reads it through one seam
 (`cmd/aforge`'s `hostWorld`), and **a hosted surface with no seam reads nothing
 at all** rather than falling back to its own disk.
 
+The engine door also adds that machine's deliverables index to the world. Home
+draws those rows under the far conversation that made them and opens their paths
+through the same fetch door as a path in a reply; it never joins a far session
+id to the surface machine's index. `/export` remains deliberately local and
+records into the surface machine's index because that is where its file lands.
+
 **Why one door and not one per place.** Five of the seven are built from that
 single walk — home lists it, tasks reads the task rows inside it, standing walks
 its projects to ask the far store what else stands there, spend joins its titles

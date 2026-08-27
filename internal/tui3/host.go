@@ -216,6 +216,11 @@ import (
 //	                  what a hosted session used to get with an apology under it
 //	                  ([filesRemoteWord]), and that is still what a connection
 //	                  with no file seam gets.
+//	the deliverables band
+//	                  THE FAR MACHINE'S. Its rows ride with Places.World, keyed
+//	                  by the far conversation id, and its paths become the same
+//	                  fetched links as paths in a reply. The surface never joins
+//	                  a far id to this machine's artifacts index.
 //	dropping a file ON the browse page
 //	                  IT LANDS IN THAT SESSION'S attachments/ FOLDER AND SAYS
 //	                  NOTHING. The wire's Deposit.File keeps a file without
@@ -234,6 +239,13 @@ import (
 //	                  inventing one belongs to the lane that owns the contract.
 //	                  STUB: with a wire method for it, this becomes a remote write
 //	                  and the note gains the host prefix like every other path.
+//	a generated picture
+//	                  A FETCHABLE PATH, NOT AN INLINE PREVIEW. The result names
+//	                  the far file and the ordinary far-path door opens it here;
+//	                  the half-block painter reads a local file, so it draws
+//	                  nothing until the bytes have crossed by an explicit open.
+//	                  The result line is kept whole rather than replaced by an
+//	                  error or a picture read from the wrong disk.
 
 // hosted reports whether the session under this surface is on another machine.
 func (a *app) hosted() bool { return a.host != "" }

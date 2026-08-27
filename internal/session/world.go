@@ -72,6 +72,12 @@ type World struct {
 	// Projects are the buckets under the places root, ordered by when somebody
 	// last spoke in one of their sessions.
 	Projects []Project
+	// Artifacts are the deliverables this machine's sessions made, newest first.
+	// They ride with the world because home draws them under their conversation
+	// rows, and a surface on another machine cannot read this machine's global
+	// artifacts index. ReadWorld does not fill them because the places root does
+	// not say where that index lives; the door that owns the state root does.
+	Artifacts []Artifact
 	// Read is when this reading was taken. Every age a surface draws is measured
 	// from it rather than from time.Now(), so a list drawn from one scan does not
 	// have rows aging at different instants.
