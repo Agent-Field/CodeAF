@@ -228,6 +228,31 @@ seconds. It is a poll of the far machine's DISK rather than a fact a frame reads
 so it is a different lane's question; it is written down because anybody counting
 frames on a real connection will see it and should know what it is.
 
+## The drop laws
+
+The storm laws are about a pointer. This one is about the keyboard, and it is the
+same bargain in the other direction: `internal/tui3/dropkeys.go` sits on the ONE
+line every typed character in the program passes through, because some terminals
+deliver a dragged file as KEYSTROKES rather than as the bracketed paste
+imagepaste.go was written for. A cost added there is a cost paid per character
+typed, forever, by everybody — so what it is allowed is counted rather than
+described.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **Ordinary typing arms no timer and asks the disk nothing.** A sentence of prose costs two integer comparisons a character and nothing else. | `internal/tui3/dropkeys_test.go` |
+| **Typing a slash command costs the same.** A dropped path is told from a command by a SEPARATOR INSIDE IT — `/var/folders` has one, `/help` does not — which is string work on runes already in memory. | `internal/tui3/dropkeys_test.go` |
+| **A burst arms ONE wakeup**, however many characters it holds, and the one in flight re-arms itself while characters are still arriving rather than a second one being asked for. It is `pointerFold.settling`'s shape exactly. | `internal/tui3/dropkeys_test.go` |
+| **A settled burst asks the disk at most once per word it holds**, and only after the string gate above has passed. | `internal/tui3/dropkeys_test.go` |
+| **A burst that names nothing builds no frame.** It provably mutated nothing `app.View` reads — the characters were already in the draft, put there by the keys that carried them — so it declares the frame before it, exactly as a folded motion does. | `internal/tui3/dropkeys_test.go` |
+
+`dropQuiet` is two `frameInterval`s and it is a QUIET WINDOW rather than a
+deadline: the fold settles when the sender has STOPPED, which is the only moment
+the run in hand is the whole path. A fixed deadline would convert `/a/b.png`
+while `/a/b.png.orig` was still arriving. Like every other clock in this file it
+is a mechanism and not a gate — no test here waits on it, they move a seam clock
+and deliver the wakeup by hand.
+
 ## The launch-path pins
 
 Two costs can hold a terminal dark before anything is drawn in it, and neither

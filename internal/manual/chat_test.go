@@ -851,6 +851,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I tab complete a path for /attach", "attaching-files"},
 		{"where does an attached file go over --host", "attaching-files"},
 		{"I dropped a file and nothing happened", "attaching-files"},
+		// The wave that made a KEYSTROKE-shaped drop land. The owner met both of
+		// these on a real terminal over --host, and both are asked in the words
+		// they used: the refusal they were given, and what they were looking at
+		// when they gave up on it.
+		{"I dropped a file and it said unknown command", "attaching-files"},
+		{"drag and drop shows the path as text", "attaching-files"},
+		{"why is the path of my screenshot in the message box", "attaching-files"},
+		{"my terminal types the drop instead of pasting it", "attaching-files"},
+		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
