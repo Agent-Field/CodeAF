@@ -975,6 +975,7 @@ func (c *Client) TaskRecord(uri string, tail int) (session.TaskRecord, error) {
 		return session.TaskRecord{}, err
 	}
 	return record, nil
+}
 
 func (c *Client) Ledger(since time.Time) (LedgerReading, error) {
 	payload, err := c.call(nil, MethodPlacesLedger, LedgerArgs{Since: since})
