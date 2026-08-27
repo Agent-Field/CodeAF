@@ -159,6 +159,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asker's own words were written into a heading, which is the fix this
 		// test is meant to provoke.
 		{"can you delete files", "what-i-can-do"},
+		{"do write edit and ls use the far disk over --host", "what-i-can-do"},
 		{"can you run tests for me", "what-i-can-do"},
 		{"can you start a dev server", "what-i-can-do"},
 		{"how do I see what a background job printed", "what-i-can-do"},
@@ -363,6 +364,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I see the picture you made without opening the row",
 			"making-pictures-audio-and-video"},
 		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
+		{"why is the picture you generated over --host not painted in my terminal", "making-pictures-audio-and-video"},
 		// Written from a real run: twelve clips rendered in parallel with
 		// nothing shared, stitched with a video-only crossfade — the person
 		// asked all three of these, in these words, and the answers were
@@ -829,6 +831,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// cannot see, and the two questions the copies provoke.
 		{"how do I open a file that is on the other machine", "opening-files-from-that-machine"},
 		{"why is that path not clickable over --host", "opening-files-from-that-machine"},
+		{"can I tab complete a path for /attach", "attaching-files"},
+		{"where does an attached file go over --host", "attaching-files"},
+		{"can I attach a whole folder", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
 		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},
