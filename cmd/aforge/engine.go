@@ -548,6 +548,16 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return session.ReadWorld(session.PlacesRoot())
 		},
 		PlacesRoot: session.PlacesRoot(),
+		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
+		// card behind a task row draws the last thing that piece of work said,
+		// which is in the node's own journal and not in the index — and a surface
+		// over --host has no way to open a journal on this disk. It reads it here
+		// instead, under this machine's own places root, which is the boundary
+		// [session.ReadTaskRecordUnder] applies rather than trusting the URI the
+		// other end handed back.
+		TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+			return session.ReadTaskRecordUnder(session.PlacesRoot(), uri, tail)
+		},
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them
 			// ([v3RecentSessions]): the far machine's disk is under the same

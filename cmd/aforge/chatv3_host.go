@@ -565,6 +565,25 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// existed (internal/tui3's [app.worldRoot]).
 		World:     world.world,
 		WorldRoot: welcome.PlacesRoot,
+		// AND ONE ROW OF THAT RECORD, WHEN SOMEBODY OPENS ITS CARD. It is a call
+		// and not a cache, unlike the world above: the world is asked on every
+		// place's open and on the beat, and this is asked once, on a press, about
+		// one of four hundred rows. The surface only ever makes it off its loop
+		// (internal/tui3's [app.readTaskTail]), so the wire's own deadline is the
+		// only clock it needs.
+		TaskRecord: client.TaskRecord,
+		TaskIndex: func() ([]session.TaskIndexEntry, bool) {
+			far, known := world.world()
+			if !known {
+				return nil, false
+			}
+			for _, row := range far.Sessions() {
+				if filepath.Clean(row.Transcript) == filepath.Clean(welcome.SessionFile) {
+					return append([]session.TaskIndexEntry(nil), row.Tasks.Rows...), true
+				}
+			}
+			return nil, true
+		},
 		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
 		// the machine that runs them, so both halves go over the wire and
 		// neither reads a store on this laptop — the far end answers about the

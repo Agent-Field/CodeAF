@@ -314,6 +314,25 @@ type Options struct {
 	// living on the server under a project on the laptop.
 	WorldRoot string
 
+	// TaskRecord is ONE ROW of that record read deeper than [Options.World]
+	// reads it: the last thing that piece of work said, out of the journal it
+	// left on the machine that ran it. nil is "this process's own disk", which is
+	// every local launch, where the card opens the journal itself.
+	//
+	// IT IS A CALL AND NOT A CACHE, which is where it parts company with the
+	// world beside it. The world is asked on every place's open and on the beat,
+	// so it has to answer from something warm; a record is asked once, when
+	// somebody presses one row, and there are four hundred rows — a cache of them
+	// would be a cache nobody reads twice. It is therefore ALLOWED to block, and
+	// the surface never calls it anywhere but off the loop, in a [tea.Cmd]
+	// (taskrecord.go's [app.readTaskTail]).
+	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
+
+	// TaskIndex is this conversation's rows from the same far world. False says
+	// the cache has not answered yet, so the roster waits instead of deciding
+	// that a machine full of work is empty.
+	TaskIndex func() ([]session.TaskIndexEntry, bool)
+
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no
 	// [Options.Start] was wired. Nil makes /new report that it is unavailable

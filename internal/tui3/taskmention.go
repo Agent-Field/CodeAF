@@ -41,6 +41,7 @@ package tui3
 // would be the first breach of it. Nothing here is silent.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,7 +98,10 @@ type taskMentionAgent interface {
 // ── the snapshot ────────────────────────────────────────────────────────────
 
 // tasksLoadedMsg carries the index read back to the loop.
-type tasksLoadedMsg struct{ rows []session.TaskIndexEntry }
+type tasksLoadedMsg struct {
+	rows  []session.TaskIndexEntry
+	known bool
+}
 
 // loadTasks reads the project's index off the loop, ONCE per surface — the same
 // discipline [app.loadFiles] follows, for a smaller reason: the file is small,
@@ -110,6 +114,13 @@ func (a *app) loadTasks() tea.Cmd {
 	if a.comp.tasksLoaded || a.comp.tasksHeld {
 		return nil
 	}
+	if read := a.farTasks; read != nil {
+		a.comp.tasksHeld, a.comp.tasksStale = true, false
+		return func() tea.Msg {
+			rows, known := read()
+			return tasksLoadedMsg{rows: rows, known: known}
+		}
+	}
 	agent, ok := a.agent.(taskMentionAgent)
 	if !ok {
 		// Nothing behind the seam to ask. Marked loaded so the question is asked
@@ -119,7 +130,7 @@ func (a *app) loadTasks() tea.Cmd {
 		return nil
 	}
 	a.comp.tasksHeld, a.comp.tasksStale = true, false
-	return func() tea.Msg { return tasksLoadedMsg{rows: agent.TaskIndex()} }
+	return func() tea.Msg { return tasksLoadedMsg{rows: agent.TaskIndex(), known: true} }
 }
 
 // tasksLoaded folds one read in and re-ranks whatever list is open over it.
@@ -129,8 +140,19 @@ func (a *app) loadTasks() tea.Cmd {
 // marking the snapshot loaded on them would leave the list stale for the rest of
 // the session, because nothing would ever ask again. So the rows are kept — they
 // are better than nothing to draw — and the read is immediately re-armed.
-func (a *app) tasksLoaded(rows []session.TaskIndexEntry) tea.Cmd {
+func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd {
+	if len(known) > 0 && !known[0] && a.farTasks != nil {
+		a.comp.tasksHeld = true
+		read := a.farTasks
+		return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+			rows, ready := read()
+			return tasksLoadedMsg{rows: rows, known: ready}
+		})
+	}
 	a.comp.tasks, a.comp.tasksHeld = rows, false
+	if a.hosted() {
+		a.adoptFarTaskRows(rows)
+	}
 	a.comp.tasksLoaded = !a.comp.tasksStale
 	if a.comp.open {
 		a.comp.rank()
@@ -140,6 +162,36 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry) tea.Cmd {
 		return nil
 	}
 	return a.loadTasks()
+}
+
+// adoptFarTaskRows gives the hosted roster the landed nodes already carried by
+// the far world. It does not invent live controls: these nodes remain records,
+// and the room behind one is read-only because the remote agent deliberately
+// implements none of the local room-action interfaces.
+func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
+	if a.tasks == nil {
+		a.tasks = map[uint64]*taskNode{}
+	}
+	for _, row := range rows {
+		id, err := strconv.ParseUint(strings.TrimSpace(row.ID), 10, 64)
+		if err != nil || id == 0 {
+			continue
+		}
+		node := a.tasks[id]
+		if node == nil {
+			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
+			a.tasks[id] = node
+			a.taskOrder = append(a.taskOrder, id)
+		}
+		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
+		node.title = taskTitleOf(node.label, "", id)
+		node.state = session.TaskState(row.Status)
+		node.elapsed = time.Duration(row.DurationMS) * time.Millisecond
+		node.cost, node.tokens, node.model = row.Cost, row.Tokens, strings.TrimSpace(row.Model)
+		node.report, node.changed = strings.TrimSpace(row.Outcome), append([]string(nil), row.Files...)
+		node.transcript = strings.TrimSpace(row.TranscriptURI)
+		node.kind = row.Kind
+	}
 }
 
 // refreshTasks says the snapshot is stale and reads it again if anybody is

@@ -62,8 +62,17 @@ type tasksPlace struct {
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
 	// journal that had nothing in it.
-	tail     string
-	tailRead bool
+	//
+	// tailKept says the journal is still on the disk of THE MACHINE THAT RAN THE
+	// WORK, and tailUnread that the machine could not be asked at all. They are
+	// three different sentences on the card and no two of them may be guessed
+	// from the others: a journal somebody deleted, a journal that never held a
+	// report, and a connection that did not answer look identical from an empty
+	// string ([session.TaskRecord] says the same from the other end).
+	tail       string
+	tailRead   bool
+	tailKept   bool
+	tailUnread bool
 
 	// reading is the whole page: every authority's answer to "what has this
 	// machine run", grouped once (tasksplace.go). EVERYTHING ON THE FRAME IS
@@ -627,7 +636,9 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 		return nil
 	}
 	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
-	a.taskSheet.detailTop, a.taskSheet.tail, a.taskSheet.tailRead = 0, "", false
+	a.taskSheet.detailTop = 0
+	a.taskSheet.tail, a.taskSheet.tailRead = "", false
+	a.taskSheet.tailKept, a.taskSheet.tailUnread = false, false
 	return a.readTaskTail(*entry)
 }
 

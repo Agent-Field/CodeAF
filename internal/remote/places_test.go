@@ -1,6 +1,9 @@
 package remote
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -103,5 +106,125 @@ func TestAnEngineWithNoWorldDoorRefusesRatherThanAnsweringEmpty(t *testing.T) {
 	t.Cleanup(func() { _ = loop.Close() })
 	if _, err := loop.Client.World(); err == nil {
 		t.Fatal("an engine with no world door answered a world")
+	}
+}
+
+// ── ONE ROW OF THE RECORD, READ ON THE MACHINE THAT HOLDS IT ────────────────
+//
+// The world above carries what a task row SAYS. The card behind one of those
+// rows draws one thing more — the last thing the node itself said — and that is
+// in the node's own journal, on the disk of the machine that ran the work. Until
+// Places.Task the surface read it off ITS disk, at a path that only exists on the
+// other one, and the miss came back as `its transcript is not on this disk any
+// more` about a journal sitting perfectly well over there.
+
+// farRecordEngine is an engine whose record is one real journal in a temp places
+// root, so these tests exercise [session.ReadTaskRecordUnder] rather than a
+// fixture standing in for it.
+func farRecordEngine(t *testing.T) (*Loop, string, string) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "-srv-code-api", "bbbb000000000002", "tasks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(dir, "20260826-094113_1.jsonl")
+	lines := `{"type":"message","role":"user","content":"widen the pipe"}` + "\n" +
+		`{"type":"message","role":"assistant","content":"thinking about it"}` + "\n" +
+		`{"type":"message","role":"assistant","content":"widened the pipe and re-ran the importer."}` + "\n"
+	if err := os.WriteFile(journal, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{
+			Agent: &fakeAgent{model: "m"}, Workspace: "/srv/code/api",
+			World:      func() session.World { return session.World{} },
+			PlacesRoot: root,
+			TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+				return session.ReadTaskRecordUnder(root, uri, tail)
+			},
+		}, nil
+	}})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	return loop, root, journal
+}
+
+// The report crosses, and it is the LAST thing the node said rather than the
+// first — which is the whole of what [session.PeekReport] is for.
+func TestOneRowOfTheRecordCrossesTheWire(t *testing.T) {
+	loop, _, journal := farRecordEngine(t)
+	record, err := loop.Client.TaskRecord("file://"+journal, 0)
+	if err != nil {
+		t.Fatalf("ask for the record: %v", err)
+	}
+	if record.Report != "widened the pipe and re-ran the importer." {
+		t.Fatalf("the report did not cross: %q", record.Report)
+	}
+	// AND WHETHER THE JOURNAL IS STILL THERE IS ITS OWN FACT. A folder somebody
+	// deleted and a journal that never held a report are two different sentences
+	// on the card, and only the machine holding the file can tell them apart.
+	if !record.Kept {
+		t.Fatal("a journal that is on the engine's disk did not say so")
+	}
+}
+
+func TestARoomTailCrossesTheRecordDoor(t *testing.T) {
+	loop, _, journal := farRecordEngine(t)
+	record, err := loop.Client.TaskRecord("file://"+journal, session.TaskJournalTail)
+	if err != nil {
+		t.Fatalf("ask for the room journal: %v", err)
+	}
+	if !bytes.Contains(record.Journal, []byte(`"content":"widen the pipe"`)) ||
+		!bytes.Contains(record.Journal, []byte(`"content":"widened the pipe and re-ran the importer."`)) {
+		t.Fatalf("the journal tail did not cross whole: %q", record.Journal)
+	}
+}
+
+// A row whose journal has been deleted is an ANSWER and not a refusal: the row
+// still names the file, the card still says where it was, and `Kept` false is the
+// sentence the card has for exactly this.
+func TestAJournalTheEngineNoLongerHasIsAnAnswer(t *testing.T) {
+	loop, root, _ := farRecordEngine(t)
+	record, err := loop.Client.TaskRecord("file://"+filepath.Join(root, "-srv-code-api", "bbbb000000000002", "tasks", "gone.jsonl"), 0)
+	if err != nil {
+		t.Fatalf("a deleted journal was refused rather than answered: %v", err)
+	}
+	if record.Kept || record.Report != "" {
+		t.Fatalf("a deleted journal answered as though it were there: %+v", record)
+	}
+}
+
+// AND NOTHING OUTSIDE THE RECORD CROSSES. The URI came off a row this machine
+// wrote, but a door that trusted that would be a permission decision taken on the
+// strength of what the other end says — so the root is checked here, on the
+// machine that owns it (internal/remote's two-roots law, stated for the one
+// directory this door answers about).
+func TestNothingOutsideTheEnginesRecordCrosses(t *testing.T) {
+	loop, _, _ := farRecordEngine(t)
+	outside := filepath.Join(t.TempDir(), "secrets.jsonl")
+	if err := os.WriteFile(outside, []byte(`{"type":"message","role":"assistant","content":"no"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loop.Client.TaskRecord("file://"+outside, 0); err == nil {
+		t.Fatal("a journal outside the engine's record crossed the wire")
+	}
+}
+
+// An engine with no record door REFUSES, on the world door's own law: an empty
+// record answered here would reach the card as a piece of work that said nothing
+// at the end, which is a claim.
+func TestAnEngineWithNoRecordDoorRefusesRatherThanAnsweringEmpty(t *testing.T) {
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: &fakeAgent{model: "m"}, Workspace: "/srv/code/api"}, nil
+	}})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	if _, err := loop.Client.TaskRecord("file:///srv/anything.jsonl", 0); err == nil {
+		t.Fatal("an engine with no record door answered a record")
 	}
 }
