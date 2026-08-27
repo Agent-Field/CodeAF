@@ -1917,7 +1917,18 @@ type Agent struct {
 	turnFloor int
 	cancel    context.CancelFunc
 	steering  []userMessage
-	closed    bool
+	// ambient is periodic watch news that must wait for a TURN boundary.
+	//
+	// It is separate from steering because a step boundary is not a turn
+	// boundary. Putting both on one slice made a watch that ticked during a
+	// five-step tool loop interrupt every following request. An owed note may
+	// still take this queue with it at a step boundary, so all news that has
+	// accumulated reaches the model as one batch rather than two accounts of
+	// the same interval. Other session-authored guidance remains on steering:
+	// loop recovery and task control are instructions for the next step, not
+	// periodic telemetry.
+	ambient []userMessage
+	closed  bool
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be

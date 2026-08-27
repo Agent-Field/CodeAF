@@ -28,20 +28,17 @@ package session
 //     baseline delivered as news would be exactly the fifty-line chunk this tool
 //     exists to stop sending.
 //
-//   - IT RIDES THE STEERING LANE. The note is appended by the same registry
-//     notify a job's exit note uses (jobs.go), drained into the transcript at
-//     the next step boundary, read as plain user text. No push, no new event, no
-//     change to any surface: news that arrives while the model is busy already
-//     has a lane, and a second one would be a second ordering rule and a second
-//     way to land inside a tool batch, which every provider rejects.
+//   - IT RIDES THE AMBIENT LANE. The full tick is kept in the job log, while a
+//     compact update waits in agent.go until the turn boundary. Several ticks
+//     become one count plus the newest fact. No push and no new surface event:
+//     the job row and log remain live, while the model is protected from a
+//     synthetic user message in the middle of unrelated work.
 //
-//     AND IT WAKES AN IDLE SESSION, which is the half a watch cannot do without.
-//     The tool exists because the model STOPPED polling, so on an idle session
-//     there is nothing left that will ever come and look: a delta that only
-//     queued would wait for the person to type, which is the poll this replaced,
-//     moved onto them. The wake and its coalescing are agent.go's
-//     ([Agent.enqueueSteering]) — a watch ticking every ten seconds into a
-//     running turn adds lines to it and starts nothing.
+//     IT DOES NOT WAKE AN IDLE SESSION. A watch is periodic telemetry rather
+//     than a new question, and waking once per delta turns a quiet observer into
+//     an autonomous conversation. Its accumulated result is waiting in the
+//     next turn's opening batch, and `jobs output` holds every tick if the model
+//     needs the detail.
 //
 // Two governors, because a timer that never stops is a way to burn a session
 // down. THREE WATCHES AT A TIME, so a model that discovers the tool cannot turn
@@ -211,7 +208,7 @@ type watchState struct {
 // The concurrency limit is INTERPOLATED, never typed: [watchMaxConcurrent] is
 // what claimWatch actually enforces and a digit here would be the second copy
 // that drifts.
-var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists and kills it) whose notes arrive at the next step boundary. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
+var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists and kills it) whose updates are batched at the turn boundary, never injected mid-turn; use jobs output for every tick. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
 
 // Every bound in the schema is INTERPOLATED from the constant the parser clamps
 // against ([parseWatchArguments]), for the one-source-of-truth law's reason: a
@@ -480,8 +477,8 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 		if ctx.Err() != nil {
 			break
 		}
-		if note != "" && r.notify != nil {
-			r.notify(note)
+		if note != "" && r.notifyWatch != nil {
+			r.notifyWatch(spec.name, note)
 		}
 		if final {
 			break
