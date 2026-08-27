@@ -4377,7 +4377,11 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// <workspace>/.aforge-v3, and a worker's workspace is the person's
 		// repository or a worktree of it. landing.go states the law and the
 		// measured failure; this line is the whole of the fix for a task node.
-		droppings:      family,
+		droppings: family,
+		// AND WHETHER THIS DIRECTORY IS A PROJECT, which is the family's question
+		// and not the worker's: a worker carries no Place (session.go), so the
+		// answer is settled here, once, while the family's is in hand.
+		ownSpace:       standingInOwnSpace(family, dir),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,
@@ -4726,9 +4730,17 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 		}
 		return taskTree{dir: dir, merge: mergeInPlace}, nil
 	}
-	if place.Owned {
-		return taskTree{}, fmt.Errorf("this task needs a project; use /workspace <path> or name where it should work")
-	}
+	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
+	// for it. A conversation opened outside any project has a workspace of its
+	// own — work/, which the door makes into a repository with a first commit
+	// precisely so that tasks get worktrees (cmd/aforge's prepareOwnedWorkspace)
+	// — so it HAS somewhere to stand and needs nothing said about projects. This
+	// once refused every such task with "this task needs a project", which was a
+	// person being turned away from work that needed no repository at all: file
+	// an issue, read something, write a document. The two roads below already
+	// answer the only case that has nowhere to branch from — an owned workspace
+	// from an older build, or one whose git init failed, which is not a
+	// repository and runs in place and says so.
 	root, ok := repositoryRoot(workspace)
 	if !ok {
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
@@ -4776,6 +4788,44 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
 	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
+}
+
+// inOwnSpace is [standingInOwnSpace] asked of a whole Config, and the two
+// answers are the two kinds of agent there are. A CONVERSATION carries its Place
+// and can be asked directly. A WORKER carries none on purpose (session.go's
+// droppings states why), so the constructor that built it wrote the answer down.
+func (c Config) inOwnSpace() bool {
+	return c.ownSpace || standingInOwnSpace(c.Place, c.Workspace)
+}
+
+// standingInOwnSpace answers whether a worker's directory is THE CONVERSATION'S
+// OWN SPACE rather than a project: the owned session's work/ repository, or a
+// worktree cut from it under trees/.
+//
+// IT IS ASKED BECAUSE THE TWO LOOK IDENTICAL FROM INSIDE. A worker that opens a
+// directory holding nothing cannot tell a conversation that never had a project
+// from a checkout that failed, and the second reading is the one that sends it
+// hunting for a repository nobody ever named. One line in its prompt settles it
+// (prompt.go), and the line is only true of these directories: a place the
+// person named explicitly is somewhere they chose, and never this.
+func standingInOwnSpace(place Place, dir string) bool {
+	if !place.Owned {
+		return false
+	}
+	dir = canonicalPath(strings.TrimSpace(dir))
+	if dir == "" {
+		return false
+	}
+	for _, own := range []string{place.Workspace, place.Work(), place.Trees()} {
+		own = canonicalPath(strings.TrimSpace(own))
+		if own == "" {
+			continue
+		}
+		if dir == own || strings.HasPrefix(dir, own+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveTaskWhere(where, workspace string) (string, error) {
