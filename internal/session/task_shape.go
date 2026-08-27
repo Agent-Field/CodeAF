@@ -110,13 +110,14 @@ const taskPersonAcceptance = "Complete the brief and report the result and check
 // with something other than the object. It is [Agent.judgeDecomposable]'s move,
 // and it restates the schema rather than only complaining, so a model that
 // forgot the shape is told the shape.
-const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"..."}`
+const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"...","where":"..."}`
 
 // shapedBrief is the wire form of the answer.
 type shapedBrief struct {
 	Title      string `json:"title"`
 	Brief      string `json:"brief"`
 	Acceptance string `json:"acceptance"`
+	Where      string `json:"where"`
 }
 
 // unshaped is what a caller is handed when no shaper ran: the person's own
@@ -239,5 +240,6 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 		shaped.Acceptance = taskPersonAcceptance
 	}
 	shaped.Title = cleanTitle(shaped.Title)
+	shaped.Where = strings.TrimSpace(shaped.Where)
 	return shaped, true
 }

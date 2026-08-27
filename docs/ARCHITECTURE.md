@@ -191,6 +191,118 @@ structural read on stderr so silence is diagnosable. Those are contracts, not
 conveniences — [HEADLESS.md](HEADLESS.md) is where they are written down and
 what every harness is programmed against.
 
+## Decision 8 — One boundary reads what a bad response meant
+
+**Decision.** Three things used to arrive at the harness looking the same, and
+every site answered for itself: the **transport** (nobody answered, or somebody
+answered with something that was not an answer), the **capability** of the model
+(a check read the finished work and named gaps), and the **work** (the job could
+not be done, or the request itself is what is refused). `internal/taxonomy` is
+the one place that tells them apart. `Classify(evidence, limits)` reads a small
+evidence struct into one of the three classes and returns the single policy
+registered for that class.
+
+**The three policies.** *Transport* retries on the same tier with the endpoint
+rotated underneath, N attempts doubling off one backoff — with **no** wait for an
+empty 200 or a mangled tool call, which are instant failures from a healthy
+endpoint that waiting does not mend. It never ends a turn and it never counts
+toward a lift. *Capability* buys **one** tier after K findings on the same tier
+with the wire ruled out, under a per-work cost cap, and hands the tier back the
+moment a check passes. *Work* takes no action and is returned to the caller with
+the evidence on it — which is where the landing machinery picks it up.
+
+**Why.** Nothing about who *served* a request is evidence about who was *asked*.
+On a five-run comparison the three runs that happened to roll four consecutive
+malformed refusals read them as the model being unable, bought a model seven
+times the price for the rest of the run and never came back down — 57–82% of
+bills of $9.50–15.80, against $2.33 for the run that never rolled four.
+
+**The knobs** are `internal/config`'s `ResponseLimitsAt`: `response.attempts`
+(N, default 4), `response.lift_after` (K, default 1 — the count was never what
+was wrong), `response.lift_cap_usd` (default $2 on a lifted tier per piece of
+work), each with an `AFORGE_RESPONSE_*` pin. They are values in one struct, not
+constants at the sites that need them.
+
+**Where it is wired.** `internal/session/taxonomy_boundary.go` is the adapter and
+the only file in that package allowed to call `Classify` or to buy a dearer
+model. It is asked at the turn loop's retry ladder, at the turn loop's empty 200
+(which no longer ends the turn), at the errand ladder's deadline, at the node's
+model move after a run ends on a provider failure, and at the repair gate. Each
+classification writes one journal line, `type: "failure"`, carrying the class,
+the reason, the action and whatever evidence was there — so a bench counts the
+ratio of transport to capability rather than reconstructing it.
+
+**Why a registry and not a switch.** A switch on the class at each site is three
+answers that start the same and drift the first time one is fixed. Two structural
+tests hold the line (`internal/session/taxonomy_law_test.go`): `Classify` may be
+called only from the boundary file, and so may the two functions that put work on
+a dearer model. A new escalation trigger added anywhere else fails the build with
+its line number.
+
+## Decision 9 — Every session has a principal; unattended sessions get a Steward
+
+**Decision.** One interface, `session.Principal`, is the addressee of every road
+in the engine that ends in "ask the person": `Ask`, `Acceptance`, `Budget`,
+`Report(landing)` and `Decide(remains) → {carry on with a brief | done | stop
+with a reason}`. Two implementations. `Person` is the attended session and
+**adds nothing** — it holds no acceptance, has no budget, turns no landing into
+work, and decides exactly what `readRemains`'s empty string already decided.
+`Steward` is the unattended one: `chat --yolo` **with a budget**.
+
+**Why.** Autonomous runs were ending with most of their budget unspent, holding
+partial work. The cause was not a bug in any function: it was a correct sentence
+addressed to somebody who was not there. A landing that ran out of repair rounds
+tells the model to "offer them a follow-up in their own words"; with no them,
+the model answers in words, the turn ends, and the session idles. Nothing
+anywhere held the whole ask, and nothing ever looked at the tree or at what the
+session had left lying beside it.
+
+**A budget is what arms it, and nothing else.** `--yolo` says one thing today —
+run tools without asking — and reading it as permission to spend hours carrying
+work on would be the harness acting on a sentence nobody wrote. `--max-hours`
+and `--max-cost` (env `AFORGE_MAX_HOURS` / `AFORGE_MAX_COST`, either alone is a
+budget) are that sentence. Without one, `--yolo` is exactly what it was and the
+door prints one line saying what the other thing is called.
+
+**What routes through it.**
+
+| road | before | with a Steward |
+|---|---|---|
+| a stopped turn (`checkpointReopen`) | the mark reader's line, or the turn ends | the same line, plus the session acceptance, how the units of work landed, and — only when a principal says the ask is met — the declared checks re-run from clean |
+| a landing that ran out of repair rounds (`taskNote`) | "offer them a follow-up" | `Report` turns the audit's own account of the gap into the next brief, in the same working copy |
+| a landing nobody could judge (`settlePolicy`) | waits on a card | settles itself, as a headless run already did |
+| the post-turn work judge (`routeJudge`) | skips every woken turn | a woken turn is judged against the session's frozen ask — the only kind of turn an unattended run has after its first |
+| a standing item (`askStanding`) | "nobody is here to say yes" | the goal owner answers its own card, within the rails `Item.Validate` already demands |
+
+**Session acceptance.** At the start of the first turn the judge's own machinery
+(`routeVerdictContract`, `routeAcceptance`) writes one `done when` sentence for
+the **whole** ask, journaled and frozen for the session — a done-condition the
+work can rewrite is one the work grades itself against. Every acceptance before
+this was one unit of work's, read only by that unit's auditor.
+
+**The terminal audit.** Before a Steward may say done: re-run the checks the work
+itself named (`declaredChecks`, the same reading a unit of work's auditor uses),
+each in a fresh process in the deliverable tree; then reconcile everything the
+session created. A created path inside the deliverable tree is part of the
+answer; outside it, it is scratch, and scratch is removed and written down.
+Nothing the session did not create is ever touched — the created bit is measured
+before the call that writes the file and journaled, so it survives a resume — and
+a `Person`'s session deletes nothing at all, it is offered the list.
+
+**Rails.** The budget stops the run with a report rather than with silence. The
+same failure signature three times stops it for good; the signature is the
+audit's own first line today and is the field a proper failure classification
+drops into unchanged. "Done" requires the acceptance to hold from clean, and a
+session that has finished no unit of work is never done whatever its transcript
+says.
+
+**Why an interface rather than flags on the agent.** The two answers are a
+policy, not a branch: a third principal — a person on another machine, a queue,
+a scheduled owner — has to be writable without any road in the engine learning a
+new name. Two structural tests hold the line: one fails when a new road onto the
+wake queue appears without saying who it is addressed to, and one fails when a
+person-addressed sentence is written anywhere that has never heard of a
+principal.
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and

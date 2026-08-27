@@ -122,12 +122,13 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          AFORGE_VERSION: ${{ needs.version.outputs.tag }}
         run: |
           mkdir -p dist
+          AFORGE_REV="$(git rev-parse --short HEAD)"
+          AFORGE_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build \
             -trimpath \
-            -ldflags="-s -w -X main.version=${AFORGE_VERSION}" \
+            -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=${AFORGE_REV} -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=false -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=${AFORGE_BUILT_AT}" \
             -o "dist/aforge-${GOOS}-${GOARCH}${{ matrix.extension }}" \
             ./cmd/aforge
       - uses: actions/upload-artifact@v4

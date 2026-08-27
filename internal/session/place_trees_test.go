@@ -48,11 +48,75 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 		t.Fatalf("branch = %q, want a task branch", tree.branch)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "all of it\n")
-	if merge, detail := tree.comeHome("do the thing"); merge != mergeMerged {
+	if merge, detail := tree.comeHome("do the thing", []string{"done.txt"}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "done.txt")); err != nil {
 		t.Fatalf("the work did not land in the person's tree: %v", err)
+	}
+}
+
+// An owned work/ repository is bookkeeping, never the project a task branches
+// from. With no anchor the task asks for one; non-code work may explicitly stay
+// in place, and neither road registers an empty worktree.
+func TestAnOwnedScratchWorkspaceIsNeverATaskBranchSource(t *testing.T) {
+	work := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: work, Owned: true}
+
+	if _, err := prepareTaskTreeAt(place, work, "owned", 1, "change the code", ""); err == nil ||
+		!strings.Contains(err.Error(), "/workspace <path>") {
+		t.Fatalf("default owned task error = %v, want the one-line anchor request", err)
+	}
+	if list := gitOut(t, work, "worktree", "list"); strings.Contains(list, place.Trees()) {
+		t.Fatalf("the scratch repository gained a task worktree:\n%s", list)
+	}
+	tree, err := prepareTaskTreeAt(place, work, "owned", 2, "write notes", "in place")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.dir != work || tree.merge != mergeInPlace {
+		t.Fatalf("in-place tree = %+v, want the owned workspace itself", tree)
+	}
+}
+
+func TestAnExplicitTaskPlaceIsTheWorkersExactDirectory(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	named := t.TempDir()
+	tree, err := prepareTaskTreeAt(place, repo, "named", 3, "write there", named)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.dir != named || tree.merge != mergeInPlace || tree.branch != "" {
+		t.Fatalf("explicit tree = %+v, want exact in-place directory %s", tree, named)
+	}
+	if _, err := os.Stat(filepath.Join(place.Trees(), "3")); !os.IsNotExist(err) {
+		t.Fatalf("an explicit place also created a task-folder worktree (%v)", err)
+	}
+}
+
+func TestAFailedTaskKeepsItsFolderWithoutAWorktreeRegistration(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	tree, err := prepareTaskTree(place, repo, "failed", 4, "unfinished change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "notes.txt"), "unfinished\n")
+	if merge, _ := keptWork(tree, "unfinished change", []string{"notes.txt"}); merge != mergeAborted {
+		t.Fatalf("merge = %q", merge)
+	}
+	if list := gitOut(t, repo, "worktree", "list"); strings.Contains(list, tree.dir) {
+		t.Fatalf("failed task remained registered:\n%s", list)
+	}
+	if _, err := os.Stat(filepath.Join(tree.dir, "notes.txt")); err != nil {
+		t.Fatalf("the kept task folder lost its leavings: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tree.dir, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the kept folder still claims to be a worktree (%v)", err)
+	}
+	if left := leftBehind(tree.dir); len(left) != 0 {
+		t.Fatalf("the empty leavings snapshot became %v after unregistering", left)
 	}
 }
 

@@ -27,9 +27,16 @@ and seen how many there really are. That is *When a task turns out to be too wid
 worker*, below. A no, a timeout or an unreadable answer starts the same one worker in
 silence, with no line about width, after `sizing it up…` disappears.
 
-`/task solo <brief>` skips the judge and starts one worker. `/task adaptive <brief>` skips
-it too and starts a planner and a fleet instead — that is the door to an adaptive run, and
-it is the only thing that opens one from `/task`.
+`/task solo <brief>` skips the judge and starts one worker.
+
+**There is no `/task adaptive` any more.** `/task` cannot open an adaptive run, and the
+word picks nothing. Type it and your brief is kept exactly as you typed it — the word is
+left where you put it rather than cut out of your sentence — the work starts as one
+ordinary worker, and one dim line says so:
+
+```
+/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes
+```
 
 **Every `/task` has its brief shaped before the work starts.** Your words are kept word for
 word and a fuller brief is written around them — the constraints this kind of work needs,
@@ -122,8 +129,8 @@ field in an answer aforge was already paying for and already waiting on.
 
 **Where nothing named it, a small call does.** Some work reaches the roster with no name at
 all — only the sentence it was started from: a `/task` whose shaping could not run, work
-offered on a card you said yes to, an adaptive run's own row. That title is handed to the
-cheap `taskname` role, which reads the work and answers with two or three lowercase words.
+that started on its own after a words-only turn, an adaptive run's own row. That title is
+handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose
@@ -151,31 +158,27 @@ worker read the brief, not the name.
 **A sub-harness being designed keeps its own title** — `harness · <what you asked for>` —
 because its row is read as a design and not as a task.
 
-## Making adaptive or one worker the default — the starting a task setting, stopping the sizing call
+## Stopping the sizing call — the starting a task setting, making one worker the default
 
-`/task <brief>` asks you nothing, but what it starts is yours to set once and for all.
-`/settings` → Session → **starting a task**, or the `task.start` row:
+`/task <brief>` asks you nothing, and every answer here starts **one worker**. What the row
+decides is only what is paid to find out how wide the work is. `/settings` → Session →
+**starting a task**, or the `task.start` row:
 
 - **sized** — the default. The sizing call reads your brief, one worker starts either way,
   and a brief with independent parts in it starts a worker that is allowed to split itself
   once it has opened the material.
-- **adaptive** — a planner and a fleet up front instead, without asking. Parts found, the
-  adaptive run starts straight away; nothing to split, one worker starts, because a planner
-  over work with no independent parts in it is an extra model deciding nothing. This is an
-  **opt-in override**: a planner is not how wide work is normally done here, and setting
-  this row is you asking for one anyway.
 - **single** — one worker, and the sizing call is not made at all. Nothing is spent reading
   your brief for width, and nothing is said about it.
 
-`/task solo <brief>` and `/task adaptive <brief>` always mean what they say, whatever the row
-is set to.
+`/task solo <brief>` always means what it says, whatever the row is set to.
 
-**There used to be a fourth answer, `ask`, and a card to go with it.** A yes from the sizing
-call opened a two-row list reading “this parallelizes — how should it run?”, and you picked
-`adaptive` or `single`. Both are gone: the question was being put to the one person in the
-room who had not read the material yet, and it is now answered later and from evidence by
-the worker itself. A profile still set to `ask` reads as **sized**, which is the same one
-worker that dismissing the card used to start.
+**Two answers have been retired, and neither retirement is felt.** `ask` went first: a yes
+from the sizing call used to open a two-row list reading “this parallelizes — how should it
+run?”, and the question was being put to the one person in the room who had not read the
+material yet. `adaptive` went with it: it started a planner and a fleet without asking, and
+a chat turn may no longer open a planned run at all. A profile still holding either word
+reads as **sized**, silently — nothing errors, nothing is said, and you are not told that a
+preference you set months ago has gone.
 
 **Choosing `single` closes nothing off.** A single worker can still break its own brief into
 smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
@@ -212,33 +215,378 @@ Only one proposal is a live question at a time. If a second one arrives while th
 unanswered, the older card settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
 
-## Why aforge offered to run something as a task after answering me
+## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
 
-There is a second, smaller card, and it is not the proposal above. After a turn that
-answered a substantial message in **words alone** — no tool call — a cheap model reads what
-you asked and the first two lines of the reply and decides whether that should have been
-work. When it says yes, one row appears above the message box:
+**Sometimes work starts without you asking for it, and you are told after.** After a turn
+that answered a substantial message in **words alone** — no tool call — a cheap model reads
+what you asked and the first two lines of the reply, and decides one thing: should that have
+been work? The same judge also starts reading your message **the moment you send it**,
+alongside the reply rather than in front of it, which is its own section below.
+
+**A yes is asked twice.** The cheap model only screens — it reads every substantial message
+and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
+question is put once more to your **mastermind** model, in the same words, with none of the
+first answer in front of it. Only if both say yes does the work start, and then one dim line
+goes into the transcript:
 
 ```
-? run harness "task"? · one self-contained sweep · [enter] run · [esc] no
+this looked like work, so task 4 started: audit the pricing code
 ```
 
-The name in quotes is the shape it is offering, and `task` is nearly always the one: it
-covers one self-contained job **and** wide work — a broad sweep, research across many
-sources — because a wide task starts one worker that splits itself once it has opened the
-material. It offers `adaptive run` only for a goal whose graph has to be planned before
-anything starts, or when you asked for a plan. It says `run harness` because it is the harness
-offer's row, reused; no saved harness is involved. `enter` or `y` admits the work straight
-away — from a self-contained goal that model wrote, with no second countdown, because the
-card **is** the consent. `esc` or `n` drops it and nothing happened.
+The number is the task's own, and the words after the colon are what it was started on. If
+the machine was already full the line reads `queued` instead of `started`, and the task
+begins when a lane frees up.
 
-It never starts anything by itself, it is asked at most once every three turns (so two
-cards can never arrive in a row), and it is silent on short messages, on turns that called
-tools, and wherever there is no screen to answer it. A task admitted this way behaves like
-every other task on this page from that moment on: a row on the roster, a room, a report.
+**The judge writes the done-condition too.** The same answer that carries the goal carries
+what finished looks like — "every package under internal/ has been read and the report names
+each pricing bug with its file and line" — and that sentence is what is checked against when
+the work says it is done. It is read **on its own**, without the goal beside it, which is why
+it has to name something somebody could go and look at. If the judge writes none, the task
+falls back to `the work named at the top is actually done, and the report says what was done
+and how it was checked`. Nothing else about the check differs from any other task on this
+page.
+
+**There is no card and no key to press.** There used to be a row above the message box
+offering to run it, and it is gone: the question "shall I?" was being asked about work
+nobody had seen yet, and the task itself answers it better by existing — it is on the
+roster, it says what it is doing, and `x` stops it like any other task. Nothing else is
+different about it: a row, a room, a report, and everything else on this page.
+
+**What keeps it from becoming a nuisance:**
+
+- **At most one start every three turns.** Two can never arrive back to back, so a
+  conversation you have just taken back is not interrupted again on the next line. It is
+  one allowance for both moments the judge looks, not one each.
+- **Nothing after a turn that used tools.** A turn that called tools was already work, and
+  asking whether work should have been work has no useful answer.
+- **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
+  the tests", "what does this key do" are answered in words by construction.
+- **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
+  no router model to ask are all silent.
+- **Two models have to agree.** The cheap one can only screen; the thinking model confirms
+  the yes before anything is started. A confirmed no starts nothing and says nothing at all
+  — and it does not spend the one-every-three-turns allowance either, because nothing was
+  interrupted, so the next turn is read exactly as this one was.
+- **Silence when it cannot answer.** Either model failing is the same silence: one that
+  cannot be reached, or that replies with anything but the small JSON object it was asked
+  for, starts nothing and says nothing. A yes nobody could confirm is not a start.
+
+**Stopping one you did not want** is the ordinary stop: `x` on its row over an empty message
+box, or the ✕ on the pointer. Nothing about it is special from the moment it exists.
+
+**There is no setting that turns this off.** No `/settings` row switches it, and nothing you
+type disarms it for the session. What bounds it is the list above, and the stop.
 
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
+
+## A message that reads like work makes aforge look sooner — nothing else happens
+
+**The judge that starts work on its own looks at two moments.** One is after a turn that
+answered in words alone, above. The other starts **the moment you press enter**: your
+message itself is read, with no reply to read instead, because there is not one yet.
+
+**That read happens beside your answer, not in front of it.** Nothing waits for it. The
+reply starts arriving exactly as fast as it always did, and the question is being answered
+somewhere else while you watch it. So a no costs you nothing at all — which is most
+messages, and it is why the read can afford to take its time.
+
+**If both models say yes, you see nothing.** No line, no task, no interruption. The one
+thing that changes is *when aforge looks at the work*: instead of waiting until the answer
+has run ten rounds of tool calls, it looks at the very next break between rounds — and then
+at the ordinary points after that. What that look is, and what it can do, is *An answer that
+runs long is read and can be handed over* below.
+
+**It used to hand the reply over on the spot, and it does not any more.** That was measured
+against real transcripts and it took work out of the conversation that the conversation
+would have finished faster: a message that *sounds* like four jobs is not the same fact as
+four jobs, and reading the request cannot tell them apart. Reading the work can. So this
+moment now only decides **how soon to look**, and looking at the work decides everything
+else.
+
+**What the judge is looking for is a request whose fastest correct answer is not a
+conversation:** several independent deliverables in one message, a sweep over many files or
+many sources, or an answer you would otherwise sit and watch a spinner for. A question, a
+discussion, one obvious edit and a few tool calls are all answered here, however large the
+subject sounds.
+
+**Everything that bounds the auto-start above bounds this too** — one start every three
+turns across both moments, six words, two models agreeing, silence when either cannot
+answer — with three more that belong to this moment alone:
+
+- **Nothing you can feel.** The read never stands in front of your turn, so there is no
+  wait to notice, whatever the models do. It used to get about three seconds and to hold
+  the turn for them, and three seconds was less time than the model needed to answer at
+  all, so it answered nothing and charged every message the wait.
+- **Nothing after you stop it.** Pressing stop ends the question with the turn. Nothing
+  moves onto the rail out of an answer you interrupted.
+- **Nothing on a message with pictures in it.** A task is given words, so a message
+  carrying images is always answered here, where they can be looked at.
+
+## Handing work over in the middle of an answer — this one wants more hands
+
+**Work can leave an answer that already started it.** A turn begins as an ordinary reply,
+a few tool calls go by, and the material turns out to be wider or longer than one answer.
+At that point the model can hand it over rather than grind through it in the conversation,
+and one dim line goes into the transcript above the proposal card:
+
+```
+this one wants more hands · handing it over with everything found so far
+```
+
+That line appears **only** when the handoff came out of work already done — a proposal
+made on the first step of a turn, before anything has been read or run, does not draw it,
+because nothing has been found yet to hand over.
+
+**What it hands over is the findings, not just the goal.** The brief of a mid-answer
+proposal is written to carry what the turn already learned: what was found, the shape of
+the material, what has been ruled out and why, what would have been done next. Nothing
+trims it — a long brief reaches the worker whole — so the work starts knowing what the
+conversation knew instead of reading it all again.
+
+**The card still appears, and the countdown still runs.** This is not the same road as a
+task that started on its own (above): this work was groomed by the model, so it is offered
+the way every other proposal is offered — `yes`, `redirect`, `no`, and a countdown whose
+silence starts it. You are told, and it opens; what the card gives you on top of that is
+the window to redirect it before it spends anything.
+
+## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long, carrying the ask only
+
+**When one answer keeps going, aforge prices it.** A long answer costs a little more with
+every round of tool calls and never stops costing; handing the same work to a task costs one
+fixed price — a clean copy of your folder opened and closed, a brief written, somebody
+independent reading the result — and after that the work runs watched. So the count of
+finished tool rounds is compared against that fixed price, and at three points along the way
+aforge stops and **looks at what is left**. **Nothing about what you asked for is read to
+decide when to look.** It is the cost and only the cost. (If the message you typed already
+read like work, the first of those points comes at the very next break instead — see the
+section above.)
+
+**At each point, a second model reads the answer so far.** Not the model writing your reply
+— a different one, asked for one line: a sketch of what is left, as parts and arrows.
+`A | B | C` means three pieces that do not wait on each other. `A > B > C` means one job in
+three steps. Then one sentence saying what the letters are. If nothing is left, that line is
+`(done)`. **The model answering you is never asked and never sees the question**, which is
+the whole point: a model in the middle of tool calls answers a question like that with
+another tool call about half the time, so it is asked of somebody who is not busy.
+
+**That second reader is shown a short account of the work, not the whole conversation** —
+your message word for word, one line per tool call naming the tool and what it touched, **the
+end of what came back from the most recent of those calls**, what has been written or
+changed, and the last thing the answer said. Reading the whole conversation instead was
+measured costing more than the work it was judging, so what is carried is bounded: each
+result is cut to its last 400 bytes, newest first, and the account says how many older ones
+it left out. The tail rather than the top, because what a command concluded — `Passed: 0`,
+`97 errors`, `no such file` — is in its last lines. Results used to be left out entirely, and
+that made the one reader deciding whether to hand your work over the only participant who
+could not see the evidence.
+
+**If the sketch has independent parts in it, the reply is handed over.** It stops halfway,
+your answer is moved to one task, and two dim lines go into the transcript:
+
+```
+this has parts · handing it to a task that can take them side by side
+this looked like work, so task 4 started: finish the four pieces
+```
+
+The first line is the reason; the second is the ordinary line every task started this way
+carries, with its own number and name. Both are in the transcript, so the next thing you say
+is not answered on top of a message nobody replied to.
+
+**If the sketch says one job, nothing happens at all.** No line, no note, nothing added to
+your reply, and the model writing it is not told it was looked at. The answer carries on and
+the next point is twice as far along.
+
+**And if nobody can be reached, nothing happens either.** No second model configured, a
+reader that faults, a reader that takes too long: each of those is a look that produced
+nothing, and a look that produced nothing is the answer carrying on. The third point below
+is what makes that safe.
+
+**The third point is not a question.** Past it aforge stops looking. The answer ends where it
+is, what is left of the work moves onto one task whatever the last sketch said, and two dim
+lines go into the transcript:
+
+```
+this is running long · moving it to a task that is watched and can split
+this looked like work, so task 4 started: finish the four pieces
+```
+
+**What the task is given.** Your own message rides it **word for word** — that is true of
+every task on this page and it is never rewritten. On top of it comes the brief: an
+instruction for whoever picks the work up, saying what is left, what was already found out
+that they would otherwise have to find again, what was ruled out, and how anybody could tell
+when it is done. Where the work was handed over because it had parts, the sketch and its
+sentence sit at the top of that brief, so the worker starts with the pieces already named.
+Its name is cut from your own message too, and a short name replaces that a second later.
+
+**The brief is drafted by one model and written by another.** The model that wrote your
+answer is asked first, because it is the only one that knows what the answer found out — but
+by then it is a tired model at the end of a long turn, and asking it to be its own editor was
+measured producing 5,882 characters in which the same six sentences went round and round. So
+its answer is a **draft**, and a second model on the thinking tier writes the real one: it is
+handed your message word for word, what the conversation already knew before this turn, the
+account of the work with what came back in it, and the draft. If what comes back is not prose,
+or is a document that has stopped saying new things, it is asked once more and then given up
+on — and then the draft stands, and if there is no draft either, your own sentence alone. A
+task always starts; the only question is how much it starts knowing.
+
+**And when the brief cannot be written at all, you are told so on the line.** The second
+model can fault, be out of capacity, or simply not answer inside the minute and a half it is
+given — and the draft can come back as nothing usable at the same time, which is exactly what
+happened on a measured run. The move still goes ahead: a task that starts knowing only what
+you typed is better than an answer left grinding where nobody is watching it. But it is a
+different event and it reads as one, with the reason on the end of the same dim line:
+
+```
+this is running long · moving it to a task that is watched and can split · carrying the ask only — the brief could not be written: the second model did not answer in time
+```
+
+The reasons you can see there are **did not answer in time**, **could not be reached**, **had
+nothing new to say** — a document that went round in circles twice — and **there was nothing
+to write it from**. When either the written brief or the draft survives, the line says nothing
+of the kind and the extra sentence is simply absent: your work went with everything the turn
+found out. Every rung of that ladder is also written into the session's own record, with what
+it produced or what the model that refused actually said, so a run where a worker started
+blind can never again read the same as one where it started knowing everything.
+
+**And the task is finished against your question, not against the brief.** The brief says
+what is left of the work right now; the thing the independent reader at the end checks
+against is **your own message**, in full — "everything asked for below is actually done — all
+of it, not the part that was easiest to reach". A task handed over halfway used to be
+finished against whatever the brief happened to be holding, which on a long piece of work
+meant a ten-hour request being accepted as met the moment the code compiled.
+
+**And it can still come to nothing — when both readers agree.** That last question also asks
+what still remains, and if the model answers that everything you asked for is already done,
+**and the second reader's sketch at that same point said `(done)` too**, the move is
+**dropped**. No task, no lines. The answer carries on to its own end and stands, which is the
+right outcome for a turn that was finishing anyway: what this whole mechanism is for is an
+answer that is grinding, and one that is about to stop is not. This holds at all three
+points.
+
+**One reader saying so is not enough**, and that is deliberate: a model in the middle of a
+long answer saying "everything is done" is that model marking its own work at the moment it
+has a reason to. So if the second reader still sees work left, the move happens anyway — on
+your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
+
+**When the second reader names parts, the task starts already divided.** The sketch is not
+only a paragraph at the top of the brief — it is put to the task's own splitting road before
+the worker is asked anything, so each part named in the sketch becomes a worker of its own
+with its own copy of your folder, and the task they came out of stays open to gather their
+reports into one answer. Nothing about that road is skipped: the parts are read together by a
+second model that can sharpen their instructions, merge two that overlap, or say this is one
+job after all — and if it says that, or if there is no free lane to run them in, the task
+simply runs as **one worker**, which is what it would have done anyway. Where the sketch drew
+a final step behind the parts — `(A | B | C) > D` — the parts are handed out and `D` stays
+with the task itself, to do once their reports are in.
+
+**Whether the sketch is read as parts.** What counts is what could be started **now**.
+`A | B | C` is three. `A > B > C` is one job in three steps. `A > (B | C)` is one job too —
+the fork is behind a step nobody has taken yet. `(A | B | C) > D` is three, with a fourth
+step waiting on all of them. `A > B | C > D` is two chains that wait on nothing but
+themselves.
+
+**At the third point the task is allowed to split but nothing is handed out.** There the
+answer outran one pair of hands by measurement and no parts were drawn, so the worker is
+merely allowed to hand parts out once it has opened the material. Whether it does is its own
+decision, and it still has to justify them inside the task; the roster says so if it happens —
+see *When a task turns out to be too wide for one worker*.
+
+**What it costs.** At most three calls to that second model, and only on an answer that has
+already spent ten rounds of tool calls, which most answers never do. Handing over adds two
+more: the draft, and the model that writes the brief out of it. One further call goes at the
+**end** of any answer that touched a tool at all, asking whether your question is finished —
+see the section below. An answer that called no tools costs none of this. The read at the
+front of your turn is one cheap call and now starts nothing by itself.
+
+**This applies to replies aforge started by itself, too.** When a task lands, the chat
+answers it without you typing anything (see *Why did the chat reply on its own* in *how tasks
+run*). That reply is priced exactly like one you asked for: same three points, same ceiling,
+same handover. It used to be exempt, on the grounds that a reply about a task already had a
+budget somewhere — it does not, and a measured run had one such reply make 127 tool calls
+over 46 minutes with nobody watching, and then the session sat idle for seven and a half
+hours. A line aforge writes to itself that nobody owes an answer for is still left alone.
+
+**There is no setting that turns this off, and no number you can raise.** What bounds it is
+the list above.
+
+## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
+
+**A reply ends when the model stops calling tools, and that happens for two different
+reasons.** One is that the work is done. The other is that it reached a comfortable place to
+stop — "I've finished the parser, next I'll wire the handlers" ends a reply exactly as firmly
+as a finished job does. Until this, nothing checked which of the two it was, and a measured
+ten-hour request ended with hours of it never touched.
+
+**So at the end of a reply that has already run long enough to be looked at once — the first
+of the three points above — the same second reader is asked one question**: is what you asked
+for finished? It is shown the same short account of the work —
+your message, the steps, what came back — and it answers either the single line
+`NOTHING LEFT TO DO`, or one line saying what of your request is still not done.
+
+- **Finished** — the reply ends, exactly as it always did. Nothing is said and nothing is
+  added.
+- **Not finished** — the reply **carries on**. One dim line goes on the screen:
+
+  ```
+  the ask is not finished · carrying on rather than stopping here
+  ```
+
+  and the model is handed the reader's one line as the thing still to do. It picks up from
+  where it stopped rather than starting again.
+
+**A reply that ends by asking you something is never carried on.** If the last thing it said
+finishes with a question mark, it is waiting on you, and carrying it on would be aforge
+answering a question that was addressed to you. That is the whole of the test — the mark
+itself, so it works whatever language you are talking in.
+
+**A short reply that only LOOKED at things is not read at all.** If the reply ended before it
+reached the first of those three points — a couple of reads and an answer, or no tools at all
+— it is never read for what remains. There was not enough work in it to leave half done, and
+reading every small reply cost a thinking-tier call on every message you sent: measured, that
+was a third to a half of a small question's whole bill, and it almost never found anything
+left to do.
+
+**That short-reply exemption is only for a reply YOU typed.** A reply that started on its own —
+the turn a finished task's landing begins, the one *Why did the chat reply on its own* in *how
+tasks run* describes — is read for what remains **however short it was**. You are sitting in
+front of a reply you typed and can carry a small one on yourself; nobody is sitting in front of
+a woken one, so the cheapness that leaves your reply alone is exactly the reason not to leave
+that one alone. Measured, the best clean run of a ten-hour request had a task come home
+unfinished, the landing woke a reply, it read for six steps — under that first point — and
+stopped on "let me diagnose the failures systematically", and the run then sat idle for seven
+and a half of its ten hours. A woken reply that ends by **asking you** something is still left
+alone, and one that **broke** is still not read — those two endings hold for every reply.
+
+**But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
+what the reply left behind, not what it cost. If the last thing a reply did was save or edit
+something — and it then stopped in words, with nothing run over the top of it — it is read for
+what remains whatever its length. A short reply cannot leave a job half done; it can very
+easily leave an **unbuilt edit**, and that is exactly what happened on a measured run: a reply
+woke up, made six calls, overwrote an 18,000-byte source file, said "now let me build and run
+the full test suite", and ended without running anything. The file it had just written was the
+six compile errors that shipped, and three hours of the request went unspent.
+
+**Running anything after the save takes it back off that gate.** A build, a test, a re-read of
+the file it just wrote — anything at all after the last save is the reply having checked
+itself, and it is then priced like any other short reply. aforge does not try to tell a build
+from a test from a read; it only asks whether the reply stopped on the change or looked at it.
+
+**What bounds it is the same meter as everything else on this page.** Carrying on counts as a
+round, so it climbs the same three points, and a carried-on reply that reaches the third one
+is handed to a task in the ordinary way. There is no separate limit and no number to raise.
+
+**A reply that BROKE is never carried on.** Carrying on is for a reply that stopped early,
+and a reply that ended on a **failed request** did not stop early — it broke. A provider
+that says it stopped on an error, and a reply that comes back completely empty, both count:
+neither is read for what remains, because the failure is what remains and the retry ladder
+already owns it. A measured run read a broken reply three times in fifteen seconds, paid a
+thinking-tier call each time, and re-opened a reply that could not move. See *Models,
+crews and what things cost* for what the error line says now.
+
+**And if nobody can be reached, the reply just ends.** No second model configured, a reader
+that faults, a reader that takes too long: each of those ends the reply as it would have
+ended before this existed.
 
 ## Every key the proposal card takes
 
@@ -360,6 +708,29 @@ in your files, and the line says exactly that instead of guessing:
 another window has work out in this project · it has not said which files yet
 ```
 
+## Can I keep editing while a task is running — who may write while work is out
+
+**Almost always, yes.** A task gets its own checkout of the repository on its own branch, so
+you and it are in different directories: keep editing, keep saving, keep running things.
+Anything you change lands in yours and anything it changes lands in its own, and the two
+meet only when the work comes home.
+
+**The one exception is a task running in place.** When the directory is not a git repository
+— or is one with nothing to branch from — there is no second checkout to give the task, so
+it works in your directory. While that is happening the chat becomes a **reader** of that
+directory: it can read anything, and a `write` or an `edit` there is refused with the task
+named:
+
+```
+src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
+nothing was written.
+```
+
+You are not stopped from doing anything yourself in your own editor or shell — this is a
+rule about what the chat's own tools will do on your behalf, not a lock on the files. It
+ends when the task lands, fails or is stopped. *How work runs* has the whole of it, under
+*A task working in place holds the directory*.
+
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
 **aforge never tells you that a file is yours alone.** No line means nothing was found, not
@@ -407,6 +778,7 @@ These are the exact words on screen.
 | landed clean | `done` |
 | landed short | `failed` |
 | landed, but nobody could judge it | `needs your look` |
+| cut off while it was being checked | `needs your look`, with `incomplete — it was stopped while its work was being checked` |
 | …the same thing on the roster | `finished — look it over` |
 | …the same thing when there was no report | `finished, but needs your look` |
 | …its branch, on the card | `branch kept` |
@@ -420,6 +792,30 @@ can act on and a queue clears itself.
 
 How a branch came home is spelled `merged`, `conflicted`, or `inplace` (the work ran
 directly in your own tree because there was no repository to branch from).
+
+## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
+
+**A cancel is an interruption, never a finding about the work.** When aforge quits, a
+deadline on the whole session fires, or something outside the task ends it while the check
+is running, nobody has looked at the deliverable and nobody has said anything about it. So
+the task does **not** land as `failed`. It lands as **`needs your look`**, with the plain
+sentence:
+
+```
+incomplete — it was stopped while its work was being checked, so nothing finished
+checking it — what it wrote is on its branch
+```
+
+and, underneath it, **the task's own last words about what it did**, quoted. Whatever the
+check had already said before it was cut off stands under that. Nothing is merged into your
+tree, and the branch is kept, so the work is still there to read, finish or throw away.
+
+**This is not the same as a task that was checked and came back short.** That one *is* a
+finding — somebody looked and said what is missing — and it lands `failed` with the gaps in
+front of it, exactly as before. The difference is whether anybody actually looked.
+
+**And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
+the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
 ## The three ways work lands
 
@@ -621,9 +1017,12 @@ there from the moment the job starts until the moment it ends. This covers every
 
 The row's name is the command itself — `npm run dev` — or the watch's or render's own
 label where it has one, cut to three words like every other name on this column. **While
-it runs**, one dim line sits under it: `job 3 · log /path/to/.aforge-v3/jobs/3.log`, cut to
-the column's width. That line is the whole handle back to the work: the number is what
-`jobs output 3` and `jobs kill 3` take, and the path is a file you can open yourself.
+it runs**, one dim line sits under it:
+`job 3 · log ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log`, cut to the
+column's width. That line is the whole handle back to the work: the number is what
+`jobs output 3` and `jobs kill 3` take, and the path is a file you can open yourself. A
+session with no folder of its own keeps its logs where they always were, in the
+workspace's own dot directory.
 
 **Once the job has ended the row is one line**, like every other finished row on the
 column, and the log line is folded under it rather than dropped: walk to the row and press
@@ -671,7 +1070,8 @@ it ended when aforge closed; its log is kept
 A job is a child of the aforge process and dies with it, so **nothing is restarted** — no
 restored row is running, none of them is counted on the status line, and none can be
 stopped, because there is nothing left to stop. The log file it was writing is still under
-`<workspace>/.aforge-v3/jobs/`.
+this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
+was started here or by a task's worker in its own checkout.
 
 ## A task started from the composer carries a cap — how much a task may spend before it asks
 
@@ -744,9 +1144,9 @@ the only question the word can answer with no brief behind it — *what work is 
 tasks are and ends `no tasks yet — /task <brief> starts one` — which is exactly what
 `/history` and `ctrl+.` do there too.
 
-**The forms that start work are completely unchanged.** `/task <brief>`, `/task solo
-<brief>` and `/task adaptive <brief>` still size, shape and start the work directly, with
-no proposal card in between and no extra question.
+**The forms that start work are unchanged.** `/task <brief>` and `/task solo <brief>`
+still size, shape and start the work directly, with no proposal card in between and no
+extra question. There is no third form: `/task adaptive` is retired.
 
 **There is still no `/tasks` command**, though `tasks` is the name of the PLACE `/history`
 opens — `alt+2` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
@@ -1791,11 +2191,21 @@ name.
 report reaches it as that part lands, and the one thing it owes you at the end is a single
 deliverable made out of all of it. A task never finishes while a part of it is still running.
 
+**The worker is not the only one who can ask.** When a long answer of mine was handed over
+because a second model read it and drew its parts, that drawing is put to this same road
+before the new task's worker is asked anything — so the task starts already divided rather
+than being asked to find parts somebody has already named. Everything below applies to it
+without exception: the same two tests, the same reading by the mastermind, the same refusals.
+The receipt reads the same too, and the worker is told the parts are already running so it
+does not do them again. *An answer that runs long is read and moved* is where that happens.
+
 **Two things have to be true, and neither is the worker's confidence.**
 
 - **There must be enough separate items.** Below six, one worker doing them in order beats
   paying for a copy of the repository, a check and a wait for each part. This was measured,
-  not guessed: twelve image files won, four modules and three bugs lost.
+  not guessed: twelve image files won, four modules and three bugs lost. This count reads
+  what the worker says it saw, and it only counts a number standing beside a thing —
+  "11 adapter files", "nine sections" — so evidence that names no items at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -1807,6 +2217,48 @@ deliverable made out of all of it. A task never finishes while a part of it is s
 If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
 the worker carries straight on as one worker. That is why this costs nothing on ordinary
 work: a task that is not wide is never split, and finding that out is free.
+
+**With one exception, and it is about the count only.** If the work was started because a
+model read your request and judged it broad — the wide line before a `/task`, a proposal I
+marked wide, a message the harness moved to a task — and the count then says the evidence
+names too few items, those are two readings of the same work disagreeing. So the count is
+not the last word there: the division goes to the mastermind below, which decides it on the
+parts themselves. That is the whole of the exception. A count that says no on work nobody
+read for width is final and free, exactly as it always was, and the free-lane test is never
+waived by anything.
+
+**And then the plan itself is read once, by your `mastermind` model.** Both tests above are
+about whether a split is worth it; neither of them reads the parts. But a part's
+brief is everything that worker will ever know — it never sees your conversation and cannot
+ask anybody anything — and the briefs were written by whatever model the task itself runs on.
+So once the two tests have passed, the whole division goes to the mastermind at once: the
+evidence, the work it came out of, and every part beside its siblings. It can sharpen a
+brief, fix a boundary two parts share, fold two parts into one, or say the parts are really
+stages of one procedure and not a division at all — in which case nothing is split and the
+worker carries on, exactly as a no from either test above. So the parts you see may be fewer
+than the worker asked for, and their briefs may not be word for word what it wrote.
+
+**This reading can only ever improve a split; it cannot lose you one.** If the mastermind
+cannot be reached, times out, or answers something unusable, the division goes ahead **as the
+worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
+cannot be had is not a reason to throw work away.
+
+**Except on the one division it is deciding rather than sharpening** — the exception above,
+where the count said too few items and a model's reading of your request said broad. There
+the mastermind is the only thing that has said yes to those parts, so if it cannot be
+reached the count's answer stands and the work carries on as one worker. Nothing is lost
+either way: an unreachable mastermind cannot admit a split, and it cannot cancel any work.
+
+**Some parts are done with more thinking than others.** Each part carries a grade the worker
+sets. Most parts are ordinary work — the failure mode is simply not being done yet, and you
+can see whether it happened — and those run on the same model the task itself is on. A part
+graded **careful** is one whose failure mode is subtle wrongness: a design decision, a tricky
+piece of debugging, a judgement about somebody else's code, where the work can look finished
+and be quietly wrong. Those run on your **careful work** model instead — the same class
+the check at the end of a task uses. The mastermind that reads the plan can promote a part to
+careful too. If you have not set the four class rows at all, every part runs where its task
+runs and the grade costs you nothing; *Models and cost* has the rows and the `/crew` word
+that writes all four.
 
 **A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
@@ -1823,9 +2275,9 @@ what this section is about. It promises nothing: the two tests below still have 
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
 work broad — a sweep across many files, research across many sources, the same change over
 many separate items. It still starts **one** task, armed to split itself; it is not a
-planner and not three tasks. A run (*adaptive runs*) is the exception now, for a goal whose
-graph has to be planned before anything starts or a plan you asked to see, and not something
-width alone reaches for.
+planner and not three tasks. **There is no planner on my belt at all any more**, and there
+is no sentence you can type that reaches one either, so width has nowhere else to go —
+*adaptive runs*, under *How do I start an adaptive run*, is the whole of that answer.
 
 A task that was never read for width at all (`/task solo`, the `single` row, a proposal I
 did not mark wide) says nothing up front and can still split, off the items its own brief
@@ -1834,9 +2286,9 @@ already names.
 **And so can work that runs while you are asleep.** A standing order that fires and starts
 work is on this road too, armed the same last way — off the items its own brief names,
 with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The two tests still decide,
-and the machine is still respected: a division at 3am on a loaded box is admitted and the
-parts wait for it. The firing stays open until its parts are home and their spend is on its
+night to re-read the same sentence is a bill nobody agreed to. The two tests still decide and
+the plan is still read once before the parts exist, and the machine is still respected: a
+division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
@@ -1850,6 +2302,133 @@ It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the envi
 turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and lets a
 worker's request to split be taken at its word — both are for somebody rolling something
 back, not preferences, which is why neither is in the settings panel.
+
+## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
+
+Sometimes the work is not big enough to hand away and still has separate parts in it. Three
+files to change that do not touch each other. A page to write and a table to fill in beside
+it. For that, aforge can **copy itself, right there in the middle of your answer**, into two,
+three or four **hands** that work side by side. Its tool for it is `fork`.
+
+A hand is not a task and it is not a part of one. Nobody writes a brief for it: it starts
+with **everything the answer has already read and said**, the whole conversation up to that
+moment, and is told exactly one line — what its part is, which files it may write, and what
+each of the others is doing so it does not redo their work. That is the whole trick, and it
+is why hands are cheap: the expensive thing about handing work over is explaining it, and a
+hand needs no explaining.
+
+**What you see** is one dim line at the moment they go out:
+
+```
+three hands on it · each one folds in as it lands
+```
+
+The answer then carries on. It does **not** go quiet and wait for all of them — see the next
+section. What they cost is folded into that turn's own cost, which is where it belongs: it is
+your answer being worked on, not work that left.
+
+Do not confuse it with `this one wants more hands · handing it over with everything found so
+far`, which is the opposite move — that one is your answer **leaving** to become a task.
+
+## A hand is a stream, not a wait — the answer keeps working while its hands are out
+
+`fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
+in the conversation, the moment that hand finishes — in the order they **come home**, not the
+order they were asked for. Nothing polls and nothing waits.
+
+That matters because the alternative was measured and it was expensive. On one benchmark task
+a worker forked three hands at 00:53. The first was finished ninety seconds later. The tool
+call did not return until 01:33, when the slowest one hit its budget — so for thirty-nine
+minutes the worker sat inside a tool call doing nothing at all, while the first hand's
+finished work sat in the working copy unbuilt and unmeasured. When it finally returned, the
+worker built once, ran the check, and gained 29 passing tests. Forty minutes for work that had
+been ready after two.
+
+So now the answer builds and tests **each slice as its report lands**, while the other hands
+are still writing elsewhere in the tree.
+
+Every hand still out also rides at the foot of every result the answer reads, the way a
+background job does:
+
+```
+[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+```
+
+Which hand, how old, what it last did. So a hand can never be forgotten and never has to be
+asked about.
+
+**Hands get job ids now.** They are in `jobs list` beside background commands and watches,
+each with a log on disk, and `jobs kill 4` ends one — its writes stay in your working copy and
+may be half made, and no report comes.
+
+**Every hand owns a slice of the files and can write nowhere else.** They share one working
+copy — no branches, no copies of the repository — so what keeps them out of each other's way
+is that the slices are declared before any of them starts, and two hands claiming the same
+path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
+by good manners, and it carries on inside its own.
+
+## How a hand's slice of files is spelled, and when a fork is refused over it
+
+The paths a hand may write are **relative to your working copy** — `src/parser.rs`,
+`internal/session`, `docs`. A directory claims everything under it.
+
+A path written out **in full** is accepted and means the same thing: if your working copy is
+`/work/repo`, then `/work/repo/src/parser.rs` and `src/parser.rs` are one slice, and the
+overlap check reads them as one. This is worth knowing because it used to be the opposite. A
+task worker once declared its hands' slices in full, the door accepted them, the refusal was
+made against the short form, and **every single write in every hand was refused** — the model
+kept being told that files plainly inside its slice were outside it, and it never split its
+work again. Both ends now read a path the same way, once.
+
+Three spellings are turned away at the call, before any hand starts, with a line naming the
+offending path and the form that would have worked:
+
+- a path **outside your working copy**, like `/etc` or `../secrets` — a slice is a slice of
+  this directory, and one that is not could never match anything a hand writes;
+- **`.`**, the whole working copy — that is not a slice of it, and it collides with every
+  sibling;
+- **two hands claiming one path**, in any spelling — the one shape a shared working copy
+  cannot survive.
+
+Nothing is spawned in any of those cases: the answer reads the refusal, redraws the slices
+and calls again.
+
+## What hands cannot do, and how they differ from a task
+
+**They cannot build and they cannot run tests.** All of them are writing the same working
+copy at once, so a build in the middle of that reads a half-written repository: a pass would
+prove nothing and a failure would be a neighbour's unfinished work. Their `bash` runs
+`git diff`, `git log`, `git status`, `git show`, `pwd`, `wc`, `head` and `cat` and refuses
+everything else. The build, the tests and the review happen **in the answer itself**, hand by
+hand as each report lands.
+
+**They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
+declared files comes back refused, naming the files it does own. So a fork cannot leave your
+repository in a state two of them fought over.
+
+**They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
+simply does not have the tool.
+
+**They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
+that started it has finished, and its report wakes the session when it lands — the same thing
+a background command's exit does. What stops a hand where it stands is **your interrupt**
+(that is the difference from a background job: a job is a command you asked to be left
+running, a hand is the answer itself) and closing the window. A task that forked hands does
+**not** land while a hand is still out: it waits, reads the reports, and lands after.
+
+**Each has a budget of 15 rounds of tool calls.** A hand that runs out reports it **leading**
+with `OUT OF ROUNDS`, names the files it wrote, and **quotes its last sentence back verbatim**
+— because that sentence is the only description in existence of the change it was halfway
+through. Those files are called unverified: nothing built or ran them and the change may be
+half made. The answer is told plainly that this part is not done — it is never quietly treated
+as finished.
+
+**How it differs from the other two roads.** A **task** is work that leaves: its own copy of
+the repository, its own room, a check, a landing, and it survives you closing the window. A
+**divided task** is that again, several workers under one, for material too wide for one
+worker. **Hands** are neither — they are one answer being worked on in parallel and finished
+in the same breath. If the work should still exist after this reply, it wants a task; if it
+is this reply, it wants hands.
 
 ## How deep tasks nest, and how many pieces one task may hand out
 
@@ -1937,6 +2516,11 @@ moment and remembered for the task's whole life — it survives a restart, and s
 conversation's model afterwards does not move work that was already handed over. This
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
 you, from inside that task's own room — see the next section.
+
+**A model you named is kept even when the work is sent back.** If a check finds gaps, the
+worker that closes them normally runs on your crew's careful model rather than the task's
+(see *What happens when the work is not right yet*) — but only where nobody named a model.
+Name one, here or in the task's room, and every round of that task runs on it.
 
 ## Changing the model for one task while it is running — switch, change or swap a task's model
 
@@ -2101,7 +2685,8 @@ never done for you, because only work that was checked reaches your branch.
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds —
 or it finished and held, and one of the files it wrote was changed by other work while it
-was running, which the how-tasks-run page covers on its own.
+was running — or it finished and held and its branch would not merge cleanly, because the
+same file changed on both sides. The how-tasks-run page covers the last two on their own.
 It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
 on it stays waiting until somebody decides. Its family rises to the top of the roster, and
 its row reads `finished — look it over`.
@@ -2136,7 +2721,9 @@ question: answer in either and both show the receipt.
 
 - **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
   exactly as checked work does, and everything queued behind it unblocks. The report leads
-  `you looked at this yourself and took it as done`.
+  `you looked at this yourself and took it as done`. If that merge conflicts nothing is
+  forced: your checkout is left exactly as it was, the branch is kept, and the task stays
+  waiting on you with the clashing files named.
 - **`[l] look again`** — a fresh check runs against the same working copy. It answers on its
   own, minutes later, and until it does the task **still** needs a look: what goes away is
   the choices, not the state. If `check task work` is off there is no checker to ask, so
@@ -2196,6 +2783,14 @@ asked first**, and nothing else about the landing: either way the task is neithe
 failed until somebody answers, its branch is kept, and anything waiting on it waits.
 
 To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
+
+**A run with nobody watching reads as `auto` whatever the row says.** `aforge --once` and
+the other headless doors have no card to press, no `/settings` to open and nobody to read a
+landing that says it is waiting on somebody, so a task that needs a look there would stop
+the run until the wall clock ran out — which was measured happening on a ten-hour run. In
+those sessions aforge takes the decision itself, by the same road `[d]` takes, with the same
+escape to say it cannot tell. This never applies to a session you are sitting in front of:
+there your row stands, and a blank row still means aforge asks you.
 
 ## How do I approve a task — accept a finished task from the room, the card, or by saying so
 

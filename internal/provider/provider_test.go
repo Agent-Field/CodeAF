@@ -217,7 +217,7 @@ func TestAdapterNeverSendsReasoningToAModelThatWouldRejectIt(t *testing.T) {
 	}
 }
 
-func TestAdapterSendsOnlyOperatorConfiguredEffortWhenTheCatalogIsSilent(t *testing.T) {
+func TestAdapterSendsOnlyRequiredOrConfiguredEffortWhenTheCatalogIsSilent(t *testing.T) {
 	client, recorded := newTestClient(t, Config{
 		SupportsParameter: func(string, string) (bool, bool) { return false, false },
 	})
@@ -227,12 +227,19 @@ func TestAdapterSendsOnlyOperatorConfiguredEffortWhenTheCatalogIsSilent(t *testi
 	if _, err := client.CompleteWithMessages(WithConfiguredReasoningEffort(context.Background(), EffortLow), userMessages("b")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := client.CompleteWithMessages(WithRequiredReasoningEffort(context.Background(), EffortOff), userMessages("c")); err != nil {
+		t.Fatal(err)
+	}
 	if _, present := recorded.body(0)["reasoning"]; present {
 		t.Fatalf("harness default reached an unknown model: %#v", recorded.body(0))
 	}
 	reasoning, _ := recorded.body(1)["reasoning"].(map[string]any)
 	if effort, _ := reasoning["effort"].(string); effort != "low" {
 		t.Fatalf("configured request = %#v, want the operator's explicit effort", recorded.body(1))
+	}
+	required, _ := recorded.body(2)["reasoning"].(map[string]any)
+	if enabled, present := required["enabled"].(bool); !present || enabled {
+		t.Fatalf("required request = %#v, want the disable even with a silent catalog", recorded.body(2))
 	}
 }
 

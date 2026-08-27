@@ -156,6 +156,7 @@ type taskRecord struct {
 	// no deliverable separately, and a heading over nothing is not written
 	// (task_person.go).
 	Deliverable string   `json:"deliverable,omitempty"`
+	Where       string   `json:"where,omitempty"`
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on,omitempty"`
 
@@ -188,6 +189,17 @@ type taskRecord struct {
 	Worktree string   `json:"worktree,omitempty"`
 	Merge    string   `json:"merge,omitempty"`
 
+	// Wrote is what a node's own hands have written SO FAR, kept while it runs
+	// rather than only when it lands ([TaskNode.noteWrote]).
+	//
+	// IT IS ON THE RECORD BECAUSE A LANDING STAGES BY NAME. Only the paths a node
+	// wrote come home (task_run.go's [stageTaskWork]), and a process that died
+	// took the run's own tally of them with it while leaving the files on disk —
+	// so without this the run that resumes stages only what IT wrote and quietly
+	// abandons everything the first attempt made. Absent in every checkpoint
+	// written before this field existed, and a node that never ran has none.
+	Wrote []string `json:"wrote,omitempty"`
+
 	// Journal is where the node's own transcript was written — the file a
 	// person's "open that task" replays (task_room.go's [Agent.TaskJournal]).
 	// It is on the record because the name is MINTED WITH A TIMESTAMP
@@ -197,6 +209,14 @@ type taskRecord struct {
 	// before the field existed, and then [Agent.TaskJournal] finds the file by
 	// its id in the session's own tasks/ directory ([findTaskJournal]).
 	Journal string `json:"journal,omitempty"`
+
+	// Beat is the heartbeat sidecar a RUNNING node is writing, and "" for every
+	// node that is not running (task_beat.go). It is on the record so that a
+	// reader holding this file never has to guess at a path — "is this row still
+	// moving" is answered by opening the file this field names — and it is
+	// deliberately not read back on a resume: the process that was writing it is
+	// gone, and the next run mints the path again from the node's own id.
+	Beat string `json:"beat,omitempty"`
 
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
@@ -560,8 +580,17 @@ func (n *TaskNode) recordLocked() taskRecord {
 	}
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
+	wrote := make([]string, len(n.wrote))
+	copy(wrote, n.wrote)
 	dependsOn := make([]uint64, len(n.dependsOn))
 	copy(dependsOn, n.dependsOn)
+	// THE PULSE IS NAMED ONLY WHILE THERE IS ONE. A landed node's liveness is its
+	// final state, and a path to a file the runner has already removed would be a
+	// row inviting a reader to draw a conclusion from a missing file.
+	beat := ""
+	if n.state == TaskRunning && n.graph != nil {
+		beat = n.graph.store.beatPath(n.id)
+	}
 	return taskRecord{
 		ID:          n.id,
 		Title:       n.spec.title,
@@ -569,6 +598,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Request:     n.spec.request,
 		Brief:       n.spec.brief,
 		Deliverable: n.spec.deliverable,
+		Where:       n.spec.where,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -577,10 +607,12 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Report:      n.report,
 		Claim:       n.claim,
 		Changed:     changed,
+		Wrote:       wrote,
 		Branch:      n.branch,
 		Worktree:    n.worktree,
 		Merge:       n.merge,
 		Journal:     n.journal,
+		Beat:        beat,
 		Model:       n.spec.model,
 		Effort:      n.spec.effort.String(),
 		MaxSteps:    n.spec.maxSteps,
@@ -999,8 +1031,19 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	// The notes nobody ever got, in the shape a fresh run would have produced —
 	// and marked as handed over, so this is the only life of this session in
 	// which they are said.
+	//
+	// THEY ARE RE-TOLD AND NOT ARRIVING, so nothing here is put to the session's
+	// goal owner: the landing already happened, in a life of this session that
+	// has ended, and counting it now would count one failure twice
+	// ([Agent.quietAddress]). A graph with no conversation behind it — every
+	// test that builds one by hand — reads as a person's, which is the posture
+	// every such caller already had.
+	address := landingAddress{person: true}
+	if g.home != nil {
+		address = g.home.quietAddress()
+	}
 	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle))
+		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
 		node.markNoted()
 	}
 	return recovery
@@ -1026,6 +1069,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			request:     record.Request,
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
+			where:       record.Where,
 			acceptance:  record.Acceptance,
 			dependsOn:   record.DependsOn,
 			model:       record.Model,
@@ -1038,6 +1082,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		kind:        record.Kind,
 		claim:       record.Claim,
 		changed:     record.Changed,
+		wrote:       record.Wrote,
 		branch:      record.Branch,
 		worktree:    record.Worktree,
 		merge:       record.Merge,
@@ -1066,7 +1111,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 	// comes back carrying none at all — so [Agent.armDivision]'s own kind guard
 	// would read a design as ordinary work here and arm a page writer.
 	if record.Kind == "" {
-		node.spec.divide = graph.home.armDivision(node.spec)
+		node.spec.armed = graph.home.armDivision(node.spec)
 	}
 	// A QUEUED DESIGN IS ONLY EVER A FINISHED PAGE ASKING AGAIN ([interrupt]'s
 	// Offer branch), and the Offer is the one record that can rebuild the design

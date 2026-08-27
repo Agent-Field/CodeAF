@@ -74,6 +74,12 @@ type atLaunch struct {
 	// over --host: they are properties of a session that is built over there.
 	noCompact bool
 	yolo      bool
+	// budget is --max-hours / --max-cost, and it is refused for yolo's reason
+	// and one more, exactly as it is over --host: what it bounds is a goal
+	// owner that lives in the session (internal/session's principal.go), and
+	// the session is on the far machine. A ceiling accepted here would bound
+	// nothing at all.
+	budget bool
 }
 
 // check refuses the flags this door cannot honour, in the same words the ssh
@@ -86,6 +92,9 @@ func (l atLaunch) check() error {
 	}
 	if l.yolo {
 		named = append(named, "--yolo")
+	}
+	if l.budget {
+		named = append(named, "--max-hours/--max-cost")
 	}
 	if len(named) == 0 {
 		return nil

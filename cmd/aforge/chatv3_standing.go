@@ -205,6 +205,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 	cfg.Media = v3MediaClient(settings)
 	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
 	cfg.SupportsParameter = models.SupportsParameter
+	cfg.ModelPrice = models.PriceNow
 	cfg.NearestModels = v3NearestModels(models)
 	// AskConsent stays false and Standing stays nil: nobody is watching a
 	// firing, and nothing that fires may arm anything else.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -170,11 +171,10 @@ func parseSSEMessage(message []byte) (payload []byte, delivered, done bool) {
 // calls, which made tool-calling dead on the streamed path and turned the head's
 // control belt into a round trip that could not succeed.
 //
-// The fields below are the OpenAI streaming shape plus the two names reasoning
-// travels under — OpenRouter's "reasoning" and the "reasoning_content" the
-// DeepSeek-family endpoints send. Both are read into one vocabulary: the text
-// leaves as StreamReasoning deltas and is still never accumulated into the
-// response, because reasoning is not part of the answer a later step re-sends.
+// The fields below are the OpenAI streaming shape plus the names reasoning
+// travels under. They leave as StreamReasoning events with their wire spelling
+// intact because a later tool step must replay model working as continuation
+// metadata, never as answer content.
 type streamChunk struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -188,6 +188,52 @@ type streamChunk struct {
 	Provider string         `json:"provider,omitempty"`
 	Choices  []streamChoice `json:"choices"`
 	Usage    *ai.Usage      `json:"usage,omitempty"`
+	// Error is a REFUSAL DELIVERED INSIDE A 200, which is how a router reports
+	// an upstream that broke after the headers were already sent. It is raw
+	// because it is the same object an error response carries and it is decoded
+	// by the same function ([streamRefusal] → [apiError]), so a mid-stream
+	// refusal and an HTTP one become the same value.
+	//
+	// ── THE MEASURED FAILURE ────────────────────────────────────────────────
+	//
+	// SWE-Marathon run s2, 22:45 UTC: three streams in fifteen seconds decoded
+	// with no field here at all, so each one ended with no content, no tool
+	// call, no usage and no error — and the turn loop wrote an EMPTY ASSISTANT
+	// MESSAGE for each, which the remains-reader then read as a turn that had
+	// stopped short and re-opened, three times, at mark-reader prices. A FAILED
+	// CALL MUST NEVER LOOK LIKE AN EMPTY ANSWER.
+	Error json.RawMessage `json:"error,omitempty"`
+}
+
+// streamRefusal turns an in-band error object into the same [APIError] an HTTP
+// refusal produces, or nil when the field carried nothing to report.
+//
+// The status is the router's own `code` when it sent one that is an HTTP status,
+// and 502 otherwise: a stream that broke after its headers landed is an upstream
+// failing mid-answer, which is what a bad gateway means, and inventing a 200
+// here would make the refusal look like a success to every classifier above.
+func streamRefusal(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(decoded.Message) == "" && decoded.Code == 0 {
+		return nil
+	}
+	status := decoded.Code
+	if status < 400 || status > 599 {
+		status = http.StatusBadGateway
+	}
+	// Re-wrapped rather than re-decoded field by field, so the metadata this
+	// object carries — `provider_name`, `raw` — reaches [apiError] by the one
+	// path that knows how to read it.
+	return apiError(status, append(append([]byte(`{"error":`), raw...), '}'))
 }
 
 type streamChoice struct {
@@ -202,24 +248,39 @@ type streamDelta struct {
 	ToolCalls        []toolCallDelta `json:"tool_calls,omitempty"`
 	Reasoning        string          `json:"reasoning,omitempty"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ReasoningText    string          `json:"reasoning_text,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // thinking reports that this delta carried thought rather than answer.
 func (d streamDelta) thinking() bool {
-	return d.Reasoning != "" || d.ReasoningContent != ""
+	return d.Reasoning != "" || d.ReasoningContent != "" || d.ReasoningText != "" || len(d.ReasoningDetails) > 0
 }
 
-// reasoning is the thought itself, under whichever of the two names this
-// endpoint spells it. An endpoint that somehow sent both is read as one run of
-// text in the order the fields are declared, which is the only order there is.
-func (d streamDelta) reasoning() string {
-	if d.ReasoningContent == "" {
-		return d.Reasoning
+// reasoningEvents keeps the field signature attached to each piece. Providers
+// use one spelling consistently; retaining all three here also makes an odd
+// mixed stream lossless instead of silently choosing one.
+func (d streamDelta) reasoningEvents() ([3]StreamEvent, int) {
+	var events [3]StreamEvent
+	count := 0
+	for _, item := range []struct{ field, text string }{
+		{"reasoning", d.Reasoning},
+		{"reasoning_content", d.ReasoningContent},
+		{"reasoning_text", d.ReasoningText},
+	} {
+		if item.text != "" {
+			events[count] = StreamEvent{Kind: StreamReasoning, Delta: item.text, ReasoningField: item.field}
+			count++
+		}
 	}
-	if d.Reasoning == "" {
-		return d.ReasoningContent
+	if len(d.ReasoningDetails) > 0 {
+		if count == 0 {
+			count = 1
+			events[0] = StreamEvent{Kind: StreamReasoning}
+		}
+		events[count-1].ReasoningDetails = append(json.RawMessage(nil), d.ReasoningDetails...)
 	}
-	return d.Reasoning + d.ReasoningContent
+	return events, count
 }
 
 // toolCallDelta is one fragment of one tool call. Index is a pointer because

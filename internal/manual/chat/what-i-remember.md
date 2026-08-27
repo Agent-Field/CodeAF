@@ -509,19 +509,24 @@ an instruction in the prompt: the call carries the reasoning knob set to *off*,
 so a reasoning model spends the 200 tokens on the answer instead of deliberating
 first. It matters because the ceiling is otherwise a lie — a model left free to
 think spends the whole 200 doing it and answers nothing, on every call of every
-turn, billed in full for an empty reply. The knob is only sent to a model whose
-catalog row says it accepts one; where the endpoint refuses to have thinking
-turned off, the ceiling is raised to **2,000 tokens** instead so the answer has
-room in front of it.
+turn, billed in full for an empty reply. This call requires the knob even while
+the catalog is still warming; where an endpoint refuses to have thinking turned
+off, the ceiling is raised to **2,000 tokens** instead so the answer has room in
+front of it.
 
-An unusable answer costs **one** retry and no more, and an *empty* answer costs
-none — there is nothing to ask the model to fix. Either way the turn happens
-exactly as it would have if the pair had never run.
+An unreadable answer costs **one** repair retry and no more. An empty answer that
+ended at the 200-token ceiling is different: aforge retries the same question
+once with 2,000 tokens. If that answers, later calls on that model start with the
+larger budget. If it is empty again, this conversation stops using the reflex
+model and uses the configured **small work** model instead, with one line saying
+so. There is no loop. If no usable answer arrives, the turn still happens exactly
+as it would have if the pair had never run.
 
 Both are charged to the **session** total rather than to the message that
 happened to trigger them, exactly as the session's own title and a compaction
 summary are, so `/cost` and `/status` include them without any one message
-reading as three times the price of its neighbours.
+reading as three times the price of its neighbours. `/cost` also names how many
+of those paid requests were empty at their ceiling.
 
 You can point that class at a different model — the **reflex** row in
 `/settings` → Providers, or the whole crew in one word with `/crew` — or pin the
@@ -554,13 +559,25 @@ The next time that same failure comes back, **one line is added to the bottom of
 the failed row**, and it is the only place you will ever see this:
 
 ```
+this exact error came up here before · what ran next and it went away: make clean && make build
+```
+
+That is the weaker of **two** lines, and it is the one a suggestion starts life
+with: all aforge has watched is that the command ran after the failure and the
+failure did not come back. Once that suggestion has been offered back, taken,
+and the error has gone away, it earns the stronger line:
+
+```
 this exact error was fixed 7/8 times before · what worked: make clean && make build
 ```
 
-7 is how many times that command has worked; 8 is how many times it has been
-tried. Only **one** suggestion is ever offered — the one with the best record —
-and nothing at all is said when the record is worse than three tries in five,
-because a coin toss dressed as advice is worth less than silence.
+7 is how many times that command was handed back and worked; 8 is how many times
+it was handed back at all. **Nothing is ever called what worked until it has been
+seen to work** — a command that merely happened to follow a failure is a
+coincidence, and calling it a cure is the one thing this line must never do.
+Only **one** suggestion is ever offered — the one with the best record — and
+nothing at all is said when the record is worse than three tries in five, because
+a coin toss dressed as advice is worth less than silence.
 
 This only happens **after** something has already failed. Nothing is looked up
 before a command runs, and a command that works is never annotated.
@@ -569,6 +586,30 @@ Only `bash`, `grep` and `find` are remembered this way, because their answer is
 something you could run again. A `read` that could not find a file is not: the
 "fix" would be one particular path, right for that call and wrong for every
 later one.
+
+## What it refuses to learn from — a refusal, a missing tool, a missing program
+
+Three kinds of failure are watched and deliberately **not** written down, because
+nothing the next command did could have fixed them:
+
+- **aforge itself said no.** A refused call — a permission you denied, a command
+  outside what a task's checker may run, a hand a task does not have — is
+  aforge's own answer, written before anything ran. Whatever gets typed next is
+  simply the next thing that was typed.
+- **the tool is not there.** `Unknown tool: …` is the same fact from the other
+  side.
+- **the program is not on this machine.** `git: command not found` is not a
+  command that ran badly, it is the absence of a command. Going round an absence
+  is not advice anybody can be handed later.
+
+A refusal is also never **answered**: however much aforge knows about that
+wording, no suggestion is added under a refused call.
+
+This was a real defect, and it is what the rule is written from. On one long
+unattended run the file had been asked 14 times, had an answer twice, and had
+never once seen a suggestion work — and both of the things it had learned were
+`pwd`: filed as the cure for a container with no `git` in it, and as the cure for
+the checker's own refusal. An hour later it offered `pwd` back as "what worked".
 
 ## Why did it say this error was fixed before, and how did it know?
 

@@ -127,6 +127,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// Written from a real run too: a task that split its work sat waiting for
+		// its parts and was killed as stuck, and a sibling fast-forwarded its own
+		// copy onto main and reported somebody else's fixes as its own.
+		{"why is my task waiting on its parts", "how-tasks-run"},
+		{"can a task run git pull", "how-tasks-run"},
+		{"why was my task not allowed to merge main", "how-tasks-run"},
+		{"my task says git merge is not yours to run", "how-tasks-run"},
+		// Written from a real run: a task made a symlink so a scorer would find
+		// its fixtures, measured against the symlink, and reported the work done.
+		// The check now runs somewhere the symlink is not, and these are the
+		// questions somebody asks when a task comes back incomplete over it.
+		{"where does the check run", "how-tasks-run"},
+		{"why did my task fail on a file it says it created", "how-tasks-run"},
+		{"does the checker see the files my task installed", "how-tasks-run"},
+		// Written from a real run: a task was landed, lost bash, read and grep to
+		// the landing turn, was answered "Unknown tool" eight times, was nudged
+		// three times for the retries that answer invited, and then saved two
+		// source files it had no way left to build.
+		{"why does my task say a tool was withdrawn", "how-tasks-run"},
+		{"my task says unknown tool bash", "how-tasks-run"},
+		{"why were the files my task saved called unverified", "how-tasks-run"},
+		// And the other half: a fork whose hands declared their files in full and
+		// were refused every single write.
+		{"how do I say which files each hand may write", "tasks"},
+		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},
@@ -177,6 +202,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// actually queried. Each of these reached the wrong page until the
 		// asker's own words were written into a heading, which is the fix this
 		// test is meant to provoke.
+		// The working discipline the chat itself is taught, asked the two ways
+		// people meet it: wanting to know how aforge will go about the job, and
+		// asking why it went looking before it started building.
+		{"how do you decide how to go about a piece of work", "what-i-can-do"},
+		{"why did you search for something that already exists before building it", "what-i-can-do"},
 		{"can you delete files", "what-i-can-do"},
 		{"do write edit and ls use the far disk over --host", "what-i-can-do"},
 		{"can you run tests for me", "what-i-can-do"},
@@ -322,6 +352,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"tell me when the build stops changing", "what-i-can-do"},
 		{"how do I know when something has finished", "what-i-can-do"},
 
+		// The streams wave. Every one of these was asked with a running job on
+		// screen and a model that either could not see it or was burning turns
+		// asking about it: the polling loop, the empty log, the search that
+		// failed on every machine without ripgrep.
+		{"does it poll a background job or does it get told", "what-i-can-do"},
+		{"why is it running sleep and tail over and over", "what-i-can-do"},
+		{"how does aforge know a job finished", "what-i-can-do"},
+		{"why is the job log empty while it is still running", "what-i-can-do"},
+		{"how long does a command wait before it goes to the background", "what-i-can-do"},
+		{"does grep work without ripgrep", "what-i-can-do"},
+		{"can you search the code on a machine with no rg", "what-i-can-do"},
+
 		// The sixth wave: work that went wrong quietly. Every one of these is
 		// asked with a screen full of something that looks finished and is not —
 		// a row still saying "running" long after anything was, a worker that
@@ -457,6 +499,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
 
+		// The answer that gets moved because it ran long. People meet this as a
+		// line that appeared under a reply they were reading, so they say it back
+		// in the words of the line and in the words of what it did to them: the
+		// answer stopped, and something started instead.
+		{"why did it say this is running long", "tasks"},
+		{"it stopped answering and started a task instead", "tasks"},
+		{"my answer was moved to a task", "tasks"},
+		{"how long can one answer go before it hands the work over", "tasks"},
+		// And the version of it where almost nothing went with the work: the
+		// second model could not write the brief, so the task started on the
+		// person's own message alone and the line said so.
+		{"why did my task start with just my message and nothing else", "tasks"},
+		{"the brief could not be written for my task", "tasks"},
+
+		// And the other end of the same meter: a reply that STOPPED before the
+		// question was finished. People meet this as the dim line that said the ask
+		// is not finished, or as the thing they noticed happening without them —
+		// and the ones who meet it before it fires ask the question that names the
+		// old defect, which is why it stopped with the job half done.
+		{"the ask is not finished carrying on", "tasks"},
+		{"my reply stopped halfway through what I asked for", "tasks"},
+		{"it said it would do the rest and then stopped", "tasks"},
+		{"why did it keep going without me after it finished answering", "tasks"},
+		{"does it check whether my question is actually done", "tasks"},
+
 		// The eleventh wave, from the one state people found genuinely stuck: a
 		// task that lands "needs your look" and sits there. Three questions get
 		// asked in front of it — what am I supposed to do, what does each answer
@@ -502,6 +569,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// Hands: the third weight, and the one a person meets as a line they did
+		// not ask for in the middle of their own answer. They ask in the words on
+		// the screen — "three hands on it" — or in the words for what they saw,
+		// which is one reply doing several things at once.
+		{"what does three hands on it mean", "tasks"},
+		{"can you work on several parts of my answer at once", "tasks"},
 		// And the half of division a person meets from the other side: they walk
 		// into the parent's room, type, and the page does not move — because the
 		// task is waiting on its own pieces and their line is what wakes it.
@@ -511,12 +584,40 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"two windows working on the same files", "tasks"},
 
 		// And the question the division road left standing on the other page.
-		// A run used to be what broad work reached for; it is the exception now,
-		// and somebody who expected a planner and watched one worker start asks
-		// it in front of that worker.
+		// A run used to be what broad work reached for; a chat turn cannot open
+		// one at all now, and somebody who expected a planner and watched one
+		// worker start asks it in front of that worker.
 		{"should this be an adaptive run or one worker", "adaptive-runs"},
 		{"why didn't you start an adaptive run for this", "adaptive-runs"},
 		{"when do you use a run instead of a task", "adaptive-runs"},
+		{"how do I start an adaptive run", "adaptive-runs"},
+
+		// And the door that closed after them: the typed cue. Somebody who
+		// learned the words asks in the words they learned, and the page has to
+		// say the absence out loud — there is nothing to refuse them with.
+		{"I typed orchestrate and it just answered me", "adaptive-runs"},
+		{"what words open an adaptive run", "adaptive-runs"},
+		{"can I still type orchestrate to start a planned run", "adaptive-runs"},
+
+		// The one-road wave: work now STARTS on its own after a words-only turn,
+		// with a line on the transcript and no card to answer. Every one of these
+		// is asked by somebody looking at a task they did not ask for, in the
+		// words the transcript handed them.
+		{"why did a task start on its own", "tasks"},
+		{"this looked like work so task started", "tasks"},
+		{"aforge started work I did not ask for", "tasks"},
+		{"how do I stop it starting tasks by itself", "tasks"},
+		{"what happened to the card asking whether to run it", "tasks"},
+
+		// And the shape that reads strangest of all, because the reply had
+		// already started: a reply can stop halfway and hand itself over, when a
+		// second model reads what is left of it and finds independent parts.
+		// Somebody watching that happen asks about the half-answer, not about a
+		// judge — and they say the line back in its own words.
+		{"this has parts handing it to a task", "tasks"},
+		{"why did it hand my answer to a team", "tasks"},
+		{"it started answering and then handed the work over", "tasks"},
+		{"why did my reply stop halfway and become a task", "tasks"},
 
 		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
 		// writes four class models and the session picks them up on its next
@@ -585,6 +686,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it started repeating the same line over and over", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
+		// Asked from a bill rather than from a screen: a cost autopsy found one
+		// turn hopping across six endpoints, each hop paying full price for a
+		// context the last endpoint already had. Both halves of that are things
+		// somebody asks — the money, and the hopping.
+		{"why does the same conversation suddenly cost more", "models-and-cost"},
+		{"does it keep the prompt cache warm", "models-and-cost"},
+		{"why did old tool results turn into pointers during one long answer", "models-and-cost"},
+		{"what does folded results tokens mean", "models-and-cost"},
 
 		// The effort ladder. One dial with five rungs under a default of `high`,
 		// so every question about it is asked in the words somebody uses for the
