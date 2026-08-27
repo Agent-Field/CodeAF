@@ -2210,7 +2210,16 @@ func (a *app) Init() tea.Cmd {
 // the rest, because [app.wake] answers nil to a clock that is already running.
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	model, cmd := a.update(msg)
-	if a.levelsWaiting() {
+	// A TASK BRIEF BEING SHAPED IS THE SECOND THING ARMED HERE, and it is the
+	// colder start of the two. Both doors onto the forming block — `/task` typed
+	// into a still surface, and a yes on a proposal card — are answered while
+	// nothing else on screen is moving, so the paint clock's eighth reason to
+	// KEEP turning ([app.paint]) had nothing to keep: the block's spinner and its
+	// count-up stood still for the whole shaping call, which is the exact dead
+	// air the block was built to end (taskcommand.go's [preflight]). The two
+	// places read ONE fact, [preflight.live], so a clock that starts and a clock
+	// that keeps going cannot disagree about whether a wait is up.
+	if a.levelsWaiting() || a.wait.live() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
 	return model, cmd

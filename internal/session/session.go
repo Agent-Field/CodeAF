@@ -1526,6 +1526,14 @@ type Config struct {
 	// It is private for memoryBrief's reason: no surface sets it, the constructor
 	// that builds the worker does.
 	droppings Place
+	// ownSpace marks a worker standing in THE CONVERSATION'S OWN SPACE rather
+	// than in a project: an owned conversation's work/ repository, or a worktree
+	// cut from it (task_run.go's standingInOwnSpace). One line of the prompt
+	// footer depends on it (prompt.go), and it exists because a directory that
+	// is empty for a good reason and a checkout that failed look the same from
+	// inside. It is private for droppings' reason: no surface sets it, the
+	// constructor that builds the worker does.
+	ownSpace bool
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).

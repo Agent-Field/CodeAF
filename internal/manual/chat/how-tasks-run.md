@@ -1,13 +1,16 @@
 # How work on its own actually runs
 
-## What happens when I type /task
+## What happens when I type /task — the forming line is stuck, the task spinner is not moving, nothing happens after /task
 
 `/task <brief>` first raises one forming block at the transcript tail. Its dim `▏ `
 hairline joins the word `task`, your verbatim quoted brief, and the live phase. The phase
 begins as `sizing it up…` for the plain sized form and advances in place to
 `shaping the brief…`; `/task solo` and the preset `single` road skip straight to
 shaping. The spinner and count-up keep moving on the same frame clock as the
-other live rows. When the start succeeds, the block is replaced in that same frame by
+other live rows — the block starts that clock itself, so it turns even when the
+conversation is otherwise idle, which is every time you type `/task`. In the plain-text
+tier the mark is a still `*` on purpose and only the clock climbs. When the start
+succeeds, the block is replaced in that same frame by
 the normal started-task row and the task appears on its rail. When it fails, the block is
 replaced by the error sentence. The hairline never remains on settled work.
 
@@ -50,11 +53,36 @@ Two limits:
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
 
-An `aforge` conversation opened from your home directory owns a scratch workspace. That
-scratch repository is never treated as the project a code task should branch from. A code
-task with no named place stops with `this task needs a project; use /workspace <path> or
-name where it should work`; use `/workspace` once to anchor the conversation, or name the
-folder in the request. Non-code work may deliberately use the scratch workspace in place.
+## A task in a conversation with no project — task failed saying it needs a project, task in a conversation with no folder, do tasks work without a repository
+
+They work. A conversation opened where there is no project — your home directory, a temp
+folder, a launcher; the place line reads `aforge` — has a **workspace of its own**, and
+aforge quietly makes that workspace a git repository the moment the conversation opens.
+
+So a task with no named place takes the ordinary road described above, against that
+repository instead of a project's: a worktree at `<session folder>/trees/<task id>`, a
+branch `task/<title>-<6 hex>` off its HEAD, and a merge home when the task lands. Work that
+needs no repository at all — filing an issue with `gh`, reading something, writing a
+document — simply runs, and its card and `/history` record name the task folder it stood
+in.
+
+Nothing has to be named first. `/workspace <path>` still anchors the conversation to a real
+repository when that is what you meant, and naming a folder in the request still sends that
+one task there.
+
+Two things follow from it:
+
+- The worker is told where it is standing, in one line of its instructions:
+  `There is no project here: this is the conversation's own space, and it holds only what
+  this conversation has put there.` A task folder holding nothing is the ordinary state of
+  a conversation that never had a project, and the line is what stops a worker reading it
+  as a checkout that failed.
+- If that workspace is **not** a repository — a conversation from an older aforge, or a
+  machine with no `git` — the task runs **in place** in it and says so, exactly as any
+  other non-repository does. It is never refused for want of a project.
+
+An older aforge stopped such a task with `this task needs a project; use /workspace <path>
+or name where it should work`. Nothing says that any more.
 
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 

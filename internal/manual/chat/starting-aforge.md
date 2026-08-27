@@ -141,7 +141,11 @@ showing it where you look to answer "which project am I in" told you nothing.
 Type `/status` and the `place` line gives you the full path to copy.
 
 An owned workspace of that kind is quietly made into a git repository, so work
-done there has undo history like work done anywhere else.
+done there has undo history like work done anywhere else — and so a task started
+in such a conversation branches from it and merges home exactly as a task in a
+project does. **A conversation with no project still runs tasks**; nothing has to
+be anchored first. See *A task in a conversation with no project* on the page
+about how work on its own runs.
 
 ## Anchor a conversation to a repository or folder — /workspace and the workspace tool
 
@@ -149,7 +153,8 @@ When a conversation says `aforge` because it opened with no project, type `/work
 <path>` to make the repository or folder at that path its project. The path may begin with
 `~`; a path inside a Git repository resolves to the repository root. The place line changes,
 the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
-and future tasks cut their worktrees from that repository into their own task folders.
+and future tasks cut their worktrees from that repository rather than from the
+conversation's own workspace.
 
 The model has the conditional `workspace` tool for the same move when you name a repository
 path in ordinary chat. Both doors exist only while the conversation owns a scratch

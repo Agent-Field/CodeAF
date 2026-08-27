@@ -166,6 +166,15 @@ func renderSystemAt(config Config, now time.Time) string {
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
+	// AND WHETHER THERE IS A PROJECT HERE AT ALL. A conversation opened outside
+	// one works in a space of its own, and so does a task cut from it — so a
+	// worker that finds the directory holding nothing must be told that this is
+	// the ordinary state of it and not a checkout that failed, or it spends its
+	// steps hunting for a repository nobody named (task_run.go's
+	// standingInOwnSpace decides it; session.go's ownSpace carries it).
+	if config.inOwnSpace() {
+		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
+	}
 	out.WriteString(nowLine(now))
 
 	for _, instructionFile := range []string{agentsFileName, claudeFileName} {
