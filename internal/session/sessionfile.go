@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"golang.org/x/sys/unix"
 )
@@ -78,6 +79,12 @@ type sessionEntry struct {
 	Content    string        `json:"content,omitempty"`
 	ToolCalls  []ai.ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string        `json:"toolCallId,omitempty"`
+	// Reasoning fields are the assistant continuation exactly as it arrived.
+	// They stay beside the message rather than inside Content so a resumed tool
+	// loop preserves both the wire contract and what the person actually saw.
+	ReasoningField   string          `json:"reasoningField,omitempty"`
+	Reasoning        string          `json:"reasoning,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoningDetails,omitempty"`
 
 	// Parts are the message's non-text content parts as durable references, in
 	// the order they sit in the message AFTER its text. Absent on every message
@@ -1109,14 +1116,15 @@ func replaySessionFile(path string) (replayedSession, error) {
 	defer file.Close()
 
 	var (
-		messages []ai.Message
-		earlier  []ai.Message
-		overlap  int
-		title    string
-		id       string
-		lines    int
-		spent    Usage
-		created  []fileChange
+		messages  []ai.Message
+		reasoning []provider.MessageReasoning
+		earlier   []ai.Message
+		overlap   int
+		title     string
+		id        string
+		lines     int
+		spent     Usage
+		created   []fileChange
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1192,6 +1200,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 				})
 			}
 			messages = append(messages, message)
+			reasoning = append(reasoning, provider.MessageReasoning{
+				Field: entry.ReasoningField, Text: entry.Reasoning,
+				Details: append(json.RawMessage(nil), entry.ReasoningDetails...),
+			})
 		case "compaction":
 			// THE REGION THIS MARKER REPLACES IS KEPT BEFORE IT IS THROWN AWAY,
 			// which is the one thing this pass does that the live transcript has
@@ -1224,6 +1236,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 				earlier, overlap = earlier[:0], 0
 			}
 			messages = append(messages[:0], rebuilt...)
+			reasoning = append(reasoning[:0], make([]provider.MessageReasoning, len(rebuilt))...)
 			// The frames message is the FIRST of them when an old marker carried
 			// pages, which is the order [compactionMessages] builds and the only
 			// place those references belong: the summary beside it is words.
@@ -1252,9 +1265,11 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 			if entry.Dropped >= len(messages) {
 				messages = messages[:0]
+				reasoning = reasoning[:0]
 				continue
 			}
 			messages = messages[:len(messages)-entry.Dropped]
+			reasoning = reasoning[:len(reasoning)-entry.Dropped]
 		case "usage":
 			// EVERY line is added, and none is ever taken back. This is the one
 			// arm that accumulates rather than rebuilds: a compaction below
@@ -1341,7 +1356,9 @@ func replaySessionFile(path string) (replayedSession, error) {
 	if err := scanner.Err(); err != nil {
 		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
+	original := append([]ai.Message(nil), messages...)
 	repaired := repairTranscript(messages)
+	repairedReasoning := reasoningAfterRepair(repaired, original, reasoning)
 	// The overlap was counted against the lines the file holds and is applied to
 	// the transcript the repair left behind, so it is clamped to it. The repair
 	// only ever drops an unanswered trailing batch and orphaned results — the tail
@@ -1351,7 +1368,8 @@ func replaySessionFile(path string) (replayedSession, error) {
 		overlap = len(repaired)
 	}
 	return replayedSession{
-		messages: repaired,
+		messages:  repaired,
+		reasoning: repairedReasoning,
 		// The earlier region goes through the SAME repair as the live one. It is
 		// never sent, so the 400 the repair exists to prevent cannot happen to
 		// it — but a tool result whose call is missing is a row a surface would
@@ -1495,6 +1513,9 @@ func legacyCompactionNote(summary string) string {
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
 	messages []ai.Message
+	// reasoning is aligned with messages. Legacy lines and rewritten messages
+	// carry zero entries, which means they serialize exactly as before.
+	reasoning []provider.MessageReasoning
 	// earlier is the transcript as it stood ONE INSTANT BEFORE the latest
 	// compaction marker — the conversation the pass edited away, which the file
 	// still holds in full and the model no longer carries. Nil for a journal
@@ -1615,6 +1636,22 @@ func repairTranscript(messages []ai.Message) []ai.Message {
 	return repaired
 }
 
+func reasoningAfterRepair(repaired, original []ai.Message, reasoning []provider.MessageReasoning) []provider.MessageReasoning {
+	byPart := make(map[*ai.ContentPart]provider.MessageReasoning, len(original))
+	for index, message := range original {
+		if index < len(reasoning) && len(message.Content) > 0 {
+			byPart[&message.Content[0]] = reasoning[index]
+		}
+	}
+	kept := make([]provider.MessageReasoning, len(repaired))
+	for index, message := range repaired {
+		if len(message.Content) > 0 {
+			kept[index] = byPart[&message.Content[0]]
+		}
+	}
+	return kept
+}
+
 // appendMessage journals one message: its text flattened, and the durable
 // references for whatever else it carried.
 //
@@ -1628,6 +1665,10 @@ func repairTranscript(messages []ai.Message) []ai.Message {
 // [userMessage]).
 func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) {
 	s.append(message, false, refs)
+}
+
+func (s *sessionFile) appendReasonedMessage(message ai.Message, reasoning provider.MessageReasoning) {
+	s.appendWithReasoning(message, false, nil, reasoning)
 }
 
 // messageRef names the most recent journal line carrying message. Compaction
@@ -1736,6 +1777,10 @@ func (s *sessionFile) appendSteerFellThrough(note SteerNote) {
 }
 
 func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, tagSets ...[]TaskReplyTag) {
+	s.appendWithReasoning(message, note, refs, provider.MessageReasoning{}, tagSets...)
+}
+
+func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []journalPart, reasoning provider.MessageReasoning, tagSets ...[]TaskReplyTag) {
 	// Indexed as it is written, not only as it is replayed: a picture attached
 	// an hour ago is one a rewind or a /compact can put back through the display
 	// shaping in THIS process, long before anybody resumes the file. The same is
@@ -1772,15 +1817,18 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, 
 		text = flattened.String()
 	}
 	s.writeLine(sessionEntry{
-		Type:       "message",
-		Role:       message.Role,
-		Content:    text,
-		ToolCalls:  message.ToolCalls,
-		ToolCallID: message.ToolCallID,
-		Parts:      refs,
-		Note:       note,
-		ReplyTags:  firstReplyTags(tagSets),
-		Timestamp:  stamp(),
+		Type:             "message",
+		Role:             message.Role,
+		Content:          text,
+		ToolCalls:        message.ToolCalls,
+		ToolCallID:       message.ToolCallID,
+		ReasoningField:   reasoning.Field,
+		Reasoning:        reasoning.Text,
+		ReasoningDetails: append(json.RawMessage(nil), reasoning.Details...),
+		Parts:            refs,
+		Note:             note,
+		ReplyTags:        firstReplyTags(tagSets),
+		Timestamp:        stamp(),
 	})
 }
 
@@ -1810,7 +1858,7 @@ func firstReplyTags(tagSets [][]TaskReplyTag) []TaskReplyTag {
 //
 // The counts ride the marker so a surface reading the file back can say what the
 // pass did without re-deriving it. Nothing rebuilds from them.
-func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, window []ai.Message) {
+func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	s.writeLine(sessionEntry{
 		Type:         "compaction",
 		TokensBefore: tokensBefore,
@@ -1823,7 +1871,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Window:    len(window),
 		Timestamp: stamp(),
 	})
-	for _, message := range window {
+	for index, message := range window {
 		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The window is written again
 		// on the far side of the marker (above), and a note re-written without its
 		// mark would come back from the next resume as the person's words — this
@@ -1839,7 +1887,11 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 			s.appendSteer(message, mark.At)
 			continue
 		}
-		s.appendMessage(message)
+		var reasoning provider.MessageReasoning
+		if len(sidecars) > 0 && index < len(sidecars[0]) {
+			reasoning = sidecars[0][index]
+		}
+		s.appendReasonedMessage(message, reasoning)
 	}
 }
 

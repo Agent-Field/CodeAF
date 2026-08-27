@@ -96,6 +96,43 @@ func noteReasoningBudgetRefused(model string) {
 	}
 }
 
+// noteReasoningReplayRefused remembers the narrow exception to
+// [ReasoningReplayPolicy]: this model's endpoint explicitly rejected the
+// continuation fields, so only this model loses them on the repaired request.
+func noteReasoningReplayRefused(model string) {
+	if quirks.noteNoReasoningReplay(model, time.Now().UTC()) {
+		quirks.persist()
+	}
+}
+
+func reasoningReplayRefused(model string) bool { return quirks.knowsNoReasoningReplay(model) }
+
+// refusesReasoningReplay recognizes a complaint about assistant-message
+// continuation fields. All three halves are required so a 400 about the
+// request-level reasoning knob cannot accidentally erase transcript state.
+func refusesReasoningReplay(payload []byte, carried []MessageReasoning) bool {
+	text := strings.ToLower(string(payload))
+	field := strings.Contains(text, "reasoning_details")
+	for _, reasoning := range carried {
+		if reasoning.Field != "reasoning" && strings.Contains(text, reasoning.Field) {
+			field = true
+		}
+		if reasoning.Field == "reasoning" && strings.Contains(text, "reasoning") &&
+			(strings.Contains(text, "message") || strings.Contains(text, "assistant")) {
+			field = true
+		}
+	}
+	if !field {
+		return false
+	}
+	for _, refusal := range []string{"unsupported", "not supported", "unrecognized", "unrecognised", "unknown", "invalid", "extra", "not allowed"} {
+		if strings.Contains(text, refusal) {
+			return true
+		}
+	}
+	return false
+}
+
 // ReasoningBudgetRefused reports that this model's endpoint rejected a thinking
 // budget. Like the fact above it is learned rather than published — no catalog
 // row says it — so it is empty until some call has been told no.
@@ -270,6 +307,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	messages, err := c.encodes.encodeMessages(scrubbed.Messages, dialect)
 	if err != nil {
 		return nil, err
+	}
+	if !reasoningReplayRefused(model) {
+		messages, err = attachMessageReasoning(messages, knobs.reasoning)
+		if err != nil {
+			return nil, err
+		}
 	}
 	tools, err := c.encodes.encodeTools(scrubbed.Tools, dialect)
 	if err != nil {

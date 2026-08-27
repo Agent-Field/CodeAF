@@ -1,6 +1,9 @@
 package provider
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // StreamEventKind names one boundary in an observed provider stream. The
 // observer is opt-in through context, so every existing completion remains
@@ -109,6 +112,12 @@ type StreamEvent struct {
 	Delta   string
 	Session string
 
+	// ReasoningField and ReasoningDetails preserve the assistant continuation's
+	// wire signature on StreamReasoning. They are metadata, never display text;
+	// Delta remains the only part a surface shows.
+	ReasoningField   string
+	ReasoningDetails json.RawMessage
+
 	// Index, ID and Tool name the tool call a StreamToolCallForming event is
 	// about, and are zero on every other kind. They are fields rather than a
 	// JSON payload in Delta — the shape StreamToolCallReady uses — because a
@@ -122,6 +131,12 @@ type StreamEvent struct {
 	Index int
 	ID    string
 	Tool  string
+}
+
+// EmitReasoning is the test-double and adapter-neutral door for a reasoning
+// delta whose wire identity must survive beyond the display event.
+func EmitReasoning(ctx context.Context, field, delta string, details json.RawMessage) {
+	EmitEvent(ctx, StreamEvent{Kind: StreamReasoning, Delta: delta, ReasoningField: field, ReasoningDetails: details})
 }
 
 // StreamObserver receives provider deltas synchronously and in order.
