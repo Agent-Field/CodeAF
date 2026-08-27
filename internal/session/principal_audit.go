@@ -284,10 +284,12 @@ func reconcile(created []fileChange, tree string) reconciliation {
 }
 
 // underTree reports that a path sits inside a directory. It is a comparison of
-// cleaned paths and never a prefix test on strings: `/work-2` is not inside
-// `/work`, and a string prefix says it is.
+// canonical paths and never a prefix test on strings: `/work-2` is not inside
+// `/work`, and a string prefix says it is. Resolving both sides also keeps a
+// task tree reached through a symlink from having its deliverables mistaken for
+// scratch and removed.
 func underTree(tree, path string) bool {
-	relative, err := filepath.Rel(filepath.Clean(tree), filepath.Clean(path))
+	relative, err := filepath.Rel(canonicalPath(tree), canonicalPath(path))
 	if err != nil {
 		return false
 	}

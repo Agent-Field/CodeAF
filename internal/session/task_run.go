@@ -4700,6 +4700,10 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 	if trees := place.Trees(); trees != "" {
 		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
 	}
+	// Git resolves symlinks before it registers a worktree. Record that same
+	// spelling from the start so the checkpoint, cleanup and git all name one
+	// directory even while the final path does not exist yet.
+	dir = canonicalPath(dir)
 	branch := "task/" + slugify(title) + "-" + shortID()
 
 	defer lockGitRoot(place, root)()
@@ -5172,7 +5176,10 @@ func stageableWork(dir string, wrote []string) []string {
 	return paths
 }
 
-// repositoryRoot is the top of the repository a directory sits in.
+// repositoryRoot is the canonical top of the repository a directory sits in.
+// Git may report a resolved path even when its caller arrived through a
+// symlink; canonicalizing here makes every later path and repository lock use
+// that same spelling.
 func repositoryRoot(dir string) (string, bool) {
 	out, err := git(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -5182,7 +5189,7 @@ func repositoryRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
-	return root, true
+	return canonicalPath(root), true
 }
 
 // git runs one command in a directory and returns its combined output. There is
