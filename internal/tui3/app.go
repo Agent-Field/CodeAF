@@ -1135,8 +1135,9 @@ type app struct {
 	// over there. Nil is this process's own disk, which is every local launch —
 	// the card opens the journal itself then (tui3.go's [Options.TaskRecord],
 	// taskrecord.go's [app.readTaskTail]).
-	farRecord func(uri string, tail int) (session.TaskRecord, error)
-	farTasks  func() ([]session.TaskIndexEntry, bool)
+	farRecord     func(uri string, tail int) (session.TaskRecord, error)
+	farRoomRecord func(id uint64, tail int) (session.TaskRecord, error)
+	farTasks      func() ([]session.TaskIndexEntry, bool)
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1917,6 +1918,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		world:            opts.World,
 		farPlaces:        opts.WorldRoot,
 		farRecord:        opts.TaskRecord,
+		farRoomRecord:    opts.TaskRoom,
 		farTasks:         opts.TaskIndex,
 		live:             -1,
 		echoAt:           -1,
@@ -3032,8 +3034,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.wake()
 
 	case roomRecordMsg:
-		a.farRoomRead(msg)
-		return a, a.wake()
+		return a, tea.Batch(a.farRoomRead(msg), a.wake())
+
+	case farRoomTickMsg:
+		return a, a.farRoomPoll(msg.gen)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,

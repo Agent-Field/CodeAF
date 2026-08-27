@@ -103,11 +103,11 @@ import (
 //	                  is unaffected: that rides Harnesses and RunHarness, which
 //	                  the engine still fills.
 //	the task rail     DRAWN from this conversation's rows in the far world. A
-//	                  landed row opens a read-only room: one honest line while
-//	                  Places.Task brings the bounded journal tail across, then
-//	                  the ordinary room renderer draws it. Steering, stopping,
-//	                  and changing its model stay absent because the wire has no
-//	                  such doors; no path from the far row is opened here.
+//	                  running or landed row opens immediately: Task.Room brings
+//	                  the bounded journal tail on the room's own beat, and the
+//	                  ordinary renderer draws it. Task.Steer and Task.Stop carry
+//	                  those two actions to the engine. Changing its model stays
+//	                  absent because the wire has no door for it.
 //	/task             WORKS. Brief, solo and adaptive starts cross to the engine,
 //	                  which shapes, admits and records the work. The next world
 //	                  refresh brings its row back through Places.Task.

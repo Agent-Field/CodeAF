@@ -1179,13 +1179,68 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles:
+	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles,
+		MethodTaskSteer, MethodTaskStop:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskRoom:
+		args, err := arg[TaskRoomArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ TaskJournal(uint64) string })
+		if !ok {
+			return nil, errors.New("engine: this session has no task rooms")
+		}
+		path := door.TaskJournal(args.ID)
+		if path == "" {
+			return json.Marshal(session.TaskRecord{})
+		}
+		sess.mu.Lock()
+		read := sess.engine.TaskRecord
+		sess.mu.Unlock()
+		if read == nil {
+			return nil, errors.New("engine: this engine cannot read its record")
+		}
+		record, err := read("file://"+path, args.Tail)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(record)
+	case MethodTaskSteer:
+		args, err := arg[TaskSteerArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SteerTask(uint64, string) (bool, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task rooms")
+		}
+		waiting, err := door.SteerTask(args.ID, args.Text)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskSteered{Waiting: waiting})
+	case MethodTaskStop:
+		args, err := arg[TaskStopArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ Cancel(string) (string, error) })
+		if !ok {
+			return nil, errors.New("engine: this session has no door onto stopping work")
+		}
+		line, err := door.Cancel(args.ID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStopped{Line: line})
 	case MethodTaskStart:
 		door, ok := agent.(interface {
 			StartTask(context.Context, string) (uint64, string, error)
