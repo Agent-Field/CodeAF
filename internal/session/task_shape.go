@@ -68,7 +68,7 @@ import (
 func init() { roles.Register(roles.RoleShaper, roles.TierHigh) }
 
 const (
-	// taskShapeWindow is how long /task will wait for the shaper before the
+	// TaskShapeWindow is how long /task will wait for the shaper before the
 	// person's words go through untouched.
 	//
 	// The sizing judge next door gets three seconds because it answers one bit
@@ -78,7 +78,7 @@ const (
 	// sit through for a command they just typed; past it the note on screen has
 	// stopped meaning anything, and what they get instead — their own sentence,
 	// started immediately — is precisely what they asked for.
-	taskShapeWindow = 25 * time.Second
+	TaskShapeWindow = 25 * time.Second
 
 	// taskShapeTokens is the ceiling. The prompt asks for under 300 words and
 	// forbids more than 600, so ~1200 tokens is that bound with room for the
@@ -158,7 +158,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 	// IT CARRIES ITS OWN DEADLINE, for [Agent.guardianAllows]'s reason: the
 	// provider's client is built with no timeout, so a stalled shaper would hold
 	// a command the person just typed until somebody interrupted the session.
-	ctx, cancel := context.WithTimeout(ctx, taskShapeWindow)
+	ctx, cancel := context.WithTimeout(ctx, TaskShapeWindow)
 	defer cancel()
 
 	// THE SHAPER IS ALLOWED TO THINK, and that is the deliberate exception to

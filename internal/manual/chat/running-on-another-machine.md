@@ -411,7 +411,7 @@ registry yet. They name that machine and refuse; they do not report its registry
    change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-## Why is the task roster empty over host, and can I open a remote task room?
+## Why is the task roster empty over host, can I start a task, and why did it say no task door?
 
 The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
@@ -420,9 +420,13 @@ The task roster lists this far conversation's work. Its rows come from the far
    transcript when it arrives. That hosted room is for reading: steering, stopping, and
    changing its model are absent because those actions do not cross this connection yet.
 
-9. **The task rail is drawn, but `/task` has no remote door.** Its rows come from the far
-   machine through `Places.Task`; `/task` answers `could not start the task · this session
-   has no task door` rather than starting work on the wrong machine.
+9. **Starting tasks works on the far machine.** `/task <brief>`, `/task solo <brief>` and
+   `/task adaptive <brief>` send the brief to that conversation's engine. The far machine
+   shapes, admits and records the work, and the surface answers with `single task <id>
+   started · <title>` or `adaptive task <id> started · <title>`. A `propose_task` card works
+   the same way: answering yes crosses to the engine, which starts and records the task.
+   The rail refreshes from the far `Places.Task` record. A hosted task room is still for
+   reading: steering, stopping, and changing its model do not cross this connection yet.
 
 10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes

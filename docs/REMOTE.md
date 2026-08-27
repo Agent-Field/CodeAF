@@ -466,6 +466,25 @@ back off the page and the engine's own sentence is put where it was, because a
 message the model never received must not sit in the only record of the
 conversation looking as though it did.
 
+## Decision 14 — Version 6 commissions tasks where the conversation lives
+
+**Decision.** `Task.Start`, `Task.StartPlanner` and `Task.Judge` carry only a
+brief and an optional sizing hint to the engine. The engine calls its own
+session agent, so shaping, naming, admission, models, records and spending all
+belong to the machine that owns the conversation. The surface receives only the
+id, title, parts and reason it needs to settle the existing `/task` flow.
+
+**Why all three cross.** `/task <brief>` may size before it chooses a door;
+`solo` skips that question; `adaptive` names the planner door explicitly. A
+remote handle missing any one method would still expose a command that worked
+only for some spellings. Version 6 therefore moves the handshake boundary and
+older engines are refused before the screen starts.
+
+**Why proposal consent needs no fourth method.** A `propose_task` card is raised
+by the engine agent and its existing consent answer already returns to that
+same agent. Saying yes therefore starts and records the far task without the
+surface commissioning it a second time.
+
 ---
 
 ## What runs where
