@@ -1021,8 +1021,19 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	// The notes nobody ever got, in the shape a fresh run would have produced —
 	// and marked as handed over, so this is the only life of this session in
 	// which they are said.
+	//
+	// THEY ARE RE-TOLD AND NOT ARRIVING, so nothing here is put to the session's
+	// goal owner: the landing already happened, in a life of this session that
+	// has ended, and counting it now would count one failure twice
+	// ([Agent.quietAddress]). A graph with no conversation behind it — every
+	// test that builds one by hand — reads as a person's, which is the posture
+	// every such caller already had.
+	address := landingAddress{person: true}
+	if g.home != nil {
+		address = g.home.quietAddress()
+	}
 	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle))
+		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
 		node.markNoted()
 	}
 	return recovery

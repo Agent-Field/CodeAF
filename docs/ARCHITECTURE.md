@@ -191,6 +191,71 @@ structural read on stderr so silence is diagnosable. Those are contracts, not
 conveniences — [HEADLESS.md](HEADLESS.md) is where they are written down and
 what every harness is programmed against.
 
+## Decision 8 — Every session has a principal; unattended sessions get a Steward
+
+**Decision.** One interface, `session.Principal`, is the addressee of every road
+in the engine that ends in "ask the person": `Ask`, `Acceptance`, `Budget`,
+`Report(landing)` and `Decide(remains) → {carry on with a brief | done | stop
+with a reason}`. Two implementations. `Person` is the attended session and
+**adds nothing** — it holds no acceptance, has no budget, turns no landing into
+work, and decides exactly what `readRemains`'s empty string already decided.
+`Steward` is the unattended one: `chat --yolo` **with a budget**.
+
+**Why.** Autonomous runs were ending with most of their budget unspent, holding
+partial work. The cause was not a bug in any function: it was a correct sentence
+addressed to somebody who was not there. A landing that ran out of repair rounds
+tells the model to "offer them a follow-up in their own words"; with no them,
+the model answers in words, the turn ends, and the session idles. Nothing
+anywhere held the whole ask, and nothing ever looked at the tree or at what the
+session had left lying beside it.
+
+**A budget is what arms it, and nothing else.** `--yolo` says one thing today —
+run tools without asking — and reading it as permission to spend hours carrying
+work on would be the harness acting on a sentence nobody wrote. `--max-hours`
+and `--max-cost` (env `AFORGE_MAX_HOURS` / `AFORGE_MAX_COST`, either alone is a
+budget) are that sentence. Without one, `--yolo` is exactly what it was and the
+door prints one line saying what the other thing is called.
+
+**What routes through it.**
+
+| road | before | with a Steward |
+|---|---|---|
+| a stopped turn (`checkpointReopen`) | the mark reader's line, or the turn ends | the same line, plus the session acceptance, how the units of work landed, and — only when a principal says the ask is met — the declared checks re-run from clean |
+| a landing that ran out of repair rounds (`taskNote`) | "offer them a follow-up" | `Report` turns the audit's own account of the gap into the next brief, in the same working copy |
+| a landing nobody could judge (`settlePolicy`) | waits on a card | settles itself, as a headless run already did |
+| the post-turn work judge (`routeJudge`) | skips every woken turn | a woken turn is judged against the session's frozen ask — the only kind of turn an unattended run has after its first |
+| a standing item (`askStanding`) | "nobody is here to say yes" | the goal owner answers its own card, within the rails `Item.Validate` already demands |
+
+**Session acceptance.** At the start of the first turn the judge's own machinery
+(`routeVerdictContract`, `routeAcceptance`) writes one `done when` sentence for
+the **whole** ask, journaled and frozen for the session — a done-condition the
+work can rewrite is one the work grades itself against. Every acceptance before
+this was one unit of work's, read only by that unit's auditor.
+
+**The terminal audit.** Before a Steward may say done: re-run the checks the work
+itself named (`declaredChecks`, the same reading a unit of work's auditor uses),
+each in a fresh process in the deliverable tree; then reconcile everything the
+session created. A created path inside the deliverable tree is part of the
+answer; outside it, it is scratch, and scratch is removed and written down.
+Nothing the session did not create is ever touched — the created bit is measured
+before the call that writes the file and journaled, so it survives a resume — and
+a `Person`'s session deletes nothing at all, it is offered the list.
+
+**Rails.** The budget stops the run with a report rather than with silence. The
+same failure signature three times stops it for good; the signature is the
+audit's own first line today and is the field a proper failure classification
+drops into unchanged. "Done" requires the acceptance to hold from clean, and a
+session that has finished no unit of work is never done whatever its transcript
+says.
+
+**Why an interface rather than flags on the agent.** The two answers are a
+policy, not a branch: a third principal — a person on another machine, a queue,
+a scheduled owner — has to be writable without any road in the engine learning a
+new name. Two structural tests hold the line: one fails when a new road onto the
+wake queue appears without saying who it is addressed to, and one fails when a
+person-addressed sentence is written anywhere that has never heard of a
+principal.
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and

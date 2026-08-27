@@ -1484,6 +1484,28 @@ type Config struct {
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
 	// already in flight is never cut in half by it.
 	SpendRailUSD float64
+
+	// Unattended says NOBODY IS SITTING IN FRONT OF THIS SESSION — the door's
+	// `--yolo`, which until now reached this package only as an approval default
+	// (cmd/aforge's v3Policy) and said nothing about who was watching.
+	//
+	// IT IS NOT THE ARMING BIT ON ITS OWN. Together with a Budget it makes this
+	// session's principal a [Steward] (principal.go); alone it changes nothing
+	// whatever, because a flag that quietly started carrying a conversation on
+	// for hours would be the harness spending somebody's money on a sentence
+	// they did not write. The door says so in one line at launch.
+	Unattended bool
+
+	// Budget is the ceiling an unattended session runs under: hours, dollars, or
+	// both. THE ZERO BUDGET IS NO CEILING, which is what every session has always
+	// had, and it is what leaves `--yolo` alone exactly as it was.
+	//
+	// It is separate from SpendRailUSD above and they are different rails for
+	// different questions. The rail REFUSES THE NEXT TURN once a conversation has
+	// spent its ceiling, whoever is driving it; this is what the Steward is
+	// allowed to spend CARRYING ON BY ITSELF, and reaching it ends the run with a
+	// report rather than with a refusal nobody reads.
+	Budget Budget
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -1735,10 +1757,32 @@ type Agent struct {
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
 	usage         Usage
-	running       bool
-	cancel        context.CancelFunc
-	steering      []userMessage
-	closed        bool
+	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
+	// never nil: a session built with no posture at all gets a [Person], which
+	// answers every question the way this package answered it before the
+	// interface existed. It is set once in [newAgent] and never written after,
+	// so every road may read it without the lock.
+	principal Principal
+	// startedAt is when this process opened the session, and it is the only
+	// wall clock this package keeps. Usage.Duration is the SUM OF TURN
+	// DURATIONS, which is a different number and the wrong one for a budget: a
+	// session idle for an hour between two ten-second turns has spent an hour of
+	// somebody's evening and twenty seconds of that figure.
+	//
+	// It is THIS LAUNCH and not the session's birth. Place.Created is on disk and
+	// is days old on a resumed conversation, and a budget measured from it would
+	// stop a resumed session before its first turn.
+	startedAt time.Time
+	// createdFiles is EVERYTHING THIS SESSION MADE THAT WAS NOT THERE BEFORE, in
+	// first-touch order (principal_audit.go). It is folded in from the per-turn
+	// ledger recovery.go already keeps — one source of truth for "did this exist
+	// before the call" — because that ledger is dropped at the end of every turn
+	// and the question this answers is asked once, at the end of the session.
+	createdFiles []fileChange
+	running      bool
+	cancel       context.CancelFunc
+	steering     []userMessage
+	closed       bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding

@@ -188,7 +188,71 @@ type sessionEntry struct {
 	// file written before it existed.
 	Division *journalDivision `json:"division,omitempty"`
 
+	// Principal is ONE MOMENT THE SESSION'S GOAL OWNER DECIDED SOMETHING
+	// (see [journalPrincipal]). Absent from every line that is not one, and from
+	// every file written before it existed — which is every attended session,
+	// because a person decides these things in their own head.
+	Principal *journalPrincipal `json:"principal,omitempty"`
+
+	// Created is ONE FILE THIS SESSION MADE THAT WAS NOT THERE BEFORE (see
+	// [journalCreated]). It is a line of its own rather than a field on the
+	// message that wrote it because the fact it carries — DID THIS EXIST BEFORE
+	// — can only be measured at the moment of the call and can never be
+	// recovered from the transcript afterwards.
+	Created *journalCreated `json:"created,omitempty"`
+
 	Timestamp string `json:"timestamp"`
+}
+
+// journalPrincipal is ONE MOMENT THIS SESSION'S GOAL OWNER DECIDED SOMETHING
+// (principal.go).
+//
+// IT EXISTS BECAUSE THE DECISIONS ARE THE FEATURE. An unattended run that
+// carried itself on for four hours and one that stopped after eighteen minutes
+// read IDENTICALLY in this file before it: the acceptance the whole ask was
+// measured against existed nowhere, the moment the session decided the work was
+// finished existed nowhere, and what it deleted on the way out existed nowhere.
+// Every one of those is a thing a person would want to argue with afterwards.
+//
+// Event is what the moment was: `acceptance` when the done-condition for the
+// whole ask was written and frozen, `decided` for the end of a turn that
+// stopped, `checked` for one run of the session's declared checks from clean,
+// and `reconciled` for the sweep that puts back what the session left lying
+// about. Decision is the verb a `decided` line carries — carry on, done or stop
+// — and Reason is why, in the words a person reads.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: what the
+// acceptance call cost is already on its own call line.
+type journalPrincipal struct {
+	Who        string   `json:"who,omitempty"`
+	Event      string   `json:"event,omitempty"`
+	Acceptance string   `json:"acceptance,omitempty"`
+	Decision   string   `json:"decision,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Brief      string   `json:"brief,omitempty"`
+	Checks     []string `json:"checks,omitempty"`
+	Failed     []string `json:"failed,omitempty"`
+	Removed    []string `json:"removed,omitempty"`
+	Kept       []string `json:"kept,omitempty"`
+	WallMS     int64    `json:"wallMs,omitempty"`
+	CostUSD    float64  `json:"costUsd,omitempty"`
+}
+
+// journalCreated is ONE FILE THIS SESSION MADE.
+//
+// Path is absolute — what a sweep is actually given — and Shown is the same
+// path as a person reads it, relative to the workspace when it is under one.
+// Both are kept for [fileChange]'s reason: the answer a person reads names
+// files the way they asked for them, and the answer a machine acts on cannot
+// depend on where a process happened to be standing.
+//
+// A MODIFIED FILE NEVER WRITES ONE. The whole value of the line is the word
+// CREATED: nothing in this build may remove a file that was there before the
+// session started, and a line that could not tell the two apart would be a line
+// that cannot be acted on.
+type journalCreated struct {
+	Path  string `json:"path,omitempty"`
+	Shown string `json:"shown,omitempty"`
 }
 
 // journalCall is what ONE provider response reported, on its own line.
@@ -919,6 +983,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		id       string
 		lines    int
 		spent    Usage
+		created  []fileChange
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1083,6 +1148,29 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// ladder the worker opened on, which the spec in the graph already
 			// holds.
 			// Replaying them would put machinery into somebody's conversation.
+		case "created":
+			// KEPT, and it is the ONE non-message line this replay carries
+			// forward. The others in this switch are the record of a decision or
+			// of money, and a resumed session re-derives both; this one carries a
+			// fact nothing can re-derive — whether a file was there BEFORE the
+			// session touched it — and a resumed session that lost it would end
+			// by looking at everything it made and being unable to say what it
+			// had made ([journalCreated]).
+			if entry.Created == nil || strings.TrimSpace(entry.Created.Path) == "" {
+				continue
+			}
+			created = append(created, fileChange{
+				path:    entry.Created.Path,
+				shown:   entry.Created.Shown,
+				created: true,
+			})
+		case "principal":
+			// DROPPED ON PURPOSE, for the reason a mark line is: it is the RECORD
+			// of a decision the session's goal owner made, and a decision is not
+			// a message and not money. What it decided is already in the
+			// transcript — the brief the turn carried on with, the line the
+			// person read — and replaying it would put machinery into somebody's
+			// conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
@@ -1095,7 +1183,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	repaired := repairTranscript(messages)
 	// The overlap was counted against the lines the file holds and is applied to
@@ -1122,6 +1210,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		notes:     notes,
 		replyTags: replyTags,
 		usage:     spent,
+		created:   created,
 		existed:   lines > 0,
 	}, nil
 }
@@ -1287,7 +1376,13 @@ type replayedSession struct {
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.
-	usage   Usage
+	usage Usage
+	// created is every file an earlier process of this session made that was not
+	// there before — the "created" lines, in the order they were written. It is
+	// the one fact in this file that cannot be re-derived from the transcript,
+	// and it is what lets a resumed session still answer for what it left behind
+	// ([journalCreated]).
+	created []fileChange
 	existed bool
 }
 
@@ -1673,6 +1768,25 @@ func (s *sessionFile) appendDivision(division journalDivision) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "division", Division: &division, Timestamp: stamp()})
+}
+
+// appendPrincipal writes down one decision the session's goal owner made (see
+// [journalPrincipal]). A moment with no event on it writes nothing, for
+// [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendPrincipal(moment journalPrincipal) {
+	if s == nil || strings.TrimSpace(moment.Event) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "principal", Principal: &moment, Timestamp: stamp()})
+}
+
+// appendCreated writes down one file the session made (see [journalCreated]). A
+// line with no path on it writes nothing, for [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendCreated(made journalCreated) {
+	if s == nil || strings.TrimSpace(made.Path) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "created", Created: &made, Timestamp: stamp()})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

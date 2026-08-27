@@ -190,6 +190,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	started := time.Now()
 	var turn Usage
 
+	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
+	// session with a budget the goal owner is a [Steward] (principal.go), and a
+	// Steward that carries work on has to be carrying it on towards something.
+	// The done-condition for the WHOLE ask is written here, once, at the start of
+	// the first turn — before the work has had a chance to argue for a definition
+	// of done that suits it — and frozen for the life of the session
+	// (principal_acceptance.go).
+	//
+	// EVERY OTHER SESSION PASSES STRAIGHT THROUGH IT. There is no Steward, so
+	// there is nothing to write, and the cost is one nil check per turn.
+	a.openAcceptance(ctx, hub)
+
 	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
 	// build already knows how to do properly? A sub-harness has no slash command,
 	// so the turn itself is how one is reached: a strong match against the

@@ -958,6 +958,29 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	a.mu.Unlock()
 
 	notice.ID = id
+	// AND THE GOAL OWNER ANSWERS ITS OWN CARD, WHERE THERE IS ONE.
+	//
+	// "Nobody present means no" is this file's first law and it is the right law
+	// for a session somebody walked away from. It is the WRONG law for a session
+	// somebody deliberately left running with a budget: a [Steward] is not an
+	// absent person, it is the stated owner of this goal (principal.go), and the
+	// card it is shown is a card addressed to it. Left to the law above, the card
+	// stands until the turn ends and the item is never created — so the one road
+	// this build has for noticing that a unit of work has stalled is a road an
+	// unattended run can never get onto.
+	//
+	// WHAT IT MAY SAY YES TO IS ALREADY BOUNDED, and by the same construction
+	// that bounds every other yes: [standing.Item.Validate] has already refused
+	// anything that spends without a per-run budget and a firing limit, the
+	// ticker holds a daily rail over every item on the machine, and the ratified
+	// item carries an expiry. This adds an answerer; it adds no capability.
+	if steward := a.steward(); steward != nil {
+		// The channel this call just registered is dropped again rather than
+		// waited on: nothing is going to answer it, and a map entry nobody clears
+		// is a card the session thinks is still up.
+		a.forgetStanding(id)
+		return StandingAnswer{Approved: true}, nil
+	}
 	// AND ANOTHER WINDOW LEARNS WHAT THIS ONE IS STOPPED ON (taskpresence.go).
 	// The line is the PERSON'S OWN SENTENCE, which is the anchor every surface
 	// leads this item with ([standing.Item.Words]) — the when and the cost are
