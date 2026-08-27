@@ -24,6 +24,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"does status show background checks on the remote machine", "keeping-an-eye"},
+		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},

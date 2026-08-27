@@ -115,8 +115,13 @@ func TestTheHarnessHandsSayWhatTheyAreFor(t *testing.T) {
 // prompt never mentions is one the model reaches for by luck, and a tool no page
 // describes is one the chat cannot answer a question about.
 func TestTheHarnessHandsAreInThePromptAndTheManual(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		buildConfig(config, t.TempDir())
+		config.OrchestrateRunner = neverRuns
+	})
+	rendered := renderSystem(agent.config)
 	for _, name := range []string{"build_harness", "list_harnesses", "run_adaptive"} {
-		if !strings.Contains(systemPrompt, name) {
+		if !strings.Contains(rendered, name) {
 			t.Errorf("prompts/system.md never mentions %s", name)
 		}
 		if !manual.Chat().Mentions(name) {

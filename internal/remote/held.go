@@ -138,6 +138,21 @@ func (h *heldSet) answered(kind string, id uint64, text string) {
 	}
 }
 
+// settleConnect drops connect cards whose engine-side wait has ended without
+// an answer. The event stream crosses this after the ask settles; retaining a
+// card past that point would hand the next surface a key with no lock behind it.
+func (h *heldSet) settleConnect(pending []string) {
+	live := make(map[string]bool, len(pending))
+	for _, id := range pending {
+		live[id] = true
+	}
+	for _, key := range append([]heldKey(nil), h.order...) {
+		if key.kind == HeldConnect && !live[key.text] {
+			h.answered(HeldConnect, 0, key.text)
+		}
+	}
+}
+
 // waiting is what a welcome carries and what Held.Questions answers: the
 // questions nobody has seen, oldest first, because the oldest is the one that
 // has been holding a turn the longest.

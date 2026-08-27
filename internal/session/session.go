@@ -798,6 +798,10 @@ type Config struct {
 	// ContextWindow is the model's window in tokens; compaction fires at
 	// window − max(15% of window, 16384). Zero selects a conservative default.
 	ContextWindow int
+	// ContextWindowFor answers from the catalog owned by the machine running
+	// the session. A model switch consults it there so a remote surface's
+	// different catalog cannot move this engine's compaction point.
+	ContextWindowFor func(model string) int
 
 	// Routing is how this session asks the router to choose among the endpoints
 	// serving its model, and whether it times them at all (internal/provider's

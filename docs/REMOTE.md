@@ -187,6 +187,11 @@ connected accounts, the session file, standing items, and every path on the
 wire belong to the machine that runs the work. The surface owns the screen, the
 keyboard, the draft, and the input history.
 
+The model catalog follows the same split. The surface catalog supplies picker rows and
+display facts; the engine catalog supplies execution facts. In particular SetModel makes
+the engine resolve its own context window, and a remote surface's context-window hint is
+ignored, so compaction cannot be sized by a stale or different laptop cache.
+
 **Why it is stated as an architecture decision and not left to taste.** Every
 honesty bug this lane has had came from a screen answering for the wrong
 machine. The YOLO badge is drawn from the engine's own profile because a badge
