@@ -2077,8 +2077,28 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		!(meter.rounds > 0 && turnLeftTheTreeUnchecked(a.snapshot())) {
 		return false, false
 	}
-	remains := a.readRemains(ctx)
-	if remains == "" {
+	// AND THE READING IS PUT TO WHOEVER THIS SESSION IS WORKING FOR.
+	//
+	// The reader's line used to BE the decision: something to say re-opened the
+	// turn, silence ended it. That is the right rule when a person is sitting in
+	// front of the answer, and it is the whole of what went wrong when nobody is
+	// — the reader is shown a ~300-token digest of what the session SAID, and a
+	// conversation that ends confidently reads as finished whatever the tree
+	// says. So the line goes to the principal along with the evidence a person
+	// would have looked at before agreeing, and the principal decides
+	// (principal.go). A [Person] answers exactly what this function answered
+	// before the interface existed, by construction and by test.
+	decision := a.decideRemains(ctx, a.readRemains(ctx), said)
+	switch decision.Verb {
+	case DecideDone:
+		return false, false
+	case DecideStop:
+		// THE RUN IS OVER AND IT SAYS WHY. A session that spent its hours and
+		// went quiet is a session nobody can learn anything from, which is the
+		// second half of the same failure this file's re-open closed: the
+		// evidence exists either way, and the only question is whether anybody
+		// is told.
+		hub.send(Event{Kind: EventNotice, Text: checkpointStoppedNote + decision.Reason})
 		return false, false
 	}
 	// THE METER IS CHARGED BEFORE THE CONTINUATION IS WRITTEN, so a re-open that
@@ -2090,8 +2110,102 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, true
 	}
 	hub.send(Event{Kind: EventNotice, Text: checkpointCarryOnNote})
-	a.record(textMessage("user", checkpointCarryOnLead+remains))
+	a.record(textMessage("user", checkpointCarryOnLead+decision.Brief))
 	return true, false
+}
+
+// checkpointStoppedNote opens the one line a person reads when the session's
+// goal owner ended the run.
+//
+// It is the fifth in the register ([checkpointCarryOnNote] names the other
+// four): an observation, a middle dot, and then the reason in the goal owner's
+// own words — which is why this one, alone among them, is a lead rather than a
+// whole sentence. What stopped a run is the only thing worth reading about it,
+// and a constant that swallowed it would make every ending read the same.
+const checkpointStoppedNote = "stopping here · "
+
+// decideRemains puts the end of a stopped turn to this session's principal.
+//
+// ── THE ORDER IS THE COST ───────────────────────────────────────────────────
+//
+// The reader's line is already in hand and everything the first Decide is shown
+// beside it is a read of what the session already holds — how its units of work
+// landed, and the acceptance for the whole ask (principal_wire.go). Nothing is
+// run, nothing is spent, and a [Person] never gets past this line: their answer
+// is the reader's line and silence, exactly as it always was.
+//
+// THE SECOND DECIDE IS WHERE THE TREE IS LOOKED AT. A principal that says the
+// ask is MET has said the one thing this build never had any way to check, so
+// it is checked: the session's declared checks are re-run from clean and the
+// same principal is asked again with their results in front of it
+// (principal_audit.go). An acceptance is what says a principal is in a position
+// to be asked that — a person holds their own and is shown nothing — so the
+// second reading belongs to a session that has one and to no other.
+//
+// AND THE SWEEP RIDES WITH IT, which is why the audit is not skipped when the
+// second answer turns out to be "carry on": what a session left lying beside
+// its deliverable is left lying there whether or not this particular turn was
+// the last one, and a tidy that only ran on a clean ending would never run on
+// the runs that need it.
+func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision {
+	principal := a.who()
+	remains := a.remainsFor(said, reader)
+	decision := principal.Decide(remains)
+	if decision.Verb == DecideDone && remains.Acceptance != "" {
+		checks, found := a.terminalAudit(ctx)
+		remains.Checks = checks
+		decision = principal.Decide(remains)
+		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
+		// checks and carries on may be about to read the very files this would
+		// remove, so what was sorted is acted on only once the session is
+		// actually finished with them (principal_audit.go's [Agent.sweepSession]).
+		if decision.Verb != DecideCarryOn {
+			a.sweepSession(found)
+		}
+		a.journalDecision(decision)
+		return decision
+	}
+	// A RUN THAT STOPPED IS AN ENDING TOO, and it is the ending most likely to
+	// leave a mess: the budget ran out, or the same thing has failed three times,
+	// and neither of those goes anywhere near the reading above. The tidy is owed
+	// to whoever comes to look at the tree afterwards, however the run ended.
+	if decision.Verb == DecideStop {
+		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+	}
+	a.journalDecision(decision)
+	return decision
+}
+
+// journalDecision writes down what the goal owner decided, because a run that
+// carried on and a run that stopped read identically in this file otherwise —
+// which is the same gap [journalCeiling] was written to close one road over.
+//
+// A PERSON'S SESSION WRITES NOTHING HERE, and that is [Person]'s emptiness law
+// reaching the journal: the interactive session must not be able to tell that
+// any of this arrived, and a new line in somebody's transcript is something
+// they can tell. What a person decided is in the conversation, where they said
+// it.
+func (a *Agent) journalDecision(decision Decision) {
+	steward := a.steward()
+	if steward == nil {
+		return
+	}
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	if file == nil {
+		return
+	}
+	budget := steward.Budget()
+	file.appendPrincipal(journalPrincipal{
+		Who:      "steward",
+		Event:    "decided",
+		Decision: string(decision.Verb),
+		Reason:   decision.Reason,
+		Brief:    clip(decision.Brief, checkpointSketchBytes),
+		WallMS:   budget.SpentWall.Milliseconds(),
+		CostUSD:  budget.SpentUSD,
+	})
 }
 
 // turnLeftTheTreeUnchecked reports the one thing about a finished turn that

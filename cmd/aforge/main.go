@@ -246,6 +246,12 @@ Environment:
   AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
+  AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
+                       carry its own work on (default none: it stops when the
+                       model stops). --max-hours wins.
+  AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
+                       alone is a budget; without one, --yolo is only the
+                       approval posture it has always been.
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
                        coding pipeline. A backstop, not a budget — the daily

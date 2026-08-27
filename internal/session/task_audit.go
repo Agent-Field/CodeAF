@@ -1827,7 +1827,7 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	}
 	notice := node.notice()
 	a.enqueueSteering(handOverLead + "\n" +
-		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto))
+		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	return nil
 }
 

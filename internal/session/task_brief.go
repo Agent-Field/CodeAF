@@ -112,6 +112,12 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
 		a.personAsk = text
+		// AND THE SESSION'S GOAL OWNER IS TOLD THE SAME THING, in the same
+		// place, on the same test (principal.go). It is one writer rather than
+		// two for the reason stated directly below: a second recorder of the
+		// person's words is a second answer to what was asked, and the two
+		// answers drift on exactly the sessions where it matters.
+		a.hearAsk(text)
 	}
 }
 
