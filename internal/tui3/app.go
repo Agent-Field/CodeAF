@@ -6011,7 +6011,7 @@ func (a *app) renew() tea.Cmd {
 		// notice lands too ([Options.Notice]).
 		a.note(conv.Notice)
 	}
-	if key := convKey(a.file); key != "" {
+	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
 	return cmd

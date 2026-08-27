@@ -93,6 +93,7 @@ asked while resolving a POINTER is asked once per cell the pointer crosses.
 | **A submit over a connection is exactly one call.** The sentence goes up and nothing else does; the update that echoes the line on screen is zero, because the call happens on the command. | `internal/tui3/hostlatency_test.go` |
 | **A turn ending is zero.** The settle reads the spending, the weight and the effort table off the replica, which the engine has already refreshed ahead of the turn's own ending. | `internal/tui3/hostlatency_test.go` |
 | The five facts a frame draws — the model, the name, the spending, the weight, the effort rung — answer from the replica and never from the wire, and the effort table is whole from the first frame. | `internal/remote/replica_test.go`, `internal/tui3/hostlatency_test.go` |
+| **A frame over a connection walks none of THIS disk for the far machine's paths.** Home keys every row by its transcript path, and resolving a far path's symlinks here is a stat of a file that was never on this machine — on macOS `/home` is an automounter's mount point, so each one waited on autofs. A hosted key is the cleaned spelling (`app.convKey`). | `internal/tui3/home_test.go` |
 
 `remote.Client.CallsMade` exists for these pins and for nothing else — one
 atomic add inside the one door every call already goes through. It counts calls
@@ -112,6 +113,15 @@ pipe with that delay, a typed character took 7.4s to appear after two hundred
 motions and 21.8s after six hundred; after the fix, 0.014s, which is what the
 same script measures on a local session. internal/tui3's reasoninglevel.go holds
 the fix.
+
+The disk is the other far machine. The day after the wire was taken out of the
+frame, typing on a hosted home took 250ms to 1.6s per key with the wire silent
+and the CPU idle: every row's transcript path was being resolved with
+`filepath.EvalSymlinks` on the laptop, and `/home/...` on a Mac is autofs
+territory, where an `Lstat` waits on the automounter. A goroutine dump taken
+mid-stall found it (`homeTrue → convKey → EvalSymlinks → Lstat`); a CPU profile
+had not, because waiting is not computing. So the law is about any syscall on
+a path that belongs to the other machine, and not only about the wire.
 
 The number that is NOT pinned here is the boot: opening a hosted conversation
 costs six calls, one of them the current model's dial. Six is a launch cost paid
