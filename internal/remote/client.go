@@ -1200,7 +1200,16 @@ func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
 	return a.open(nil, MethodFollowUp, SubmitArgs{Text: text})
 }
 
-// open is the three stream-opening calls' one body: the call, the [StreamRef] it
+// Steer puts words into the running turn on the engine machine and returns the
+// same live tail the local agent returns. It is its own method because FollowUp
+// promises a later turn while Steer promises the next step boundary of this
+// one; making the far end infer which was meant would erase the person's
+// intent at the wire.
+func (a *Agent) Steer(text string) (<-chan session.Event, error) {
+	return a.open(nil, MethodSteer, SubmitArgs{Text: text})
+}
+
+// open is the stream-opening calls' one body: the call, the [StreamRef] it
 // answers with, and the channel that turn's events arrive on.
 func (a *Agent) open(ctx context.Context, method string, args any) (<-chan session.Event, error) {
 	payload, err := a.c.call(ctx, method, args)

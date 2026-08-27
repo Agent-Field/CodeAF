@@ -92,6 +92,11 @@ after everything it has already done about your original question. That is what 
 a correction rather than a restart: "no, the *other* file" arrives while the work is
 still going, and the work carries on from there.
 
+The correction appears on the page where you sent it, between the work already shown and
+the next tool row. It is flush left in your own ink tier, with a dim `└` marking that it
+continues the same question. It stays in that position after the turn finishes and when
+the conversation is reopened from disk.
+
 This is the key for the moment you are watching an answer go the wrong way and you do not
 want to pay for stopping it. The three keys, side by side:
 

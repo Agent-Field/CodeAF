@@ -72,7 +72,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// middle of it would fold that question away — and the one thing on this
 		// surface a fold may never hide is the person's own words.
 		hi := lo + 1
-		for hi < len(es) && es[hi].turn == es[lo].turn && es[hi].kind != entryUser {
+		for hi < len(es) && es[hi].turn == es[lo].turn && !groupBreaks(&es[hi]) {
 			hi++
 		}
 		answer := -1
@@ -120,7 +120,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			var began, ended time.Time
 			for i := lo; i < end; i++ {
 				e := &es[i]
-				work := e.kind != entryUser && e.kind != entryDivider
+				work := e.kind != entryUser && e.kind != entryDivider && e.kind != entrySteer
 				if !work {
 					continue
 				}
@@ -201,10 +201,10 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	// and it steps over a divider, which is a line about the session rather than
 	// a step in it.
 	for at := i + 1; at < len(es) && es[at].turn == e.turn; at++ {
-		if es[at].kind == entryUser {
+		if groupBreaks(&es[at]) {
 			return false
 		}
-		if es[at].kind != entryDivider {
+		if es[at].kind != entryDivider && !entryWithdrawn(&es[at]) {
 			return true
 		}
 	}
@@ -247,6 +247,24 @@ func (a *app) workfoldLabel(f workfold) string {
 	}
 	parts = append(parts, "ctrl+e")
 	return strings.Join(parts, " · ")
+}
+
+// groupBreaks reports whether this block ENDS a fold group — whether it is one
+// of the person's own messages.
+//
+// THE ONE THING ON THIS SURFACE A FOLD MAY NEVER HIDE IS THE PERSON'S OWN
+// WORDS, and a turn can hold more than one of them: a message sent into a turn
+// that is already streaming does not open a new turn (app.go's
+// [app.submittingShown] — steering is not a second turn), so a turn number alone
+// can span a question and every correction made to it. The chip hides the
+// machinery BETWEEN a question and its answer, so a run with a correction in the
+// middle of it would fold that correction away.
+//
+// A WITHDRAWN correction breaks nothing, because it draws nothing: a group
+// ended at an invisible row would leave the work above it unfoldable for a
+// reason nobody can see (steerelbow.go).
+func groupBreaks(e *entry) bool {
+	return e.kind == entryUser || (e.kind == entrySteer && e.steer != nil)
 }
 
 func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
