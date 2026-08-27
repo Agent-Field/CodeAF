@@ -513,7 +513,10 @@ as being stuck.** While any part is still running the counter does not advance, 
 asked of the task, and its clock does not run: its row shows `waiting · its parts`, and the
 next thing it is asked is the one turn that carries every part's report at once. The counter
 starts again from zero when the last report lands, so a task that spins over the *fold* is
-caught exactly as any other is.
+caught exactly as any other is. A failed part is a report too: its failure reason reaches
+that same turn beside the successful reports, so the parent integrates what landed and says
+what is missing or retries it. The failed part does not stop the parent, and delayed steps
+from before the report landed cannot spend the fresh allowance before the parent reads it.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
