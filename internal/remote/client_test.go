@@ -134,7 +134,7 @@ func (e *engine) answer(frame Frame) {
 		return
 	}
 	switch frame.Method {
-	case MethodSubmit, MethodSubmitImage, MethodFollowUp:
+	case MethodSubmit, MethodSubmitImage, MethodFollowUp, MethodSteer:
 		e.streams++
 		stream := e.streams
 		e.send(Frame{Kind: "result", ID: frame.ID, Payload: mustClientJSON(StreamRef{Stream: stream})})
@@ -411,6 +411,29 @@ func TestSubmitStreamsEventsInOrderAndClosesOnClosed(t *testing.T) {
 	}
 	if args.Text != "go on then" {
 		t.Fatalf("submit args = %+v", args)
+	}
+}
+
+func TestSteerOpensTheRunningTurnsTail(t *testing.T) {
+	client, e := newEngine(t)
+	e.after = func(e *engine, stream uint64) {
+		e.event(stream, session.Event{Kind: session.EventSteerAccepted, Steer: &session.SteerNote{ID: 7, Words: "use staging"}})
+		e.closeStream(stream)
+	}
+	events, err := client.Agent().Steer("use staging")
+	if err != nil {
+		t.Fatalf("Steer: %v", err)
+	}
+	ev := <-events
+	if ev.Kind != session.EventSteerAccepted || ev.Steer == nil || ev.Steer.Words != "use staging" {
+		t.Fatalf("steer event = %+v", ev)
+	}
+	var args SubmitArgs
+	if err := json.Unmarshal(e.calls(MethodSteer)[0].Payload, &args); err != nil {
+		t.Fatalf("steer payload: %v", err)
+	}
+	if args.Text != "use staging" {
+		t.Fatalf("steer args = %+v", args)
 	}
 }
 

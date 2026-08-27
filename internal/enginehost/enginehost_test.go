@@ -34,6 +34,7 @@ func (stubAgent) SubmitImage(context.Context, string, []session.Image) (<-chan s
 	return nil, nil
 }
 func (stubAgent) FollowUp(string) (<-chan session.Event, error)             { return nil, nil }
+func (stubAgent) Steer(string) (<-chan session.Event, error)                { return nil, nil }
 func (stubAgent) Interrupt()                                                {}
 func (stubAgent) Compact(context.Context) error                             { return nil }
 func (stubAgent) Close() error                                              { return nil }

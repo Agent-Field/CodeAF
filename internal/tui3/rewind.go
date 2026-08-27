@@ -705,7 +705,7 @@ func (a *app) rewindAnchors(points []session.RewindPoint) []int {
 			drawn[i] = at
 			continue
 		}
-		for at > 0 && !fromTranscript(a.entries[at-1].kind) {
+		for at > 0 && !fromTranscript(&a.entries[at-1]) {
 			at--
 		}
 		if at == 0 {
@@ -747,9 +747,17 @@ func replayDraws(e session.DisplayEntry) bool {
 // reasoning block the journal never held, the seam a scrolled-back conversation
 // draws, the cards the tasker draws — and they are stepped over rather than
 // matched, because nothing in the transcript corresponds to them.
-func fromTranscript(kind entryKind) bool {
-	switch kind {
-	case entryUser, entryAssistant, entryTool, entryDivider:
+// A CORRECTION IS ONE OF THEM. It is an ordinary user message in the journal —
+// that is what the model had to read it as — and since it draws as a block of
+// its own it consumes one, exactly as the question above it does (steerelbow.go).
+// A WITHDRAWN one does not: it draws nothing, and a block that draws nothing
+// cannot be the place a cut line lands.
+func fromTranscript(e *entry) bool {
+	if entryWithdrawn(e) {
+		return false
+	}
+	switch e.kind {
+	case entryUser, entryAssistant, entryTool, entryDivider, entrySteer:
 		return true
 	}
 	return false

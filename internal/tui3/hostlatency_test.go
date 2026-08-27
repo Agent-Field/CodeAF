@@ -75,6 +75,10 @@ func (f *farAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return f.Submit(context.Background(), text)
 }
 
+func (f *farAgent) Steer(text string) (<-chan session.Event, error) {
+	return f.FollowUp(text)
+}
+
 func (f *farAgent) Interrupt()                        {}
 func (f *farAgent) Compact(ctx context.Context) error { return nil }
 func (f *farAgent) Close() error                      { return nil }
