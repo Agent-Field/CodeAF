@@ -36,11 +36,24 @@ type Config struct {
 	SupportsParameter func(model, parameter string) (bool, bool)
 
 	// Routing says how this client asks the router to choose among the
-	// endpoints serving one model (velocity.go). NIL IS LATENCY — the default a
-	// person waiting on an answer would pick — so a caller that has never heard
-	// of the row still chases speed, and one that has hands down the resolved
-	// setting rather than a path to it.
+	// endpoints serving one model (velocity.go). NIL IS NOBODY'S CHOICE, not a
+	// choice of latency: the adapter then decides per request from who is
+	// waiting on it, so a caller that has never heard of the row still chases
+	// speed on a person's own turn and price on an errand. A caller that HAS
+	// heard of it hands down the resolved setting rather than a path to it, and
+	// that setting wins over everything.
 	Routing RoutingSource
+
+	// ModelPrice is the model's OWN published list price, per token in US
+	// dollars, from rows already in memory. It is what the latency ask's price
+	// ceiling is derived from (velocity.go's latencyPriceCeiling), and like
+	// SupportsParameter it must not block or perform I/O: a catalog that has not
+	// resolved answers known=false, which sends no ceiling at all.
+	//
+	// known=false is the ONLY way to say "no price". A published zero is a real
+	// figure — the free variants a router carries — and must not be reported as
+	// unknown.
+	ModelPrice func(model string) (prompt, completion float64, known bool)
 
 	// Fallbacks are the models to try, in order, when no endpoint serving the
 	// configured one will accept the request's shape (endpoints.go). It is the
@@ -92,6 +105,11 @@ type Client struct {
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
 	velocity *velocityLedger
+	// pins is which endpoint holds each prompt lineage's cache (affinity.go).
+	// It is read at the same moment the velocity ledger is — encode time — and
+	// written from the same answers, and the two never disagree: a lane the
+	// velocity ledger refuses drops its pin rather than being asked for again.
+	pins *endpointPins
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
@@ -136,6 +154,7 @@ func NewClient(config Config) (*Client, error) {
 		stream:   streamClient,
 		wait:     waitContext,
 		velocity: sharedVelocity,
+		pins:     sharedPins,
 		now:      time.Now,
 	}
 	if err := client.SetAPIKey(config.APIKey); err != nil {
@@ -250,6 +269,10 @@ const maxResponseBytes = 64 << 20
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
+	// intent is whether a person is waiting on this call (velocity.go). It is
+	// resolved once here, at the top of the call, rather than at encode time,
+	// because it is a fact about the CALLER and cannot change between the two.
+	intent RoutingIntent
 	// relaxed is what this encode has been told to leave off the body, set only
 	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
 	// which is what keeps a healthy request byte-for-byte what it always was.
@@ -257,7 +280,11 @@ type callKnobs struct {
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
-	return callKnobs{cacheKey: CacheKeyFrom(ctx), effort: effortFrom(ctx)}
+	return callKnobs{
+		cacheKey: CacheKeyFrom(ctx),
+		effort:   effortFrom(ctx),
+		intent:   routingIntentFrom(ctx),
+	}
 }
 
 // modelFor names the model a request will actually run against: the one the
@@ -285,7 +312,24 @@ func (c *Client) modelFor(request *ai.Request) string {
 // no shape to fix, so the only door left is another model — the same chain,
 // through [Client.recoverFromPacing], which hands the error straight back when
 // there is no chain to walk.
+//
+// IT IS ALSO WHERE A FAILED REQUEST LETS GO OF ITS ENDPOINT. Every way a send
+// can fail passes through here exactly once — a transport error, a 4xx, a 5xx,
+// a refusal the ladder could not repair — and a lineage pinned to an endpoint
+// that just failed it moves (affinity.go's releaseEndpoint). The check is on the
+// way out rather than at each return so that no future rung can be added past
+// it and quietly keep a dead pin.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	response, err := c.sendRecovered(ctx, request, knobs, stream)
+	if err != nil || (response != nil && response.StatusCode >= 400) {
+		c.releaseEndpoint(ctx, c.modelFor(request))
+	}
+	return response, err
+}
+
+// sendRecovered is sendShaped's two recovery passes — the repairable 400s and
+// the endpoint-refusal ladder — with nothing said about pins.
+func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
 		return c.recoverFromPacing(ctx, request, knobs, stream, err)
@@ -432,7 +476,13 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if httpResponse.StatusCode >= 400 {
-		return nil, apiError(httpResponse.StatusCode, payload)
+		refusal := apiError(httpResponse.StatusCode, payload)
+		// AND THE LANE GOES, so the caller's next attempt is encoded away from
+		// the upstream that just refused (velocity.go's refuseUpstream). The pin
+		// was already released on the way out of sendShaped; releasing a pin only
+		// stops us ASKING for that endpoint, and the router chooses it again.
+		c.refuseUpstream(c.modelFor(request), refusal)
+		return nil, refusal
 	}
 	// ONE PARSE. The answer and the router's annotation on it come out of the
 	// same decode, because the alternative was reading a megabyte of completion
@@ -446,9 +496,14 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
 	// than "instant" (velocity.go).
+	// ONE NAME, read off the decode above rather than from a second pass over
+	// the payload, and handed to both readers of it: the affinity that keeps a
+	// conversation on the endpoint holding its prompt cache, and the rating.
+	served := servedProvider(decoded.Provider)
+	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	c.noteVelocity(
 		c.modelFor(request),
-		servedProvider(decoded.Provider),
+		served,
 		0,
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
@@ -514,6 +569,24 @@ func outputTokens(response *ai.Response, text string) int {
 	return len(text) / 4
 }
 
+// stampCut writes onto a cut the three facts only the read loop holds: who the
+// stream said was serving it, how long it had been open, and how much answer had
+// arrived. See [StreamCut.Provider] for who reads them.
+//
+// The token figure is the estimate, because a cut stream never delivered a usage
+// block — the provider counts at the end and there was no end. It is the same
+// estimator a finished stream falls back to (outputTokens), so a row that says
+// "eleven hundred tokens in eighteen minutes" is comparable with the call rows
+// beside it.
+func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text string) {
+	if cut == nil {
+		return
+	}
+	cut.Provider = strings.TrimSpace(served)
+	cut.Ran = c.clock().Sub(began)
+	cut.Tokens = outputTokens(nil, text)
+}
+
 // completeWithMessagesStreaming preserves the completion interface while
 // exposing each text delta to an interactive observer. The accumulated
 // response is the same shape callers already parse after the stream closes.
@@ -544,14 +617,20 @@ func (c *Client) completeWithMessagesStreaming(
 	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
-		return nil, apiError(httpResponse.StatusCode, payload)
+		refusal := apiError(httpResponse.StatusCode, payload)
+		c.refuseUpstream(c.modelFor(request), refusal)
+		return nil, refusal
 	}
 	// The silence watchdog starts the moment the headers land, which is the
 	// moment the endpoint has accepted the request and owes an answer
 	// (streamguard.go). Only the MODEL WRITING moves its clock; keepalives buy
 	// bounded patience instead — the decoder reports them through the alive
 	// seam below, and streamguard.go says exactly what they are worth.
-	stall := newStallWatch(cutStream)
+	//
+	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
+	// lineage's widest — no chunk has named a serving endpoint yet — and
+	// narrows to the lane's own the moment one does, below.
+	stall := newStallWatch(cutStream, c.streamWall(c.modelFor(request), ""))
 	defer stall.stop()
 	// And the degeneration guard, unless this call has it switched off. It is
 	// nil rather than dormant when off, so a call that is not watching pays
@@ -617,10 +696,18 @@ func (c *Client) completeWithMessagesStreaming(
 			// against the CALLER'S context and never against this one, so a
 			// stop that lands while a watchdog is firing still reads as a stop.
 			if cut := stall.cut(); cut != nil && ctx.Err() == nil {
+				// HOW FAR IT GOT, ON THE CUT ITSELF. A journal row about a cut
+				// that cannot say who was serving or how much answer had
+				// arrived is the row that made this whole bound guesswork the
+				// first time ([StreamCut.Provider]).
+				c.stampCut(cut, served, began, content.String())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
 				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+				// A stream that went quiet is an endpoint failing this lineage,
+				// which is the one thing that moves a pin (affinity.go).
+				c.releaseEndpoint(ctx, c.modelFor(request))
 				return nil, cut
 			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
@@ -634,7 +721,29 @@ func (c *Client) completeWithMessagesStreaming(
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {
+			if served == "" {
+				// The first naming is what narrows the wall onto the lane that
+				// is actually serving; [stallWatch.rewall] does it once and
+				// measures the new bound from when the stream opened.
+				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider))
+			}
 			served = chunk.Provider
+		}
+		// A REFUSAL DELIVERED INSIDE A 200 IS STILL A REFUSAL. The router accepted
+		// the request, sent its headers, and then said the upstream broke; every
+		// other layer here would read the stream that follows as a short answer.
+		// It ends the call as an error, releases the pin and takes the lane away,
+		// exactly as the same refusal arriving before the headers would (sse.go
+		// says what it cost when this field was not read at all).
+		if refusal := streamRefusal(chunk.Error); refusal != nil {
+			if named, ok := RefusalFrom(refusal); ok && named.Provider == "" && served != "" {
+				// The stream named who was serving it even when the error object
+				// did not, and that name is what the ledger and the journal need.
+				named.Provider = served
+			}
+			c.refuseUpstream(c.modelFor(request), refusal)
+			c.releaseEndpoint(ctx, c.modelFor(request))
+			return nil, refusal
 		}
 		if chunk.Usage != nil {
 			response.Usage = chunk.Usage
@@ -673,7 +782,11 @@ func (c *Client) completeWithMessagesStreaming(
 				// turn loop and none of it reaches the transcript.
 				if babble != nil && babble.write(choice.Delta.Content) {
 					cut := &StreamCut{Reason: CutBabble}
+					c.stampCut(cut, served, began, content.String())
 					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+					// An endpoint producing soup has failed this lineage as
+					// surely as one that went quiet, so the pin moves too.
+					c.releaseEndpoint(ctx, c.modelFor(request))
 					return nil, cut
 				}
 			}
@@ -729,6 +842,12 @@ func (c *Client) completeWithMessagesStreaming(
 	// still a sighting: its TTFT is the whole call, which is exactly the
 	// complaint a person has about it.
 	generation := c.clock()
+	// THE REPLY FINISHED, SO ITS LENGTH IS EVIDENCE. It is the whole request —
+	// the wait to be served plus the writing — because that is what the wall
+	// bounds, and it is recorded whatever the routing preference says
+	// (velocity.go's [Client.noteRun]).
+	c.noteRun(c.modelFor(request), served, generation.Sub(began))
+	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	if !firstToken.IsZero() {
 		c.noteVelocity(
 			c.modelFor(request),
@@ -914,10 +1033,22 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // message in a field, the sentence a reader gets is composed from parts rather
 // than cut out of transport.
 //
-// Error() is byte-for-byte what this used to return. That is deliberate and
-// load-bearing: the harness's provider-error taxonomy recovers a status code by
-// reading the text, so a rewording here would silently disable rate-limit and
-// transient-failure retries.
+// Error() keeps its OPENING byte-for-byte. That is deliberate and load-bearing:
+// the harness's provider-error taxonomy recovers a status code by reading the
+// text, so a rewording of the `API error (404): …` head would silently disable
+// rate-limit and transient-failure retries. What may be added is a tail, and
+// [APIError.upstream] is the only thing that adds one.
+//
+// ── THE MEASURED FAILURE THAT PUT Provider AND Raw ON HERE ──────────────────
+//
+// SWE-Marathon run s2, 22:45 UTC: a turn died with the whole of what anybody
+// was ever told being `error: after 3 retries: API error (400): Provider
+// returned error`. That sentence names no provider, carries no upstream body,
+// and left five hours of a benchmark's budget unspent with NOTHING in the
+// session journal to autopsy — no error row, no endpoint, no status. "Provider
+// returned error" is OpenRouter saying that somebody ELSE refused, and the
+// somebody and the refusal are both in the JSON it sent: `error.metadata`
+// carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
 	// Status is the HTTP status the refusal arrived under.
 	Status int
@@ -927,17 +1058,102 @@ type APIError struct {
 	// Body is the undecoded payload, kept so nothing is lost when the provider
 	// answered with something this client does not know the shape of.
 	Body string
+	// Provider is the UPSTREAM the router handed this request to, exactly as
+	// OpenRouter spells it in `error.metadata.provider_name`. It is EMPTY when
+	// the router refused on its own account, and that emptiness is a fact rather
+	// than a gap — see [APIError.OurRequest].
+	Provider string
+	// Raw is the upstream's own answer, out of `error.metadata.raw`, clipped to
+	// [maxRawClip]. It is the sentence that says what the 400 actually was, and
+	// it is the one thing "Provider returned error" never contains.
+	Raw string
 }
 
-// Error keeps the SDK's exact error phrasing.
+// Error keeps the SDK's exact error phrasing, and names the upstream when the
+// router told us there was one.
 func (e *APIError) Error() string {
 	if e == nil {
 		return ""
 	}
-	if strings.TrimSpace(e.Message) != "" {
-		return fmt.Sprintf("API error (%d): %s", e.Status, e.Message)
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		message = e.Body
 	}
-	return fmt.Sprintf("API error (%d): %s", e.Status, e.Body)
+	return fmt.Sprintf("API error (%d): %s%s", e.Status, message, e.upstream())
+}
+
+// upstream is the short tail Error() adds when the router named who refused: the
+// provider's name, and the FIRST SENTENCE of what it said. It is one sentence
+// rather than the clip because this string is read by a person on one line of a
+// terminal — the whole of Raw is on the journal's error row, where an autopsy
+// looks for it.
+func (e *APIError) upstream() string {
+	if e == nil || strings.TrimSpace(e.Provider) == "" {
+		return ""
+	}
+	said := firstSentence(e.Raw)
+	if said == "" {
+		return " (via " + e.Provider + ")"
+	}
+	return " (via " + e.Provider + ": " + said + ")"
+}
+
+// FromUpstream reports that THE ENDPOINT THE ROUTER CHOSE is what refused, not
+// the router. It is the presence of a provider name and nothing else: OpenRouter
+// puts `provider_name` in the metadata exactly when it is relaying somebody
+// else's refusal, and leaves it out when it is answering for itself.
+//
+// It is the distinction that decides whether another endpoint is worth asking.
+func (e *APIError) FromUpstream() bool {
+	return e != nil && strings.TrimSpace(e.Provider) != ""
+}
+
+// OurRequest reports that THE REQUEST IS WHAT IS WRONG, so no endpoint will do
+// better with it.
+//
+// IT IS A SHAPE, NEVER A STATUS LIST. A 4xx that named an upstream is that
+// upstream's refusal and another one may well serve it; a 4xx that named nobody
+// is the router reading our own bytes and saying no, and asking again — anywhere
+// — spends the deadline to be told the same thing. 429 is excluded because it is
+// pacing rather than a verdict on the request, and it has its own patience
+// (retry.go).
+func (e *APIError) OurRequest() bool {
+	if e == nil || e.FromUpstream() {
+		return false
+	}
+	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
+}
+
+// RefusalFrom recovers the provider's refusal from anywhere in an error chain,
+// which is how a caller several wraps away asks the two questions above rather
+// than grepping the sentence.
+func RefusalFrom(err error) (*APIError, bool) {
+	var refusal *APIError
+	if errors.As(err, &refusal) && refusal != nil {
+		return refusal, true
+	}
+	return nil, false
+}
+
+// firstSentence is the readable head of an upstream body: its first sentence, or
+// its first line when it punctuates nothing. A body that is JSON all the way down
+// has no sentence in it and answers with its clipped head, which is still more
+// than "Provider returned error" ever said.
+func firstSentence(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if line, _, found := strings.Cut(raw, "\n"); found {
+		raw = strings.TrimSpace(line)
+	}
+	if head, _, found := strings.Cut(raw, ". "); found {
+		raw = strings.TrimSpace(head) + "."
+	}
+	if len(raw) > maxSentenceClip {
+		raw = strings.TrimSpace(raw[:maxSentenceClip]) + "…"
+	}
+	return raw
 }
 
 // errorBody is the shape a refusal arrives in, read for the one field anybody
@@ -955,12 +1171,35 @@ type errorBody struct {
 	Error struct {
 		Message string          `json:"message"`
 		Code    json.RawMessage `json:"code,omitempty"`
+		// Metadata is the router's own dialect and is decoded leniently, for
+		// [pacedProviderName]'s reason: a provider that shapes its errors
+		// differently simply leaves these empty and behaves exactly as it did
+		// before they were read. `raw` is typed as raw JSON because upstreams
+		// send it both ways — a string of their body, and their body itself.
+		Metadata struct {
+			ProviderName string          `json:"provider_name"`
+			Raw          json.RawMessage `json:"raw,omitempty"`
+		} `json:"metadata"`
 	} `json:"error"`
 	// Some providers put the sentence at the top level instead.
 	Message string `json:"message"`
 }
 
-// apiError decodes one refusal into its parts.
+// maxRawClip bounds the upstream body kept on a refusal and written to the
+// journal's error row. An upstream can answer with a whole HTML page, and a
+// transcript line is not the place for one; two kilobytes is several paragraphs
+// of any real provider error and is bounded enough to sit on every failed call.
+const maxRawClip = 2 << 10
+
+// maxSentenceClip bounds the ONE SENTENCE a person is shown. It is a line in a
+// terminal beside a status code, not a report.
+const maxSentenceClip = 160
+
+// apiError decodes one refusal into its parts, the upstream's included.
+//
+// THE UPSTREAM IS THE POINT. "Provider returned error" is a sentence about
+// nothing until it says which provider and what they said, and both are in the
+// metadata OpenRouter already sends (see [APIError]).
 func apiError(status int, payload []byte) error {
 	failure := &APIError{Status: status, Body: string(payload)}
 	var decoded errorBody
@@ -970,6 +1209,29 @@ func apiError(status int, payload []byte) error {
 		} else {
 			failure.Message = strings.TrimSpace(decoded.Message)
 		}
+		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
+		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
 	}
 	return failure
+}
+
+// clipRaw reads the upstream's own body out of the metadata, whichever of the
+// two shapes it arrived in, and bounds it.
+func clipRaw(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	text := string(raw)
+	// A quoted string is the common shape — the upstream's body, escaped — and it
+	// is unquoted so the journal carries prose rather than an escaped blob. A
+	// value that is not a string is kept exactly as it was sent.
+	var quoted string
+	if err := json.Unmarshal(raw, &quoted); err == nil {
+		text = quoted
+	}
+	text = strings.TrimSpace(text)
+	if len(text) > maxRawClip {
+		text = strings.TrimSpace(text[:maxRawClip]) + "…"
+	}
+	return text
 }

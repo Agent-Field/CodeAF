@@ -145,6 +145,20 @@ func (l *fileLedger) touched(path, shown string) {
 	l.changes[path] = fileChange{path: path, shown: shown, created: known && !existed}
 }
 
+// change is what the ledger knows about ONE path, and whether it knows
+// anything. It exists so a caller that has just recorded a touch can read back
+// the one fact only this ledger holds — whether the file was there before —
+// without walking the whole turn's list for it.
+func (l *fileLedger) change(path string) (fileChange, bool) {
+	if l == nil {
+		return fileChange{}, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	change, known := l.changes[path]
+	return change, known
+}
+
 // list is the turn's changes in first-touch order.
 func (l *fileLedger) list() []fileChange {
 	if l == nil {
@@ -193,6 +207,16 @@ func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub,
 		}
 		if path, shown, ok := c.agent.mutatingPath(call); ok {
 			ep.changes.touched(path, shown)
+			// AND THE SESSION KEEPS WHAT THE TURN IS ABOUT TO FORGET. This
+			// ledger is minted at episode-init and dropped with the turn, and
+			// the question it answers — did this file exist before we wrote it
+			// — is asked once, at the end of the session, by the sweep that puts
+			// back what the session left lying about (principal_audit.go). One
+			// fold here rather than a second stat there, because the only moment
+			// that measurement is available has already gone by then.
+			if change, known := ep.changes.change(path); known {
+				c.agent.rememberCreated(change)
+			}
 		}
 	}
 }

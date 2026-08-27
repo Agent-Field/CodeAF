@@ -72,6 +72,11 @@ type hostLaunch struct {
 	// noCompact and yolo are refused rather than ignored — see [hostLaunch.check].
 	noCompact bool
 	yolo      bool
+	// budget is --max-hours / --max-cost, and it is refused for yolo's reason
+	// and one more: what it bounds is a goal owner that lives in the session
+	// (internal/session's principal.go), and the session is on the far machine.
+	// A ceiling accepted here would bound nothing at all.
+	budget bool
 }
 
 // check refuses the flags this door cannot honour.
@@ -89,6 +94,9 @@ func (l hostLaunch) check() error {
 	}
 	if l.yolo {
 		named = append(named, "--yolo")
+	}
+	if l.budget {
+		named = append(named, "--max-hours/--max-cost")
 	}
 	if len(named) == 0 {
 		return nil

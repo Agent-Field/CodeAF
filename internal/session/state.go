@@ -682,22 +682,32 @@ func stateQuotas(beliefs, open, done, limit int) (int, int, int) {
 
 // ── the three tools ─────────────────────────────────────────────────────────
 
-// The budget sentence is the same in all three, and it is the BPE paper's own
-// finding rather than a style choice: harness actions share the interaction
-// budget with environment actions, and an agent that is not told so keeps books
-// it never reads. It is one line per tool, at the end, where the model is
-// deciding whether this call is worth a step.
-const stateBudgetLaw = " Bookkeeping shares this turn's budget: record what a future compaction must not lose, nothing else."
+// THESE THREE STRINGS ARE BILLED ON EVERY REQUEST OF EVERY TURN — the whole
+// tool-schema block rides in front of each one, some seventy times in a single
+// task — so they are written for density rather than for prose. Every rule that
+// was here is still here; what left was the second and third telling of it.
+//
+// The budget sentence is the BPE paper's own finding rather than a style choice:
+// harness actions share the interaction budget with environment actions, and an
+// agent that is not told so keeps books it never reads. IT IS NOW SAID ONCE, on
+// `track`, which is the only one of the three that spends anything worth
+// deciding about — commit and recall carried the identical sentence and paid for
+// it on every request to repeat a rule the model had already read.
+const stateBudgetLaw = " Bookkeeping shares this turn's budget."
 
-const trackDescription = "Record one piece of working state OUTSIDE the transcript, where a compaction cannot lose it: a BELIEF (something that is true in this workspace right now — 'the module path is X', 'the failing test is TestFoo in pkg/bar') or a PROGRESS item (a subgoal you have started and not finished). Evidence is REQUIRED and must name what actually RAN — 'bash: go test ./internal/session', 'read: go.mod', 'grep: compact loop.go' — never what was merely said or planned: a record that cites nothing is a guess a future turn will read as a fact. Tracking the same text twice updates it instead of duplicating." + stateBudgetLaw
+const trackDescription = "Record one piece of working state a compaction must not lose, OUTSIDE the transcript; the same text twice updates it." + stateBudgetLaw
 
-const trackSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The record, as one short line"},"kind":{"type":"string","enum":["belief","progress"],"description":"belief = true in the workspace right now; progress = a subgoal you have opened"},"evidence":{"type":"string","description":"What established it: the tool call or command that ran, e.g. 'bash: go build ./...'"},"status":{"type":"string","enum":["open","blocked"],"description":"For a progress item only: open (default), or blocked when something else must happen first"}},"required":["text","kind","evidence"],"additionalProperties":false}`
+// The two laws that used to sit in the preamble — what a belief is against what
+// a progress item is, and that evidence must name something that RAN — now sit
+// on the fields they govern. A field description is read at the moment the model
+// is filling that field in, which is where a rule about the field belongs.
+const trackSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The record, one short line"},"kind":{"type":"string","enum":["belief","progress"],"description":"belief = true now; progress = a subgoal opened, unfinished"},"evidence":{"type":"string","description":"What actually RAN, e.g. 'bash: go test ./...'; never what was only said or planned"},"status":{"type":"string","enum":["open","blocked"],"description":"Progress only: open (default), or blocked on something else"}},"required":["text","kind","evidence"],"additionalProperties":false}`
 
-const commitDescription = "Close one record by id: a progress item becomes done, a belief that has stopped being true becomes stale and leaves your state. The ids are the ones track returned and recall lists ('p2', 'b1')." + stateBudgetLaw
+const commitDescription = "Close one record by id: a progress item becomes done, a belief no longer true goes stale and leaves."
 
-const commitSchemaJSON = `{"type":"object","properties":{"id":{"type":"string","description":"The record id, e.g. 'p2' for a progress item or 'b1' for a belief"}},"required":["id"],"additionalProperties":false}`
+const commitSchemaJSON = `{"type":"object","properties":{"id":{"type":"string","description":"The id track returned, e.g. 'p2'"}},"required":["id"],"additionalProperties":false}`
 
-const recallDescription = "Show your working state: current beliefs, open subgoals, recently finished ones, with the ids commit takes. This is the same block that is preserved verbatim across a compaction, so call it when you need an id, or after a compaction when you want the state you kept rather than the summary of how you got here." + stateBudgetLaw
+const recallDescription = "Your working state: beliefs, open subgoals, recently finished ones, and the ids commit takes. Survives a compaction verbatim, so call it for an id or after one for the state you kept."
 
 const recallSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 

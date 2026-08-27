@@ -176,7 +176,351 @@ type sessionEntry struct {
 	// file written before it existed.
 	Usage *journalUsage `json:"usage,omitempty"`
 
+	// Call is ONE request's accounting, beside the seal rather than inside it.
+	// Absent from every line that is not a call line, and from every file
+	// written before it existed.
+	Call *journalCall `json:"call,omitempty"`
+
+	// Error is ONE CALL THAT FAILED (see [journalError]). It is the call line's
+	// opposite number and it exists for the same reason: a turn that died on a
+	// provider refusal left this file saying only that it had ended.
+	Error *journalError `json:"error,omitempty"`
+
+	// Mark is ONE reading taken at a checkpoint mark, and Ceiling is what the
+	// last mark then did with the turn (checkpoint.go). Absent from every line
+	// that is not one of those, and from every file written before they existed.
+	Mark    *journalMark    `json:"mark,omitempty"`
+	Ceiling *journalCeiling `json:"ceiling,omitempty"`
+
+	// Carry is ONE RUNG of the ladder that decides what a handed-over worker
+	// opens on (see [journalCarry]). Absent from every line that is not one, and
+	// from every file written before it existed.
+	Carry *journalCarry `json:"carry,omitempty"`
+
+	// Failure is ONE CLASSIFICATION made at the response boundary (see
+	// [journalFailure]). Absent from every line that is not one, and from every
+	// file written before it existed.
+	Failure *journalFailure `json:"failure,omitempty"`
+
+	// Division is ONE division put to the road, whoever asked for it
+	// (task_divide.go). Absent from every line that is not one, and from every
+	// file written before it existed.
+	Division *journalDivision `json:"division,omitempty"`
+
+	// Principal is ONE MOMENT THE SESSION'S GOAL OWNER DECIDED SOMETHING
+	// (see [journalPrincipal]). Absent from every line that is not one, and from
+	// every file written before it existed — which is every attended session,
+	// because a person decides these things in their own head.
+	Principal *journalPrincipal `json:"principal,omitempty"`
+
+	// Created is ONE FILE THIS SESSION MADE THAT WAS NOT THERE BEFORE (see
+	// [journalCreated]). It is a line of its own rather than a field on the
+	// message that wrote it because the fact it carries — DID THIS EXIST BEFORE
+	// — can only be measured at the moment of the call and can never be
+	// recovered from the transcript afterwards.
+	Created *journalCreated `json:"created,omitempty"`
+
 	Timestamp string `json:"timestamp"`
+}
+
+// journalPrincipal is ONE MOMENT THIS SESSION'S GOAL OWNER DECIDED SOMETHING
+// (principal.go).
+//
+// IT EXISTS BECAUSE THE DECISIONS ARE THE FEATURE. An unattended run that
+// carried itself on for four hours and one that stopped after eighteen minutes
+// read IDENTICALLY in this file before it: the acceptance the whole ask was
+// measured against existed nowhere, the moment the session decided the work was
+// finished existed nowhere, and what it deleted on the way out existed nowhere.
+// Every one of those is a thing a person would want to argue with afterwards.
+//
+// Event is what the moment was: `acceptance` when the done-condition for the
+// whole ask was written and frozen, `decided` for the end of a turn that
+// stopped, `checked` for one run of the session's declared checks from clean,
+// and `reconciled` for the sweep that puts back what the session left lying
+// about. Decision is the verb a `decided` line carries — carry on, done or stop
+// — and Reason is why, in the words a person reads.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: what the
+// acceptance call cost is already on its own call line.
+type journalPrincipal struct {
+	Who        string   `json:"who,omitempty"`
+	Event      string   `json:"event,omitempty"`
+	Acceptance string   `json:"acceptance,omitempty"`
+	Decision   string   `json:"decision,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Brief      string   `json:"brief,omitempty"`
+	Checks     []string `json:"checks,omitempty"`
+	Failed     []string `json:"failed,omitempty"`
+	Removed    []string `json:"removed,omitempty"`
+	Kept       []string `json:"kept,omitempty"`
+	WallMS     int64    `json:"wallMs,omitempty"`
+	CostUSD    float64  `json:"costUsd,omitempty"`
+}
+
+// journalCreated is ONE FILE THIS SESSION MADE.
+//
+// Path is absolute — what a sweep is actually given — and Shown is the same
+// path as a person reads it, relative to the workspace when it is under one.
+// Both are kept for [fileChange]'s reason: the answer a person reads names
+// files the way they asked for them, and the answer a machine acts on cannot
+// depend on where a process happened to be standing.
+//
+// A MODIFIED FILE NEVER WRITES ONE. The whole value of the line is the word
+// CREATED: nothing in this build may remove a file that was there before the
+// session started, and a line that could not tell the two apart would be a line
+// that cannot be acted on.
+type journalCreated struct {
+	Path  string `json:"path,omitempty"`
+	Shown string `json:"shown,omitempty"`
+}
+
+// journalCall is what ONE provider response reported, on its own line.
+//
+// IT IS EVIDENCE AND NEVER SPEND. The seal above already carries every one of
+// these numbers, summed; a replay that added these lines too would bill the
+// session twice for the same calls. Nothing reads them back into the session's
+// totals, and [replaySessionFile] says so where it drops them.
+//
+// It exists because a turn is sixty-odd requests with wildly different shapes —
+// a cold first call, then fifty that are almost all cache read — and the sum of
+// them cannot answer what a call with THIS many cached tokens actually cost.
+// That question had to be reconstructed from transcript byte counts once, in a
+// cost autopsy that found this surface paying 3.5× its models' list prices; the
+// line is so the next one is a read rather than a reconstruction.
+//
+// Endpoint is who served it, exactly as the router spelled it, and it is the
+// field the summed seal could never carry: a turn routed across three endpoints
+// has one bill and three tariffs.
+//
+// EVERY REQUEST THIS SESSION MAKES WRITES ONE, the errands included
+// (auxiliary.go's [Agent.callRole]). It did not always: the line was written
+// from the turn's own accounting alone, so a measured run's call lines summed to
+// $0.123 while the real bill was $0.739 — the difference being three side-calls
+// to a mastermind that left `usage` lines and no shape at all. A record that
+// covers most of the money is a record that answers cost questions wrongly, so
+// the sum of these lines IS the bill.
+//
+// Role is which errand made the call, spelled as the role registry spells it
+// (internal/roles). It is ABSENT on the conversation's own requests rather than
+// spelled "chat", because absent is what the whole file means by "this is the
+// session itself" — [journalUsage] already writes its own Role the same way —
+// and a name invented for the default case is a name that has to be kept in step
+// with a registry it is not in.
+type journalCall struct {
+	Model      string  `json:"model,omitempty"`
+	Endpoint   string  `json:"endpoint,omitempty"`
+	Role       string  `json:"role,omitempty"`
+	Input      int     `json:"input,omitempty"`
+	CacheRead  int     `json:"cacheRead,omitempty"`
+	CacheWrite int     `json:"cacheWrite,omitempty"`
+	Output     int     `json:"output,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
+}
+
+// journalError is ONE CALL THAT FAILED, written down where the calls that
+// succeeded already are.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s2, 22:45 UTC. A turn ended with `error: after 3 retries: API
+// error (400): Provider returned error`, the session went idle, and the
+// benchmark cell settled with five hours of budget unspent. NOTHING ABOUT THE
+// 400 REACHED THIS FILE — no row, no status, no endpoint, no provider name, no
+// upstream body — so the autopsy could say that a turn had died and nothing
+// whatever about why. A journal that records every call that worked and nothing
+// about the ones that did not is a journal that answers the easy question.
+//
+// So: EVERY FAILED CALL WRITES ONE, and it carries what an autopsy has to ask
+// for otherwise. Status, Provider and Raw come off the refusal itself
+// (internal/provider's APIError); Endpoint is who the router said was serving;
+// Attempt is which rung of the retry ladder this was, so three rows for one step
+// read as one ladder rather than three steps; and Input is THE ESTIMATE the
+// session made of the request it was about to send, which is the only token
+// figure a failed call has — the provider counted none.
+//
+// Output and DurationMS are the exception to "the provider counted none", and
+// they exist for ONE class of failure: a guard cut (internal/provider's
+// StreamCut). A cut stream ran for a measurable time and delivered a measurable
+// amount of answer before it was ended, and those two figures are what tell a
+// silent endpoint apart from one that wrote for eighteen minutes and never
+// finished. Every other failure leaves both empty, which is the emptiness law:
+// a zero here would read as "it produced nothing", and only a cut can say that
+// honestly.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason and one more: a
+// failed call was not billed, so there is nothing here to sum.
+type journalError struct {
+	Model      string `json:"model,omitempty"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Status     int    `json:"status,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Raw        string `json:"raw,omitempty"`
+	Attempt    int    `json:"attempt,omitempty"`
+	Input      int    `json:"input,omitempty"`
+	Output     int    `json:"output,omitempty"`
+	DurationMS int64  `json:"durationMs,omitempty"`
+}
+
+// journalFailure is ONE CLASSIFICATION made at the response boundary: what a bad
+// response was taken to be, and what the harness did about it
+// (internal/taxonomy).
+//
+// IT IS THE ROW A BENCH COUNTS. [journalError] already says that a call failed
+// and what the provider said; what it cannot say is the only question the money
+// turns on — whether the harness read that failure as the WIRE, as the MODEL, or
+// as the WORK. Three runs of a measured comparison spent 57–82% of their bill on
+// a stronger model bought because four bad responses in a row were read as the
+// model being unable, and nothing in the file distinguished that from a model
+// that had genuinely failed the work. One line per classification makes the two
+// countable and the ratio between them readable.
+//
+// Class, Reason and Action are always written; everything else is the evidence
+// that happened to be there, absent when it was not, which is the emptiness law
+// as [journalError] applies it.
+type journalFailure struct {
+	Class    string  `json:"class"`
+	Reason   string  `json:"reason,omitempty"`
+	Action   string  `json:"action"`
+	Model    string  `json:"model,omitempty"`
+	Role     string  `json:"role,omitempty"`
+	Attempt  int     `json:"attempt,omitempty"`
+	Status   int     `json:"status,omitempty"`
+	Provider string  `json:"provider,omitempty"`
+	Refuted  int     `json:"refuted,omitempty"`
+	SpentUSD float64 `json:"spentUsd,omitempty"`
+}
+
+// journalMark is ONE reading taken at a checkpoint mark: what the sidecar was
+// asked to draw mid-turn, what it drew, what the harness did about it, and what
+// the call itself cost (checkpoint.go's [Agent.readMark]).
+//
+// IT EXISTS BECAUSE A DECISION NOBODY WROTE DOWN CANNOT BE MEASURED. Three of
+// these reads were made on one measured run and cost sixty-two cents between
+// them — five times the whole of what the work they were judging cost — and
+// every one of them answered "carry on". None of that was in the file: the
+// spend showed up as three anonymous auxiliary lines, and what was asked, what
+// came back and what it decided existed nowhere at all. So the reading is
+// journaled where the money already is, and a bench can join the two.
+//
+// N is which rung of the ladder this was and Rounds is where the turn stood when
+// it fired, which together say whether the ladder is landing where the policy
+// says it does. Sketch is THE SHAPE LINE ALONE — the legend is a sentence for a
+// worker and not evidence for a reader of the file — and Decision is what the
+// harness took off it: `split` when the turn was handed over on account of the
+// parts, `continue` when nothing happened, `failed` when no reading came back at
+// all. The ceiling's own read is a `continue` too: it decides nothing, and the
+// ceiling line that follows it says what actually happened.
+type journalMark struct {
+	N          int     `json:"n,omitempty"`
+	Rounds     int     `json:"rounds,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
+	Sketch     string  `json:"sketch,omitempty"`
+	Decision   string  `json:"decision,omitempty"`
+	DurationMS int64   `json:"durationMs,omitempty"`
+}
+
+// journalCeiling is what the LAST mark did with the turn: moved the remaining
+// work onto the one road, or dropped the handover and left the turn to finish.
+//
+// It is a line of its own rather than a field on the mark above it because the
+// two are different facts about different moments — the mark is a reading and
+// this is an act — and because the ceiling can fire with no reading behind it at
+// all (a sidecar nobody could reach still meets the ceiling).
+//
+// Decision is `moved`, `dropped:nothing-left` — the running model declared the
+// work finished AND the mark's own reader agreed nothing remained — or
+// `dropped:no-brief`, which is the one other way a ceiling ends with no task:
+// nothing could be written down for anybody. TaskID names the node when one was
+// admitted, and is absent otherwise by the emptiness law the rest of the line
+// keeps.
+//
+// Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
+// (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
+// Two ceilings that both read `moved` are not the same event — one started a
+// worker on a document written out of the turn's findings, the other started it
+// on the person's bare sentence — and until this field the file could not tell
+// them apart. The [journalCarry] lines directly above say WHY it was that rung;
+// this is the one-word answer a bench can count.
+type journalCeiling struct {
+	Rounds   int    `json:"rounds,omitempty"`
+	Decision string `json:"decision,omitempty"`
+	TaskID   uint64 `json:"taskId,omitempty"`
+	Carry    string `json:"carry,omitempty"`
+}
+
+// journalCarry is ONE RUNG of the ladder that decides what a worker taken off a
+// running turn OPENS ON (checkpoint.go's [Agent.handOverRunningTurn]).
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s4, 00:01:54Z. A turn hit the round-40 ceiling and the ladder
+// ran: the running model's draft came back as seven tokens nobody could work
+// from, and the mastermind that writes the real brief was then asked and never
+// answered — the call was cut by [checkpointHandoffWindow] ninety seconds later,
+// to the millisecond. Both upper rungs returned the empty string, the task opened
+// on the person's raw request, and the worker spent twelve minutes and seventy
+// calls re-deriving what the chat had already found out.
+//
+// NONE OF THAT REACHED THIS FILE. The journal held a ceiling line saying `moved`
+// and nothing else, which is the same line s2 wrote when the handoff worked and
+// the worker opened on a 3.5 KB document. A fallback that changes what a worker
+// is started on is an EVENT, not a default, and an event nobody wrote down is a
+// difference no autopsy can see.
+//
+// So EVERY RUNG WRITES ONE. Rung is `handoff`, `draft` or `ask`, in ladder order.
+// Outcome is what that rung did — `written`, `degenerate` (words that had stopped
+// saying new things, or no words at all), `failed` with Reason carrying the
+// provider's own sentence, `skipped` with Reason saying why it was never asked,
+// `nothing-left` when the remains contract was answered instead, or `empty` when
+// there was nothing there to carry. Chars is the size of what it produced, which
+// is the one number that says a 3.5 KB dowry apart from a bare sentence. Used
+// marks THE ONE rung that supplied the brief, so a reader of these lines alone —
+// at the ceiling and at a mark's split, which writes no ceiling line — can see
+// which of them the worker actually opened on.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: the money these
+// rungs cost is already on their own call lines.
+type journalCarry struct {
+	Rung    string `json:"rung,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Chars   int    `json:"chars,omitempty"`
+	Used    bool   `json:"used,omitempty"`
+}
+
+// journalDivision is ONE piece of work being put to the division road: who asked,
+// how many parts they asked for, how many exist afterwards, and what answered
+// (task_divide.go).
+//
+// IT EXISTS BECAUSE THREE COMPLETELY DIFFERENT OUTCOMES USED TO READ THE SAME.
+// A task that ran with one worker had NEVER ASKED to divide, had asked and been
+// refused by a free gate, or had asked and been refused by the reviewer — and the
+// only trace of any of it was the absence of child nodes. Over three measured
+// cells whose work a mastermind had already read as four jobs, every one landed
+// `parts=0`, and nothing in any file said which of the three had happened. So one
+// line, written wherever the road is asked.
+//
+// Source is `worker` for a division a worker reached for with the verb and
+// `sketch` for one the harness submitted on its behalf out of a mark's drawing
+// (task_divide_sketch.go). Requested is what was put; Admitted is how many parts
+// exist, which differs when the reviewer merges. Decision is `admitted` or
+// `refused:` and the gate that said no, so a bench can tell a floor refusal from
+// a busy machine from a reviewer that read the parts as one job.
+type journalDivision struct {
+	TaskID    uint64 `json:"taskId,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Requested int    `json:"requested,omitempty"`
+	Admitted  int    `json:"admitted,omitempty"`
+	Decision  string `json:"decision,omitempty"`
+	// Error is why a review came to nothing, on the one decision where that is
+	// not the same fact as the counter's refusal ([divisionRefusedUnreviewed]).
+	Error string `json:"error,omitempty"`
+	// Parts is what was asked for, by title, so a refusal reads against
+	// something and not against a count.
+	Parts []string `json:"parts,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.
@@ -772,6 +1116,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		id       string
 		lines    int
 		spent    Usage
+		created  []fileChange
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -932,6 +1277,56 @@ func replaySessionFile(path string) (replayedSession, error) {
 			if !used.Aux {
 				spent.Turns += used.Calls
 			}
+		case "call":
+			// DROPPED ON PURPOSE, and this arm exists to say so rather than to
+			// leave it to the switch falling off the end. A call line is the
+			// SHAPE of one request — who served it, how much of its prompt was
+			// warm — and every dollar on it is already counted in the seal that
+			// closed its turn. Folding it in here would bill the session twice
+			// for the same money.
+		case "error":
+			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
+			// own: a failed call cost nothing to bill and put nothing in the
+			// transcript. It is evidence for whoever reads the file afterwards,
+			// and replaying it would put a provider's refusal into somebody's
+			// conversation as though the model had said it.
+		case "mark", "ceiling", "division", "carry", "failure":
+			// DROPPED ON PURPOSE, for the reason a call line is: these are the
+			// RECORD of a decision the harness took mid-turn, and a decision is
+			// not a message and not money. Whatever the mark's reader cost is
+			// already on the usage line beside it and on its own call line, and
+			// what the ceiling did to the turn is already in the transcript —
+			// the line the person read, and the task the graph admitted. A
+			// division's parts are nodes in the graph's own checkpoint and its
+			// receipt is already in the worker's transcript. A carry line is the
+			// same kind of fact about the same moment: which rung of the brief
+			// ladder the worker opened on, which the spec in the graph already
+			// holds. A failure line is the boundary's reading of a call that
+			// already has its own error line above it.
+			// Replaying them would put machinery into somebody's conversation.
+		case "created":
+			// KEPT, and it is the ONE non-message line this replay carries
+			// forward. The others in this switch are the record of a decision or
+			// of money, and a resumed session re-derives both; this one carries a
+			// fact nothing can re-derive — whether a file was there BEFORE the
+			// session touched it — and a resumed session that lost it would end
+			// by looking at everything it made and being unable to say what it
+			// had made ([journalCreated]).
+			if entry.Created == nil || strings.TrimSpace(entry.Created.Path) == "" {
+				continue
+			}
+			created = append(created, fileChange{
+				path:    entry.Created.Path,
+				shown:   entry.Created.Shown,
+				created: true,
+			})
+		case "principal":
+			// DROPPED ON PURPOSE, for the reason a mark line is: it is the RECORD
+			// of a decision the session's goal owner made, and a decision is not
+			// a message and not money. What it decided is already in the
+			// transcript — the brief the turn carried on with, the line the
+			// person read — and replaying it would put machinery into somebody's
+			// conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
@@ -944,7 +1339,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	repaired := repairTranscript(messages)
 	// The overlap was counted against the lines the file holds and is applied to
@@ -972,6 +1367,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		replyTags: replyTags,
 		steers:    steers,
 		usage:     spent,
+		created:   created,
 		existed:   lines > 0,
 	}, nil
 }
@@ -1141,7 +1537,13 @@ type replayedSession struct {
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.
-	usage   Usage
+	usage Usage
+	// created is every file an earlier process of this session made that was not
+	// there before — the "created" lines, in the order they were written. It is
+	// the one fact in this file that cannot be re-derived from the transcript,
+	// and it is what lets a resumed session still answer for what it left behind
+	// ([journalCreated]).
+	created []fileChange
 	existed bool
 }
 
@@ -1507,6 +1909,124 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 		},
 		Timestamp: stamp(),
 	})
+}
+
+// appendCall writes ONE response's own accounting down, beside the seal that
+// will sum it.
+//
+// A RESPONSE THAT REPORTED NO USAGE WRITES NOTHING. The emptiness law, and the
+// same test the seal keeps: a call with no tokens and no cost is a call the
+// provider said nothing about, and a row of zeroes would read as a fact. A
+// stream that was cut before its final chunk is exactly that case.
+//
+// The nil receiver writes nothing, as everywhere in this file: a memory-only
+// session has no journal and no caller should have to know it.
+func (s *sessionFile) appendCall(call journalCall) {
+	if s == nil {
+		return
+	}
+	if call.Input == 0 && call.Output == 0 && call.CacheRead == 0 && call.CacheWrite == 0 && call.CostUSD == 0 {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "call", Call: &call, Timestamp: stamp()})
+}
+
+// appendError writes ONE FAILED CALL down (see [journalError]).
+//
+// A FAILURE ALWAYS WRITES, which is where this parts company with every other
+// append in this file. The emptiness law is about numbers nobody reported; a
+// call that failed with no status, no provider and no words is not an absence of
+// news — it is the news, and it is precisely the shape the measured run left
+// behind. The one thing that writes nothing is the nil receiver, as everywhere
+// here: a memory-only session has no journal and no caller should have to know.
+func (s *sessionFile) appendError(failure journalError) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "error", Error: &failure, Timestamp: stamp()})
+}
+
+// appendFailure writes ONE CLASSIFICATION down (see [journalFailure]).
+//
+// A CLASSIFICATION ALWAYS WRITES, for [sessionFile.appendError]'s reason: the
+// whole point of the line is that a decision was taken about a failure, and a
+// decision nobody wrote down cannot be measured. The nil receiver writes
+// nothing, as everywhere in this file.
+func (s *sessionFile) appendFailure(failure journalFailure) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "failure", Failure: &failure, Timestamp: stamp()})
+}
+
+// appendMark writes ONE mark's reading down (see [journalMark]).
+//
+// A MARK THAT NEVER HAPPENED WRITES NOTHING, which is the emptiness law applied
+// to a file a person reads: a turn that crossed no mark, and a session that
+// cannot reach a reader at all, leave the journal exactly as it was before any
+// of this existed. The caller's own guard is the one that knows — a read that
+// was never attempted is not a read — and this repeats it on the decision,
+// because a line with no decision on it says nothing about anything.
+//
+// The nil receiver writes nothing, as everywhere in this file.
+func (s *sessionFile) appendMark(mark journalMark) {
+	if s == nil || strings.TrimSpace(mark.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "mark", Mark: &mark, Timestamp: stamp()})
+}
+
+// appendCeiling writes down what the last mark did with the turn (see
+// [journalCeiling]). A ceiling that did not fire writes nothing, for
+// [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendCeiling(ceiling journalCeiling) {
+	if s == nil || strings.TrimSpace(ceiling.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "ceiling", Ceiling: &ceiling, Timestamp: stamp()})
+}
+
+// appendCarry writes down ONE RUNG of the brief ladder (see [journalCarry]).
+//
+// A rung with no outcome on it writes nothing, for [sessionFile.appendCeiling]'s
+// reason: the whole value of the line is saying what that rung DID, and a line
+// that cannot say it is a line that says a rung existed — which the code already
+// says.
+func (s *sessionFile) appendCarry(carry journalCarry) {
+	if s == nil || strings.TrimSpace(carry.Rung) == "" || strings.TrimSpace(carry.Outcome) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "carry", Carry: &carry, Timestamp: stamp()})
+}
+
+// appendDivision writes down one division put to the road (see
+// [journalDivision]). A division nobody asked for writes nothing, for
+// [sessionFile.appendMark]'s reason: the whole value of the line is telling
+// never-asked from refused, and a line with no decision on it says neither.
+func (s *sessionFile) appendDivision(division journalDivision) {
+	if s == nil || strings.TrimSpace(division.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "division", Division: &division, Timestamp: stamp()})
+}
+
+// appendPrincipal writes down one decision the session's goal owner made (see
+// [journalPrincipal]). A moment with no event on it writes nothing, for
+// [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendPrincipal(moment journalPrincipal) {
+	if s == nil || strings.TrimSpace(moment.Event) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "principal", Principal: &moment, Timestamp: stamp()})
+}
+
+// appendCreated writes down one file the session made (see [journalCreated]). A
+// line with no path on it writes nothing, for [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendCreated(made journalCreated) {
+	if s == nil || strings.TrimSpace(made.Path) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "created", Created: &made, Timestamp: stamp()})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

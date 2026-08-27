@@ -194,7 +194,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
-| `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
@@ -1031,16 +1030,28 @@ The *work that runs on its own* page has this in full, under
 *Why my task's brief is longer than what I typed* and *Why my task is called something I did
 not type*.
 
-`/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
-adaptive run with a planner immediately. Both explicit forms skip sizing altogether, and
-both still shape the brief.
+`/task solo <brief>` starts one worker immediately. It skips sizing altogether and still
+shapes the brief.
+
+**`/task adaptive <brief>` is retired**, and it is the only `/task` word that ever opened an
+adaptive run. Typing it now starts an ordinary task: your brief is kept exactly as typed —
+the word is left in it rather than cut out, because a brief that genuinely opens "adaptive
+rate limiting for the api" must not lose its first word — and one dim line says what
+happened:
+
+```
+/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes
+```
+
+`/task adaptive` on its own, with no brief after it, starts nothing and prints the usage
+line instead: `usage: /task <brief> · /task solo <brief>`.
 
 The `starting a task` row in `/settings` → Session decides what the plain form does:
-`sized` is the default and is the behaviour above, `adaptive` takes the adaptive shape
-without asking whenever there is anything to split, and `single` always starts one worker
-and does not size the work at all. `solo` and `adaptive` typed on the command line override
-the row either way. The row's old fourth answer `ask`, and the two-choice list it opened,
-are both gone; a profile still set to it reads as `sized`.
+`sized` is the default and is the behaviour above, and `single` always starts one worker
+and does not size the work at all. `solo` typed on the command line overrides the row
+either way. Two of the row's old answers are gone — `ask` with the two-choice list it
+opened, and `adaptive` with the planner road itself — and a profile still set to either
+reads as `sized`.
 
 ## What happens when I type /task
 
@@ -1055,8 +1066,8 @@ tail. Every row has the same thin left line and one space of padding:
 
 The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
 The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
-`/task solo <brief>`, `/task adaptive <brief>`, and a `single` starting setting begin at
-shaping because they skip sizing. When work starts, the thin line and scaffold disappear
+`/task solo <brief>` and a `single` starting setting begin at shaping because they skip
+sizing. When work starts, the thin line and scaffold disappear
 in the same frame and the normal started-task row takes their place. If starting fails,
 only the error sentence remains.
 
@@ -1074,11 +1085,11 @@ this conversation's work **and every earlier conversation's**. It is the one pla
 answers "what did we do about this last week" — the roster's column beside the conversation
 is built from this session's own work, and carries only a short dulled note of the rest.
 
-**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` and
-`adaptive` forms mean *give aforge work*; this page starts none, so it does not share their
-word. Typing `/history` is the only slash form — but the PLACE this opens is called `tasks`
-on the tab bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a
-place, not a command.
+**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
+mean *give aforge work*; this page starts none, so it does not share their word. Typing
+`/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
+bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
+command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
 current call, clock, tokens and spend under its name. `earlier` is a flat list, newest

@@ -18,6 +18,27 @@ two standing-order gaps. A firing that turns out to be wide now takes the
 division road under the same gates as everything else, and the birth seam stopped
 handing a reminder to a worker as a house rule.*
 
+*Updated w44, 2026-08-24, by the ONE ROAD wave. **Law 2 below changed shape**: the
+planner DAG is still the exception, but a chat turn can no longer take it. The
+`run_adaptive` hand is off the belt, `/task adaptive` and the `adaptive` preset
+are retired, and the route judge starts a task on a yes rather than offering a
+shape. Rows describing those doors are marked RETIRED where they stood, because
+the audit's value is in showing which trajectories closed and when. Everything
+about the ENGINE (`internal/orchestrate`, `Agent.RunOrchestrate`, the fuel tank,
+`/subharness`, `cmd/harness-design`) is unchanged.*
+
+*Updated w44, later the same day, by the CUE-DOOR lane. **Law 2 below changed shape
+again**, and this time it closed: the anchored `orchestrate …` cue is gone from the
+turn loop, so a conversation has NO door onto the planner DAG — not a hand, not a
+command, not a preference, and not a form of words. `routeOrchestrate`,
+`orchestrateGoal` and the cue's three regexps went with it; `startOrchestrate`,
+`announceOrchestrate`, `Agent.RunOrchestrate`, the roster family, the fuel gate and
+`Config.OrchestrateRunner` were deliberately LEFT STANDING, marked where they stand as
+having no chat-side caller, because ripping the engine's wiring out is a separate
+decision nobody has made. Rows and bullets naming the cue as an open door are marked
+where they stood. The ENGINE is still unchanged: `internal/orchestrate`,
+`cmd/harness-design`, and `/subharness` on its own runner.*
+
 ## The world this is measured against
 
 Four laws, decided across waves 35–40, are what "as-intended" means here.
@@ -26,10 +47,13 @@ Four laws, decided across waves 35–40, are what "as-intended" means here.
    starts; it splits itself under two gates — the evidence gate
    (`internal/splitgate`) and the free-hands gate (`TaskGraph.freeHands`) — and
    the parts are picked up as hands free. The parent stays and folds.
-2. **The planner DAG is the explicit exception.** `run_adaptive`, `/task
-   adaptive`, the typed `orchestrate …` cue: a person asked for a planned graph,
-   or the structure must be settled up front. Width alone is never the reason.
-   Narrow work is byte-identical to the pre-swarm world.
+2. **The planner DAG is the explicit exception, and since w44 a conversation
+   cannot take it at all.** `run_adaptive`, `/task adaptive`, the `adaptive`
+   preference and finally the typed `orchestrate …` cue are all gone, in that
+   order. Width alone was never the reason and now nothing is: no hand, no
+   command, no setting and no sentence opens a planned graph from chat. The
+   engine is reached by `cmd/harness-design` on a driver of its own. Narrow work
+   is byte-identical to the pre-swarm world.
 3. **Consent.** Nothing runs from a model decision without the person's yes
    where a yes is required. Headless never auto-approves a question. A
    subharness `ask()` with nobody there is never a yes.
@@ -67,9 +91,9 @@ are not suggestions" over a reminder (**M7**).
 | `/task <brief>` bare | `internal/tui3/taskcommand.go:54` → sizing call `:96-101` → settle `internal/tui3/app.go:2371-2401` | **one worker, always** — judge yes and judge no both reach `startTaskDoor(…, "single", …)` | **yes**, by the sizing judge | as-intended | `rememberDivisible` `internal/session/task_person.go:216-218`; `StartTask` puts the *same* trimmed string on the spec as `request` `task_person.go:114`; `armDivision` matches it `internal/session/task_divide.go:198`. Byte-identical by construction: one `brief` variable feeds both `JudgeDecomposable` (`taskcommand.go:99`) and `StartTask` (`:134`). Pinned by `task_divide_test.go:144` |
 | …its dim line | `internal/tui3/taskcommand.go:162` | a fact, not a card | — | as-intended | `the work looks wide · one worker starts, and it can split as it goes`. A judge NO says nothing at all (`app.go:2382`) |
 | `/task solo <brief>` | `taskcommand.go:73-74`, `:83-84` | one worker, sizing call never made | enumeration only | as-intended | `armDivision`'s own bullet names this case (`task_divide.go:182-194`); the command row promises no more (`internal/tui3/commands.go:200`) |
-| `/task adaptive <brief>` | `taskcommand.go:130-132` → `StartPlannerRun` `task_person.go:123` | **planner DAG** | n/a | as-intended — the explicit exception | there is no `/orchestrate`, `/adaptive`, `/plan` or `/swarm` command; the full table is `internal/tui3/commands.go:59-271` |
+| ~~`/task adaptive <brief>`~~ | **RETIRED w44** — the word is off the command and off the slash menu, and `StartPlannerRun` was deleted with it (`task_person.go` says so where it stood) | — | — | closed | there is no `/orchestrate`, `/adaptive`, `/plan` or `/swarm` command either; the full table is `internal/tui3/commands.go` |
 | preset `sized` (default) | `internal/config/settings.go:1446`, resolver `:2772` | as `/task` bare | judge | as-intended | `settings.go:534` |
-| preset `adaptive` | read at `internal/tui3/app.go:2387`, **only after `msg.parallel`** | planner DAG | n/a | as-intended — the person's own opt-in, stated once | a judge NO still starts one worker (`app.go:2382`, checked first); the row's hint calls itself an override (`settings.go:1449-1455`) |
+| preset `adaptive` | **RETIRED w44** — off `TaskStartModes`, and the constant went with it | reads as `sized` | judge | closed, and by the same read-time fallback `ask` got | `TaskStartAt` returns `DefaultTaskStart` for any word this build does not know, so a profile written months ago loads clean and says nothing; pinned by `TestAProfileStillHoldingTheRetiredWordReadsAsSized` |
 | preset `single` | `taskcommand.go:93-94` | one worker, no sizing call | enumeration only | as-intended | `settings.go:526` |
 | legacy preset `ask` | removed with its card (`settings.go:519-522`) | reads as `sized` | judge | as-intended | a read-time fallback, not a migration: `TaskStartAt` returns `DefaultTaskStart` for anything unrecognised (`settings.go:2773-2781`), and `Choices: TaskStartModes` stops the sheet writing it back |
 | `/subharness` list + card | `internal/tui3/app.go:4420` → `internal/tui3/subharness.go:861` | a subharness run as a task node | n/a — the node runs `exec.Runner`, never a belt | as-intended | **two deliberate enters**: a list row only opens the card (`subharness.go:1069-1072`); the card's run row calls `runSubharness` (`:1128-1137`). A mouse press moves the cursor and never acts (`:1279-1283`) |
@@ -78,7 +102,7 @@ are not suggestions" over a reminder (**M7**).
 | ctrl+enter (home) | `internal/tui3/home.go:2002-2010` → `homeexchange.go:805` | an errand conversation | n/a | as-intended | not a task and not a planner |
 | the margin's `+` doors | `internal/tui3/margin.go:76-82`, press `:313-317` → `:340-352` | **types into the draft; starts nothing** | n/a | as-intended | the file's own law at `margin.go:39-42`: "THE `+` ROW TYPES, IT DOES NOT ARM." |
 | home's work doors | `home.go:2398-2404` | a new conversation, or an `ask here` errand | n/a | as-intended | neither admits a task |
-| `orchestrate …` typed | `internal/session/orchestrate.go:502-504`, routed `loop.go:209` → `:568` | **planner DAG, immediately, no card** | n/a | as-intended | the typed sentence *is* the consent: "IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT" (`orchestrate.go:492-497`), anchored to the head of the message, with three gates in front — a runner, a watcher (`:572-574`), and only what a person typed (`:577-580`) |
+| ~~`orchestrate …` typed~~ | **CLOSED w44 (cue-door lane)** — the cue, its parser and its route are deleted; `loop.go` says where they stood and why | **an ordinary turn** — the model answers, and the route judge starts a task if it reads as work | as the judge arms anything | closed | this was the last door of any kind onto the planner from a conversation, so law 2's exception is now unreachable from chat; `internal/session/orchestrate_test.go` pins the six old cue sentences as ordinary turns that never call the runner |
 
 ## B. Model-decided — the model reached for a verb
 
@@ -86,17 +110,17 @@ are not suggestions" over a reminder (**M7**).
 | --- | --- | --- | --- | --- | --- |
 | `propose_task` without `wide` | `task.go:279` → `:311` → admit `:412` | one node | enumeration only | countdown card (`task.go:570-593`); silence is yes | as-intended |
 | `propose_task` **with `wide`** | schema `task.go:119`, spec `:492` | **one node — `proposeTask` has no planner branch at all** | **yes**, signal one (`task_divide.go:195`) | same countdown | as-intended in routing; the description over-promises — **M6** |
-| `run_adaptive` (post-reword) | `tools_harness.go:286`, guard `:90` = `canOrchestrate` `:107` | planner DAG | n/a | none at launch; the fuel gate asks later | as-intended |
+| ~~`run_adaptive`~~ | **RETIRED w44** — off the belt outright, and `canOrchestrate`, the gate that existed only to guard it, was deleted with it | — | — | — | closed: the model has no verb for a planned run, so no model decision can open one |
 | `build_harness` tail | `tools_harness.go:192` → `harness_task.go:453` → admit `:463` | a design node; the page is written, then carded | **no — the kind guard refuses it** | save-or-discard card, and **no clock at all** (`harness_build.go:383-400`) | as-intended (M4 fixed w42, 2026-08-24) |
 | `propose_subharness` | `tools_subharness.go:129`, guard `:122` | intake card → `startSubharnessRun` `subharness_contract.go:190` | n/a | mandatory card; **no clock that says yes** — the 15-minute window expires to *nothing ran* (`tools_subharness.go:388-392`) | as-intended |
 | **route judge card** | `route_judge.go:146` → card `:304` → `launchRouteTask` `:395` → admit `:413` | one node from the judge's goal | **yes**, the judge's own `wide` | the card; a no returns before any admit (`:200-203`); a yes is deliberately not re-asked (`:383-388`) | as-intended (M1 fixed w42, 2026-08-24) |
 | `stand` | `tools_standing.go:299`, guard `:295` | a standing item | n/a | card, mandatory, **no clock**: `Deadline` explicitly zeroed (`:963`), two select arms only (`:967-976`) | as-intended |
 | `divide_work` itself | `task_divide.go:114`, guard `mayDivide` `:138` | parts on the same nesting road `propose_task` uses | — | none needed — a refusal is an ordinary tool result | as-intended (C1 fixed w42, 2026-08-24) |
 
-`run_adaptive`'s description now says "THIS IS THE EXCEPTION AND NOT THE ROAD FOR
-BROAD WORK … A goal that is merely WIDE is not one of them" (`tools_harness.go:71`)
-and names `propose_task` with `wide` as the road; it is absent rather than
-refusing when the runner is nil (`:90`). `propose_subharness`'s "nothing runs
+`run_adaptive`'s description used to say "THIS IS THE EXCEPTION AND NOT THE ROAD
+FOR BROAD WORK … A goal that is merely WIDE is not one of them" and name
+`propose_task` with `wide` as the road. **w44 finished that argument by taking the
+verb away**: there is no description to get right, because there is no hand. `propose_subharness`'s "nothing runs
 because you proposed it" is enforced by `ResolveSubharness` (`:414-423`) being
 the single writer of the answer channel, with exactly two callers of
 `startSubharnessRun`: `/subharness`, and a confirmed card. `stand`'s "a session
@@ -209,18 +233,20 @@ predicate, and the belt and the prompt page for division are built from the
 **same** predicate (`tools.go:134` and `prompt.go:120` both call `mayDivide`),
 which is exactly right.
 
-**No belt verb steers wide work to a planner.** All three descriptions that touch
-the question point breadth at `propose_task`: `tools_harness.go:71`
-(`run_adaptive`), `task.go:83` (`propose_task` — "do not reach for a planner"),
-`tools_harness.go:48` (`build_harness`).
+**No belt verb steers wide work to a planner.** Since w44 no belt verb REACHES a
+planner at all: `run_adaptive` is gone, and the descriptions left point breadth at
+`propose_task` — `task.go` ("do not reach for a planner") and
+`tools_harness.go`'s `build_harness`.
 
 **No source sentence and no manual page steers breadth to a planner.** A
 repo-wide case-insensitive grep for breadth words near planner words returns no
 non-test hit that reads the old way; `internal/orchestrate/prompt.md` describes
 how a run that has already started behaves, which is out of scope. The compiled
 corpus carries the capability: `adaptive-runs.md:22-39` is the section people
-actually ask for, `:489-497` names wide work as a task outright, `tasks.md:165`
-calls the `adaptive` preset an opt-in override. A grep for denials
+actually ask for and `:489-497` names wide work as a task outright. (`tasks.md`
+called the `adaptive` preset an opt-in override; w44 retired the preset, so that
+page and `adaptive-runs.md`'s account of the belt are the manual's to bring
+level.) A grep for denials
 (`cannot be divided`, `cannot split`, `impossible`) returns zero hits.
 `TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`
 (`task_divide_test.go:544`) pins both the new sentences and the **absence** of the
@@ -555,10 +581,12 @@ been sitting in a file since. A model call per firing per night to re-read
 unchanged text is a subscription nobody agreed to, so the free signal that reads
 the work's own words is the honest floor. It under-arms rather than over-arms.
 
-**Still open:** a firing has no `propose_task` and no `tasks`, and `run_adaptive`
-still needs an `AskConsent` it does not have. Division is the road wide work was
-meant to take (`task_divide.go`'s header); the fan-out half is a separate
-question about what an unattended session may commission.
+**Still open:** a firing has no `propose_task` and no `tasks`. The `run_adaptive`
+half of this finding closed itself in w44 rather than being fixed — the hand is
+off every belt, so a firing not having it is no longer a gap peculiar to firings.
+Division is the road wide work was meant to take (`task_divide.go`'s header); the
+fan-out half is a separate question about what an unattended session may
+commission.
 
 ### M6 — three one-source-of-truth breaks between a description and its code.
 
@@ -950,9 +978,11 @@ structural finding above was left as a finding.
 - `TaskGraph.admit` is genuinely the one arming door: two production
   `&TaskNode{}` constructions (`task_run.go:687`, `task_store.go:995`), two
   writers of `spec.divide` (`task_run.go:686`, `task_store.go:1041`).
-- The planner is unreachable from every autonomous path: `run_adaptive` requires
-  `AskConsent` (`tools_harness.go:108`), and `routeOrchestrate` additionally
-  refuses woken and authored turns (`orchestrate.go:577-580`).
+- The planner is unreachable from every autonomous path, from every MODEL path,
+  and — since the cue-door lane closed `routeOrchestrate` later in w44 — from
+  every TYPED path as well. There is no door onto it in a conversation at all;
+  the engine's chat-side seams stand with no caller, marked as such where they
+  stand (`loop.go`, `orchestrate.go`).
 - Headless never auto-approves a tool question: `consent.go:282-284` refuses when
   nobody is watching, `:276` refuses inside a node, and the memo is barred from
   swallowing the critical floor (`consent.go:246`, `internal/approval/floor.go:27-45`).

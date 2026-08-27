@@ -16,12 +16,12 @@ import (
 
 type taskCommandFake struct {
 	Agent
-	judgeCalls, singleCalls, adaptiveCalls int
-	yes                                    bool
-	parts                                  []string
-	why                                    string
-	brief, hint                            string
-	err                                    error
+	judgeCalls, singleCalls int
+	yes                     bool
+	parts                   []string
+	why                     string
+	brief                   string
+	err                     error
 }
 
 func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, string, error) {
@@ -29,33 +29,87 @@ func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, st
 	f.brief = brief
 	return 7, "named work", f.err
 }
-func (f *taskCommandFake) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
-	f.adaptiveCalls++
-	f.brief, f.hint = brief, hint
-	return "3", "named work", f.err
-}
 func (f *taskCommandFake) JudgeDecomposable(context.Context, string) (bool, []string, string) {
 	f.judgeCalls++
 	return f.yes, f.parts, f.why
 }
 
-func TestTaskExplicitFormsSkipSizing(t *testing.T) {
-	base := &fakeAgent{model: "m"}
-	f := &taskCommandFake{Agent: base}
+// THE ONE EXPLICIT FORM LEFT IS `solo`, and it skips the sizing call outright.
+func TestTaskSoloSkipsSizing(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := newTestApp(f)
-	for _, tc := range []struct {
-		line     string
-		adaptive bool
-	}{{"/task solo fix it", false}, {"/task adaptive map it", true}} {
-		cmd := a.slash(tc.line)
-		msg := cmd()
-		_, _ = a.Update(msg)
-		if f.judgeCalls != 0 {
-			t.Fatal("an explicit form called the judge")
+	_, _ = a.Update(a.slash("/task solo fix it")())
+	if f.judgeCalls != 0 {
+		t.Fatal("an explicit form called the judge")
+	}
+	if f.singleCalls != 1 || f.brief != "fix it" {
+		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
+	}
+}
+
+// THE OLD SECOND WORD OPENS NOTHING OF ITS OWN. `/task adaptive <brief>` is a
+// brief that happens to start with the word "adaptive": it takes the one road
+// every other brief takes, the words are handed over exactly as they were typed,
+// and one line says the word no longer means anything so that a person who meant
+// the old shape is not left thinking they got it.
+func TestTheRetiredAdaptiveWordIsJustAWordAndSaysSo(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	_, cmd := a.Update(a.slash("/task adaptive map the api")())
+	if cmd == nil {
+		t.Fatal("the retired word started nothing at all")
+	}
+	_, _ = a.Update(cmd())
+	if f.judgeCalls != 1 {
+		t.Fatalf("%d sizing calls, want the ordinary one", f.judgeCalls)
+	}
+	if f.singleCalls != 1 || f.brief != "adaptive map the api" {
+		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
+	}
+	if !holdsNote(a, taskAdaptiveRetiredNote) {
+		t.Fatalf("nothing said the word retired: %q", noteTexts(a))
+	}
+}
+
+// AND THE WORD ON ITS OWN IS NOT WORK. `/task adaptive` with nothing under it is
+// muscle memory, not a brief, so it buys no shaping call — it gets the line about
+// the retirement and the usage line, which between them name the whole vocabulary.
+func TestTheUsageLineNamesOnlyTheTwoForms(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	if cmd := a.slash("/task adaptive"); cmd != nil {
+		if msg := cmd(); msg != nil {
+			_, _ = a.Update(msg)
 		}
 	}
-	if f.singleCalls != 1 || f.adaptiveCalls != 1 {
-		t.Fatalf("single=%d adaptive=%d", f.singleCalls, f.adaptiveCalls)
+	if f.judgeCalls != 0 || f.singleCalls != 0 {
+		t.Fatalf("the bare retired word spent something: judge=%d single=%d", f.judgeCalls, f.singleCalls)
+	}
+	usage := ""
+	for _, text := range noteTexts(a) {
+		if strings.HasPrefix(text, "usage:") {
+			usage = text
+		}
+	}
+	if usage == "" {
+		t.Fatalf("no usage line at all: %q", noteTexts(a))
+	}
+	if !strings.Contains(usage, "/task <brief>") || !strings.Contains(usage, "/task solo <brief>") {
+		t.Fatalf("the usage line does not name the two forms: %q", usage)
+	}
+	if strings.Contains(usage, "adaptive") {
+		t.Fatalf("the usage line still offers a form that is gone: %q", usage)
+	}
+	// AND `/task solo` WITH NOTHING UNDER IT IS THE SAME EMPTY HAND, rather than a
+	// task briefed "solo".
+	b := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	if cmd := b.slash("/task solo"); cmd != nil {
+		if msg := cmd(); msg != nil {
+			_, _ = b.Update(msg)
+		}
+	}
+	if got := lastNote(t, b); !strings.HasPrefix(got, "usage:") {
+		t.Fatalf("a bare /task solo started something: %q", got)
 	}
 }
 
@@ -73,9 +127,6 @@ func TestAWideBriefStartsOneWorkerAndSaysSoWithoutAsking(t *testing.T) {
 		t.Fatal("a yes started nothing at all")
 	}
 	_, _ = a.Update(cmd())
-	if f.adaptiveCalls != 0 {
-		t.Fatalf("a yes opened a planner nobody asked for: %d planner runs", f.adaptiveCalls)
-	}
 	if f.singleCalls != 1 || f.brief != "inspect both" {
 		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
 	}
@@ -190,43 +241,35 @@ func TestTaskStartDefaultsToOneWorkerThatCanSplit(t *testing.T) {
 		t.Fatal("the default started nothing")
 	}
 	_, _ = a.Update(cmd())
-	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
-		t.Fatalf("the default ran adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
+	if f.singleCalls != 1 {
+		t.Fatalf("the default started %d workers", f.singleCalls)
 	}
 }
 
-// SET TO ADAPTIVE, THE PLANNER IS THE ROAD — the row is the person saying, once
-// instead of on every command, that they want the pieces planned before anybody
-// starts. What starts still follows what the sizing call found: parts to split
-// means a planner, nothing to split means one worker, because a planner over
-// work with no independent parts in it is a whole extra model deciding nothing.
-func TestTaskStartAdaptiveGoesStraightToThePlanner(t *testing.T) {
-	for _, tc := range []struct {
-		name              string
-		parallel          bool
-		adaptive, singles int
-	}{
-		{"parts to split", true, 1, 0},
-		{"nothing to split", false, 0, 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: tc.parallel, parts: []string{"api", "ui"}, why: "independent"}
-			a := taskStartApp(t, f, config.TaskStartAdaptive)
-			_, cmd := a.Update(a.slash("/task inspect both")())
-			if cmd == nil {
-				t.Fatal("nothing was started")
-			}
-			_, _ = a.Update(cmd())
-			if f.judgeCalls != 1 {
-				t.Fatalf("%d sizing calls, want one", f.judgeCalls)
-			}
-			if f.adaptiveCalls != tc.adaptive || f.singleCalls != tc.singles {
-				t.Fatalf("adaptive=%d single=%d, want %d/%d", f.adaptiveCalls, f.singleCalls, tc.adaptive, tc.singles)
-			}
-			if tc.adaptive == 1 && !strings.Contains(f.hint, "api") {
-				t.Fatalf("the planner was given no sketch: %q", f.hint)
-			}
-		})
+// A PROFILE LEFT ON THE OLD ROW STARTS ONE WORKER LIKE EVERY OTHER ROW. Somebody
+// who set `starting a task` to `adaptive` before this build is not sent down a
+// road that no longer exists, and the word is not refused either: it reads as the
+// default, which is the same thing every other answer to that row now means for
+// wide work. The literal is deliberate — the setting's own constant may go, and
+// what has to keep working is the string already sitting in people's profiles.
+func TestAProfileLeftOnTheAdaptiveRowStartsOneWorker(t *testing.T) {
+	for _, parallel := range []bool{true, false} {
+		f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: parallel, parts: []string{"api", "ui"}, why: "independent"}
+		a := taskStartApp(t, f, "adaptive")
+		_, cmd := a.Update(a.slash("/task inspect both")())
+		if cmd == nil {
+			t.Fatal("nothing was started")
+		}
+		_, _ = a.Update(cmd())
+		if f.judgeCalls != 1 {
+			t.Fatalf("%d sizing calls, want one", f.judgeCalls)
+		}
+		if f.singleCalls != 1 {
+			t.Fatalf("wide=%v started %d workers", parallel, f.singleCalls)
+		}
+		if holdsNote(a, taskWideNote) != parallel {
+			t.Fatalf("wide=%v said %q", parallel, noteTexts(a))
+		}
 	}
 }
 
@@ -245,33 +288,26 @@ func TestTaskStartSingleSkipsTheSizingCall(t *testing.T) {
 	if f.judgeCalls != 0 {
 		t.Fatal("single paid for a sizing call it had already answered")
 	}
-	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
-		t.Fatalf("adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
+	if f.singleCalls != 1 {
+		t.Fatalf("single=%d", f.singleCalls)
 	}
 	if holdsNote(a, taskWideNote) {
 		t.Fatal("a road that never read the brief still claimed the work was wide")
 	}
 }
 
-// AN EXPLICIT WORD IS THE LAST WORD, in both directions and against both silent
-// rows: `/task solo` under `adaptive` is one worker, `/task adaptive` under
-// `single` is a planner.
-func TestExplicitFormsOverrideTheRow(t *testing.T) {
-	for _, tc := range []struct {
-		row, line         string
-		adaptive, singles int
-	}{
-		{config.TaskStartAdaptive, "/task solo fix it", 0, 1},
-		{config.TaskStartSingle, "/task adaptive map it", 1, 0},
-	} {
+// AN EXPLICIT SOLO IS THE LAST WORD against a silent row: whatever `starting a
+// task` says, `solo` skips the sizing call and starts one worker.
+func TestSoloOverridesTheRow(t *testing.T) {
+	for _, row := range []string{"adaptive", config.TaskStartSized, config.TaskStartSingle} {
 		f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api"}}
-		a := taskStartApp(t, f, tc.row)
-		_, _ = a.Update(a.slash(tc.line)())
+		a := taskStartApp(t, f, row)
+		_, _ = a.Update(a.slash("/task solo fix it")())
 		if f.judgeCalls != 0 {
-			t.Fatalf("%q under %q called the sizing judge", tc.line, tc.row)
+			t.Fatalf("solo under %q called the sizing judge", row)
 		}
-		if f.adaptiveCalls != tc.adaptive || f.singleCalls != tc.singles {
-			t.Fatalf("%q under %q: adaptive=%d single=%d", tc.line, tc.row, f.adaptiveCalls, f.singleCalls)
+		if f.singleCalls != 1 || f.brief != "fix it" {
+			t.Fatalf("solo under %q: single=%d brief=%q", row, f.singleCalls, f.brief)
 		}
 	}
 }

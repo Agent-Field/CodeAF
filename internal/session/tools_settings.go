@@ -63,13 +63,27 @@ const changeSettingToolName = "change_setting"
 // /model instead.
 const conversationSlot = "talk"
 
-const settingsDescription = "Read the person's own aforge settings — the same rows the /settings panel shows, named by the same registry keys. With no arguments it lists every row: key, label, and what the row reads right now, grouped by category. 'key' returns one row in full: what it takes, what it governs, what it reads now, and whether it is one this session may change. 'search' filters the list by key, label or description. This only reads; " + changeSettingToolName + " is the hand that writes one."
+// THESE FOUR STRINGS ARE PROMPT TEXT, BILLED ON EVERY REQUEST OF EVERY TURN, and
+// they are written for density accordingly: a rule is stated once, in the one
+// place the model is reading when it has to obey it. The read's preamble used to
+// gloss `key` and `search` in full and then the schema glossed them again; only
+// the schema does now. Neither hand describes the other's arguments any more.
+//
+// Nothing about the LAW changed. The read still says it only reads and names the
+// hand that writes. The write still says all three of the things a model has to
+// know before it calls it: the write goes through the REGISTRY and never through
+// a hand-edited config file, a list row is replaced whole rather than appended
+// to, and the rows that restrain this session are refused on purpose. What left
+// the write was the ENUMERATION of those rows and the sentence sending the person
+// to /settings — [config.Setting.SelfServiceRefusal] says both, by name, at the
+// moment a model actually tries one, which is the only moment either matters.
+const settingsDescription = "The person's aforge settings, the rows /settings shows under the same keys. No arguments lists them all. It only reads; " + changeSettingToolName + " writes one."
 
-const changeSettingDescription = "Change one of the person's aforge settings permanently. It writes the profile's config.json through the settings registry's own validated write — the same file and the same validation the /settings panel uses — so the change survives a restart and shows in the panel. Name the row by its exact registry key as the " + settingsToolName + " tool lists it, and give the new value as text; an empty value clears the row back to its default. A row that holds a LIST — pinned roles, tool approvals, fallback models — is replaced whole, never appended to, so read it with " + settingsToolName + " first and write the complete list back or you will drop what is already there. Rows that restrain this session are refused and must be changed by the person: the tool gate and the shell rules, the spend rails, the machine ceilings, the check on task work, the attribution trailer, and every credential row. Never guess a key — call " + settingsToolName + " first."
+const changeSettingDescription = "Change one aforge setting permanently: the settings registry's own validated write into the profile's config.json, never a hand-edited file, so it survives a restart. Call " + settingsToolName + " first for the exact key. A LIST row is REPLACED WHOLE - write the whole list back. Rows that restrain this session are refused on purpose."
 
-const settingsSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"One registry key to read in full, e.g. daily_budget_usd or models.roles"},"search":{"type":"string","description":"Filter the listing to rows whose key, label or description mentions this"}},"additionalProperties":false}`
+const settingsSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"One registry key, read in full"},"search":{"type":"string","description":"Filter the listing by key, label or hint"}},"additionalProperties":false}`
 
-const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"The row's exact registry key, as the settings tool lists it"},"value":{"type":"string","description":"The new value as text. Empty clears the row back to its default."}},"required":["key","value"],"additionalProperties":false}`
+const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"The row's exact registry key"},"value":{"type":"string","description":"New value as text; empty clears it to the default"}},"required":["key","value"],"additionalProperties":false}`
 
 // settingsTools is the pair, or nothing at all inside a task node.
 //
