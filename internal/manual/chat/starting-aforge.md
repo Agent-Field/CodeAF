@@ -143,6 +143,54 @@ Type `/status` and the `place` line gives you the full path to copy.
 An owned workspace of that kind is quietly made into a git repository, so work
 done there has undo history like work done anywhere else.
 
+## Where do task files go when I did not open a project — work lives inside the conversation
+
+Inside the conversation's own folder, and nowhere else. A conversation opened outside any
+project owns a scratch workspace, and that workspace is a `work/` directory in the session
+folder:
+
+```
+~/.aforge/v3/projects/<project folder>/<conversation folder>/work
+```
+
+`/status` prints that full path on its `place` line. Read it there rather than assembling
+it — the two folder names are encoded, not typed.
+
+That containment is the point: nothing is scattered across wherever you happened to be
+standing, and closing the conversation leaves nothing behind anywhere else. It is also the
+sharp edge — **the work is inside the conversation, so deleting the conversation deletes
+the work.** See *I deleted my chat and lost the files the task made* below.
+
+A **code** task will not use that scratch repository at all. With no place named it stops
+with `this task needs a project; use /workspace <path> or name where it should work`, so
+code work never quietly accumulates somewhere you were not going to look for it. Work that
+is not code work does run in the scratch workspace, and lands its files there.
+
+## I deleted my chat and lost the files the task made
+
+If the conversation owned its workspace, they are gone and there is no second copy. The
+files were in `work/` inside the session folder (above), so removing that folder under
+`~/.aforge/v3/projects/` removed the transcript and everything made in that workspace in
+one move. Nothing is copied out first and nothing is mirrored anywhere else.
+
+Aforge removes a conversation of its own accord in exactly one case: one you **started in a
+temp directory**, seven days after you last said anything to it. Every other conversation
+under `~/.aforge/v3/projects/` stays whatever its age. See *What gets cleaned up, and when*
+on the keeping-an-eye page.
+
+**Three ways to keep the work instead**, all of them before the fact rather than after:
+
+- **`/workspace <path>`** anchors the conversation to a repository or folder you keep, and
+  everything from then on happens there. It does not move what is already in `work/`, and
+  a conversation may do it once.
+- **Copy it out yourself.** They are ordinary files; `/status`'s `place` line is the path.
+- **`/files`** lists what was made *for* you — pictures, sound, video, exports — with the
+  path each landed at, and `ctrl+y` on a row copies one somewhere else. It is a list of
+  those, not of every file a task wrote.
+
+`/export <path>` writes **the conversation** to a file: what was said, not the files that
+were made. It is not a way to rescue the work.
+
 ## Anchor a conversation to a repository or folder — /workspace and the workspace tool
 
 When a conversation says `aforge` because it opened with no project, type `/workspace
