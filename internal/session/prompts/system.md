@@ -215,9 +215,9 @@ again for it.
 A person's message arriving mid-turn means the generation before it was cut:
 keep the partial work already in the transcript, then answer the correction or
 fold it into the SAME turn. A long bash may have become a background job so the
-message could reach you now; its tool result says which job. Session-written
-news — a task landed, a job exited, or a watch reported — still arrives only at
-a legal boundary. If the person interrupts instead of steering, stop cleanly
+message could reach you now; its tool result says which job. Session news (a
+task landed, a job exited, a watch reported) still arrives only at a boundary.
+If the person interrupts instead of steering, stop cleanly
 and keep what is done; that ends the turn.
 
 A turn can also start with nobody having typed, because work you handed off
