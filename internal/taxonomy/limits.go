@@ -34,23 +34,27 @@ type Limits struct {
 	TierCapUSD float64
 }
 
-// The floors. They are what a caller that resolved nothing still gets, and they
-// are deliberately the behaviour this build already had on the two knobs it had
-// at all: four attempts on the wire, doubling from two seconds.
+// The floors. They are what a caller that resolved nothing still gets, and every
+// one of them is DELIBERATELY THE BEHAVIOUR THIS BUILD ALREADY HAD: four
+// attempts on the wire doubling from two seconds, and a stronger tier bought on
+// the first measured failure.
 //
-// K FLOORS AT TWO AND THAT IS A CHANGE. It used to be one — the first finding
-// bought the stronger model — and one is what turned a run of bad responses
-// into the price of the whole job. Two means the tier is bought after it has
-// failed the work twice with the wire ruled out both times, which is the
-// cheapest evidence that is actually about the model.
+// K FLOORS AT ONE, WHICH IS NOT WHERE THE BILL CAME FROM. The argument for
+// buying on the first finding is a good one and it is written out in
+// internal/session's repair_role.go: the finding is a MEASURED failure, made
+// after the fact, on exactly the work that turned out to need it. What was wrong
+// was never the count — it was that a finding about a round whose calls had died
+// on the wire was counted at all, and [Tally] is where that is now refused. A
+// person who wants the tier held back further raises this; the default changes
+// nothing about a harness that is working.
 const (
 	// DefaultTransportAttempts is four: one try and three retries, the ladder the
 	// turn loop already ran.
 	DefaultTransportAttempts = 4
 	// DefaultTransportBackoff is two seconds, doubling: 2s, 4s, 8s.
 	DefaultTransportBackoff = 2 * time.Second
-	// DefaultSemanticFailures is two. See above.
-	DefaultSemanticFailures = 2
+	// DefaultSemanticFailures is one. See above.
+	DefaultSemanticFailures = 1
 	// DefaultTierCapUSD is two dollars, and it is nearly inert on a shipped
 	// install: one lift is bought per piece of work by default, so the cap has
 	// nothing to stop. It earns its keep the moment somebody raises the number

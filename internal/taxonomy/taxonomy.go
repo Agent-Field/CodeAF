@@ -170,6 +170,14 @@ type Evidence struct {
 	// work. It is carried so a capability verdict can say WHY it is holding.
 	TransportSeen int
 
+	// Found says a check has just read the finished work and named gaps in it.
+	// It is what makes a finding a CAPABILITY question at all, and it is separate
+	// from Refuted because the two answer different halves: Found is "a check
+	// spoke", Refuted is "how many times it has spoken about this tier with the
+	// wire ruled out". A finding whose round died on the wire has Found set and
+	// Refuted unmoved, which is exactly the case that must hold rather than buy.
+	Found bool
+
 	// Passed is a check that has just passed. It is the de-escalation question
 	// and the only piece of good news this struct carries.
 	Passed bool
@@ -252,7 +260,15 @@ func Classify(e Evidence, l Limits) Verdict {
 			Reason: "no policy is registered for " + string(class)}
 	}
 	verdict := policy.Decide(e, l.floor())
-	verdict.Class = class
+	// THE POLICY MAY HAND THE VERDICT TO ANOTHER CLASS, AND ONLY THE POLICY MAY.
+	// The capability policy does it in exactly one place — a lifted tier that has
+	// spent its ceiling has no cheaper answer left, so the honest verdict is the
+	// work's ([capabilityPolicy.Decide]). Everything else is stamped with the
+	// class that selected it, so a policy cannot silently disagree with its own
+	// classification.
+	if strings.TrimSpace(string(verdict.Class)) == "" {
+		verdict.Class = class
+	}
 	if strings.TrimSpace(verdict.Reason) == "" {
 		verdict.Reason = strings.TrimSpace(e.Message)
 	}
@@ -273,8 +289,9 @@ func Classify(e Evidence, l Limits) Verdict {
 //     so it is transport too — this is the shape the measured 400s arrived in.
 //     A 4xx that named NOBODY is the router reading our own bytes and saying no,
 //     which no endpoint and no model will fix: that is work.
-//  4. Only then, a refutation: a check that read the finished work and found
-//     gaps, with the wire ruled out above.
+//  4. Only then, a finding: a check that read the finished work and named gaps,
+//     with the wire ruled out above. Whether that finding BUYS anything is the
+//     capability policy's question and not this one.
 //  5. Anything left is work.
 func classOf(e Evidence) Class {
 	if e.Passed {
@@ -293,7 +310,7 @@ func classOf(e Evidence) Class {
 	case e.Status >= 400:
 		return Work
 	}
-	if e.Refuted > 0 {
+	if e.Found || e.Refuted > 0 {
 		return Capability
 	}
 	return Work

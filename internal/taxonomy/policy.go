@@ -96,7 +96,7 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 			Action:   ActionRetry,
 			Reason:   transportReason(e),
 			Attempts: l.TransportAttempts,
-			Backoff:  backoffFor(attempt, l.TransportBackoff),
+			Backoff:  waitFor(e, attempt, l.TransportBackoff),
 			Rotate:   true,
 		}
 	}
@@ -107,10 +107,23 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	}
 }
 
-// backoffFor doubles the base delay per attempt, which is the schedule the turn
-// loop already ran on: 2s, 4s, 8s. It is derived rather than tabulated so the
-// one knob a person sets moves the whole ladder.
-func backoffFor(attempt int, base time.Duration) time.Duration {
+// waitFor is how long to wait before asking again, and it is TWO answers
+// because there are two kinds of transport failure.
+//
+// A REFUSAL, A RESET OR A DEADLINE is an endpoint under strain, and the pause is
+// the whole point of asking again: 2s, 4s, 8s, doubling off the one knob, which
+// is the schedule the turn loop already walked.
+//
+// AN EMPTY 200 OR A MANGLED TOOL CALL IS NOT STRAIN. The endpoint answered, at
+// once, with something that was not an answer — it is up, it is fast, and it is
+// broken in a way that eight seconds of waiting does not mend. What mends it is
+// being served by somebody else, which is [Verdict.Rotate] and costs no time at
+// all. Waiting here would spend fourteen seconds of a person's turn to arrive at
+// exactly the same request.
+func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
+	if e.Empty || e.Malformed {
+		return 0
+	}
 	if base <= 0 || attempt < 1 {
 		return 0
 	}
