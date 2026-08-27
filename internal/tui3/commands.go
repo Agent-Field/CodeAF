@@ -805,12 +805,12 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
-		"enter          mid-answer: waits above the box · esc stops and sends · ↑ edits",
+		"enter          mid-answer: stops the current reply and steers these words in",
 		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER
 		// (steer.go). It sits directly under the line about the other two because
 		// the three are one decision — wait, go in, or stop the answer — and the
-		// one that stops nothing is the one nobody guesses.
-		steerKey+"      into the running answer · nothing stopped · → sends a waiting one",
+		// one that waits is now the secondary choice a person may not guess.
+		parkKey+"      mid-answer: waits above the box · → sends a waiting one",
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",

@@ -259,14 +259,14 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
-`enter waits · cmd+enter steers it in · shift+enter stops and sends` while a turn is
+`enter steers it in · cmd+enter waits · shift+enter stops and sends` while a turn is
 running and you have typed something, `esc stops and sends` while a message of yours is
 waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
 `shift+enter` and `cmd+enter` clauses are not drawn on a terminal that cannot tell those
 chords apart from a plain `enter`, because a hint for a key that could never arrive would
-be the surface lying to you — there the line stays `esc interrupt`. See the keys page,
+be the surface lying to you — there the line keeps only `enter steers it in`. See the keys page,
 "Interrupt and say something new in one key" and "Send a message into the running
 answer".
 
@@ -941,23 +941,20 @@ as an answer again.
 
 It cannot any more. A message of yours is never drawn inside a streaming answer, never
 splits a reply into two blocks, and is never interleaved with the paragraph being
-written. The rule holds in the conversation and in a task room's own page alike:
-whatever is still streaming stays one contiguous block, and your line goes **after** it.
+written. The rule holds in the conversation and in a task room's own page alike. The
+partial reply stays one contiguous block, the provider request stops, and your line goes
+**after** the partial before the turn continues.
 
-There was a defect here. Pressing `enter` while an answer was streaming used to cut the
-reply in two and wedge your sentence between the halves, so it read as though the model
-had quoted you mid-thought. Two things fixed it. Your line now always goes below the
-block that is still being written, whatever put it there — and plain `enter` no longer
-sends into a running answer at all: it **waits**. See "A message you typed while the
-answer was still coming" below.
+There was a defect here. A steer once waited for a model request or a long tool to
+finish, so the correction looked inert. Plain `enter` now stops the current model
+generation, keeps its partial reply, and draws your correction immediately beneath it.
 
-A sentence you deliberately send into the running turn — `cmd+enter`, or `→` over a
-message that is already waiting — does not break this either. It is never drawn inside
-the answer that is streaming, and the reply above it stays one contiguous block.
+A sentence you deliberately steer into the running turn — plain `enter`, or `→`
+over a message that is already waiting — never lands inside the answer's block.
 
 ## A message you typed while the answer was still coming (the waiting block)
 
-Press `enter` while a turn is running and your message is **held**, not sent. It is
+Press `cmd+enter` while a turn is running and your message is **held**, not sent. It is
 drawn in its own block directly above the message box — under everything that has
 happened, above the box you typed it in — in your own accent hue, with the same `›`
 glyph your messages wear in the conversation. Under it sits one dim line:
@@ -978,6 +975,8 @@ one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it.
 stops and sends` and `→ steers it in` both go while a turn you stopped is winding down —
 for those seconds neither key does anything, and what is left of the line is still true.
 
+## What happens to a message waiting above the box
+
 What happens to it:
 
 - **When the answer finishes**, it sends itself as an ordinary new turn and appears in
@@ -985,12 +984,12 @@ What happens to it:
   finished turn**, oldest first, in the order you typed them.
 - **`esc`** stops the answer and sends it immediately.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
-  **into** the running answer instead of leaving it to wait — nothing is stopped. With
-  several waiting it is the one at the front of the queue that goes. See the keys page,
-  "Send a message into the running answer".
+  **into** the running answer instead of leaving it to wait. A streaming generation
+  stops and keeps its partial; a long bash is kept as a job. With several waiting it
+  is the one at the front of the queue that goes.
 - **`↑` over an empty box**, or a **click on the block**, takes it back into the box to
-  be edited. `enter` then holds the edited sentence again.
-- The box is cleared the moment you press `enter`, so you can keep typing. Attachments
+  be edited. `cmd+enter` then holds the edited sentence again.
+- The box is cleared the moment you press `cmd+enter`, so you can keep typing. Attachments
   in the tray go with the held message and come back on the tray if you take it back.
 - If the conversation is replaced under it — `/new`, opening a session from the welcome
   box — the waiting messages are dropped and aforge says so: `1 waiting message dropped`
@@ -2328,48 +2327,43 @@ any message of yours is.
 On a terminal with no box-drawing glyphs, and in the plain screen-reader mode, the `└`
 is drawn as `+`.
 
-## What `steering` next to my correction means — has the model been told yet?
+## What the muted line below my correction means — where did the steer land?
 
-A correction does not reach the model the instant you send it. It is handed over at the
-running turn's next step — the moment between one batch of tool results and the next
-request — so there is a gap, and the row says which side of it you are on:
+A correction is drawn immediately as your own transcript line. The muted clause beneath
+it says what aforge did to make the next legal boundary:
 
 ```
-└ use the staging bucket, not production · ⠹ steering
+› use the staging bucket, not production
+└ stopped the reply here
 ```
 
-The spinner and the word `steering` mean **the model has not been given these words
-yet**. They come off the row the moment it actually has. Nothing on this surface claims
-your correction landed before it did.
+`stopped the reply here` means the provider request was cancelled and its partial text
+was kept. `kept running as job N` means a bash command older than 3 seconds continues
+in the job registry while the steer lands now. `waiting for the running step` means a
+short tool is allowed to finish first. A stop-shaped steer says the long command was
+stopped by you.
 
-When it lands, the row lights up for a moment and settles back down on its own: full ink
-for the first 4 seconds, the calmer tier until 10, and the quiet resting tier after that.
-No glyph is added and none taken away.
+The clause is a still, dim record rather than a spinner. It is aforge's account of the
+landing and is not part of the words sent to the model.
 
 A conversation opened from disk draws its corrections already settled — a correction made
-an hour ago is a fact and not news, so it never flashes on reload.
+an hour ago is a fact and not news.
 
-## Too many corrections on one question — the `…2 more steers` line
+## Several corrections on one question — each steer remains your own line
 
-A question you corrected more than three times keeps the **newest three** on screen and
-folds the rest behind one line:
+A steer is an ordinary user message in the turn's transcript, so several corrections
+remain several lines in the order the model read them:
 
 ```
 › port the parser to the new lexer
-└ …2 more steers
-└ and skip the cache while you are in there
-└ actually leave the cache alone entirely
-└ and run the tests when you are done
+› and skip the cache while you are in there
+└ stopped the reply here
+› actually leave the cache alone entirely
+└ stopped the reply here
 ```
 
-Click that line and the rest come back, with the line now reading `└ …2 fewer`. Click it
-again and they fold away. It is the same fold grammar the rest of aforge uses, and like
-every other fold here it is a fact about this window — nothing is written down, and the
-conversation opens folded next time.
-
-Folding a finished turn's work into its `▸ worked · …` chip never touches these rows.
-That is the point of drawing them here: a turn collapsed to one line still reads back as
-everything you asked for.
+Replay uses the steer records in the session journal, so reopening the conversation
+draws the same user lines and muted landing clauses.
 
 ## Where did my correction go — it arrived after the answer had finished
 

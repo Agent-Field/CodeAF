@@ -1410,7 +1410,7 @@ func TestAWaitingMessageLeavesTheTurnsRunningCallsOnTheSurface(t *testing.T) {
 	if !a.running() {
 		t.Fatal("the call that just began is not running")
 	}
-	typeLine(t, a, "and the tests too")
+	parkLine(t, a, "and the tests too")
 	if !a.running() {
 		t.Fatal("a waiting message hid a call that is still running")
 	}

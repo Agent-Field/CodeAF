@@ -514,6 +514,19 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			rung = a.effortFor(model)
 		}
 		if err != nil {
+			// A STEER CUTS THIS GENERATION AND OPENS THE NEXT BOUNDARY. It is not
+			// an interrupt: the turn context is alive, the partial assistant text
+			// stays immediately before the person's words, and the loop continues
+			// with a fresh request after the ordinary drain at its head.
+			if errors.Is(err, errSteerCut) {
+				turn.Turns++
+				a.addUsage(&turn, response, served.Name())
+				droppedCall := forming.any() || warm.anyAnnounced()
+				a.keepSteeredPartial(partial, reasoning, droppedCall)
+				warm.reset()
+				forming.reset()
+				continue
+			}
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
 			// stays in the transcript and the turn ends normally.
@@ -776,6 +789,28 @@ func (a *Agent) keepPartial(partial *partialBuffer) {
 		return
 	}
 	a.record(textMessage("assistant", text))
+}
+
+// keepSteeredPartial records the legal assistant half of a cut generation.
+// Tool calls are deliberately absent: a call whose result can never follow is
+// a provider-invalid assistant message. When fragments had arrived, the text
+// says why that instruction is not in the record; otherwise only the text and
+// continuation metadata actually received are kept.
+func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool) {
+	text := partial.take()
+	if droppedCall {
+		if strings.TrimSpace(text) != "" {
+			text += "\n\n"
+		}
+		text += "[incomplete tool call dropped when you steered]"
+	}
+	if strings.TrimSpace(text) == "" {
+		// A reasoning-only cut has no legal visible assistant message to anchor.
+		// Omitting it also omits the aligned sidecar, so no reasoning from beyond
+		// the bytes actually received can appear on the next request.
+		return
+	}
+	a.recordAssistant(textMessage("assistant", text), reasoning.snapshot())
 }
 
 // sealTurn stamps the turn's wall duration, folds it into the session total,
@@ -1206,8 +1241,13 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		}
 		messages, carried := a.snapshotWithReasoning()
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
+		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.completeAttempt(attemptCtx, hub, model, messages,
 			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
+		cause := a.endGeneration(generation)
+		if errors.Is(cause, errSteerCut) {
+			return response, model, errSteerCut
+		}
 		if err == nil {
 			return response, model, nil
 		}
@@ -1705,6 +1745,15 @@ func (b *warmBatch) reset() {
 	b.mu.Lock()
 	b.started, b.announced = nil, nil
 	b.mu.Unlock()
+}
+
+func (b *warmBatch) anyAnnounced() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.announced) > 0
 }
 
 // take claims the early execution of one call, if there is one for it.

@@ -1486,10 +1486,10 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// A SPLICED SENTENCE IS MARKED AS ONE. The transcript keeps it an ordinary
 		// user message, which is what the model has to read it as; the journal
 		// keeps the one bit that says it did not open the turn it sits in, plus
-		// the instant the person sent it, so a resume can draw the turn as a trunk
-		// with elbows rather than as a run of separate questions (steer.go,
-		// sessionfile.go's [sessionEntry.Steer]).
-		a.file.appendSteer(kept, user.steer.note.At)
+		// the instant and landing account, so a resume can draw it as the person's
+		// own line with the same muted clause rather than as a new question
+		// (steer.go, sessionfile.go's [sessionEntry.Steer]).
+		a.file.appendSteer(kept, user.steer.note)
 		a.stampUserLocked(messageContentText(kept))
 		return
 	}
@@ -2792,6 +2792,7 @@ type DisplayEntry struct {
 type SteerMark struct {
 	At       time.Time
 	Consumed bool
+	Landing  string
 }
 
 // Transcript returns the conversation so far as display entries, oldest

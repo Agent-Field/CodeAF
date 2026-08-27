@@ -11,56 +11,39 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// THE TRUNK AND ITS ELBOWS — a sentence typed INTO a turn is drawn as part of
-// the question it corrected, and never as a question of its own.
+// THE PERSON'S LINE AND ITS LANDING CLAUSE.
 //
 //	› port the parser to the new lexer
-//	└ use the staging bucket, not production
-//	└ and skip the cache while you are in there
+//	…partial answer already received…
+//	› use the staging bucket, not production
+//	└ stopped the reply here
 //
-// The engine's account of this is internal/session/steer.go, and the sentence
-// that matters up here is its first: A STEER IS NEITHER A NEW QUESTION NOR AN
-// INTERRUPTION. It is more of the same question, arriving late. So the surface
-// owes it the shape of one thing: the original message is the TRUNK and every
-// correction hangs off it as an ELBOW, in the order they were sent.
-//
-// WHAT THE OTHER READING COSTS. A steer is an ordinary user message in the
-// transcript — it has to be, because that is what the model reads — so without
-// this file a corrected turn drew as a run of unrelated `›` rows from somebody
-// who kept interrupting themselves, with the turn's own work wedged between
-// them. The one fact a transcript has to carry, WHAT WAS ASKED, was spread
-// over three blocks that looked like three questions.
+// A steer is an ordinary user message in the transcript because that is what
+// the model reads. The surface therefore draws it in the person's ordinary
+// register immediately on acceptance. The elbow beneath it belongs to the
+// surface and is muted: it says where the words are landing without putting
+// machinery vocabulary into the person's mouth.
 //
 // ── THE INK, AND WHY IT IS THIS ────────────────────────────────────────────
 //
-// A STEER IS PART OF THE QUESTION'S FACT AND NEVER A NEW ACCENT. THE ACCENT
-// BUDGET (docs/DESIGN-LANGUAGE.md) is one lit element per screen, and a
-// correction the person typed four minutes ago is not it. So:
+// THE ACCENT BUDGET (docs/DESIGN-LANGUAGE.md) still applies. The person's line
+// uses [entryUser]'s existing hue, and only the structural clause uses dim ink.
 //
 //	the elbow glyph   dim     furniture, like every mark this surface draws
 //	                          about its own structure
-//	the words         narr    ONE READING STEP BELOW THE QUESTION'S OWN
+//	the words         dim     the surface's account of where it landed
 //
-// The question's body is [palette.muted] (render.go's entryUser says why), and
-// [palette.narr] is authored as exactly "one lightness step under the second
-// voice" in the body's own hue family (styles.go). That is the step this design
-// asks for, spelled with a constant that already exists — no new colour, and
-// nothing that says "signal" where the fact is "the same person, still talking".
-// The alternative was dim, and dim is THIS SURFACE'S OWN MURMUR: a person's
-// sentence painted in the tier the notes and the hints wear would be the
-// surface claiming words it did not write.
+// The person's body remains [palette.muted] for the reason entryUser states.
+// The clause is [palette.dim] because it is the surface's own murmur, not a
+// syllable of what the person sent.
 //
 // ── THE LANDING MOMENT ─────────────────────────────────────────────────────
 //
-// A steer is accepted at once and CONSUMED only when the model is actually
-// given it, at the running turn's next step boundary. Those are two different
-// facts about the same row and the row says both:
-//
-//	accepted, not yet consumed   the working idiom — the spinner every live row
-//	                             on this surface turns, and the word `steering`
-//	consumed                     the reading ladder's own fade: ink while it is
-//	                             news, muted while it is recent, then the
-//	                             settled narr forever ([hudFresh], [hudWarm])
+// A steer is accepted at once and CONSUMED only when the next request contains
+// it. Those are two different engine facts, but the person-facing clause already
+// knows where the words are landing: the provider was cut, a bash became a job,
+// or a short tool is reaching its boundary. It therefore stays still instead of
+// adding a generic spinner beside a more useful answer.
 //
 // NOTHING CLAIMS CONSUMED BEFORE [session.EventSteerConsumed]. The whole worth
 // of the three events is that the surface can stop guessing, and a row that
@@ -68,20 +51,11 @@ import (
 // intention (steer.go's [Agent.consumedSteerLocked] makes exactly this point
 // about the journal).
 //
-// The fade reuses the status line's ramp and its two one-shot wakeups
-// ([fadeTicks]) rather than a ticker, which is this surface's whole idle budget
-// (effortscope.go took the same ramp for the same reason). Each elbow carries
-// its own landing instant rather than sharing one "newest fact" record the way
-// [effortMoved] does: two steers typed a step apart land at two boundaries and
-// are two pieces of news, and two typed in one step land together and fade
-// together, which is what actually happened.
-//
-// ── THE FALL-THROUGH IS NOT AN ELBOW ───────────────────────────────────────
+// ── THE FALL-THROUGH REMOVES THE PROVISIONAL LINE ──────────────────────────
 //
 // A boundary is not promised. A steer still waiting when the turn ends never
-// reached the model, so it MUST NOT be drawn hanging off that question — the
-// elbow would be this surface claiming the model read something it never saw.
-// It leaves the trunk and becomes the next question, which is exactly what the
+// reached the model, so it MUST NOT remain on that turn. The provisional user
+// line leaves and becomes the next question, which is exactly what the
 // engine does with it (steer.go's [Agent.liftSteersLocked] re-homes it on the
 // follow-up queue), drawn by the drain that already draws a waiting message
 // when its turn starts (followup.go's [app.startFollow]).
@@ -94,20 +68,15 @@ import (
 // never landed, at the moment the turn settles, under the same law: if the turn
 // is over and the words were never consumed, they were never part of it.
 //
-// ── COLLAPSE KEEPS THE ELBOWS ──────────────────────────────────────────────
+// ── COLLAPSE KEEPS THE PERSON'S LINE AND ITS CLAUSE ────────────────────────
 //
-// The elbows live on the person's own block, which is the ONE block a past turn
+// The clause lives on the person's own block, which is the ONE block a past turn
 // never folds away: the worked chip collapses the machinery between the
 // question and the answer and starts BELOW the question (workfold.go's
 // [deriveWorkfolds] stops at the person's message). That is the point of
-// putting them here rather than in the turn's own row run — a turn folded to
-// `▸ worked · 10 tool calls` still reads back as everything that was asked.
-//
-// What does not survive is length, so the list itself folds past
-// [steerWindow], in the transcript's own fold grammar: the fold line first, the
-// newest three under it, exactly as a tool cluster keeps the call that is
-// running and the two it followed (render.go's [toolWindow]). The line is a
-// door — click it and the rest come back.
+// putting it here rather than in the turn's own row run — a turn folded to
+// `▸ worked · 10 tool calls` still reads back as everything that was asked and
+// where the steer entered it.
 
 // glyphSteer is the elbow, and glyphSteerASCII is what a terminal with no
 // box-drawing gets. `+` is this surface's own ASCII corner already — it is the
@@ -161,37 +130,46 @@ type steerElbow struct {
 	// instant, not the boundary's (sessionfile.go's [journalSteer]) — so a
 	// replayed row is settled and unfaded, which is what a fact from yesterday is.
 	consumed bool
+	// status says words are the surface's muted landing clause under the
+	// person's own line, not another sentence the person supplied.
+	status bool
 }
 
 // ── the events ──────────────────────────────────────────────────────────────
 
-// steerAccepted hangs one correction off the question that is running.
+// steerAccepted draws one correction as the person's own transcript line now.
 //
-// The trunk is the person's own block in the RUNNING turn, and there is exactly
-// one of them: a turn is opened by a message and a steer does not open one
-// (the surface's own turn counter is not bumped for it either — app.go's
-// [app.submittingShown] only counts a message that started a stream). A steer
-// with no trunk to hang from is dropped rather than drawn loose, which is the
-// case a scripted event with no conversation under it makes and no session does.
+// The turn number does not move: a steer is a user message inside the turn that
+// is already running, not a new turn. The engine's id pairs later consumption
+// or fall-through with exactly this provisional line.
 func (a *app) steerAccepted(note *session.SteerNote) tea.Cmd {
 	if note == nil || strings.TrimSpace(note.Words) == "" {
 		return nil
 	}
-	at := a.trunkOf(a.turn)
-	if at < 0 {
-		return nil
-	}
-	e := &a.entries[at]
-	for _, held := range e.steers {
-		// The acceptance is sent once, but a surface that attaches to a turn
-		// mid-flight reads the hub's backlog ([eventHub.attach]) and meets it
-		// again. One steer is one elbow whatever number of times its news arrives.
-		if held.id == note.ID {
-			return nil
+	for at := range a.entries {
+		e := &a.entries[at]
+		if !e.steerLine {
+			continue
+		}
+		for _, held := range e.steers {
+			// The acceptance is sent once, but a surface that attaches to a turn
+			// mid-flight reads the hub's backlog ([eventHub.attach]) and meets it
+			// again. One steer is one elbow whatever number of times its news arrives.
+			if held.id == note.ID {
+				return nil
+			}
 		}
 	}
-	e.steers = append(e.steers, steerElbow{id: note.ID, words: strings.TrimSpace(note.Words), at: note.At})
-	e.stale = true
+	landing := strings.TrimSpace(note.Landing)
+	if landing == "" {
+		landing = "waiting for the running step"
+	}
+	a.said(entry{
+		kind: entryUser, text: strings.TrimSpace(note.Words), turn: a.turn,
+		began: note.At, steerLine: true,
+		steers: []steerElbow{{id: note.ID, words: landing, at: note.At, status: true}},
+	})
+	a.follow()
 	a.touch()
 	return nil
 }
@@ -214,6 +192,9 @@ func (a *app) steerConsumed(note *session.SteerNote) tea.Cmd {
 	e.steers[on].landed = a.now()
 	e.stale = true
 	a.touch()
+	if e.steers[on].status {
+		return nil
+	}
 	// The two wakeups the fade needs and no ticker, which is [fadeTicks]' whole
 	// bargain: a surface with nothing happening on it wakes twice and stops.
 	return fadeTicks()
@@ -230,9 +211,13 @@ func (a *app) steerFellThrough(note *session.SteerNote) tea.Cmd {
 		return nil
 	}
 	if at, on := a.elbowOf(note.ID); at >= 0 {
-		e := &a.entries[at]
-		e.steers = append(e.steers[:on], e.steers[on+1:]...)
-		e.stale = true
+		if a.entries[at].steerLine {
+			a.entries = append(a.entries[:at], a.entries[at+1:]...)
+		} else {
+			e := &a.entries[at]
+			e.steers = append(e.steers[:on], e.steers[on+1:]...)
+			e.stale = true
+		}
 		a.touch()
 	}
 	// AND THE SURFACE SAYS SO, once, in the lane it says everything of its own
@@ -252,9 +237,11 @@ func (a *app) steerFellThrough(note *session.SteerNote) tea.Cmd {
 // a completed turn, an interrupted one, an error, and a stream abandoned when
 // the conversation was replaced.
 func (a *app) settleSteers() {
+	keptEntries := make([]entry, 0, len(a.entries))
 	for i := range a.entries {
 		e := &a.entries[i]
 		if e.kind != entryUser || len(e.steers) == 0 {
+			keptEntries = append(keptEntries, *e)
 			continue
 		}
 		kept := e.steers[:0]
@@ -266,7 +253,12 @@ func (a *app) settleSteers() {
 		if len(kept) != len(e.steers) {
 			e.steers, e.stale = kept, true
 		}
+		if e.steerLine && len(e.steers) == 0 {
+			continue
+		}
+		keptEntries = append(keptEntries, *e)
 	}
+	a.entries = keptEntries
 }
 
 // trunkOf is the person's own block that OPENED a turn — the trunk every elbow
@@ -307,6 +299,9 @@ func (a *app) elbowOf(id uint64) (int, int) {
 // cached row with an animation in it is a still photograph of one.
 func (a *app) steersMoving(e *entry) bool {
 	for _, elbow := range e.steers {
+		if elbow.status {
+			continue
+		}
 		if !elbow.consumed {
 			return true
 		}
@@ -391,7 +386,7 @@ func (a *app) elbowRows(elbow steerElbow, width int) []string {
 		}
 		out = append(out, lead+ink(line))
 	}
-	if len(out) == 0 || elbow.consumed {
+	if len(out) == 0 || elbow.consumed || elbow.status {
 		return out
 	}
 	// THE WORKING CLAUSE, on the row the sentence ended on when there is room —
@@ -419,6 +414,9 @@ const steerClauseSep = " · "
 // because what a settled elbow is is the person's own prose one reading step
 // under their question, and dim is the tier this surface talks about ITSELF in.
 func (a *app) elbowInk(elbow steerElbow) func(string) string {
+	if elbow.status {
+		return a.pal.dim
+	}
 	if !elbow.consumed || elbow.landed.IsZero() {
 		return a.pal.narr
 	}
