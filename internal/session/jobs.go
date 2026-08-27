@@ -664,7 +664,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // and [jobRegistry.settleExit] does everything it would have done after a Wait
 // of its own. THIS IS STILL THE ONLY REAPER: nothing in bare decides a job is
 // over, notes an exit, or writes a status word.
-func (r *jobRegistry) adopt(taken *bare.BashCall) (*job, error) {
+func (r *jobRegistry) adopt(taken *bare.BashCall, quiet ...bool) (*job, error) {
 	started, err := r.newJob(taken.Command(), jobKindBash)
 	if err != nil {
 		return nil, err
@@ -674,7 +674,13 @@ func (r *jobRegistry) adopt(taken *bare.BashCall) (*job, error) {
 	// it does for a job this registry forked itself.
 	started.cmd = taken.Process()
 	taken.Attach(started.sink)
-	r.add(started)
+	if len(quiet) > 0 && quiet[0] {
+		r.mu.Lock()
+		r.jobs = append(r.jobs, started)
+		r.mu.Unlock()
+	} else {
+		r.add(started)
+	}
 
 	// The receive happens INSIDE the goroutine: written as an argument it would
 	// be evaluated here, and the adoption would block until the process exited.
