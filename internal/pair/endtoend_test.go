@@ -323,6 +323,10 @@ func (s *stubAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return s.Submit(context.Background(), text)
 }
 
+func (s *stubAgent) Steer(text string) (<-chan session.Event, error) {
+	return s.FollowUp(text)
+}
+
 func (s *stubAgent) Interrupt()                          {}
 func (s *stubAgent) Compact(ctx context.Context) error   { return errors.New("not here") }
 func (s *stubAgent) Close() error                        { return nil }

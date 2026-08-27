@@ -98,6 +98,17 @@ const (
 	// entryThinking is one turn's reasoning (thinking.go): streamed while it
 	// arrives, collapsed to a single row the moment the turn says anything else.
 	entryThinking
+	// entrySteer is ONE CORRECTION TYPED INTO A RUNNING TURN, drawn at the point
+	// in the transcript where it was said (steerelbow.go).
+	//
+	// It is a block of its own rather than a list hanging off the question for
+	// the reason entryCompact is not a divider: WHERE a thing happened is part of
+	// what happened. A correction belongs between the tool rows it interrupted,
+	// because that is the moment the person said it and that is the order the
+	// engine's own journal keeps it in — and a page that gathered every
+	// correction back up under the question would put them above every row of
+	// the work, which on a turn long enough to scroll is above the screen.
+	entrySteer
 	// entryTask is ONE TASK PROPOSAL — the decision moment, drawn where it
 	// happened (task.go). It keeps its verdict afterwards, the way a consent
 	// row does, because "the model asked to go and do this and you said yes" is
@@ -253,25 +264,15 @@ type entry struct {
 	// history every time the person walked into a different room.
 	context string
 
-	// steers are the corrections typed INTO this turn after this block opened it
-	// — the elbow rows drawn under the question (steerelbow.go). They are here
-	// rather than in the turn's own run of blocks because THE QUESTION IS WHAT
-	// THEY BELONG TO: a turn folded to its `worked` chip still reads back as
-	// everything that was asked, and a rewind that drops a turn drops its
-	// corrections with it because they are the same block.
+	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
+	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
+	// [entry.stand] are: the outcome lands on the block minutes after it was
+	// drawn, and the lane that lands it holds the block by index rather than
+	// copying it.
 	//
-	// Empty on every block of every conversation nobody steered, which is nearly
-	// all of them, and a block with none renders exactly as it did before this
-	// existed.
-	steers []steerElbow
-	// steerFoldRow is which of this block's rows is the elbows' fold line, so the
-	// layout pass can make that one row a door — and ZERO IS NONE, which costs
-	// nothing to say: row zero is always the first row of the person's own
-	// sentence, so a fold line can never land there. It is written by the render
-	// that drew it, for the reason a proposal's choice row is (task.go): the row a
-	// thing lands on is decided by the wrap, and a hit-test that recomputed it
-	// would be measuring a row the frame has not drawn.
-	steerFoldRow int
+	// Nil on every block of every conversation nobody steered, which is nearly
+	// all of them.
+	steer *steerElbow
 
 	// Tool fields.
 	tool   string
@@ -768,11 +769,6 @@ type app struct {
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
 	workOpen map[int]bool
-	// steerOpen holds the turns whose elbow list is showing every correction
-	// rather than the newest three (steerelbow.go). Like the two folds above it,
-	// it is a fact about this WINDOW: nothing journals it, and a conversation
-	// re-opened tomorrow opens folded.
-	steerOpen map[int]bool
 	// sel is the selected tool entry, or -1. ↑/↓ move it; enter opens it.
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
@@ -5219,8 +5215,6 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.unfold(r.turn)
 	case hitWorkFold:
 		a.toggleWorkfold(r.turn)
-	case hitSteerFold:
-		a.toggleSteerFold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
 	case hitBrief:

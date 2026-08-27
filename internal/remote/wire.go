@@ -122,7 +122,13 @@ import (
 // ledger, search, memory and archive methods in wire_places.go stay on that
 // same version because an older engine's no-such-method answer has an explicit
 // honest fallback on the surface.
-const Version = 5
+//
+// VERSION 6 ADDS [MethodSteer]. A local surface could put words into a running
+// turn, but the client agent did not expose that verb and a hosted surface
+// therefore hid the key entirely. Steering is another stream-opening intent:
+// the returned stream is the running turn from the correction onward, exactly
+// as [session.Agent.Steer] defines it.
+const Version = 6
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -183,6 +189,7 @@ const (
 	MethodSubmitImage     = "SubmitImage"            // SubmitImageArgs → StreamRef, then "event" frames
 	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
+	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
 	MethodInterrupt       = "Interrupt"              // nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
 	MethodClose           = "Close"                  // nothing → nothing

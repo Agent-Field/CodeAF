@@ -2276,23 +2276,24 @@ stacked identical lines; the conversation scrolls back down to the line that is 
 there. If anything at all lands in between — a reply, a tool call, a different line of
 aforge's own — the answer is written again, in its new place.
 
-## The `└` line under my message — a correction typed into a turn that was already running
+## I typed something while it was working and it disappeared — the `└` correction stays where I said it
 
 A sentence you send while an answer is still being worked on is **part of that same
-question**, not a new one. So it is not drawn as a second message of yours. Your original
-message stays where it is and each correction hangs off it on its own row:
+question**, not a new one. It is drawn where you sent it, between the work already shown
+and the work that follows:
 
 ```
 › port the parser to the new lexer
+  ├─▶ read lexer.go
 └ use the staging bucket, not production
-└ and skip the cache while you are in there
+  ╰─▶ read parse.go
 ```
 
 The `└` is furniture, drawn dim like every other mark aforge uses about its own
-structure. The words after it are yours, painted one reading step below the question
-above them — the same voice, a little quieter, because they are part of the same fact.
-They are in the order you sent them, oldest first, and they sit directly under your
-message and above everything the turn then did.
+structure. The words after it are yours, painted in your `narr` ink tier. The row is
+flush left in your column, while tool rows stay padded two columns in. The dim `└` says
+this continues the same question rather than opening a new one. Reloading the
+conversation keeps the row in the same journal order.
 
 A correction wider than the frame wraps onto the next row, hung under its own first
 character rather than being cut. A file path inside one is a link, exactly as a path in
@@ -2321,28 +2322,6 @@ No glyph is added and none taken away.
 
 A conversation opened from disk draws its corrections already settled — a correction made
 an hour ago is a fact and not news, so it never flashes on reload.
-
-## Too many corrections on one question — the `…2 more steers` line
-
-A question you corrected more than three times keeps the **newest three** on screen and
-folds the rest behind one line:
-
-```
-› port the parser to the new lexer
-└ …2 more steers
-└ and skip the cache while you are in there
-└ actually leave the cache alone entirely
-└ and run the tests when you are done
-```
-
-Click that line and the rest come back, with the line now reading `└ …2 fewer`. Click it
-again and they fold away. It is the same fold grammar the rest of aforge uses, and like
-every other fold here it is a fact about this window — nothing is written down, and the
-conversation opens folded next time.
-
-Folding a finished turn's work into its `▸ worked · …` chip never touches these rows.
-That is the point of drawing them here: a turn collapsed to one line still reads back as
-everything you asked for.
 
 ## Where did my correction go — it arrived after the answer had finished
 

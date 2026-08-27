@@ -11,25 +11,51 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// THE TRUNK AND ITS ELBOWS — a sentence typed INTO a turn is drawn as part of
-// the question it corrected, and never as a question of its own.
+// THE CORRECTION IS DRAWN WHERE IT WAS SAID — a sentence typed INTO a running
+// turn lands between the tool rows it interrupted, in the person's own column,
+// so the page reads as a conversation in order.
 //
 //	› port the parser to the new lexer
-//	└ use the staging bucket, not production
-//	└ and skip the cache while you are in there
+//
+//	  ├─▶ read lexer.go
+//	  ╰─▶ read parse.go
+//
+//	└ use the staging bucket, not production · ⠋ steering
+//
+//	  ╰─▶ bash go build
 //
 // The engine's account of this is internal/session/steer.go, and the sentence
 // that matters up here is its first: A STEER IS NEITHER A NEW QUESTION NOR AN
-// INTERRUPTION. It is more of the same question, arriving late. So the surface
-// owes it the shape of one thing: the original message is the TRUNK and every
-// correction hangs off it as an ELBOW, in the order they were sent.
+// INTERRUPTION. It is more of the same question, arriving late. So it keeps the
+// ELBOW rather than the person's own `›` — the mark says "still the same
+// question" where a turn glyph would say "a new one" — and it is a block of the
+// transcript like any other, at the position it arrived at.
 //
-// WHAT THE OTHER READING COSTS. A steer is an ordinary user message in the
-// transcript — it has to be, because that is what the model reads — so without
-// this file a corrected turn drew as a run of unrelated `›` rows from somebody
-// who kept interrupting themselves, with the turn's own work wedged between
-// them. The one fact a transcript has to carry, WHAT WAS ASKED, was spread
-// over three blocks that looked like three questions.
+// ── THE DEFECT THIS SHAPE ENDS ─────────────────────────────────────────────
+//
+// The elbows used to hang off the TRUNK: the block that opened the turn. On a
+// turn with any work in it that block is above every tool row, and on a turn
+// long enough to scroll it is above the top of the screen — so a person who
+// pressed `→` watched their sentence leave the waiting strip and appear
+// nowhere. "steering in chat when I press it the message just seems to
+// disappear." It was on the page the whole time, forty rows up, under a
+// question they could no longer see.
+//
+// Position is not decoration here. It is the one thing a transcript carries
+// that a list of sentences does not: WHEN each was said, relative to the work
+// around it. The engine's own journal already keeps a steer in place — an
+// ordinary user message in the middle of the turn's messages
+// (internal/session's sessionfile.go) — so drawing it in place is the surface
+// agreeing with the record rather than re-arranging it.
+//
+// WHAT THE OTHER READING COSTS, AND WHY THE GLYPH STAYS. A steer is an ordinary
+// user message in the transcript — it has to be, because that is what the model
+// reads — so drawn with the person's own `›` a corrected turn read as a run of
+// unrelated questions from somebody who kept interrupting themselves. The elbow
+// is what keeps that from happening without moving the words: one mark says
+// "this is the same question, continued", and the turn counter is not bumped
+// for it (app.go's [app.submittingShown] only counts a message that started a
+// stream), so nothing above or below it changes turn.
 //
 // ── THE INK, AND WHY IT IS THIS ────────────────────────────────────────────
 //
@@ -49,6 +75,12 @@ import (
 // The alternative was dim, and dim is THIS SURFACE'S OWN MURMUR: a person's
 // sentence painted in the tier the notes and the hints wear would be the
 // surface claiming words it did not write.
+//
+// AND IT IS FLUSH LEFT, in the person's own column. THE INDENT LAW (render.go's
+// [app.deckRows]) is that flush-left is what was said to the person and two
+// columns in is what was done on their behalf; a correction is a thing they
+// said, so it stands in the same column their question stands in, with the tool
+// rows it interrupted stepped in beside it.
 //
 // ── THE LANDING MOMENT ─────────────────────────────────────────────────────
 //
@@ -70,44 +102,48 @@ import (
 //
 // The fade reuses the status line's ramp and its two one-shot wakeups
 // ([fadeTicks]) rather than a ticker, which is this surface's whole idle budget
-// (effortscope.go took the same ramp for the same reason). Each elbow carries
+// (effortscope.go took the same ramp for the same reason). Each block carries
 // its own landing instant rather than sharing one "newest fact" record the way
 // [effortMoved] does: two steers typed a step apart land at two boundaries and
 // are two pieces of news, and two typed in one step land together and fade
 // together, which is what actually happened.
 //
-// ── THE FALL-THROUGH IS NOT AN ELBOW ───────────────────────────────────────
+// ── THE FALL-THROUGH LEAVES THE PAGE ───────────────────────────────────────
 //
 // A boundary is not promised. A steer still waiting when the turn ends never
-// reached the model, so it MUST NOT be drawn hanging off that question — the
-// elbow would be this surface claiming the model read something it never saw.
-// It leaves the trunk and becomes the next question, which is exactly what the
-// engine does with it (steer.go's [Agent.liftSteersLocked] re-homes it on the
-// follow-up queue), drawn by the drain that already draws a waiting message
-// when its turn starts (followup.go's [app.startFollow]).
+// reached the model, so its block MUST NOT stay in the middle of that turn —
+// the row would be this surface claiming the model read something it never saw,
+// and the words are about to be drawn again a moment later as the question they
+// become ([Agent.liftSteersLocked] re-homes them on the follow-up queue, and
+// followup.go's [app.startFollow] draws that line like any other). Two copies
+// of one sentence is the one thing this must not leave behind.
+//
+// So the block is WITHDRAWN, on echo.go's own rule and for echo.go's reason:
+// truncated when it is last and emptied where it is not, because removing an
+// entry from the middle would move every index after it and the forming rows,
+// the selection and the thought marker are all held by index. An emptied block
+// draws no rows at all — the layout pass drops a block with no rows before it
+// gives it a row of its own — and [entryWithdrawn] is what keeps the fold and
+// the answer hierarchy from reading a gap nobody can see as something that
+// happened.
 //
 // AND A TURN THAT ENDED WITHOUT SAYING SO SWEEPS THE SAME WAY. After a person
 // presses stop nothing new is drawn on this surface (app.go's [app.event]), so
-// the fall-through's own event is swallowed with everything else — and an elbow
-// left spinning on a question the model never carried it into would be the one
-// lie this file exists to prevent. [app.settleSteers] drops every elbow that
-// never landed, at the moment the turn settles, under the same law: if the turn
-// is over and the words were never consumed, they were never part of it.
+// the fall-through's own event is swallowed with everything else — and a row
+// left spinning inside a turn the model never carried it into would be the one
+// lie this file exists to prevent. [app.settleSteers] withdraws every
+// correction that never landed, at the moment the turn settles, under the same
+// law: if the turn is over and the words were never consumed, they were never
+// part of it.
 //
-// ── COLLAPSE KEEPS THE ELBOWS ──────────────────────────────────────────────
+// ── AND A FOLD MAY NOT HIDE THEM ───────────────────────────────────────────
 //
-// The elbows live on the person's own block, which is the ONE block a past turn
-// never folds away: the worked chip collapses the machinery between the
-// question and the answer and starts BELOW the question (workfold.go's
-// [deriveWorkfolds] stops at the person's message). That is the point of
-// putting them here rather than in the turn's own row run — a turn folded to
-// `▸ worked · 10 tool calls` still reads back as everything that was asked.
-//
-// What does not survive is length, so the list itself folds past
-// [steerWindow], in the transcript's own fold grammar: the fold line first, the
-// newest three under it, exactly as a tool cluster keeps the call that is
-// running and the two it followed (render.go's [toolWindow]). The line is a
-// door — click it and the rest come back.
+// The `worked` chip collapses the machinery between a question and its answer,
+// and THE ONE THING ON THIS SURFACE A FOLD MAY NEVER HIDE IS THE PERSON'S OWN
+// WORDS. workfold.go's [deriveWorkfolds] already ends a fold group at one of
+// their messages for exactly that reason; a correction is one of their
+// messages, so it ends a group too, and a corrected turn folds around the
+// sentence rather than over it.
 
 // glyphSteer is the elbow, and glyphSteerASCII is what a terminal with no
 // box-drawing gets. `+` is this surface's own ASCII corner already — it is the
@@ -117,16 +153,6 @@ const (
 	glyphSteer      = "└ "
 	glyphSteerASCII = "+ "
 )
-
-// steerWindow is how many elbows stay on screen when a question collected more
-// than a person can hold. It is [toolWindow] and not a number of its own: three
-// is the count that file already argues for — the newest and the two before it
-// — and two spellings of one design decision is one of them going stale.
-const steerWindow = toolWindow
-
-// steerFoldWhat is the plural noun the fold line names, in [bandFoldWord]'s own
-// grammar: `└ …2 more steers`.
-const steerFoldWhat = "steers"
 
 // steerPendingWord is what an elbow says while the model has NOT been given it
 // yet. It is the verb the engine and the person both already use for the act,
@@ -165,33 +191,34 @@ type steerElbow struct {
 
 // ── the events ──────────────────────────────────────────────────────────────
 
-// steerAccepted hangs one correction off the question that is running.
+// steerAccepted puts one correction into the transcript, at the point in it
+// where the person said it.
 //
-// The trunk is the person's own block in the RUNNING turn, and there is exactly
-// one of them: a turn is opened by a message and a steer does not open one
-// (the surface's own turn counter is not bumped for it either — app.go's
-// [app.submittingShown] only counts a message that started a stream). A steer
-// with no trunk to hang from is dropped rather than drawn loose, which is the
-// case a scripted event with no conversation under it makes and no session does.
+// IT GOES THROUGH [app.said] and not through a bare append, for that door's own
+// reason: a block appended while the model is mid-paragraph must not cut the
+// live paragraph in two, and [app.said] is the one place that keeps the live
+// index pointing at the block the next delta will grow. What the reader sees is
+// the answer so far, whole, then the correction under it.
+//
+// It carries the RUNNING TURN'S number, because a steer does not open a turn
+// (app.go's [app.submittingShown] only counts a message that started a stream).
+// That is what keeps the tool rows around it in one cluster's turn and what
+// makes the fold group end here rather than somewhere else.
 func (a *app) steerAccepted(note *session.SteerNote) tea.Cmd {
 	if note == nil || strings.TrimSpace(note.Words) == "" {
 		return nil
 	}
-	at := a.trunkOf(a.turn)
-	if at < 0 {
-		return nil
-	}
-	e := &a.entries[at]
-	for _, held := range e.steers {
+	if at := a.elbowOf(note.ID); at >= 0 {
 		// The acceptance is sent once, but a surface that attaches to a turn
 		// mid-flight reads the hub's backlog ([eventHub.attach]) and meets it
-		// again. One steer is one elbow whatever number of times its news arrives.
-		if held.id == note.ID {
-			return nil
-		}
+		// again. One steer is one block whatever number of times its news arrives.
+		return nil
 	}
-	e.steers = append(e.steers, steerElbow{id: note.ID, words: strings.TrimSpace(note.Words), at: note.At})
-	e.stale = true
+	a.said(entry{
+		kind: entrySteer, turn: a.turn,
+		steer: &steerElbow{id: note.ID, words: strings.TrimSpace(note.Words), at: note.At},
+	})
+	a.follow()
 	a.touch()
 	return nil
 }
@@ -202,16 +229,16 @@ func (a *app) steerConsumed(note *session.SteerNote) tea.Cmd {
 	if note == nil {
 		return nil
 	}
-	at, on := a.elbowOf(note.ID)
+	at := a.elbowOf(note.ID)
 	if at < 0 {
 		return nil
 	}
 	e := &a.entries[at]
-	if e.steers[on].consumed {
+	if e.steer.consumed {
 		return nil
 	}
-	e.steers[on].consumed = true
-	e.steers[on].landed = a.now()
+	e.steer.consumed = true
+	e.steer.landed = a.now()
 	e.stale = true
 	a.touch()
 	// The two wakeups the fade needs and no ticker, which is [fadeTicks]' whole
@@ -222,18 +249,17 @@ func (a *app) steerConsumed(note *session.SteerNote) tea.Cmd {
 // steerFellThrough is the honest ending: the turn finished before a boundary
 // came, so those words were never part of that question.
 //
-// THE ELBOW COMES OFF FIRST. Everything else here is about where the words go
+// THE BLOCK COMES OFF FIRST. Everything else here is about where the words go
 // next; this is the part that is about what the transcript says happened, and a
-// row left hanging under the trunk would say the wrong thing about it forever.
+// row left standing inside that turn would say the wrong thing about it forever
+// — and would say it twice, because the same sentence is about to be drawn
+// again as the question it becomes.
 func (a *app) steerFellThrough(note *session.SteerNote) tea.Cmd {
 	if note == nil {
 		return nil
 	}
-	if at, on := a.elbowOf(note.ID); at >= 0 {
-		e := &a.entries[at]
-		e.steers = append(e.steers[:on], e.steers[on+1:]...)
-		e.stale = true
-		a.touch()
+	if at := a.elbowOf(note.ID); at >= 0 {
+		a.withdrawSteer(at)
 	}
 	// AND THE SURFACE SAYS SO, once, in the lane it says everything of its own
 	// in. The words are about to appear again as an ordinary question a moment
@@ -251,70 +277,84 @@ func (a *app) steerFellThrough(note *session.SteerNote) tea.Cmd {
 // It runs from [app.settle], which is the one place every ending goes through:
 // a completed turn, an interrupted one, an error, and a stream abandoned when
 // the conversation was replaced.
+//
+// IT WALKS BACKWARDS so that the truncating case can actually be taken. A run of
+// unlanded corrections at the tail comes off one at a time from the end, which
+// leaves no emptied blocks behind at all; walking forwards would empty the first
+// and then find the second no longer last.
 func (a *app) settleSteers() {
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryUser || len(e.steers) == 0 {
+	for at := len(a.entries) - 1; at >= 0; at-- {
+		e := &a.entries[at]
+		if e.kind != entrySteer || e.steer == nil || e.steer.consumed {
 			continue
 		}
-		kept := e.steers[:0]
-		for _, elbow := range e.steers {
-			if elbow.consumed {
-				kept = append(kept, elbow)
-			}
-		}
-		if len(kept) != len(e.steers) {
-			e.steers, e.stale = kept, true
-		}
+		a.withdrawSteer(at)
 	}
 }
 
-// trunkOf is the person's own block that OPENED a turn — the trunk every elbow
-// of that turn hangs from. It walks backwards because the newest turn is the
-// one being steered on every frame this is asked on.
-func (a *app) trunkOf(turn int) int {
+// withdrawSteer takes one correction off the page.
+//
+// THE BLOCK IS TRUNCATED WHEN IT IS LAST AND EMPTIED OTHERWISE, which is
+// [app.dropLive]'s rule and echo.go's, and it is here for their reason:
+// removing an entry from the middle would move every index after it, and the
+// live block, the forming rows, the selection and the thought marker are all
+// held by index. An emptied block renders nothing at all and is stepped over by
+// everything that reads a run of blocks ([entryWithdrawn]).
+func (a *app) withdrawSteer(at int) {
+	if at < 0 || at >= len(a.entries) || a.entries[at].kind != entrySteer {
+		return
+	}
+	if at == len(a.entries)-1 {
+		a.entries = a.entries[:at]
+	} else {
+		a.entries[at].steer = nil
+		a.entries[at].stale = true
+	}
+	a.touch()
+}
+
+// entryWithdrawn reports whether this block is one that USED to be on the page
+// and now draws nothing — a correction the turn ended without ever giving the
+// model.
+//
+// IT EXISTS SO THAT A GAP LEAVES NO TRACE. The walks that read a run of blocks
+// to decide something — where a fold group ends (workfold.go's [groupBreaks]),
+// whether an answer had work behind it (hierarchy.go's [answerBreath]), which
+// drawn block a rewind's cut lands on (rewind.go's [fromTranscript]) — would
+// otherwise treat a row nobody can see as a thing that happened. So each of
+// them steps over it, and the page reads as it would have read had the
+// correction never been typed.
+func entryWithdrawn(e *entry) bool {
+	return e.kind == entrySteer && e.steer == nil
+}
+
+// elbowOf finds one correction's block by the engine's id. It walks backwards
+// because the newest turn is the one being steered on every frame this is asked
+// on, and answers -1 for an id this page is not holding.
+func (a *app) elbowOf(id uint64) int {
 	for at := len(a.entries) - 1; at >= 0; at-- {
-		if e := &a.entries[at]; e.kind == entryUser && e.turn == turn {
+		if e := &a.entries[at]; e.kind == entrySteer && e.steer != nil && e.steer.id == id {
 			return at
 		}
 	}
 	return -1
 }
 
-// elbowOf finds one steer by the engine's id: which block holds it, and where
-// in that block's list. It walks backwards for [app.trunkOf]'s reason.
-func (a *app) elbowOf(id uint64) (int, int) {
-	for at := len(a.entries) - 1; at >= 0; at-- {
-		e := &a.entries[at]
-		if e.kind != entryUser {
-			continue
-		}
-		for on := range e.steers {
-			if e.steers[on].id == id {
-				return at, on
-			}
-		}
-	}
-	return -1, -1
-}
-
-// steersMoving reports whether this block has an elbow whose paint is a
-// function of the FRAME rather than of anything that arrived — a spinner
-// turning, or a landing still on its way down the fade.
+// elbowMoving reports whether this block's paint is a function of the FRAME
+// rather than of anything that arrived — a spinner turning, or a landing still
+// on its way down the fade.
 //
 // It is what keeps the row cache honest, exactly as a running compaction, an
 // open proposal and a waiting sign-in do (render.go's [app.entryRows]): a
 // cached row with an animation in it is a still photograph of one.
-func (a *app) steersMoving(e *entry) bool {
-	for _, elbow := range e.steers {
-		if !elbow.consumed {
-			return true
-		}
-		if !elbow.landed.IsZero() && a.now().Sub(elbow.landed) < hudWarm {
-			return true
-		}
+func (a *app) elbowMoving(elbow *steerElbow) bool {
+	if elbow == nil {
+		return false
 	}
-	return false
+	if !elbow.consumed {
+		return true
+	}
+	return !elbow.landed.IsZero() && a.now().Sub(elbow.landed) < hudWarm
 }
 
 // ── the rows ────────────────────────────────────────────────────────────────
@@ -328,47 +368,21 @@ func steerGlyph(pal palette) string {
 	return glyphSteer
 }
 
-// steerElbowRows draws the family under a question that collected corrections,
-// and hands back the block's rows unchanged when it collected none — which is
-// every question in nearly every conversation, and is why a transcript with no
-// steers in it renders byte for byte as it always did.
+// steerBlockRows is one correction as a block of the transcript: the elbow, the
+// words, and the working clause while the model has not been given them yet.
 //
-// The fold's row index is recorded on the block so the layout pass can make
-// that one row a door (render.go's [app.deckRows] does the same for a
-// proposal's choices row, and for the same reason: the columns and the row a
-// thing landed on are decided by the render that drew it).
-func (a *app) steerElbowRows(rows []string, e *entry, width int) []string {
-	e.steerFoldRow = 0
-	if len(e.steers) == 0 || width < 4 {
-		return rows
+// A PATH INSIDE A CORRECTION IS A DOOR (pathlink.go's law, and render.go's
+// entryUser applies it to the question this continues): the commonest steer of
+// all is "no, the OTHER file", and the file is named.
+//
+// A WITHDRAWN BLOCK DRAWS NOTHING, which is the whole of how the fall-through
+// leaves no trace — an entry whose rows are empty is skipped by the layout pass
+// before it is ever given a row of its own ([app.deckRows]).
+func (a *app) steerBlockRows(e *entry, width int) []string {
+	if e.steer == nil || width < 4 {
+		return nil
 	}
-	out := rows
-	shown := e.steers
-	// THE FOLD LINE COMES FIRST AND THE NEWEST THREE UNDER IT. That is the tool
-	// cluster's own shape (toolview.go's [app.clusterRows]) and it is the right
-	// one here for the same reason: the correction that matters most is the last
-	// one made, and a fold that hid it to keep the first three would hide the one
-	// still landing.
-	if len(shown) > steerWindow && !a.steerOpen[e.turn] {
-		e.steerFoldRow = len(out)
-		out = append(out, a.pal.dim(fit(steerGlyph(a.pal)+
-			bandFoldWord(len(shown)-steerWindow, steerFoldWhat, true), width)))
-		shown = shown[len(shown)-steerWindow:]
-	} else if len(shown) > steerWindow {
-		e.steerFoldRow = len(out)
-		out = append(out, a.pal.dim(fit(steerGlyph(a.pal)+
-			bandFoldWord(len(shown)-steerWindow, steerFoldWhat, false), width)))
-	}
-	for _, elbow := range shown {
-		out = append(out, a.elbowRows(elbow, width)...)
-	}
-	// A PATH INSIDE A CORRECTION IS A DOOR TOO, on the person's own message's
-	// terms (render.go's entryUser, pathlink.go's law): the commonest steer of
-	// all is "no, the OTHER file", and the file is named. The fold line is left
-	// out of the sweep because it is this surface's own words and not a syllable
-	// of anybody's sentence — the same order the turn's context mark is added in.
-	linked := a.linkPaths(out[len(rows):])
-	return append(out[:len(rows):len(rows)], linked...)
+	return a.linkPaths(a.elbowRows(*e.steer, width))
 }
 
 // elbowRows is one correction: its glyph, its words, and — while the model has
@@ -442,25 +456,6 @@ func (a *app) steerSpin() string {
 		return glyphRunASCII
 	}
 	return tokens.Spinner(a.paints / spinnerStep)
-}
-
-// ── the fold's door ─────────────────────────────────────────────────────────
-
-// toggleSteerFold opens the elbows a question folded, and shuts them again. It
-// is the click on `└ …2 more steers`, and it is a toggle for [app.openEffortMenu]'s
-// reason: a control that opened a list and ignored the second press on the same
-// cell is a control with no way back through the gesture that got you there.
-func (a *app) toggleSteerFold(turn int) {
-	if a.steerOpen == nil {
-		a.steerOpen = map[int]bool{}
-	}
-	a.steerOpen[turn] = !a.steerOpen[turn]
-	for i := range a.entries {
-		if a.entries[i].kind == entryUser && a.entries[i].turn == turn {
-			a.entries[i].stale = true
-		}
-	}
-	a.touch()
 }
 
 // ── the fall-through's lane ─────────────────────────────────────────────────

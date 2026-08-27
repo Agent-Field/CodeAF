@@ -354,6 +354,13 @@ still offers no local room-action interfaces, so steering, stopping, and model
 changes are absent rather than sent to the wrong disk or exposed as broken.
 This completes protocol version 5 without another version move.
 
+**Conversation steering crosses the same boundary.** Protocol version 6 adds
+`MethodSteer`: the surface sends one words-only correction, the engine calls
+`session.Agent.Steer`, and the result names the running turn's live stream tail.
+The accepted and consumed events therefore arrive in the same order locally and
+over `--host`; without this door the remote agent did not implement the steering
+interface, so the live surface correctly hid a capability that could not work.
+
 ## Decision 11 — The room has one keyboard, and the engine says whose
 
 **Decision.** A `Session` names one attached surface the **driver**. The
