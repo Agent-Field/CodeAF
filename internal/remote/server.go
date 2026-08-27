@@ -1186,6 +1186,51 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 
 	switch call.Method {
+	case MethodTaskStart:
+		door, ok := agent.(interface {
+			StartTask(context.Context, string) (uint64, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task door")
+		}
+		args, err := arg[TaskStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, err := door.StartTask(context.Background(), args.Brief)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title})
+	case MethodPlannerStart:
+		door, ok := agent.(interface {
+			StartPlannerRun(context.Context, string, string) (string, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no planner door")
+		}
+		args, err := arg[PlannerStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, err := door.StartPlannerRun(context.Background(), args.Brief, args.Hint)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(PlannerStarted{ID: id, Title: title})
+	case MethodTaskJudge:
+		door, ok := agent.(interface {
+			JudgeDecomposable(context.Context, string) (bool, []string, string)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task door")
+		}
+		args, err := arg[TaskStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		parallel, parts, why := door.JudgeDecomposable(context.Background(), args.Brief)
+		return json.Marshal(TaskJudged{Parallel: parallel, Parts: parts, Why: why})
 	case MethodTake:
 		// The keyboard comes here, and the room is told in the same breath
 		// (driver.go's take).

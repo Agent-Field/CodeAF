@@ -99,6 +99,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
+		{"can I start a task on the other machine", "running-on-another-machine"},
+		{"task says no task door", "running-on-another-machine"},
 		{"can I read a task room from another machine", "tasks"},
 		// Host parity is asked from the symptom, not from the name of the wire
 		// door. Each phrase therefore has to retrieve the page that owns the

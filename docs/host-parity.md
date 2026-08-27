@@ -44,7 +44,7 @@ the terminal, draft, input history, browser and downloaded copies.
 | `/permissions` | NOT YET | The YOLO badge is the far engine's posture, but the page reads and deletes this surface machine's saved approval rows and gives no host-specific sentence. |
 | `/connect` | HONEST | It says `connecting an account is not available over --host yet — the sign-in opens a browser here and the account belongs to the machine over there. accounts already connected on that machine keep working.` |
 | `/harness` and `/subharness` listing | HONEST | No registry seam is supplied, so the panels say harnesses are unavailable instead of listing the surface machine's registry. Running an already selected far harness still works. |
-| `/task` | NOT YET | Bare `/task` opens the far-backed tasks place, but `/task <brief>` reaches `could not start the task · this session has no task door`; the remote handle has no task seam and the refusal is not in the surface's register. |
+| `/task` | WORKS | Bare `/task` opens the far-backed tasks place. Brief, solo and adaptive starts run on the engine machine; the far task record and world refresh feed the rail. |
 | `/crew` | NOT YET | The picker reads and writes this surface machine's profile. It does not change the crew the far engine resolves, and gives no host-specific sentence. |
 | `/quit`, `/exit`, `/q`, double `ctrl+c` | WORKS | The surface closes deliberately; the engine distinguishes close from a torn pipe. |
 | `space space`, `tab`, place digits and place clicks | WORKS | They navigate the surface; far-backed places use the cached far world. A place-row click only selects (home opens on the second click), the same as locally. |

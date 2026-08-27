@@ -108,11 +108,9 @@ import (
 //	                  the ordinary room renderer draws it. Steering, stopping,
 //	                  and changing its model stay absent because the wire has no
 //	                  such doors; no path from the far row is opened here.
-//	                  //	the task rail     DRAWN from Places.Task, carried by the same far-machine
-//	                  seam as the tasks place. The remote agent still has no task
-//	                  door, so /task refuses honestly; the rail is a reading of
-//	                  work already reported by the far world, not a promise that
-//	                  this surface can start another task.
+//	/task             WORKS. Brief, solo and adaptive starts cross to the engine,
+//	                  which shapes, admits and records the work. The next world
+//	                  refresh brings its row back through Places.Task.
 //	/image and @      LOCAL, and deliberately: the picture is on the machine the
 //	                  person is sitting at, and the bytes travel with the message
 //	                  (internal/remote's SubmitImage). So a relative path and the

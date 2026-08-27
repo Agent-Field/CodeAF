@@ -66,6 +66,11 @@ import (
 // callDeadline is how long any one call waits for its result. See the law above.
 const callDeadline = 10 * time.Second
 
+// taskCallDeadline is the shaper's own bounded wait plus room for the two wire
+// frames around it. It is derived from the engine's limit so the connection
+// cannot declare a healthy shaping call dead before the engine gives up.
+const taskCallDeadline = session.TaskShapeWindow + 5*time.Second
+
 // Client is one connection to one engine. It is safe for concurrent use, which
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
@@ -816,6 +821,10 @@ func (c *Client) bury(cause error) {
 
 // call is one round trip: a frame out, a result back, or the deadline.
 func (c *Client) call(ctx context.Context, method string, args any) (json.RawMessage, error) {
+	return c.callWithin(ctx, method, args, callDeadline)
+}
+
+func (c *Client) callWithin(ctx context.Context, method string, args any, deadline time.Duration) (json.RawMessage, error) {
 	var payload json.RawMessage
 	if args != nil {
 		encoded, err := json.Marshal(args)
@@ -865,7 +874,7 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	timer := time.NewTimer(callDeadline)
+	timer := time.NewTimer(deadline)
 	defer timer.Stop()
 	select {
 	case answer := <-waiting:
@@ -1150,6 +1159,46 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 // whichever session the engine currently has open, which is why /new and
 // /resume keep using the same one.
 type Agent struct{ c *Client }
+
+// StartTask commissions the work on the engine machine and returns its receipt.
+func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
+	payload, err := a.c.callWithin(ctx, MethodTaskStart, TaskStartArgs{Brief: brief}, taskCallDeadline)
+	if err != nil {
+		return 0, "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", err
+	}
+	return started.ID, started.Title, nil
+}
+
+// StartPlannerRun opens the adaptive form on the engine machine.
+func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string, string, error) {
+	payload, err := a.c.callWithin(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint}, taskCallDeadline)
+	if err != nil {
+		return "", "", err
+	}
+	var started PlannerStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return "", "", err
+	}
+	return started.ID, started.Title, nil
+}
+
+// JudgeDecomposable asks the engine's model because the surface's model and
+// credentials are not facts about this conversation.
+func (a *Agent) JudgeDecomposable(ctx context.Context, brief string) (bool, []string, string) {
+	payload, err := a.c.call(ctx, MethodTaskJudge, TaskStartArgs{Brief: brief})
+	if err != nil {
+		return false, nil, ""
+	}
+	var judged TaskJudged
+	if json.Unmarshal(payload, &judged) != nil {
+		return false, nil, ""
+	}
+	return judged.Parallel, judged.Parts, judged.Why
+}
 
 // Agent is the handle onto the engine's current session.
 func (c *Client) Agent() *Agent { return &Agent{c: c} }
