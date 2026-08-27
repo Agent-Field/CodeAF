@@ -67,13 +67,13 @@ carries no number because there is nothing in the sentence for a number to point
 
 ## I dropped a file and nothing happened
 
-Dropping a file onto the terminal is the same as `/attach <path>`. The terminal sends its
-local path as a paste; aforge recognizes a paste made only of real files, removes the path
-from the message box, and shows each file on the tray. Over `--host`, pressing `enter`
-sends those local bytes to the other machine before the turn starts. A picture gets its
-numbered picture chip and `[image #n]`; an ordinary file gets its unnumbered file chip.
+Dropping a file onto the terminal is the same as `/attach <path>`. aforge recognises a
+drop made only of real local files, takes the path out of the message box, and shows each
+file on the tray. Over `--host`, pressing `enter` sends those local bytes to the other
+machine before the turn starts. A picture gets its numbered picture chip and `[image #n]`;
+an ordinary file gets its unnumbered file chip.
 
-A folder is not attached, and a paste containing prose or a path that is not a real local
+A folder is not attached, and a drop containing prose or a path that is not a real local
 file remains ordinary text. The same 10MB picture limit, 16MB ordinary-file limit, and
 32MB total ordinary-file limit apply. The visible chip is the confirmation that the drop
 landed; if there is no chip, no file will be sent.
@@ -86,6 +86,86 @@ When you press `enter`, the transcript shows your line with the file's name afte
 ```
 › why is this failing [server.log]
 ```
+
+## Drops arrive however the terminal sends them
+
+**Your terminal decides the shape, and aforge handles both.** Most terminals write a drop
+into the message box as one *paste* of the file's path. Some terminals — and some
+multiplexers in front of them — *type* the same path instead, one character at a time,
+with nothing marking it as a paste at all.
+
+Either way you get the chip. When the characters stop arriving, aforge reads the run that
+just landed, and if every word in it is a real file on the machine you are sitting at, the
+path comes out of the box and the files go on the tray.
+
+**Nothing happens while you are still typing.** A half-arrived path names nothing, so
+aforge says nothing about it — no complaint, no half-attached file. Only a run that names
+files that are really there is ever converted.
+
+**Every shape a terminal writes is understood:** backslashed spaces
+(`Screenshot\ 2026-08-27\ at\ 1.21.14\ PM.png`), `'single'` and `"double"` quotes,
+`file://` URLs with their `%20` escapes, several files in one drop, `~` for your home
+directory, and a drop dropped after words you had already typed — `what font is` followed
+by a screenshot keeps the words and puts `[image #1]` where the path was.
+
+**Typing a slash command is untouched.** `/help`, `/model`, `/export` and the rest are
+told from a dropped path by the separator inside it: `/var/folders/…` has one, `/help`
+does not. So a command is never mistaken for a file, and typing one costs exactly what it
+always did.
+
+**The one thing that rule costs you:** a file sitting at the very root of the disk —
+`/notes.md`, with nothing between it and `/` — looks exactly like a command while it is
+being typed, so it is not turned into a chip on the way. Pressing `enter` still attaches
+it: the send door checks the line against the disk before it refuses anything.
+
+## I dropped a file and it said unknown command
+
+**That is fixed, and it is worth knowing what it was.** On a terminal that types a drop
+rather than pasting it, the path landed in the box as plain text — and because it began
+with `/`, `enter` handed it to the slash router, which answered about a screenshot:
+
+```
+unknown command: /var/folders/…/Screenshot · try /help
+```
+
+Now the path becomes a chip before you ever press `enter`. And if a drop somehow reaches
+`enter` still spelled out — an odd terminal, a shape nobody has met yet — the send door
+checks the line against the disk before it refuses. A line that names real files is
+attached and says so:
+
+```
+that was a file, not a command · attached
+```
+
+A folder gets `/attach`'s own sentence instead — `<name> is a folder · attach a file` —
+and an unknown command that names nothing on the disk still refuses exactly as it always
+did.
+
+## Drag and drop shows the path as text
+
+If you can still see the escaped path sitting in the message box, one of three things is
+true.
+
+- **It has not settled yet.** The path becomes a chip a fraction of a second after the
+  last character arrives. Pressing `enter` does not lose it: the send door spends the drop
+  first, so the chip is on the message either way.
+- **The file is not on this machine.** aforge attaches what it can `stat` on the computer
+  you are sitting at. Over `--host` that is still your laptop, which is the point — the
+  bytes travel. A path typed by hand for a file on the *other* machine is text, and text
+  is what it stays.
+- **The box already starts with a `/command`.** That is deliberate. `/attach ` followed by
+  a dropped file is the command being used exactly as documented, so the path stays as its
+  argument and `enter` runs the command. See below.
+
+## A drop into a box that already holds a command
+
+**It stays text, and that is on purpose.** Type `/attach ` or `/image ` first and then
+drop the file: the path is the command's argument, and turning it into `[image #1]` would
+break the one line on this surface whose whole job is to take a path. `enter` then runs
+the command and the file lands on the tray by that road instead.
+
+The rule is exactly: a message box whose text already begins with `/` keeps a dropped path
+as plain text. An empty box, or one holding ordinary words, converts it.
 
 ## What aforge does with an attached file
 
@@ -261,19 +341,22 @@ transcript a picture is marked `[#1 shot.png]` and a file `[server.log]`.
 
 ## Drag a file in, or paste a path
 
-**Dragging a picture onto the terminal attaches it** — your terminal hands over the file's
-path as text, and aforge recognises the picture extensions and turns it into a chip.
+**Dragging a picture onto the terminal attaches it** — your terminal hands the file's path
+over, and aforge recognises the picture extensions and turns it into a numbered chip with
+`[image #1]` in your sentence.
 
-**Dragging anything else in leaves you the path as text**, because a path in a sentence is
-already a useful thing to say to aforge on a local session — it can just `read` it. To put
-that file on the tray as an attachment, type `/attach ` first and drop the file onto the
-line: a line that already starts with `/` keeps the dropped path as the command's
-argument.
+**Dragging an ordinary file in attaches it too**, as an unnumbered file chip. It used to be
+left in the box as text; it is not any more, because over `--host` a path in a sentence
+names a file the far machine has never seen, and a chip is what makes the bytes travel.
 
-Over `--host` the difference matters more than it looks. A path dropped as plain text is a
+To keep a dropped path as *text* — to talk about a path rather than send the file — type
+`/attach ` or `/image ` first and drop onto that line, or write the path yourself after
+some words. A box that already begins with `/` keeps the path as the command's argument.
+
+Over `--host` the difference matters more than it looks. A path left as plain text is a
 path on **your** machine, and the session on the far machine cannot open it — nothing
-travelled. `/attach` is what makes the bytes travel. If you dropped a path in and got told
-the file is not there, that is usually what happened.
+travelled. The chip is what makes the bytes travel. If you handed a path to that session
+and were told the file is not there, that is what happened.
 
 ## Take a file off the tray before you send
 
