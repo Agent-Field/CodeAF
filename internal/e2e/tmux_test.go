@@ -170,6 +170,13 @@ func newWorkspace(t *testing.T, name string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
+	// suite at once on one machine, and with a fixed session name each start()
+	// kills the other run's rig before opening its own — a whole suite then
+	// times out in a test that was simply looking at somebody else's screen.
+	// The pid LEADS the name: tmux falls back to prefix matching on -t, so a
+	// sibling's `kill-session -t afe2e_a` would still reach `afe2e_a-<pid>`.
+	name = fmt.Sprintf("p%d-%s", os.Getpid(), name)
 	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	command := []string{
 		"env",
