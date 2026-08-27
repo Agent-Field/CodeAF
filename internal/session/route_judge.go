@@ -351,13 +351,36 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	if !a.config.AskConsent || a.config.InTask {
 		return
 	}
+	// WHAT THE JUDGE IS SHOWN AS THE ASK, and this is the one gate the goal owner
+	// changes (principal.go).
+	//
+	// ONLY WHAT A PERSON TYPED, when there is a person. A woken turn's note is
+	// the session talking to itself, and work started against one would be the
+	// session spending money on its own sentence (harness.go keeps the same law).
+	//
+	// ON A SESSION NOBODY IS SITTING AT, THAT LAW REMOVES THE ONLY ROAD LEFT. A
+	// woken turn is the ONLY kind of turn an unattended run has after its first
+	// one — a unit of work lands, the note wakes a turn, the model answers it in
+	// words — so a rule that skips every woken turn is a rule that makes it
+	// impossible for a failed landing to ever start a repair. It was measured
+	// doing exactly that.
+	//
+	// So a [Steward] supplies the ask instead of the message: the goal it is
+	// working towards, in the person's own words, frozen at the start of the
+	// session. That is not the session's own sentence — it is the only sentence
+	// a person ever wrote here — and it is what the judge should have been
+	// reading all along on this road. EVERYTHING ELSE STILL STANDS: the word
+	// floor, the gap, the cheap screen, the mastermind confirm, and both of them
+	// having to say yes.
+	asked := user.text()
 	if user.empty() || user.wake || user.authored {
-		// ONLY WHAT A PERSON TYPED. A woken turn's note is the session talking to
-		// itself, and work started against one would be the session spending money
-		// on its own sentence (harness.go keeps the same law).
-		return
+		steward := a.steward()
+		if steward == nil {
+			return
+		}
+		asked = steward.Ask()
 	}
-	if !routeSubstantial(user.text()) {
+	if !routeSubstantial(asked) {
 		return
 	}
 	if offered > 0 && turn-offered < routeJudgeGap {
@@ -367,13 +390,13 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// the conversation's own model rather than refusing — and an install with
 	// nothing anywhere gets no judge at all, which is this feature absent rather
 	// than broken.
-	verdict, ok := a.askRouteJudge(ctx, model, user.text(), answer)
+	verdict, ok := a.askRouteJudge(ctx, model, asked, answer)
 	if !ok || !verdict.Work {
 		return
 	}
 	// THE CONFIRM, and it is asked HERE — after the yes and before anything is
 	// admitted — because that is the only place it costs anything at all.
-	confirmed, ok := a.confirmRouteWork(ctx, model, user.text(), answer)
+	confirmed, ok := a.confirmRouteWork(ctx, model, asked, answer)
 	if !ok {
 		return
 	}

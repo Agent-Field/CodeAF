@@ -1890,7 +1890,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy())
+	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -2022,7 +2022,13 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 // set, and a blank row still reads as asking: a build that started deciding on
 // behalf of a person who is sitting right there would be the opposite defect.
 func (a *Agent) settlePolicy() TaskSettle {
-	if !a.config.AskConsent {
+	// NOBODY WATCHING AND NOBODY TO WATCH FOR ARE THE SAME FACT HERE. The first
+	// arm is a headless run with no events going anywhere; the second is a
+	// session that is being watched by a terminal nobody is sitting at, which is
+	// what a [Steward] means (principal.go). Both leave the ask clause naming a
+	// card and a person who will never answer it, and a landing that waits for an
+	// answer nobody is coming to give is a landing that waits forever.
+	if !a.config.AskConsent || a.steward() != nil {
 		return TaskSettleAuto
 	}
 	return settleOrAsk(a.config.TaskSettle)
@@ -2057,7 +2063,25 @@ func settleClause(id uint64, settle TaskSettle) string {
 	return settleAskLead + address + settleAskTail
 }
 
-func taskNote(notice TaskNotice, transcript string, settle TaskSettle) string {
+// landingAddress is WHAT THIS SESSION'S GOAL OWNER SAID about one landing, in
+// the only two shapes the note has any use for (principal.go).
+//
+// brief is what the next attempt opens on, and an empty one means nothing more
+// is being started on the strength of this landing. person says there is
+// somebody to offer a follow-up TO — which is the whole of what the old note
+// assumed and never checked.
+//
+// THE TWO ARE NOT OPPOSITES. A [Steward] whose loop guard has fired answers
+// neither: there is no brief, because the same thing has stopped this three
+// times, and there is no person, because nobody is there. That ending had no
+// sentence at all before this type existed; it had the person's one, addressed
+// to an empty room.
+type landingAddress struct {
+	brief  string
+	person bool
+}
+
+func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	verb := "finished"
 	switch {
@@ -2095,7 +2119,7 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle) string {
 	// a killed node and a node that ran out of time reach TaskFailed too, and
 	// neither of them has a gap anybody could offer to close.
 	if notice.State == TaskFailed && strings.HasPrefix(notice.Report, incompleteLead) {
-		note.WriteString("\nwhat is missing is above and the branch is kept: offer them a follow-up in their own words before anything else is spent on it")
+		note.WriteString(incompleteClause(address))
 	}
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
@@ -2416,7 +2440,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 		}
 		notice := kid.notice()
 		note := orphanLead(node) + "\n" +
-			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy())
+			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy(), a.quietAddress())
 		a.deliverTaskNote(node, note)
 	}
 }

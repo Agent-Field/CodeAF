@@ -375,7 +375,7 @@ func TestWorkThatStaysShortLandsIncompleteWithEveryRoundsGaps(t *testing.T) {
 
 	// THE STEERING NOTE ASKS RATHER THAN SPENDS. The gaps and the branch are in
 	// front of the model; what it must not do is start another task on its own.
-	note := taskNote(notice, "", TaskSettleAsk)
+	note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
 	if !strings.Contains(note, "offer them a follow-up in their own words") {
 		t.Fatalf("the note does not tell the model to ask: %s", note)
 	}
@@ -550,7 +550,7 @@ func assertPlainLanding(t *testing.T, notice TaskNotice, what string) {
 	t.Helper()
 	assertPlainWords(t, what+" · the index row's outcome", taskOutcome(notice.Report))
 	assertPlainWords(t, what+" · the notice's report", notice.Report)
-	assertPlainWords(t, what+" · the steering note", taskNote(notice, "file:///tmp/task.jsonl", TaskSettleAsk))
+	assertPlainWords(t, what+" · the steering note", taskNote(notice, "file:///tmp/task.jsonl", TaskSettleAsk, landingAddress{person: true}))
 }
 
 // NO PATH TO A PERSON CARRIES THE MACHINERY'S WORDS.
