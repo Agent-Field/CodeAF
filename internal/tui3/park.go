@@ -52,8 +52,9 @@ import (
 // the person has moved on from attaching — and a parked message that lost its
 // pictures on the way would make them go and find the files again.
 type parked struct {
-	text  string
-	chips []chip
+	text   string
+	chips  []chip
+	pastes []pasteChip
 	// standing says the person MARKED this one as something to keep true
 	// (standmark.go). It travels with the words for the chips' own reason: the
 	// gesture was made when the message was typed, and a queue that forgot it
@@ -82,7 +83,8 @@ func (a *app) park(text string, standing bool) tea.Cmd {
 		return nil
 	}
 	a.chips = nil
-	a.parks = append(a.parks, parked{text: text, chips: chips, standing: standing})
+	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, standing: standing})
+	a.pastes = nil
 	a.follow()
 	a.touch()
 	return nil
@@ -102,6 +104,9 @@ func (a *app) sendParked() tea.Cmd {
 	}
 	next := a.parks[0]
 	a.parks = a.parks[1:]
+	a.pastes = next.pastes
+	shown := next.text
+	spoken := a.expandPastes(next.text)
 	if len(next.chips) > 0 {
 		// The tray is refilled for exactly as long as the submit takes to read
 		// it, because [app.submitImages] is the door and the tray is what it
@@ -116,16 +121,16 @@ func (a *app) sendParked() tea.Cmd {
 		// were plainly still composing with.
 		held := a.chips
 		a.chips = next.chips
-		cmd := a.submitImages(next.text)
+		cmd := a.submitImagesShown(spoken, shown)
 		a.chips = held
 		return cmd
 	}
 	// A MARKED MESSAGE GOES THROUGH THE MARKED DOOR, however long it waited
 	// (standmark.go).
 	if next.standing {
-		return a.submitStanding(next.text)
+		return a.submitStandingShown(spoken, shown)
 	}
-	return a.submit(next.text)
+	return a.submitShown(spoken, shown)
 }
 
 // dropParked forgets everything parked and says so, because the person typed

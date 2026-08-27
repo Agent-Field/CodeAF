@@ -471,12 +471,13 @@ func TestAPastedBlockArrivesWholeAndSubmitsAsTyped(t *testing.T) {
 	// Bracketed paste: charm.land/bubbletea/v2 delivers the whole clipboard in
 	// one tea.PasteMsg (paste.go), bracketed mode being on by default.
 	drive(t, a, tea.PasteMsg{Content: "fix this:\n\tpanic: nil map\n\tat main.go:12"})
-	if !strings.Contains(a.input.String(), "\n\tpanic") {
-		t.Fatalf("the paste did not arrive whole: %q", a.input.String())
+	if !strings.Contains(a.input.String(), "[paste 1 · 3 lines]") {
+		t.Fatalf("the large paste did not fold whole: %q", a.input.String())
 	}
+	a.input.end()
 	drive(t, a, key("enter"))
-	if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], "\n") {
-		t.Fatalf("the paste was flattened: %q", agent.sent)
+	if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], "\n\tpanic: nil map\n") {
+		t.Fatalf("the folded paste was flattened: %q", agent.sent)
 	}
 }
 
