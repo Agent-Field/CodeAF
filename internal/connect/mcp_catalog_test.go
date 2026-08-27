@@ -17,12 +17,12 @@ var machineryWords = []string{
 	"mcp", "protocol", "server", "token", "client id", "registration",
 }
 
-// The 27, and the laws that hold for every one of them.
+// The 28, and the laws that hold for every one of them.
 func TestTheToolServersAreUsableAsTheyStand(t *testing.T) {
 	entries := mcpCatalog()
 	want := []string{
 		"airtable", "atlassian", "buildkite", "calendly", "canva", "circleci",
-		"clickup", "cloudflare", "gitlab", "grafana", "heroku", "huggingface",
+		"clickup", "cloudflare", "datadog", "gitlab", "grafana", "heroku", "huggingface",
 		"klaviyo", "launchdarkly", "linear", "miro", "neon", "netlify", "notion",
 		"paypal", "posthog", "postman", "railway", "sanity", "sentry", "supabase",
 		"todoist",
@@ -60,21 +60,85 @@ func TestTheToolServersAreUsableAsTheyStand(t *testing.T) {
 		if service.Address != "" {
 			t.Errorf("%s: a browser service has no one address, got %q", service.ID, service.Address)
 		}
-		address, err := url.Parse(entry.address)
+		address, err := url.Parse(fill(entry.address, entry.blank.name, "example.com"))
 		if err != nil || address.Scheme != "https" || address.Host == "" {
 			t.Errorf("%s: %q is not an address a request can be made against", service.ID, entry.address)
+		}
+		if entry.blank.name != "" {
+			holes := blanksIn(entry.address)
+			if len(holes) != 1 || holes[0] != entry.blank.name {
+				t.Errorf("%s: declared blank %q but address has %v", service.ID, entry.blank.name, holes)
+			}
+			if len(entry.answers) == 0 {
+				t.Errorf("%s: its address asks a question with no allowed answers", service.ID)
+			}
+			for _, answer := range entry.answers {
+				filled := fill(entry.address, entry.blank.name, answer)
+				parsed, err := url.Parse(filled)
+				if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+					t.Errorf("%s: answer %q fills to %q, which is not an https address", service.ID, answer, filled)
+				}
+			}
+		} else if strings.Contains(entry.address, "{{") {
+			t.Errorf("%s: %q has a blank it did not declare", service.ID, entry.address)
 		}
 	}
 }
 
 func TestTheToolServerLinesUseNoMachineryVocabulary(t *testing.T) {
-	for _, entry := range mcpCatalog() {
-		for _, line := range []string{entry.service.Name, entry.service.Blurb} {
+	services := []Service{fakeToolService(true)}
+	for _, plug := range Registered() {
+		if _, ok := plug.(*toolServer); ok {
+			services = append(services, plug.Service())
+		}
+	}
+	for _, service := range services {
+		lines := []string{service.Name, service.Blurb, service.Blank, service.KeyAsk}
+		lines = append(lines, service.Answers...)
+		for _, line := range lines {
 			lowered := strings.ToLower(line)
 			for _, word := range machineryWords {
 				if strings.Contains(lowered, word) {
-					t.Errorf("%s says %q: %q", entry.service.ID, word, line)
+					t.Errorf("%s says %q: %q", service.ID, word, line)
 				}
+			}
+		}
+	}
+}
+
+// Every address question is short enough to read above an ordinary box, and
+// the values the screen shows are the same values a refusal names.
+func TestEveryAddressQuestionOwnsItsClosedList(t *testing.T) {
+	registered := map[string]*toolServer{}
+	for _, plug := range Registered() {
+		if server, ok := plug.(*toolServer); ok {
+			registered[plug.Service().ID] = server
+		}
+	}
+	for _, entry := range mcpCatalog() {
+		if entry.blank.name == "" {
+			continue
+		}
+		if len(entry.service.KeyAsk) > 76 {
+			t.Errorf("%s: the question is %d characters, want at most 76: %q",
+				entry.service.ID, len(entry.service.KeyAsk), entry.service.KeyAsk)
+		}
+		server := registered[entry.service.ID]
+		if server == nil {
+			t.Errorf("%s: no registered service", entry.service.ID)
+			continue
+		}
+		if !slices.Equal(server.service.Answers, entry.answers) {
+			t.Errorf("%s: the screen has %v, want %v", entry.service.ID, server.service.Answers, entry.answers)
+		}
+		_, err := server.at("not an allowed answer")
+		if err == nil {
+			t.Errorf("%s: a wrong answer was accepted", entry.service.ID)
+			continue
+		}
+		for _, answer := range entry.answers {
+			if !strings.Contains(err.Error(), answer) {
+				t.Errorf("%s: the refusal does not name %q: %v", entry.service.ID, answer, err)
 			}
 		}
 	}
@@ -155,6 +219,7 @@ func TestTheAddressesAreTheOnesTheVendorsPublish(t *testing.T) {
 		"circleci":     "https://mcp.circleci.com/v1/mcp",
 		"clickup":      "https://mcp.clickup.com/mcp",
 		"cloudflare":   "https://mcp.cloudflare.com/mcp",
+		"datadog":      "https://mcp.{{.site}}/v1/mcp",
 		"gitlab":       "https://gitlab.com/api/v4/mcp",
 		"grafana":      "https://mcp.grafana.com/mcp",
 		"heroku":       "https://mcp.heroku.com/mcp",

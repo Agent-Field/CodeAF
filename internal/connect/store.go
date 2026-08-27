@@ -57,10 +57,11 @@ type stored struct {
 	// pasted key shows nothing, because the name of a variable is a fact
 	// about the person's own machine and a key is not.
 	KeyEnv string `json:"keyEnv,omitempty"`
-	// Blank is the one piece of the service's address the catalog could not
-	// know — a workspace, a domain — as the person gave it. It is kept
-	// rather than the finished address so that a service that moves house
-	// keeps working: the catalog says the shape, this says the piece.
+	// Blank is the one piece of the service's address the catalog, or the
+	// tool-server list, could not know — a workspace, a domain — as the person
+	// gave it. It is kept rather than the finished address so that a service
+	// that moves house keeps working: the catalog says the shape, this says the
+	// piece.
 	Blank string `json:"blank,omitempty"`
 }
 

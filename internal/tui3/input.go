@@ -942,6 +942,16 @@ func (a *app) completePath() tea.Cmd {
 // inputBlock renders the draft — or the picker's filter box in its place — and
 // says where the caret sits inside it.
 func (a *app) inputBlock(width int) ([]string, int, int) {
+	// The box may not take the frame. Two rows are spoken for whatever happens
+	// — the status line and the blank under it — and what is left over, up to
+	// the ceiling, is the box's: a six-line paste into a four-line window shows
+	// two rows and scrolls, rather than pushing off the line that says where
+	// you are.
+	_, height := a.size()
+	rows := min(draftRows, height-2)
+	if rows < 1 {
+		rows = 1
+	}
 	// THE REWIND'S MODE BAR STANDS IN THE BOX'S OWN POSITION (rewind.go), for the
 	// reason the two filter boxes below take it: the keyboard is pointed somewhere
 	// else, and a draft drawn under a mode that has taken its keys is a box that
@@ -995,21 +1005,11 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// surface gives every box that has taken the keyboard.
 	if a.connPanel.open {
 		if entry := a.connPanel.entry; entry != nil {
-			return keyBoxLines(entry, a.pal, width, 0)
+			return keyBoxLines(entry, a.pal, width, 0, rows)
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
 		}
-	}
-	// The box may not take the frame. Two rows are spoken for whatever happens
-	// — the status line and the blank under it — and what is left over, up to
-	// the ceiling, is the box's: a six-line paste into a four-line window shows
-	// two rows and scrolls, rather than pushing off the line that says where
-	// you are.
-	_, height := a.size()
-	rows := min(draftRows, height-2)
-	if rows < 1 {
-		rows = 1
 	}
 	// AND THE BOX SAYS WHICH ROOM IT IS TYPING INTO, as a segment in front of its
 	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the

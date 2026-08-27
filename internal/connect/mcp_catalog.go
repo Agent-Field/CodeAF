@@ -1,6 +1,6 @@
 package connect
 
-// The 27 tool servers this build ships, and where each one answers.
+// The 28 tool servers this build ships, and where each one answers.
 //
 // ── THIS FILE IS DATA ──
 //
@@ -35,11 +35,16 @@ package connect
 // comes back when Slack allows that introduction again, or with an application
 // registered by hand in a later wave.
 
-// mcpEntry is one line of the list: what goes on a menu, and where the service
-// answers.
+// mcpEntry is one line of the list: what goes on a menu, where the service
+// answers, and the one fact about that address a person may have to supply.
 type mcpEntry struct {
 	service Service
 	address string
+	// blank is the one named piece left open in address. Empty is ordinary.
+	blank blank
+	// answers is the vendor's closed list of values for blank. It is empty
+	// when the address has no blank.
+	answers []string
 }
 
 // mcpCatalog is the list, in no particular order — [sortPlugs] puts them in the
@@ -60,6 +65,27 @@ func mcpCatalog() []mcpEntry {
 				Blurb:    "Notion's own tools — your pages, databases and search — signed in in your browser.",
 			},
 			address: "https://mcp.notion.com/mcp",
+		},
+		{
+			// https://docs.datadoghq.com/getting_started/software_delivery_mcp_tools/ and
+			// https://docs.datadoghq.com/mcp_server/setup/, read 2026-08-27: the address is
+			// "https://mcp.<YOUR_DATADOG_SITE>/v1/mcp", and which site a person is on is a
+			// fact about their account that Datadog gives no way to look up — so it is the
+			// one thing asked before the browser opens. The sites are the commercial ones
+			// on https://docs.datadoghq.com/getting_started/site/ (read the same day); the
+			// government sites are left out because the same page says this address is
+			// "not GovCloud compatible".
+			service: Service{
+				ID:       "datadog",
+				Name:     "Datadog",
+				Category: categoryDeveloper,
+				Blurb:    "Datadog's own tools — your metrics, logs and monitors — signed in in your browser. Say which Datadog site your account is on first.",
+				Blank:    "Site",
+				KeyAsk:   "Which Datadog site is your account on? The domain in your Datadog address.",
+			},
+			address: "https://mcp.{{.site}}/v1/mcp",
+			blank:   blank{name: "site", label: "Site"},
+			answers: []string{"datadoghq.com", "us3.datadoghq.com", "us5.datadoghq.com", "datadoghq.eu", "ap1.datadoghq.com", "ap2.datadoghq.com", "uk1.datadoghq.com"},
 		},
 		{
 			// https://linear.app/docs/mcp, read 2026-08-17: "Read-write access
@@ -412,6 +438,6 @@ func mcpCatalog() []mcpEntry {
 // catalog.go put theirs there.
 func init() {
 	for _, entry := range mcpCatalog() {
-		registerToolServer(entry.service, entry.address)
+		registerToolServer(entry)
 	}
 }

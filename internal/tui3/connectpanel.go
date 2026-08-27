@@ -563,7 +563,7 @@ func (a *app) connectPanelKey(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// connectEntryKey drives the key box open over the list. enter connects, an
+// connectEntryKey drives the typed-answer box open over the list. enter connects, an
 // empty box is not an answer at all, and esc puts the person back on the row
 // they pressed it from — which is the difference between this box and the
 // offer's: nothing is waiting on it, so backing out of it declines nothing.
@@ -575,14 +575,17 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		p.entry = nil
 
 	case "enter":
-		key := strings.TrimSpace(entry.box.String())
+		answer := strings.TrimSpace(entry.box.String())
 		p.entry = nil
-		if key == "" {
+		if answer == "" {
 			break
 		}
 		p.close()
 		a.touch()
-		return a.beginConnectKey(entry.id, entry.name, key)
+		if entry.secret {
+			return a.beginConnectKey(entry.id, entry.name, answer)
+		}
+		return a.beginConnect(entry.id, entry.name, answer)
 
 	default:
 		entry.typeInto(msg)
@@ -630,8 +633,8 @@ func (a *app) connectPanelPress(y int) tea.Cmd {
 }
 
 // connectAct is enter, and the click that means the same thing: the sign-in on a
-// browser row, the key box on a key row, and ask-then-disconnect on a row that
-// is already held.
+// browser row, the typed-answer box where a row needs one, and
+// ask-then-disconnect on a row that is already held.
 func (a *app) connectAct(at int) tea.Cmd {
 	p := &a.connPanel
 	row, ok := p.at(at)
@@ -640,16 +643,16 @@ func (a *app) connectAct(at int) tea.Cmd {
 	}
 	if !row.Connected {
 		name := a.serviceName(row.ID, row.Name)
-		if keyService(row.Service) {
+		if keyService(row.Service) || row.Service.Blank != "" {
 			// THE PANEL STAYS UP UNDER THE BOX, unlike the browser path, and the
 			// difference is where the next thing happens: a sign-in continues in
 			// another window and there is nothing left to look at here, while a
-			// key is given HERE, on the row a person is pointing at.
+			// answer is given HERE, on the row a person is pointing at.
 			p.entry = newKeyEntry(row.Service, name)
 			return nil
 		}
 		p.close()
-		return a.beginConnect(row.ID, name)
+		return a.beginConnect(row.ID, name, "")
 	}
 	if p.armed != row.ID {
 		p.armed = row.ID
@@ -670,13 +673,13 @@ func (a *app) connectAct(at int) tea.Cmd {
 // beginConnect starts one sign-in from the panel. It is a COMMAND because
 // BeginAuth reaches the network, and the model loop is not a place to wait —
 // the same reason the repository probe is one (app.go's [gitMsg]).
-func (a *app) beginConnect(service, name string) tea.Cmd {
+func (a *app) beginConnect(service, name, answer string) tea.Cmd {
 	if a.conns == nil {
 		return nil
 	}
 	conns, ctx := a.conns, a.ctx
 	return func() tea.Msg {
-		flow, err := conns.BeginAuth(ctx, service)
+		flow, err := conns.BeginAuth(ctx, service, answer)
 		return connectFlowMsg{service: service, name: name, flow: flow, err: err}
 	}
 }

@@ -20,6 +20,8 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	saved := stored{
 		Account: "me@example.com",
+		Auth:    authMCP,
+		Blank:   "datadoghq.eu",
 		Keys: &oauth2.Token{
 			AccessToken:  "access-one",
 			RefreshToken: "refresh-one",
@@ -37,6 +39,12 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if loaded.Account != saved.Account {
 		t.Errorf("account: got %q, want %q", loaded.Account, saved.Account)
+	}
+	if loaded.Auth != authMCP {
+		t.Errorf("auth: got %q, want %q", loaded.Auth, authMCP)
+	}
+	if loaded.Blank != saved.Blank {
+		t.Errorf("blank: got %q, want %q", loaded.Blank, saved.Blank)
 	}
 	if loaded.Keys.AccessToken != "access-one" || loaded.Keys.RefreshToken != "refresh-one" {
 		t.Errorf("the key set did not survive the round trip")

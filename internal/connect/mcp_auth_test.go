@@ -15,7 +15,7 @@ func TestConnectingAToolServerAsksItsWayIn(t *testing.T) {
 	if manager.Connected("example") {
 		t.Fatalf("nothing is connected before anybody signs in")
 	}
-	flow, err := manager.BeginAuth(ctx, "example")
+	flow, err := manager.BeginAuth(ctx, "example", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -103,13 +103,136 @@ func TestAToolServerIsOfferedInABuildWithNoCredentials(t *testing.T) {
 	}
 }
 
+// An address answer outside the service's own list is refused before there is
+// anything listening and before the service is asked a single question.
+func TestAWrongAddressAnswerStopsBeforeAListenerOrRequest(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, _ := withToolServer(t, fake)
+	saved := localServerAddresses
+	localServerAddresses = []string{"this is not a listener address"}
+	t.Cleanup(func() { localServerAddresses = saved })
+
+	flow, err := manager.BeginAuth(context.Background(), "example", "somewhere-else")
+	if err == nil {
+		t.Fatal("an answer outside the published list started a connection")
+	}
+	if flow != nil {
+		t.Errorf("a refused answer returned a flow")
+	}
+	for _, want := range []string{"Example", "here", "elsewhere"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+	if paths := fake.paths(); len(paths) != 0 {
+		t.Errorf("a refused answer reached the service at %v", paths)
+	}
+}
+
+// A valid answer is kept as the missing piece, while both the registration and
+// every later connection use the filled address.
+func TestAnAddressAnswerIsKeptAndUsedOnEveryOpen(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, plug := withToolServer(t, fake)
+	connectFakeAt(t, manager, "here")
+
+	entry, held, err := manager.store.get("example")
+	if err != nil || !held {
+		t.Fatalf("store.get: held=%v err=%v", held, err)
+	}
+	if entry.Blank != "here" {
+		t.Errorf("the stored answer is %q, want here", entry.Blank)
+	}
+	filled := fake.address()
+	record, held := manager.registrations().get("example")
+	if !held || record.Server != filled {
+		t.Errorf("the registration is for %q, want %q", record.Server, filled)
+	}
+	rows := manager.Services()
+	if len(rows) != 1 || rows[0].Address != filled {
+		t.Errorf("the connected row reads %+v, want address %q", rows, filled)
+	}
+	session, err := manager.open(context.Background(), plug)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	_ = session.Close()
+}
+
+// Keys and a stored answer that name different sites are not spent anywhere:
+// the person is asked to connect the service again.
+func TestAStoredSiteAndRegistrationThatDisagreeAreRefused(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, plug := withToolServer(t, fake)
+	connectFakeAt(t, manager, "here")
+
+	entry, _, err := manager.store.get("example")
+	if err != nil {
+		t.Fatalf("store.get: %v", err)
+	}
+	entry.Blank = "elsewhere"
+	if err := manager.store.put("example", entry); err != nil {
+		t.Fatalf("store.put: %v", err)
+	}
+	before := len(fake.paths())
+	if _, err := manager.open(context.Background(), plug); err == nil {
+		t.Fatal("keys for one site were used at another")
+	} else if !strings.Contains(err.Error(), "Example has to be connected again") {
+		t.Errorf("the refusal reads %q", err)
+	}
+	if after := len(fake.paths()); after != before {
+		t.Errorf("the mismatch made %d requests", after-before)
+	}
+}
+
+// Reconnecting the same row at a different site obtains a fresh identity tied
+// to that address, and the new connection is ready to use there.
+func TestReconnectingAtAnotherSiteObtainsAFreshIdentity(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, plug := withToolServer(t, fake)
+	connectFakeAt(t, manager, "here")
+	connectFakeAt(t, manager, "elsewhere")
+
+	if introductions, _, _ := fake.counted(); introductions != 2 {
+		t.Errorf("aforge introduced itself %d times, want once at each site", introductions)
+	}
+	record, held := manager.registrations().get("example")
+	want := fake.URL + "/elsewhere"
+	if !held || record.Server != want {
+		t.Errorf("the identity is for %q, want %q", record.Server, want)
+	}
+	session, err := manager.open(context.Background(), plug)
+	if err != nil {
+		t.Fatalf("open at the new site: %v", err)
+	}
+	_ = session.Close()
+}
+
+// The widened door is harmless to an existing entry: without a declared blank,
+// even a non-empty answer changes neither the address nor the trip.
+func TestAToolServerWithoutABlankIgnoresAnAnswer(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{})
+	manager, plug := withToolServer(t, fake)
+	connectFakeAt(t, manager, "not for this service")
+
+	record, held := manager.registrations().get("example")
+	if !held || record.Server != fake.address() {
+		t.Errorf("the answer changed the registration: %+v", record)
+	}
+	session, err := manager.open(context.Background(), plug)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	_ = session.Close()
+}
+
 // The one failure a person cannot work around is said in one sentence, and
 // nothing is written down when it happens.
 func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 	fake := startFakeToolServer(t, fakeShape{refuseIntroductions: true})
 	manager, _ := withToolServer(t, fake)
 
-	_, err := manager.BeginAuth(context.Background(), "example")
+	_, err := manager.BeginAuth(context.Background(), "example", "")
 	if err == nil {
 		t.Fatalf("a service that cannot be connected must not hand back a flow")
 	}
@@ -148,7 +271,7 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 		t.Errorf("who aforge is to this service is not a thing to forget")
 	}
 
-	flow, err := manager.BeginAuth(ctx, "example")
+	flow, err := manager.BeginAuth(ctx, "example", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -168,7 +291,7 @@ func TestSayingNoInTheBrowserConnectsNothing(t *testing.T) {
 	manager, _ := withToolServer(t, fake)
 	ctx := context.Background()
 
-	flow, err := manager.BeginAuth(ctx, "example")
+	flow, err := manager.BeginAuth(ctx, "example", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -248,9 +371,14 @@ func TestEveryLoopbackAddressIsRegistered(t *testing.T) {
 
 // connectFake takes one stand-in service all the way through a sign-in.
 func connectFake(t *testing.T, manager *Manager) {
+	connectFakeAt(t, manager, "")
+}
+
+// connectFakeAt takes one stand-in through a sign-in with its address answer.
+func connectFakeAt(t *testing.T, manager *Manager, answer string) {
 	t.Helper()
 	ctx := context.Background()
-	flow, err := manager.BeginAuth(ctx, "example")
+	flow, err := manager.BeginAuth(ctx, "example", answer)
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}

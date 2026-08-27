@@ -32,14 +32,14 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many services can be connected
 
-**127 services register in this build: 99 are connected with a pasted key, and 28 are
+**128 services register in this build: 99 are connected with a pasted key, and 29 are
 connected in a browser.**
 
-The 28 browser ones are **Google** (Gmail and Calendar) and the 27 tool servers
+The 29 browser ones are **Google** (Gmail and Calendar) and the 28 tool servers
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
-GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro, Neon,
-Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry, Supabase** and
-**Todoist**.
+Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
+Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
+Supabase** and **Todoist**.
 The 99 key services come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
@@ -68,9 +68,14 @@ Google's consent screen is forced every time, because Google only issues a refre
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
 
-**The 27 tool servers listed below need nothing registered first.** aforge introduces
+**The 28 tool servers listed below need nothing registered first.** aforge introduces
 itself to the service at connect time and is issued an identity on the spot, then
 makes the same browser trip.
+
+Some accounts ask one thing before they open. **Datadog asks which Datadog site your
+account is on**, shows the seven commercial sites it accepts, and refuses anything
+else before making a connection. That answer is kept beside the keys so later calls
+and renewals return to the same site.
 
 **With a key.** Nothing opens and nothing renews; the key is as good as the day it
 was made. Most services want one key and nothing else. A few whose address contains
@@ -245,7 +250,7 @@ of you. A tool server appears in `/connect` as a browser connection like any oth
 connected with the same sign-in, forgotten with the same disconnect, and its keys live
 in the same store file.
 
-Twenty-seven ship, each at the address on the vendor's own page:
+Twenty-eight ship, each at the address on the vendor's own page:
 
 | Service | Address | What it brings |
 | --- | --- | --- |
@@ -257,6 +262,7 @@ Twenty-seven ship, each at the address on the vendor's own page:
 | CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
 | ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| Datadog | `https://mcp.<site>/v1/mcp` | your metrics, logs and monitors |
 | GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
 | Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
 | Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
@@ -282,7 +288,7 @@ Airtable's adds: "An enterprise admin may have to allow it first."
 Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
 address signs in with a key and nothing else, so it is deliberately not shipped.
 
-**All 27 work with zero registration.** aforge introduces itself to the service at
+**All 28 work with zero registration.** aforge introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one service cannot be spent at another.
 
