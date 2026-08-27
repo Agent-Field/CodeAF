@@ -102,10 +102,12 @@ import (
 //	                  have the verb and says so. RUNNING one that already exists
 //	                  is unaffected: that rides Harnesses and RunHarness, which
 //	                  the engine still fills.
-//	the task rail     absent, and absent by construction: task.go asserts an
-//	                  optional interface on the agent and the remote one does not
-//	                  implement it, so there is no rail, no room, and no journal
-//	                  read at a path that is not on this disk.
+//	the task rail     DRAWN from this conversation's rows in the far world. A
+//	                  landed row opens a read-only room: one honest line while
+//	                  Places.Task brings the bounded journal tail across, then
+//	                  the ordinary room renderer draws it. Steering, stopping,
+//	                  and changing its model stay absent because the wire has no
+//	                  such doors; no path from the far row is opened here.
 //	/image and @      LOCAL, and deliberately: the picture is on the machine the
 //	                  person is sitting at, and the bytes travel with the message
 //	                  (internal/remote's SubmitImage). So a relative path and the
