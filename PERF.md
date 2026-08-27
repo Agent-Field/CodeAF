@@ -147,8 +147,9 @@ back tomorrow cannot resurrect the stall.
 sweep are not information; they are the same claim made six hundred times, and
 every one but the last was already false when it was read. So the newest is
 kept, the rest are dropped, and the surface answers **once per frame** —
-`pointerEvery`, which is `frameInterval` and not a second cadence. A folded
-message also declares the frame before it rather than building one, because it
+`pointerEvery`, which is half of `frameInterval` because Bubble Tea writes at
+60 Hz while the surface animates at 30 Hz. A folded message also declares the
+frame before it rather than building one, because it
 provably changed nothing `app.View` reads; that half is the larger one, and it
 is only reachable because the fold is what knows.
 
@@ -161,6 +162,7 @@ is only reachable because the fold is what knows.
 | **A folded wheel run scrolls exactly as far as an unfolded one.** A scroll is a distance, so a folded run owes its whole length and spends every notch of it at the frame. | `internal/tui3/coalesce_test.go` |
 | **A folded message builds no frame**, at a handful of allocations against a frame's tens of thousands of bytes. | `internal/tui3/coalesce_test.go` |
 | A pointer ARRIVING somewhere is still answered on the spot, with no clock in between: only the SECOND motion in a row is a sweep. | `internal/tui3/coalesce_test.go` |
+| A sweep whose previous answer is already one pointer interval old answers its newest position immediately, with no second clock. Dense bursts keep the one-answer-per-frame ceiling; an overdue arrival does not begin another wait. | `internal/tui3/coalesce_test.go` |
 | A pointer crossing a row it is already on still leaves no stale entry, no dirty flag and no frame. | `internal/tui3/inputsmooth_test.go` |
 
 **Why a fold and not a drain.** `internal/session`'s stream is coalesced by

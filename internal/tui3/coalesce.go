@@ -59,13 +59,12 @@ import (
 // and stopping pays nothing for this file. Somebody sweeping across the screen
 // pays one answer per frame.
 
-// pointerEvery is how often a sweeping pointer is answered, and it is
-// [frameInterval] because the answer is only ever seen in a frame: a hover
-// resolved twice between two paints is a hover resolved once, and the reader
-// saw neither of them. It is not a second cadence on this surface — it is the
-// one this surface already has, asked for by the one message that arrives far
-// faster than it.
-const pointerEvery = frameInterval
+// pointerEvery is how often a sweeping pointer is answered. Bubble Tea writes
+// at sixty frames a second, twice the surface's animation cadence, so half a
+// [frameInterval] is the fastest answer the renderer can ordinarily show. A
+// faster clock would build answers between writes; the animation clock itself
+// leaves every other terminal write unused and makes hover visibly trail.
+const pointerEvery = frameInterval / 2
 
 // pointerFold is the sweep's buffer: what the pointer has done that the router
 // has not been told about yet.
@@ -95,6 +94,12 @@ type pointerFold struct {
 	// one wakeup and not six hundred. It is [app.painting]'s idea, held
 	// separately because the two clocks mean different things.
 	settling bool
+
+	// answeredAt is when the router last learned where the pointer was. The
+	// wakeup is still the dense storm's ceiling, but a late arrival must not
+	// start a fresh interval after the last answer is already a whole interval
+	// old: that would turn coalescing into visible lag for an ordinary sweep.
+	answeredAt time.Time
 
 	// still says the message just handled mutated NOTHING the frame reads — it
 	// went into the fold and stopped there — so the frame Bubble Tea is about to
@@ -154,9 +159,18 @@ func (a *app) pointerMoved(msg tea.MouseMotionMsg) tea.Cmd {
 	if !a.ptr.moving && !a.ptr.settling {
 		// THE POINTER ARRIVING, not sweeping.
 		a.ptr.moving = true
-		a.ptr.answered++
-		_, cmd := a.route(msg)
-		return cmd
+		return a.answerMotion(msg)
+	}
+	// A MOTION THAT ARRIVES AFTER THE CEILING HAS ALREADY ELAPSED IS THE NEXT
+	// FRAME'S ANSWER, not the start of another wait. The old wakeup may be late
+	// behind a frame or another message; making this arrival wait for it adds a
+	// whole pointer interval even though the fold has already kept its bargain.
+	if !a.ptr.answeredAt.IsZero() && a.now().Sub(a.ptr.answeredAt) >= pointerEvery {
+		if a.ptr.have {
+			a.ptr.folded++
+		}
+		a.ptr.last, a.ptr.have = msg, true
+		return a.pointerSpend()
 	}
 	// A SWEEP. The position the fold held before this one was already false, so
 	// it is dropped rather than answered.
@@ -250,10 +264,18 @@ func (a *app) pointerSpend() tea.Cmd {
 	a.ptr.notches = 0
 	if a.ptr.have {
 		a.ptr.have = false
-		a.ptr.answered++
-		if _, cmd := a.route(a.ptr.last); cmd != nil {
+		if cmd := a.answerMotion(a.ptr.last); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
 	return tea.Batch(cmds...)
+}
+
+// answerMotion is the one place a folded motion reaches the router, so the
+// cadence measures from answers rather than arrivals that may be discarded.
+func (a *app) answerMotion(msg tea.MouseMotionMsg) tea.Cmd {
+	a.ptr.answered++
+	a.ptr.answeredAt = a.now()
+	_, cmd := a.route(msg)
+	return cmd
 }
