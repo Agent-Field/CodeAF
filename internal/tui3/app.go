@@ -1049,6 +1049,12 @@ type app struct {
 	// frame instead of one per cell (coalesce.go).
 	ptr pointerFold
 
+	// drop is the keystroke-shaped drop's fold: where in the draft a run of
+	// characters that might spell a dropped file's path began, kept so that a
+	// terminal which TYPES a drop instead of pasting it lands the same chip
+	// (dropkeys.go).
+	drop dropFold
+
 	// shown is the last frame this surface declared and drawn says there is one.
 	// Bubble Tea calls [app.View] after EVERY message — the terminal WRITE is on
 	// its own 60Hz clock, but the frame is BUILT per message — so a message that
@@ -2327,6 +2333,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// that reads it is whatever frame comes next.
 		a.keysDisambiguated = msg.SupportsKeyDisambiguation()
 		return a, nil
+
+	case dropMsg:
+		// A RUN OF TYPED CHARACTERS WENT QUIET, and it may have been a file
+		// somebody dropped on a terminal that types drops rather than pasting
+		// them (dropkeys.go). A run that names nothing changes nothing here.
+		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
 		// The terminal said a paste is starting. Everything until the close is
@@ -5796,6 +5808,17 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.renew()
 
 	default:
+		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
+		// drop as keystrokes writes the path straight into the box, its leading
+		// `/` puts the composer into command mode, and this arm used to answer
+		// `unknown command: /var/folders/…/Screenshot · try /help` — a surface
+		// telling somebody their screenshot does not exist. dropkeys.go's fold
+		// catches nearly all of those before enter; this is the net under it,
+		// and it is the last one there is: if the whole line names files that
+		// are really on this disk, it was a drop and it becomes chips.
+		if a.droppedLine(line) {
+			return a.edited()
+		}
 		a.note("unknown command: /" + name + " · try /help")
 		return nil
 	}
