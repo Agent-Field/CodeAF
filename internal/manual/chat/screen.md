@@ -1410,8 +1410,9 @@ reporting: nothing spins on an idle session.
 ## What happens when the countdown runs out
 
 Not a kill. A foreground `bash` command that reaches its bound is handed to the
-background and **keeps running**: the row finishes normally, its result is the one
-line `still running as job 3; log at …`, and the turn carries straight on.
+background and **keeps running**: the row finishes normally, its result opens with
+`still running as job 3; log at …` and then carries whatever the command had
+already printed, and the turn goes straight on.
 
 So the coloured last seconds are a warning that the command is about to leave the
 turn, not that it is about to be destroyed. Nothing is thrown away and nothing is

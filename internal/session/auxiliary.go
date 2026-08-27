@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -87,10 +88,20 @@ func (a *Agent) callRole(
 	patience := roles.PatienceFor(role)
 
 	var lastErr error
-	for _, rung := range rungs {
+	// The rung's index is the ATTEMPT number on a failed call's journal row: an
+	// errand that walked its whole ladder wrote one row per rung, and the number
+	// is what tells a reader they were one errand rather than three.
+	for attempt, rung := range rungs {
 		// WithoutStream because nobody asked for this call: left on the turn's
 		// stream it would type itself into the room in the model's voice.
-		callCtx := provider.WithoutStream(ctx)
+		//
+		// And IntentBackground for the other half of the same sentence. Nobody
+		// asked for it and nobody is waiting on it, so the fastest endpoint is
+		// worth nothing here and its price is worth everything — every errand in
+		// this package routes by price rather than by speed
+		// (internal/provider's velocity.go). This is the one place that says so,
+		// because this is the one place an errand is made.
+		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
 		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
 		// answer for it is nothing (internal/effort's RoleErrand): naming a
 		// conversation and judging a route are the session's own housekeeping,
@@ -112,25 +123,108 @@ func (a *Agent) callRole(
 				callCtx = provider.WithEffortRung(callCtx, asked)
 			}
 		}
+		// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name
+		// the endpoint the way a turn's does. An errand routes by price, which
+		// means it is exactly the kind of request whose server cannot be guessed
+		// from the model name.
+		served := &provider.ServedEndpoint{}
+		callCtx = provider.WithServedEndpoint(callCtx, served)
 		callCtx, cancel := context.WithTimeout(callCtx, patience)
 		response, callErr := client.CompleteWithMessages(callCtx, messages,
 			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
 		cancel()
 		if callErr == nil && response != nil {
+			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
+			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
+			// call lines covered only the conversation's own requests, and a
+			// measured run's lines summed to $0.123 against a real bill of $0.739
+			// — the whole of the difference being three side-calls to a
+			// mastermind. See [journalCall] for why that is a record worth
+			// nothing and why the role rides the line.
+			a.journalRoleCall(response, role, rung.Model, served.Name())
 			return response, rung.Model, nil
-		}
-		// The person's own interrupt, or the caller's deadline, ends the errand
-		// where it stands. Walking a ladder on a context that is already over is
-		// two more requests that cannot land.
-		if ctx.Err() != nil {
-			return nil, rung.Model, ctx.Err()
 		}
 		lastErr = callErr
 		if lastErr == nil {
 			lastErr = errEmptyAnswer
 		}
+		// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
+		// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
+		// errand that cannot be reached is silent by design — the caller reads
+		// silence as "nothing to say" — and a silence nobody records is a bill
+		// with no explanation next to it. No estimate is written: an errand's
+		// request is a digest this session assembled, not the transcript, and the
+		// transcript's own count would be a number about something else.
+		//
+		// THE ROW IS WRITTEN BEFORE THE ERRAND IS ABANDONED, and that ordering is
+		// the measured failure. It used to come after the check below, so an
+		// errand cut by its CALLER'S deadline — the one failure that leaves the
+		// caller with nothing to say and no idea why — returned having written
+		// nothing at all. SWE-Marathon s4, 00:01:54Z: the mastermind that writes a
+		// handed-over turn's brief was asked, [checkpointHandoffWindow] elapsed
+		// ninety seconds later to the millisecond, the ladder fell to the person's
+		// bare sentence, and the journal held no error row, no call row and no
+		// word of why the worker started blind. A deadline is a failure like any
+		// other and it is now recorded like one.
+		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
+		// AND THE BOUNDARY READS IT, on the same row shape and for the same
+		// reason the turn's own failures are read: an errand cut by a deadline
+		// and an errand refused by an upstream are two different pieces of news
+		// and the file could not tell them apart. The verdict is not acted on —
+		// the rung below IS the retry this ladder has, and one rung is the whole
+		// of an errand's patience (see the header) — but a transport failure
+		// dropped without a class is a failure nobody can count
+		// (taxonomy_boundary.go's [Agent.readErrandFailure]).
+		a.readErrandFailure(lastErr, role, rung.Model, attempt+1)
+		// The person's own interrupt, or the caller's deadline, ends the errand
+		// where it stands. Walking a ladder on a context that is already over is
+		// two more requests that cannot land — and the caller is handed the
+		// context's own error, so it can tell "nobody answered in time" from "the
+		// provider refused" without reading the row this just wrote.
+		if ctx.Err() != nil {
+			return nil, rung.Model, ctx.Err()
+		}
 	}
 	return nil, "", lastErr
+}
+
+// journalRoleCall writes ONE errand's own accounting down, on the same line
+// shape a step of the turn writes (see [journalCall]).
+//
+// IT IS EVIDENCE AND NEVER SPEND, exactly as the turn's line is: the caller
+// folds the money into the session's totals through [Agent.addAuxiliaryUsage],
+// and the replay drops these lines rather than adding them a second time. What
+// this buys is the question the summed lines could not answer — which model was
+// asked what, and what that one request cost — for the half of the bill that has
+// nobody's turn behind it.
+//
+// THE MODEL FALLS BACK TO THE RUNG. A provider that names itself in the response
+// is the better answer, because it is who actually served the request; a
+// provider that names nothing would otherwise leave the line saying only that
+// somebody was paid, so the rung the ladder resolved stands in for it.
+//
+// A response that reported no usage writes nothing, which [sessionFile.appendCall]
+// enforces on its own side too — the emptiness law, and a stream cut before its
+// final chunk is exactly that case.
+func (a *Agent) journalRoleCall(response *ai.Response, role roles.Role, rung, endpoint string) {
+	if response == nil || response.Usage == nil {
+		return
+	}
+	model := strings.TrimSpace(response.Model)
+	if model == "" {
+		model = strings.TrimSpace(rung)
+	}
+	usage := response.Usage
+	a.file.appendCall(journalCall{
+		Model:      model,
+		Endpoint:   strings.TrimSpace(endpoint),
+		Role:       string(role),
+		Input:      usage.PromptTokens,
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		Output:     usage.CompletionTokens,
+		CostUSD:    costOf(usage),
+	})
 }
 
 // The two failures this file names itself. Both are the shape a caller has

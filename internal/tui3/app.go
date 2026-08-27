@@ -3130,30 +3130,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.note("could not start the task · this session has no task door")
 			return a, nil
 		}
-		// NOTHING TO SPLIT IS ONE WORKER, whatever the row says. A planner over
-		// work with no independent parts in it is a second model deciding to do
-		// the one thing there was to do, and the worker can still split its own
-		// brief later if it finds parts the sizing call did not.
-		if !msg.parallel {
-			return a, a.startTaskDoor(door, "single", msg.brief, "")
-		}
-		// A PLANNER ONLY WHERE SOMEBODY ASKED FOR ONE. The row set to `adaptive`
-		// is that asking, said once instead of on every command.
-		if msg.preset == config.TaskStartAdaptive {
-			return a, a.startTaskDoor(door, "adaptive", msg.brief, msg.hint())
-		}
-		// AND OTHERWISE THE WIDE WORK STARTS AS ONE WORKER, ARMED. This used to be
+		// EITHER ANSWER STARTS THE SAME THING, AND ONLY ONE OF THEM SAYS ANYTHING.
+		// The sizing call does not pick a road any more — there is one — so what
+		// its yes does is ARM this task to divide (internal/session's
+		// [Agent.armDivision]) and earn the person a line about it. This used to be
 		// the moment a two-row card opened and asked which shape to run, and the
 		// card was the wrong question: it wanted a decision about width before
 		// anybody had opened the material, from the one person in the room who had
 		// not read it. The measured road answers it later and from evidence — the
-		// judge's yes here arms this task to divide (internal/session's
-		// [Agent.armDivision]), the worker hands the parts out only once it has
-		// seen how many there really are, and they ride the same frontier the rest
-		// of the graph does. So the command starts the work, and the note says the
-		// one thing the person could not otherwise know: it may not stay one task.
-		a.note(taskWideNote)
-		return a, a.startTaskDoor(door, "single", msg.brief, "")
+		// worker hands the parts out only once it has seen how many there really
+		// are, and they ride the same frontier the rest of the graph does. So the
+		// command starts the work either way, and the note says the one thing the
+		// person could not otherwise know: it may not stay one task. A no says
+		// nothing, because nothing about narrow work is news.
+		if msg.parallel {
+			a.note(taskWideNote)
+		}
+		return a, a.startTaskDoor(door, msg.brief)
 
 	case taskStartedMsg:
 		a.settleShaping()

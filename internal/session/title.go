@@ -193,9 +193,10 @@ func messageContentText(message ai.Message) string {
 
 // cleanTitle takes the first line and strips the things a model adds against
 // the instruction: the throat-clearing it opens with ("Title:", "Sure, here is
-// the name:"), surrounding quotes, a trailing full stop, and the separators of
-// a name answered as a SLUG. Then it REFUSES an answer that is not a name at
-// all — the instruction handed back, or an opener with nothing behind it.
+// the name:"), the MARKDOWN it emphasises with, surrounding quotes, a trailing
+// full stop, and the separators of a name answered as a SLUG. Then it REFUSES an
+// answer that is not a name at all — the instruction handed back, or an opener
+// with nothing behind it.
 //
 // The slug is the one worth explaining. The instruction asks for words, and a
 // model that has spent its life reading identifiers sometimes answers
@@ -216,7 +217,7 @@ func messageContentText(message ai.Message) string {
 // words, which meta.json has carried since their first message (placemeta.go's
 // [Agent.stampUserLocked]).
 func cleanTitle(raw string) string {
-	title := strings.TrimSpace(firstLine(raw))
+	title := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	title = strings.Trim(title, `"'“”`)
 	title = stripOpener(title)
 	title = strings.Trim(title, `"'“”`)
@@ -234,6 +235,28 @@ func cleanTitle(raw string) string {
 		return ""
 	}
 	return title
+}
+
+// stripMarkup takes the markdown off a name.
+//
+// A NAME IS DRAWN AS PLAIN TEXT WHEREVER IT IS DRAWN — a status line, a rail row
+// twenty-four columns wide, a list of yesterday's sessions — so the asterisks a
+// model reaches for when it wants a title to look like a title arrive on screen
+// as asterisks. A row reading `**refactor beta.py — 15+ single-rename steps**`
+// was measured on the rail, and the same emphasis rides a session's name whenever
+// a namer decides a heading is what was asked for.
+//
+// THE THREE MARKS ARE THE THREE A MODEL USES FOR A LABEL: emphasis, a code span,
+// and a heading. Emphasis and code are markup wherever they stand, so they come
+// out of the middle as well as the ends; a hash and a quote's angle bracket mean
+// nothing except at the FRONT of a line, so they are trimmed only there and a
+// name that is about `#4` keeps it. The underscore is deliberately left alone —
+// it is a character inside identifiers a person may genuinely have named, and
+// [cleanTitle] already unwelds the one case where it is a separator.
+func stripMarkup(title string) string {
+	title = strings.TrimLeft(title, "#> \t")
+	title = strings.NewReplacer("*", "", "`", "").Replace(title)
+	return strings.TrimSpace(title)
 }
 
 // ── an answer that is not a name ────────────────────────────────────────────

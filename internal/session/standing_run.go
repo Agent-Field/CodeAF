@@ -328,6 +328,12 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg := r.parent
 	cfg.Workspace = item.Workspace
 	cfg.Place = Place{}
+	// THE FOLDER GOES BECAUSE THE PROBE IS NOT THE SESSION; THE LITTER STAYS WITH
+	// THE SESSION BECAUSE IT NEVER BELONGED TO ANY WORKSPACE. The probe's
+	// workspace is the ITEM'S repository — some other project entirely — so a job
+	// log resolved against a zero Place would be this program's droppings in
+	// somebody's tree, made by a check they never watched run (landing.go).
+	cfg.droppings = r.parent.droppingsPlace()
 	cfg.SessionFile = ""
 	cfg.AskConsent = false
 	cfg.InTask = true
@@ -335,7 +341,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg.standingItems = nil
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
-	agent.jobs = newJobRegistry(cfg.Workspace, cfg.Place, agent.enqueueSteering)
+	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueSteering)
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 
@@ -853,8 +859,14 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 			named: true,
 			// Armed, because the line above this function is the whole of the
 			// decision and re-asking it of a home that does not exist yet would
-			// answer no.
-			divide: true,
+			// answer no. The word is [armedCounted] and could not honestly be
+			// anything else: what armed it is [enumeratesWidth] over the firing's
+			// own text, which is the ONE signal unattended work has. So a firing
+			// whose parts are then refused on the floor is refused for free and
+			// finally, like any other work the counter armed — the tiebreak is
+			// for two readers disagreeing, and there is only one reader here
+			// (task_divide.go).
+			armed: armedCounted,
 		},
 		state:   TaskRunning,
 		started: time.Now(),
@@ -979,7 +991,10 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// The stamp is the CONFIGURED setter because this client is built here,
 		// without the catalog seam — a harness-default rung would be dropped
 		// every time and the floor would do nothing (provider's requestedEffort).
-		callCtx := provider.WithoutStream(ctx)
+		//
+		// IntentBackground says the same thing to the router — nobody is
+		// waiting, so route on price rather than on speed.
+		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
 		if rung := effort.Resolve(effort.Scope{
 			Task: restoredRung(judgment.Item.Does.Effort),
 			Role: effort.RoleSentinel,

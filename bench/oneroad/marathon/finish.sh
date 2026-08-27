@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# marathon/finish.sh — end a cell that is still up, by the same road cell.sh ends one.
+#
+# Usage: finish.sh <arm> <task> <seed> <settle-reason>
+#
+# WHY THIS EXISTS SEPARATELY. A cell whose settle rule failed to fire is sitting
+# on a live container with a live verdict inside it, and the two obvious ways to
+# rescue it are both wrong:
+#
+#   editing cell.sh in place — bash reads a script INCREMENTALLY, from a byte
+#   offset it keeps as it goes, so rewriting the file under a running cell makes
+#   it resume parsing at an offset that no longer means what it meant. The
+#   verify-and-record tail is exactly the part that would be misparsed;
+#
+#   killing cell.sh — its EXIT trap tears the container down, and the workspace
+#   the verifier has to score goes with it.
+#
+# So the ending is performed from outside, against the live container, in the
+# same order and with the same steps as cell.sh's own tail — reap the harness,
+# stage tests/ (never before the harness is dead), run the verifier, hand the
+# files back, write the record — and only THEN is cell.sh killed, so that its own
+# cleanup() performs the teardown it was always going to perform.
+#
+# It does not touch /workspace. A worker that made its own arrangement in there —
+# the `test-files -> java` symlink this task's scorer needs, a build tree, a
+# scratch file — is part of the container state the benchmark scores, and a
+# runner that tidies before judging is scoring something the agent did not leave.
+set -uo pipefail
+
+ARM="${1:?usage: finish.sh <arm> <task> <seed> <settle-reason>}"
+TASK="${2:?}"; SEED="${3:?}"; REASON="${4:-finished out of band}"
+
+MAR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MARATHON_REPO="${MARATHON_REPO:-/tmp/claude-1001/-home-santosh/36adab24-74be-4ae9-946a-ab932634b759/scratchpad/marathon/repo}"
+TASKDIR="$MARATHON_REPO/tasks/$TASK"
+MAR_OUT="${MAR_OUT:-/home/santosh/af-bench/marathon}"
+CELL="$MAR_OUT/$ARM-$TASK-$SEED"
+CONTAINER="oneroad-mar-$ARM-$TASK-$SEED"
+SESSION_NAME="$CONTAINER"
+MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
+NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
+HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
+
+say() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CELL/cell.log"; }
+
+[ -d "$CELL" ] || { echo "no such cell: $CELL"; exit 2; }
+docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true \
+  || { echo "container $CONTAINER is not running — nothing to finish"; exit 2; }
+
+IMAGE="$(docker inspect -f '{{.Config.Image}}' "$CONTAINER")"
+IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
+WORKDIR="$(docker inspect -f '{{.Config.WorkingDir}}' "$CONTAINER")"
+[ -n "$WORKDIR" ] || WORKDIR="$(docker image inspect -f '{{.Config.WorkingDir}}' "$IMAGE")"
+TASK_COMMIT="$(git -C "$MARATHON_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+VERIFIER_TIMEOUT="${VERIFIER_TIMEOUT:-3600}"
+
+# The snapshot loop is stopped first: it is about to take two more CPUs and half
+# an hour for a curve point about a cell that is ending anyway, and it would take
+# them from the verifier.
+pkill -f "marathon/snapshot.sh $CELL " 2>/dev/null
+say "$ARM/$TASK: finishing out of band — $REASON"
+
+STARTED_EPOCH="$(date -d "$(cat "$CELL/started-at")" +%s 2>/dev/null || echo 0)"
+WALL=$(( $(date +%s) - STARTED_EPOCH ))
+tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt" 2>/dev/null
+tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+echo "$REASON" > "$CELL/settle_reason"
+echo OK > "$CELL/outcome"
+date -Is > "$CELL/ended-at"
+cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-after"
+[ -f "$CELL/loadavg-before" ] || cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
+touch "$CELL/agent-done"
+
+# Killing the tmux session only kills the `docker exec` CLIENT; the process it
+# started lives on in the container as an orphan, and an orphan holding a cargo
+# build would fight the verifier for the same target directory and CPUs.
+docker exec "$CONTAINER" sh -c \
+  'pkill -f aforge; pkill -f "pi/dist/bundle"; pkill -f opencode; sleep 3;
+   pkill -9 -f aforge; pkill -9 -f "pi/dist/bundle"; pkill -9 -f opencode; sleep 1;
+   pkill -9 cargo; pkill -9 rustc; true' >/dev/null 2>&1
+sleep 2
+
+docker cp "$TASKDIR/tests" "$CONTAINER:/tests" >/dev/null || { say "could not stage /tests"; exit 1; }
+
+# ── WHAT THIS CELL ACTUALLY HAD, READ OFF THE CONTAINER ─────────────────────
+# finish.sh ends a cell that is ALREADY UP, and a cell that is already up may
+# have been launched before the egress allowlist and the toolchain fix existed —
+# the six seeds of 2026-08-25/26 were. So neither is assumed here: the network
+# policy is read from the container's own netns, and the toolchain split is read
+# from the filesystem. A cell whose agent installed its own rust into
+# /chome/.rustup is verified WITHOUT the pin, because 1.86.0 is not the compiler
+# that workspace was built with and the benchmark's own verifier would not have
+# had it either. Its 0.0 is a real reading about a real cell.
+if bash "$MAR/netlock.sh" show "$CONTAINER" 2>/dev/null | grep -q ONEROAD_ALLOW; then
+  NETWORK_DEVIATION="egress allowlist enforced in the container netns (host iptables via nsenter): task.toml's five hosts — crates.io, index.crates.io, static.crates.io, github.com, static.rust-lang.org — plus openrouter.ai for the model API, which the benchmark's own agent phase also adds. REMAINING DEVIATION: openrouter.ai is reachable, and the allowlist is by resolved address, so it cannot separate static.rust-lang.org from the crate registries (same Fastly address)"
+else
+  NETWORK_DEVIATION="default docker bridge, FULL EGRESS — this cell was started before the allowlist existed, or with NETLOCK=0"
+fi
+export NETWORK_DEVIATION
+say "$ARM/$TASK: network was — $NETWORK_DEVIATION"
+
+# ── THE COMPILER THIS CELL'S AGENT ENDED ON, WHEREVER IT PUT IT ─────────────
+# Officially the agent may upgrade its toolchain and the verifier, sharing
+# /root/.rustup in the same container, inherits it. Cells launched before the fix
+# upgraded into /chome/.rustup instead, where the verifier could not see it —
+# which is the runner's fault, not the agent's, and the official-equivalent state
+# is "the agent upgraded". So the verifier is pointed at whatever store this
+# cell's agent actually used. toolchain.sh looks at /chome first for exactly this
+# reason; for a cell run after the fix it answers /root/.rustup and these two
+# variables are the image's own defaults.
+read -r AGENT_TC AGENT_RUSTUP_HOME AGENT_CARGO_HOME <<<"$(bash "$MAR/toolchain.sh" detect "$CONTAINER" 2>/dev/null)"
+AGENT_RUSTUP_HOME="${AGENT_RUSTUP_HOME:-/root/.rustup}"; AGENT_CARGO_HOME="${AGENT_CARGO_HOME:-/root/.cargo}"
+IMAGE_TOOLCHAIN="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustup show active-toolchain 2>/dev/null' 2>/dev/null | awk 'NR==1{print $1}')"
+IMAGE_RUSTC="$(docker run --rm --entrypoint sh "$IMAGE" -c 'rustc --version 2>/dev/null' 2>/dev/null)"
+case "$AGENT_RUSTUP_HOME" in
+  /chome/*) say "$ARM/$TASK: SPLIT HOME cell — the agent's rustup store is $AGENT_RUSTUP_HOME (${AGENT_TC:-unknown}); the verifier is pointed at it, which is the state the official run would have had in /root/.rustup" ;;
+  *)        say "$ARM/$TASK: verifying with the agent's own toolchain — ${AGENT_TC:-unknown} from $AGENT_RUSTUP_HOME" ;;
+esac
+
+VSTART=$(date +%s)
+timeout "$VERIFIER_TIMEOUT" docker exec -e "WORKDIR=$WORKDIR" \
+  -e "NETWORK_DEVIATION=$NETWORK_DEVIATION" \
+  -e "RUSTUP_HOME=$AGENT_RUSTUP_HOME" -e "CARGO_HOME=$AGENT_CARGO_HOME" \
+  "$CONTAINER" bash /oneroad-verify.sh \
+  > "$CELL/verify.log" 2>&1
+VCODE=$?
+VWALL=$(( $(date +%s) - VSTART ))
+say "$ARM/$TASK: verifier exit $VCODE in ${VWALL}s"
+
+docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer 2>/dev/null
+
+MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
+AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
+AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
+WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="${CELL_SECONDS:-36000}" \
+python3 "$MAR/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" 0 "$VWALL" "$VCODE"
+
+# NOW the cell's own process may go: its EXIT trap is the teardown — kill the
+# tmux session, hand the mounts back, remove the container — and letting it run
+# is how this ending stays the same ending cell.sh would have performed.
+# Matched WITHOUT a directory prefix, because a cell launched from inside the
+# runner directory has argv `bash cell.sh <arm> <task>` and one launched by
+# wave.sh has the absolute path. A pattern that assumed the second would silently
+# fail to release the first, leaving it polling a container that no longer exists.
+# THE PID IS THE CELL'S OWN, NEVER THE FIRST MATCH. `pgrep … | head -1` released the
+# oldest cell.sh of the arm and tore down two unrelated seeds (s4, s5 on
+# 2026-08-26). The cell writes its pid to $CELL/cell.pid at birth; a cell born
+# before that line is found by the SEED in its environment; nothing else is
+# acceptable, so with neither the cell is left running and this script says so.
+CELLPID="$(cat "$CELL/cell.pid" 2>/dev/null || true)"
+if [ -z "$CELLPID" ] || ! kill -0 "$CELLPID" 2>/dev/null; then
+  CELLPID=""
+  for pid in $(pgrep -f "cell\.sh $ARM $TASK"); do
+    if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "SEED=$SEED"; then CELLPID="$pid"; break; fi
+  done
+fi
+if [ -z "$CELLPID" ]; then
+  say "$ARM/$TASK/$SEED: no cell.sh pid belongs to this seed — container left as is; end it by hand"
+fi
+if [ -n "$CELLPID" ]; then
+  say "$ARM/$TASK: releasing cell.sh pid $CELLPID (its EXIT trap tears the cell down)"
+  kill "$CELLPID" 2>/dev/null
+  for _ in $(seq 30); do
+    docker inspect -f '{{.State.Running}}' "$CONTAINER" >/dev/null 2>&1 || break
+    sleep 1
+  done
+fi
+# Belt and braces: if the cell's own process was already gone, its trap cannot
+# have run, so the same teardown is performed here.
+if docker inspect -f '{{.State.Running}}' "$CONTAINER" >/dev/null 2>&1; then
+  docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer 2>/dev/null
+  docker rm -f "$CONTAINER" >/dev/null 2>&1
+fi
+if find "$CELL" ! -user "$HOST_UID" -print -quit 2>/dev/null | grep -q .; then
+  docker run --rm -v "$CELL:/c" ubuntu:24.04 chown -R "$HOST_UID:$HOST_GID" /c >/dev/null 2>&1
+fi
+say "$ARM/$TASK: done — $CELL"

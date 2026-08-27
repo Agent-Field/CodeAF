@@ -153,11 +153,24 @@ func TestStateCardIgnoresACorruptFile(t *testing.T) {
 	}
 }
 
-// ── the system prompt ───────────────────────────────────────────────────────
+// ── the note the card rides in ──────────────────────────────────────────────
+
+// volatileNote lands the volatile note the way a request does — the drain at a
+// step boundary (agent.go) — and answers with what the model would read. It is
+// the honest reading of "what the card puts in front of the model": the card
+// stopped being part of message[0] when the cache autopsy showed that a block
+// which moves every time a delta lands re-prices the entire conversation behind
+// it (memory.go's refreshSystemLocked).
+func volatileNote(agent *Agent) string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	agent.landVolatileLocked()
+	return agent.lastVolatileNoteLocked()
+}
 
 // An empty card renders NOTHING — not an empty <state> block, not a heading
-// over nothing. The emptiness law.
-func TestStateCardRidesTheSystemPromptOnlyWhenItHasSomethingToSay(t *testing.T) {
+// over nothing, and no note at all to carry them. The emptiness law.
+func TestStateCardRidesTheTailNoteOnlyWhenItHasSomethingToSay(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.SessionFile = filepath.Join(t.TempDir(), "transcript.jsonl")
 	})
@@ -168,47 +181,53 @@ func TestStateCardRidesTheSystemPromptOnlyWhenItHasSomethingToSay(t *testing.T) 
 	if system != "SYSTEM" {
 		t.Fatalf("a fresh session's prompt = %q, want the base and nothing else", system)
 	}
+	if note := volatileNote(agent); note != "" {
+		t.Fatalf("a session with nothing to say landed a note:\n%s", note)
+	}
 
 	agent.mergeStateCard(reflex.StateDelta{
 		Goal: "ship the parser",
 		Next: []string{"write the replay"},
 	})
 
-	agent.mu.Lock()
-	system = messageText(agent.messages[0])
-	agent.mu.Unlock()
-	if !strings.HasPrefix(system, "SYSTEM") {
-		t.Fatalf("the base prompt was rewritten: %q", system)
-	}
+	note := volatileNote(agent)
 	for _, want := range []string{"<state>", "goal: ship the parser", "next:", "- write the replay", "</state>"} {
-		if !strings.Contains(system, want) {
-			t.Fatalf("the card block is missing %q:\n%s", want, system)
+		if !strings.Contains(note, want) {
+			t.Fatalf("the card block is missing %q:\n%s", want, note)
 		}
 	}
 	// Sections with nothing in them are absent entirely.
 	for _, unwanted := range []string{"done:", "in flight:", "open:", "refs:"} {
-		if strings.Contains(system, unwanted) {
-			t.Fatalf("an empty section was printed (%q):\n%s", unwanted, system)
+		if strings.Contains(note, unwanted) {
+			t.Fatalf("an empty section was printed (%q):\n%s", unwanted, note)
 		}
 	}
-
-	// And a REPLACEMENT, never a stack: the second merge's block is the only
-	// one in the prompt.
-	agent.mergeStateCard(reflex.StateDelta{Goal: "ship the parser and its replay"})
+	// And the base prompt is untouched by any of it: the card moved out of
+	// message[0] and nothing about a merge may put it back.
 	agent.mu.Lock()
 	system = messageText(agent.messages[0])
 	agent.mu.Unlock()
-	if strings.Count(system, "<state>") != 1 {
-		t.Fatalf("the card block stacked:\n%s", system)
+	if system != "SYSTEM" {
+		t.Fatalf("a card merge rewrote the system message: %q", system)
 	}
-	if strings.Contains(system, "goal: ship the parser\n") {
-		t.Fatalf("the old goal survived the replacement:\n%s", system)
+
+	// And a REPLACEMENT, never a stack: the newest note carries the second
+	// merge's block and only that.
+	agent.mergeStateCard(reflex.StateDelta{Goal: "ship the parser and its replay"})
+	note = volatileNote(agent)
+	if strings.Count(note, "<state>") != 1 {
+		t.Fatalf("the card block stacked:\n%s", note)
+	}
+	if strings.Contains(note, "goal: ship the parser\n") {
+		t.Fatalf("the old goal survived the replacement:\n%s", note)
 	}
 }
 
-// The card rides AFTER the memory block: standing facts first, this
-// conversation's live situation last, which is also the order that keeps the
-// stable half of the prompt in front for the cache.
+// The card is read AFTER the memory block, and now it is a whole transcript
+// that separates them rather than two lines of one string. Memory is what is
+// true across conversations and holds for the life of this one, so it stays in
+// message[0]; the card is what is true this minute, so it rides at the tail
+// where a change costs the note and nothing behind it.
 func TestStateCardRendersAfterTheMemoryBlock(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	agent.mergeStateCard(reflex.StateDelta{Goal: "ship the parser"})
@@ -219,17 +238,21 @@ func TestStateCardRendersAfterTheMemoryBlock(t *testing.T) {
 	system := messageText(agent.messages[0])
 	agent.mu.Unlock()
 
-	memoryAt := strings.Index(system, "<memory>")
-	cardAt := strings.Index(system, "<state>")
-	if memoryAt < 0 || cardAt < 0 || memoryAt > cardAt {
-		t.Fatalf("blocks are out of order (memory %d, state %d):\n%s", memoryAt, cardAt, system)
+	if !strings.Contains(system, "<memory>") {
+		t.Fatalf("the memory block left message[0]:\n%s", system)
+	}
+	if strings.Contains(system, "<state>") {
+		t.Fatalf("the card is back in message[0], in front of the whole transcript:\n%s", system)
+	}
+	if note := volatileNote(agent); !strings.Contains(note, "<state>") {
+		t.Fatalf("the card reached nothing the model reads:\n%s", note)
 	}
 }
 
 // A session with a card.json beside its transcript is holding the card before
 // its first turn runs — a resumed conversation must not have to wait for a
 // post-turn pass to be told what it is doing.
-func TestStateCardIsInThePromptOnResume(t *testing.T) {
+func TestStateCardIsInTheFirstRequestOnResume(t *testing.T) {
 	directory := t.TempDir()
 	transcript := filepath.Join(directory, placeTranscript)
 	card := newCardStore(filepath.Join(directory, placeCard))
@@ -243,10 +266,7 @@ func TestStateCardIsInThePromptOnResume(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	agent.mu.Lock()
-	system := messageText(agent.messages[0])
-	agent.mu.Unlock()
-	if !strings.Contains(system, "goal: ship the parser") {
-		t.Fatalf("the resumed session did not carry its card:\n%s", system)
+	if note := volatileNote(agent); !strings.Contains(note, "goal: ship the parser") {
+		t.Fatalf("the resumed session did not carry its card:\n%s", note)
 	}
 }

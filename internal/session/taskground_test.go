@@ -306,7 +306,7 @@ func TestTheReasonReachesTheModelUnderneathTheSettlePolicy(t *testing.T) {
 		Report: needsLookLead + reason + "\nThe parser now reads the new header.",
 	}
 	for _, settle := range []TaskSettle{TaskSettleAsk, TaskSettleAuto} {
-		note := taskNote(notice, "", settle)
+		note := taskNote(notice, "", settle, landingAddress{person: true})
 		if !strings.Contains(note, "task 12 needs your look") {
 			t.Fatalf("under %s the note does not say what state it is in:\n%s", settle, note)
 		}
@@ -319,10 +319,10 @@ func TestTheReasonReachesTheModelUnderneathTheSettlePolicy(t *testing.T) {
 	}
 	// Under ask the decision stays with the person; under auto the model is told
 	// to make it. Neither sentence is written by the ground-shift check.
-	if ask := taskNote(notice, "", TaskSettleAsk); !strings.Contains(ask, settleAskTail) {
+	if ask := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true}); !strings.Contains(ask, settleAskTail) {
 		t.Fatalf("the ask tail is gone:\n%s", ask)
 	}
-	if auto := taskNote(notice, "", TaskSettleAuto); !strings.Contains(auto, settleAutoTail) {
+	if auto := taskNote(notice, "", TaskSettleAuto, landingAddress{person: true}); !strings.Contains(auto, settleAutoTail) {
 		t.Fatalf("the auto tail is gone:\n%s", auto)
 	}
 }

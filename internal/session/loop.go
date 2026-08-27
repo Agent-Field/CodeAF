@@ -16,15 +16,23 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
 
-// maxRetries is pi's default auto-retry count: 3. The schedule is 2s, 4s, 8s
-// (baseDelayMs=2000 * 2**(attempt-1)).
-const maxRetries = 3
-const retryBaseDelay = 2 * time.Second
+// retryBaseDelay is the first wait of the retry ladder; each attempt doubles it,
+// so 2s, 4s, 8s — pi's schedule, which is what this loop has always walked.
+//
+// IT IS INTERPOLATED AND NOT TYPED OUT, and so is the attempt count that used to
+// sit beside it as `maxRetries = 3`. The ladder a request actually walks is now
+// the response boundary's, resolved from the person's settings
+// (taxonomy_boundary.go's [Agent.failureLimits]); a second spelling of either
+// number here would be the version that drifts, and a shipped install with no
+// profile behind it walks exactly the ladder it always did because the
+// boundary's own defaults ARE these two.
+const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
@@ -192,6 +200,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	started := time.Now()
 	var turn Usage
 
+	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
+	// session with a budget the goal owner is a [Steward] (principal.go), and a
+	// Steward that carries work on has to be carrying it on towards something.
+	// The done-condition for the WHOLE ask is written here, once, at the start of
+	// the first turn — before the work has had a chance to argue for a definition
+	// of done that suits it — and frozen for the life of the session
+	// (principal_acceptance.go).
+	//
+	// EVERY OTHER SESSION PASSES STRAIGHT THROUGH IT. There is no Steward, so
+	// there is nothing to write, and the cost is one nil check per turn.
+	a.openAcceptance(ctx, hub)
+
 	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
 	// build already knows how to do properly? A sub-harness has no slash command,
 	// so the turn itself is how one is reached: a strong match against the
@@ -208,15 +228,52 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
-	// And the third thing a turn can be instead of a request to the model: a
-	// request for an ADAPTIVE RUN — work whose shape nobody knows yet, planned
-	// and executed against a fuel cap while the conversation carries on
-	// (orchestrate.go). It is the same bargain the two above keep: an anchored
-	// cue and nothing else enters it, the turn ends the moment the run starts,
-	// and a build with no runner never reaches past one nil check.
-	if answered, completed := a.routeOrchestrate(ctx, hub, user, started); answered {
-		return completed
-	}
+	// AND ONE MORE QUESTION ABOUT THE SAME SENTENCE, ASKED BEFORE THE MODEL IS
+	// SENT ANYTHING AND ANSWERED WHILE IT IS THINKING: is what they just typed
+	// WORK? A cheap judge reads the REQUEST — not an answer, because there isn't
+	// one yet — and a both-yes converts this turn into a task at the next step
+	// boundary below (route_judge.go).
+	//
+	// IT IS ASKED HERE BECAUSE THE MODEL WILL NOT ASK IT LATER. The prompt teaches
+	// mid-turn escalation and the belt carries propose_task, and a measured chat
+	// message with four independent pieces of work in it was still ground out
+	// inline over ninety tool rounds, twice: a model deep in tool momentum does
+	// not stop to reach for a verb it rarely uses. So the decision is made at this
+	// seam, where it is the harness's to make.
+	//
+	// AND IT IS ASKED WITHOUT STOPPING ANYTHING, which is the difference between
+	// this line and the one above it. It used to hold the turn against a deadline
+	// shorter than the judge's own floor latency, so it answered nothing and cost
+	// every message the wait; now it RACES the turn and the loop simply carries the
+	// handle. A no is free because nobody ever waits for it, and the turn below
+	// runs exactly as it did before this existed.
+	race := a.routeAhead(ctx, user)
+	// AND THE RACE DIES WITH THE TURN. A verdict that lands after the answer has
+	// is a verdict nobody may spend — the post-turn judge has already read that
+	// turn, and a task starting on top of a finished answer is the surprise this
+	// whole road is built to avoid — so the end of the turn, by any of its exits,
+	// is the end of the question too.
+	defer race.end()
+
+	// AND THOSE TWO ARE THE ONLY QUESTIONS ASKED HERE. A turn used to be able to
+	// be a request for an ADAPTIVE RUN — the planned graph of nodes in
+	// orchestrate.go — read off an anchored cue at the head of what somebody
+	// typed, and that cue was routed from exactly here. IT IS GONE, AND NO CHAT DOOR REACHES THE PLANNED DAG
+	// ANY MORE. Somebody who types `orchestrate the migration` gets an ordinary
+	// turn: the model answers it, and if it reads as work the route judge starts
+	// a task on the one road every other piece of work takes (route_judge.go).
+	// That is ABSENCE AND NOT REFUSAL — nothing special-cases those words,
+	// nothing says no to them, and there is no phrasing that gets a run instead.
+	//
+	// THE ENGINE ITSELF IS UNTOUCHED, and its chat-side wiring is kept
+	// deliberately rather than ripped out: [Agent.RunOrchestrate], the roster
+	// family, the fuel gate, the snapshot and steering seams a run's page is
+	// drawn from, and [Config.OrchestrateRunner] all stand. What drives
+	// internal/orchestrate today is cmd/harness-design, on a driver of its own.
+	// A saved program from /subharness is NOT a run — it is a task node started
+	// by its own runner (subharness_contract.go) — so nothing in a conversation
+	// enters that package by any road. The pieces of orchestrate.go that no chat
+	// door reaches any more say so where they stand.
 
 	// AND THE LAST THING BEFORE THE FIRST REQUEST: which of the things this
 	// person has had aforge remember bear on what they just said (memory.go).
@@ -318,6 +375,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 	})
 
+	// WHO IS WAITING ON THIS TURN. A conversation's turn is a person watching an
+	// answer arrive, and the endpoint that starts soonest is what they are asking
+	// for. A TASK NODE's turn is the same machinery with nobody in front of it —
+	// a whole conversation, hub and observer and room, running while the person
+	// is somewhere else — and speed is worth nothing to it. It routes by price
+	// instead (internal/provider's velocity.go), which is the only thing said
+	// here: an explicit routing row still wins over both.
+	if a.config.InTask {
+		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
+	}
+
+	// The slot the adapter writes each answer's endpoint into. It is per turn and
+	// per agent, which is the only scope in which the answer is honest: the
+	// process-wide ledger's latest sighting belongs to whichever concurrent node
+	// finished last. Read beside every response by [Agent.addUsage].
+	served := &provider.ServedEndpoint{}
+	ctx = provider.WithServedEndpoint(ctx, served)
+
 	// The model is latched for the whole turn. SetModel's contract is that a
 	// turn in flight finishes on the model it started on, and reading a.model
 	// per step broke it: a swap between two steps would send one model the
@@ -354,6 +429,20 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// yard (salvage.go) lands from such cuts, bounded on its own budget there.
 	salvages := 0
 
+	// emptyReplies is how many times this turn has been answered with an HTTP 200
+	// carrying nothing at all. It is counted for the turn rather than for the
+	// step because that is the shape the measured failure had — three of them in
+	// fifteen seconds — and because the ladder it is walked against is the
+	// transport ladder, which is a budget for a piece of work and not for a line.
+	emptyReplies := 0
+
+	// meter is what this turn has COST, in finished tool rounds, priced against
+	// what handing it over would cost (checkpoint.go). It belongs to the turn for
+	// the reason the loop window and the change ledger do: it is a fact about one
+	// answer, and a meter that remembered yesterday's rounds would move work out
+	// of a conversation on the strength of a conversation that already ended.
+	meter := &checkpointMeter{}
+
 	for {
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
@@ -378,7 +467,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// request being measured.
 		a.guardOversizeRequest(ctx, hub)
 
+		// THE NODE'S PULSE, EITHER SIDE OF THE WIRE. This is the one line in this
+		// package where a request actually goes out, so it is the one place a
+		// heartbeat at the cadence of the work can be taken — no ticker, nothing
+		// to start, and nothing written at all by a node that is genuinely wedged,
+		// which is exactly the news an outside reader wants (task_beat.go). It is
+		// nil for a conversation, whose liveness the presence file already carries
+		// (taskpresence.go).
+		a.config.beat.began()
 		response, answered, err := a.completeWithRetry(ctx, hub, model, rung, partial, warm, forming)
+		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
 		// and everything the rest of the turn attributes — the usage rows, the
@@ -417,14 +515,41 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 
 		turn.Turns++
-		a.addUsage(&turn, response)
+		a.addUsage(&turn, response, served.Name())
 
 		calls := response.ToolCalls()
 
 		// Stop condition (pi spec §2): the loop ends when the assistant
 		// response has NO tool call.
 		if len(calls) == 0 {
-			a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
+			// A CALL THAT ANSWERED NOTHING IS A FAILED CALL, AND IT IS WRITTEN
+			// DOWN AS ONE. No words, no tool call, nothing the provider counted:
+			// that is not a short answer, it is an endpoint that did not answer,
+			// and the journal used to record it as an empty assistant message —
+			// indistinguishable, to anybody reading the file afterwards, from a
+			// model that had simply finished. Three of them in fifteen seconds
+			// were the front half of the measured failure ([journalError]).
+			//
+			// AND THE TURN NO LONGER ENDS ON IT. An empty 200 used to be written
+			// down once and the loop stopped, which on one measured run ended the
+			// whole thing eighteen minutes in with hours of budget unspent. The
+			// response boundary reads it for what it is — the wire, never the
+			// model, never the work — and a transport verdict is not allowed to
+			// end a turn (taxonomy_boundary.go's [Agent.readEmptyReply]). The
+			// transcript is untouched either way, so the retry re-sends exactly
+			// the messages the empty attempt was sent.
+			if turnBroke(response) {
+				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
+				emptyReplies++
+				if verdict := a.readEmptyReply(model, emptyReplies); verdict.Retries() {
+					partial.reset()
+					if waitErr := backoffWait(ctx, verdict.Backoff); waitErr == nil {
+						continue
+					}
+				}
+			} else {
+				a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
+			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
 			// arriving during the tool batch from recording it a second time.
@@ -446,13 +571,43 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// actually weigh.
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
+			// AND BEFORE THE TURN IS ALLOWED TO END: DID THE ASK END WITH IT?
+			//
+			// A turn stops when the model emits no tool call, and until this line
+			// nothing anywhere checked whether that stop meant the work was finished.
+			// It very often does not — "I've finished the parser, next I'll wire the
+			// handlers" ends a turn exactly as firmly as a finished job does — and on
+			// a measured ten-hour run every harness in the comparison, this one
+			// included, stopped with hours of the ask unused.
+			//
+			// So the same reader the marks use is shown the same account of the work
+			// and asked the same remains question the ceiling asks (checkpoint.go). A
+			// turn whose last words put a question to the PERSON is never re-opened,
+			// because it is waiting rather than stopping; everything else that is not
+			// finished is re-opened with one line saying what is left, ON THE SAME
+			// METER — so the ceiling still bounds it and a re-opened turn that reaches
+			// the ceiling hands off exactly as any other does.
+			//
+			// AND A TURN THAT BROKE IS NOT A TURN THAT STOPPED SHORT. The whole
+			// response goes down rather than its text, because the question this
+			// answers is about how the step ENDED and not about what it said
+			// ([turnBroke]). The other way a turn ends badly — a call that
+			// errored — never arrives here at all: the error path above returns
+			// before the loop reaches this line, and that is deliberate.
+			if again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response); over {
+				return true
+			} else if again {
+				continue
+			}
 			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
-			// in words alone: should that have been WORK? A second small model reads
-			// what was asked and the shape of what came back, and a yes raises one
-			// card offering to start it (route_judge.go). It launches nothing on its
-			// own, it is silent when it cannot work, and it is asked before the turn
-			// is sealed so that the card lives exactly as long as the turn does —
-			// which is how every other question this loop can raise behaves.
+			// in words alone: should that have been WORK? It is the same judge the
+			// front of this function asked about the request, reading what the
+			// request alone could not have told it. A second small model reads
+			// what was asked and the shape of what came back, and a yes STARTS it as
+			// a task and says so on the transcript (route_judge.go). It is silent
+			// when it cannot work, it is rate-limited to one start every few turns,
+			// and it is asked before the turn is sealed so that the work it starts is
+			// on the rail by the time the person reads the answer.
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
@@ -501,6 +656,41 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// next request has not been assembled, and a note dropped here rides into
 		// it exactly as a person's steering does.
 		episode.postFeedback(ctx, hub, calls, results)
+
+		// AND THE RACE STARTED AT THE FRONT OF THE TURN IS ASKED WHETHER IT HAS
+		// ANSWERED YET (route_judge.go). It is a non-blocking read: a question still
+		// in flight costs this boundary nothing and gets asked again at the next one.
+		// A both-yes ENDS NOTHING — it tightens the meter below, so the reading of
+		// the work happens at this boundary rather than after the full handoff
+		// price. It stands above that line because it feeds it, and because a
+		// verdict read after the meter had already counted this round would arrive
+		// one boundary too late to move the mark it is pulling down.
+		a.routeTriage(race, meter)
+
+		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
+		// what handing it over would cost instead (checkpoint.go). The two prior
+		// answers to a grinding turn both decide BEFORE there is any evidence —
+		// the prompt teaches a judgement the model forgets under momentum, and the
+		// route judge reads a request nobody has worked on yet — so this is the
+		// one reading taken while the cost is a fact. At each geometric mark a
+		// sidecar on the tier that thinks is shown the transcript and asked to
+		// sketch what is left; a sketch with independent parts in it ends the turn
+		// there, and past the last mark the harness stops reading, ends the turn,
+		// and moves what is left onto the one road, where the work runs supervised.
+		//
+		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
+		// the turn and never inside it, which is the whole of the wave that measured
+		// it: a model deep in tool momentum answers a mid-turn question with a tool
+		// call up to half the time.
+		//
+		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
+		// the control plane's law is that pre-action is the only hook that may
+		// (hooks.go). It is the one seam left in this loop that can end a turn out
+		// of a judgement, and a false is the turn carrying on exactly as it would
+		// have.
+		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model) {
+			return true
+		}
 
 		a.maybeCompact(ctx, hub)
 	}
@@ -623,7 +813,12 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 	// started on, however far along it the step has walked.
 	origin := model
 	var hopped []string
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	// THE LADDER'S LENGTH IS THE BOUNDARY'S, not this file's constant. It is
+	// read once, outside the loop, because a bound that could change between two
+	// attempts of one ladder is a ladder nobody can reason about afterwards
+	// (taxonomy_boundary.go).
+	attempts := a.failureLimits().TransportAttempts
+	for attempt := 0; attempt < attempts; attempt++ {
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
 		// interrupt during the next one would otherwise record the two halves
@@ -660,6 +855,20 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		if ctx.Err() != nil {
 			return nil, model, ctx.Err()
 		}
+		// AND THE FAILURE IS WRITTEN DOWN BEFORE ANYTHING DECIDES WHAT TO DO
+		// ABOUT IT. Every other outcome of a request reaches the journal; this
+		// one reached nothing at all, and a measured run (see [journalError])
+		// left five hours of budget unspent with the whole record of why being a
+		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
+		// reads as a ladder.
+		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
+		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
+		// this says what the harness took it to MEAN, which is the only half of
+		// the record the money turns on (taxonomy_boundary.go). The verdict is
+		// read below rather than acted on here, because the two answers already
+		// in this loop — a guard cut and a refusal of our own bytes — are more
+		// specific than any class and must keep their own arms.
+		verdict := a.readCallFailure(err, model, "", attempt+1)
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a
@@ -696,18 +905,38 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 			attempt--
 			continue
 		}
+		// ── WHOSE MISTAKE WAS IT? ────────────────────────────────────────────
+		//
+		// THE REFUSAL ANSWERS FOR ITSELF, BEFORE ANY PATTERN READS ITS SENTENCE.
+		// A 4xx that named no upstream is the router reading OUR OWN BYTES and
+		// saying no ([provider.APIError.OurRequest]), and every endpoint alive
+		// will say the same thing about the same request — so the ladder stops
+		// here rather than spending 2s, 4s and 8s to be told it three times. A
+		// 4xx that DID name an upstream is that upstream's refusal, another
+		// endpoint may serve it, and the adapter has already taken the refusing
+		// lane out of the ledger so the next attempt is routed elsewhere
+		// (internal/provider's velocity.go, refuseUpstream).
+		//
+		// IT IS A SHAPE AND NEVER A STATUS LIST, which is the whole point: the
+		// measured failure was a 400 whose text — "Provider returned error" —
+		// matched the retryable pattern and was retried three times into the same
+		// wall, while a differently-worded 400 from the same upstream would have
+		// been given up on at once. The pattern is asked second now, and only
+		// about errors that carry no refusal to ask.
+		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
+			return nil, model, err
+		}
 		errMsg := err.Error()
 		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
 			return nil, model, err
 		}
-		if attempt < maxRetries {
-			delay := retryBaseDelay * (1 << attempt) // 2s, 4s, 8s
-			if waitErr := backoffWait(ctx, delay); waitErr != nil {
+		if verdict.Retries() {
+			if waitErr := backoffWait(ctx, verdict.Backoff); waitErr != nil {
 				return nil, model, waitErr
 			}
 		}
 	}
-	return nil, model, fmt.Errorf("after %d retries: %w", maxRetries, lastErr)
+	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
 }
 
 // ── THE ENDPOINT-DIVERSITY GATE ─────────────────────────────────────────────
@@ -749,6 +978,12 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 // Degeneration is the one reason the gate says nothing about: soup is a claim
 // about the transcript and the weights reading it, never about which endpoint
 // delivered it, so it keeps its own single retry either way.
+//
+// AN OVERRUN IS AN ENDPOINT CLAIM and shares the silence budget deliberately.
+// A reply that ran past the wall its own lane earned is that lane failing to
+// finish, exactly as a reply that went quiet is — the ledger struck it either
+// way (internal/provider's noteCutProvider) — so the question "did anything
+// actually move" governs both.
 func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 	if cut.Reason == provider.CutBabble {
 		return babbleRetries
@@ -792,6 +1027,8 @@ func cutNotice(cut *provider.StreamCut) string {
 		return "the reply lost its thread — that text was dropped, asking again"
 	case provider.CutStalled:
 		return "the model went quiet mid-reply — asking again"
+	case provider.CutOverrun:
+		return "the reply kept going and never finished — asking again"
 	default:
 		return "nothing came back from the model — asking again"
 	}
@@ -810,6 +1047,8 @@ func hopNotice(cut *provider.StreamCut, next string) string {
 		return "the reply kept losing its thread — finishing this one on " + next
 	case provider.CutStalled:
 		return "the model kept going quiet mid-reply — finishing this one on " + next
+	case provider.CutOverrun:
+		return "the reply kept running on without finishing — finishing this one on " + next
 	default:
 		return "nothing kept coming back from the model — finishing this one on " + next
 	}
@@ -904,6 +1143,12 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 type toolResult struct {
 	text    string
 	isError bool
+	// harness says the HARNESS wrote this failure, rather than the world the
+	// model reached for: a withdrawn hand (withdrawn.go), or a door that refused
+	// the call before it ran (the pre-action chain). It rides out to the runner
+	// on [Event.HarnessMade], and every counter that judges the model by its
+	// steps skips it — the harness's failures are the harness's steps.
+	harness bool
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -1030,8 +1275,9 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 	if call.ID == "" || !earlyTools[call.Function.Name] {
 		return
 	}
-	// A tool the belt does not have would only produce "Unknown tool" early
-	// instead of late; refusing here keeps a warm result from ever being an
+	// A tool the belt does not have would only produce the dispatcher's miss —
+	// "Unknown tool", or a withdrawal for a hand that was taken (withdrawn.go) —
+	// early instead of late; refusing here keeps a warm result from ever being an
 	// answer the live belt would not have given.
 	if !a.hasTool(call.Function.Name) {
 		return
@@ -1254,6 +1500,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
+				// WHOSE FAILURE THIS WAS travels with it. Everything counting
+				// steps out of band — the runner's no-progress ledger above all —
+				// reads events and not results, so a fact kept only on the result
+				// is a fact no counter can act on (withdrawn.go).
+				HarnessMade: results[index].harness,
 			})
 			continue
 		}
@@ -1306,6 +1557,13 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
+			// A REFUSED DOOR IS THE HARNESS'S OWN ANSWER. The tool never ran, the
+			// world never saw the call, and what came back was written here — by a
+			// policy, a scope, a capability that is off, a person saying no. Marked
+			// at the ONE place every veto passes through rather than inside each
+			// citizen, so a pre-action hook added next month cannot forget to say
+			// so and have its refusals counted against the model as spinning.
+			refused.harness = true
 			return refused
 		}
 		// The arguments are read from what pre-action handed back — a canonicalizing
@@ -1338,7 +1596,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, matching pi's thrown-Error semantics.
-			return ep.noteToolOutcome(call, toolResult{text: err.Error(), isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -1352,9 +1610,44 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		return ep.noteToolOutcome(call, toolResult{text: text, isError: isError})
+		return a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
 	}
+	// ── TAKEN, OR NEVER HELD ──
+	//
+	// The belt cannot tell these apart: both are one lookup that missed. The
+	// difference is a fact only the code that narrowed the belt has, and it
+	// recorded it there (withdrawn.go) so this line can read it back.
+	//
+	// A WITHDRAWN HAND IS REPORTED AS A WITHDRAWAL. Measured in SWE-Marathon s4:
+	// the landing pass took `bash`, `read` and `grep` off a worker's belt and the
+	// worker was answered "Unknown tool: bash" — eighteen bytes naming no reason,
+	// no surviving set and nothing to do instead. It retried eight times, which
+	// was the only rational move left, and the stuck watch then punished it for
+	// the retries. The notice below says why the hand is gone, what is still on
+	// the belt by name, and what to do with what is left.
+	//
+	// AND IT IS THE HARNESS'S FAILURE, not the model's, so no counter spends it
+	// against the model ([toolResult.harness]).
+	if notice, withdrawn := a.withdrawalNotice(call.Function.Name); withdrawn {
+		return toolResult{text: notice, isError: true, harness: true}
+	}
+	// A name nobody ever had keeps the old answer, and keeps it word for word:
+	// that one IS a sentence about the model.
 	return toolResult{text: "Unknown tool: " + call.Function.Name, isError: true}
+}
+
+// finishToolResult is THE ONE PLACE A TOOL RESULT GROWS ANYTHING, and the order
+// of the two things it can grow is fixed here so nothing downstream has to
+// guess at it.
+//
+// First the error→fix sidecar (fixrecall.go), which is about THIS call and
+// belongs against the text that call produced. Then the outstanding jobs
+// (jobfooter.go), which are about the session and belong at the very bottom,
+// where the model reads them the way a shell prints its background jobs under
+// the prompt — and where [stripJobFooter] can take them off again for anything
+// that has to compare two results as bodies.
+func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+	return a.withJobState(ep.noteToolOutcome(call, result))
 }
 
 // glossField names the argument that says what a call is DOING, per tool. A
@@ -1707,7 +2000,17 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // addUsage folds one response's accounting into the turn and the session, and
 // remembers the provider's own context size — the honest number the compaction
 // threshold prefers over an estimate.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
+//
+// It also writes ONE JOURNAL LINE PER RESPONSE, after the folds and changing
+// none of them. The seal at the end of the turn is a sum of sixty-odd calls
+// with wildly different shapes, and a sum cannot answer the question a cost
+// autopsy actually asks — what did a call with THIS many cached tokens cost,
+// served by WHOM. That had to be reconstructed from transcript byte counts
+// once; the line below is so it never has to be again. See
+// [sessionFile.appendCall] for why it is evidence and never spend.
+//
+// `served` is the endpoint the router says answered, "" when nothing said.
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, served string) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -1749,6 +2052,95 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 		a.contextTokens = context
 	}
 	a.mu.Unlock()
+
+	a.file.appendCall(journalCall{
+		Model:      strings.TrimSpace(response.Model),
+		Endpoint:   strings.TrimSpace(served),
+		Input:      usage.PromptTokens,
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		Output:     usage.CompletionTokens,
+		CostUSD:    costOf(usage),
+	})
+}
+
+// errorRowMessage bounds the sentence written on a failed call's journal row.
+// The upstream's own body has its own field and its own clip; this is the
+// harness's one-line account of the failure, not a place for a payload.
+const errorRowMessage = 512
+
+// journalFailedCall writes ONE FAILED CALL down (see [journalError]).
+//
+// THE LAW: A FAILED CALL NEVER LOOKS LIKE AN EMPTY ANSWER, AND NEVER LOOKS LIKE
+// NOTHING AT ALL. Every request that succeeds leaves a call line; until this,
+// every request that failed left the journal exactly as it found it, and the
+// autopsy of the measured run could read three empty assistant messages and a
+// dead turn without learning the status, the endpoint, the provider or a single
+// word of what the upstream had said.
+//
+// What it can say it says, and what it cannot it leaves off — a transport error
+// carries no status and no provider, and a row of zeroes would read as facts.
+// `role` is the errand that made the call, absent on the conversation's own
+// requests, exactly as [journalCall] spells it.
+func (a *Agent) journalFailedCall(ctx context.Context, model, role string, err error, attempt, estimate int) {
+	if err == nil {
+		return
+	}
+	row := journalError{
+		Model:    strings.TrimSpace(model),
+		Endpoint: strings.TrimSpace(provider.ServedEndpointFrom(ctx).Name()),
+		Role:     strings.TrimSpace(role),
+		Attempt:  attempt,
+		Input:    estimate,
+		Message:  clip(err.Error(), errorRowMessage),
+	}
+	if refusal, ok := provider.RefusalFrom(err); ok {
+		row.Status = refusal.Status
+		row.Provider = strings.TrimSpace(refusal.Provider)
+		row.Raw = refusal.Raw
+		if said := strings.TrimSpace(refusal.Message); said != "" {
+			row.Message = clip(said, errorRowMessage)
+		}
+	}
+	// A CUT IS THE ONE FAILURE THAT GOT SOMEWHERE, so it is the one that has
+	// more than a sentence to write down: who was serving, how long the request
+	// ran, and how much answer had arrived before it was ended. Without the last
+	// two, "the reply ran past its wall" is a claim a reader has to take on
+	// trust; with them it is a measurement, and the wall itself can be argued
+	// with from the file (internal/provider's [provider.StreamCut]).
+	if cut, ok := provider.CutFrom(err); ok {
+		if named := strings.TrimSpace(cut.Provider); named != "" {
+			row.Provider = named
+			if row.Endpoint == "" {
+				row.Endpoint = named
+			}
+		}
+		row.Output = cut.Tokens
+		row.DurationMS = cut.Ran.Milliseconds()
+	}
+	a.file.appendError(row)
+}
+
+// requestEstimate is the session's own count of the tokens the request that just
+// failed was carrying. It is the ONLY token figure a failed call has: the
+// provider counted none, so the alternative is a row that cannot say whether the
+// request was small or enormous — which is the first question an autopsy asks of
+// a 400.
+func (a *Agent) requestEstimate() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.estimateTokensLocked()
+}
+
+// costOf is the provider's own figure for one call, zero when it did not send
+// one. Zero and absent are the same thing on the journal line, which is the
+// emptiness law: a call whose cost nobody reported writes no cost, and a reader
+// must not be able to tell that apart from free by looking at the number.
+func costOf(usage *ai.Usage) float64 {
+	if usage == nil || usage.Cost == nil {
+		return 0
+	}
+	return *usage.Cost
 }
 
 // assistantContent passes the response's content parts through, falling back
@@ -2198,7 +2590,12 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 	folded := make(map[int]bool, 16)
 	first, last := -1, -1
 	for index := 1; index < limit && total > target; {
-		if a.messages[index].Role == "user" {
+		// Every message the person typed survives a fold. The session's own
+		// volatile note does not: each one is superseded by the next landing,
+		// and a note kept forever would put every old state of the card back
+		// on the meter, uncompactable — the exact bill moving the card to the
+		// tail was meant to end (agent.go's [isVolatileNote]).
+		if a.messages[index].Role == "user" && !isVolatileNote(messageContentText(a.messages[index])) {
 			index++
 			continue
 		}
@@ -2446,6 +2843,20 @@ const (
 	// wrongly is unattributable without the name of the model that filled it
 	// (subharness_intake.go).
 	auxRoleIntake = "intake"
+	// auxRoleHand is the fourth, and it names a whole child agent rather than one
+	// call: a fork's hand (fork.go). It is here for a reason the first three do
+	// not have — a hand's spend rides INSIDE the turn that opened it, folded into
+	// the same books, so without the tag there is no way to read a session's
+	// journal and say which of a turn's tokens the hands spent and which the
+	// caller did.
+	auxRoleHand = "hand"
+	// auxRoleHandoff is the fifth, and it is the one that names REAL MONEY ON THE
+	// MASTERMIND TIER. The brief a handed-over turn gives its worker is written by
+	// a second model at the end of a turn the person did not ask for a second model
+	// on (checkpoint.go's [Agent.writeHandoff]); without the tag its line is an
+	// anonymous errand at the dearest price in the catalog, which is precisely the
+	// shape of bill the mark reader's own journal line exists because of.
+	auxRoleHandoff = "handoff"
 )
 
 // addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a

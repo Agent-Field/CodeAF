@@ -76,7 +76,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		},
 		never: []string{"task 9 failed", "task 9 finished"},
 	}} {
-		note := taskNote(c.notice, uri, TaskSettleAsk)
+		note := taskNote(c.notice, uri, TaskSettleAsk, landingAddress{person: true})
 		for _, want := range c.want {
 			if !strings.Contains(note, want) {
 				t.Fatalf("%s: the note is missing %q:\n%s", c.what, want, note)
@@ -101,7 +101,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 // node's journal path, so this is the ordinary shape of a note replayed for a
 // resumed session (task_store.go).
 func TestTaskNoteWithNoTranscriptEndsAtTheTitle(t *testing.T) {
-	note := taskNote(TaskNotice{ID: 3, Title: "Port the parser", State: TaskDone}, "", TaskSettleAsk)
+	note := taskNote(TaskNotice{ID: 3, Title: "Port the parser", State: TaskDone}, "", TaskSettleAsk, landingAddress{person: true})
 	if first := strings.SplitN(note, "\n", 2)[0]; first != "task 3 finished: Port the parser" {
 		t.Fatalf("the first line is %q", first)
 	}

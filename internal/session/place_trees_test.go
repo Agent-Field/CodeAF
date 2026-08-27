@@ -48,7 +48,7 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 		t.Fatalf("branch = %q, want a task branch", tree.branch)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "all of it\n")
-	if merge, detail := tree.comeHome("do the thing"); merge != mergeMerged {
+	if merge, detail := tree.comeHome("do the thing", []string{"done.txt"}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "done.txt")); err != nil {
