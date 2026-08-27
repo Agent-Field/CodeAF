@@ -38,6 +38,8 @@ import (
 // of these give it.
 var wakeRoads = map[string]string{
 	"wakeNote": "the constructor itself; it addresses nobody and carries no words of its own",
+	"jobNote": "the registry's background-job ending; the model started this work and its tool " +
+		"contract promised the ending would return instead of being polled",
 	"steerNote": "the constructor itself; a line the PERSON typed into a running node, " +
 		"which is the one wake that is already a person's own sentence",
 	"enqueueSteering": "the generic lane. Its callers own the addressing: a landing goes through " +

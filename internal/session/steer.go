@@ -244,8 +244,9 @@ func (a *Agent) consumedSteerLocked(hub *eventHub, user userMessage) {
 // which is the only order in which it can be read at all.
 //
 // Everything else on the queue is left exactly where it was. A task's landing
-// note, a job's exit, a watch's delta and a line steered at a NODE all keep
-// their own law and their own drain, and this pass is invisible to them.
+// note, a job's exit and a line steered at a NODE all keep their own law and
+// their own drain, and this pass is invisible to them. A watch delta is on the
+// ambient boundary queue and never enters this pass at all.
 func (a *Agent) liftSteersLocked(hub *eventHub) {
 	if len(a.steering) == 0 {
 		return
