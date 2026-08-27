@@ -3200,6 +3200,9 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		extensions int
 		deadline   = time.Now().Add(limits.deadline)
 		evidence   []string
+		// reportedParts is monotone for this worker's division. A landing is
+		// progress even when its note races the event drain below.
+		reportedParts = child.reportedChildren()
 	)
 	checkpoint := func(threshold string) bool {
 		if node == nil {
@@ -3269,6 +3272,11 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				path, wrote := changedPath(event, dir)
 				saved := wrote && event.Kind == EventToolEnd
 				added := addedSomething(event, saved, moved, ledger)
+				reports := child.reportedChildren()
+				partLanded := reports > reportedParts
+				if partLanded {
+					reportedParts = reports
+				}
 				if saved && !seen[path] {
 					seen[path] = true
 					changed = append(changed, path)
@@ -3278,6 +3286,15 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 					node.noteWrote(path)
 				}
 				switch {
+				// A PART LANDING IS PROGRESS EVEN WHEN THIS EVENT IS OLD NEWS. Tool
+				// events and model requests travel on separate lanes, so a fast part
+				// can report after a request was made but before this drain reaches
+				// that request's last tool event. Reading only
+				// [Agent.childrenOutstanding] at this instant then mislabels the old
+				// step as a new idle one. The monotone report count gives the landing
+				// one exact place in the ledger, whether the part finished or failed.
+				case partLanded:
+					idle = 0
 				// ── A STEP THE HARNESS FAILED IS THE HARNESS'S STEP ──
 				//
 				// It comes FIRST, ahead of every other reading, because it is not a
@@ -3296,6 +3313,14 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// costs a step and still stands in the evidence, because the money
 				// was really spent and the auditor should see what happened.
 				case event.HarnessMade:
+				case child.taskNewsOwed() > 0:
+					// AND A REPORT WAITING FOR ITS READER SUSPENDS OLD STEPS. Until
+					// the next request carries the queued note, an event reaching this
+					// drain may still belong to the turn from before the report landed.
+					// Counting those delayed events would spend the freshly reset
+					// allowance before the parent had seen the news it is meant to
+					// integrate. Once [Agent.drainSteering] carries the note it clears
+					// this count, and genuine spinning over the fold is counted again.
 				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
 				// node may never write until its final words; a build node may
 				// spend its first dozen steps reading; a node making pictures
@@ -3603,6 +3628,26 @@ func (a *Agent) childrenOutstanding() bool {
 		}
 	}
 	return false
+}
+
+// reportedChildren counts the task reports this worker has already been handed.
+// It is separate from [Agent.childrenOutstanding] because the transition from
+// one count to the next is news even when the last child made "outstanding"
+// false before the runner reached the event that was already in flight.
+func (a *Agent) reportedChildren() int {
+	a.mu.Lock()
+	graph, parent := a.config.tasker, a.config.taskID
+	a.mu.Unlock()
+	if graph == nil {
+		return 0
+	}
+	reported := 0
+	for _, kid := range graph.children(parent) {
+		if kid.reported() {
+			reported++
+		}
+	}
+	return reported
 }
 
 // familyDepth is how many tasks deep this node sits, and 1 is the floor: a node

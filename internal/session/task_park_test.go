@@ -246,6 +246,42 @@ func TestAParentIntegratesTheRestWhenOnePartFails(t *testing.T) {
 	}
 }
 
+// AND THE FOLD STILL HAS TO MOVE. A report buys the parent a fresh allowance
+// and a chance to read the news; it does not make every later step progress. Two
+// repeated reads after the reports are inside the integration turn must still
+// spend a threshold of two and stop the parent exactly as they would any other
+// worker.
+func TestAParentThatSpinsAfterItsPartReportsIsStillStopped(t *testing.T) {
+	release := make(chan struct{})
+	steps := handOutThree("")
+	steps[len(steps)-1] = func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse("fold-look-1", "read", `{"path":"pyproject.toml"}`), nil
+	}
+	steps = append(steps,
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("fold-look-2", "read", `{"path":"pyproject.toml"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("I am still looking at the same thing"), nil
+		},
+	)
+	completer := &scriptedCompleter{steps: steps}
+	nest := newNest(t, completer, parkedParts(release, nil, nil))
+
+	done, stopped := runParent(t, nest, taskLimits{maxSteps: 200, noProgress: 2})
+	waitRequests(t, completer, 9)
+	waitQuiet(t, nest.node)
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the idle integration turn never stopped")
+	}
+	if want := "stopped: 2 steps without progress"; *stopped != want {
+		t.Fatalf("the idle integration turn stopped with %q, want %q", *stopped, want)
+	}
+}
+
 // ── what the wait costs ─────────────────────────────────────────────────────
 
 // THE CLOCK STOPS WITH THE NODE. The deadline bounds how long a node may WORK
