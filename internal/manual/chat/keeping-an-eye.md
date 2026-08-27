@@ -653,8 +653,16 @@ exactly two things, and only after **7 days** with nothing touching them:
 
 Nothing else is ever removed. Not your items, not the ledgers, not a run that
 said something, landed something, failed, or is waiting for you; not a run whose
-folder never said what it came to; not a folder something still holds open; and
-never a conversation under `~/.aforge/v3/projects/`, whatever its age.
+folder never said what it came to; and not a folder something still holds open.
+
+**Conversations are swept in exactly one case**, and it is the same week and the
+same judgement: one you started **in a temp directory**, seven days after you
+last said anything to it. Everything it holds goes with it — the transcript, and
+the `work/` workspace if it owned one. Every other conversation under
+`~/.aforge/v3/projects/` stays whatever its age. If you work in a temp directory
+and want to keep what a conversation makes, anchor it with `/workspace <path>`
+or copy the files out; the starting-aforge page has both under *I deleted my chat
+and lost the files the task made*.
 
 **Sweeping a run removes the folder and nothing else.** The money line stays: the
 day's ledger row for that firing is never reaped, and the item goes on

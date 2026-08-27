@@ -4728,6 +4728,16 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 		if err != nil {
 			return taskTree{}, fmt.Errorf("task workspace: %w", err)
 		}
+		// NAMING A PLACE IS ASKING FOR IT. [resolveTaskWhere] deliberately does
+		// not touch the disk, because the proposal card resolves the same words
+		// only to SHOW them ([taskWhereNotice]) and a preview may not leave a
+		// directory behind. This is the other side of that split: the moment the
+		// work is actually being placed, a person who said `use ~/scratch` about
+		// a folder that is not there yet meant "work there", and answering "no
+		// such file" would be the surface refusing an errand it can simply run.
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
 		return taskTree{dir: dir, merge: mergeInPlace}, nil
 	}
 	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
@@ -4828,6 +4838,19 @@ func standingInOwnSpace(place Place, dir string) bool {
 	return false
 }
 
+// resolveTaskWhere turns the words a person or a proposal spelled for `where`
+// into one absolute directory: `~` is their home, a relative name hangs off the
+// conversation's own workspace, and an absolute path is taken as it stands.
+//
+// A PATH THAT IS NOT THERE YET IS NOT AN ERROR. Somebody who names a fresh
+// folder is saying where the work should go, not making a claim about what is
+// already on disk, and the caller that is really placing work creates it
+// ([prepareTaskTreeAt]). The one refusal left is a path that EXISTS and is not a
+// directory — a file cannot be worked in, and silently creating something beside
+// it would be the surface guessing.
+//
+// IT READS THE DISK AND NEVER WRITES IT, because the proposal card resolves the
+// same words for display before the person has said yes ([taskWhereNotice]).
 func resolveTaskWhere(where, workspace string) (string, error) {
 	if where == "~" || strings.HasPrefix(where, "~/") {
 		home, err := os.UserHomeDir()
@@ -4843,11 +4866,14 @@ func resolveTaskWhere(where, workspace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Stat(dir)
-	if err != nil {
+	switch info, err := os.Stat(dir); {
+	case errors.Is(err, os.ErrNotExist):
+		// Nothing there yet, which is the ordinary shape of naming a new place.
+	case err != nil:
+		// Anything else — a permission wall, a broken mount — is a real fact
+		// about the disk and is handed back rather than papered over.
 		return "", err
-	}
-	if !info.IsDir() {
+	case !info.IsDir():
 		return "", fmt.Errorf("%s is not a directory", dir)
 	}
 	return filepath.Clean(dir), nil
