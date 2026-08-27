@@ -859,12 +859,15 @@ func (p *subPage) drawCard(a *app, width, n int, hover int) []string {
 // one this list has to know about, and asking costs one walk of a map the
 // registry already holds.
 //
-// A BUILD WITH NO SUBHARNESSES SAYS SO AND OPENS NOTHING, whether that is a
-// surface with no registry wired, a conversation held over a connection where
-// the registry belongs to the far machine, or a registry that is simply empty.
-// Those are one fact from where a person is sitting — there is nothing to pick —
-// and a capability that cannot work is absent rather than broken.
+// A BUILD WITH NO SUBHARNESSES SAYS SO AND OPENS NOTHING. A connection is a
+// different fact: the far registry may be full, but this surface has no door
+// onto it, so the refusal names that machine before this code asks the local
+// seam. A capability that cannot work is absent rather than broken.
 func (a *app) openSubharness(name string) {
+	if a.hosted() {
+		a.note(a.remoteProfileWord("subharnesses"))
+		return
+	}
 	agent, ok := a.subharnessSeam()
 	if !ok {
 		a.note(subNothingWord)

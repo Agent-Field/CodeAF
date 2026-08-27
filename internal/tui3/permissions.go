@@ -263,6 +263,10 @@ func (p *permPanel) draw(width, n int, pal palette, hover int) []string {
 // /harness read theirs: a card answered in another window five minutes ago wrote
 // a line this list has to know about, and asking costs one small file read.
 func (a *app) openPermissions() {
+	if a.hosted() {
+		a.note(a.remoteProfileWord("permissions"))
+		return
+	}
 	a.closeLists()
 	a.dismissWelcome()
 	rows, trouble := a.permissionRules()
