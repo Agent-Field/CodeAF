@@ -132,9 +132,10 @@ case the context window is left alone.
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
-the summary a compaction keeps, the safety gate, the check on finished task work, the planner
-of an adaptive run and the nodes under it, the designer of a saved harness page, looking at an
-image. Each of those is a
+the summary a compaction keeps, the safety gate, the check on finished task work, the second
+look before a task starts itself, the reading of a task's parts before they are handed out,
+the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
+looking at an image. Each of those is a
 **role**, and every role sits on one of four **classes** — the **crew** — which you set in
 `/settings` → Providers, or in one word with `/crew`:
 
@@ -206,25 +207,49 @@ under the class answering it, saying which model comes out. As shipped:
 | `title` | small work | the name a session gives itself |
 | `worker` | small work | one node of an adaptive run |
 | `guardian` | small work | is this one tool call plainly safe |
-| `router` | small work | which surface a request belongs to |
+| `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
 | `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
+| `careful` | careful work | a part of a task that needs judgement |
+| `repair` | careful work | the second go at work a check found gaps in |
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
+| `routerconfirm` | mastermind | a second look before work starts itself |
+| `markreader` | mastermind | what is left of a long answer, and whether it has parts |
+| `handoff` | mastermind | the instruction a handed-over turn gives whoever finishes it |
+| `division` | mastermind | the parts a worker hands its own work out in |
 
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date. Stop on a row and the line under the
 list is that role's own description followed by which class it follows.
 
-**`planner` and `designer` are the mastermind's two roles**, and they used to sit on careful
-work beside the compaction summary — which made one model id answer two unrelated bills.
-The careful calls are many and short; these two are few, and each one decides what all the
-other calls do. A planner that cuts badly spends a whole run on work nobody wanted; a
-designer that writes badly puts a wrong answer on the menu with a name on it.
+**What the mastermind's roles have in common is that one answer decides what all the other
+calls do.** `planner` and `designer` used to sit on careful work beside the compaction
+summary, which made one model id answer two unrelated bills: the careful calls are many and
+short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
+a designer that writes badly puts a wrong answer on the menu with a name on it;
+`routerconfirm` stands between a cheap model's "that should have been work" and a task
+starting itself, and it is asked on nothing else, so it costs a call only where something was
+about to be spent; `division` reads a task's parts before any of them exists, and every turn
+every part ever takes runs on the brief it leaves behind.
+
+`markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
+asked at most three times, and only on an answer that has already spent ten rounds of tool
+calls, plus once at the end of any answer that touched a tool at all — it reads the account of
+the work and says what is left of your question. `handoff` writes the instruction the task
+opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
+a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
+of 18, and that is the one answer that quietly drops a handover you were owed. There is no
+cheaper reading of that question — there is only a wrong one.
+
+**`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
+the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
+the same reason: the failure it guards against is work that looks finished and is quietly
+wrong.
 
 ## I changed the crew but the model at the bottom did not change — why did my model not change
 
@@ -350,10 +375,12 @@ next to the money it is spending:
 ```
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
-run started, from the model you named in the sentence, then the `planner` role's pin, then
-the **mastermind** class, then the model you are talking to. Since the mastermind ships with
-a model in it, this is usually *not* the model in the rest of this conversation, which is why
-the run's own page says it rather than leaving you to work it out.
+run started, from the model whatever started the run named, then the `planner` role's pin,
+then the **mastermind** class, then the model you are talking to. Since the mastermind ships
+with a model in it, this is usually *not* the model in the rest of this conversation, which
+is why the run's own page says it rather than leaving you to work it out. You cannot name it
+yourself from a conversation, because a conversation cannot start a run at all — see
+*adaptive runs*.
 
 It never changes while a run is going: the ladder is walked once, at the start.
 
@@ -398,9 +425,10 @@ Two things worth knowing:
   longer does. A turn already in flight finishes on what it started with: nothing you change
   lands in the middle of one. The one thing that *can* move a turn mid-flight is aforge
   rescuing it from a model that has stopped answering — see *The model went quiet*.
-- Naming a model in the sentence outranks all of it for that piece of work. `orchestrate
-  the migration with opus` runs the planner *and* every node on opus; `make a harness for
-  triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
+- Naming a model in the sentence outranks all of it for that piece of work. `make a
+  harness for triaging flakes with opus` designs on opus. The roles decide only when you
+  named nothing. (There is no such sentence for an **adaptive run**: a conversation cannot
+  start one at all — see *adaptive runs* — so a run's models are whatever started it.)
 
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 
@@ -556,6 +584,10 @@ token of thinking, a piece of a tool call.
 | first word | **1m30s** | accepted the request and never started |
 | a gap mid-reply | **45s** | started writing and stopped |
 
+There is a third clock for the opposite problem — a reply that keeps writing and never
+finishes. It is not a fixed number, so it has its own section below: *A reply that never
+finished*.
+
 The first bound is generous on purpose: a reasoning model at a long context legitimately
 thinks for a minute before its first token, and cutting a request that was about to answer
 costs the whole prompt again. The second is shorter because the question is different — a
@@ -615,6 +647,50 @@ nothing is being routed around and the next attempt lands in exactly the same pl
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 switches off **endpoint** steering; it does not switch off moving to another model.
 
+## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
+
+The two clocks above are both about **silence**. A reply that keeps producing a token every
+few seconds resets both of them forever, and for a long time nothing in aforge ended a
+request like that: a turn could sit there for half an hour with the reply still technically
+arriving, and the session log recorded nothing at all while it did.
+
+So every request also carries a **wall** — the longest it may run before it is cut, whether
+or not it is still writing.
+
+**The wall is not a fixed number.** It is worked out from what that endpoint has actually
+done for you: **five times the longest reply it has finished** in this session, never less
+than **5 minutes** and never more than **20 minutes**. Two endpoints serving the same model
+therefore get two different walls, and one that routinely writes long answers earns a
+longer one by writing them. A model aforge has not spoken to yet gets the 5-minute floor,
+because there is nothing measured to work from; the numbers are forgotten when aforge
+closes, so a fresh session starts from the floor again.
+
+When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
+the endpoint is avoided on the retry, and a dim line lands:
+
+```
+the reply kept going and never finished — asking again
+```
+
+and if it keeps happening, the turn moves to your next fallback model:
+
+```
+the reply kept running on without finishing — finishing this one on openai/gpt-5-mini
+```
+
+with the same ending when there is nowhere to move:
+
+```
+error: the reply ran past 15m0s without finishing and was cut, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
+```
+
+**Nothing you can set changes the wall.** It has no settings row, because a number you had
+to pick would be a number nobody could pick correctly — that is the whole reason it is
+measured instead.
+
+**A cut reply is thrown away whole**, like every other cut: none of the text reaches the
+conversation, and the retry starts the reply from the beginning.
+
 ## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
 
 A provider that answers `429` is pacing aforge, not failing. That is not an error, so the
@@ -645,6 +721,87 @@ error: after 6 attempts: API error (429): rate limit exceeded
 This only covers *pacing*. A server fault — a `500`, a `503`, a torn connection — keeps the
 short patience it always had and never moves your model: a broken endpoint is not a claim
 that the model cannot answer.
+
+## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
+
+`Provider returned error` is your router saying that **somebody else refused** — it handed
+your request to one endpoint, that endpoint said no, and the router is passing the refusal
+along. On its own it explains nothing, so aforge now shows what came with it: the name of
+the endpoint that refused, and the first sentence of what *it* said.
+
+```
+error: API error (400): Provider returned error (via Baidu: input length 97445 exceeds the maximum this endpoint accepts)
+```
+
+**An endpoint that refuses is routed around.** Its name goes on the same five-minute
+refusal list a rate-limited or silent endpoint earns, so the next attempt is sent to a
+different machine serving the same model. Before this, three attempts in a row could be
+three deliveries of the same request to the same endpoint — a measured run lost an evening
+to exactly that.
+
+**And a refusal that names no endpoint is not retried at all.** If the router refused on
+its own account, it read the request aforge built and said no to it — every endpoint alive
+would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
+three times. The turn ends immediately with the refusal instead. That is the whole rule:
+**named an endpoint → try another one; named nobody → stop**. It is not a list of status
+codes, so it works the same on a `400`, a `403` or anything else a router invents.
+
+**Where to read it afterwards.** Every failed request now writes a line into the session
+file — the model, the endpoint, the status, the endpoint's name, its own words, which
+attempt it was and how big the request was. Nothing like this was written down before, so a
+turn that died left the file saying only that it had ended.
+
+## My reply stopped and nothing was retried — a reply that broke is not carried on, and an empty reply is asked again
+
+A reply that ends **because a call failed** is not a reply that stopped early, and aforge no
+longer treats it as one. Two endings count as broken: the provider said it stopped on an
+error, and a reply that came back completely empty — no words, no tool call, nothing
+counted.
+
+Neither is read by the second reader that carries a reply on (see *How tasks and adaptive
+runs work*), because there is nothing left to carry on *to*: the failure is what is left,
+and the retry above already owns it. A measured run read a broken reply three times in
+fifteen seconds, paid a thinking-tier model each time, and re-opened a reply that could not
+move. An empty reply is also written down as a **failed request** rather than as an empty
+answer from the model, so what is on the file matches what happened.
+
+**An empty reply is asked again, straight away, and your turn carries on.** An endpoint that
+answers with nothing did not answer, so aforge sends the same request again — up to four
+tries in all — and there is no pause between them: the endpoint is up and fast and simply
+broken, and waiting eight seconds gets you the same nothing. What helps is being served by a
+different machine, which is what the next try asks for. Only when all four come back empty
+does the turn end. Before this, one empty reply ended a whole turn, and a measured run
+stopped eighteen minutes in with hours of budget unspent.
+
+## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
+
+Three different things used to look the same to aforge: **the connection** failed, **the
+model** was not good enough, or **the work** could not be done. Only the middle one is worth
+paying more for, and aforge now tells them apart before it spends anything.
+
+- **The connection.** Nobody answered, an endpoint refused, a reply came back empty, or a
+  tool call arrived mangled. aforge asks again on the *same* model and lets the router send
+  it somewhere else. It never ends your turn and it never buys a dearer model — nothing
+  about *who served* a request says anything about *who was asked*.
+- **The model.** The check read the finished work and said something was missing, and the
+  run it read had no connection trouble under it. That, and only that, sends the work back
+  on the careful class.
+- **The work.** The job could not be done, or the request itself is what your router is
+  refusing. There is nothing to buy; you get the report.
+
+Three runs of a measured comparison read the first as the second — four bad responses in a
+row, and the task moved onto a model seven times the price for the rest of the run — and
+that was between 57% and 82% of each bill. The run that never rolled four bad responses in a
+row cost a fifth as much.
+
+**And a dearer model is given back.** When the next check passes, the work goes back to the
+model it started on, so one bad minute at a provider cannot become the price of the whole
+job. There is also a ceiling of **$2** on what the careful class may spend on one task; past
+it the task comes back to you with its report instead of buying another round.
+
+**Where to read it afterwards.** Every one of these decisions writes a line into the session
+file saying which of the three it was and what aforge did about it, beside the failed
+request it was made about.
 
 ## The model was printing garbage — a reply that repeats itself, started repeating the same line over and over, or comes back as gibberish
 
@@ -935,16 +1092,37 @@ aforge does not jump straight to summarizing. There are rungs before it.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
-line:
+line naming the tool, its first line, its size and where the whole of it lives:
 
 ```
-[output stubbed — 214332 bytes · full output: .aforge-v3/stubs/<hash>.txt]
+[tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.aforge/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
 ```
 
-The bytes are written to disk first, named by their own digest, and the model can `read` them
-back at any time. **The journal is never stubbed** — the record on disk keeps the whole
-result. An interrupted or failed turn is left alone, and a session with no workspace does
-nothing here.
+The bytes are written to disk first, named by their own digest — or the pointer is the id of
+the result already posted to the store — and the model can `read` them back at any time.
+**They are written in this conversation's own folder, under `logs/stubs/`, and never in your
+project**: a stubbed result is the harness's own droppings, not your work. That holds for a
+task's worker too, however long the files it reads — its stubs are filed with the
+conversation that sent it out, not in the checkout it is working in. Only a conversation
+with no folder at all falls back to `<workspace>/.aforge-v3/stubs/`.
+**The journal is never stubbed** — the record on disk keeps the whole result. An interrupted
+or failed turn is left alone, and a session with no workspace does nothing here.
+
+**A pass that would not pay for itself does not run.** Replacing a result part-way down the
+conversation makes every byte behind it new again as far as the model's provider is
+concerned, and new bytes cost about five times cached ones. So a pass only goes ahead when
+what it reclaims is at least an **eighth** of what it would put back on the meter — otherwise
+it leaves everything alone and looks again at the end of the next turn, by which time the
+same results are usually part of a batch worth doing. This is why one middling tool result
+sitting in a long conversation can stay whole for several turns and then vanish all at once
+alongside others.
+
+**What changes while you work is kept at the back, for the same arithmetic.** The two short
+notes aforge keeps in front of the model that move as the work moves — `<state>`, what this
+conversation is doing, and `<elsewhere>`, what other windows on this project have landed —
+are appended at the *end* of the conversation and never written into the system message,
+because a system message that changed would make every message behind it new again, while a
+note at the end costs only the note.
 
 **Rung 2 — page images.** Instead of summarizing the part being dropped, it can be
 photographed: rendered verbatim to monospaced page images that the model reads back. No model
@@ -1062,3 +1240,27 @@ is set: `alt+enter` opens the composer layer, and its third line is the figure t
 may spend before it stops and asks you. It is the same mechanism — the errand's own session
 gets that ceiling — so everything above is true of it, and any adaptive run it starts is
 held to a tank no bigger than the same figure. The tasks page has it in full.
+
+## Which endpoint answers, and what it charges
+
+One model id is served by many endpoints, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no endpoint is obliged to match it, and the fastest one often does not.
+
+So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
+
+Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
+
+Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
+
+## Keeping the prompt cache warm — why aforge stays with one endpoint instead of hopping between providers
+
+Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the endpoint that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one machine**. An endpoint that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold endpoint than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
+
+So aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
+
+It moves off that endpoint when the endpoint stops earning it, and there are three ways that happens:
+
+- **The request failed there** — an error, a refusal, or a reply that went quiet or turned to garbage halfway through. The next request is routed afresh.
+- **The cache was gone anyway.** If a long prompt comes back having read nothing from the cache, there is no warm context left to come back for, so the next request is free to land anywhere.
+- **It charged too much.** The same quarter-over-list price cap described above rides on every one of these requests, and an endpoint that billed above it loses its place. A warm cache is never worth any price.
+
+Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.

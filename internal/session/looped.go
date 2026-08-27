@@ -24,6 +24,13 @@ package session
 //     a plan that vanishes at every step boundary while every individual call
 //     remains distinct. The note asks it to put that plan in visible text.
 //
+// AND NOTHING THE HARNESS ITSELF ANSWERED IS WATCHED AT ALL. A hand that was
+// withdrawn (withdrawn.go) and a door that refused the call never reached the
+// world: the failure was written on this side of the wall, and a repetition of
+// it is the harness's doing, not the model's. Those results are skipped before
+// either rule sees them — the measured cost of not doing so is three [stuck]
+// notes scolding a worker for retrying a tool the harness had just taken away.
+//
 // ── WHAT A NUDGE IS ──
 //
 // A note in the transcript, in the lane a person's steering rides (agent.go's
@@ -129,6 +136,10 @@ type nudge struct {
 	// nth is which nudge of this turn it is, 1-based. It is what the escalation
 	// law reads.
 	nth int
+	// fact is the structural sentence the turn's [workClock] can say about
+	// itself — when the work last changed, and how much the results since
+	// brought back (novelty.go). It is empty when there is nothing to say.
+	fact string
 }
 
 // loopWatch is one turn's memory of what it has been doing.
@@ -160,6 +171,22 @@ type loopWatch struct {
 	silentNudged bool
 	// nudges is how many nudges this turn has produced.
 	nudges int
+	// clock and ledger are the turn's account of ITSELF rather than of its
+	// repetitions: when the work last changed, and how much of what has come
+	// back since was new (novelty.go). Nothing here fires a rule — the two
+	// rules above are the only things that nudge — but a note that says "you
+	// have repeated this three times" is much more useful beside "and the work
+	// has not changed since step 12".
+	//
+	// IT IS THE RUNNER'S LEDGER AND NOT A SECOND ONE. The no-progress counter
+	// out at the task boundary (task_run.go's [addedSomething]) and this note
+	// are two readings of the same run, and the day they are kept by two
+	// mechanisms is the day a node is told the work has been moving while the
+	// counter that kills it says otherwise. Everything here goes through
+	// [progressLedger] — the line memory, the questions, and the change that
+	// arms the reading after it — so the two sides count the same way.
+	clock  workClock
+	ledger *progressLedger
 }
 
 func newLoopWatch() *loopWatch {
@@ -167,6 +194,7 @@ func newLoopWatch() *loopWatch {
 		errors: make(map[string]int, 4),
 		named:  make(map[string]bool, 2),
 		streak: make(map[string]int, 2),
+		ledger: newProgressLedger(),
 	}
 }
 
@@ -203,6 +231,21 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	var found nudge
 	ok := false
 	for index, call := range calls {
+		// ── A FAILURE THE HARNESS WROTE IS NOT THE MODEL REPEATING ITSELF ──
+		//
+		// Measured in SWE-Marathon s4 (withdrawn.go): the harness took `bash` off
+		// a worker's belt mid-run, answered every call to it "Unknown tool: bash",
+		// and this watch then injected three [stuck] notes telling the worker it
+		// had "repeated bash 4 times and it has failed the same way each time" —
+		// which was true, and which the harness had caused. A withdrawn hand, a
+		// refused door and every other answer written on this side of the wall
+		// are skipped ENTIRELY: not entered in the window, not counted as an
+		// error, so neither rule can fire on them and neither can a later, real
+		// repetition be blamed on the run they interrupted.
+		if index < len(results) && results[index].harness {
+			continue
+		}
+		w.count(call, results, index)
 		signature := callSignature(call)
 		w.recent = append(w.recent, signature)
 		if len(w.recent) > loopWindow {
@@ -241,6 +284,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	}
 	w.nudges++
 	found.nth = w.nudges
+	found.fact = w.clock.note()
 	return found, true
 }
 
@@ -259,6 +303,42 @@ func sawMaterialProgress(calls []ai.ToolCall, results []toolResult) bool {
 		}
 	}
 	return false
+}
+
+// count folds one call and its result into the turn's clock: a step taken, what
+// the result brought back, and whether the work itself moved.
+//
+// THE WORK MOVING IS A SUCCESSFUL CALL TO A HAND THAT SAVES A FILE
+// ([savingTools], task_run.go) — the same rule the landing stages a node's
+// deliverable by ([stageTaskWork]), so the two cannot disagree about what the
+// work is. A failed edit changed nothing; a command that dirtied the directory
+// wrote droppings the landing would not take either.
+//
+// AND A HAND THAT SAVED SOMETHING IS INFORMATION BY CONSTRUCTION, whatever its
+// confirmation said. `wrote 12 lines` is boilerplate the second time, so its
+// bytes are weighed and then the clock is reset around them: what is being
+// counted since is what came back AFTER the world last changed — and the ledger
+// is told the same thing, so the reading that follows a write is read the way
+// the runner's counter reads it (novelty.go's [progressLedger]).
+//
+// THE WATCH GATES NOTHING ON INFORMATIVENESS and so does not read the answer:
+// its two rules are repetition rules, and a nudge that also fired on "you have
+// learned nothing" would be a third rule nobody asked for. What it needs from
+// the ledger is the BOOKS — the same lines remembered, the same questions
+// counted, the same change spent — so the [stuck] note's fact and the counter
+// out at the task boundary are one account of one run.
+func (w *loopWatch) count(call ai.ToolCall, results []toolResult, index int) {
+	w.clock.step()
+	failed := index >= len(results) || results[index].isError
+	if index < len(results) {
+		_, fresh, lines := w.ledger.read(call.Function.Name, call.Function.Arguments,
+			stripJobFooter(results[index].text))
+		w.clock.read(fresh, lines)
+	}
+	if savingTools[call.Function.Name] && !failed {
+		w.clock.wrote()
+		w.ledger.wrote()
+	}
 }
 
 // speakAbout reports whether a signature that has just tipped a rule over is
@@ -330,9 +410,15 @@ func callSignature(call ai.ToolCall) string {
 
 // errorSignature identifies a failure by its text. Whitespace is folded because
 // the same failure re-run is the same failure however a shell wrapped its lines.
+//
+// THE JOB FOOTER COMES OFF FIRST, for the reason task_run.go's progress counter
+// strips it (jobfooter.go): every result carries the elapsed time of every
+// outstanding job, so two identical failures a minute apart hash differently and
+// a detector built to notice a repeat would notice nothing at all whenever a
+// background job happened to be running.
 func errorSignature(text string) string {
 	digest := fnv.New64a()
-	_, _ = digest.Write([]byte(strings.Join(strings.Fields(text), " ")))
+	_, _ = digest.Write([]byte(strings.Join(strings.Fields(stripJobFooter(text)), " ")))
 	return fmt.Sprintf("error:%x", digest.Sum64())
 }
 
@@ -351,10 +437,18 @@ func nudgeNote(n nudge) string {
 		what = n.tool
 		outcome = "and it has failed the same way each time"
 	}
-	return fmt.Sprintf("[stuck] You have repeated %s %d times %s. Rethink your approach: "+
-		"which assumption is wrong, and what is a different way to get this done? "+
-		"If there is no different way, say so and stop rather than trying again.",
-		what, n.count, outcome)
+	note := fmt.Sprintf("[stuck] You have repeated %s %d times %s.", what, n.count, outcome)
+	// AND THEN THE FACT ABOUT THE WORK, when there is one. The repetition is
+	// what the model did; this is what the work did, and it is the half a model
+	// in a measure→measure loop cannot see — every run of its script answered,
+	// every answer looked slightly different, and the thing being measured had
+	// not moved since it started (novelty.go's [workClock]).
+	if n.fact != "" {
+		note += " " + n.fact
+	}
+	return note + " Rethink your approach: " +
+		"which assumption is wrong, and what is a different way to get this done? " +
+		"If there is no different way, say so and stop rather than trying again."
 }
 
 // loopRule is how the escalated question names itself to the person, in the slot

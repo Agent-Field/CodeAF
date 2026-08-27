@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -526,6 +527,21 @@ type Event struct {
 	// output for any purpose other than showing it to a person.
 	Output string
 
+	// HarnessMade says this step's failure was written by the HARNESS and not by
+	// the world the model reached for: a hand that was withdrawn (withdrawn.go),
+	// a door that refused the call (consent.go and the rest of the pre-action
+	// chain). It is set on EventToolFailed and on nothing else.
+	//
+	// IT EXISTS FOR THE COUNTERS. A stuck detector's whole claim is that a step
+	// which taught nothing was a step the model had no business taking, and that
+	// claim is false when the harness wrote the answer itself — measured in
+	// SWE-Marathon s4, where the harness withdrew `bash`, answered eight retries
+	// with "Unknown tool", and then injected three [stuck] notes blaming the
+	// model for the retries (withdrawn.go states the whole failure). A surface
+	// may show it or ignore it; the runner reads it to keep the harness's own
+	// steps out of the model's ledger ([runTaskChild]).
+	HarnessMade bool
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through
@@ -964,6 +980,12 @@ type Config struct {
 	// from a test.
 	ProfileDir string
 
+	// failures is the tally the piece of work this agent belongs to keeps of its
+	// own failures (internal/taxonomy). A worker built for a task node carries
+	// its node's; a conversation carries none, and every method on the type
+	// tolerates the nil.
+	failures *taxonomy.Tally
+
 	// RolesSource reads one auxiliary-model setting for internal/roles: the
 	// keys are roles.PinKey and roles.TierKey. Nil is a fresh install with no
 	// settings file, and every auxiliary call then rides the session's own
@@ -994,6 +1016,16 @@ type Config struct {
 	// leaves the adapter's own explicit-only rule in force, which is exactly the
 	// behaviour every caller had before this field existed.
 	SupportsParameter func(model, parameter string) (bool, bool)
+
+	// ModelPrice is a model's own published list price, per token in US dollars,
+	// and whether anybody published one (internal/catalog's PriceNow). The
+	// adapter bounds a latency-sorted request against it, so this session asks
+	// for the fastest endpoint that is not also charging several times what the
+	// model itself costs.
+	//
+	// NIL IS "NO PRICE IS KNOWN", which sends no ceiling and routes exactly as an
+	// unwired session always did.
+	ModelPrice func(model string) (prompt, completion float64, known bool)
 
 	// TaskProgressCheck is the test seam for leash checkpoints. Production uses
 	// the node's ordinary read-only checker; a test may answer deterministically.
@@ -1243,8 +1275,27 @@ type Config struct {
 	// agent it built — and it is set in exactly one place: the executor that
 	// runs one node of an adaptive run, from that node's own declared scope.
 	//
-	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node.
+	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node
+	// and a fork's hand (fork.go), which is the second citizen this bound got and
+	// the reason it is stated in the agent's own voice rather than a node's.
 	writeScope []string
+
+	// inHand says this agent IS one of a fork's hands (fork.go), and it exists to
+	// take one verb away: a hand may not fork again. It is a flag rather than a
+	// belt decision made at the fork because a belt is assembled once, inside
+	// [newAgent], so a verb withheld afterwards would be a verb the model was
+	// already told it had.
+	//
+	// It is unexported for writeScope's reason: it is not a caller's choice but a
+	// fact about an agent this package built.
+	inHand bool
+
+	// handLeash is a hand's round budget, as a citizen of the control plane
+	// (fork.go, hooks.go). It is a pointer because the budget is state that the
+	// running turn writes and the fork reads afterwards, and it is nil for every
+	// agent that is not a hand — which is what leaves the plane exactly as it was
+	// for everybody else.
+	handLeash *handLeash
 
 	// pacing is how a node hears that its own calls have parked on the
 	// provider's rate limiting, and it is unexported for connectHub's reason: it
@@ -1285,6 +1336,12 @@ type Config struct {
 	// the settings row and never a default this package invents, so a caller
 	// that wires no profile is not silently opted into paying for depth.
 	DefaultEffort effort.Rung
+
+	// beat is the node's heartbeat on disk, and nil for every agent that is not
+	// standing in for a task node (task_beat.go). It is unexported for pacing's
+	// reason — it is not a caller's choice but a fact about an agent this package
+	// built — and the loop takes its two edges either side of the wire.
+	beat *taskBeat
 
 	// TaskModel is the model a task runs on when its proposal names none — the
 	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
@@ -1444,6 +1501,25 @@ type Config struct {
 	// same file. It is private for memoryBrief's reason: no surface sets it, the
 	// executor does (task_run.go, orchestrate.go).
 	fixesDir string
+	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
+	// folder of its own: a task node's worker, a part's worker under that one, a
+	// fork's hand, an adaptive run's child, an auditor, a standing probe. It is
+	// read in exactly one place ([Config.droppingsPlace]) and answers exactly one
+	// question — where a job log or a stubbed tool result lands (landing.go
+	// states the law and the failure that wrote it).
+	//
+	// IT IS NOT Place UNDER A SECOND NAME, and the distinction is the whole point.
+	// Setting Place on a worker would make the worker a SESSION: it would stamp
+	// the conversation's meta.json with the worker's own spend and title
+	// (placemeta.go), file its journal under the conversation's id (agent.go's
+	// openSessionFile), and paint its pictures into the conversation's work/
+	// instead of the worktree it is about to merge back (landing.go's
+	// deliverablesDir). This row carries the ONE fact a worker needs — where the
+	// harness keeps its own litter — and nothing else.
+	//
+	// It is private for memoryBrief's reason: no surface sets it, the constructor
+	// that builds the worker does.
+	droppings Place
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).
@@ -1502,6 +1578,28 @@ type Config struct {
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
 	// already in flight is never cut in half by it.
 	SpendRailUSD float64
+
+	// Unattended says NOBODY IS SITTING IN FRONT OF THIS SESSION — the door's
+	// `--yolo`, which until now reached this package only as an approval default
+	// (cmd/aforge's v3Policy) and said nothing about who was watching.
+	//
+	// IT IS NOT THE ARMING BIT ON ITS OWN. Together with a Budget it makes this
+	// session's principal a [Steward] (principal.go); alone it changes nothing
+	// whatever, because a flag that quietly started carrying a conversation on
+	// for hours would be the harness spending somebody's money on a sentence
+	// they did not write. The door says so in one line at launch.
+	Unattended bool
+
+	// Budget is the ceiling an unattended session runs under: hours, dollars, or
+	// both. THE ZERO BUDGET IS NO CEILING, which is what every session has always
+	// had, and it is what leaves `--yolo` alone exactly as it was.
+	//
+	// It is separate from SpendRailUSD above and they are different rails for
+	// different questions. The rail REFUSES THE NEXT TURN once a conversation has
+	// spent its ceiling, whoever is driving it; this is what the Steward is
+	// allowed to spend CARRYING ON BY ITSELF, and reaching it ends the run with a
+	// report rather than with a refusal nobody reads.
+	Budget Budget
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -1513,6 +1611,18 @@ type Config struct {
 type Agent struct {
 	config Config
 	client Completer
+	// limits are the response boundary's three numbers — how many times the wire
+	// is forgiven, how many measured failures buy a stronger tier, and what that
+	// tier may cost one piece of work (taxonomy_boundary.go). They are resolved
+	// ONCE, from the person's profile, because resolving them reads a file and
+	// the boundary is asked on the failure path of every request.
+	limitsOnce sync.Once
+	limits     taxonomy.Limits
+	// tallies is what each task node this agent owns remembers about its own
+	// failures, keyed by node id and guarded by mu. It lives here rather than on
+	// the node so the graph's own struct stays what it is — the person's work —
+	// and so a node that nothing classified simply has no entry.
+	tallies map[uint64]*taxonomy.Tally
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
@@ -1545,6 +1655,14 @@ type Agent struct {
 	// It is under armMu with the belt, and written at the same door, because a
 	// tool on the belt without its record would be a tool judged by nothing.
 	served map[string]servedTool
+	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
+	// hands the harness took, why, and what is left. Nil whenever the belt is
+	// whole, which is nearly always.
+	//
+	// It is under armMu WITH the belt because it is the belt's other half: a
+	// dispatcher that found a name missing needs to know whether it was taken or
+	// never existed, and the two answers must not be able to disagree.
+	withdrawn *toolWithdrawal
 	// armMu guards those headers, that map, and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
@@ -1729,10 +1847,11 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
-	// cardText is the <state> block message[0] currently carries (card.go). It
-	// sits under mu beside memoryText and for the same reason: both are
-	// rendered into the transcript's first message, and message[0] is rebuilt
-	// from a.system plus the two of them rather than appended to.
+	// cardText is the <state> block (card.go): what this conversation is doing,
+	// as the post-turn pass has folded it. It sits under mu because it is
+	// rendered into the transcript — at the TAIL, in the volatile note
+	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
+	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
 	// standingText is the <standing> block message[0] currently carries
 	// (standing_world.go): the orders the person holds over this conversation,
@@ -1741,11 +1860,11 @@ type Agent struct {
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText string
-	// elsewhereText is the <elsewhere> block message[0] currently carries
-	// (taskdelta.go): what the OTHER windows on this project landed and are
-	// running. It sits under mu beside the two above for their reason, and it
-	// is REPLACED only when the facts in it move — an unchanged block leaves
-	// message[0] byte-identical, which is what keeps the prompt prefix cached.
+	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
+	// windows on this project landed and are running. It sits under mu beside
+	// cardText and rides where cardText rides, at the tail of the transcript —
+	// an unchanged block lands no second note, which is what keeps the whole
+	// conversation in front of it cached.
 	elsewhereText string
 	// elsewhereTold is the short memory of landings this session's model has
 	// already been handed, newest first and capped at [deltaLandedRows]. The
@@ -1754,7 +1873,29 @@ type Agent struct {
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
 	usage         Usage
-	running       bool
+	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
+	// never nil: a session built with no posture at all gets a [Person], which
+	// answers every question the way this package answered it before the
+	// interface existed. It is set once in [newAgent] and never written after,
+	// so every road may read it without the lock.
+	principal Principal
+	// startedAt is when this process opened the session, and it is the only
+	// wall clock this package keeps. Usage.Duration is the SUM OF TURN
+	// DURATIONS, which is a different number and the wrong one for a budget: a
+	// session idle for an hour between two ten-second turns has spent an hour of
+	// somebody's evening and twenty seconds of that figure.
+	//
+	// It is THIS LAUNCH and not the session's birth. Place.Created is on disk and
+	// is days old on a resumed conversation, and a budget measured from it would
+	// stop a resumed session before its first turn.
+	startedAt time.Time
+	// createdFiles is EVERYTHING THIS SESSION MADE THAT WAS NOT THERE BEFORE, in
+	// first-touch order (principal_audit.go). It is folded in from the per-turn
+	// ledger recovery.go already keeps — one source of truth for "did this exist
+	// before the call" — because that ledger is dropped at the end of every turn
+	// and the question this answers is asked once, at the end of the session.
+	createdFiles []fileChange
+	running      bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -1892,12 +2033,18 @@ type Agent struct {
 	// one call and never state: the turn takes it, clears it, and runs it.
 	harnessPick *harnessRoute
 
-	// routeTurns counts the turns this session has finished and routeOffered is
-	// the one the route judge last raised a card on (route_judge.go). They are the
-	// whole of that feature's memory: the judge asks at most one question every
+	// routeTurns counts the turns this session has begun and routeOffered is the
+	// one the route judge last started work on (route_judge.go). They are the
+	// whole of that feature's memory: the judge starts at most one task every
 	// few turns, and "a few turns ago" is a number that only means anything if
-	// something is counting. Both are zero for the life of a session nobody ever
-	// offers anything to, which is most of them.
+	// something is counting. Both are zero for the life of a session nothing is
+	// ever started in, which is most of them.
+	//
+	// ONE PAIR SERVES BOTH MOMENTS THE JUDGE LOOKS AT — before a message is
+	// answered and after a words-only answer — because the limit is about how
+	// often WORK may begin over the top of a conversation, which is one question
+	// however it was noticed. The count is stepped at the front of a turn, where
+	// every turn passes.
 	routeTurns   uint64
 	routeOffered uint64
 

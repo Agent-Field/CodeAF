@@ -13,37 +13,31 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
+// taskCommandAgent is the whole of what /task needs from the session, and it is
+// two calls now that ordinary work has ONE ROAD. The planner door it used to
+// carry is gone from the engine too, along with the `/task adaptive` that was its
+// only caller; the planner ENGINE is untouched and a person can still name a run
+// outright in the conversation, which the session reads for itself. Either way
+// the verb is not in this surface's vocabulary — a door listed here that no
+// command opens is an invitation to open it again.
 type taskCommandAgent interface {
 	StartTask(context.Context, string) (uint64, string, error)
-	StartPlannerRun(context.Context, string, string) (string, string, error)
 	JudgeDecomposable(context.Context, string) (bool, []string, string)
 }
 
+// taskSizedMsg is the sizing call's answer on its way back to the surface: the
+// brief that was read, and whether there was more than one job in it.
+//
+// IT CARRIES NEITHER A SKETCH NOR A ROW ANY MORE. The parts the judge named and
+// its reason for naming them were supporting context for a planner, and the
+// person's `starting a task` row decided which road the answer opened — and
+// there is one road, so both are questions with no reader. What survives of the
+// sketch is what it was always standing in for: a yes ARMS the worker to divide
+// off the material itself (internal/session's task_divide.go), from evidence
+// rather than from a guess made before anybody opened the files.
 type taskSizedMsg struct {
 	brief    string
 	parallel bool
-	parts    []string
-	why      string
-	// preset is what the person's `starting a task` row said when the command
-	// was typed ([config.TaskStartAt]), carried on the message rather than read
-	// again on the way back. It is one answer to one command: a row changed while
-	// the sizing call was in flight must not settle the command that was already
-	// running under the old one.
-	preset string
-}
-
-// hint is the sketch the sizing call produced, handed to the planner as
-// supporting context on the one road that still opens a planner without being
-// told to in so many words.
-func (m taskSizedMsg) hint() string {
-	hint := strings.Join(m.parts, " · ")
-	if m.why != "" {
-		if hint != "" {
-			hint += " · "
-		}
-		hint += m.why
-	}
-	return hint
 }
 
 type taskStartedMsg struct {
@@ -69,19 +63,43 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		a.note("could not start the task · this session has no task door")
 		return nil
 	}
-	mode, brief := "", arg
-	if word, rest, found := strings.Cut(arg, " "); found && (word == "solo" || word == "adaptive") {
-		mode, brief = word, strings.TrimSpace(rest)
+	// THE WHOLE VOCABULARY IS TWO FORMS: a brief, or `solo` and a brief. A first
+	// word that is neither of those is simply the beginning of the brief, so the
+	// split is taken once here and the brief defaults to everything typed.
+	word, rest, _ := strings.Cut(arg, " ")
+	rest = strings.TrimSpace(rest)
+	brief, solo := arg, false
+	switch word {
+	case "solo":
+		brief, solo = rest, true
+	case "adaptive":
+		// THE RETIRED WORD IS A WORD NOW AND NOT A ROAD. `/task adaptive` used to
+		// open a planned graph over the brief, and ordinary task work does not go
+		// that way any more. There are two things this surface must not do about
+		// that. It must not GUESS, because guessing means editing somebody's
+		// sentence — a brief that genuinely opens "adaptive rate limiting for the
+		// api" would lose its first word to a shape nobody asked for — so the words
+		// are kept whole and run the one road there is. And it must not stay QUIET,
+		// because the person who did mean the old shape would then get something
+		// other than what they typed with nothing on screen saying so, which is the
+		// one outcome a retirement owes a line about. So: the brief is untouched,
+		// and one line says the word steers nothing.
+		a.note(taskAdaptiveRetiredNote)
+		if rest == "" {
+			// Nothing but the retired word is no brief at all, and shaping a task
+			// called "adaptive" would spend a model call on somebody's muscle memory.
+			brief = ""
+		}
 	}
 	if brief == "" {
-		a.note("usage: /task <brief> · /task solo <brief> · /task adaptive <brief>")
+		a.note("usage: /task <brief> · /task solo <brief>")
 		return nil
 	}
-	// AN EXPLICIT WORD IS THE LAST WORD. `/task solo` and `/task adaptive` say
-	// the shape outright, so neither the sizing call nor the person's standing
-	// answer to it has anything left to decide.
-	if mode != "" {
-		return a.startTaskDoor(door, mode, brief, "")
+	// AN EXPLICIT SOLO IS THE LAST WORD. `/task solo` says outright that this is
+	// one worker and nothing is to be read for width first, so neither the sizing
+	// call nor the person's standing answer to it has anything left to decide.
+	if solo {
+		return a.startTaskDoor(door, brief)
 	}
 	// And where they have said in advance that one worker is what they want and
 	// that they do not want the brief read for width first, the sizing call is
@@ -91,26 +109,26 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// (internal/splitgate), which costs nothing at all.
 	preset := config.TaskStartAt(a.profileDir)
 	if preset == config.TaskStartSingle {
-		return a.startTaskDoor(door, "single", brief, "")
+		return a.startTaskDoor(door, brief)
 	}
 	a.beginPreflight(taskSizingNote, brief)
 	ctx := a.ctx
 	return func() tea.Msg {
-		parallel, parts, why := door.JudgeDecomposable(ctx, brief)
-		return taskSizedMsg{brief: brief, parallel: parallel, parts: parts, why: why, preset: preset}
+		parallel, _, _ := door.JudgeDecomposable(ctx, brief)
+		return taskSizedMsg{brief: brief, parallel: parallel}
 	}
 }
 
 // startTaskDoor hands the work through, and says so while it goes.
 //
-// THE WAIT IS NAMED BECAUSE IT IS NOT INSTANT ANY MORE. Both doors shape the
-// brief before they admit anything (internal/session's task_shape.go), which is
+// THE WAIT IS NAMED BECAUSE IT IS NOT INSTANT ANY MORE. The door shapes the
+// brief before it admits anything (internal/session's task_shape.go), which is
 // a model call of its own, and a command that appeared to do nothing for several
 // seconds would read as a command that had not registered. The forming block
 // says the one true thing about the pause in the same voice `sizing it up…` says
 // its own, and [app.settleShaping] collapses it the moment the task lands —
 // including when nothing shaped it, because the block was about the attempt.
-func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea.Cmd {
+func (a *app) startTaskDoor(door taskCommandAgent, brief string) tea.Cmd {
 	ctx := a.ctx
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
@@ -127,10 +145,6 @@ func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea
 	}
 	a.beginPreflight(taskShapingNote, brief)
 	return func() tea.Msg {
-		if mode == "adaptive" {
-			id, title, err := door.StartPlannerRun(ctx, brief, hint)
-			return taskStartedMsg{mode, id, title, err}
-		}
 		id, title, err := door.StartTask(ctx, brief)
 		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err}
 	}
@@ -159,6 +173,13 @@ const (
 // a plan, and the transcript's own words for the split (`split into 3 parts:`)
 // are what say it happened.
 const taskWideNote = "the work looks wide · one worker starts, and it can split as it goes"
+
+// taskAdaptiveRetiredNote answers `/task adaptive`, and says both halves of what
+// happened: the word no longer picks anything, and it was left exactly where the
+// person typed it. It names the road that replaced it in the same words
+// [taskWideNote] uses, because they are the same road and a person who reads
+// both should not have to work out that they are.
+const taskAdaptiveRetiredNote = "/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes"
 
 // preflight is the one visible thing a task command is becoming: the person's
 // words, its present phase, and the moment that phase began.

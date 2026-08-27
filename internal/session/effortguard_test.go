@@ -55,7 +55,7 @@ var legacyEffortStampers = map[string]string{
 // EVERY FILE THAT STAMPS A RUNG ALSO RESOLVES ONE.
 func TestEverySpawnSiteAsksTheLadderHowHardToThink(t *testing.T) {
 	stamps := 0
-	for name, source := range packageSources(t) {
+	for name, source := range packageSourceText(t) {
 		if !strings.Contains(source, "provider.WithConfiguredEffortRung(") &&
 			!strings.Contains(source, "provider.WithEffortRung(") {
 			continue
@@ -93,7 +93,7 @@ func TestEverySpawnSiteAsksTheLadderHowHardToThink(t *testing.T) {
 // own option. This pins that set: a new file reaching for the adapter's words
 // instead of a rung fails here and has to say which it meant.
 func TestTheAdaptersOlderEffortVocabularyStaysWhereItIs(t *testing.T) {
-	for name, source := range packageSources(t) {
+	for name, source := range packageSourceText(t) {
 		if !strings.Contains(source, "provider.Effort") &&
 			!strings.Contains(source, "provider.ParseEffort(") &&
 			!strings.Contains(source, "provider.WithReasoningEffort(") &&
@@ -110,11 +110,11 @@ func TestTheAdaptersOlderEffortVocabularyStaysWhereItIs(t *testing.T) {
 	}
 }
 
-// packageSources reads every non-test Go file of this package, by base name.
+// packageSourceText reads every non-test Go file of this package, by base name.
 // It is the same shape internal/config's derivation test uses to prove a
 // settings row is wired to something: a law about where code may live can only
 // be checked by reading where it lives.
-func packageSources(t *testing.T) map[string]string {
+func packageSourceText(t *testing.T) map[string]string {
 	t.Helper()
 	entries, err := os.ReadDir(".")
 	if err != nil {

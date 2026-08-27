@@ -478,9 +478,10 @@ The task roster lists this far conversation's work. Its rows come from the far
 ## Reminders and watches over --host — they work, and they belong to that machine
 
 **Standing items are the one ambient capability a connection does not take away.** A
-sub-harness design and an adaptive run are both switched off at the engine because their
-card would arrive in an empty room; this card does not — it crosses the wire as an
-ordinary event and your answer crosses back as its own frame.
+sub-harness design is switched off at the engine because its card would arrive in an empty
+room, and an adaptive run cannot be started from a conversation at all; this card is
+neither — it crosses the wire as an ordinary event and your answer crosses back as its own
+frame.
 
 So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host`. What to know is **whose machine they are on**:
@@ -586,10 +587,14 @@ protocol has no door for, so it never crosses at all. A question that *does* cro
 nobody attached is held for the next window; this one is not one of those. Build harnesses in a
 session running on that machine directly.
 
-**Adaptive runs are switched off over a remote connection**, and for the same reason: a
-run's fuel gate arrives on that same standing lane. A run left switched on would spend the
-money, stop at its cap, and wait four hours for an answer nobody could give it. The
-`run_adaptive` tool is simply not there.
+**Adaptive runs are not something you can start here — and not because of the wire.** No
+conversation opens an adaptive run any more, on this machine or the far one: there is no
+command, no setting, no tool and no sentence that does it (*adaptive runs*, under *How do I
+start an adaptive run*). So a message beginning `orchestrate …` is an ordinary turn over
+`--host` for exactly the reason it is an ordinary turn locally. The remote session is also
+built with no adaptive runner at all, which is belt and braces rather than the reason: a
+run's fuel gate would arrive on the standing lane a connection does not carry, and a run
+that stopped at its cap would wait four hours for an answer nobody could give it.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering

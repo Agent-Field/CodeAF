@@ -164,7 +164,7 @@ func TestRefutedWorkIsRepairedInPlaceAndLandsWhenItHolds(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it"),
+			proposeCall("Add the greeting", "write greet.go and a test for it, checked with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairing, wrote bool) *ai.Response {
@@ -375,7 +375,7 @@ func TestWorkThatStaysShortLandsIncompleteWithEveryRoundsGaps(t *testing.T) {
 
 	// THE STEERING NOTE ASKS RATHER THAN SPENDS. The gaps and the branch are in
 	// front of the model; what it must not do is start another task on its own.
-	note := taskNote(notice, "", TaskSettleAsk)
+	note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
 	if !strings.Contains(note, "offer them a follow-up in their own words") {
 		t.Fatalf("the note does not tell the model to ask: %s", note)
 	}
@@ -550,7 +550,7 @@ func assertPlainLanding(t *testing.T, notice TaskNotice, what string) {
 	t.Helper()
 	assertPlainWords(t, what+" · the index row's outcome", taskOutcome(notice.Report))
 	assertPlainWords(t, what+" · the notice's report", notice.Report)
-	assertPlainWords(t, what+" · the steering note", taskNote(notice, "file:///tmp/task.jsonl", TaskSettleAsk))
+	assertPlainWords(t, what+" · the steering note", taskNote(notice, "file:///tmp/task.jsonl", TaskSettleAsk, landingAddress{person: true}))
 }
 
 // NO PATH TO A PERSON CARRIES THE MACHINERY'S WORDS.
@@ -576,6 +576,7 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 		{"a node that came back short once", TaskFailed, gapsOutcome([][]string{shortFirst.evidence})},
 		{"a node that came back short twice", TaskFailed, gapsOutcome([][]string{shortFirst.evidence, shortAgain.evidence})},
 		{"a node with a finding and no evidence", TaskFailed, gapsOutcome(nil)},
+		{"a node cut off mid-check", TaskUnverified, withReport(taskCutMidCheck, held.checkedSoFar())},
 		{"a node nobody could judge", TaskUnverified, essay.lookOutcome()},
 		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome()},
 		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome()},
@@ -641,13 +642,13 @@ func TestAuditBeltAllowsOrientationAndSaysWhereToLook(t *testing.T) {
 	for _, allowed := range []string{
 		"pwd", "wc -l greet.go", "head -n 40 greet.go", "cat go.mod",
 	} {
-		if refusal, ok := auditRefusal(allowed, auditCommands); !ok {
+		if refusal, ok := auditRefusal(allowed, auditReadCommands); !ok {
 			t.Fatalf("the checker may not run %q, which only reads: %s", allowed, refusal)
 		}
 	}
 	// And the belt has not opened: orientation is reading, not writing.
 	for _, refused := range []string{"tee out.txt", "sed -i s/a/b/ greet.go", "curl example.com", "cp a b"} {
-		if _, ok := auditRefusal(refused, auditCommands); ok {
+		if _, ok := auditRefusal(refused, auditReadCommands); ok {
 			t.Fatalf("the checker was allowed to run %q", refused)
 		}
 	}
@@ -655,7 +656,7 @@ func TestAuditBeltAllowsOrientationAndSaysWhereToLook(t *testing.T) {
 	// costs another step, and the wrong reach happens because bash is what a
 	// shell is for everywhere else.
 	for _, refused := range []string{"", "ls /home", "go test ./... && rm -rf ."} {
-		refusal, ok := auditRefusal(refused, auditCommands)
+		refusal, ok := auditRefusal(refused, auditReadCommands)
 		if ok {
 			t.Fatalf("%q was allowed", refused)
 		}
@@ -682,7 +683,7 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	}
 
 	byName := map[string]func(context.Context, json.RawMessage) (string, bool, error){}
-	for _, tool := range auditBelt(dir, auditCommands) {
+	for _, tool := range auditBelt(dir, plainDoor(auditReadCommands)) {
 		byName[tool.Name] = tool.Execute
 	}
 	arguments := json.RawMessage(`{"command":` + strconv.Quote("cat huge.txt") + `}`)
