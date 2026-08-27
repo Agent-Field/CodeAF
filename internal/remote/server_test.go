@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -75,10 +76,24 @@ type fakeAgent struct {
 	// catches a pump overtaking the result that names its stream.
 	prefill []session.Event
 
-	failing   error
-	compactBy error
-	rewindBy  error
-	panicking bool
+	failing     error
+	compactBy   error
+	rewindBy    error
+	panicking   bool
+	taskJournal string
+	cancelled   []string
+}
+
+func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
+
+func (f *fakeAgent) SteerTask(id uint64, line string) (bool, error) {
+	f.steered = append(f.steered, fmt.Sprintf("%d:%s", id, line))
+	return true, f.failing
+}
+
+func (f *fakeAgent) Cancel(id string) (string, error) {
+	f.cancelled = append(f.cancelled, id)
+	return "stopping task 17", f.failing
 }
 
 func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, error) {

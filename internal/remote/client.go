@@ -1160,6 +1160,45 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 // /resume keep using the same one.
 type Agent struct{ c *Client }
 
+// TaskRoom reads the bounded tail of a node whose record URI may not exist yet.
+func (a *Agent) TaskRoom(id uint64, tail int) (session.TaskRecord, error) {
+	payload, err := a.c.call(nil, MethodTaskRoom, TaskRoomArgs{ID: id, Tail: tail})
+	if err != nil {
+		return session.TaskRecord{}, err
+	}
+	var record session.TaskRecord
+	if err := json.Unmarshal(payload, &record); err != nil {
+		return session.TaskRecord{}, err
+	}
+	return record, nil
+}
+
+// SteerTask carries a correction to the engine's node and keeps its waiting fact.
+func (a *Agent) SteerTask(id uint64, line string) (bool, error) {
+	payload, err := a.c.call(nil, MethodTaskSteer, TaskSteerArgs{ID: id, Text: line})
+	if err != nil {
+		return false, err
+	}
+	var steered TaskSteered
+	if err := json.Unmarshal(payload, &steered); err != nil {
+		return false, err
+	}
+	return steered.Waiting, nil
+}
+
+// Cancel asks the engine to stop the prefixed work id and keeps its sentence.
+func (a *Agent) Cancel(id string) (string, error) {
+	payload, err := a.c.call(nil, MethodTaskStop, TaskStopArgs{ID: id})
+	if err != nil {
+		return "", err
+	}
+	var stopped TaskStopped
+	if err := json.Unmarshal(payload, &stopped); err != nil {
+		return "", err
+	}
+	return stopped.Line, nil
+}
+
 // StartTask commissions the work on the engine machine and returns its receipt.
 func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
 	payload, err := a.c.callWithin(ctx, MethodTaskStart, TaskStartArgs{Brief: brief}, taskCallDeadline)

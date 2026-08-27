@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"testing"
 
@@ -38,6 +39,41 @@ func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(far.tasks, []string{"fix it", "judge:size it"}) || !reflect.DeepEqual(far.planners, []string{"plan it|two parts"}) {
 		t.Fatalf("far calls = %v %v", far.tasks, far.planners)
+	}
+}
+
+func TestRunningTaskRoomReadsSteersAndStopsByEngineID(t *testing.T) {
+	journal := t.TempDir() + "/task.jsonl"
+	if err := os.WriteFile(journal, []byte("far journal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	far := &fakeAgent{taskJournal: journal}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+			if uri != "file://"+journal || tail != session.TaskJournalTail {
+				t.Fatalf("room read %q tail %d", uri, tail)
+			}
+			return session.TaskRecord{Journal: []byte("far journal\n"), Kept: true}, nil
+		}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	record, err := loop.Client.Agent().TaskRoom(17, session.TaskJournalTail)
+	if err != nil || string(record.Journal) != "far journal\n" {
+		t.Fatalf("room = %q, %v", record.Journal, err)
+	}
+	waiting, err := loop.Client.Agent().SteerTask(17, "check the lock")
+	if err != nil || !waiting {
+		t.Fatalf("steer = %v, %v", waiting, err)
+	}
+	line, err := loop.Client.Agent().Cancel("task:17")
+	if err != nil || line != "stopping task 17" {
+		t.Fatalf("stop = %q, %v", line, err)
+	}
+	if !reflect.DeepEqual(far.steered, []string{"17:check the lock"}) || !reflect.DeepEqual(far.cancelled, []string{"task:17"}) {
+		t.Fatalf("engine calls = %v, %v", far.steered, far.cancelled)
 	}
 }
 
