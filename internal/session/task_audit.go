@@ -152,6 +152,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -847,18 +848,38 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 		if !out.verdict.answered || out.verdict.verified {
 			// Nothing to repair: either the work holds, or nobody said anything
 			// about it — and a gap nobody named is not a gap a worker can close.
+			//
+			// A CHECK THAT PASSED IS ALSO WHERE A LIFT IS HANDED BACK. It is the
+			// one moment that says the stronger tier has stopped buying anything,
+			// and until the response boundary existed nothing looked for it — so
+			// every lift this build ever bought was permanent
+			// (taxonomy_boundary.go's [Agent.readPass]).
+			if out.verdict.verified {
+				a.readPass(node, log)
+			} else {
+				a.tallyFor(node).Round()
+			}
 			return out
 		}
 		// A finding is kept the moment it is made, whether or not there is a round
 		// left to spend on it: the report owes the person the evidence of every
 		// round, and the last one is the one that lands the node.
 		out.gaps = append(out.gaps, out.verdict.evidence)
+		// AND THE FINDING GOES TO THE BOUNDARY BEFORE ANYTHING IS BOUGHT WITH IT.
+		// A refutation of a round whose calls died on the wire is not evidence
+		// about the model; K of them with the wire ruled out is, and past the cap
+		// the answer is the work's own (internal/taxonomy). The verdict decides
+		// which model the round below runs on and whether there is a round at all.
+		lift := a.readFinding(node, log)
+		if lift.Class == taxonomy.Work {
+			return out
+		}
 		if round > rounds || ctx.Err() != nil {
 			return out
 		}
 		fmt.Fprintf(log, "repair %d of %d: sent back — %s\n",
 			round, rounds, strings.Join(out.verdict.evidence, " · "))
-		repaired, said := a.repairNode(ctx, node, tree, out.verdict, out.changed, round, log)
+		repaired, said := a.repairNode(ctx, node, tree, out.verdict, out.changed, round, lift, log)
 		out.changed = alsoChanged(out.changed, repaired)
 		if said = strings.TrimSpace(said); said != "" {
 			// The newest account of the work replaces the old one, for the reason
@@ -886,18 +907,20 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 // seeing what it left out — the same argument that put an independent auditor on
 // the gate in the first place, one layer down.
 //
-// AND IT IS WHERE THE EXPENSIVE MODEL IS BOUGHT. The worker below resolves its
-// model through [roleRepair], which sits on the high tier — the one escalation
-// in this build, made after a MEASURED failure rather than on a guess, on work
-// the auditor has already narrowed to named gaps in a tree somebody else filled.
-// repair_role.go carries the whole argument, including why a model somebody
-// named for this node wins over it and why an all-flash crew needs no branch.
+// AND IT IS WHERE THE EXPENSIVE MODEL IS BOUGHT — WHEN THE BOUNDARY SAYS SO.
+// The worker below resolves its model through [roleRepair], which sits on the
+// high tier, and repair_role.go carries that argument. What decides whether the
+// tier is bought at all is the `lift` verdict this is handed: a finding with
+// four dead calls under it buys nothing, because nothing about who served a
+// request is evidence about who was asked (taxonomy_boundary.go). A HOLD still
+// runs the round — same worktree, same gaps, fresh worker — just not at the
+// careful tier's price.
 //
 // It never returns an error. A repair round that could not start, or that hit a
 // threshold, or that wrote nothing, is not a failure of the node: it is a round
 // that closed no gaps, and the auditor that follows will say so in evidence a
 // person can read.
-func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, changed []string, round int, log io.Writer) ([]string, string) {
+func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, changed []string, round int, lift taxonomy.Verdict, log io.Writer) ([]string, string) {
 	// THE SURFACE HEARS "STILL WORKING", AND IT HEARS WHAT IS BEING CLOSED. The
 	// node never left TaskRunning — nothing landed, nothing was undone — so what
 	// goes out is an ordinary running update with the gap on it, and the machinery
@@ -909,7 +932,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// the same distinction the card gets (task_beat.go).
 	defer node.beatPhase(taskBeatRepairing)()
 
-	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairModel(node))
+	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
@@ -917,6 +940,10 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	defer func() {
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
+		// AND WHAT A LIFTED ROUND COST GOES AGAINST THE CAP. It is ignored while
+		// nothing is lifted, so the ordinary price of the work never counts
+		// toward a ceiling on the lift (taxonomy_boundary.go's [Agent.billLift]).
+		a.billLift(node, child)
 	}()
 	// WHERE THE MONEY WENT, written off the worker that actually exists rather
 	// than off the id the cascade asked for, and only when the ladder really did

@@ -183,6 +183,11 @@ type sessionEntry struct {
 	// from every file written before it existed.
 	Carry *journalCarry `json:"carry,omitempty"`
 
+	// Failure is ONE CLASSIFICATION made at the response boundary (see
+	// [journalFailure]). Absent from every line that is not one, and from every
+	// file written before it existed.
+	Failure *journalFailure `json:"failure,omitempty"`
+
 	// Division is ONE division put to the road, whoever asked for it
 	// (task_divide.go). Absent from every line that is not one, and from every
 	// file written before it existed.
@@ -278,6 +283,35 @@ type journalError struct {
 	Input      int    `json:"input,omitempty"`
 	Output     int    `json:"output,omitempty"`
 	DurationMS int64  `json:"durationMs,omitempty"`
+}
+
+// journalFailure is ONE CLASSIFICATION made at the response boundary: what a bad
+// response was taken to be, and what the harness did about it
+// (internal/taxonomy).
+//
+// IT IS THE ROW A BENCH COUNTS. [journalError] already says that a call failed
+// and what the provider said; what it cannot say is the only question the money
+// turns on — whether the harness read that failure as the WIRE, as the MODEL, or
+// as the WORK. Three runs of a measured comparison spent 57–82% of their bill on
+// a stronger model bought because four bad responses in a row were read as the
+// model being unable, and nothing in the file distinguished that from a model
+// that had genuinely failed the work. One line per classification makes the two
+// countable and the ratio between them readable.
+//
+// Class, Reason and Action are always written; everything else is the evidence
+// that happened to be there, absent when it was not, which is the emptiness law
+// as [journalError] applies it.
+type journalFailure struct {
+	Class    string  `json:"class"`
+	Reason   string  `json:"reason,omitempty"`
+	Action   string  `json:"action"`
+	Model    string  `json:"model,omitempty"`
+	Role     string  `json:"role,omitempty"`
+	Attempt  int     `json:"attempt,omitempty"`
+	Status   int     `json:"status,omitempty"`
+	Provider string  `json:"provider,omitempty"`
+	Refuted  int     `json:"refuted,omitempty"`
+	SpentUSD float64 `json:"spentUsd,omitempty"`
 }
 
 // journalMark is ONE reading taken at a checkpoint mark: what the sidecar was
@@ -1070,7 +1104,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// transcript. It is evidence for whoever reads the file afterwards,
 			// and replaying it would put a provider's refusal into somebody's
 			// conversation as though the model had said it.
-		case "mark", "ceiling", "division", "carry":
+		case "mark", "ceiling", "division", "carry", "failure":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
 			// not a message and not money. Whatever the mark's reader cost is
@@ -1081,7 +1115,8 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// receipt is already in the worker's transcript. A carry line is the
 			// same kind of fact about the same moment: which rung of the brief
 			// ladder the worker opened on, which the spec in the graph already
-			// holds.
+			// holds. A failure line is the boundary's reading of a call that
+			// already has its own error line above it.
 			// Replaying them would put machinery into somebody's conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
@@ -1622,6 +1657,19 @@ func (s *sessionFile) appendError(failure journalError) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "error", Error: &failure, Timestamp: stamp()})
+}
+
+// appendFailure writes ONE CLASSIFICATION down (see [journalFailure]).
+//
+// A CLASSIFICATION ALWAYS WRITES, for [sessionFile.appendError]'s reason: the
+// whole point of the line is that a decision was taken about a failure, and a
+// decision nobody wrote down cannot be measured. The nil receiver writes
+// nothing, as everywhere in this file.
+func (s *sessionFile) appendFailure(failure journalFailure) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "failure", Failure: &failure, Timestamp: stamp()})
 }
 
 // appendMark writes ONE mark's reading down (see [journalMark]).

@@ -15,15 +15,23 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
 
-// maxRetries is pi's default auto-retry count: 3. The schedule is 2s, 4s, 8s
-// (baseDelayMs=2000 * 2**(attempt-1)).
-const maxRetries = 3
-const retryBaseDelay = 2 * time.Second
+// retryBaseDelay is the first wait of the retry ladder; each attempt doubles it,
+// so 2s, 4s, 8s — pi's schedule, which is what this loop has always walked.
+//
+// IT IS INTERPOLATED AND NOT TYPED OUT, and so is the attempt count that used to
+// sit beside it as `maxRetries = 3`. The ladder a request actually walks is now
+// the response boundary's, resolved from the person's settings
+// (taxonomy_boundary.go's [Agent.failureLimits]); a second spelling of either
+// number here would be the version that drifts, and a shipped install with no
+// profile behind it walks exactly the ladder it always did because the
+// boundary's own defaults ARE these two.
+const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
@@ -401,6 +409,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// this count keeps that exceptional continuation both useful and bounded.
 	truncations := 0
 
+	// emptyReplies is how many times this turn has been answered with an HTTP 200
+	// carrying nothing at all. It is counted for the turn rather than for the
+	// step because that is the shape the measured failure had — three of them in
+	// fifteen seconds — and because the ladder it is walked against is the
+	// transport ladder, which is a budget for a piece of work and not for a line.
+	emptyReplies := 0
+
 	// meter is what this turn has COST, in finished tool rounds, priced against
 	// what handing it over would cost (checkpoint.go). It belongs to the turn for
 	// the reason the loop window and the change ledger do: it is a fact about one
@@ -497,13 +512,23 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// model that had simply finished. Three of them in fifteen seconds
 			// were the front half of the measured failure ([journalError]).
 			//
-			// The turn still ends here rather than being retried: the ladder that
-			// owns retries is [Agent.completeWithRetry], and an empty 200 is not
-			// an error it was ever handed. What changes is the record — and the
-			// transcript, which no longer gains an empty assistant line for the
-			// reason [Agent.keepPartial] refuses to write one.
+			// AND THE TURN NO LONGER ENDS ON IT. An empty 200 used to be written
+			// down once and the loop stopped, which on one measured run ended the
+			// whole thing eighteen minutes in with hours of budget unspent. The
+			// response boundary reads it for what it is — the wire, never the
+			// model, never the work — and a transport verdict is not allowed to
+			// end a turn (taxonomy_boundary.go's [Agent.readEmptyReply]). The
+			// transcript is untouched either way, so the retry re-sends exactly
+			// the messages the empty attempt was sent.
 			if turnBroke(response) {
-				a.journalFailedCall(ctx, model, "", errEmptyAnswer, 1, a.requestEstimate())
+				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
+				emptyReplies++
+				if verdict := a.readEmptyReply(model, emptyReplies); verdict.Retries() {
+					partial.reset()
+					if waitErr := backoffWait(ctx, verdict.Backoff); waitErr == nil {
+						continue
+					}
+				}
 			} else {
 				a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
 			}
@@ -752,7 +777,12 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 	// started on, however far along it the step has walked.
 	origin := model
 	var hopped []string
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	// THE LADDER'S LENGTH IS THE BOUNDARY'S, not this file's constant. It is
+	// read once, outside the loop, because a bound that could change between two
+	// attempts of one ladder is a ladder nobody can reason about afterwards
+	// (taxonomy_boundary.go).
+	attempts := a.failureLimits().TransportAttempts
+	for attempt := 0; attempt < attempts; attempt++ {
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
 		// interrupt during the next one would otherwise record the two halves
@@ -796,6 +826,13 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
 		// reads as a ladder.
 		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
+		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
+		// this says what the harness took it to MEAN, which is the only half of
+		// the record the money turns on (taxonomy_boundary.go). The verdict is
+		// read below rather than acted on here, because the two answers already
+		// in this loop — a guard cut and a refusal of our own bytes — are more
+		// specific than any class and must keep their own arms.
+		verdict := a.readCallFailure(err, model, "", attempt+1)
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a
@@ -859,14 +896,13 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
 			return nil, model, err
 		}
-		if attempt < maxRetries {
-			delay := retryBaseDelay * (1 << attempt) // 2s, 4s, 8s
-			if waitErr := backoffWait(ctx, delay); waitErr != nil {
+		if verdict.Retries() {
+			if waitErr := backoffWait(ctx, verdict.Backoff); waitErr != nil {
 				return nil, model, waitErr
 			}
 		}
 	}
-	return nil, model, fmt.Errorf("after %d retries: %w", maxRetries, lastErr)
+	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
 }
 
 // ── THE ENDPOINT-DIVERSITY GATE ─────────────────────────────────────────────

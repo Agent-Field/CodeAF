@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -938,6 +939,12 @@ type Config struct {
 	// from a test.
 	ProfileDir string
 
+	// failures is the tally the piece of work this agent belongs to keeps of its
+	// own failures (internal/taxonomy). A worker built for a task node carries
+	// its node's; a conversation carries none, and every method on the type
+	// tolerates the nil.
+	failures *taxonomy.Tally
+
 	// RolesSource reads one auxiliary-model setting for internal/roles: the
 	// keys are roles.PinKey and roles.TierKey. Nil is a fresh install with no
 	// settings file, and every auxiliary call then rides the session's own
@@ -1495,6 +1502,18 @@ type Config struct {
 type Agent struct {
 	config Config
 	client Completer
+	// limits are the response boundary's three numbers — how many times the wire
+	// is forgiven, how many measured failures buy a stronger tier, and what that
+	// tier may cost one piece of work (taxonomy_boundary.go). They are resolved
+	// ONCE, from the person's profile, because resolving them reads a file and
+	// the boundary is asked on the failure path of every request.
+	limitsOnce sync.Once
+	limits     taxonomy.Limits
+	// tallies is what each task node this agent owns remembers about its own
+	// failures, keyed by node id and guarded by mu. It lives here rather than on
+	// the node so the graph's own struct stays what it is — the person's work —
+	// and so a node that nothing classified simply has no entry.
+	tallies map[uint64]*taxonomy.Tally
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string

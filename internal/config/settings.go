@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 )
 
 // The settings registry is the one place a user-tunable knob is written down.
@@ -814,6 +815,15 @@ var OperatorEnvPins = []string{
 	// verified by two cheap validators before it commits; off, the judge's
 	// pass is the final word. Same lifetime as AFORGE_SWARM.
 	"AFORGE_QUORUM",
+	// The three numbers the response boundary reads (internal/taxonomy, and
+	// [ResponseAttemptsAt] below). They are plumbing rather than rows for the
+	// reason the context-budget pins are: nobody sets them to express a
+	// preference, they are turned when a specific provider is behaving badly or
+	// when a run is being held to a price, and the sheet already has the two
+	// rows a person actually budgets with — the daily rail and the repair count.
+	"AFORGE_RESPONSE_ATTEMPTS",
+	"AFORGE_RESPONSE_LIFT_AFTER",
+	"AFORGE_RESPONSE_LIFT_CAP",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -3044,6 +3054,90 @@ func ParseModelFallbacks(raw string) []string {
 		models = append(models, model)
 	}
 	return models
+}
+
+// ── the response boundary's three numbers ───────────────────────────────────
+
+// The keys the boundary's numbers persist under. They are named `response.`
+// because that is what the boundary reads — one response, and what kind of
+// failure it was — rather than `task.` or `model.`, either of which would put
+// the row beside the wrong question (internal/taxonomy).
+const (
+	// KeyResponseAttempts is N: how many times ONE request is tried on its own
+	// tier before the wire is given up on. The first try is included.
+	KeyResponseAttempts = "response.attempts"
+	// KeyResponseLiftAfter is K: how many checks must read finished work and
+	// find gaps in it, on the same tier and with the wire ruled out, before a
+	// stronger model is bought.
+	KeyResponseLiftAfter = "response.lift_after"
+	// KeyResponseLiftCap is what that stronger model may cost ONE piece of
+	// work, in dollars. 0 is no cap.
+	KeyResponseLiftCap = "response.lift_cap_usd"
+)
+
+// ResponseLimitsAt resolves the whole of [taxonomy.Limits] for a profile:
+// environment pin, then the persisted row, then the package default, which is
+// the order every other number in this file resolves in.
+//
+// IT IS ONE READER AND NOT THREE, because the three numbers are one policy and
+// a caller that resolved two of them would be running a boundary nobody
+// configured. The backoff is not among them: it is derived from the attempt
+// count's own schedule and there has never been a reason to turn it apart from
+// the count.
+func ResponseLimitsAt(profileDir string) taxonomy.Limits {
+	return taxonomy.Limits{
+		TransportAttempts: ResponseAttemptsAt(profileDir),
+		TransportBackoff:  taxonomy.DefaultTransportBackoff,
+		SemanticFailures:  ResponseLiftAfterAt(profileDir),
+		TierCapUSD:        ResponseLiftCapAt(profileDir),
+	}
+}
+
+// ResponseAttemptsAt resolves N. A pin below one is nonsense — a request that is
+// never sent — and reads as the default rather than as an instruction.
+func ResponseAttemptsAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_ATTEMPTS")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			return value
+		}
+		return taxonomy.DefaultTransportAttempts
+	}
+	if value, ok := persistedInt(profileDir, KeyResponseAttempts); ok && value >= 1 {
+		return value
+	}
+	return taxonomy.DefaultTransportAttempts
+}
+
+// ResponseLiftAfterAt resolves K, the same way.
+func ResponseLiftAfterAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_AFTER")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			return value
+		}
+		return taxonomy.DefaultSemanticFailures
+	}
+	if value, ok := persistedInt(profileDir, KeyResponseLiftAfter); ok && value >= 1 {
+		return value
+	}
+	return taxonomy.DefaultSemanticFailures
+}
+
+// ResponseLiftCapAt resolves the cap, in dollars.
+//
+// A PERSISTED 0 IS A VALUE AND NOT AN ABSENCE, for [TaskAutoApproveAt]'s reason:
+// 0 means no cap, and somebody who wrote it must not find one back in the
+// morning.
+func ResponseLiftCapAt(profileDir string) float64 {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_CAP")); raw != "" {
+		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 0 {
+			return value
+		}
+		return taxonomy.DefaultTierCapUSD
+	}
+	if value, ok := persistedFloat(profileDir, KeyResponseLiftCap); ok && value >= 0 {
+		return value
+	}
+	return taxonomy.DefaultTierCapUSD
 }
 
 // TaskAutoApproveAt resolves the task countdown, in seconds. 0 is a clock that
