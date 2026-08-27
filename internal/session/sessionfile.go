@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"golang.org/x/sys/unix"
 )
@@ -543,6 +544,10 @@ type journalUsage struct {
 	Calls      int     `json:"calls,omitempty"`
 	DurationMS int64   `json:"durationMs,omitempty"`
 	Aux        bool    `json:"aux,omitempty"`
+	// Empty marks a paid auxiliary call that reached its output ceiling without
+	// returning any answer. Role says which errand it was; today only a reflex
+	// writes the mark.
+	Empty bool `json:"empty,omitempty"`
 
 	// Role names WHAT the auxiliary call was for — "title", "taskname" — on the
 	// lines where knowing it changes what a person can do with the record. Aux
@@ -1270,6 +1275,9 @@ func replaySessionFile(path string) (replayedSession, error) {
 			spent.CostUSD += used.CostUSD
 			spent.Duration += time.Duration(used.DurationMS) * time.Millisecond
 			spent.Calls += used.Calls
+			if used.Empty && used.Role == string(roles.RoleReflex) {
+				spent.EmptyReflex += used.Calls
+			}
 			// Turns counts the conversation's own steps and nothing else, which
 			// is the law the live counters keep ([Agent.addUsage] bumps it,
 			// [Agent.addAuxiliaryUsage] deliberately does not). The aux mark on
@@ -1905,6 +1913,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 			Calls:      used.Calls,
 			DurationMS: used.Duration.Milliseconds(),
 			Aux:        aux,
+			Empty:      used.EmptyReflex > 0,
 			Role:       strings.TrimSpace(role),
 		},
 		Timestamp: stamp(),

@@ -844,10 +844,10 @@ ask aforge to turn it off; it is not one of the rows it refuses. The two clocks 
 section above have no switch — a request that produced nothing at all has failed by any
 reading.
 
-## What this conversation has cost — /cost
+## Why does the same conversation suddenly cost more — what this conversation has cost with /cost
 
 `/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
-what, into the conversation. Up to five aligned lines:
+what, into the conversation. Up to six aligned lines:
 
 | Line | What it is |
 |---|---|
@@ -855,6 +855,7 @@ what, into the conversation. Up to five aligned lines:
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
+| `empty reflex answers` | paid memory-routing or extraction requests that reached their output ceiling without returning any answer |
 | `time` | how long |
 
 `model calls` is the line people misread. One thing you type can become several requests to
@@ -867,6 +868,11 @@ own agent made on its own lane, and every request a harness run made while it wa
 program. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
+
+`empty reflex answers` appears only when that failure happened. Those requests remain in
+the token, call and spend totals because the provider billed them; the separate count says
+that the money bought no memory decision. aforge retries one such answer with more room,
+then uses the configured low-tier model for the rest of this session if it is still empty.
 
 **Every line is dropped when its figure is absent.** A provider that publishes no cache
 accounting says nothing about caches, rather than teaching you that your cache never hits.

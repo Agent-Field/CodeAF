@@ -80,10 +80,10 @@ func CacheKeyFrom(ctx context.Context) string {
 	return key
 }
 
-// effortRequest separates "the harness thinks this phase is cheap" from "the
-// operator asked for this". Only the second may be sent to a model whose
-// catalog entry does not confirm reasoning support, because a harness default
-// that 400s an unknown model would be a self-inflicted outage.
+// effortRequest separates "the harness thinks this phase is cheap" from an
+// effort the request cannot work without. Only the second may be sent to a model
+// whose catalog entry does not confirm reasoning support, because an optional
+// harness default that 400s an unknown model would be a self-inflicted outage.
 type effortRequest struct {
 	effort Effort
 
@@ -109,6 +109,14 @@ func WithReasoningEffort(ctx context.Context, effort Effort) context.Context {
 // WithConfiguredReasoningEffort carries an operator-configured effort, which is
 // sent even when the catalog cannot vouch for the model.
 func WithConfiguredReasoningEffort(ctx context.Context, effort Effort) context.Context {
+	return withEffort(ctx, effortRequest{effort: effort, explicit: true})
+}
+
+// WithRequiredReasoningEffort carries an effort that is part of the call's
+// correctness rather than an optional economy. A reflex with a tiny answer cap
+// is the measured case: silently dropping its disable leaves a reasoning model
+// no tokens in which to answer, so an unknown catalog row must not erase it.
+func WithRequiredReasoningEffort(ctx context.Context, effort Effort) context.Context {
 	return withEffort(ctx, effortRequest{effort: effort, explicit: true})
 }
 
