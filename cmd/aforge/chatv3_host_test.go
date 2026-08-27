@@ -239,7 +239,14 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 // what a person over --host actually gets.
 func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	options := hostOptions(nil, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	welcome := remote.Welcome{
+		Version: remote.Version, Workspace: "/srv/app",
+		Build: "1265feda built 2026-08-27 13:28",
+	}
+	options := hostOptions(nil, nil, "devbox", welcome, false)
+	if options.Build != welcome.Build {
+		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
+	}
 	if options.Standing.Items == nil || options.Standing.Save == nil {
 		t.Fatal("the door hands over no standing seam, so a remote surface has no rows and no pause key")
 	}

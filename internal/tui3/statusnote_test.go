@@ -223,7 +223,7 @@ func TestStatusSaysNothingAboutAContextItCannotMeasure(t *testing.T) {
 	}
 }
 
-// The file is the one line the sheet does not carry, and it is here because a
+// The file is one identity line the sheet does not carry, and it is here because a
 // path is a thing people copy into another program rather than a thing they
 // read off a row (statusnote.go states the trade).
 func TestStatusNamesTheFileWhenThereIsOne(t *testing.T) {
@@ -238,5 +238,15 @@ func TestStatusNamesTheFileWhenThereIsOne(t *testing.T) {
 	a.slash("/status")
 	if !strings.Contains(lastNote(t, a), a.file) {
 		t.Fatalf("the note lost the session file:\n%s", lastNote(t, a))
+	}
+}
+
+func TestStatusNamesTheBuildHoldingTheConversation(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.build = "1265feda (dirty) built 2026-08-27 13:28"
+
+	a.slash("/status")
+	if text := lastNote(t, a); !strings.Contains(text, "\nbuild") || !strings.Contains(text, a.build) {
+		t.Fatalf("the note lost the build:\n%s", text)
 	}
 }
