@@ -56,6 +56,43 @@ task with no named place stops with `this task needs a project; use /workspace <
 name where it should work`; use `/workspace` once to anchor the conversation, or name the
 folder in the request. Non-code work may deliberately use the scratch workspace in place.
 
+That scratch workspace is `work/` **inside the conversation's own session folder**, so anything
+made there is inside the conversation and deleting the conversation deletes it. The path and the
+three ways to keep the work are on the starting-aforge page, under *Where do task files go when I
+did not open a project*.
+
+## Does a task see my unsaved changes — it worked on an old version of the file
+
+No. The task's checkout is cut from your **last commit**, so an edit sitting uncommitted in
+your working copy does not travel with it. That is the same isolation that lets you keep
+typing while it runs, and it is also how a task ends up reporting a file as it was this
+morning: it was reading the committed version, and it was right about that version.
+
+Aforge says so before it spends anything. When you start a task and your working copy has
+uncommitted changes, one line goes into the chat with the brief:
+
+```
+your unsaved edits stay here · the task works from the last commit
+```
+
+It is a **note and not a gate** — the task starts on the very next breath and nothing waits
+for you. It is said once per task you start, and it is not said at all when your working
+copy is clean or when the conversation is not in a repository, because there would be
+nothing to tell you.
+
+**New files you have never committed are not counted.** Build output and scratch files
+would otherwise make the line appear on every single start, and a line that always appears
+is a line nobody reads. They are just as invisible to the task, so a brand-new file the task
+needs is one to commit — or to name in the brief, so the worker makes it itself.
+
+**If you want the task to have your changes, commit them first**, then start it. There is no
+flag that sends a dirty working copy; the checkout is `git worktree add … HEAD` and HEAD is
+what it gets.
+
+The one task that does see your unsaved edits is a task **running in place** — a named
+folder, `where: in place`, or a workspace that is no repository at all. There is only one
+directory in that case, which is why such a task holds it while it runs (below).
+
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 
 When a task got a checkout of its own, you and it are in different directories and nothing

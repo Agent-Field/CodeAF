@@ -8,6 +8,7 @@ package session
 // "I have these files to myself".
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -198,5 +199,63 @@ func TestBriefFilesReadsEachPathOnce(t *testing.T) {
 	got := briefFiles("", "internal/x.go", "see internal/x.go again, and ./internal/x.go")
 	if len(got) != 1 || got[0] != "internal/x.go" {
 		t.Fatalf("read %v, want one internal/x.go", got)
+	}
+}
+
+// ── the person's OWN uncommitted work ───────────────────────────────────────
+//
+// The other half of what is knowable before the spend: a task's copy is cut from
+// HEAD, so an edit the person has not committed does not travel. The silence
+// cases matter as much as the line, for this file's reason — but inverted. Here
+// silence is the ORDINARY answer and a line that fired on a clean tree, or on a
+// directory that is no repository at all, would be furniture.
+
+func TestUnsavedEditsAreSaidOnceWhenTheTreeIsDirty(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "shared.txt"), "edited and not committed\n")
+
+	if line := UnsavedEditsNote(repo); line != unsavedEditsWord {
+		t.Fatalf("dirty tree said %q, want %q", line, unsavedEditsWord)
+	}
+}
+
+func TestUnsavedEditsSayNothingOnACleanTree(t *testing.T) {
+	if line := UnsavedEditsNote(newTestRepo(t)); line != "" {
+		t.Fatalf("a clean tree said %q, want nothing at all", line)
+	}
+}
+
+// A staged-but-uncommitted change is exactly as invisible to the task as an
+// unstaged one, and is said the same way.
+func TestUnsavedEditsCountAStagedChange(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "added.txt"), "new\n")
+	gitOut(t, repo, "add", "added.txt")
+
+	if line := UnsavedEditsNote(repo); line != unsavedEditsWord {
+		t.Fatalf("staged change said %q, want %q", line, unsavedEditsWord)
+	}
+}
+
+// An untracked file is deliberately not counted: build output and scratch files
+// leave nearly every working repository permanently untracked-dirty, and a line
+// that fired on every start is a line nobody reads.
+func TestUnsavedEditsIgnoreUntrackedFiles(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "scratch.log"), "build output\n")
+
+	if line := UnsavedEditsNote(repo); line != "" {
+		t.Fatalf("an untracked file said %q, want nothing at all", line)
+	}
+}
+
+// Nothing to be dirty about: a directory that is no repository, and no directory
+// at all, both answer with silence rather than with a guess.
+func TestUnsavedEditsSayNothingWithoutARepository(t *testing.T) {
+	if line := UnsavedEditsNote(t.TempDir()); line != "" {
+		t.Fatalf("a plain directory said %q, want nothing at all", line)
+	}
+	if line := UnsavedEditsNote(""); line != "" {
+		t.Fatalf("an empty workspace said %q, want nothing at all", line)
 	}
 }

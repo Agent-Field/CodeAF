@@ -165,6 +165,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// The isolation people meet as a bug: the task read the committed file
+		// and they are looking at an edited one.
+		{"the task did not see my unsaved changes", "how-tasks-run"},
+		{"my task worked on an old version of the file", "how-tasks-run"},
+		// The owned workspace, asked the two ways it actually gets discovered:
+		// before, wondering where the work will land, and after, when the folder
+		// went and took the work with it.
+		{"where do task files go when I did not open a project", "starting-aforge"},
+		{"deleted my chat and lost the files the task made", "starting-aforge"},
 		// The first-run setup, asked the four ways somebody meets it: arriving,
 		// wanting the key in, seeing the screen, and wanting to undo an answer.
 		{"first time setup", "getting-started"},
