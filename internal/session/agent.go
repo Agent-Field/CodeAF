@@ -374,6 +374,11 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	if a.config.ContextWindowFor != nil {
+		if window := a.config.ContextWindowFor(model); window > 0 {
+			a.contextWindow.Store(int64(window))
+		}
+	}
 	a.scrubBlindImagePartsLocked(model)
 	a.mu.Unlock()
 }

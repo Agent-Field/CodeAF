@@ -102,10 +102,17 @@ import (
 //	                  have the verb and says so. RUNNING one that already exists
 //	                  is unaffected: that rides Harnesses and RunHarness, which
 //	                  the engine still fills.
-//	the task rail     absent, and absent by construction: task.go asserts an
-//	                  optional interface on the agent and the remote one does not
-//	                  implement it, so there is no rail, no room, and no journal
-//	                  read at a path that is not on this disk.
+//	the task rail     DRAWN from this conversation's rows in the far world. A
+//	                  landed row opens a read-only room: one honest line while
+//	                  Places.Task brings the bounded journal tail across, then
+//	                  the ordinary room renderer draws it. Steering, stopping,
+//	                  and changing its model stay absent because the wire has no
+//	                  such doors; no path from the far row is opened here.
+//	                  //	the task rail     DRAWN from Places.Task, carried by the same far-machine
+//	                  seam as the tasks place. The remote agent still has no task
+//	                  door, so /task refuses honestly; the rail is a reading of
+//	                  work already reported by the far world, not a promise that
+//	                  this surface can start another task.
 //	/image and @      LOCAL, and deliberately: the picture is on the machine the
 //	                  person is sitting at, and the bytes travel with the message
 //	                  (internal/remote's SubmitImage). So a relative path and the
@@ -130,12 +137,10 @@ import (
 //	                  right machine. The rows answer from a cache that refreshes
 //	                  behind itself (cmd/aforge's [hostStanding]), because this
 //	                  seam is asked on the frame and a wire call is not.
-//	`keeping watch`   NO LINE. The OS timer is the far machine's and its status
-//	                  is derived from a definition file on that disk, so the door
-//	                  hands no Watch over rather than reading this laptop's
-//	                  launchd — a status about the wrong machine. [StandingSeam]
-//	                  already calls a false the honest third state, and the
-//	                  emptiness law draws it as nothing.
+//	`keeping watch`   WORKS. Standing.Watch crosses the wire and reads the far
+//	                  machine's scheduler, so /status says installed, absent, or
+//	                  nothing when that engine has no scheduler to ask. It never
+//	                  consults this laptop's timer.
 //	the ● glyph       never worn, and for the reason the field states rather than
 //	                  for a remote one: a firing is in flight inside whichever
 //	                  process holds the tick lock, nothing on disk says so, and
@@ -178,6 +183,12 @@ import (
 //	                  up to 5 minutes` takes the segment and no ping is sent.
 //	                  There is still no badge, icon or "connected" word
 //	                  (hostlink.go).
+//	the model catalog SPLIT BY RESPONSIBILITY. The laptop's catalog supplies the
+//	                  picker rows and their display facts. The engine's catalog
+//	                  owns execution facts: SetModel resolves the context window
+//	                  there, and the remote handle ignores the laptop's later
+//	                  SetContextWindow hint, so compaction follows the machine
+//	                  doing the work even when the two caches differ.
 //	news from a redial
 //	                  an ordinary note in the transcript, once: the engine did
 //	                  not keep the turn, or it came back with a different
@@ -209,6 +220,11 @@ import (
 //	                  what a hosted session used to get with an apology under it
 //	                  ([filesRemoteWord]), and that is still what a connection
 //	                  with no file seam gets.
+//	the deliverables band
+//	                  THE FAR MACHINE'S. Its rows ride with Places.World, keyed
+//	                  by the far conversation id, and its paths become the same
+//	                  fetched links as paths in a reply. The surface never joins
+//	                  a far id to this machine's artifacts index.
 //	dropping a file ON the browse page
 //	                  IT LANDS IN THAT SESSION'S attachments/ FOLDER AND SAYS
 //	                  NOTHING. The wire's Deposit.File keeps a file without
@@ -227,6 +243,13 @@ import (
 //	                  inventing one belongs to the lane that owns the contract.
 //	                  STUB: with a wire method for it, this becomes a remote write
 //	                  and the note gains the host prefix like every other path.
+//	a generated picture
+//	                  A FETCHABLE PATH, NOT AN INLINE PREVIEW. The result names
+//	                  the far file and the ordinary far-path door opens it here;
+//	                  the half-block painter reads a local file, so it draws
+//	                  nothing until the bytes have crossed by an explicit open.
+//	                  The result line is kept whole rather than replaced by an
+//	                  error or a picture read from the wrong disk.
 
 // hosted reports whether the session under this surface is on another machine.
 func (a *app) hosted() bool { return a.host != "" }
@@ -335,10 +358,18 @@ const (
 	// command, which is the trade every row in a frame makes.
 	connectAskRemoteWord = "connecting an account is not available over --host yet"
 	// settingsRemoteWord opens the panel on a remote session.
-	settingsRemoteWord = "these rows are this machine's — the ones that govern the conversation are read from the profile on the other one"
+	settingsRemoteWord = "these rows and changes belong to this machine — this conversation reads its profile on the other one"
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
 )
+
+// remoteProfileWord is the honest floor for commands whose setting or store
+// belongs to the session's machine but has no wire door yet. The machine is
+// named because "another machine" makes a destructive refusal needlessly
+// vague when the surface already knows exactly which one it is connected to.
+func (a *app) remoteProfileWord(thing string) string {
+	return a.host + " owns " + thing + " · change it on that machine"
+}
 
 // ── THE PLACES AND THE MACHINE THE SESSION IS ON ────────────────────────────
 //
@@ -370,10 +401,10 @@ const (
 //	           THIS conversation always crossed the wire (Standing.Items), and
 //	           what else keeps an eye on that machine is a walk of the far world's
 //	           projects asking the far store about paths that are real there.
-//	spend      NOT YET. See [spendRemoteWord].
-//	search     NOT YET. See [searchRemoteWord].
-//	memory     NOT YET. See [memoryRemoteWord].
-//	settings   NEVER, AND CORRECTLY: half its rows are this surface's own and
+//	spend      THE FAR MACHINE'S, through Places.Ledger and a held cache.
+//	search     THE FAR MACHINE'S, one call from the search command's goroutine.
+//	memory     THE FAR MACHINE'S, all seven readings and writes together.
+//	settings   SPLIT, AND CORRECTLY: half its rows are this surface's own and
 //	           half are read from the far machine's profile, which is what
 //	           [settingsRemoteWord] says as it opens.
 //

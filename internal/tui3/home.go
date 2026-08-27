@@ -2242,6 +2242,10 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+o":
+		if a.hosted() {
+			h.say("folders on the other machine do not open here", "")
+			return nil
+		}
 		if line, ok := h.previewLine(); ok && line.kind == homeSession {
 			path := strings.TrimSpace(line.row.Workspace)
 			if path == "" || processOpener(path) != nil {
@@ -2253,6 +2257,10 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+y":
+		if a.hosted() {
+			h.say("paths on the other machine do not copy here", "")
+			return nil
+		}
 		if line, ok := h.previewLine(); ok && line.kind == homeSession {
 			path := strings.TrimSpace(line.row.Workspace)
 			if path == "" {
@@ -2293,7 +2301,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if line, ok := h.previewLine(); ok {
 			switch line.kind {
 			case homeSession:
-				if err := session.SetArchived(line.row.Dir, !line.row.Archived); err != nil {
+				err := error(nil)
+				if a.archive != nil {
+					err = a.archive(line.row.Dir, !line.row.Archived)
+				} else {
+					err = session.SetArchived(line.row.Dir, !line.row.Archived)
+				}
+				if err != nil {
 					h.say("could not put it away", "")
 					return nil
 				}
@@ -3813,9 +3827,9 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 	switch {
 	case row.Transcript == "":
 		return markNone
-	case convKey(row.Transcript) == convKey(a.file):
+	case a.convKey(row.Transcript) == a.convKey(a.file):
 		return markHere
-	case a.behind[convKey(row.Transcript)] != nil:
+	case a.behind[a.convKey(row.Transcript)] != nil:
 		return markOurs
 	}
 	return markNone
@@ -3833,7 +3847,7 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 // Every other row is returned untouched, because the file is the only thing that
 // knows about another terminal.
 func (a *app) homeTrue(row session.SessionRow) session.SessionRow {
-	held := a.behind[convKey(row.Transcript)]
+	held := a.behind[a.convKey(row.Transcript)]
 	if held == nil || held.conv.Agent == nil {
 		return row
 	}

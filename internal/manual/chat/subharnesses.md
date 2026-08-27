@@ -293,9 +293,9 @@ Stated plainly, because the surface is finished before everything behind it is.
   described above, and it is raised only where a window can draw it: not over `--host`,
   not in a headless `--once` run, not inside a task. In those places the ability is absent
   rather than present and failing.
-- **No subharnesses over `--host`.** The registry lives on the far machine, so the command
-  answers `no subharnesses here yet — a subharness is a saved program for work that comes
-  round again.` and opens nothing.
+- **No subharness list over `--host`.** The registry lives on the far machine and this
+  build has no door onto it. The command answers `<machine> owns subharnesses ·
+  change it on that machine` and opens nothing; it does not report that registry empty.
 - **Writing a bundle is not a command.** Asking aforge to build you one is: say so in the
   conversation and a design is started, and the page it saves is on this list. What you
   cannot do from here is write the *bundle* form — the one with a schema of several fields —
@@ -310,9 +310,11 @@ sitting — there is nothing to pick:
 no subharnesses here yet — a subharness is a saved program for work that comes round again.
 ```
 
-You get it when no registry is wired, when the registry is empty, and on every `--host`
-session. **No list opens behind it.** An overlay with no rows would be a thing you had to
-dismiss before it could tell you it was useless.
+You get it when no registry is wired or when the local registry is empty. Over `--host`,
+the command instead names the connected machine and says to change it there, because this
+surface has not asked whether that registry is empty. **No list opens behind either
+answer.** An overlay with no rows would be a thing you had to dismiss before it could tell
+you it was useless.
 
 The general-purpose worker is never on this list. It is what you get when you pick nothing,
 not something you pick, so offering it would be offering the absence of a choice as a

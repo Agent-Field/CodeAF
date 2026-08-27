@@ -140,12 +140,36 @@ type attachReplayer interface {
 // be resolved (a transcript just minted, a filesystem that will not answer)
 // falls back to the cleaned path, because a name we cannot canonicalise is still
 // a name, and refusing to key it would be worse than keying it twice.
+// resolveTranscript is the symlink walk behind [convKey], a var so that a test
+// can prove it is never asked about a path on another machine.
+var resolveTranscript = filepath.EvalSymlinks
+
+// convKey on the app is the one every reader of [app.behind] must use, because
+// over --host the paths in a row are THE ENGINE MACHINE'S and resolving them
+// here walks this laptop's disk for a file that was never on it. That walk is
+// not merely useless: on macOS `/home` is an automounter's mount point, so
+// `Lstat("/home/santosh")` on the Mac waits on autofs for a quarter of a second
+// or more — and home asked it for every row on every frame, which is why typing
+// on a hosted home took a second per key (2026-08-27). A hosted key is the
+// cleaned spelling and nothing else; the far machine's `/tmp`-versus-
+// `/private/tmp` ambiguity belongs to its engine, which keys its own keeper.
+func (a *app) convKey(path string) string {
+	if a.hosted() {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return ""
+		}
+		return filepath.Clean(path)
+	}
+	return convKey(path)
+}
+
 func convKey(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
 	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
+	if real, err := resolveTranscript(path); err == nil {
 		return filepath.Clean(real)
 	}
 	return filepath.Clean(path)

@@ -56,6 +56,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // WrappedAgent is the slice of *session.Agent an engine serves. It is the
@@ -178,6 +179,9 @@ type Engine struct {
 	// redrew a row as paused over a rejected write would be lying about this
 	// disk, so nothing here softens it.
 	StandingSave func(item standing.Item) error
+	// StandingWatch reads this machine's scheduler. Nil means this engine has no
+	// scheduler to ask, which the surface renders as no line.
+	StandingWatch func() (standing.WatchStatus, bool)
 
 	// ── the places ──────────────────────────────────────────────────────────
 	//
@@ -195,11 +199,42 @@ type Engine struct {
 	// of the surface's seven places are built from ([MethodPlacesWorld] names
 	// them), which is why one door serves all five.
 	World func() session.World
+
+	// Ledger is the spend place's reading: the priced lines of THIS machine's
+	// usage ledger at or after a floor the surface named, and whether the file
+	// holds any priced line at all outside it ([LedgerReading] says why the
+	// second fact cannot be derived from the first). Nil is a refusal, which the
+	// surface draws as the sentence spend has always said.
+	Ledger func(since time.Time) LedgerReading
+
+	// Search is one full-text query over every message THIS machine has kept.
+	// Nil is a refusal for the same reason, and it is the ordinary state of an
+	// engine whose memory row is off: the index and the memory store are one
+	// database today, and a machine that is not remembering has neither.
+	Search func(terms string, limit int) ([]store.ConversationHit, error)
+
+	// Memory is THIS machine's memory store, readings and writes together.
+	//
+	// IT IS ONE FIELD FOR SEVEN METHODS AND THAT IS THE POINT. The memory place
+	// is the only place on the surface that WRITES, so a wire that carried its
+	// readings and not its writes would hand a person a page of the far
+	// machine's memories whose `e` and `f` keys edited this laptop's. The store
+	// crosses whole or it does not cross, and nil is memory off over there —
+	// which the surface says in those words rather than in this session's own
+	// ([EngineMemory]).
+	Memory  EngineMemory
+	Archive func(dir string, archived bool) error
 	// PlacesRoot is the directory World walked, carried on the welcome so the
 	// surface can put THIS conversation back into a walk taken before it existed
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
 	// world door; a build that answers a world and no root simply cannot adopt.
 	PlacesRoot string
+	// TaskRecord is ONE ROW of that record read deeper than the walk reads it:
+	// the last thing that piece of work said, out of the journal it left here
+	// ([MethodPlacesTask]). nil is the same absence World's nil is — the door is
+	// answered as a refusal and the card says so, rather than the surface reading
+	// a path on its own disk that only exists on this one.
+	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -217,6 +252,15 @@ type Options struct {
 // connections at once.
 type AttachOptions struct {
 	Open func(Hello) (*Session, error)
+
+	// Host answers the version exchange (whois.go): which build is holding this
+	// socket, whether it has work in flight, and whether it will retire.
+	//
+	// NIL IS "NOTHING IS HOLDING A CONVERSATION HERE" and it is the honest
+	// answer for a pipe engine, which is why [Serve] leaves it unset. A pipe's
+	// conversation cannot outlive its connection, so it can never be the stale
+	// middle half this exchange exists to find.
+	Host func(WhoIs) HostSelf
 }
 
 // frameCap is the most one line may weigh. It is the journal reader's bargain
@@ -272,7 +316,7 @@ func Serve(in io.Reader, out io.Writer, opts Options) error {
 // opens for its hello — a fresh one, or one that has been running since before
 // this surface existed.
 func ServeAttach(in io.Reader, out io.Writer, opts AttachOptions) error {
-	s := &server{out: out, open: opts.Open}
+	s := &server{out: out, open: opts.Open, host: opts.Host}
 	return s.serve(in)
 }
 
@@ -740,6 +784,12 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// their screen and only becomes a waiting one if they leave without
 	// answering it.
 	sess.held.raise(wire, id, len(sess.surfaces) == 0)
+	// A connect ask removes itself when its five-minute wait settles. That
+	// settling emits the next event, so reconcile here while the session lock is
+	// already held and do not leave a dead card keeping the host alive forever.
+	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
+		sess.held.settleConnect(pending.PendingConnect())
+	}
 	watching := sess.watchingLocked()
 	sess.mu.Unlock()
 
@@ -854,6 +904,13 @@ type server struct {
 
 	open    func(Hello) (*Session, error)
 	session *Session
+	// host answers a connection that asked which build this is, and asked it to
+	// go (whois.go). It is nil on a pipe engine, which is nobody's host.
+	host func(WhoIs) HostSelf
+	// asked records that this connection was the version exchange and nothing
+	// else: it opened no conversation, it has been answered, and the serve loop
+	// returns rather than waiting for a line that is not coming.
+	asked bool
 
 	// name is the machine this surface is running on, as its hello said and
 	// [machineLabel] made it safe to draw. arrived is its place in the order the
@@ -899,6 +956,11 @@ func (s *server) serve(in io.Reader) (err error) {
 	}
 	if err := s.handshake(scan.Bytes()); err != nil {
 		return err
+	}
+	if s.asked {
+		// THE QUESTION WAS THE WHOLE CONNECTION. It opened nothing, so there is
+		// nothing to flush and nothing to say about it in a log.
+		return nil
 	}
 
 	for scan.Scan() {
@@ -973,6 +1035,13 @@ func (s *server) handshake(line []byte) error {
 	if err := json.Unmarshal(line, &frame); err != nil {
 		return s.refuse("engine: the first frame was not JSON")
 	}
+	if frame.Kind == "whois" {
+		// ASKED BEFORE THE VERSION IS CHECKED, ON PURPOSE. A build that would
+		// be refused for its protocol is exactly the build somebody needs an
+		// answer from, so this question is the one frame that outranks the
+		// door (whois.go states why).
+		return s.whois(frame)
+	}
 	if frame.Kind != "hello" {
 		return s.refuse(fmt.Sprintf("engine: the first frame was %q, not a hello", frame.Kind))
 	}
@@ -981,7 +1050,17 @@ func (s *server) handshake(line []byte) error {
 		return s.refuse("engine: the hello did not parse")
 	}
 	if hello.Version != Version {
-		return s.refuse(fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version))
+		reason := fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version)
+		if s.host != nil {
+			// THE CLAUSE THAT WAS MISSING THE DAY THIS SENTENCE LIED. A host
+			// outlives the connection, so the process saying this may be an
+			// older aforge that is still running on a machine whose binary was
+			// updated an hour ago — and the sentence above sent the person off
+			// to update something that was already updated. When there is a
+			// host behind this connection, say the other thing that is true.
+			reason += ", and this machine is still running the older one — run aforge engine --stop here to retire it"
+		}
+		return s.refuse(reason)
 	}
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
@@ -1031,6 +1110,22 @@ func (s *server) refuse(reason string) error {
 type Refusal struct{ Reason string }
 
 func (r *Refusal) Error() string { return r.Reason }
+
+// Refuse writes one refusal onto a wire nobody has said hello on yet and hands
+// back the same [Refusal] a handshake's own refusals do.
+//
+// IT EXISTS FOR THE ONE REFUSAL THAT COMES BEFORE THERE IS A SERVER. `aforge
+// engine` decides whether it may splice this connection onto a host before it
+// reads a byte of stdin (cmd/aforge's engine.go), and a reason found there has
+// the same audience and travels the same road as any other: the surface is
+// holding the terminal, it is waiting for a welcome, and a fatal frame is the
+// sentence it prints unchanged.
+func Refuse(out io.Writer, reason string) error {
+	if line, err := json.Marshal(Frame{Kind: "fatal", Error: reason}); err == nil {
+		_, _ = out.Write(append(line, '\n'))
+	}
+	return &Refusal{Reason: reason}
+}
 
 // readCall is the frame check every line after the handshake goes through.
 func readCall(line []byte) (Frame, error) {
@@ -1346,6 +1441,26 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(world())
 
+	case MethodPlacesTask:
+		args, err := arg[PlacesTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		sess.mu.Lock()
+		read := sess.engine.TaskRecord
+		sess.mu.Unlock()
+		if read == nil {
+			// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT EMPTY, exactly as the
+			// world door above. An empty record answered here would reach the card
+			// as a piece of work that said nothing at the end, which is a claim.
+			return nil, errors.New("engine: this engine cannot read its record")
+		}
+		record, err := read(args.Transcript, args.Tail)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(record)
+
 	case MethodStandingItems:
 		workspace, err := arg[string](call)
 		if err != nil {
@@ -1376,6 +1491,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return nil, save(item)
 
+	case MethodStandingWatch:
+		sess.mu.Lock()
+		watch := sess.engine.StandingWatch
+		sess.mu.Unlock()
+		if watch == nil {
+			return nil, errors.New("engine: this engine cannot read background checks")
+		}
+		status, known := watch()
+		return json.Marshal(StandingWatchResult{Status: status, Known: known})
+
 	case MethodSessionNew:
 		sess.mu.Lock()
 		fresh := sess.engine.Fresh
@@ -1403,6 +1528,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			next, resumed, err := open(file)
 			return next, file, resumed, err
 		})
+	}
+	// AND THE THREE PLACES THAT LEARNED TO CROSS LATER ARE ASKED HERE, in a file
+	// of their own, ahead of the refusal. They are additive to version 4 and the
+	// refusal below is what an engine WITHOUT them answers, which is the whole
+	// bargain: a surface that meets it says the sentence its place has always
+	// said rather than waiting on a call nobody is going to answer
+	// (wire_places.go states the law).
+	if payload, handled, err := s.placesCall(call); handled {
+		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)
 }

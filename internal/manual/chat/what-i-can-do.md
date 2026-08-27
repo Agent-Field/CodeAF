@@ -29,6 +29,13 @@ disk?" below for what comes back and what it costs.
 `read` cannot open a **directory**. It answers
 `Error reading file: read <path>: is a directory`. Use `ls` to list a directory.
 
+Over `--host`, `read`, `write`, `edit` and `ls` run on the other machine, inside the
+workspace shown for the session. A path in a task brief is read there too. A path the
+model names in its reply can be opened here: aforge confirms it on the far disk and
+fetches it through a short-lived local file door. Copy mode, `ctrl+s`, mouse drag-copy
+and `m puts it in your message` only copy or compose words on this screen, so they work
+the same way over a connection and do not move a file.
+
 `edit` takes a list of replacements. Each `oldText` must appear exactly once,
 and all of them are matched against the original file rather than one after the
 other. Success reads `Successfully replaced N block(s) in <path>.`; a missing

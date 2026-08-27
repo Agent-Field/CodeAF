@@ -1119,12 +1119,21 @@ type app struct {
 	// and an empty ledger draws the spend place's own teaching.
 	searchStore SearchStore
 	usageLedger string
+	ledger      func(time.Time) ([]session.UsageLine, bool, bool)
+	archive     func(string, bool) error
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
 	// stop listing the laptop (tui3.go's [Options.World], [app.worldRoot]).
 	world     func() (session.World, bool)
 	farPlaces string
+	// farRecord is ONE ROW of that machine's record, read deeper than the walk
+	// reads it: the last thing one piece of work said, out of the journal it left
+	// over there. Nil is this process's own disk, which is every local launch —
+	// the card opens the journal itself then (tui3.go's [Options.TaskRecord],
+	// taskrecord.go's [app.readTaskTail]).
+	farRecord func(uri string, tail int) (session.TaskRecord, error)
+	farTasks  func() ([]session.TaskIndexEntry, bool)
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1900,8 +1909,12 @@ func newApp(ctx context.Context, opts Options) *app {
 		memory:           opts.Memory,
 		searchStore:      opts.Search,
 		usageLedger:      opts.UsageLedger,
+		ledger:           opts.Ledger,
+		archive:          opts.Archive,
 		world:            opts.World,
 		farPlaces:        opts.WorldRoot,
+		farRecord:        opts.TaskRecord,
+		farTasks:         opts.TaskIndex,
 		live:             -1,
 		echoAt:           -1,
 		sel:              -1,
@@ -2134,7 +2147,7 @@ func (a *app) Init() tea.Cmd {
 	// round trip to measure and because no frame is permission to call the wire.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		a.linkPingTick(), tea.RequestBackgroundColor}
+		a.linkPingTick(), a.prefetchReplayedPictures(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2355,7 +2368,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tasksLoadedMsg:
-		return a, a.tasksLoaded(msg.rows)
+		return a, a.tasksLoaded(msg.rows, msg.known)
 
 	case taskTailMsg:
 		// One node's journal, read off the loop for the record card
@@ -3007,6 +3020,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// rows say so and stop pulsing (room.go).
 		a.roomResolveUnfinished()
 		a.roomTouched()
+		return a, a.wake()
+
+	case roomRecordMsg:
+		a.farRoomRead(msg)
 		return a, a.wake()
 
 	case homeTickMsg:
@@ -5994,7 +6011,7 @@ func (a *app) renew() tea.Cmd {
 		// notice lands too ([Options.Notice]).
 		a.note(conv.Notice)
 	}
-	if key := convKey(a.file); key != "" {
+	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
 	return cmd
@@ -6445,7 +6462,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// so the model gets the pixels rather than a string it has to guess about
 	// (imagepaste.go). Anything else falls through and is inserted as the text
 	// it plainly is.
-	if !a.pasteImages(text) {
+	if !a.pasteFiles(text) {
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))

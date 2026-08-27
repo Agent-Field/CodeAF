@@ -3635,3 +3635,60 @@ func TestALetterAlwaysTypesWhateverIsChosen(t *testing.T) {
 		t.Fatalf("letters on a picked row did not all type; the box holds %q", got)
 	}
 }
+
+// AND NOT ONE OF ITS ROWS IS RESOLVED ON THIS DISK EITHER. Every row on home is
+// asked whether this process holds it ([app.homeTrue]), and the key that answers
+// is a transcript path with its symlinks walked ([convKey]) — a walk of THIS
+// laptop for a file on the far machine. That walk is not free: on macOS `/home`
+// is an automounter's mount point, so each row's `Lstat("/home/santosh")` waited
+// on autofs, and home over --host cost up to a second per frame with the keys
+// queued behind it. A hosted key is the cleaned spelling and the disk is never
+// asked ([app.convKey]); this counts the asking so it cannot come back.
+func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	a := lab.app("")
+	a.host = "box"
+	a.world = func() (session.World, bool) {
+		return session.World{
+			Read: now,
+			Projects: []session.Project{{
+				Dir: "-home-far-src-api", Path: "/home/far/src/api", Name: "api",
+				Sessions: []session.SessionRow{{
+					ID: "bbbb000000000002", Dir: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000002",
+					Transcript: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000002/transcript.jsonl",
+					Title:      "rewriting the importer", Project: "api", ProjectDir: "-home-far-src-api",
+					Workspace: "/home/far/src/api", At: now, Created: now,
+				}, {
+					ID: "bbbb000000000003", Dir: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000003",
+					Transcript: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000003/transcript.jsonl",
+					Title:      "porting the picker", Project: "api", ProjectDir: "-home-far-src-api",
+					Workspace: "/home/far/src/api", At: now, Created: now,
+				}},
+			}},
+		}, true
+	}
+	walked := 0
+	prior := resolveTranscript
+	resolveTranscript = func(path string) (string, error) { walked++; return path, nil }
+	defer func() { resolveTranscript = prior }()
+	a.openHome()
+	if !a.at(pageHome) {
+		t.Fatal("home did not open over --host")
+	}
+	// At rest, and then under a query that keeps both rows on the screen — the
+	// rows are what ask, so a query that matched nothing would prove nothing.
+	homeText(a)
+	typeInto(t, a, "importer")
+	if text := homeText(a); !strings.Contains(strings.ToLower(text), "rewriting the importer") {
+		t.Fatalf("the far rows were not drawn under the query:\n%s", text)
+	}
+	if walked != 0 {
+		t.Fatalf("a hosted home walked this disk for the far machine's transcripts %d times", walked)
+	}
+	// And the key it does use is still one key per transcript, so the keeper's
+	// lookups agree with each other: a cleaned far path keys the same way twice.
+	if a.convKey("/home/far/x/../y/transcript.jsonl") != a.convKey("/home/far/y/transcript.jsonl") {
+		t.Fatal("two spellings of one far transcript keyed differently")
+	}
+}

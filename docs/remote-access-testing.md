@@ -270,19 +270,19 @@ keeps the escape sequences, which is the only way to see a hyperlink from outsid
 terminal:
 
 ```sh
-tmux capture-pane -pe -t fx | grep -o ']8;;http://127.0.0.1:[0-9]*/f/[a-f0-9]*' | sort -u
+tmux capture-pane -pe -t fx | grep -o ']8;;http://127.0.0.1:[0-9]*/o/[a-f0-9]*' | sort -u
 ```
 
-Expect `]8;;http://127.0.0.1:<port>/f/<32 hex>`. **The link appears only after the ENGINE
+Expect `]8;;http://127.0.0.1:<port>/o/<32 hex>`. **The link appears only after the ENGINE
 confirmed the file** — a path the model merely names, or one that does not exist over
 there, has no anchor at all. A path inside a code span that was never confirmed stays
 ordinary inline code.
 
-**2. The door serves the bytes, and refuses everything else identically.**
+**2. The door fetches and opens the named local mirror, and refuses everything else identically.**
 
 ```sh
-URL=$(tmux capture-pane -pe -t fx | grep -o 'http://127.0.0.1:[0-9]*/f/[a-f0-9]*' | head -1)
-curl -s "$URL"; echo                                   # the file's contents
+URL=$(tmux capture-pane -pe -t fx | grep -o 'http://127.0.0.1:[0-9]*/o/[a-f0-9]*' | head -1)
+curl -s "$URL"; echo                                   # says which file opened from which machine
 curl -s -o /dev/null -w '%{http_code}\n' "${URL%/*}/0000000000000000000000000000dead"   # 404
 ```
 
@@ -353,7 +353,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "$URL"      # connection refused: the l
 ```
 
 **Verified this way, on this tree:** the link appears only after StatPaths confirms;
-`/f/<id>` serves the bytes and any other id 404s; `/files` opens the browse page and lists
+`/o/<id>` opens the fetched local mirror and any other id 404s; `/files` opens the browse page and lists
 dirs-first with sizes and times; a `curl -F file=@…` deposit lands in `attachments/` and
 adds nothing to the transcript; a written file is in the CAS before the click; the mirror
 is a hardlink to the blob; the two-roots and 16MB refusals are the engine's sentences,
@@ -489,7 +489,7 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 | `internal/remote/server.go`, `held.go` | the engine half; `Session` is the conversation, `server` is one connection |
 | `internal/remote/client.go`, `redial.go` | the surface half and the roaming loop |
 | `internal/remote/file.go`, `image.go` | attachments, both directions, plus ListDir, StatPaths and Deposit.File |
-| `internal/filedoor/` | the loopback door: `/f/<id>`, the browse page, `/api/<token>/ls`, `/put` |
+| `internal/filedoor/` | the loopback door: `/o/<id>` opens, `/f/<id>` serves bytes, plus the browse page, `/api/<token>/ls`, `/put` |
 | `internal/tui3/remotefiles.go`, `remoteopen.go` | the surface half: confirmed links, prefetch, the CAS and the mirror |
 | `internal/remote/loopback.go` | a real client against a real server, in memory — start here when testing |
 | `internal/enginehost/` | the session host: one per workspace, on a unix socket |

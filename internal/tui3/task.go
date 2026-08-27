@@ -223,7 +223,11 @@ type taskNode struct {
 	// unpublished price (session's task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
-	changed               []string
+	// transcript is the node journal named by a far world's task row. Local
+	// nodes ask their agent for this path; hosted record rows have no local agent
+	// door, so the URI is the only honest address the room can hand back.
+	transcript string
+	changed    []string
 	// tool is what the node is doing RIGHT NOW, one line, and toolBegan when it
 	// started doing it. They are written by the pilot lane below and are empty
 	// between calls: a row that kept the last call's name would be claiming a

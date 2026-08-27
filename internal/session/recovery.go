@@ -186,7 +186,7 @@ func (c *changeLedger) PreAction(_ context.Context, ep *episode, _ *eventHub, ca
 // PostFeedback records the calls that actually changed something: a mutation
 // that failed changed nothing, and a revert that "restored" a file no call ever
 // wrote would be the recovery move causing the damage.
-func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub, calls []ai.ToolCall, results []toolResult) {
+func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub, calls []ai.ToolCall, results []toolResult, _ bool) {
 	for index, call := range calls {
 		if index >= len(results) || results[index].isError {
 			continue

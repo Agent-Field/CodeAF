@@ -5,8 +5,8 @@
 //
 // ── CAPABILITIES, NOT PATHS ─────────────────────────────────────────────────
 //
-// A file URL is /f/<id>, where the id is minted here and maps to a path in a
-// table nobody else can write. The door cannot be asked for an arbitrary path:
+// A byte URL is /f/<id> and an interactive-open URL is /o/<id>; their shared id
+// maps to a path in a table nobody else can write. The door cannot be asked for an arbitrary path:
 // a local process that guesses URLs can reach only what the surface itself
 // chose to link, and each id dies with the door. The browse page's token is
 // the same idea for the listing side: /browse/ and /api/... require the one
@@ -217,6 +217,7 @@ func Open(source Source) (*Door, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/f/", door.serveFile)
+	mux.HandleFunc("/o/", door.serveOpen)
 	mux.HandleFunc("/enter/", door.serveEnter)
 	mux.HandleFunc("/browse/", door.serveBrowse)
 	mux.HandleFunc("/api/", door.serveAPI)
@@ -264,6 +265,17 @@ func (d *Door) FileURL(path string) (string, error) {
 		d.forgetOldestLinks()
 	}
 	return d.origin + "/f/" + id, nil
+}
+
+// OpenURL mints the capability used by an interactive click. It is separate
+// from FileURL because callers which asked for bytes must keep receiving bytes,
+// while a terminal click asks the surface OS to open its cached named copy.
+func (d *Door) OpenURL(path string) (string, error) {
+	url, err := d.FileURL(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.Replace(url, "/f/", "/o/", 1), nil
 }
 
 // forgetOldestLinks keeps the id table under [maxLinks] by dropping the ids
@@ -582,6 +594,33 @@ func (d *Door) serveFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(file.Bytes))
 }
 
+// serveOpen turns an OSC-8 click into a local viewer handoff. The URL is
+// reached by the terminal on the surface machine, so opening the cached copy
+// here preserves which machine owns both the bytes and the screen.
+func (d *Door) serveOpen(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/o/")
+	if id == "" || strings.Contains(id, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	target, known := d.pathFor(id)
+	if !known {
+		http.NotFound(w, r)
+		return
+	}
+	opener, ok := d.source.(interface{ Open(string) error })
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if err := opener.Open(target); err != nil {
+		refuse(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "%s opened from %s\n", path.Base(target), d.source.Host())
+}
+
 // viewable answers whether a kind is one the door will let a browser RENDER
 // rather than save. IT IS AN ALLOWLIST AND NOT A LIST OF THE DANGEROUS ONES,
 // because the dangerous list is whatever a browser learns to execute next while
@@ -652,7 +691,7 @@ func (d *Door) serveList(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveMint is how the page opens a file: it asks for an id for a path it just
-// saw in a listing and is redirected to /f/<id>. The page could not be given
+// saw in a listing and is redirected to /o/<id>. The page could not be given
 // the power to name a path on /f/ without giving it to everything else on this
 // machine too, so the mint stays behind the token and the byte lane stays the
 // one it was.
@@ -662,7 +701,7 @@ func (d *Door) serveMint(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	url, err := d.FileURL(where)
+	url, err := d.OpenURL(where)
 	if err != nil {
 		refuse(w, err)
 		return

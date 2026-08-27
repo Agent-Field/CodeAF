@@ -68,7 +68,7 @@ import (
 //
 // ── THE LINK IS A CAPABILITY, NOT A PATH ────────────────────────────────────
 //
-// A confirmed file's anchor points at the door's /f/<id> and never at file://,
+// A confirmed file's anchor points at the door's /o/<id> and never at file://,
 // for the reason pathlink.go turned links off in the first place:
 // `file:///app/main.go` handed to the terminal in front of you means THIS
 // machine's /app/main.go, which is either nothing or a stranger's file. The
@@ -227,6 +227,7 @@ type clientBearer interface {
 // [processOpener].
 type doorLinker interface {
 	FileURL(path string) (string, error)
+	OpenURL(path string) (string, error)
 	BrowseURL() string
 	Close() error
 }
@@ -679,7 +680,7 @@ func (a *app) mintRemoteURL(target string) string {
 	if err != nil || door == nil {
 		return ""
 	}
-	uri, err := door.FileURL(target)
+	uri, err := door.OpenURL(target)
 	if err != nil {
 		return ""
 	}
@@ -709,6 +710,11 @@ type remotePrefetchedMsg struct {
 	blob   remoteBlob
 	size   int64
 	ok     bool
+	// required distinguishes a picture the surface promised to paint from a
+	// speculative write fetch. A required transfer failure must be said because
+	// otherwise a missing preview is indistinguishable from a broken one.
+	required bool
+	err      error
 }
 
 // prefetchWritten is the surface getting eager, and it is the whole of what the
@@ -736,10 +742,24 @@ type remotePrefetchedMsg struct {
 // small stat.
 func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 	r := a.rfiles
-	if r == nil || ev.Kind != session.EventToolEnd || ev.Tool != "write" {
+	if r == nil || ev.Kind != session.EventToolEnd {
 		return nil
 	}
-	target := a.remoteTarget(toolTarget(ev.Tool, ev.Args, ev.Hint))
+	name := ""
+	required := false
+	if ev.Tool == "write" {
+		name = toolTarget(ev.Tool, ev.Args, ev.Hint)
+	} else if picturesAFile(ev.Tool) {
+		required = true
+		probe := &entry{tool: ev.Tool, detail: toolDetail{Args: ev.Args, Output: ev.Output}}
+		if picture, ok := a.picturePath(probe); ok {
+			name = picture
+		}
+	}
+	if name == "" {
+		return nil
+	}
+	target := a.remoteTarget(name)
 	if target == "" {
 		return nil
 	}
@@ -760,15 +780,40 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 		// answer carries the freshness numbers the cache is about to be judged
 		// on, so the stat is one round trip doing two jobs.
 		now, told := farStat(wire, target)
-		if !told || !now.exists || now.dir || now.size > prefetchMax {
+		if !required && (!told || !now.exists || now.dir || now.size > prefetchMax) {
 			return remotePrefetchedMsg{target: target, size: now.size}
 		}
 		blob, _, err := r.fetchAsOf(target, now, told)
 		if err != nil {
-			return remotePrefetchedMsg{target: target, size: now.size}
+			return remotePrefetchedMsg{target: target, size: now.size, required: required, err: err}
 		}
-		return remotePrefetchedMsg{target: target, blob: blob, size: now.size, ok: true}
+		return remotePrefetchedMsg{target: target, blob: blob, size: now.size, ok: true, required: required}
 	}
+}
+
+// prefetchReplayedPictures gives a resumed hosted conversation the same image
+// surface as a live one. Replay builds rows without replaying old events, so
+// Init must explicitly start the fetches for picture rows already on screen.
+func (a *app) prefetchReplayedPictures() tea.Cmd {
+	if a.rfiles == nil {
+		return nil
+	}
+	commands := make([]tea.Cmd, 0, prefetchAtOnce)
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || !picturesAFile(e.tool) || e.status.live() {
+			continue
+		}
+		cmd := a.prefetchWritten(session.Event{Kind: session.EventToolEnd, Tool: e.tool,
+			Args: e.detail.Args, Output: e.detail.Output})
+		if cmd != nil {
+			commands = append(commands, cmd)
+		}
+		if len(commands) == prefetchAtOnce {
+			break
+		}
+	}
+	return tea.Batch(commands...)
 }
 
 // remotePrefetched files what a prefetch found. A file that landed in the cache
@@ -787,6 +832,10 @@ func (a *app) remotePrefetched(msg remotePrefetchedMsg) tea.Cmd {
 	// in the other lane.
 	delete(r.prefetching, msg.target)
 	if !msg.ok {
+		if msg.required && msg.err != nil {
+			a.note(strings.TrimSpace(msg.err.Error()) + " · the picture remains on " + a.host)
+			a.touch()
+		}
 		return nil
 	}
 	r.setRef(msg.target, msg.blob)
@@ -903,6 +952,16 @@ func (s *hostSource) List(dir string) (string, []filedoor.Entry, bool, error) {
 func (s *hostSource) Fetch(target string) (filedoor.File, error) {
 	_, file, err := s.files.fetch(target)
 	return file, err
+}
+
+// Open completes a terminal click on the surface machine. Serving the bytes in
+// a browser is not the same gesture as opening a file, and the cached mirror is
+// the only path the surface OS can truthfully hand to its viewer.
+func (s *hostSource) Open(target string) error {
+	if s.files == nil {
+		return errors.New(depositUnreachableWord)
+	}
+	return s.files.open(target)
 }
 
 // Deposit is a file dropped on the browse page, landing in the far session's

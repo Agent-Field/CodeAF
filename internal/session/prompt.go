@@ -55,6 +55,19 @@ var shapePrompt string
 //go:embed prompts/divide.md
 var dividePrompt string
 
+// These three pages describe optional verbs, so each travels on the exact
+// predicate that builds that part of the belt. Keeping them separate prevents
+// a remote session, a task node, or --once from being taught a hand it lacks.
+//
+//go:embed prompts/harness.md
+var harnessPrompt string
+
+//go:embed prompts/subharness.md
+var subharnessPrompt string
+
+//go:embed prompts/adaptive.md
+var adaptivePrompt string
+
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
@@ -120,6 +133,18 @@ func renderSystemAt(config Config, now time.Time) string {
 	if config.mayDivide() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
+	}
+	if config.HarnessStore != nil && config.RunHarness != nil && config.AskConsent {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(harnessPrompt, "\n"))
+	}
+	if config.AskConsent && config.HarnessCards && len(config.Harnesses) > 0 {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(subharnessPrompt, "\n"))
+	}
+	if config.OrchestrateRunner != nil && config.AskConsent {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(adaptivePrompt, "\n"))
 	}
 
 	out.WriteString("\n\n# Project\n")

@@ -190,7 +190,26 @@ func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
 // look inside it are two renderings of one file, and one must never be served
 // from the other's slot.
 func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
-	info, err := os.Stat(path)
+	readPath := path
+	if a.rfiles != nil {
+		target := a.remoteTarget(path)
+		if target == "" {
+			return imagePreview{}, false
+		}
+		blob, known := a.rfiles.ref(target)
+		if !known {
+			return imagePreview{}, false
+		}
+		store, err := a.rfiles.blobStore()
+		if err != nil {
+			return imagePreview{}, false
+		}
+		readPath, err = store.Path(blob.ref)
+		if err != nil {
+			return imagePreview{}, false
+		}
+	}
+	info, err := os.Stat(readPath)
 	if err != nil || info.IsDir() {
 		return imagePreview{}, false
 	}
@@ -200,7 +219,7 @@ func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
 	if hit, known := a.previews[key]; known {
 		return hit, hit.ok
 	}
-	preview := renderPicture(a.pal, path, int(info.Size()), cols, maxRows)
+	preview := renderPicture(a.pal, readPath, int(info.Size()), cols, maxRows)
 	if len(a.previews) >= pictureCacheMax {
 		a.previews = nil
 	}

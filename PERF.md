@@ -93,6 +93,7 @@ asked while resolving a POINTER is asked once per cell the pointer crosses.
 | **A submit over a connection is exactly one call.** The sentence goes up and nothing else does; the update that echoes the line on screen is zero, because the call happens on the command. | `internal/tui3/hostlatency_test.go` |
 | **A turn ending is zero.** The settle reads the spending, the weight and the effort table off the replica, which the engine has already refreshed ahead of the turn's own ending. | `internal/tui3/hostlatency_test.go` |
 | The five facts a frame draws — the model, the name, the spending, the weight, the effort rung — answer from the replica and never from the wire, and the effort table is whole from the first frame. | `internal/remote/replica_test.go`, `internal/tui3/hostlatency_test.go` |
+| **A frame over a connection walks none of THIS disk for the far machine's paths.** Home keys every row by its transcript path, and resolving a far path's symlinks here is a stat of a file that was never on this machine — on macOS `/home` is an automounter's mount point, so each one waited on autofs. A hosted key is the cleaned spelling (`app.convKey`). | `internal/tui3/home_test.go` |
 
 `remote.Client.CallsMade` exists for these pins and for nothing else — one
 atomic add inside the one door every call already goes through. It counts calls
@@ -112,6 +113,15 @@ pipe with that delay, a typed character took 7.4s to appear after two hundred
 motions and 21.8s after six hundred; after the fix, 0.014s, which is what the
 same script measures on a local session. internal/tui3's reasoninglevel.go holds
 the fix.
+
+The disk is the other far machine. The day after the wire was taken out of the
+frame, typing on a hosted home took 250ms to 1.6s per key with the wire silent
+and the CPU idle: every row's transcript path was being resolved with
+`filepath.EvalSymlinks` on the laptop, and `/home/...` on a Mac is autofs
+territory, where an `Lstat` waits on the automounter. A goroutine dump taken
+mid-stall found it (`homeTrue → convKey → EvalSymlinks → Lstat`); a CPU profile
+had not, because waiting is not computing. So the law is about any syscall on
+a path that belongs to the other machine, and not only about the wire.
 
 The number that is NOT pinned here is the boot: opening a hosted conversation
 costs six calls, one of them the current model's dial. Six is a launch cost paid
@@ -147,8 +157,9 @@ back tomorrow cannot resurrect the stall.
 sweep are not information; they are the same claim made six hundred times, and
 every one but the last was already false when it was read. So the newest is
 kept, the rest are dropped, and the surface answers **once per frame** —
-`pointerEvery`, which is `frameInterval` and not a second cadence. A folded
-message also declares the frame before it rather than building one, because it
+`pointerEvery`, which is half of `frameInterval` because Bubble Tea writes at
+60 Hz while the surface animates at 30 Hz. A folded message also declares the
+frame before it rather than building one, because it
 provably changed nothing `app.View` reads; that half is the larger one, and it
 is only reachable because the fold is what knows.
 
@@ -161,6 +172,7 @@ is only reachable because the fold is what knows.
 | **A folded wheel run scrolls exactly as far as an unfolded one.** A scroll is a distance, so a folded run owes its whole length and spends every notch of it at the frame. | `internal/tui3/coalesce_test.go` |
 | **A folded message builds no frame**, at a handful of allocations against a frame's tens of thousands of bytes. | `internal/tui3/coalesce_test.go` |
 | A pointer ARRIVING somewhere is still answered on the spot, with no clock in between: only the SECOND motion in a row is a sweep. | `internal/tui3/coalesce_test.go` |
+| A sweep whose previous answer is already one pointer interval old answers its newest position immediately, with no second clock. Dense bursts keep the one-answer-per-frame ceiling; an overdue arrival does not begin another wait. | `internal/tui3/coalesce_test.go` |
 | A pointer crossing a row it is already on still leaves no stale entry, no dirty flag and no frame. | `internal/tui3/inputsmooth_test.go` |
 
 **Why a fold and not a drain.** `internal/session`'s stream is coalesced by

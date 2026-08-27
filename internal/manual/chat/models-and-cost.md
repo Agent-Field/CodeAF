@@ -20,10 +20,13 @@ The picker is a filter box in the input line's place with a short list of models
 It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
 were reading.
 
-Choosing a model does four things: the model is set on the session, the surface learns
-that model's context window and tells the session (compaction fires at a fraction of the
-window, so this is not decoration), a note appears reading `model · <model>`, and the
-choice is written into your profile.
+Choosing a model does four things: the model is set on the session, the machine running
+the session learns that model's context window for compaction, a note appears reading
+`model · <model>`, and the choice is written into your profile.
+
+Over `--host`, the picker and its prices are this laptop's catalog, while the context
+window used for compaction comes from the far machine's catalog. The machine doing the
+work owns that execution limit even when the two catalog caches differ.
 
 ## Does aforge remember the model I picked, or does it go back to the default?
 
@@ -881,8 +884,8 @@ instead. With no measurement there is no connection line, never `0ms`.
 
 ## How much room the conversation has, and giving it a longer context window
 
-The context window is, most specific first: the one the surface set for the model actually in
-use, then the window the session was configured with, then a conservative default of
+The context window is, most specific first: the window the session's own model catalog
+publishes for the model actually in use, then the window the session was configured with, then a conservative default of
 **128,000 tokens** (the smallest window among the models this surface routes to).
 
 Compaction is triggered at **`window − max(15% of window, 16384)`**, with that reserve

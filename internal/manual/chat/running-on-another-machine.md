@@ -108,7 +108,7 @@ continues rather than restarting. Send something while it is down and the messag
 lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
 in a moment`, and pressing enter again once it is back sends it.
 
-## When the connection cannot be made
+## The far machine says a different version — when the connection cannot be made
 
 The failed dial says what it found, rather than guessing:
 
@@ -133,9 +133,54 @@ sentence rather than that one:
 error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
 ```
 
-Either way the fix is the same and it is one command: update aforge on the machine that is
-behind. Nothing is negotiated down — two builds that might disagree about a frame must not
-find that out three turns into a conversation.
+If something on that machine is still holding a conversation from the older build, that
+same sentence gains a clause naming it, because then the machine — not the binary — is
+what is behind:
+
+```
+error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+```
+
+Either way the fix is one command: update aforge on the machine that is behind. Nothing is
+negotiated down — two builds that might disagree about a frame must not find that out three
+turns into a conversation.
+
+## I updated aforge on that machine and it still says the versions differ
+
+It works on the next connection, and there is nothing left to clean up by hand.
+
+Something over there holds your conversation between connections. It is started by the
+first connection and outlives it, which is what lets a turn keep running after you close
+the lid — and it is a **running copy of the build that started it**, so replacing the
+binary does not replace it. `aforge version` on that machine reports the new build while
+the old one is still answering, which is how you can be told to update something you
+updated an hour ago.
+
+So before it hands your window over, `aforge engine` asks whatever is already holding that
+workspace which build it is. Three things can be true:
+
+- **It is this build.** Your window attaches to it exactly as before. This is the ordinary
+  case, and it costs one question on a local socket.
+- **It is another build, holding nothing** — no window attached, no turn running, no
+  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
+  and a fresh one starts from the binary that is on disk now. You see none of it.
+- **It is another build and something is still going in it.** Nobody's turn is ended for
+  you. The connection is refused instead, in these words:
+
+```
+engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on spark
+```
+
+A copy too old to answer the question at all is refused the same way and left alone,
+because a process that cannot say whether it is busy is not one to guess about:
+
+```
+engine: spark is still holding this conversation on an older aforge — run aforge engine --stop on spark
+```
+
+One nobody connects to again lets itself go on its own: it notices that the file it was
+started from has been removed or rebuilt, and retires the next time it is holding nothing.
+`aforge engine --stop` is on the *Staying on that machine* page.
 
 ## What runs on the far machine, and what stays local
 
@@ -319,6 +364,38 @@ exact sentence each one says.
 
 The second half of the list, with the exact sentence each one says.
 
+`/cache`, `/permissions`, `/crew`, `/memory <query>`, `/memories`, `/remember`,
+`/forget`, `/subharness` and `/harness` describe stores or settings belonging to the
+machine that runs the session, but this build has no wire door for them. They do not read
+or change this machine's copy. The cache, permissions, crew and harness commands name the
+connected machine and say `change it on that machine`; the memory commands say `memory
+shows what this machine has learned, and this session is on another`. In particular,
+`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/subharness` does not claim the far registry is empty.
+
+## Did cache clean delete the laptop cache or the remote machine's cache?
+
+Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot reach the
+connected machine's build cache and refuse before touching this machine's cache. The
+answer names the connected machine and says to change it there.
+
+## Why didn't crew max change the crew on the remote machine?
+
+`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
+refuse before reading or writing this machine's profile, name the connected machine, and
+say to change the crew there.
+
+## Why does remember over host not say whether memory is off?
+
+The surface has not asked the connected machine whether memory is enabled. `/remember`,
+`/forget`, `/memories`, and `/memory <query>` therefore say only that this session is on
+another machine; they neither claim memory is off there nor read this machine's memories.
+
+## Does subharness know whether the remote machine has saved programs?
+
+No. `/subharness`, `/sub`, and `/harness` have no door onto the connected machine's
+registry yet. They name that machine and refuse; they do not report its registry empty.
+
 6. **The consent card's "always" writes nothing.** No save seams are handed over a
    connection, so the row says `allowed` rather than the local
    `always · saved — /permissions to change`. That is the truth: the answer holds for this
@@ -330,12 +407,22 @@ The second half of the list, with the exact sentence each one says.
    consulted.
 
 8. **`/harness` is unavailable.** The registry is the far machine's and this build has no
-   door onto it over the wire, so the command says exactly:
-   `harnesses are unavailable here`
+   door onto it over the wire, so the command says `<machine> owns harnesses ·
+   change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-9. **The task rail is absent by construction.** The remote session does not carry it, so
-   there is no rail and no room. It says nothing; there is nothing to draw.
+## Why is the task roster empty over host, and can I open a remote task room?
+
+The task roster lists this far conversation's work. Its rows come from the far
+   machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
+   you would see while sitting at that machine. Opening one first says
+   `bringing this task's transcript from the other machine…`, then draws the task's own
+   transcript when it arrives. That hosted room is for reading: steering, stopping, and
+   changing its model are absent because those actions do not cross this connection yet.
+
+9. **The task rail is drawn, but `/task` has no remote door.** Its rows come from the far
+   machine through `Places.Task`; `/task` answers `could not start the task · this session
+   has no task door` rather than starting work on the wrong machine.
 
 10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes
@@ -373,7 +460,7 @@ The second half of the list, with the exact sentence each one says.
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
     same name on this machine. Now the far machine is asked whether the file is really
-    there, and a path it confirms is a link that opens the file itself — through a small
+    there, and a path it confirms is a link that fetches a read-only copy and opens that local copy — through a small
     door this window owns on `127.0.0.1`, never through `file://`. A path it has not
     confirmed stays plain text, exactly as at home, and a folder is not linked. `/files`
     opens that machine's folder as a page in your browser, `/files <path>` brings one file
@@ -381,6 +468,12 @@ The second half of the list, with the exact sentence each one says.
     conversation's `attachments/`. The whole of it — what turns into a link and what does
     not, where the copies live, the 16MB ceiling, who else can reach those addresses — is
     on *Opening files from that machine*.
+
+15. **A file dropped onto the terminal joins the attachment tray.** A terminal sends a
+    drop as a pasted local path. When the paste is only real files, aforge shows their
+    chips instead of putting those paths into the message. Pressing `enter` carries the
+    bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
+    take the reverse road automatically so their far bytes can be painted in this terminal.
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 

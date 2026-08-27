@@ -402,7 +402,7 @@ is on the tray already.
 
 Tab completes the path as you type it.
 
-## /export — write this conversation to a file
+## Does export save to my laptop — /export writes this conversation here
 
 `/export` (or `/save`) writes the **whole** conversation to a markdown file somebody else
 can read. It is built from the full transcript, not from the tail on screen.
@@ -892,6 +892,12 @@ empty list.
 own approval rules, that project's row replaces yours wholesale at launch — so dropping a
 line here changes what you carry everywhere and nothing inside that repository.
 
+**Over `--host`, this page still reads this machine's saved rows, not the other machine's.**
+The badge on the chat is the far session's actual approval posture, but `/permissions` has
+no way to list or remove the far profile's individual rules yet. The page does not print a
+host-specific warning in this build, so do not treat its rows as the rules governing the
+remote conversation.
+
 ## /harness — the shapes of work you have saved
 
 `/harness` (or `/harnesses`) lists your saved shapes of work, with what each one is for
@@ -1165,6 +1171,11 @@ relaunch, and no waiting for the next session. To read the crew back afterwards:
 status line says `crew max` beside the model, `/status` prints the `crew` line under
 `model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
+**That promise is local-session only.** Over `--host`, `/crew` reads and writes this
+machine's profile; the session resolves its crew from the other machine. There is no crew
+write across the connection and this build prints no host-specific warning, so `/crew max`
+does not change the four models the far session uses. Change that machine's profile there.
+
 ## /connect — your connected accounts
 
 `/connect` (or `/connections`) opens the connected-accounts panel, where you pick a
@@ -1191,7 +1202,7 @@ third means the catalog came back empty.
 The settings panel has a `Connections` tab over the same accounts. It is a different
 surface from `/connect`, not a second copy of it.
 
-## The settings panel — /settings, /set, /config
+## Which machine's settings are these — /settings, /set, /config over --host
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 aforge settings, plus a tab of connected accounts. It was the first of the three fullscreen

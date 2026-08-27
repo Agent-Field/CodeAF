@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -150,6 +151,39 @@ func TestAPointerArrivingIsAnsweredOnTheSpot(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Fatal("a pointer arriving asked for a clock it does not need")
+	}
+}
+
+// AN OVERDUE SWEEP ANSWERS THE NEWEST POSITION WITHOUT ANOTHER CLOCK. Dense
+// bursts still earn one answer per frame; this pins the other edge, where the
+// previous answer is already a whole pointer interval old and another wait
+// would be latency rather than coalescing.
+func TestAnOverdueSweepAnswersWithoutAnotherClock(t *testing.T) {
+	a := stormApp(t)
+	top, bottom := sweepBetween(t, a)
+	now := time.Unix(1, 0)
+	a.clock = func() time.Time { return now }
+	a.ptr = pointerFold{}
+
+	a.Update(tea.MouseMotionMsg{X: 4, Y: top})
+	a.Update(tea.MouseMotionMsg{X: 4, Y: bottom})
+	if !a.ptr.have || a.ptr.answered != 1 {
+		t.Fatalf("the dense start held %v positions after %d answers, want one held after one answer", a.ptr.have, a.ptr.answered)
+	}
+
+	now = now.Add(pointerEvery)
+	_, cmd := a.Update(tea.MouseMotionMsg{X: 4, Y: top})
+	if a.ptr.have {
+		t.Fatal("an overdue motion was left waiting for another clock")
+	}
+	if a.ptr.answered != 2 {
+		t.Fatalf("an overdue motion cost %d answers in all, want two", a.ptr.answered)
+	}
+	if a.hot != a.hoverTarget(4, top) {
+		t.Fatalf("the overdue sweep recorded %v, want its newest position", a.hot)
+	}
+	if cmd != nil {
+		t.Fatal("an overdue motion asked for a second clock")
 	}
 }
 
