@@ -37,7 +37,6 @@ import (
 	"context"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // sessionAcceptanceBrief asks for the done-condition of a whole ask.
@@ -133,13 +132,4 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Event:      "acceptance",
 		Acceptance: steward.Acceptance(),
 	})
-}
-
-// acceptanceMessages is what the acceptance call sends, kept as a function only
-// so a test can read the exact pair the wire carries without a network.
-func acceptanceMessages(ask string) []ai.Message {
-	return []ai.Message{
-		textMessage("system", sessionAcceptanceBrief),
-		textMessage("user", sessionAcceptanceQuestion(ask)),
-	}
 }

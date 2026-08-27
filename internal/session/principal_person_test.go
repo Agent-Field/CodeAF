@@ -169,3 +169,38 @@ func TestABudgetIsSpelledTheWayItWasTyped(t *testing.T) {
 		}
 	}
 }
+
+// ONLY A CONVERSATION HAS A GOAL OWNER.
+//
+// Two roads copy the conversation's whole config to build a worker
+// (standing_run.go), so an unattended session's rows travel to agents that must
+// never have them: a node has a brief and an auditor, a fork's hand has a
+// scope, an errand is a pane that closes with home. Each of them getting a
+// Steward would mean a worker spending the session's budget, sweeping the
+// session's files, and deciding for itself that the whole ask was met.
+func TestOnlyAConversationIsGivenAGoalOwner(t *testing.T) {
+	unattended := func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: 6 * time.Hour}
+	}
+	for _, c := range []struct {
+		what   string
+		mutate func(*Config)
+	}{
+		{"a task node", func(c *Config) { unattended(c); c.InTask = true }},
+		{"an errand", func(c *Config) { unattended(c); c.Errand = true }},
+		{"a fork's hand", func(c *Config) { unattended(c); c.inHand = true }},
+	} {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, c.mutate)
+		if agent.steward() != nil {
+			t.Fatalf("%s was given a goal owner of its own", c.what)
+		}
+	}
+	// And the conversation itself still is, which is the other half of the same
+	// assertion: a guard that answered no to everything would be this feature
+	// switched off.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, unattended)
+	if agent.steward() == nil {
+		t.Fatal("the conversation was refused a goal owner too")
+	}
+}
