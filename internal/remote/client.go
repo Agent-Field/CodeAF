@@ -1081,6 +1081,19 @@ func (c *Client) SaveStanding(item standing.Item) error {
 	return err
 }
 
+// StandingWatch reads the scheduler on the engine machine.
+func (c *Client) StandingWatch() (standing.WatchStatus, bool) {
+	payload, err := c.call(nil, MethodStandingWatch, nil)
+	if err != nil {
+		return standing.WatchStatus{}, false
+	}
+	var result StandingWatchResult
+	if json.Unmarshal(payload, &result) != nil {
+		return standing.WatchStatus{}, false
+	}
+	return result.Status, result.Known
+}
+
 // HeldQuestions is what this session asked while nobody was attached, asked for
 // over the wire rather than read off the welcome.
 //
@@ -1244,8 +1257,11 @@ func (a *Agent) SetModel(model string) {
 	_, _ = a.c.call(nil, MethodSetModel, model)
 }
 
-// SetContextWindow says how many tokens the model now in use accepts.
-func (a *Agent) SetContextWindow(tokens int) { _, _ = a.c.call(nil, MethodSetContext, tokens) }
+// SetContextWindow is deliberately a no-op here. The surface's catalog belongs
+// to the laptop; SetModel makes the engine consult its own catalog and move its
+// own compaction point. The method remains on the interface for local agents
+// and on the version-5 wire for compatibility with builds already in flight.
+func (a *Agent) SetContextWindow(int) {}
 
 // ReasoningFor is how hard one model is asked to think.
 //

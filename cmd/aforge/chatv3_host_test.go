@@ -234,8 +234,8 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	}
 }
 
-// AND THE SURFACE IS HANDED IT, with the two fields that would be about the
-// wrong machine left out. This is the door's half: what hostOptions wires is
+// AND THE SURFACE IS HANDED IT, with the live firing field that nobody can
+// answer left out. This is the door's half: what hostOptions wires is
 // what a person over --host actually gets.
 func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -248,10 +248,9 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	if options.Standing.Running != nil {
 		t.Fatal("the door claims it can tell whether an item is firing on another machine")
 	}
-	// Watch: the OS timer is the engine's, and a status read off this laptop's
-	// launchd would be a line about the wrong machine.
-	if options.Standing.Watch != nil {
-		t.Fatal("the door answers `keeping watch` from this machine's own timer")
+	// Watch crosses to the engine, so /status can answer from the right timer.
+	if options.Standing.Watch == nil {
+		t.Fatal("the door does not ask the engine for its background timer")
 	}
 	// StandingRoot is the LOCAL errand and exchange folder, and there is no
 	// errand over a connection.

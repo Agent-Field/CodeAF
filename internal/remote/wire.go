@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // Version is the protocol's version. The hello and the welcome both carry it,
@@ -187,7 +188,7 @@ const (
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
 	MethodSetModel        = "SetModel"               // string → nothing
-	MethodSetContext      = "SetContextWindow"       // int → nothing
+	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
@@ -218,6 +219,7 @@ const (
 	// exactly where they were.
 	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
 	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
+	MethodStandingWatch = "Standing.Watch" // nothing → StandingWatchResult
 
 	// The PLACES doors, and they are in the Session group for the reason
 	// Sessions.Recent and Standing.Items are: each one is a reading of THE
@@ -350,6 +352,12 @@ const (
 	// keyboard.
 	MethodTake = "Take" // nothing → nothing
 )
+
+// StandingWatchResult keeps "not installed" distinct from "could not read".
+type StandingWatchResult struct {
+	Status standing.WatchStatus `json:"status"`
+	Known  bool                 `json:"known"`
+}
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
 // after the colon — empty means the engine's own home — and the engine answers
