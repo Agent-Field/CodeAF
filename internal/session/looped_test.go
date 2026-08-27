@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -47,6 +47,20 @@ func loopAgent(t *testing.T, completer Completer, tools ...bare.Tool) *Agent {
 	agent, _ := newTestAgent(t, completer, nil)
 	agent.tools = append(agent.tools, tools...)
 	return agent
+}
+
+// freshTool answers each execution with a fresh line, so a test aimed at one of
+// the identity rules does not accidentally exercise the ledger rule beside it.
+func freshTool(name string) bare.Tool {
+	run := 0
+	return bare.Tool{
+		Name: name, Description: "returns a fresh line",
+		Schema: json.RawMessage(`{"type":"object","properties":{}}`),
+		Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			run++
+			return fmt.Sprintf("%s result %d", name, run), false, nil
+		},
+	}
 }
 
 // nudges is every EventNudge in a drained turn.
@@ -99,7 +113,7 @@ func silentTranscriptNotes(a *Agent) []string {
 // the fifth — the second repetition since the nudge — earns the next rung.
 func TestTheSameCallIsNamedOnceThenNeedsRepeatedEvidence(t *testing.T) {
 	completer := &scriptedCompleter{steps: repeatedCalls("touch", `{"path":"a.md"}`, 5)}
-	agent := loopAgent(t, completer, countingTool("touch", make(chan string, 8), nil))
+	agent := loopAgent(t, completer, freshTool("touch"))
 
 	events, err := agent.Submit(context.Background(), "go")
 	if err != nil {
@@ -159,7 +173,7 @@ func TestARepeatWithWorkBetweenIsNotALoop(t *testing.T) {
 		return textResponse("done"), nil
 	})
 	completer := &scriptedCompleter{steps: steps}
-	agent := loopAgent(t, completer, countingTool("touch", make(chan string, 8), nil))
+	agent := loopAgent(t, completer, freshTool("touch"))
 
 	events, err := agent.Submit(context.Background(), "go")
 	if err != nil {
@@ -245,7 +259,7 @@ func TestVisibleTextResetsTheSilentStreak(t *testing.T) {
 	observe := func(index int, visible bool) bool {
 		call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
 			Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
-		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "file"}}, visible)
+		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, visible)
 		return fired
 	}
 	for index := 0; index < silentStreakLimit-1; index++ {
@@ -271,7 +285,7 @@ func TestFileWritingProgressResetsTheSilentStreak(t *testing.T) {
 			call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
 				Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
 			index++
-			if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "file"}}, false); fired {
+			if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, false); fired {
 				t.Fatalf("nudged before write progress in cycle %d", cycle+1)
 			}
 		}
@@ -283,71 +297,89 @@ func TestFileWritingProgressResetsTheSilentStreak(t *testing.T) {
 	}
 }
 
-func TestTheSilentRuleNudgesOnlyOncePerTurn(t *testing.T) {
+func TestThirtySilentBatchesClimbAtSixTwelveAndTwentyFour(t *testing.T) {
 	watch := newLoopWatch()
-	for index := 0; index < 2*silentStreakLimit; index++ {
+	var rounds []int
+	var notes []string
+	for index := 0; index < 30; index++ {
 		call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
 			Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
-		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "file"}}, false)
-		if fired != (index == silentStreakLimit-1) {
-			t.Fatalf("batch %d fired=%v, want only batch %d", index+1, fired, silentStreakLimit)
+		looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, false)
+		if fired {
+			rounds = append(rounds, index+1)
+			notes = append(notes, nudgeNote(looping))
 		}
 	}
-	if watch.nudges != 1 {
-		t.Fatalf("nudges: got %d, want 1", watch.nudges)
+	want := []int{silentThreshold(0), silentThreshold(1), silentThreshold(2)}
+	if !slices.Equal(rounds, want) {
+		t.Fatalf("silent nudge rounds = %v, want %v", rounds, want)
+	}
+	if !strings.Contains(notes[1], "second warning") {
+		t.Fatalf("second note did not escalate: %q", notes[1])
+	}
+	if !strings.Contains(notes[2], "harness will hand the turn over") {
+		t.Fatalf("last note did not promise the hand-off: %q", notes[2])
 	}
 }
 
-func TestTheSilentNudgeCountsTowardConsentEscalation(t *testing.T) {
-	var steps []step
-	for _, name := range []string{"alpha", "beta"} {
-		for index := 0; index < loopRepeats; index++ {
-			id := fmt.Sprintf("%s-%d", name, index)
-			steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-				return toolResponseWithText(id, name, `{"path":"same"}`, "Still working."), nil
-			})
+// Distinct calls can still repeat one fact. Empty answers make the ledger's
+// judgement unambiguous: none of the six rounds brought back a fresh line.
+func TestDistinctCallsThatReadNothingNewAreNudged(t *testing.T) {
+	watch := newLoopWatch()
+	var notes []string
+	for round := 0; round < noNewInformationLimit+1; round++ {
+		call := ai.ToolCall{ID: fmt.Sprintf("r%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show file | grep pattern-%d"}`, round)}}
+		if looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}}, true); fired {
+			notes = append(notes, nudgeNote(looping))
 		}
 	}
-	for index := 0; index < silentStreakLimit; index++ {
-		id, arguments := fmt.Sprintf("read-%d", index), fmt.Sprintf(`{"path":"file-%d"}`, index)
-		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse(id, "read", arguments), nil
-		})
+	if len(notes) != 1 {
+		t.Fatalf("no-new-information notes = %d, want 1: %v", len(notes), notes)
 	}
-	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-		return textResponse("done"), nil
-	})
+	if !strings.Contains(notes[0], fmt.Sprintf("last %d rounds read nothing new", noNewInformationLimit)) ||
+		!strings.Contains(notes[0], "already in the transcript") {
+		t.Fatalf("note does not name the ledger fact: %q", notes[0])
+	}
+}
 
-	completer := &scriptedCompleter{steps: steps}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.ApprovalPolicy = &approval.Policy{
-			Default: approval.ActionPrompt,
-			Tools: map[string]approval.Action{
-				"alpha": approval.ActionAllow,
-				"beta":  approval.ActionAllow,
-				"read":  approval.ActionAllow,
-			},
+func TestAFreshWriteResetsSilentAndNoNewInformationStreaks(t *testing.T) {
+	watch := newLoopWatch()
+	read := func(round int) bool {
+		call := ai.ToolCall{ID: fmt.Sprintf("r%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"empty-%d"}`, round)}}
+		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}}, false)
+		return fired
+	}
+	for round := 0; round < noNewInformationLimit-1; round++ {
+		if read(round) {
+			t.Fatalf("nudged before the write at round %d", round+1)
 		}
-		config.AskConsent = true
-	})
-	for _, name := range []string{"alpha", "beta", "read"} {
-		agent.tools = append(agent.tools, countingTool(name, make(chan string, 16), nil))
 	}
+	write := ai.ToolCall{ID: "w", Function: ai.ToolCallFunction{
+		Name: "write", Arguments: `{"path":"notes.md","content":"new"}`}}
+	if _, fired := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote notes.md"}}, false); fired {
+		t.Fatal("the fresh write nudged")
+	}
+	for round := noNewInformationLimit - 1; round < 2*(noNewInformationLimit-1); round++ {
+		if read(round) {
+			t.Fatalf("a streak survived the write and nudged at round %d", round+1)
+		}
+	}
+}
 
-	events, err := agent.Submit(context.Background(), "go")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
+func TestHarnessMadeBatchesDoNotAdvanceAnyStreak(t *testing.T) {
+	watch := newLoopWatch()
+	for round := 0; round < 30; round++ {
+		call := ai.ToolCall{ID: fmt.Sprintf("h%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"refused-%d"}`, round)}}
+		if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "refused", harness: true}}, false); fired {
+			t.Fatalf("the harness's own answer nudged at round %d", round+1)
+		}
 	}
-	var asked []Event
-	collected := drainAnswering(t, events, func(event Event) {
-		asked = append(asked, event)
-		agent.ResolveConsent(event.ID, false)
-	})
-	if fired := nudgeEvents(collected); len(fired) != loopNudgeCeiling+1 {
-		t.Fatalf("nudges: got %d, want %d", len(fired), loopNudgeCeiling+1)
-	}
-	if len(asked) != 1 || !strings.HasPrefix(asked[0].Rule, "silent:") {
-		t.Fatalf("silent escalation questions: %+v", asked)
+	if watch.silentStreak != 0 || watch.noNewStreak != 0 || watch.nudges != 0 {
+		t.Fatalf("harness batches changed the watch: silent=%d no-new=%d nudges=%d",
+			watch.silentStreak, watch.noNewStreak, watch.nudges)
 	}
 }
 
@@ -373,9 +405,10 @@ func TestTheWindowResetsEachTurn(t *testing.T) {
 
 // ── the escalation ──────────────────────────────────────────────────────────
 
-// Past two nudges, in a session where the person is being asked about things,
-// the third goes to the person instead of to the model.
-func TestTheThirdNudgeAsksThePerson(t *testing.T) {
+// Past two nudges the turn ends. This fixture has no consent surface, so it
+// exercises the honest fallback instead of asking the scripted model for a
+// checkpoint brief: the tenth scripted response must never be requested.
+func TestTheThirdNudgeEndsTheTurnAndSaysWhatWasLeft(t *testing.T) {
 	var steps []step
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		steps = append(steps, repeatedCalls(name, `{"path":"a.md"}`, 3)[:3]...)
@@ -385,20 +418,7 @@ func TestTheThirdNudgeAsksThePerson(t *testing.T) {
 	})
 
 	completer := &scriptedCompleter{steps: steps}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		// Prompt mode — somebody is answering questions — with the three tools
-		// themselves allowed, so the only question this turn can raise is the
-		// loop detector's own.
-		config.ApprovalPolicy = &approval.Policy{
-			Default: approval.ActionPrompt,
-			Tools: map[string]approval.Action{
-				"alpha": approval.ActionAllow,
-				"beta":  approval.ActionAllow,
-				"gamma": approval.ActionAllow,
-			},
-		}
-		config.AskConsent = true
-	})
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = false })
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		agent.tools = append(agent.tools, countingTool(name, make(chan string, 8), nil))
 	}
@@ -407,59 +427,24 @@ func TestTheThirdNudgeAsksThePerson(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	var asked []Event
-	collected := drainAnswering(t, events, func(event Event) {
-		asked = append(asked, event)
-		agent.ResolveConsent(event.ID, false)
-	})
+	collected := collect(t, events)
 
 	if fired := nudgeEvents(collected); len(fired) != 3 {
 		t.Fatalf("nudges: got %d, want 3", len(fired))
 	}
-	if len(asked) != 1 {
-		t.Fatalf("the person was asked %d times, want 1 (the third nudge)", len(asked))
+	if completer.requests() != 3*loopRepeats {
+		t.Fatalf("provider requests = %d, want %d; the turn did not end at the ceiling",
+			completer.requests(), 3*loopRepeats)
 	}
-	if !strings.HasPrefix(asked[0].Rule, "stuck:") || asked[0].Tool != "gamma" {
-		t.Fatalf("the question does not name the loop: tool %q rule %q", asked[0].Tool, asked[0].Rule)
+	left, ok := firstOfKind(collected, EventNotice)
+	if !ok || left.Text != loopLeftUndoneNote {
+		t.Fatalf("left-undone notice = %q, present=%v", left.Text, ok)
 	}
-
-	notes := transcriptNotes(agent)
-	if len(notes) != 3 {
-		t.Fatalf("notes: got %d, want 3 (two nudges and the person's answer)", len(notes))
+	if collected[len(collected)-1].Kind != EventTurnDone {
+		t.Fatalf("last event = %v, want EventTurnDone", collected[len(collected)-1].Kind)
 	}
-	if !strings.Contains(notes[2], "they said no") {
-		t.Fatalf("the person's refusal did not reach the model: %q", notes[2])
-	}
-}
-
-// With no policy at all — a headless caller, a test — there is nobody to ask, so
-// the third nudge stays a note.
-func TestWithoutPromptModeTheThirdNudgeIsStillANote(t *testing.T) {
-	var steps []step
-	for _, name := range []string{"alpha", "beta", "gamma"} {
-		steps = append(steps, repeatedCalls(name, `{"path":"a.md"}`, 3)[:3]...)
-	}
-	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-		return textResponse("done"), nil
-	})
-	completer := &scriptedCompleter{steps: steps}
-	agent := loopAgent(t, completer,
-		countingTool("alpha", make(chan string, 8), nil),
-		countingTool("beta", make(chan string, 8), nil),
-		countingTool("gamma", make(chan string, 8), nil))
-
-	events, err := agent.Submit(context.Background(), "go")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	collected := drainAnswering(t, events, func(Event) {
-		t.Error("a session with no policy asked the person a question")
-	})
-	if fired := nudgeEvents(collected); len(fired) != 3 {
-		t.Fatalf("nudges: got %d, want 3", len(fired))
-	}
-	if notes := transcriptNotes(agent); len(notes) != 3 {
-		t.Fatalf("notes: got %d, want 3", len(notes))
+	if notes := transcriptNotes(agent); len(notes) != loopNudgeCeiling {
+		t.Fatalf("notes: got %d, want only the %d warnings before the ceiling", len(notes), loopNudgeCeiling)
 	}
 }
 
@@ -468,7 +453,11 @@ func TestWithoutPromptModeTheThirdNudgeIsStillANote(t *testing.T) {
 func TestLoopWatchNamesASignatureThenClimbsOnRepeatedEvidence(t *testing.T) {
 	watch := newLoopWatch()
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
-	ok := func(ai.ToolCall) []toolResult { return []toolResult{{text: "fine"}} }
+	result := 0
+	ok := func(ai.ToolCall) []toolResult {
+		result++
+		return []toolResult{{text: fmt.Sprintf("result %d", result)}}
+	}
 
 	for attempt := 1; attempt <= 2; attempt++ {
 		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
@@ -498,6 +487,11 @@ func TestLoopWatchNamesASignatureThenClimbsOnRepeatedEvidence(t *testing.T) {
 	if !fired || third.nth != 3 {
 		t.Fatalf("the third rung: fired=%v nth=%d, want true/3", fired, third.nth)
 	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
+			t.Fatal("the watch produced a fourth nudge after its terminal signal")
+		}
+	}
 }
 
 // A second, different loop in the same turn is its own signature and earns its
@@ -506,7 +500,11 @@ func TestLoopWatchGivesADifferentLoopItsOwnNudge(t *testing.T) {
 	watch := newLoopWatch()
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
 	other := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"b"}`}}
-	ok := func(ai.ToolCall) []toolResult { return []toolResult{{text: "fine"}} }
+	result := 0
+	ok := func(ai.ToolCall) []toolResult {
+		result++
+		return []toolResult{{text: fmt.Sprintf("result %d", result)}}
+	}
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		watch.observe([]ai.ToolCall{call}, ok(call), true)
