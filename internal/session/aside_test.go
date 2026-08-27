@@ -21,8 +21,8 @@ import (
 // back the shaped entries a surface would replay.
 func enqueuedNote(t *testing.T, agent *Agent, text string) []DisplayEntry {
 	t.Helper()
-	// The ambient door rather than the waking one: the mark is the same — both
-	// go through [Agent.enqueueNote] — and this one does not spend a turn.
+	// The ambient door rather than the waking one: both become authored at their
+	// queue door, and this one does not spend a turn.
 	agent.enqueueAmbientNote(text)
 	if landed := agent.drainSteering(nil); landed != 1 {
 		t.Fatalf("%d notes drained, want 1", landed)

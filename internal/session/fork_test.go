@@ -284,8 +284,8 @@ func theForkRoster(t *testing.T, completer *forkCompleter) string {
 }
 
 // theHandReports is every hand's report as it reached the caller: user-role
-// messages on the steering lane, IN THE ORDER THEY LANDED, read off the last
-// request the caller was sent.
+// content from the boundary batch, IN THE ORDER THE REPORTS LANDED, read off
+// the last request the caller was sent.
 //
 // It reads the transcript rather than the events for the reason every assertion
 // in this file reads it: the claim is about what a MODEL is answered with, and a
@@ -306,7 +306,34 @@ func theHandReports(t *testing.T, completer *forkCompleter) []string {
 		text := messageContentText(message)
 		if strings.HasPrefix(text, handReportLead) || strings.HasPrefix(text, strings.ToUpper(forkOutOf)) {
 			reports = append(reports, text)
+			continue
 		}
+		if !strings.HasPrefix(text, "while you worked:") {
+			continue
+		}
+		var report []string
+		flush := func() {
+			if len(report) == 0 {
+				return
+			}
+			reports = append(reports, strings.TrimSpace(strings.Join(report, "\n")))
+			report = nil
+		}
+		for _, line := range strings.Split(strings.TrimPrefix(text, "while you worked:"), "\n") {
+			trimmed := strings.TrimSpace(line)
+			var hand, of int
+			_, ordinary := fmt.Sscanf(trimmed, handReportLead+"%d of %d", &hand, &of)
+			_, exhausted := fmt.Sscanf(trimmed,
+				strings.ToUpper(forkOutOf)+" · "+handReportLead+"%d of %d", &hand, &of)
+			opening := ordinary == nil || exhausted == nil
+			if opening {
+				flush()
+			}
+			if len(report) > 0 || opening {
+				report = append(report, line)
+			}
+		}
+		flush()
 	}
 	return reports
 }

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -124,15 +125,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	// The registry gets the WAKING lane, the same one a task node's completion
-	// rides (see [Agent.enqueueSteering]): a job that exits and a watch with news
-	// are both work the person asked the harness to do FOR THEM, and the answer
-	// they are owed is a sentence, not a line in a transcript nobody is reading.
+	// The registry gets both note lanes. A job's exit is work the model started
+	// and is waiting to hear finish, so it remains owed at the next step
+	// boundary. A watch's deltas are ambient telemetry: they stay live in the
+	// job row and log, but wait for a turn boundary before entering the model's
+	// context (see [Agent.enqueueJobNote] and [Agent.enqueueWatchNote]).
 	// The registry is handed the DROPPINGS home rather than the Place, and the
 	// two differ for every agent that is not a session: a worker's job log
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
-	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueSteering)
+	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -765,9 +767,10 @@ type userMessage struct {
 	replyTags []TaskReplyTag
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
-	// (task_run.go's reportTaskNode), a background job's exit or a watch's delta
-	// (jobs.go's reap and tools_watch.go). It is the difference between the two kinds
-	// of news this queue carries — see [Agent.enqueueSteering] — and it is read
+	// (task_run.go's reportTaskNode) or a background job's exit (jobs.go's
+	// reap). A watch's delta is deliberately ambient. It is the difference
+	// between the two kinds of news these queues carry — see
+	// [Agent.enqueueSteering] — and it is read
 	// at exactly two moments: when the note is queued, and when the turn that
 	// was running drains what is left of the queue at its end. Both are places
 	// where "does anybody have to say something about this" is the question.
@@ -786,10 +789,10 @@ type userMessage struct {
 	said string
 
 	// authored marks a line the SESSION wrote rather than the person: every note
-	// that goes through [Agent.enqueueNote], whether or not anybody owes it an
-	// answer. It is WHO SAID IT, where wake is WHAT IS OWED, and the two are
-	// separate because an ambient note nobody must answer is still not the
-	// person's words.
+	// that goes through [Agent.enqueueNote] or the watch-only
+	// [Agent.enqueueAmbient]. It is WHO SAID IT, where wake is WHAT IS OWED, and
+	// the two are separate because an ambient note nobody must answer is still
+	// not the person's words.
 	//
 	// It is read at exactly one place — the journal write in
 	// [Agent.recordUserLocked] — and what it buys is a replay that draws the
@@ -822,6 +825,22 @@ type userMessage struct {
 	// Nil on every message that is not one, which is every message this queue
 	// carried before it existed.
 	steer *turnSteer
+
+	// batchKey names repeated ambient updates that collapse to their count and
+	// newest fact at a boundary. Today only watches set it: their complete tick
+	// history already lives behind `jobs output`, and copying every delta into
+	// the model's context is the interruption this field exists to prevent.
+	//
+	// batchLabel is the person-readable name rendered beside that count. Both
+	// are empty for owed task reports and every person's message, whose complete
+	// words must survive the batching pass.
+	batchKey   string
+	batchLabel string
+	// batch marks external news that belongs under the boundary's "while you
+	// worked" opening. Session control notes deliberately leave it false: a
+	// loop-recovery instruction must keep its recognizable first word and is
+	// not an account of background work.
+	batch bool
 }
 
 // userText is the ordinary case: a message that is only words.
@@ -833,7 +852,49 @@ func userText(text string) userMessage {
 // answer for. It is userText with the mark on it, and it is what makes a
 // finished task produce a sentence instead of a card nobody replies to.
 func wakeNote(text string) userMessage {
-	return userMessage{message: textMessage("user", text), wake: true}
+	return userMessage{message: textMessage("user", text), wake: true, batch: true}
+}
+
+// jobNote is a background job's owed ending in the compact form a boundary
+// needs. The complete output remains in the job's ring and log, addressable
+// through `jobs output`; repeating that tail in every later request would turn
+// a notification into a second copy of the log.
+func jobNote(text string) userMessage {
+	return wakeNote(firstLine(strings.TrimSpace(text)))
+}
+
+// watchNoteMessage is one ambient watch update reduced to the newest fact. The
+// batch key is stable across ticks from the same named watch, which is what lets
+// three deltas become "3 updates" rather than three mid-turn user-role rows.
+func watchNoteMessage(name, text string) userMessage {
+	return userMessage{
+		message:    textMessage("user", watchUpdateSummary(name, text)),
+		batchKey:   "watch:" + name,
+		batchLabel: name + " watch",
+		batch:      true,
+	}
+}
+
+// watchUpdateSummary keeps what changed and the newest evidence line. Every
+// omitted line remains available through the watch's job output.
+func watchUpdateSummary(name, text string) string {
+	lines := splitLines(strings.TrimSpace(text))
+	if len(lines) == 0 {
+		return "updated"
+	}
+	summary := strings.TrimSpace(strings.TrimPrefix(lines[0], "watch "+name))
+	summary = strings.TrimSpace(strings.TrimLeft(summary, "·:"))
+	if summary == "" {
+		summary = "updated"
+	}
+	for index := len(lines) - 1; index > 0; index-- {
+		latest := strings.TrimSpace(lines[index])
+		if latest == "" || strings.HasPrefix(latest, "… ") || latest == "(no output)" {
+			continue
+		}
+		return summary + " — " + latest
+	}
+	return summary
 }
 
 // briefNote is A NODE'S OWN BRIEF, HELD RATHER THAN ASKED. It exists for one
@@ -1603,17 +1664,25 @@ func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening)
 }
 
-// drainSteering moves queued steering messages into the transcript at a step
-// boundary and reports how many landed.
+// drainSteering moves queued messages into the transcript at a step boundary
+// and reports how many source notes landed.
 //
 // The hub is here for one reason: THIS DRAIN IS WHERE A STEER BECOMES TRUE
 // (steer.go). A sentence the person spliced into this turn is consumed at the
 // instant it is recorded here — not when they typed it — and the surface holding
 // its stream is told so on the same beat. A nil hub is a batch run with no turn
 // around it and says nothing, exactly as every other send on this path does.
+//
+// AMBIENT NEWS JOINS ONLY AT A TURN BOUNDARY OR BESIDE OWED NEWS. The opening
+// request is a turn boundary; later calls in the same tool loop are only step
+// boundaries and leave a watch's updates held. An owed task or job note is the
+// exception because the next request must carry it, and splitting the same
+// interval into an owed note now and an ambient note later would be two accounts
+// where one batch is the honest shape.
 func (a *Agent) drainSteering(hub *eventHub) int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request
 	// (loop.go) with the transcript tail on a tool result or an assistant answer,
@@ -1627,12 +1696,14 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// deliberately does not clear it: those notes reached the transcript and no
 	// request.
 	a.taskNotes = 0
-	landed, _ := a.drainSteeringLocked(hub)
+	includeAmbient := opening || boundaryNoteHeld(a.steering)
+	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
 	return landed
 }
 
-// drainSteeringLocked is the drain itself, for callers already holding a.mu —
-// the turn's end, which must drain and clear running without a gap.
+// drainSteeringLocked is the TURN-boundary drain for callers already holding
+// a.mu. The turn's end must take both queues and clear running without a gap;
+// tests and batch runners call the same complete drain directly.
 //
 // It reports how many messages landed AND whether any of them was a wake note
 // (see [Agent.enqueueSteering]). The second answer only means anything to the
@@ -1640,8 +1711,22 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 // so the model answers it as part of the turn it is already in, while a note
 // drained after the last request is one nobody has said a word about.
 func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
+	return a.drainQueuedLocked(hub, true)
+}
+
+// drainQueuedLocked drains steering and, when includeAmbient says this is a
+// legal boundary for it, the ambient queue. External background-news lines
+// become one authored user-role message; control guidance and a person's steer
+// remain their own messages.
+func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
 	queued := a.steering
 	a.steering = nil
+	if includeAmbient {
+		queued = append(queued, a.ambient...)
+		a.ambient = nil
+	}
+	sourceCount := len(queued)
+	queued = coalesceSessionNotes(queued)
 	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
@@ -1670,7 +1755,123 @@ func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 		// from landing in the transcript with nobody ever asked about it.
 		owed = owed || message.wake || !message.authored
 	}
-	return len(queued), owed
+	return sourceCount, owed
+}
+
+// boundaryNoteHeld reports whether the next step is already owed external news.
+// A person's steer does not open the ambient gate: it must arrive in their own
+// words, without unrelated watch output attached to their correction.
+func boundaryNoteHeld(queued []userMessage) bool {
+	for _, message := range queued {
+		if message.authored && message.batch {
+			return true
+		}
+	}
+	return false
+}
+
+// coalesceSessionNotes replaces every batch-marked background-news line in one
+// drain with one authored batch at the first such line's position. This
+// preserves the ordering and identity of person-authored steers and internal
+// control notes while ensuring a provider sees one "while you worked" message
+// rather than a run of synthetic user rows.
+func coalesceSessionNotes(queued []userMessage) []userMessage {
+	var notes []userMessage
+	first := -1
+	for index, message := range queued {
+		if !message.authored || !message.batch {
+			continue
+		}
+		if first < 0 {
+			first = index
+		}
+		notes = append(notes, message)
+	}
+	if len(notes) == 0 {
+		return queued
+	}
+
+	batched := batchSessionNotes(notes)
+	out := make([]userMessage, 0, len(queued)-len(notes)+1)
+	for index, message := range queued {
+		if index == first {
+			out = append(out, batched)
+		}
+		if !message.authored || !message.batch {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+// batchSessionNotes renders one boundary note. Repeated watches collapse by
+// stable key to a count and their newest summary; every other note keeps its
+// complete text because task and hand reports have no other source the model
+// can safely infer from.
+func batchSessionNotes(notes []userMessage) userMessage {
+	type repeated struct {
+		label  string
+		count  int
+		latest string
+	}
+	repeats := make(map[string]*repeated)
+	order := make([]string, 0, len(notes))
+	parts := make([]string, 0, len(notes))
+	var (
+		wake bool
+		tags []TaskReplyTag
+	)
+	for _, note := range notes {
+		wake = wake || note.wake
+		tags = append(tags, note.replyTags...)
+		if note.batchKey == "" {
+			parts = append(parts, strings.TrimSpace(note.text()))
+			order = append(order, "")
+			continue
+		}
+		group := repeats[note.batchKey]
+		if group == nil {
+			group = &repeated{label: note.batchLabel}
+			repeats[note.batchKey] = group
+			order = append(order, note.batchKey)
+		}
+		group.count++
+		group.latest = strings.TrimSpace(note.text())
+	}
+
+	rendered := make([]string, 0, len(order))
+	part := 0
+	for _, key := range order {
+		if key == "" {
+			rendered = append(rendered, parts[part])
+			part++
+			continue
+		}
+		group := repeats[key]
+		if group == nil {
+			continue
+		}
+		rendered = append(rendered, fmt.Sprintf("%s: %s — latest: %s",
+			group.label, countedUpdates(group.count), group.latest))
+		delete(repeats, key)
+	}
+	text := "while you worked: " + strings.Join(rendered, "; ")
+	if strings.Contains(text, "\n") {
+		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
+	}
+	return userMessage{
+		message:   textMessage("user", text),
+		replyTags: tags,
+		wake:      wake,
+		authored:  true,
+	}
+}
+
+func countedUpdates(count int) string {
+	if count == 1 {
+		return "1 update"
+	}
+	return fmt.Sprintf("%d updates", count)
 }
 
 // takeReplyTags hands the surface each finished-task identity exactly once.
@@ -1682,17 +1883,15 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 	return tags
 }
 
-// enqueueSteering puts one line the SESSION authored — a task node landing
-// (task_run.go), a background job exiting (jobs.go), a watch with news
-// (tools_watch.go) — onto the same queue the person's steering rides, AND WAKES
-// THE SESSION IF NOBODY IS WORKING.
+// enqueueSteering puts one OWED line the session authored — principally a task
+// node landing — onto the queue the person's steering rides, and wakes the
+// session if nobody is working.
 //
 // The lane is shared on purpose. Both are news that arrives while the model is
 // busy, both must land at a step boundary rather than inside a tool batch, and
-// both belong in the transcript as plain user-role text. Giving completions
-// their own channel would mean a second drain, a second ordering rule, and a
-// second way for a message to arrive at a moment the provider rejects — for a
-// message that is, from the model's side, exactly a line somebody typed.
+// both belong in the transcript as plain user-role text. The authored mark lets
+// the drain batch session news without changing a person's steering into
+// somebody else's words.
 //
 // ── WHY IT WAKES, AND WHY THE OTHER LANE DOES NOT ──
 //
@@ -1703,27 +1902,23 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 // comparison is at ~/oauth.md; the short version is…"), and a model that is never
 // asked never writes one. So a note that lands on an idle session starts a turn.
 //
-// THAT IS TRUE OF EVERY BACKGROUND ERRAND, NOT ONLY OF TASKS. The wake was
-// scoped to settles first and the same silence was left standing beside it: a
-// person says "run the build in the background", the build fails four minutes
-// later, and the exit note sat on this queue until they happened to type. A
-// watch is worse — its whole reason to exist is that the model stopped polling,
-// so nothing is ever going to come and look. Both are work the person ASKED THE
-// HARNESS FOR and both are owed the same sentence, so both wake.
+// THAT IS TRUE OF A BACKGROUND JOB'S ENDING, through [Agent.enqueueJobNote].
+// The model started the job and was explicitly told not to poll because the
+// ending would come back, so the exit remains owed. A watch is different:
+// repeated deltas are telemetry with a complete log behind them, and
+// [Agent.enqueueWatchNote] holds them for a turn boundary instead.
 //
 // It is not a turn per event. Everything below coalesces: the notes queue, the
-// FIRST one starts a turn, and every note that lands while that turn runs is
-// drained into it at a step boundary. A dev server that flaps six times in one
-// window is six lines in front of one model, not six paid turns — and the rail,
-// InTask, Close and the not-yet-open session all still decline
-// ([Agent.wakeLocked]).
+// FIRST owed one starts a turn, and one authored batch lands at the next legal
+// boundary. The rail, InTask, Close and the not-yet-open session all still
+// decline ([Agent.wakeLocked]).
 //
-// [Agent.enqueueAmbientNote] is the same queue with that one difference removed,
-// and what is left on it is news NOBODY ASKED FOR: an account of what an
-// interrupt left behind that a resume found on disk (task_store.go), an account
-// the harness gives of itself (looped.go, recovery.go), an OAuth connection
-// completing in a browser tab (connect.go). Context for whatever is said next —
-// real, worth carrying, nobody standing there for it.
+// [Agent.enqueueAmbientNote] is the same step queue with the wake removed. It
+// carries guidance for the turn that is already running — recovery, loop
+// control, an OAuth connection — while [Agent.enqueueWatchNote] is the separate
+// turn-boundary queue for periodic telemetry. Both are real context nobody is
+// standing there waiting for, but only the former is an instruction to the
+// current turn.
 //
 // A closed agent drops the note rather than queueing it: after Close nothing
 // drains, and the journal it would be written to is already shut.
@@ -1731,10 +1926,43 @@ func (a *Agent) enqueueSteering(text string) {
 	a.enqueueNote(wakeNote(text))
 }
 
-// enqueueAmbientNote is enqueueSteering for news nobody is waiting on: it
-// queues and never starts a turn. See the block above for which news is which.
+// enqueueJobNote is the registry's owed lane. The headline enters the boundary
+// batch; the complete output remains available through `jobs output`.
+func (a *Agent) enqueueJobNote(text string) {
+	a.enqueueNote(jobNote(text))
+}
+
+// enqueueWatchNote is the registry's ambient lane. Repeated ticks from one
+// watch remain separate until a boundary can truthfully count and collapse
+// them, and never wake a session by themselves.
+func (a *Agent) enqueueWatchNote(name, text string) {
+	a.enqueueAmbient(watchNoteMessage(name, text))
+}
+
+// enqueueAmbientNote queues step-scoped session guidance nobody is waiting on
+// and never starts a turn. Unlike periodic watch telemetry, recovery and loop
+// guidance is an instruction for the next model step and stays on steering.
 func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
+}
+
+// enqueueAmbient is the periodic-watch queue's one door. It mirrors
+// enqueueNote's authorship and closed-session laws without putting telemetry
+// where a mid-turn step drain can take it by accident.
+func (a *Agent) enqueueAmbient(note userMessage) bool {
+	text := strings.TrimSpace(note.text())
+	if text == "" {
+		return false
+	}
+	note.message = textMessage("user", text)
+	note.authored = true
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
+	}
+	a.ambient = append(a.ambient, note)
+	return true
 }
 
 // enqueueSteeredLine is THE PERSON'S OWN WORDS into a running node, and it is
@@ -1782,10 +2010,9 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		return false
 	}
 	note.message = textMessage("user", text)
-	// Both kinds of SESSION note are the session's words. It is set here, at the
-	// one door they come through, rather than at the two constructors above —
-	// and a line the person steered in is neither, which is what [steerNote]
-	// says.
+	// Every OWED session note is the session's words. It is set here, at the one
+	// door they come through, rather than at each constructor — and a line the
+	// person steered in is neither, which is what [steerNote] says.
 	if !note.steered {
 		note.authored = true
 	}

@@ -173,11 +173,16 @@ func TestWatchChangeIsBaselineSilenceThenDeltaOnly(t *testing.T) {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
 	note := queued[0]
-	if !strings.HasPrefix(note, "watch app · 2 lines new") {
+	if !strings.HasPrefix(note, "2 lines new") {
 		t.Fatalf("note header is wrong: %q", note)
 	}
-	if !strings.Contains(note, "new three") || !strings.Contains(note, "new four") {
-		t.Fatalf("note is missing the new lines: %q", note)
+	// The boundary queue keeps the newest evidence only. Every line, including
+	// new three, remains in this watch's `jobs output`.
+	if !strings.Contains(note, "new four") {
+		t.Fatalf("note is missing the newest line: %q", note)
+	}
+	if strings.Contains(note, "new three") {
+		t.Fatalf("note repeated detail that belongs behind jobs output: %q", note)
 	}
 	if strings.Contains(note, "old one") || strings.Contains(note, "old two") {
 		t.Fatalf("note repeated the lines the model already has: %q", note)
@@ -254,7 +259,7 @@ func TestWatchMatchDeliversOnlyMatchingLines(t *testing.T) {
 	waitFor(t, "the match note", func() bool { return len(sessionNotes(agent)) > 0 })
 
 	note := sessionNotes(agent)[0]
-	if !strings.HasPrefix(note, "watch errors · 1 line matching /ERROR/") {
+	if !strings.HasPrefix(note, "1 line matching /ERROR/") {
 		t.Fatalf("note header is wrong: %q", note)
 	}
 	if !strings.Contains(note, "ERROR disk full") {
@@ -282,13 +287,13 @@ func TestWatchAlwaysReportsEveryTickIncludingTheFirst(t *testing.T) {
 	waitFor(t, "the first tick's note", func() bool { return len(sessionNotes(agent)) > 0 })
 
 	note := sessionNotes(agent)[0]
-	if !strings.HasPrefix(note, "watch counter · tick 1") || !strings.Contains(note, "42") {
+	if !strings.HasPrefix(note, "tick 1") || !strings.Contains(note, "42") {
 		t.Fatalf("first always-note is wrong: %q", note)
 	}
 	// And it keeps going: the second tick reports the same value again, because
 	// that is what always means.
 	waitFor(t, "the second tick's note", func() bool { return len(sessionNotes(agent)) > 1 })
-	if second := sessionNotes(agent)[1]; !strings.HasPrefix(second, "watch counter · tick 2") {
+	if second := sessionNotes(agent)[1]; !strings.HasPrefix(second, "tick 2") {
 		t.Fatalf("second always-note is wrong: %q", second)
 	}
 }
@@ -319,7 +324,7 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	if !strings.HasPrefix(queued[0], "watch build: until matched") {
+	if !strings.HasPrefix(queued[0], "until matched") {
 		t.Fatalf("final note is wrong: %q", queued[0])
 	}
 	if !strings.Contains(queued[0], "BUILD OK in 4s") {
@@ -366,7 +371,7 @@ func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 		t.Fatalf("a broken watch reported more than once: %v", queued)
 	}
 	note := queued[0]
-	if !strings.HasPrefix(note, fmt.Sprintf("watch broken · stopped: the command failed %d ticks in a row", watchFailLimit)) {
+	if !strings.HasPrefix(note, fmt.Sprintf("stopped: the command failed %d ticks in a row", watchFailLimit)) {
 		t.Fatalf("failure note is wrong: %q", note)
 	}
 	if !strings.Contains(note, "exit status 7") {
@@ -539,7 +544,7 @@ func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	if !strings.HasPrefix(queued[0], "watch build: quiet for 2 ticks (4s)") {
+	if !strings.HasPrefix(queued[0], "quiet for 2 ticks (4s)") {
 		t.Fatalf("the final note is wrong: %q", queued[0])
 	}
 	if !strings.Contains(queued[0], "linking") {
