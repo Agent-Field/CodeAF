@@ -534,6 +534,24 @@ type taskAgent interface {
 	PendingTasks() []uint64
 }
 
+// DrawsTasks reports whether an agent carries the WHOLE task seam this surface
+// needs: the standing lane, the pending reading, and the door an answer goes
+// back through.
+//
+// IT IS EXPORTED FOR ONE REASON. internal/remote implements this surface's agent
+// over a wire and cannot import this package to check that it kept up, so the
+// door that wires the two together asserts it instead (cmd/aforge). The seam is
+// ALL-OR-NOTHING — [app.tasker] is one type assertion — so a single method
+// missing on the far half is not a feature that degrades, it is a rail that is
+// never subscribed and never draws a row. That is exactly what happened: the
+// wire carried three of the four task doors and not `ResolveTask`, and a task
+// started by hand over a connection ran to completion with an empty column
+// beside it.
+func DrawsTasks(agent Agent) bool {
+	_, ok := agent.(taskAgent)
+	return ok
+}
+
 // tasker is the agent under this surface, when it has a tasker at all.
 func (a *app) tasker() (taskAgent, bool) {
 	agent, ok := a.agent.(taskAgent)
@@ -1306,7 +1324,15 @@ func (a *app) syncTaskAsk() {
 	if !ok {
 		return
 	}
-	for _, id := range agent.PendingTasks() {
+	pending, known := taskAsksOpen(agent)
+	// AN ENGINE THAT DID NOT ANSWER RETIRES NOTHING. Over a connection this
+	// reading is a call, and a call that timed out or a link that died is not
+	// evidence that the far machine stopped asking — writing a verdict on that
+	// would close a question still waiting on the other end.
+	if !known {
+		return
+	}
+	for _, id := range pending {
 		if id == a.task.id {
 			return
 		}
@@ -1320,6 +1346,25 @@ func (a *app) syncTaskAsk() {
 	a.task.verdict = word
 	a.markCardStale(a.task)
 	a.touch()
+}
+
+// knownTasker is the pending-proposal reading WITH ITS OWN "I DID NOT SAY".
+//
+// It is asserted separately from [taskAgent] for that interface's reason: the
+// local agent always knows — the answer is a map under its own lock — and only a
+// hosted surface has a way to be told nothing at all (internal/remote's
+// [Agent.TaskProposalsPending]).
+type knownTasker interface {
+	TaskProposalsPending() ([]uint64, bool)
+}
+
+// taskAsksOpen is what the engine says is still being asked, and whether it
+// said. An agent with no second answer to give is taken at its word.
+func taskAsksOpen(agent taskAgent) ([]uint64, bool) {
+	if door, ok := agent.(knownTasker); ok {
+		return door.TaskProposalsPending()
+	}
+	return agent.PendingTasks(), true
 }
 
 // ── the card, drawn ─────────────────────────────────────────────────────────
@@ -5082,6 +5127,10 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.taskSeen = map[uint64]session.TaskState{}
 	}
 	a.taskSeen[notice.ID] = notice.State
+	// THE ROW-SPACE HAS MOVED, and an open task page has to be told: this window's
+	// live graph is one of the two authorities that page re-files against, and
+	// over a connection it is the only one that ever moves (app.go's railStamp).
+	a.railStamp++
 
 	node := a.tasks[notice.ID]
 	if node == nil {

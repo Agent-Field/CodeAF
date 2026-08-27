@@ -49,7 +49,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -1243,7 +1242,7 @@ func orchestrateJournalPath(session, run, node string) string {
 		}
 		return '-'
 	}, node)
-	return filepath.Join(home.Dir(), "v3", "runs", session, run, safe+".jsonl")
+	return filepath.Join(RunsRoot(), session, run, safe+".jsonl")
 }
 
 // ── the write scope ─────────────────────────────────────────────────────────
@@ -1594,12 +1593,26 @@ func (a *Agent) reserveRunNames(records []runRecord) {
 	a.mu.Unlock()
 }
 
+// orchestrateFamilyURI is the TRANSCRIPT a run's own row points at.
+//
+// IT NAMES THE SYNTHESIS NODE AND NOT THE RUN'S FOLDER. This used to hand back
+// the directory the run's nodes are written into, and nothing downstream ever
+// distinguishes a folder from a journal: the card drew `transcript ·
+// …/runs/<session>/<run>` for something that could not be opened, and then said
+// the file was gone or could not be read — three sentences about a path that was
+// never a transcript in the first place. The run's closing call IS its
+// transcript — it is the node that reads what every worker produced and writes
+// the run's own report ([orchestrate.SynthesisID]) — so the row points there,
+// and the card can peek it like any other row's.
+//
+// A run still in flight has not written that file yet, and the card's own
+// `Kept` sentence is the honest answer for the seconds that is true of.
 func orchestrateFamilyURI(session, run string) string {
-	path := orchestrateJournalPath(session, run, "node")
+	path := orchestrateJournalPath(session, run, orchestrate.SynthesisID)
 	if path == "" {
 		return ""
 	}
-	return taskURI(filepath.Dir(path))
+	return taskURI(path)
 }
 
 // upsert is [orchestrate.Options.OnNodes]: the crystallized graph, every time

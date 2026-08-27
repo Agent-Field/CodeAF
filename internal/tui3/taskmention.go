@@ -153,6 +153,9 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 	if a.hosted() {
 		a.adoptFarTaskRows(rows)
 	}
+	// The snapshot this window holds has been replaced, so an open task page
+	// re-files against it on the next frame (app.go's railStamp).
+	a.railStamp++
 	a.comp.tasksLoaded = !a.comp.tasksStale
 	if a.comp.open {
 		a.comp.rank()

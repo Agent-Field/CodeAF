@@ -1353,6 +1353,19 @@ type app struct {
 	taskSeen    map[uint64]session.TaskState
 	taskLane    <-chan session.Event
 	taskGen     int
+	// railStamp counts the times this window's own row-space MOVED — a node
+	// upserted off either lane, or a far index read landing. It is a counter and
+	// not a time because it is compared and never displayed, and it exists for
+	// the task page: an open page re-files its rows when the reading behind them
+	// changed, and this window's live graph is one of the two authorities that
+	// can change (place_tasks.go's [tasksPlace.regroup]).
+	//
+	// THE OTHER ONE ONLY MOVES AT HOME. The page's original stamp is the other
+	// windows' reading, which a hosted surface can never take — nothing over a
+	// connection answers [session.Agent.Elsewhere] — so away from home that
+	// stamp stands still for ever and this is the only thing that says a task
+	// somebody just started belongs on the page they are looking at.
+	railStamp uint64
 	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
 	// person has folded or opened AGAINST their default — nil is the design as
 	// shipped, and an absent key is a family nobody has touched, which is why this
