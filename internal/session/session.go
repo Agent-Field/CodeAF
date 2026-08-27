@@ -1606,6 +1606,11 @@ type Config struct {
 	// allowed to spend CARRYING ON BY ITSELF, and reaching it ends the run with a
 	// report rather than with a refusal nobody reads.
 	Budget Budget
+
+	// newerBuild is the cheap process-local reading that says this running
+	// aforge has been replaced on disk. It is private because the session owns
+	// when the reading reaches a turn; tests replace only the reading itself.
+	newerBuild func() string
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit

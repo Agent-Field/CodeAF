@@ -53,6 +53,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -588,14 +589,25 @@ func (sess *Session) detach(s *server) {
 }
 
 func (sess *Session) welcomeLocked() Welcome {
+	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
+	// this reading in the welcome is what makes an old persistent engine say
+	// it was replaced before somebody has to spend a turn to discover it.
+	note := strings.TrimSpace(sess.engine.Note)
+	if newer := buildinfo.StaleNotice(); newer != "" {
+		if note != "" {
+			note += " · "
+		}
+		note += newer
+	}
 	return Welcome{
 		Version:      Version,
 		Workspace:    sess.engine.Workspace,
 		SessionFile:  sess.engine.SessionFile,
 		Resumed:      sess.engine.Resumed,
 		Model:        sess.agent.Model(),
+		Build:        buildinfo.String(),
 		Title:        sess.agent.Title(),
-		Note:         sess.engine.Note,
+		Note:         note,
 		ApprovalMode: sess.engine.ApprovalMode,
 		PlacesRoot:   sess.engine.PlacesRoot,
 		Live:         sess.liveLocked(),

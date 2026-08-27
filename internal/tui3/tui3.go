@@ -247,6 +247,11 @@ type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 
+	// Build names the aforge process holding the conversation. The door hands
+	// it in because a hosted surface and its conversation run on different
+	// machines, where this process's own build would be the wrong answer.
+	Build string
+
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
 	// session, wrapped so that the two READING methods are spelled the way this

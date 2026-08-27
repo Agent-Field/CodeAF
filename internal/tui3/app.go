@@ -701,6 +701,7 @@ type app struct {
 	workspace string
 	place     string
 	file      string
+	build     string
 	resumed   bool
 	// previews holds the pictures this surface has already drawn as half blocks
 	// (imagepreview.go), keyed by the file, its mtime and the shape it was drawn
@@ -1887,6 +1888,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,
+		build:            strings.TrimSpace(opts.Build),
 		resumed:          opts.Resumed,
 		models:           opts.Models,
 		history:          opts.History,
