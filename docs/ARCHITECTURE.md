@@ -239,7 +239,7 @@ called only from the boundary file, and so may the two functions that put work o
 a dearer model. A new escalation trigger added anywhere else fails the build with
 its line number.
 
-## Decision 8 — Every session has a principal; unattended sessions get a Steward
+## Decision 9 — Every session has a principal; unattended sessions get a Steward
 
 **Decision.** One interface, `session.Principal`, is the addressee of every road
 in the engine that ends in "ask the person": `Ask`, `Acceptance`, `Budget`,
