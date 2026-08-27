@@ -687,6 +687,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody asks — the money, and the hopping.
 		{"why does the same conversation suddenly cost more", "models-and-cost"},
 		{"does it keep the prompt cache warm", "models-and-cost"},
+		{"why did old tool results turn into pointers during one long answer", "models-and-cost"},
+		{"what does folded results tokens mean", "models-and-cost"},
 
 		// The effort ladder. One dial with five rungs under a default of `high`,
 		// so every question about it is asked in the words somebody uses for the
