@@ -115,6 +115,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// Written from a real run: the forming block's spinner and count-up stood
+		// still for the whole shaping call, because nothing had started the frame
+		// clock. These are the words somebody watching that types.
+		{"the forming line is stuck", "how-tasks-run"},
+		{"the task spinner is not moving", "how-tasks-run"},
+		// Written from a real run: a task proposed in a conversation opened with
+		// no project died in no time at all with "could not prepare a working
+		// copy: this task needs a project". It does not any more, and these are
+		// the words somebody who saw that sentence types.
+		{"task failed saying it needs a project", "how-tasks-run"},
+		{"task in a conversation with no folder", "how-tasks-run"},
+		{"do tasks work when there is no repository", "how-tasks-run"},
+		{"where does a task run if I did not open a project", "how-tasks-run"},
 		// Written from a real run: a task that generated two images was landed
 		// as "6 steps without progress" and the person had to go and find the
 		// files themselves. Both halves are questions they then ask.

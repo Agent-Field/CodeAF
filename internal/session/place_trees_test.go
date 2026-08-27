@@ -11,10 +11,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
@@ -56,27 +58,121 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 	}
 }
 
-// An owned work/ repository is bookkeeping, never the project a task branches
-// from. With no anchor the task asks for one; non-code work may explicitly stay
-// in place, and neither road registers an empty worktree.
-func TestAnOwnedScratchWorkspaceIsNeverATaskBranchSource(t *testing.T) {
-	work := newTestRepo(t)
-	place := Place{Dir: t.TempDir(), Workspace: work, Owned: true}
+// A TASK IN A CONVERSATION WITH NO PROJECT JUST WORKS. The conversation's own
+// work/ IS a repository — the door makes one with a first commit for exactly
+// this reason — so a task with nothing named takes the ordinary road: a worktree
+// in the session's trees/, a branch off work/'s HEAD, and a merge home. It once
+// refused every such task with "this task needs a project", which turned people
+// away from work that needed no repository at all.
+func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing.T) {
+	place, work := newOwnedPlace(t)
 
-	if _, err := prepareTaskTreeAt(place, work, "owned", 1, "change the code", ""); err == nil ||
-		!strings.Contains(err.Error(), "/workspace <path>") {
-		t.Fatalf("default owned task error = %v, want the one-line anchor request", err)
+	tree, err := prepareTaskTreeAt(place, work, "owned", 1, "file the issue", "")
+	if err != nil {
+		t.Fatalf("prepareTaskTreeAt: %v", err)
 	}
-	if list := gitOut(t, work, "worktree", "list"); strings.Contains(list, place.Trees()) {
-		t.Fatalf("the scratch repository gained a task worktree:\n%s", list)
+	if want := filepath.Join(place.Trees(), "1"); tree.dir != want {
+		t.Fatalf("the worktree is at %q, want %q", tree.dir, want)
 	}
-	tree, err := prepareTaskTreeAt(place, work, "owned", 2, "write notes", "in place")
+	if tree.root != canonicalPath(work) || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("owned tree = %+v, want a task branch off the conversation's own repository", tree)
+	}
+	if list := gitOut(t, work, "worktree", "list"); !strings.Contains(list, tree.dir) {
+		t.Fatalf("git does not know the worktree:\n%s", list)
+	}
+	// And it comes home, which is the half that makes the branch worth cutting.
+	writeFile(t, filepath.Join(tree.dir, "issue.md"), "filed\n")
+	if merge, detail := tree.comeHome("file the issue", []string{"issue.md"}); merge != mergeMerged {
+		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
+	}
+	if _, err := os.Stat(filepath.Join(work, "issue.md")); err != nil {
+		t.Fatalf("the work did not land in the conversation's own workspace: %v", err)
+	}
+
+	// The other two roads are untouched: explicitly non-code work still stays in
+	// the conversation's directory and says so.
+	inPlace, err := prepareTaskTreeAt(place, work, "owned", 2, "write notes", "in place")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tree.dir != work || tree.merge != mergeInPlace {
-		t.Fatalf("in-place tree = %+v, want the owned workspace itself", tree)
+	if inPlace.dir != work || inPlace.merge != mergeInPlace {
+		t.Fatalf("in-place tree = %+v, want the owned workspace itself", inPlace)
 	}
+}
+
+// AN OWNED WORKSPACE THAT IS NOT A REPOSITORY STILL HAS SOMEWHERE TO STAND. It
+// is what an older build left behind, and what a machine with no git leaves
+// today, because the door treats a failed init as a loss of undo history rather
+// than a refusal to open. The honest answer is the one every non-repository
+// gets: run in place and say so — never a sentence about needing a project.
+func TestATaskInAnUninitialisedOwnedWorkspaceRunsInPlace(t *testing.T) {
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	place := Place{Dir: dir, Workspace: work, Owned: true}
+
+	tree, err := prepareTaskTreeAt(place, work, "owned", 1, "file the issue", "")
+	if err != nil {
+		t.Fatalf("prepareTaskTreeAt: %v", err)
+	}
+	if tree.dir != work || tree.merge != mergeInPlace || tree.branch != "" {
+		t.Fatalf("tree = %+v, want the workspace itself with nothing to merge", tree)
+	}
+}
+
+// WHAT THE WORKER IS TOLD. A directory holding nothing because the conversation
+// never had a project, and a checkout that failed, look identical from inside —
+// so the prompt says which this is, and says it of the task folder as well as of
+// the workspace itself. A place the person named is somewhere they chose and is
+// never described this way.
+func TestAWorkerInTheConversationsOwnSpaceIsToldThereIsNoProject(t *testing.T) {
+	place, work := newOwnedPlace(t)
+	tree, err := prepareTaskTreeAt(place, work, "owned", 1, "file the issue", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{work, tree.dir} {
+		if !standingInOwnSpace(place, dir) {
+			t.Fatalf("%s was not read as the conversation's own space", dir)
+		}
+	}
+	named := t.TempDir()
+	if standingInOwnSpace(place, named) {
+		t.Fatalf("a place the person named (%s) was read as the conversation's own space", named)
+	}
+	if standingInOwnSpace(Place{Dir: place.Dir, Workspace: work}, work) {
+		t.Fatal("a borrowed conversation was read as having no project")
+	}
+
+	prompt := renderSystemAt(Config{Workspace: tree.dir, ownSpace: true}, time.Now())
+	const line = "- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there."
+	if !strings.Contains(prompt, line) {
+		t.Fatalf("the worker's prompt does not say %q", line)
+	}
+	if strings.Contains(renderSystemAt(Config{Workspace: named}, time.Now()), line) {
+		t.Fatal("a worker in a project was told there is no project here")
+	}
+}
+
+// newOwnedPlace is the layout a conversation opened outside any project gets:
+// a session folder whose work/ the door has made into a repository with a first
+// commit (cmd/aforge's prepareOwnedWorkspace).
+func newOwnedPlace(t *testing.T) (Place, string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, work, "init")
+	mustGit(t, work, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+		"commit", "--allow-empty", "-m", "session opened")
+	return Place{Dir: dir, Workspace: work, Owned: true}, work
 }
 
 func TestAnExplicitTaskPlaceIsTheWorkersExactDirectory(t *testing.T) {
