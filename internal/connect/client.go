@@ -46,6 +46,13 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 	if holder, keyed := plug.(keyService); keyed {
 		return m.keyClient(holder, service.Name, entry)
 	}
+	if entry.Keys != nil && strings.TrimSpace(entry.Keys.RefreshToken) == "" &&
+		!entry.Keys.Expiry.IsZero() && time.Now().After(entry.Keys.Expiry) {
+		// Nothing can renew this key set. Sending it into the stock renewal
+		// path would expose an oauth2 sentence that gives the person no useful
+		// next move; the useful answer is the browser trip they already know.
+		return nil, fmt.Errorf("%s has to be connected again", service.Name)
+	}
 	credential, err := m.credential(service.ID)
 	if err != nil {
 		return nil, err
@@ -56,7 +63,7 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 		id:    service.ID,
 		last:  entry.Keys,
 	}
-	client := oauth2.NewClient(ctx, source)
+	client := oauth2.NewClient(ctx, bearerSource{base: source})
 	client.Timeout = clientTimeout
 	return client, nil
 }
@@ -65,9 +72,31 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 // what the identity probe uses in the seconds after a connection is made, when
 // the keys are known to be fresh and nothing has been written down yet.
 func staticClient(ctx context.Context, keys *oauth2.Token) *http.Client {
-	client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(keys))
+	client := oauth2.NewClient(ctx, bearerSource{base: oauth2.StaticTokenSource(keys)})
 	client.Timeout = clientTimeout
 	return client
+}
+
+// bearerSource fixes only the copy of a key set put on the wire.
+//
+// Slack answers token_type: user, and golang.org/x/oauth2 would put that word
+// on the Authorization header verbatim. Every key set this package sends is a
+// Bearer unless it already names one of the three schemes oauth2 understands;
+// what the service issued is kept unchanged in the store.
+type bearerSource struct{ base oauth2.TokenSource }
+
+func (b bearerSource) Token() (*oauth2.Token, error) {
+	keys, err := b.base.Token()
+	if err != nil || keys == nil {
+		return keys, err
+	}
+	switch strings.ToLower(strings.TrimSpace(keys.TokenType)) {
+	case "bearer", "mac", "basic":
+		return keys, nil
+	}
+	sent := *keys
+	sent.TokenType = "Bearer"
+	return &sent, nil
 }
 
 // persisting is the wrapper that notices a renewal and records it.

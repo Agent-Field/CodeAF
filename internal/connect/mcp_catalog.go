@@ -28,12 +28,9 @@ package connect
 // GitHub's sign-in server. GitHub therefore comes back only with an application
 // registered by hand in a console, in a later wave.
 //
-// Slack is absent for the same concrete reason. https://docs.slack.dev/ai/
-// slack-mcp-server/, read 2026-08-24, says "We do not support SSE-based
-// connections or Dynamic Client Registration at this time", and its live
-// sign-in description had no place to introduce a program on that date. It
-// comes back when Slack allows that introduction again, or with an application
-// registered by hand in a later wave.
+// Slack is not a tool server because its hosted tools refuse applications
+// outside its Marketplace and it offers no self-registration. It arrives as a
+// browser plug instead (slack.go), with an application registered by hand.
 
 // mcpEntry is one line of the list: what goes on a menu, where the service
 // answers, and the one fact about that address a person may have to supply.

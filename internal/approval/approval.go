@@ -74,10 +74,10 @@ const ToolBash = "bash"
 //
 // What these calls have in common is that they are irreversible OUTSIDE this
 // machine, and irreversible in somebody's own name: a message that has left the
-// mailbox has been read by the person it was addressed to, and a meeting that
-// has landed on a calendar has landed on everybody's. No rollback exists for
-// either, and a person watching a tool run cannot undo one afterwards the way
-// they can undo an edit.
+// mailbox has been read by the person it was addressed to, a meeting that has
+// landed on a calendar has landed on everybody's, and a message posted in a
+// channel has been read. No rollback exists for any of them, and a person
+// watching a tool run cannot undo one afterwards the way they can undo an edit.
 //
 // A blanket allow — the settings row set to allow, or --yolo — is a statement
 // about the ordinary work of a session: reading, editing, running things here.
@@ -91,6 +91,7 @@ const ToolBash = "bash"
 var actsInThePersonsName = map[string]bool{
 	"gmail_send":      true,
 	"calendar_create": true,
+	"slack_send":      true,
 }
 
 // ServiceRequestSuffix is the tail of the raw-call tool one of the person's own

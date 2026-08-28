@@ -422,15 +422,15 @@ var settingUI = map[string]settingMeta{
 		about: "signs the commits and PRs aforge writes for you — one trailer, " +
 			"one footer line.",
 	},
-	// The two rows a Google connection is signed with. They belong on this tab
+	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
 	// what: they are about what aforge may REACH on your behalf, which is the
 	// question this tab already holds.
 	//
 	// Neither of them is where a person connects an account — /connect is, and it
 	// asks nothing but a keypress. These are for somebody signing in through
-	// their own Google project rather than the one aforge ships with, which is a
-	// setting and not a step.
+	// their own Google or Slack application rather than the ones aforge ships
+	// with, which is a setting and not a step.
 	config.KeyGoogleOAuthClient: {
 		tab: tabWorkspace, label: "google sign-in id", widget: widgetText,
 		about: "identifies aforge to Google when you connect an account. Blank " +
@@ -439,6 +439,11 @@ var settingUI = map[string]settingMeta{
 	config.KeyGoogleOAuthSecret: {
 		tab: tabWorkspace, label: "google sign-in secret", widget: widgetText,
 		about: "the secret that goes with the id above. It is kept masked once saved.",
+	},
+	config.KeySlackOAuthClient: {
+		tab: tabWorkspace, label: "slack sign-in id", widget: widgetText,
+		about: "identifies aforge to Slack when you connect a workspace. Blank uses " +
+			"the one aforge ships with.",
 	},
 
 	// ── Display ─────────────────────────────────────────────────────────────
