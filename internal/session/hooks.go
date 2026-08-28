@@ -270,11 +270,14 @@ type episode struct {
 	// that the next call on that hand can be read as the fix or as the same
 	// failure again (fixrecall.go).
 	fixes *fixLane
+	// looks is what the `tasks` tool has already told this turn, so that an
+	// answer asked for twice can say it has not moved (tasklook.go).
+	looks *lookMemory
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.
 func (a *Agent) newEpisode() *episode {
-	ep := &episode{agent: a, plane: a.controlPlaneFor()}
+	ep := &episode{agent: a, plane: a.controlPlaneFor(), looks: newLookMemory()}
 	for _, hook := range ep.plane.episodeInit {
 		hook.EpisodeInit(ep)
 	}
