@@ -5,8 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // THE POINTER PREVIEWS AND THE CURSOR SELECTS.
@@ -17,6 +20,15 @@ import (
 // changed — the screen answering a gesture with a highlight and no content.
 // What the pointer is over is now what the card is about, and the cursor is
 // left exactly where it was put.
+//
+// THE HOVER MAP IS UNTOUCHED BY THE SWITCHER AND THE ROWS UNDER IT ARE NOT.
+// The resting list is one flat ranked reading now (switcher.go), so a pointer
+// resting on a project line previews nothing for the plain reason that there
+// are no project lines at rest — the rows a pointer can reach are a
+// conversation, a watch, a `since you left` door and the fold, and the line it
+// cannot reach is the reading's own claim rather than a heading. And there is
+// no card at all below [homeCardMin] (homebridge.go), so every test whose
+// subject IS the card is drawn on a frame past that floor.
 
 // homeCard is the right column as plain text: what the card is about right now.
 func homeCard(t *testing.T, a *app) string {
@@ -59,11 +71,58 @@ func homeLeftText(a *app, at int) string {
 	return a.homeLine(a.home.lines[at], at, left, a.pal)
 }
 
+// hoverLab is the resting switcher with one of everything a pointer can land on
+// — a quiet conversation in each of three projects, one stopped on a question,
+// and one watch that needs somebody — on a frame past [homeCardMin].
+//
+// THE FRAME IS THE FLOOR AND NOT A ROUND NUMBER. There is no card below that
+// width at all (homebridge.go), and a test about what the card is ABOUT drawn on
+// a frame that has no card proves nothing at all — which is exactly what the
+// hundred-column lab these tests used to open on became the day the everyday
+// card tier went.
+//
+// THE WORKSPACES REALLY EXIST, because the card's place line says `folder gone`
+// in place of a branch for a directory that is not there ([app.homeCardPlace]),
+// and a repository reading is the subject of the last test in this file.
+func hoverLab(t *testing.T) (*app, *homeLab, string) {
+	t.Helper()
+	lab := newHomeLab(t)
+	now := time.Now()
+	alpha, beta, zeta := lab.workspace("alpha"), lab.workspace("beta"), lab.workspace("zeta")
+	lab.session("-alpha", "aaaa000000000001", "alpha chat", alpha, now.Add(-time.Hour))
+	lab.session("-beta", "bbbb000000000001", "beta chat", beta, now.Add(-2*time.Hour))
+	// A conversation stopped on a question, so that the reading draws its own
+	// claim line over the ranked rows — the one line of the resting list a cursor
+	// may not stop on, which is what a project heading used to be here.
+	lab.session("-beta", "bbbb000000000002", "beta asking", beta, now.Add(-30*time.Minute))
+	lab.asks("-beta", "bbbb000000000002", "run the sweep?", now)
+	mine := lab.session("-zeta", "cccc000000000001", "zeta chat", zeta, now.Add(-3*time.Hour))
+
+	a := lab.app(mine)
+	// AND ONE WATCH THAT NEEDS SOMEBODY, which is the other kind of row a cursor
+	// stops on and the other kind of card the right column draws. It needs a
+	// person because that is what earns a standing item a row on the resting list
+	// at all now ([readSwitcher]); the ones merely waiting for their time are the
+	// standing place's business.
+	a.stands.Items = func(workspace string) []standing.Item {
+		if workspace != alpha {
+			return nil
+		}
+		return []standing.Item{{
+			ID: "w1", Words: "watch the repo", Status: standing.StatusActive,
+			Workspace: alpha, NeedsPerson: "should I send the digest?", Updated: now.Add(-time.Hour),
+		}}
+	}
+	a.width, a.height = homeCardMin, 40
+	openHomeOn(a, mine)
+	return a, lab, mine
+}
+
 // Hovering a conversation shows THAT conversation on the right, and the cursor
 // does not move an inch: the row it is on keeps the selected look it had, and
 // the hovered row takes the hover look on top of it.
 func TestHoveringARowPreviewsItOnTheRight(t *testing.T) {
-	a, _, _ := homeTierLab(t)
+	a, _, _ := hoverLab(t)
 	cursor := a.home.cursor
 	if title := homeCardTitle(t, a); title != "Zeta Chat" {
 		t.Fatalf("the card does not open on the window's own conversation: %q", title)
@@ -93,7 +152,7 @@ func TestHoveringARowPreviewsItOnTheRight(t *testing.T) {
 // the list, so the card returns to the cursor's conversation rather than being
 // held on whatever row shares that screen line.
 func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
-	a, _, _ := homeTierLab(t)
+	a, _, _ := hoverLab(t)
 	at := homeLineOfKind(t, a, homeSession, "alpha")
 	y := homeLineY(t, a, at)
 	a.homeHover(4, y)
@@ -112,84 +171,138 @@ func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
 	}
 }
 
-// A HEADING IS NOT A THING TO PREVIEW. The rows the cursor may not stop on have
-// no card of their own, and a pointer resting on one leaves the card where the
-// keyboard is rather than emptying it.
-func TestHoveringAHeadingLeavesTheCardOnTheCursor(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	at := homeLineOfKind(t, a, homeHeading, "alpha")
+// A LINE NO CURSOR MAY STOP ON IS NOT A THING TO PREVIEW, and a pointer resting
+// on one leaves the card where the keyboard is rather than emptying it.
+//
+// THE LINE USED TO BE A PROJECT HEADING AND IS NOW THE READING'S OWN CLAIM —
+// `4 chats · what wants you first` ([homeSwitchHead]). The law did not change
+// with it: the rows the cursor is not allowed to rest on have no card of their
+// own, whatever those rows happen to be, and the pointer must not blank the
+// column by drifting across one on its way somewhere.
+func TestHoveringALineNoCursorMayStopOnLeavesTheCardOnTheCursor(t *testing.T) {
+	a, _, _ := hoverLab(t)
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeSwitchHead {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the reading drew no claim over its ranked rows:\n%s", homeText(a))
+	}
 	a.homeHover(4, homeLineY(t, a, at))
 	if a.home.hover != -1 {
-		t.Fatalf("a heading was taken as a hover (line %d)", a.home.hover)
+		t.Fatalf("a line no cursor may stop on was taken as a hover (line %d)", a.home.hover)
 	}
 	if title := homeCardTitle(t, a); title != "Zeta Chat" {
-		t.Fatalf("hovering a heading changed the card to %q", title)
+		t.Fatalf("hovering the list's own claim changed the card to %q", title)
 	}
 }
 
-// A FOLDED PROJECT'S LINE PREVIEWS THE PROJECT, exactly as the cursor on it
-// does: the pointer reaches every row the cursor can stop on, and the card it
-// gets is the card that row has.
-func TestHoveringAFoldedProjectPreviewsTheProjectCard(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	at := homeLineOfKind(t, a, homeProject, "gamma")
+// EVERY ROW THE CURSOR CAN STOP ON THE POINTER CAN REACH, AND THE CARD IT GETS
+// IS THE CARD THAT ROW HAS.
+//
+// This used to be said about a folded project's line, and there are no project
+// lines at rest any more — the tiers and the `elsewhere` block went with the
+// tree (switcher.go). The second kind of stop on the resting list is a WATCH,
+// and its card is the standing item's own ([StandingItemCard], which this wave
+// did not touch), so the law is pinned where it still has two kinds to be true
+// of.
+func TestHoveringAWatchPreviewsTheWatchsOwnCard(t *testing.T) {
+	a, lab, _ := hoverLab(t)
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeItem {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the watch has no row on the column:\n%s", homeText(a))
+	}
 	a.homeHover(4, homeLineY(t, a, at))
 
 	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindProject {
-		t.Fatalf("the hovered project line answers subject kind %v, want a project", subject.kind)
+	if !ok || subject.kind != bandKindItem {
+		t.Fatalf("the hovered watch answers subject kind %v, want an item", subject.kind)
 	}
-	if subject.project != "gamma" || subject.dir != "/tmp/gamma" {
-		t.Fatalf("the previewed subject is %q at %q, want gamma at /tmp/gamma", subject.project, subject.dir)
+	alpha := lab.workspace("alpha")
+	if subject.dir != alpha {
+		t.Fatalf("the previewed subject is at %q, want the watch's own workspace %q", subject.dir, alpha)
 	}
-	if card := homeCard(t, a); !strings.Contains(card, "/tmp/gamma") {
-		t.Fatalf("the card beside a hovered project is not the project's:\n%s", card)
+	card := homeCard(t, a)
+	if !strings.Contains(card, "watch the repo") {
+		t.Fatalf("the card beside a hovered watch is not the watch's:\n%s", card)
+	}
+	if strings.Contains(card, "Zeta Chat") {
+		t.Fatalf("the card stayed on the cursor's conversation:\n%s", card)
 	}
 }
 
-// `→` ACTS ON THE CARD A PERSON IS LOOKING AT. The right column has no cursor
-// of its own, so the key that opens every fold on the card has to mean the card
-// that is drawn — the previewed row — or the screen would answer one row and
-// the keyboard another.
-func TestMoreOpensTheFoldsOfThePreviewedCard(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	bands := homeBandsFor(bandKindSession)
-	if len(bands) == 0 {
-		t.Fatal("no band is registered for a conversation, so this proves nothing")
+// `→` ACTS ON THE ROW A PERSON IS LOOKING AT. The right column has no cursor of
+// its own, so a key that reaches past the list has to mean the row that is
+// drawn — the previewed one — or the screen would answer one row and the
+// keyboard another.
+//
+// THE KEY IT REACHES CHANGED AND THE LAW DID NOT. `→` used to open every fold on
+// the card; it opens the row's VERB STRIP now, and only where the row has verbs
+// (placekeys.go's [app.placeKey], verbstrip.go) — which on the resting list is
+// every conversation and every watch, so the fold arm below it is no longer
+// reachable from a row at all. What is pinned here is the half that survived
+// both: the verbs are the PREVIEWED row's and never the cursor's.
+func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
+	a, _, _ := hoverLab(t)
+	watch := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeItem {
+			watch = i
+			break
+		}
 	}
-	band := bands[0].name
-
-	at := homeLineOfKind(t, a, homeSession, "alpha")
-	a.homeHover(4, homeLineY(t, a, at))
-	hovered, ok := a.homeSubject()
-	if !ok {
-		t.Fatal("the hovered row has no subject")
+	if watch < 0 {
+		t.Fatalf("the watch has no row on the column:\n%s", homeText(a))
 	}
-	// The cursor's own subject, read with the pointer lifted for one line and
-	// then put back exactly where it was.
-	a.home.hover = -1
-	pointed, ok := a.homeSubject()
-	if !ok {
-		t.Fatal("the cursor's row has no subject")
+	// The cursor is on this window's own conversation, whose verbs are a
+	// conversation's; the pointer goes to the watch, whose verbs are an item's.
+	// The two lists share no word, which is what lets the strip say which row it
+	// was opened for.
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
+		t.Fatalf("home did not open on a conversation, so the two rows cannot be told apart:\n%s", homeText(a))
 	}
-	a.home.hover = at
+	a.homeHover(4, homeLineY(t, a, watch))
 
 	a.homeKey(key("right"))
-	if a.bandFolded(band, hovered) {
-		t.Fatalf("→ left the %s band of the previewed card folded", band)
+	if !a.strip.open {
+		t.Fatalf("→ opened no verbs at all:\n%s", homeText(a))
 	}
-	if !a.bandFolded(band, pointed) {
-		t.Fatalf("→ acted on the cursor's card instead of the one on the screen")
+	var words []string
+	for _, v := range a.strip.verbs {
+		words = append(words, v.word)
+	}
+	joined := strings.Join(words, ", ")
+	if !strings.Contains(joined, homeItemPauseWord) {
+		t.Fatalf("→ did not offer the previewed watch's own verbs, it offered %q", joined)
+	}
+	if strings.Contains(joined, "put it away") {
+		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)
 	}
 }
 
-// THE CARD'S READING IS THE CARD'S. The repository band takes one bounded
-// reading when a card arrives, and a card that arrived under the pointer must
-// read the workspace of the row the pointer is on — hovering a conversation in
-// another project shows THAT project's branch, or the band would be reporting
-// on a directory nothing on the screen is about.
+// THE CARD'S READING IS THE CARD'S. The repository is read once, bounded, when a
+// card arrives, and a card that arrived under the pointer must read the
+// workspace of the row the pointer is on — hovering a conversation in another
+// project shows THAT project's branch, or the reading would be reporting on a
+// directory nothing on the screen is about.
+//
+// AND THE BRANCH IS ON THE CARD'S PLACE LINE NOW, not in a band of its own. The
+// switcher's card is five things that ACT (place_home.go's [homeCardBands]), and
+// a branch and a dirty count are facts about the address the place line already
+// names — so `repo` was folded into it ([app.homeCardPlace]). The reading is
+// still homeband_repo.go's and is still taken exactly once per workspace.
 func TestHoveringAnotherProjectsRowReadsThatProjectsRepository(t *testing.T) {
-	a, _, _ := homeTierLab(t)
+	a, lab, _ := hoverLab(t)
+	alpha := lab.workspace("alpha")
 	var asked []string
 	old := homeGitStatus
 	homeGitStatus = func(_ context.Context, workspace string) ([]byte, error) {
@@ -200,8 +313,8 @@ func TestHoveringAnotherProjectsRowReadsThatProjectsRepository(t *testing.T) {
 
 	at := homeLineOfKind(t, a, homeSession, "alpha")
 	a.homeHover(4, homeLineY(t, a, at))
-	if len(asked) != 1 || asked[0] != "/tmp/alpha" {
-		t.Fatalf("hovering read %v, want one reading of /tmp/alpha", asked)
+	if len(asked) != 1 || asked[0] != alpha {
+		t.Fatalf("hovering read %v, want one reading of %s", asked, alpha)
 	}
 	width, _ := a.size()
 	_, right := homeColumns(width)

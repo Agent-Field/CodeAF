@@ -56,13 +56,22 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
-// build_harness, list_harnesses and run_adaptive (tools_harness.go) are the two
-// big machines and the list that says whether one of them already exists: a
-// saved procedure this project can be offered again, and a planner-and-fleet run
-// against a fuel cap. They are the model's to reach for BY DESIGN — the
-// judgement "is this a recipe, a run, or just work" is one no cue list can make
-// — and each is absent where its machinery is (no registry, no runner, nobody
-// watching to answer the card or the fuel gate).
+// build_harness and list_harnesses (tools_harness.go) are the ONE big machine
+// left on this belt and the list that says whether the thing about to be built
+// already exists: a saved procedure this project can be offered again. They are
+// the model's to reach for BY DESIGN — the judgement "is this a recipe, or just
+// work" is one no cue list can make — and both are absent where their machinery
+// is (no registry, no runner, nobody watching to answer the card).
+//
+// THE PLANNER-AND-FLEET RUN WAS A THIRD HAND HERE (`run_adaptive`) AND IS NOT ANY
+// MORE. The judgement it asked the model to make — is this wide enough to plan up
+// front — is a guess made before anybody opens the material, and the road that
+// won makes it from the material instead: one task, admitted wide, handing the
+// parts out as it finds them (task_divide.go). The engine still ships, and since
+// the cue that read a typed request for a run went too (loop.go) NOTHING in a
+// conversation reaches it: the model has no verb for a run, and neither does
+// anybody typing — which is what "absent, not refusing" means when the thing
+// taken away is a hand.
 //
 // settings and change_setting (tools_settings.go) are the person's own
 // configuration: the sheet read back by its registry keys, and one row of it
@@ -113,6 +122,14 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.backgroundBash(tool)
 		case "read":
 			tools[index] = a.pdfRead(tool)
+		case "write":
+			// write is WRAPPED so a file can be continued rather than only
+			// replaced (tools_write.go): append:true is the one argument the
+			// salvage of a cut-off write (salvage.go) asks the model to reach
+			// for, and a belt that cannot append is a belt whose only answer
+			// to "the output limit cut your file in half" is to pay for the
+			// whole file again.
+			tools[index] = a.appendableWrite(tool)
 		}
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
@@ -132,6 +149,14 @@ func (a *Agent) belt() []bare.Tool {
 	// narrow task's belt byte-identical to what it was before that road
 	// existed.
 	tools = append(tools, a.divideTools()...)
+	// fork is the third weight of parallelism and the lightest (fork.go): not
+	// work handed away, but this mind copied two to four times INSIDE the turn,
+	// each copy opening on the whole transcript and told one line about what
+	// makes it different. It is absent from a hand's own belt and present on
+	// everything else, because a chat turn and a task worker are both minds
+	// mid-work with a context worth copying — and a hand is not, since the fork
+	// is one deep.
+	tools = append(tools, a.forkTools()...)
 	// stand (tools_standing.go) is the ambient side's one verb, and it is
 	// CONDITIONAL for the sharpest version of the absence law on this belt: a
 	// model told it can set up a reminder will plan a whole reply around one,
@@ -148,6 +173,16 @@ func (a *Agent) belt() []bare.Tool {
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	// An owned conversation has no project until the person names one. The
+	// anchoring hand exists only in that state; after it succeeds the rebuilt
+	// belt omits it, because a capability whose job is already done is absent.
+	tools = append(tools, a.anchorWorkspaceTools()...)
+	// The workspace's own history — restore points over the FILES, forks to try
+	// something risky in, and the merge that lands one (tools_workspace.go).
+	// They are furrow's verbs and they are absent on a machine that does not
+	// have it, which is the same absence law `stand` and the memory pair are
+	// built on and is stated at length where they are built.
+	tools = append(tools, a.workspaceTools()...)
 	// search_conversations (tools_conversations.go) is the other half of memory
 	// and is conditional for the same reason `remember` is: what it reads is the
 	// FTS index over every message ever posted, which lives in the store, and

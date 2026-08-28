@@ -2,12 +2,14 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
@@ -115,6 +117,35 @@ func TestMissingCommandIsRecognizedInEveryShellsWording(t *testing.T) {
 	}
 }
 
+func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(os.TempDir(), "acp"))
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	for _, want := range []string{
+		"-T", "ControlMaster=auto", "ControlPath=", "ControlPersist=300",
+		"ServerAliveInterval=3", "ServerAliveCountMax=3", "IPQoS=lowdelay",
+		"devbox aforge engine",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("ssh args %q do not contain %q", args, want)
+		}
+	}
+	if strings.Contains(args, " -C ") || strings.Contains(args, "Compression=yes") {
+		t.Fatalf("ssh args enable whole-stream compression on the LAN: %q", args)
+	}
+}
+
+func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), strings.Repeat("deep", 40)))
+	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	if strings.Contains(args, "ControlPath=") || strings.Contains(args, "ControlMaster=") {
+		t.Fatalf("overlong control socket was still enabled: %q", args)
+	}
+	if !strings.Contains(args, "ServerAliveInterval=3") || !strings.HasSuffix(args, "devbox aforge engine") {
+		t.Fatalf("the ordinary ssh transport was lost with multiplexing: %q", args)
+	}
+}
+
 // The flag exists and is documented in exactly one place: `aforge chat -h`.
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
 	err := openChatV3("chat", []string{"--help"}, false)
@@ -203,12 +234,19 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	}
 }
 
-// AND THE SURFACE IS HANDED IT, with the two fields that would be about the
-// wrong machine left out. This is the door's half: what hostOptions wires is
+// AND THE SURFACE IS HANDED IT, with the live firing field that nobody can
+// answer left out. This is the door's half: what hostOptions wires is
 // what a person over --host actually gets.
 func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	options := hostOptions(nil, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	welcome := remote.Welcome{
+		Version: remote.Version, Workspace: "/srv/app",
+		Build: "1265feda built 2026-08-27 13:28",
+	}
+	options := hostOptions(nil, nil, "devbox", welcome, false)
+	if options.Build != welcome.Build {
+		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
+	}
 	if options.Standing.Items == nil || options.Standing.Save == nil {
 		t.Fatal("the door hands over no standing seam, so a remote surface has no rows and no pause key")
 	}
@@ -217,10 +255,9 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	if options.Standing.Running != nil {
 		t.Fatal("the door claims it can tell whether an item is firing on another machine")
 	}
-	// Watch: the OS timer is the engine's, and a status read off this laptop's
-	// launchd would be a line about the wrong machine.
-	if options.Standing.Watch != nil {
-		t.Fatal("the door answers `keeping watch` from this machine's own timer")
+	// Watch crosses to the engine, so /status can answer from the right timer.
+	if options.Standing.Watch == nil {
+		t.Fatal("the door does not ask the engine for its background timer")
 	}
 	// StandingRoot is the LOCAL errand and exchange folder, and there is no
 	// errand over a connection.
@@ -376,4 +413,86 @@ func waitFor(done func() bool) bool {
 		time.Sleep(time.Millisecond)
 	}
 	return false
+}
+
+// ── the connection, as the person meets it ──────────────────────────────────
+
+// WHO ELSE IS IN THE ROOM IS SAID, AND AN EMPTY ROOM SAYS NOTHING. The count is
+// the engine's, because only the machine holding the session can know it, and
+// zero draws nothing at all rather than a reassuring line about being alone.
+func TestTheEntryNoticeSaysWhoElseIsOnTheConversation(t *testing.T) {
+	for _, row := range []struct {
+		welcome remote.Welcome
+		want    string
+	}{
+		{remote.Welcome{}, ""},
+		{remote.Welcome{Attached: 1}, "another window is on this conversation"},
+		{remote.Welcome{Attached: 3}, "3 other windows are on this conversation"},
+		{remote.Welcome{Note: "session open elsewhere — started a new one"}, "session open elsewhere — started a new one"},
+		{
+			remote.Welcome{Note: "session open elsewhere — started a new one", Attached: 1},
+			"session open elsewhere — started a new one · another window is on this conversation",
+		},
+	} {
+		if got := hostEntryNotice(row.welcome); got != row.want {
+			t.Errorf("a welcome with %d attached and note %q reads %q, wanted %q",
+				row.welcome.Attached, row.welcome.Note, got, row.want)
+		}
+	}
+}
+
+// THE FOUR THINGS ONLY A CONNECTION KNOWS REACH THE SURFACE. The client answers
+// all four, and this door hands all four over: the live sentence about a link
+// being redialled, the measured round trip, the one-off news a redial
+// discovered, and the questions raised while nobody was attached. A nil in any
+// of them is a fact a person would never be told, so the test is about presence
+// rather than wording — the sentences themselves belong to internal/remote.
+func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
+	var client *remote.Client
+	seams := newHostSeams(client)
+	var _ func() string = seams.Link
+	var _ func() (time.Duration, error) = seams.Ping
+	var _ func() string = seams.Notice
+	var _ func() ([]remote.HeldQuestion, error) = seams.Held
+	if seams.Link == nil || seams.Ping == nil || seams.Notice == nil || seams.Held == nil {
+		t.Fatal("a seam that is not filled is a seam nobody can wire")
+	}
+
+	options := hostOptions(client, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
+		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
+	}
+}
+
+// THE WAITING ROOM CROSSES INTO THE SURFACE'S OWN SHAPE, event and all. The
+// translation is the door's job because internal/tui3 does not import the
+// protocol, and the one field JSON could not carry — the event itself — has to
+// come out the other side unwrapped or the card would be drawn from nothing.
+func TestHeldQuestionsCrossAsTheSurfacesOwnShape(t *testing.T) {
+	seams := hostSeams{Held: func() ([]remote.HeldQuestion, error) {
+		return []remote.HeldQuestion{{
+			Kind:  remote.HeldConsent,
+			Event: remote.WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 7, Tool: "bash"}),
+			Since: time.Now().Add(-2 * time.Hour),
+		}}, nil
+	}}
+	held, err := hostHeld(seams)()
+	if err != nil {
+		t.Fatalf("the waiting room refused: %v", err)
+	}
+	if len(held) != 1 {
+		t.Fatalf("%d questions crossed, wanted 1", len(held))
+	}
+	if held[0].Kind != remote.HeldConsent || held[0].Event.ID != 7 || held[0].Event.Tool != "bash" {
+		t.Fatalf("the question arrived as %+v", held[0])
+	}
+	if held[0].Since.IsZero() {
+		t.Fatal("a question that arrived with no waiting time cannot say how long it waited")
+	}
+
+	// AND A FAR END THAT DID NOT ANSWER IS AN ERROR AND NOT AN EMPTY LIST.
+	broken := hostSeams{Held: func() ([]remote.HeldQuestion, error) { return nil, errors.New("no") }}
+	if _, err := hostHeld(broken)(); err == nil {
+		t.Fatal("a refused reading came back as nothing waiting")
+	}
 }

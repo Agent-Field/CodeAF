@@ -247,44 +247,69 @@ func (r *Reconciler) graphWatchOccurred(charter store.Charter, now time.Time, st
 		}
 		return false, "", nil
 	}
-	events, err := r.store.Events(charter.GraphCursor, 0)
-	if err != nil {
-		return false, "", err
-	}
+	// Two things used to be wrong with the read below, and both of them cost the
+	// most on the pass where the watch has nothing to look at.
+	//
+	// The journal was asked for EVERYTHING past the cursor — a limit of zero
+	// means no limit — so a watch whose cursor sits at the start of a long-lived
+	// store decoded the whole journal into memory to walk it once. It is now
+	// drained a batch at a time, in a loop, so full coverage is unchanged: the
+	// cursor advances exactly as far, and the search stops on exactly the same
+	// event it stopped on before.
+	//
+	// And the scope's facts were read before anything checked whether there were
+	// any events at all. That is a full scan of the notebook, twice a second,
+	// for a watch that is going to look at nothing — so it now happens on the
+	// first batch that has something in it, and never on the idle pass.
 	scopeNodes := map[string]bool{}
-	if strings.TrimSpace(watch.Scope) != "" {
-		facts, err := r.store.Facts(0)
+	scopeLoaded := false
+	cursor := charter.GraphCursor
+	for {
+		events, err := r.store.Events(cursor, eventBatchSize)
 		if err != nil {
 			return false, "", err
 		}
-		for _, fact := range facts {
-			if fact.Status == store.FactActive && strings.EqualFold(fact.Scope, watch.Scope) {
-				scopeNodes[fact.NodeID] = true
+		if len(events) == 0 {
+			return false, "", nil
+		}
+		if !scopeLoaded && strings.TrimSpace(watch.Scope) != "" {
+			facts, err := r.store.Facts(0)
+			if err != nil {
+				return false, "", err
+			}
+			for _, fact := range facts {
+				if fact.Status == store.FactActive && strings.EqualFold(fact.Scope, watch.Scope) {
+					scopeNodes[fact.NodeID] = true
+				}
 			}
 		}
+		scopeLoaded = true
+		for _, event := range events {
+			cursor = event.Seq
+			state.GraphCursor = event.Seq
+			wanted := watch.Predicate == store.GraphNodeSettled && event.Kind == store.EventNodeCompleted ||
+				watch.Predicate == store.GraphNodeFailed && event.Kind == store.EventNodeFailed
+			if !wanted {
+				continue
+			}
+			node, found, err := r.store.Node(event.NodeID)
+			if err != nil {
+				return false, "", err
+			}
+			if !found {
+				continue
+			}
+			titleMatch := strings.TrimSpace(watch.Title) == "" || strings.Contains(strings.ToLower(node.Title+" "+node.Brief), strings.ToLower(strings.TrimSpace(watch.Title)))
+			scopeMatch := strings.TrimSpace(watch.Scope) == "" || scopeNodes[node.ID]
+			if titleMatch && scopeMatch {
+				evidence := fmt.Sprintf("node %s (%s) recorded %s", node.ID, firstLine(node.Title+" "+node.Brief), event.Kind)
+				return true, evidence, nil
+			}
+		}
+		if len(events) < eventBatchSize {
+			return false, "", nil
+		}
 	}
-	for _, event := range events {
-		state.GraphCursor = event.Seq
-		wanted := watch.Predicate == store.GraphNodeSettled && event.Kind == store.EventNodeCompleted ||
-			watch.Predicate == store.GraphNodeFailed && event.Kind == store.EventNodeFailed
-		if !wanted {
-			continue
-		}
-		node, found, err := r.store.Node(event.NodeID)
-		if err != nil {
-			return false, "", err
-		}
-		if !found {
-			continue
-		}
-		titleMatch := strings.TrimSpace(watch.Title) == "" || strings.Contains(strings.ToLower(node.Title+" "+node.Brief), strings.ToLower(strings.TrimSpace(watch.Title)))
-		scopeMatch := strings.TrimSpace(watch.Scope) == "" || scopeNodes[node.ID]
-		if titleMatch && scopeMatch {
-			evidence := fmt.Sprintf("node %s (%s) recorded %s", node.ID, firstLine(node.Title+" "+node.Brief), event.Kind)
-			return true, evidence, nil
-		}
-	}
-	return false, "", nil
 }
 
 // sentinelMemory is how many past judgments a sentinel is shown, and

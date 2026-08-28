@@ -13,7 +13,7 @@ import (
 )
 
 // Quirks are the request-shape facts a provider will not publish and only a
-// rejected call can teach.
+// call's answer can teach.
 //
 // The first of them is the reason this file exists:
 // an endpoint that refuses to have its reasoning turned off. OpenRouter's
@@ -31,8 +31,8 @@ import (
 // does not have to be told again.
 //
 // The file is a cache and never a source of truth. A missing, unreadable or
-// nonsense file costs one rejected request per model per process, which is
-// exactly what the state was before it existed.
+// nonsense file costs one discovery per model per process, which is exactly
+// what the state was before it existed.
 
 const quirksFile = "model-quirks.json"
 
@@ -42,12 +42,27 @@ type quirksStore struct {
 	path  string
 	// mandatory is the learned set, keyed by normalized model.
 	mandatory map[string]time.Time
+	// disableIgnored is the answer-side twin of mandatory: models whose endpoint
+	// accepted the disable but still spent the whole output ceiling reasoning.
+	// It is separate because a silent ignore and a rejected request are
+	// different wire facts even though both mean a caller must leave room.
+	disableIgnored map[string]time.Time
 	// noCacheControl is the second learned set: models whose endpoint rejected
 	// an ephemeral cache breakpoint. It is a separate map rather than a flag on
 	// one record because the two facts are independent — a model may reason
 	// unconditionally and take breakpoints, or neither, or both.
 	noCacheControl map[string]time.Time
-	loaded         bool
+	// noReasoningBudget is the third learned set: models whose endpoint rejected
+	// the thinking budget the ladder's top two rungs carry (wire.go's
+	// refusesReasoningBudget). Independent of both maps above for the same
+	// reason they are independent of each other — an endpoint may take the
+	// effort word and refuse the budget, or the other way round.
+	noReasoningBudget map[string]time.Time
+	// noReasoningReplay is learned only from a 400 naming the assistant replay
+	// fields. It is per model because one incompatible endpoint must not erase
+	// continuity for every reasoning model routed through this process.
+	noReasoningReplay map[string]time.Time
+	loaded            bool
 
 	// writes counts saves in flight. The save is deliberately off the request
 	// path — the call that learned the fact is waiting to be re-sent and must
@@ -60,8 +75,11 @@ type quirksStore struct {
 }
 
 var quirks = &quirksStore{
-	mandatory:      map[string]time.Time{},
-	noCacheControl: map[string]time.Time{},
+	mandatory:         map[string]time.Time{},
+	disableIgnored:    map[string]time.Time{},
+	noCacheControl:    map[string]time.Time{},
+	noReasoningBudget: map[string]time.Time{},
+	noReasoningReplay: map[string]time.Time{},
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
@@ -90,11 +108,26 @@ type quirksWire struct {
 	// would cost a failed call on a cadence nobody asked for.
 	ReasoningMandatory map[string]time.Time `json:"reasoning_mandatory,omitempty"`
 
+	// ReasoningDisableIgnored maps a model to when it accepted a disable but
+	// returned an empty, length-capped answer anyway. Unlike the field above,
+	// there was no rejected request from which the adapter could learn.
+	ReasoningDisableIgnored map[string]time.Time `json:"reasoning_disable_ignored,omitempty"`
+
 	// CacheControlRejected maps a model to when its endpoint refused an
 	// ephemeral cache breakpoint. It costs the same as the field above: one
 	// rejected call per model per profile, after which the adapter falls back to
 	// the automatic prefix cache every provider has anyway.
 	CacheControlRejected map[string]time.Time `json:"cache_control_rejected,omitempty"`
+
+	// ReasoningBudgetRejected maps a model to when its endpoint refused a
+	// thinking budget. It costs what the two above cost — one rejected call per
+	// model per profile — after which the top two ladder rungs are served as the
+	// deepest thing that endpoint has a word for.
+	ReasoningBudgetRejected map[string]time.Time `json:"reasoning_budget_rejected,omitempty"`
+
+	// ReasoningReplayRejected maps a model to when its endpoint refused
+	// assistant reasoning carried back for tool-loop continuity.
+	ReasoningReplayRejected map[string]time.Time `json:"reasoning_replay_rejected,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -111,7 +144,10 @@ func (q *quirksStore) load(path string) {
 		return
 	}
 	seed(q.mandatory, wire.ReasoningMandatory)
+	seed(q.disableIgnored, wire.ReasoningDisableIgnored)
 	seed(q.noCacheControl, wire.CacheControlRejected)
+	seed(q.noReasoningBudget, wire.ReasoningBudgetRejected)
+	seed(q.noReasoningReplay, wire.ReasoningReplayRejected)
 }
 
 // seed folds a loaded set into a live one without ever dropping a fact learned
@@ -136,6 +172,16 @@ func (q *quirksStore) knows(model string) bool {
 	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.mandatory }, model)
 }
 
+// noteDisableIgnored records that a nominal reasoning disable did not preserve
+// any room for the answer.
+func (q *quirksStore) noteDisableIgnored(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.disableIgnored }, model, at)
+}
+
+func (q *quirksStore) knowsDisableIgnored(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.disableIgnored }, model)
+}
+
 // noteNoCacheControl records that this model's endpoint rejected a breakpoint.
 func (q *quirksStore) noteNoCacheControl(model string, at time.Time) bool {
 	return q.record(func(s *quirksStore) map[string]time.Time { return s.noCacheControl }, model, at)
@@ -143,6 +189,24 @@ func (q *quirksStore) noteNoCacheControl(model string, at time.Time) bool {
 
 func (q *quirksStore) knowsNoCacheControl(model string) bool {
 	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noCacheControl }, model)
+}
+
+// noteNoReasoningBudget records that this model's endpoint rejected a thinking
+// budget.
+func (q *quirksStore) noteNoReasoningBudget(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.noReasoningBudget }, model, at)
+}
+
+func (q *quirksStore) knowsNoReasoningBudget(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningBudget }, model)
+}
+
+func (q *quirksStore) noteNoReasoningReplay(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.noReasoningReplay }, model, at)
+}
+
+func (q *quirksStore) knowsNoReasoningReplay(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningReplay }, model)
 }
 
 func (q *quirksStore) record(set func(*quirksStore) map[string]time.Time, model string, at time.Time) bool {
@@ -178,14 +242,26 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	wire := quirksWire{
-		ReasoningMandatory:   make(map[string]time.Time, len(q.mandatory)),
-		CacheControlRejected: make(map[string]time.Time, len(q.noCacheControl)),
+		ReasoningMandatory:      make(map[string]time.Time, len(q.mandatory)),
+		ReasoningDisableIgnored: make(map[string]time.Time, len(q.disableIgnored)),
+		CacheControlRejected:    make(map[string]time.Time, len(q.noCacheControl)),
+		ReasoningBudgetRejected: make(map[string]time.Time, len(q.noReasoningBudget)),
+		ReasoningReplayRejected: make(map[string]time.Time, len(q.noReasoningReplay)),
 	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt
 	}
+	for model, learnedAt := range q.disableIgnored {
+		wire.ReasoningDisableIgnored[model] = learnedAt
+	}
 	for model, learnedAt := range q.noCacheControl {
 		wire.CacheControlRejected[model] = learnedAt
+	}
+	for model, learnedAt := range q.noReasoningBudget {
+		wire.ReasoningBudgetRejected[model] = learnedAt
+	}
+	for model, learnedAt := range q.noReasoningReplay {
+		wire.ReasoningReplayRejected[model] = learnedAt
 	}
 	return q.path, wire
 }

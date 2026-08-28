@@ -50,6 +50,23 @@ passed to the image model untouched. Leave them out for its own default.
 
 **You see it, in colour, in the terminal, without doing anything at all.**
 
+Over `--host`, aforge fetches the generated picture from the other machine into this
+machine's cache and paints that local copy in the terminal when the tool finishes. The
+line under it remains the far path, because that is where the conversation wrote it. The
+path is clickable: opening it hands the read-only local copy to your desktop. Home's `made for you` band
+also lists the far machine's generated pictures, audio, music and video under the
+conversation that made them, and those paths open through the same file door.
+
+## Where did my picture go over ssh
+
+Over `--host`, the picture is written on the other machine and then its bytes are fetched
+back for the terminal preview. The row paints the fetched copy and names the far path
+under it. cmd+click that path on a Mac, ctrl+click it on Linux, or type `/files <path>`;
+aforge opens the read-only cached copy with the viewer on the machine you are sitting at.
+If the picture is over the connection's 16MB fetch limit, the far machine refuses the
+transfer by name and the path remains the honest answer. The refusal ends with the machine
+that still has it, exactly: ` · the picture remains on <machine>`.
+
 The line above is what aforge itself reads — a path is all that goes into the
 conversation — but the screen does more with it. The moment the call finishes,
 the picture is drawn under its row as a thumbnail, at most 12 rows tall (4 at
@@ -114,6 +131,72 @@ This is the same freedom you have yourself in `/settings` → Providers, handed
 to aforge per call: ask it to "draw this one with gemini" or "try the best
 image model" and it can, just in time.
 
+## Why does a picture or video look generic, blurry, or like AI slop?
+
+Four causes, all fixable — none of them is "the model is bad at this".
+
+**The prompt left too much undecided.** Every dimension a prompt does not
+decide — the medium, the light, the palette, the mood, the era — the image or
+video model fills with its statistical average, and that average is exactly what
+generic AI output looks like: over-smooth, over-lit, style-less. The fix is
+specificity: aforge writes the decisions into the prompt rather than asking for
+"a nice picture of X" and hoping. Ask it to redo a generic render "as a
+photograph, natural light" or "as a flat diagram, two colours" and the words go
+straight to the model.
+
+**Every dimension was decided — to the genre's own cliché.** A fully detailed
+prompt can still land on the average when each detail is what everyone in that
+genre writes: the glowing shape on a dark field, the neon palette, the adjective
+pile ("ultra-detailed", "cinematic"). Eight models given that prompt return
+eight competent copies of the same picture, because the prompt asked for the
+mean of the genre. And the mean cannot be escaped from inside the genre —
+recolor a glowing dark-mode network and it is still a glowing dark-mode
+network. The exit is a **real medium, named**: a print process, a photographic
+setup, a drafting or filmmaking tradition. A real medium carries its own
+physics and its own, different average — a risograph poster or an editorial
+photograph simply is not drawn from the pool "digital AI art" comes from. This
+applies however the render is made: the same law covers a prompt sent through
+`generate_image` and one a script of aforge's own sends to an API.
+
+## Why is everything you make glowing on a dark background?
+
+Because that is the statistical center of the genre the prompt stayed inside —
+"digital tech illustration" resolves to luminous lines on a dark field almost
+regardless of the other words — and because saying **"no glow" does not work**:
+image and video models barely read negation, so the word "glow" in "no glow"
+pulls toward glow. Two fixes, and they work together:
+
+- **Leave the genre, do not redecorate it.** Name a real medium with real
+  physics — "flat vector print, two spot colors on warm paper", "daylight
+  editorial photograph", "pencil technical drawing on vellum". Each of those has
+  its own average, and none of them glows.
+- **Specify positively until the default has no room.** Instead of forbidding,
+  describe what IS there: the surface (matte paper, cloth, brushed metal), the
+  light (overcast daylight, one window, flat studio), the palette by name.
+  Matte ink on cream paper *cannot* glow; a prompt that establishes it never
+  needs the word "no".
+
+When a render comes back, aforge judges it against the genre as well as the
+brief — "could this be mistaken for every other image of its kind?" — and
+iterates when the answer is yes.
+
+**Nothing asked for sharpness.** `generate_image` takes `size` (for example
+`1024x1024`) and `generate_video` takes `resolution` (for example `1080p`), both
+passed to the model untouched; left out, the model's own default decides, and a
+default can be modest. Ask for "1080p" or "a larger size" and it is passed
+through — a sharper render costs more and, for video, takes longer.
+
+**The first render was accepted as the last.** A first render is a draft. aforge
+can look at what it made (`view_image`, or `read` on the file), judge it against
+the brief, and iterate — the path a render returned is a valid
+`reference_paths` entry, so "fix the hands, keep everything else" is one more
+call, not a fresh roll of the dice. For video, `seed` holds a shot steady while
+one thing about it is changed.
+
+A different model is also a real lever: the `model` argument tries another one
+for a single call, and `best` picks the strongest advertised — see "Can you use
+a different model for one picture, sound or video?".
+
 ## Can you read this out loud, or make a voiceover?
 
 Yes, with `speak`, when a speech model is available.
@@ -146,16 +229,32 @@ aloud — so a machine can easily have one and not the other.
 
 Arguments: `prompt` (required), `path` and `model`. The prompt describes the **music** —
 genre, instruments, tempo, key or mood, how it should develop — and is not lyrics
-to sing and not text to be read out. It writes an audio file, usually mp3, and
-answers with the path, the size and the model, e.g.
+to sing and not text to be read out.
+
+**The call returns immediately with a background job**, exactly as
+`generate_video` does, because a compose takes most of a minute:
 
 ```
-.aforge-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>
+job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.aforge-v3/jobs/4.log
 ```
+
+aforge keeps working — on other clips, on a stitch, on the conversation —
+while the piece is written, and when it lands aforge is told in a note at the
+next step:
+`job 4 finished: .aforge-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
+A compose that fails says so the same way: `job 4 failed: music generation
+failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
+· a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
+no music was saved`. Like every job, it dies when the conversation ends.
 
 **There is no length argument**, because the endpoint has none: the model writes
-a piece of its own choosing — around a minute in practice — and you cannot ask
-for eight seconds. Nor is there a format argument; you get what the model sends.
+a piece of its own choosing — half a minute to a minute in practice — and you
+cannot ask for eight seconds, or for three minutes. Nor is there a format
+argument; you get what the model sends. To put a piece under anything timed — a
+video, a slideshow — the file has to be measured and then looped or trimmed to
+fit, which is shell work with ffmpeg that aforge does on request; the tool
+itself neither measures nor trims, because the length is the model's choice,
+not the brief's.
 
 **Every call costs the same whatever comes back**, around **$0.08**, because the
 price is per call and not per second. That makes a short clip and a long one the
@@ -191,7 +290,8 @@ tooling available.
 ## Can you make a video?
 
 Yes, with `generate_video`, when a video model is available — and this one
-behaves differently from every other tool, because a render takes **minutes**.
+behaves differently from most tools, because a render takes **minutes**.
+(`generate_music` behaves the same way, for the same reason.)
 
 **The call returns immediately with a background job**, like `bash` with
 `background: true`:
@@ -202,27 +302,88 @@ job 3 started; filming on <model> — the finished video arrives as a note namin
 
 It keeps working while you and aforge carry on talking. When it lands, aforge is
 told in a note at the next step:
-`job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, filmed on <model>`.
-A render that fails says so the same way: `job 3 failed: video generation timed
-out (<model>); no video was saved`. Nothing waits for it and nothing polls it.
+`job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
+The length and the sound answer are measured from the file itself — a clip that
+landed silent says `without sound` — and when the file cannot be measured the
+note simply omits both rather than guessing. A render that fails says so the
+same way: `job 3 failed: video generation timed out (<model>); no video was
+saved`. Nothing waits for it and nothing polls it.
 
 With no video model set in `/settings` → Providers, the default is
 `bytedance/seedance-2.5`, falling back to `bytedance/seedance-2.0-mini` on a
 catalog that does not advertise it. A model you set yourself wins over both.
 
-Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`, `model`,
-`frame_paths`, `reference_paths`, `path`.
+Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
+`resolution`, `seed`, `model`, `frame_paths`, `reference_paths`, `path`.
 
 - `frame_paths` pins the motion: the first picture is the opening frame, a second
   is the closing one. **More than two is refused** — the wire has no third slot.
 - `reference_paths` sets the look — style, palette, a face — and not the motion.
 - An image `generate_image` just made is a valid frame or reference.
+- `resolution` is how sharp the render is, spelled the video model's way (for
+  example `720p` or `1080p`) and passed through untouched. Leave it out for the
+  model's own default; a higher resolution is a slower, costlier render.
+- `seed` is a fixed number that makes the render's randomness repeatable, when
+  the model takes one. The same seed with the same prompt and pictures
+  re-renders close to the same shot — hold it steady to change one thing about
+  a shot that was mostly right, leave it out for a fresh roll.
 
 The render **is** a job: it shows in `jobs list` as
 `job 3 · video · running · 42.1s · a ferry at dawn`, and `jobs kill 3` stops it —
 `video (job 3) stopped; no video was saved`. Like every job, it dies when the
 conversation ends. The provider gives up after **10 minutes** and no file is
 saved.
+
+## Can you make a longer video — several clips, a whole story, 2 minutes of film?
+
+Not in one render, and yes by joining several — a single render is a short
+clip, because the video providers top out around ten seconds; nothing in
+aforge extends one render. A longer video is several
+`generate_video` calls stitched together with ffmpeg in the shell, and whether
+the result hangs together is decided by three facts about the tool:
+
+- **Every render is independent.** The video model sees one prompt and the
+  pictures passed to that one call — never the conversation, never an earlier
+  clip. A prompt that says "the hero" without describing him reaches a model
+  that has never met the hero, so everything that must match across clips is
+  described in every prompt.
+- **Pictures are the only thread between clips.** The same `reference_paths`
+  handed to every call keep a face and a costume steady. For clips that should
+  **connect** — one shot flowing into the next — the last frame of a finished
+  clip is passed as the next call's opening `frame_paths` entry (in a saved
+  harness step, whose `generate_video` has no `frame_paths`, the same slot is
+  the first `reference_paths` entry). That chain makes connected clips a
+  sequence: they cannot all render in parallel.
+- **Each clip lands with its own sound**, and its note says so. A stitch keeps
+  that sound only if the join carries the audio streams as well as the video,
+  and a continuous score is `generate_music` — a background job of its own,
+  whose file exists only once its note has landed — looped under the whole cut.
+
+Even chained, clips are distinct shots with some drift between them — a
+stitched video is a cut, not one continuous take. Fewer scenes in one setting
+read as more coherent than many scattered ones.
+
+## Why is a stitched video incoherent, or silent after the first clip?
+
+Both come from the facts above, and both are fixable.
+
+**The story or the characters are not coherent:** the clips were rendered
+independently with nothing shared — each `generate_video` call reaches the
+video model alone, with no memory of the other clips. The fixes are the
+threads that do cross: the same reference images on every call, every prompt
+describing everything that must match, and — for shots that should flow into
+each other — the previous clip's final frame passed as the next clip's opening
+frame, which means rendering those clips one after another rather than all at
+once.
+
+**No sound, or no audio after the first clip:** the clips almost certainly
+landed with sound — each clip's landing note says `with sound` or `without
+sound`, measured from the file — and the join dropped it. An ffmpeg filter
+that only crossfades the video streams carries just the first input's audio;
+the stitch has to map or crossfade the audio streams too, or concatenate both
+streams together. Music is separate either way: a score under the whole cut is
+`generate_music` — started early, because it is a background job whose file
+arrives as a note — then measured and looped to fit, mixed in at the join.
 
 ## Where do the pictures, audio, music and video you make end up?
 

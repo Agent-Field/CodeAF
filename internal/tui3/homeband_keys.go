@@ -34,7 +34,15 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		}
 		clauses = []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder", "ctrl+y copy path", aside, "→ more"}
 	case bandKindItem:
-		clauses = []string{"enter open where it was asked", "ctrl+e pause", "ctrl+x stop", "→ more"}
+		clauses = []string{"enter open where it was asked", "ctrl+e pause", "ctrl+x stop"}
+		// AND THE RUNG'S CHORD ONLY WHERE THERE IS A DOOR TO MOVE IT THROUGH,
+		// which is the same rule the three above are drawn under — a read-only
+		// window keeps every key that asks nothing of the disk and loses the ones
+		// that do (homestanding.go's [app.homeItemWrite] refuses in words).
+		if a.stands.SetEffort != nil {
+			clauses = append(clauses, effortKeyClause)
+		}
+		clauses = append(clauses, "→ more")
 	default:
 		return nil
 	}

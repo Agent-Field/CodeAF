@@ -220,6 +220,18 @@ func TestAnOwnedSessionWorksInItsOwnFolder(t *testing.T) {
 	}
 }
 
+func TestAResumedAnchorOverridesTheLaunchWorkspace(t *testing.T) {
+	anchor := t.TempDir()
+	place := session.Place{Dir: t.TempDir(), Workspace: anchor}
+	cfg, err := v3PointAt(session.Config{Workspace: "/the/launch/directory"}, place)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Workspace != anchor || cfg.Place.Workspace != anchor {
+		t.Fatalf("reopened config = %+v, want persisted anchor %s", cfg.Place, anchor)
+	}
+}
+
 // A path a person named is a path they mean, and an old flat transcript opens
 // as what it is: no folder, and every sidecar derived the way it always was.
 func TestANamedFlatTranscriptKeepsTheLegacyLayout(t *testing.T) {
@@ -295,5 +307,69 @@ func TestTheChatLogIsWrittenUnderTheStateRootAndNeverIntoTheWorkspace(t *testing
 	// And a profile that is only whitespace is no profile at all.
 	if got, want := chatLogPath("   "), filepath.Join(root, "chat.log"); got != want {
 		t.Fatalf("a blank profile named %q, want %q", got, want)
+	}
+}
+
+// The reaper is the only rm -rf on the launch path, and this is the line it
+// must not cross: a journal it could not READ is not a journal nobody spoke in.
+//
+// The torn folder here is the shape a lid closing mid-write leaves — a header
+// and half of the person's first line — which every reader before this fix
+// counted as silence, because the only question anybody asked the file was
+// whether a parser found a turn in it.
+func TestTheReaperKeepsAConversationItCouldNotRead(t *testing.T) {
+	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	workspace := t.TempDir()
+	bucket, err := v3ProjectDir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	torn := filepath.Join(bucket, "00000000000000d1")
+	if err := os.MkdirAll(torn, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	half := `{"type":"session","version":1,"id":"00000000000000d1","timestamp":"2026-08-15T09:00:00Z"}` + "\n" +
+		`{"type":"message","role":"user","content":"what should we charge for the`
+	if err := os.WriteFile(filepath.Join(torn, "transcript.jsonl"), []byte(half), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A folder whose journal reads cleanly and holds no turn is the litter the
+	// reaper exists for, and it must still go in the same launch.
+	litter := writeV3Session(t, bucket, "00000000000000d2", "", time.Time{})
+
+	if _, err := v3ResolveSession("", workspace, workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(torn, "transcript.jsonl")); err != nil {
+		t.Fatalf("the torn conversation was reaped: %v", err)
+	}
+	if _, err := os.Stat(litter); err == nil {
+		t.Fatal("a folder nobody ever spoke in survived the launch")
+	}
+}
+
+// The other three ways a reader fails, each one a folder that stays. A schema
+// this build does not know is the one worth naming: every line parses, so a
+// parser-only test calls the file empty and deletes somebody's whole history
+// the first time the journal grows a kind.
+func TestTheReaperKeepsEveryFolderItCannotSettle(t *testing.T) {
+	for _, journal := range []struct {
+		name  string
+		lines string
+	}{
+		{"a line past the scanner's buffer", `{"type":"message","role":"user","content":"` + strings.Repeat("x", 9<<20) + `"}`},
+		{"a kind from a schema this build has never seen", `{"type":"turn","role":"user","content":"hello"}`},
+		{"a header followed by rubbish", `{"type":"session","version":1,"id":"00000000000000e1"}` + "\nnot json at all\n"},
+	} {
+		t.Run(journal.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(journal.lines), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if v3EmptySession(dir) {
+				t.Fatalf("%s was called an empty conversation", journal.name)
+			}
+		})
 	}
 }

@@ -797,21 +797,12 @@ func rejectedForAnAnswer(command store.Command) bool {
 // on every node it admits and an extension inherits it, so the session id is
 // the whole membership test — no id-prefix arithmetic, which is exactly the
 // thing that breaks when a job splits.
+//
+// The membership test belongs in SQL, and used not to be: this ran up to five
+// times a second against a full decode of every node the store has ever held,
+// to keep the four that were this errand's.
 func (w *settlementWatch) sessionNodes() ([]store.Node, error) {
-	all, err := w.graph.Nodes()
-	if err != nil {
-		return nil, err
-	}
-	mine := make([]store.Node, 0, 8)
-	for _, node := range all {
-		if node.ID == store.RootID {
-			continue
-		}
-		if strings.TrimSpace(node.Provenance.SessionID) == w.session {
-			mine = append(mine, node)
-		}
-	}
-	return mine, nil
+	return w.graph.SessionMemberNodes(w.session)
 }
 
 // report writes one line per state change to stderr, so a person watching a

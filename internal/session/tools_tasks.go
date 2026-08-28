@@ -40,21 +40,38 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. A search also lists the work every OTHER aforge window open on this project has out right now, marked `another window` — those carry no id here and cannot be read, steered or resolved from this conversation, but they are the truthful answer to \"what else is running on this project\". A search with scope everywhere widens that to THE WHOLE MACHINE: under this project's rows it groups every OTHER project that has live work by its name and its path, each row marked `another window`, or `open here` for a conversation this same terminal is holding behind this one — that is the answer to \"what is running in my other projects\" and \"what else is running outside this conversation\", and work in another project is no more reachable from here than work in another window. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
+// WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST OF EVERY
+// TURN. The tool-schema block rides in front of each request the model makes —
+// dozens per task — so a paragraph here is paid for dozens of times while a Go
+// comment beside it is free. Every rule the old description stated is still
+// stated; what went is the rhetoric, and the sentences the schema's own fields
+// say better. A rule belongs in the field it governs and appears ONCE.
+const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers or settles one. Use it when the person means earlier work without pointing at it, or to check handed-off work. A search also lists other aforge windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered or resolved. Rows carry artifact and transcript URIs (the task's worktree or branch; its own journal) that read takes verbatim."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
 // same reader (task_run.go's [settleClause]) and a hand-kept second copy is a
 // copy that drifts. The prose around it still spells each verb, because a
 // description is where the model learns what they mean.
+//
+// THE BOUNDS ARE INTERPOLATED FOR THE SAME REASON. `limit` and `lines` are
+// clamped by [SearchTaskIndex] and [taskTailLines] against constants, and a
+// digit typed here is the second copy that drifts — propose_task's schema once
+// said 40 where the executor applied 200, and every model that read it reasoned
+// from the wrong figure.
 var tasksSchemaJSON = `{"type":"object","properties":{` +
-	`"query":{"type":"string","description":"Words to match against task titles, ids and outcomes. Omit or leave empty for the most recent tasks."},` +
-	`"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"},` +
-	`"id":{"type":"string","description":"One task's id (\"7\") or its name (\"fix-the-nil-map-crash\"), to read that task alone instead of searching. A task that is still running answers with its live state."},` +
-	`"lines":{"type":"number","description":"How many recent lines of a running task's output to return with id (default: 40, maximum: 200)"},` +
-	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"How wide a search looks. \"` + taskScopeProject + `\" (the default) is this project alone. \"` + taskScopeEverywhere + `\" also lists what is running in every OTHER project on this machine, grouped by project. It is read only by a search — with id it does nothing."},` +
-	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead. With resolve, this is read as the REASON for the decision instead."},` +
-	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settle the task named by id that needs a look — one nobody could check. accept takes the work as done on your reading of it and merges its branch; reaudit sends a fresh checker at the same working copy and leaves the task waiting until that answers; refute fails it and its dependents. Only ask for accept or refute on evidence you actually have — read the diff or the transcript first — and prefer reaudit when the checker simply never answered."}` +
+	`"query":{"type":"string","description":"Matched against titles, ids and outcomes; omit for the newest."},` +
+	`"limit":{"type":"number","description":"Rows to return (default: ` + strconv.Itoa(taskSearchLimit) + `, maximum: ` + strconv.Itoa(taskSearchCeiling) + `)"},` +
+	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\"). Running, it answers with its LIVE state."},` +
+	// The live answer is read off the running work itself (task_live.go) and
+	// names what it is doing this second, how long it has been at it, its steps,
+	// its spend and its last lines. That list is not spelled in the schema
+	// because the answer itself carries it, and this string is paid for on every
+	// request of every turn while this comment is free.
+	`"lines":{"type":"number","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
+	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
+	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks, arriving in its loop as the person's own words. Brief and acceptance never change; propose the work again if the objective was wrong. With resolve, it is the REASON."},` +
+	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just
@@ -431,10 +448,21 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		if err := a.SteerTask(id, say); err != nil {
+		waiting, err := a.SteerTask(id, say)
+		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
 		}
-		return fmt.Sprintf("said to task %s: %s\nIt arrives in its loop as the person's own words. Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say), false, nil
+		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
+		// pieces out is parked on their reports and has no step coming
+		// (task_run.go's [TaskGraph.park]), so the line wakes it instead of
+		// riding a turn already running — which is the difference between an
+		// answer now and an answer the model would otherwise expect at the next
+		// step of a task that is not taking one.
+		arrival := "It arrives in its loop as the person's own words."
+		if waiting {
+			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
+		}
+		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran

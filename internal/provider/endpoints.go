@@ -145,8 +145,8 @@ type relaxStep struct {
 // line and does not inflate the attempt counter the person is reading.
 func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model string) []relaxStep {
 	var plan []relaxStep
-	if prefs := c.providerPreferences(model); prefs != nil &&
-		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0) {
+	if prefs := c.providerPreferences(model, knobs); prefs != nil &&
+		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
 		plan = append(plan, relaxStep{
 			bit:   relaxEndpointFilter,
 			label: "relaxed the endpoint filter",
@@ -334,7 +334,93 @@ func (c *Client) attemptShaped(
 	return nil, peek, nil
 }
 
+// ── the second door: patience spent on pacing ───────────────────────────────
+//
+// A 429 that never clears is the other way a model runs out of ability to
+// answer, and the answer to it is the same one: ask a different model. The
+// retry loop's patience is the whole of what this waits for — six attempts and
+// two minutes for a watched call, sixty and ten minutes for a task node's
+// (retry.go's outOfPatience) — and when that is spent the call has today's
+// choice between an error and another model. This offers the model.
+//
+// It is DELIBERATELY the same chain and the same narration as the refusal
+// ladder above. Two ways of spelling "the next model" would drift, and a person
+// watching a retry line does not care which of the two doors it came through:
+// the sentence they need is the same either way.
+
+// pacingExhausted reports whether an error is the retry loop giving up on a
+// provider that would not stop pacing us. Only a 429 reaches this shape — every
+// other retryable status breaks out on maxAttempts long before patience is a
+// question, and a 4xx is never retried at all (retry.go).
+func pacingExhausted(err error) bool {
+	var api *APIError
+	for err != nil {
+		if decoded, ok := err.(*APIError); ok {
+			api = decoded
+			break
+		}
+		unwrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		err = unwrapped.Unwrap()
+	}
+	return api != nil && api.Status == http.StatusTooManyRequests
+}
+
+// recoverFromPacing offers the chain to a call the provider paced into the
+// ground, and hands back the original error untouched when there is nothing to
+// offer — no chain configured, or a failure that was never about pacing.
+//
+// A fallback attempt goes through [Client.sendRepaired] rather than back
+// through [Client.sendShaped]: the refusal ladder is the FIRST door's business,
+// and re-entering it here would let one exhausted 429 walk two more models
+// through six relaxations each while a person waits on a turn that has already
+// been slow.
+func (c *Client) recoverFromPacing(
+	ctx context.Context,
+	request *ai.Request,
+	knobs callKnobs,
+	stream bool,
+	paced error,
+) (*http.Response, error) {
+	if !pacingExhausted(paced) {
+		return nil, paced
+	}
+	model := c.modelFor(request)
+	fallbacks := c.fallbackChain(model)
+	if len(fallbacks) == 0 {
+		return nil, paced
+	}
+	for index, next := range fallbacks {
+		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", index+1, len(fallbacks), next))
+		candidate := *request
+		candidate.Model = next
+		response, err := c.sendRepaired(ctx, &candidate, knobs, stream)
+		if err != nil {
+			continue
+		}
+		// The caller's request now names the model that actually answered, for
+		// the reason the refusal chain rewrites it: attribution, the ledger and
+		// the reply have to agree about which model this was.
+		request.Model = next
+		return response, nil
+	}
+	return nil, paced
+}
+
 // ── which model to fall back to ─────────────────────────────────────────────
+
+// FallbackModels names the models this client would move to when `model` can no
+// longer answer, in order — the SAME chain the two doors above walk, offered to
+// a caller that has to make the decision itself.
+//
+// Its one caller today is internal/session's turn loop, which owns a failure
+// this package cannot see: a stream that opened, was accepted, and then went
+// quiet often enough to have spent its budget. The precedence and the cap stay
+// here, in [Client.fallbackChain], because a second place that decided which
+// model comes next would be a second answer to drift from this one.
+func (c *Client) FallbackModels(model string) []string { return c.fallbackChain(model) }
 
 // fallbackChain is the models to try after the ladder, in order.
 //
@@ -511,12 +597,15 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		params = append(params, "reasoning")
 	}
-	if prefs := c.providerPreferences(model); prefs != nil {
+	if prefs := c.providerPreferences(model, knobs); prefs != nil {
 		if prefs.RequireParameters != nil {
 			params = append(params, "provider.require_parameters")
 		}
 		if len(prefs.Ignore) > 0 {
 			params = append(params, "provider.ignore")
+		}
+		if prefs.MaxPrice != nil {
+			params = append(params, "provider.max_price")
 		}
 	}
 	return params

@@ -3,6 +3,7 @@ package tui3
 import (
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -95,6 +96,59 @@ func (a *app) pasteImages(text string) bool {
 	return true
 }
 
+// pasteFiles recognizes the ordinary-file form of the same terminal gesture
+// pasteImages handles for pictures. A desktop drop arrives only as pasted local
+// paths, so putting those files on the existing tray is what lets hosted sends
+// carry their bytes instead of handing the engine names from the wrong disk.
+func (a *app) pasteFiles(text string) bool {
+	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
+		return false
+	}
+	words := pastedWords(text)
+	if len(words) == 0 {
+		return false
+	}
+	paths := make([]string, 0, len(words))
+	for _, word := range words {
+		candidate := a.resolvePath(pastedPath(word))
+		info, err := os.Stat(candidate)
+		if err != nil {
+			return false
+		}
+		if info.IsDir() {
+			a.note(filepath.Base(candidate) + " is a folder · attach a file")
+			return true
+		}
+		if isImagePath(candidate) {
+			if info.Size() > maxAttachBytes {
+				a.note(oversizeAttachment(chip{path: candidate}).Error())
+				return false
+			}
+		} else if info.Size() > maxAttachedFileBytes {
+			a.note(oversizeFile(filepath.Base(candidate), info.Size()))
+			return false
+		}
+		paths = append(paths, candidate)
+	}
+	marks := make([]string, 0, len(paths))
+	for _, candidate := range paths {
+		if isImagePath(candidate) {
+			a.attach(candidate)
+			marks = append(marks, imageToken(a.chipNumber(candidate)))
+			continue
+		}
+		a.attachFile(candidate)
+	}
+	if len(marks) > 0 {
+		inserted := a.spacedTokens(marks)
+		at := a.input.cursor
+		a.input.insert(inserted)
+		a.editTags(at, at, len([]rune(inserted)))
+	}
+	a.touch()
+	return true
+}
+
 // spacedTokens is the run of tokens as it is inserted: separated from the word
 // the caret was standing after, and followed by a space so the next thing typed
 // is a new word rather than a longer token.
@@ -106,13 +160,20 @@ func (a *app) spacedTokens(marks []string) string {
 	return text
 }
 
-// chipNumber is the tray position of the picture at path, one-based, and 0 when
-// it is not on the tray. It is the number the token, the chip and the message's
-// content parts all share.
+// chipNumber is the PICTURE's number, one-based, and 0 when that path is not on
+// the tray. It is the number the token, the chip and the message's content parts
+// all share.
+//
+// IT COUNTS PICTURES AND NOT CHIPS, which is the whole of the fix: the tray
+// holds attached files as well now, and a position on the tray stopped being a
+// position among the pictures the moment it did. Numbering by tray position
+// meant a screenshot pasted while a log file sat in front of it was announced as
+// `[image #2]` when it was the first — and the token, the chip and the content
+// part would then disagree about which picture the person meant.
 func (a *app) chipNumber(path string) int {
 	for i, held := range a.chips {
 		if held.path == path {
-			return i + 1
+			return pictureOrdinal(a.chips, i)
 		}
 	}
 	return 0

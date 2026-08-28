@@ -160,8 +160,12 @@ func TestCtrlCInterruptsAWorkingTurnAndTakesTwoPressesAtRest(t *testing.T) {
 	if a.quitArmed() {
 		t.Fatal("an interrupting ctrl+c armed the door")
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// AND THE STATUS LINE SAYS THE STOP LANDED. It is asked of the line rather
+	// than of the whole frame, which is what this assertion always meant to say:
+	// the stop's own note is in the transcript on the same frame, so a search
+	// over the frame passed on the note whatever the status segment said.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// At rest the first press arms and says so, and nothing closes. It returns
@@ -309,7 +313,7 @@ func TestATurnFinishingBetweenPressesStillNeedsTheSecond(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	now := time.Now()
 	a.clock = func() time.Time { return now }
-	typeLine(t, a, "do much more of a deep research please")
+	parkLine(t, a, "do much more of a deep research please")
 	if len(a.parks) != 1 {
 		t.Fatalf("the second message was not parked: %+v", a.parks)
 	}
@@ -342,8 +346,8 @@ func TestQuitFoldsParkedMessagesIntoTheDraft(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
 	path := filepath.Join(t.TempDir(), "drafts", "one")
 	a.draftFile = path
-	typeLine(t, a, "first correction")
-	typeLine(t, a, "second correction")
+	parkLine(t, a, "first correction")
+	parkLine(t, a, "second correction")
 	typeInto(t, a, "and this is still in the box")
 
 	if cmd := a.quit(); !isQuit(cmd) {
@@ -400,13 +404,29 @@ func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
 
 func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab"})
-	// IT HAS TO BE TRUE ON THE FIRST FRAME, where nothing is running: esc is the
+	a.width, a.height = 90, 30
+	a.touch()
+	// THE EXIT IS TAUGHT AFTER THE ENTRANCE (welcome.go's [app.dismissWelcome]):
+	// the greeting's frame carries no line about leaving, and the line lands the
+	// moment the conversation begins.
+	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
+		t.Fatalf("the greeting teaches the way out before the way in:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("h"))
+	// IT HAS TO BE TRUE ON THAT FRAME, where nothing is running: esc is the
 	// interrupt when there is a turn, and ctrl+c takes two presses always.
 	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
 		t.Fatalf("the hint has to name both doors truthfully:\n%s", plain(frame(a)))
 	}
-	if !strings.Contains(helpText(""), "alt+enter") {
-		t.Fatalf("help has to name the newline key:\n%s", helpText(""))
+	// And a session that opens on a transcript gets it on its first frame.
+	resumed := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hi"}}},
+		Workspace: "/tmp/lab", Resumed: true})
+	resumed.width, resumed.height = 90, 30
+	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c twice quits") {
+		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
+	}
+	if !strings.Contains(helpText("", chordSpelling{}), "alt+enter") {
+		t.Fatalf("help has to name the newline key:\n%s", helpText("", chordSpelling{}))
 	}
 }
 
@@ -451,12 +471,13 @@ func TestAPastedBlockArrivesWholeAndSubmitsAsTyped(t *testing.T) {
 	// Bracketed paste: charm.land/bubbletea/v2 delivers the whole clipboard in
 	// one tea.PasteMsg (paste.go), bracketed mode being on by default.
 	drive(t, a, tea.PasteMsg{Content: "fix this:\n\tpanic: nil map\n\tat main.go:12"})
-	if !strings.Contains(a.input.String(), "\n\tpanic") {
-		t.Fatalf("the paste did not arrive whole: %q", a.input.String())
+	if !strings.Contains(a.input.String(), "[paste 1 · 3 lines]") {
+		t.Fatalf("the large paste did not fold whole: %q", a.input.String())
 	}
+	a.input.end()
 	drive(t, a, key("enter"))
-	if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], "\n") {
-		t.Fatalf("the paste was flattened: %q", agent.sent)
+	if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], "\n\tpanic: nil map\n") {
+		t.Fatalf("the folded paste was flattened: %q", agent.sent)
 	}
 }
 
@@ -932,7 +953,7 @@ func TestRewindIsOnTheTableAndDispatches(t *testing.T) {
 }
 
 func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
-	text := helpText("")
+	text := helpText("", chordSpelling{})
 	for _, want := range []string{
 		"/new",
 		"also /clear /clean /reset",

@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,15 +8,22 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE DESIGN LANGUAGE, HELD TO ITS OWN NUMBERS ────────────────────────────
 //
 // docs/DESIGN-LANGUAGE.md is the prose; this file is the part of it a build can
-// fail on. Four laws are pinned here: the palette is CLOSED (nothing outside
-// styles.go authors a colour), the signal hues are ISOLUMINANT, and THE GROUND
-// LADDER's three drawable steps land in the band they were aimed at, and THE
-// SPACING LADDER's shared steps keep their measured values.
+// fail on. Five laws are pinned here: the palette is CLOSED (nothing outside
+// styles.go authors a colour), the signal hues are ISOLUMINANT, THE GROUND
+// LADDER's three drawable steps land in the band they were aimed at, THE
+// SPACING LADDER's shared steps keep their measured values, and THE GLARE LAW
+// holds the body ink under the ceiling where a white stops reading and starts
+// shining.
 
 // ── 0. THE SPACING LADDER ───────────────────────────────────────────────────
 
@@ -75,8 +81,16 @@ var colourAuthors = map[string]string{
 	"styles.go": "THE CURATED PASTEL AUTHORITY: the palette is authored here",
 
 	"designlanguage_test.go": "names the assumed terminal grounds the ladder is aimed at",
+	"adaptive_test.go":       "names the MEASURED grounds the derivation is tabled against",
 	"bundle_test.go":         "pins the light ladder's authored values",
 	"thinking_test.go":       "pins the three stops [fadeOf] derives from hueDim",
+	// [hueLive] is the one hue in the table whose whole meaning is a RELATION —
+	// it is the value [hueInk] carried before the body was calmed, and it says
+	// "this reply is still arriving" only for as long as it stands a step above
+	// the ink. A silent edit to either end would leave the surface compiling, the
+	// palette closed, and the effect gone with nothing failing, so the pair is
+	// written down a second time where the relation can be asserted.
+	"settle_test.go": "pins the live tier against the body ink it is defined against",
 }
 
 // THE PALETTE IS CLOSED. A colour with no role is a colour nobody can change,
@@ -141,6 +155,14 @@ var backgroundAuthors = map[string]string{
 // which is only true for as long as nothing else in the package can paint one.
 // Every tinted run on this surface therefore comes through the ladder, and
 // "which step is this" is a question with three answers rather than forty.
+//
+// FIDELITY.md item 13 briefly made the places an exception: home and the six
+// paint #12121A over every cell of the frame, so rest gained a floor step there.
+// The owner tested it on 2026-08-25 and reversed it — "i want bg color and text
+// color to be same as in inside chat please this new bg looks weird i think we
+// were taking user terminal stuff or something previously" — so there is one
+// ladder again, with three drawable steps and a fourth that is the absence of a
+// paint, on every surface this program draws.
 func TestOnlyTheGroundLadderPaintsABackground(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -214,16 +236,20 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
 				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
+				// money joined the band in the places wave: it is a signal like
+				// the rest, so it answers to the band like the rest.
+				"money": hueMoney,
 			},
-			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "dim": hueDim},
+			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "narr": hueNarr, "dim": hueDim},
 		},
 		{
 			name: "light",
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
 				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
+				"money": lightMoney,
 			},
-			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "dim": lightDim},
+			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
 		},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
@@ -262,6 +288,76 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 				t.Fatalf("every reading tier on the %s ladder now sits inside the signal band, "+
 					"which means the body, the second voice and the surface's own murmur are "+
 					"all one loudness — the tiers are a ladder and must read as one", ladder.name)
+			}
+		})
+	}
+}
+
+// NO TWO ROLES ON ONE LADDER RESOLVE TO THE SAME xterm-256 INDEX.
+//
+// styles.go asks for this check on every line it authors, and it was asked for
+// one line at a time: the accent's own note names 146, [hueAsk]'s names 140 and
+// why 146 would have been a disaster, [hueDel]'s names 167 against [hueBad]'s
+// 173. Every one of those checks was done. What nobody did was ASK THE WHOLE
+// TABLE AT ONCE — and the table had an answer: [hueMuted] and [hueData] both
+// rounded to 110, so on every 256-colour terminal the payload rule's datum was
+// painted in the second voice's own colour, which is the identity hue doing
+// nothing while appearing to work. Four waves, and it was found by somebody
+// reading a comment rather than by anything failing.
+//
+// So the check that used to be a habit is a gate. It is the SECOND RUNG that is
+// held, deliberately: the authored hexes are all distinct by construction, and
+// the rung where they stop being distinct is the fallback nobody looks at —
+// which is also where the MAJORITY of terminals actually are.
+//
+// The reading tiers are in the walk beside the signals, because they are roles
+// too and a body ink that landed on the second voice's index would be worse than
+// either collision the file already worries about. What is NOT in the walk is
+// the GROUND ladder (its three steps have their own test, and a ground is not an
+// ink) and the identity ring (its own law is distinctness around a wheel, and it
+// is allowed to fall back to glyphs).
+func TestNoTwoRolesShareA256Index(t *testing.T) {
+	for _, ladder := range []struct {
+		name  string
+		roles map[string]hue
+	}{
+		{"dark", map[string]hue{
+			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
+			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
+			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
+			"money": hueMoney,
+			// THE PLACE LADDER ADDS NOTHING TO THIS WALK, and after 2026-08-25 that
+			// is a fact about the palette rather than a gap in the test: a place
+			// paints from the conversation's own table with three roles re-pointed
+			// at colours already in it (styles.go's [placeRampFrom]), so every hue
+			// a place can draw is a row of this map.
+		}},
+		{"light", map[string]hue{
+			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
+			"narr": lightNarr, "dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
+			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
+			"money": lightMoney,
+		}},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			// Sorted, so the failure names the same pair every time somebody runs it.
+			var names []string
+			for name := range ladder.roles {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			seen := map[uint8]string{}
+			for _, name := range names {
+				idx := ladder.roles[name].idx
+				if other, clash := seen[idx]; clash {
+					t.Fatalf("on the %s ladder %s and %s both resolve to xterm-256 %d — "+
+						"two roles become ONE COLOUR on every 256-colour terminal, which is "+
+						"most of them. Move the LIGHTNESS of whichever of the two is the "+
+						"smaller surface, hold its hue and saturation, and re-check the "+
+						"isoluminant band afterwards (styles.go's THE SIGNAL BAND)",
+						ladder.name, other, name, idx)
+				}
+				seen[idx] = name
 			}
 		})
 	}
@@ -368,35 +464,276 @@ func TestTheGroundLadderStepsNeverCollapse(t *testing.T) {
 	}
 }
 
+// ── 4. THE GLARE LAW ────────────────────────────────────────────────────────
+
+// glareCeiling is the loudest the READING TIER's top rung may be against the
+// middle of its assumed ground, and glareFloor is the quietest.
+//
+// Eleven is where a white stops being legible and starts being a lamp. Past it
+// the strokes halate on a dark terminal, the counters of a, e and o fill in, and
+// every quieter thing on the row reads as switched off — so the body, which is
+// the one colour a person looks at for minutes at a time, is held BELOW it. Eight
+// is the other wall and it is the ordinary one: under it the body stops being
+// comfortably readable and starts asking to be leant toward.
+//
+// The band is 8–11 rather than a point because the ground is unknown (see THE
+// GROUND LADDER in styles.go for the same wall met from the other side) and
+// because the two ladders are authored, not derived. What is NOT slack is the
+// ceiling: this whole law exists because #D8DEE9 measured 12.65 here and read as
+// glare on every screenshot anybody took of it.
+const (
+	glareCeiling = 11.0
+	glareFloor   = 8.0
+)
+
+// glareInkOverMuted is how far the body must stand above the surface's second
+// voice, as a ratio of their two contrasts against the same ground.
+//
+// It is the retune's own failure mode written down. Bringing the body down is a
+// move TOWARD [hueMuted], and a body ink that arrived on top of the tier below it
+// would have traded glare for a screen with no reading ladder at all — one
+// loudness for the answer, the tool names, the headings and the wordmark alike.
+// A quarter again is the smallest gap that still reads as two tiers rather than
+// as one tier drawn twice.
+const glareInkOverMuted = 1.25
+
+// THE BODY MAY NOT BE THE BRIGHTEST THING ON THE SCREEN.
+//
+// The signal band above governs hues that mean a KIND of thing and deliberately
+// does not govern the reading tiers, because lightness is the whole of what a
+// reading tier says. This is the law that does govern them, and it governs the
+// top rung in particular: the tier the answer itself is written in.
+//
+// It is stated against the MIDDLE of each assumed ground rather than against all
+// of them, exactly as THE GROUND LADDER's own band is. A fixed ink reads one
+// notch louder on a blacker terminal and one notch quieter on a lighter one;
+// holding the darkest end of the range to the ceiling would be authoring for a
+// terminal at the edge of the range and letting every terminal inside it go
+// quiet.
+//
+// A future retune that pushes the body back up fails here with the number it
+// chose, which is the whole point — the last one was undone by nothing louder
+// than somebody wanting the text to "pop".
+//
+// THE LIVE TIER IS NOT WALKED HERE, and its absence is a decision rather than an
+// omission: [hueLive] is the law's one stated exception and has a ceiling of its
+// own, in [TestTheLiveTierIsTheGlareLawsOneException] below.
+func TestTheBodyInkDoesNotGlare(t *testing.T) {
+	for _, ladder := range []struct {
+		name            string
+		mid             string
+		ink, muted, dim hue
+	}{
+		{"dark", darkMid, hueInk, hueMuted, hueDim},
+		{"light", lightMid, lightInk, lightMuted, lightDim},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			ink := contrastOf(ladder.ink, ladder.mid)
+			if ink > glareCeiling {
+				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at most %s:1 — "+
+					"this is THE GLARE LAW (styles.go): the body is the one colour somebody "+
+					"reads for minutes at a time, and above the ceiling it halates instead of "+
+					"reading. Lower the LIGHTNESS of the ink in styles.go, hold its hue, and "+
+					"re-check its xterm-256 neighbour afterwards.",
+					ladder.name, trimFloat(ink), ladder.mid, trimFloat(glareCeiling))
+			}
+			if ink < glareFloor {
+				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at least %s:1 — "+
+					"the body has gone past comfortable and into faint",
+					ladder.name, trimFloat(ink), ladder.mid, trimFloat(glareFloor))
+			}
+
+			// AND THE READING LADDER IS STILL A LADDER. Coming down is a move
+			// toward the tier below, so the step that the move could have spent is
+			// the step this asserts.
+			muted := contrastOf(ladder.muted, ladder.mid)
+			dim := contrastOf(ladder.dim, ladder.mid)
+			if !(ink > muted && muted > dim) {
+				t.Fatalf("the %s reading tiers are not a ladder against %s: ink %s, muted %s, dim %s",
+					ladder.name, ladder.mid, trimFloat(ink), trimFloat(muted), trimFloat(dim))
+			}
+			if ink < muted*glareInkOverMuted {
+				t.Fatalf("the %s ladder's body (%s:1) has come down onto its second voice (%s:1) "+
+					"against %s — want the body at least %s× the muted tier, or the answer and "+
+					"the surface's own words are one loudness",
+					ladder.name, trimFloat(ink), trimFloat(muted), ladder.mid,
+					trimFloat(glareInkOverMuted))
+			}
+		})
+	}
+}
+
+// oldBodyWhite is [tokens.TextPrimary]'s own hex — the white internal/tui2/prose
+// painted a reply in until this wave threaded the body ink through the Styler,
+// and the exact glare THE GLARE LAW was written about.
+//
+// It is spelled here rather than reached for because tokens does not hand its
+// table out as colours (styles.go's [hue.tokenColor] crosses that seam in one
+// direction only, and the reverse trip would be this package taking a second
+// colour authority). What that costs is a hex that could drift from tokens', and
+// what it buys is a bound with a MEANING: whatever the number, the live tier may
+// not climb back into the territory the two-whites defect occupied. Its own
+// escape sequence is asserted against tokens directly, in
+// [TestTheTranscriptBodyWearsTheSurfacesOwnInk] below, so the drift that would
+// matter is caught where it matters.
+const oldBodyWhite = "#E6E6F0"
+
+// THE LIVE TIER IS THE GLARE LAW'S ONE EXCEPTION, AND AN EXCEPTION HAS A BOUND.
+//
+// [hueLive] sits above the ceiling the law holds [hueInk] under, deliberately: it
+// paints a reply only while that reply is still arriving (render.go's
+// [app.liveTail]) and drains back to the body ink the moment the turn settles.
+// The law is about a colour somebody reads for MINUTES, and this one is gone in
+// seconds — which is precisely why THE ACCENT BUDGET lets a paragraph lead here
+// and nowhere else.
+//
+// An exception with nothing holding it is a hole. Two things hold this one:
+//
+//   - THE ABSOLUTE CEILING. Live may not reach the white this wave took away.
+//     #E6E6F0 is what prose used to paint every reply in, on every terminal, all
+//     the time; a live tier that arrived there would have restored the defect and
+//     merely renamed it "the streaming text".
+//   - THE STEP. Live is defined as ONE step above the body, and adaptive.go's
+//     [liveStep] is where that step's width is written down. Holding the authored
+//     pairs inside it is what stops a future retune from buying the effect by
+//     widening the gap — a leap is not a step, and a leap that started under the
+//     ceiling would still end over it the first time the ink came down.
+//
+// Both ladders are walked, because the light one travels the other way: on a page
+// a growing edge leads by being DARKER, so the step is measured as a ratio of
+// contrasts and the arithmetic is the same in both directions.
+func TestTheLiveTierIsTheGlareLawsOneException(t *testing.T) {
+	glare := contrastOf(mustHue(oldBodyWhite, flat), darkMid)
+	for _, ladder := range []struct {
+		name      string
+		mid       string
+		ink, live hue
+	}{
+		{"dark", darkMid, hueInk, hueLive},
+		{"light", lightMid, lightInk, lightLive},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			ink := contrastOf(ladder.ink, ladder.mid)
+			live := contrastOf(ladder.live, ladder.mid)
+			// THE TIER EXISTS, OR IS HONESTLY ABSENT. Equal is legal and means the
+			// effect is not drawn at all (styles.go's [hueLive]); quieter than the
+			// body is neither.
+			if live < ink {
+				t.Fatalf("the %s ladder's live tier is %s:1 against %s and its body ink is %s:1 — "+
+					"a streaming reply may not be QUIETER than the settled text beside it",
+					ladder.name, trimFloat(live), ladder.mid, trimFloat(ink))
+			}
+			if step := live / ink; step > liveStep.high {
+				t.Fatalf("the %s ladder stands live %s× its body ink, want at most %s× — "+
+					"THE LIVE TIER IS ONE STEP AND NOT A LEAP (adaptive.go's [liveStep]). "+
+					"A gap this wide reads as two kinds of text rather than as one kind "+
+					"still being written, and it is how a retune walks the streaming "+
+					"paragraph back into glare without ever touching the ceiling",
+					ladder.name, trimFloat(step), trimFloat(liveStep.high))
+			}
+		})
+	}
+	// AND THE ABSOLUTE CEILING, which is a DARK-LADDER statement because the white
+	// it names is one: #E6E6F0 on a page is not glare, it is invisible. The light
+	// ladder's live tier is a near-black and is held by the step above.
+	if live := contrastOf(hueLive, darkMid); live >= glare {
+		t.Fatalf("the live tier is %s:1 against %s, which is the %s:1 of tokens' own %s — "+
+			"THE GLARE LAW's one exception may not climb back into the white this wave "+
+			"took away (styles.go). Lower [hueLive]'s LIGHTNESS, hold its hue, and "+
+			"re-check its xterm-256 neighbour afterwards",
+			trimFloat(live), darkMid, trimFloat(glare), oldBodyWhite)
+	}
+}
+
+// THE BODY WHITE THE TRANSCRIPT WEARS IS THE PALETTE'S OWN, ON EVERY RUNG THAT
+// HAS A COLOUR TO SPEND.
+//
+// The law above governs a value in a table; this governs whether the value ever
+// reaches the screen. A model's markdown is rendered by internal/tui2/prose,
+// which resolves colour from internal/tui2/tokens, and tokens' body tier is a
+// brighter white than anything this palette authors — so without the seam
+// markdown.go threads ([tokens.Styler.WithBodyInk]) the one thing a person reads
+// most is the one thing this palette does not paint.
+//
+// The 256 rung is checked as well as the truecolor one, and it is the rung that
+// could actually break: the index is resolved by TOKENS' nearest-neighbour walk
+// while every other cell on the screen is resolved by THIS package's, and the
+// two use different distance metrics. They agree on #C6CDDA. The day they stop
+// agreeing on some future ink, this fails rather than shipping two whites to
+// every 256-colour terminal.
+func TestTheTranscriptBodyWearsTheSurfacesOwnInk(t *testing.T) {
+	// A stated environment rather than the process's: [newMarkdownStyler] is a
+	// pure function of one so a test can ask what a named terminal gets, instead
+	// of racing the package's own sync.Once for whatever the runner happened to
+	// export.
+	env := func(term string) func(string) string {
+		return func(key string) string {
+			if key == "TERM" {
+				return term
+			}
+			return ""
+		}
+	}
+
+	const doc = "A sentence the model wrote.\n"
+	for _, rung := range []struct {
+		name string
+		term string
+		want string
+	}{
+		{"256", "xterm-256color", sgr256(hueInk)},
+		{"truecolor", "xterm-direct", sgrTrue(hueInk)},
+	} {
+		t.Run(rung.name, func(t *testing.T) {
+			rows := renderMarkdownWith(newMarkdownStyler(env(rung.term)), doc, 60)
+			if len(rows) == 0 {
+				t.Fatal("no rows")
+			}
+			if !strings.Contains(rows[0], rung.want) {
+				t.Fatalf("the transcript body is painted %q, want the palette's own ink %q — "+
+					"markdown.go must hand prose a Styler carrying [hueInk] (styles.go, "+
+					"THE GLARE LAW), or a reply is painted by internal/tui2/tokens' brighter "+
+					"white while every row around it wears this one",
+					rows[0], rung.want)
+			}
+			// And tokens' own body tier is nowhere on the row: ONE body white, not
+			// two taking turns.
+			if stale := tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal); rung.name == "truecolor" &&
+				strings.Contains(rows[0], stale) {
+				t.Fatalf("the transcript row still carries tokens' own body white %q: %q", stale, rows[0])
+			}
+		})
+	}
+}
+
 // ── the arithmetic ──────────────────────────────────────────────────────────
 
-// contrastOf is the WCAG ratio between an authored hue and an assumed ground.
-// It is here rather than in styles.go on purpose: nothing at runtime knows what
-// the terminal's background is, so nothing at runtime may compute this. It is a
-// number the AUTHOR checks, and a test is where an author's checks live.
+// sgrTrue is one hue's TRUECOLOR foreground sequence — [sgr256]'s twin, and it
+// lives here rather than beside it because the rung it pins belongs to THE GLARE
+// LAW: the 24-bit answer and the 256 answer are resolved by different code, and
+// only a test that asks for both can say the two agree.
+func sgrTrue(h hue) string {
+	return "\x1b[38;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" + itoa(int(h.b)) + "m"
+}
+
+// contrastOf is the WCAG ratio between an authored hue and an ASSUMED ground —
+// the hex an author wrote down, which is the only kind of ground this file deals
+// in.
+//
+// The arithmetic underneath it is adaptive.go's ([luminanceOf],
+// [contrastRatio]) and used to be a private copy here, on the stated grounds
+// that nothing at runtime knew what the terminal's background was so nothing at
+// runtime could compute a contrast. A terminal can be asked now. Two copies of
+// one formula is the drift this repo's one-source-of-truth law exists to
+// prevent — a test that measured the ladder differently from the code that
+// derives it would pass while the surface was wrong — so this is a wrapper that
+// parses a hex and nothing more.
 func contrastOf(h hue, ground string) float64 {
 	r, g, b, ok := parseHex(ground)
 	if !ok {
 		panic("tui3: malformed assumed ground " + ground)
 	}
-	first, second := luminanceOf(h.r, h.g, h.b), luminanceOf(r, g, b)
-	if first < second {
-		first, second = second, first
-	}
-	return (first + 0.05) / (second + 0.05)
-}
-
-// luminanceOf is sRGB relative luminance, the sRGB transfer curve included —
-// the linear-light average that contrast is defined on, not the raw channels.
-func luminanceOf(r, g, b uint8) float64 {
-	channel := func(c uint8) float64 {
-		v := float64(c) / 255
-		if v <= 0.03928 {
-			return v / 12.92
-		}
-		return math.Pow((v+0.055)/1.055, 2.4)
-	}
-	return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b)
+	return contrastRatio(luminanceOf(h.r, h.g, h.b), luminanceOf(r, g, b))
 }
 
 // trimFloat spells a measured number the way the comments spell it: two places,
@@ -405,4 +742,173 @@ func trimFloat(f float64) string {
 	s := strconv.FormatFloat(f, 'f', 2, 64)
 	s = strings.TrimRight(s, "0")
 	return strings.TrimSuffix(s, ".")
+}
+
+// ── 5. THE PLAIN FLOOR, AND THE ALPHABET ────────────────────────────────────
+
+// EVERY PLACE IS LEGIBLE WITH NOTHING BUT LETTERS.
+//
+// FIDELITY.md item 11(c) asks for this by name, and it is the honest half of
+// item 13: a surface that paints its own page has to be a surface that reads
+// with no page at all. Two capability floors meet here and they are independent
+// questions — [tokens.DetectProfile]'s NoColor answer (this terminal was told
+// not to be styled) and [detectASCII]'s veto (this terminal cannot be trusted
+// with a box-drawing character) — so the walk below turns both of them on at
+// once, which is the worst terminal aforge claims to run on: TERM=linux in a C
+// locale with NO_COLOR set.
+//
+// Four things are asserted and each of them is a way the floor could be a lie:
+//
+//   - NOT ONE SGR SEQUENCE SURVIVES. A place that painted a ground, a band or a
+//     hue here would be a program styling a terminal that said not to. What is
+//     NOT forbidden is OSC 8 — a hyperlink is a destination rather than a style,
+//     it is the one escape styles.go's own underline note excepts by name, and a
+//     terminal that cannot follow one simply shows the text.
+//   - THE FRAME IS STILL THE WHOLE FRAME. The layout may not depend on a paint:
+//     if a row's width came from a padded background rather than from its text,
+//     the count below moves.
+//   - THE PLACE STILL SAYS WHERE YOU ARE. The tab bar's band is a colour and is
+//     gone, so the place's own word had better still be on the screen — this is
+//     the one fact the bar exists for, and it is the fact a floor most easily
+//     eats.
+//   - THE FOOT STILL NAMES A KEY. A screen with no colour and no way out is a
+//     screen somebody is stuck on.
+func TestEveryPlaceHoldsAtThePlainFloor(t *testing.T) {
+	a := placeApp(t)
+	// BOTH FLOORS AT ONCE, stated rather than detected: this test is about a
+	// named terminal and not about whatever the runner happened to export.
+	a.pal = newThemedPalette(tokens.NoColor, true, themeDark, nil)
+	for _, width := range []int{80, 120, 200} {
+		a.width, a.height = width, 26
+		for _, id := range []page{pageHome, pageSpend, pageSearch} {
+			a.showPage(id)
+			if a.page != id {
+				t.Fatalf("the %s place would not open at the plain floor", id.word())
+			}
+			frame, _, _ := a.frame()
+			if strings.Contains(frame, "\x1b[") {
+				t.Fatalf("at %d the %s place draws an SGR sequence at NO_COLOR:\n%q",
+					width, id.word(), frame)
+			}
+			lines := strings.Split(frame, "\n")
+			if len(lines) != a.height {
+				t.Fatalf("at %d the %s place drew %d rows into %d — the layout is leaning "+
+					"on a paint that is not there", width, id.word(), len(lines), a.height)
+			}
+			for _, line := range lines {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("at %d the %s place overflows the plain frame: %q",
+						width, id.word(), line)
+				}
+			}
+			if !strings.Contains(frame, id.word()) {
+				t.Fatalf("at %d the %s place does not say its own name with no colour to "+
+					"say it with:\n%s", width, id.word(), frame)
+			}
+			if !strings.Contains(frame, "tab next place") && !strings.Contains(frame, "enter") {
+				t.Fatalf("at %d the %s place names no key at the plain floor:\n%s",
+					width, id.word(), frame)
+			}
+		}
+	}
+}
+
+// NOTHING A PLACE DRAWS COMES FROM A NERD-FONT PRIVATE USE AREA.
+//
+// FIDELITY.md item 11(b): every glyph a place draws must render in JetBrains
+// Mono, Menlo, SF Mono and DejaVu Sans Mono. No test can open a font, so what is
+// checked is the one thing that makes a character unrenderable in ALL FOUR by
+// construction — a code point in a Private Use Area, which is where every patched
+// nerd-font puts its icons and where no unpatched font has anything at all.
+//
+// A place drawing one would look correct on the machine of whoever added it and
+// like a row of empty boxes on every other.
+func TestNoPlaceDrawsAPrivateUseGlyph(t *testing.T) {
+	private := func(r rune) bool {
+		return r >= 0xE000 && r <= 0xF8FF || // the Basic Multilingual Plane's own
+			r >= 0xF0000 && r <= 0xFFFFD || // Supplementary Private Use Area-A
+			r >= 0x100000 && r <= 0x10FFFD // and -B
+	}
+	a := placeApp(t)
+	a.width, a.height = 160, 30
+	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+		a.showPage(id)
+		for _, r := range placeFrameText(a) {
+			if private(r) {
+				t.Fatalf("the %s place draws U+%04X, which is in a Private Use Area — it is "+
+					"an icon from a patched font and it renders as an empty box on every "+
+					"terminal whose font was not patched (styles.go, THE PLACE LADDER; "+
+					"FIDELITY.md item 11)", id.word(), r)
+			}
+		}
+	}
+}
+
+// THE TWO MARKS THE DESIGN RE-SPELLED ARE THE HOUSE ALPHABET'S OWN.
+//
+// home.go authors `?` and `◐` as literals because that is where this surface's
+// glyph vocabulary lives, and internal/tui2/tokens holds the same two characters
+// in named slots with the same meanings — [tokens.GlyphNeedsHuman], whose comment
+// reads "always amber", and [tokens.GlyphWorking]. Two spellings of one alphabet
+// is exactly the drift the one-source-of-truth law exists to catch, so the
+// agreement is asserted rather than assumed.
+//
+// The store's own two are asserted at the same time, because [standSurfaceGlyph]
+// translates between the alphabets with literals it cannot reach for
+// (internal/standing does not hand its glyphs out, and CLAUDE.md forbids this
+// package from reshaping the resident's). A translation whose left-hand side had
+// drifted would silently do nothing.
+func TestThePlaceMarksAreTheDesignsOwn(t *testing.T) {
+	if homeAskGlyph != tokens.GlyphNeedsHuman {
+		t.Fatalf("home's needs-a-human mark is %q and the house alphabet's is %q",
+			homeAskGlyph, tokens.GlyphNeedsHuman)
+	}
+	if homeLiveGlyph != tokens.GlyphWorking {
+		t.Fatalf("home's working mark is %q and the house alphabet's is %q",
+			homeLiveGlyph, tokens.GlyphWorking)
+	}
+	if homeIdleGlyph != tokens.GlyphQueued {
+		t.Fatalf("home's queued mark is %q and the house alphabet's is %q",
+			homeIdleGlyph, tokens.GlyphQueued)
+	}
+	if got := standSurfaceGlyph(standStoreAskGlyph); got != homeAskGlyph {
+		t.Fatalf("the store's needs-you mark translates to %q, want %q", got, homeAskGlyph)
+	}
+	if got := standSurfaceGlyph(standStoreLiveGlyph); got != homeLiveGlyph {
+		t.Fatalf("the store's firing mark translates to %q, want %q", got, homeLiveGlyph)
+	}
+	// AND THE STORE STILL SPELLS WHAT THE TRANSLATION EXPECTS. This is the half
+	// that would rot in silence.
+	item := standing.Item{NeedsPerson: "the fix touches migrations"}
+	if got := item.Glyph(false); got != standStoreAskGlyph {
+		t.Fatalf("internal/standing now writes %q for needs-you, and standing.go still "+
+			"translates %q — the translation has quietly stopped happening",
+			got, standStoreAskGlyph)
+	}
+	if got := (standing.Item{}).Glyph(true); got != standStoreLiveGlyph {
+		t.Fatalf("internal/standing now writes %q for firing, and standing.go still "+
+			"translates %q", got, standStoreLiveGlyph)
+	}
+}
+
+// NO PLACE DRAWS AN ITALIC.
+//
+// FIDELITY.md item 12: the design's own file uses none, and a terminal's italic
+// is the least reliable attribute it has — half of them render it as a colour
+// swap and some as nothing. [palette.italic] has exactly one caller in this
+// package (thinking.go, the model's own reasoning, which is conversation and not
+// a place), and this is what keeps that true from the other end: the frames
+// themselves, checked for SGR 3.
+func TestNoPlaceDrawsAnItalic(t *testing.T) {
+	a := placeApp(t)
+	a.width, a.height = 160, 30
+	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+		a.showPage(id)
+		frame, _, _ := a.frame()
+		if strings.Contains(frame, "\x1b[3m") {
+			t.Fatalf("the %s place draws an italic (SGR 3). The design uses none, and "+
+				"emphasis past bold is brightness, case, indent or air — SCREEN 2a",
+				id.word())
+		}
+	}
 }

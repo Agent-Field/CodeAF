@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -78,14 +80,15 @@ func TestAReflexCallTellsAReasoningModelNotToThink(t *testing.T) {
 	}
 }
 
-// TestAnEmptyReflexAnswerIsNotRepaired pins the second half of the same bill.
+// TestAnUncappedEmptyReflexAnswerIsNotRepaired pins the boundary around the
+// budget recovery.
 //
 // The repair retry works by putting the model's own bad answer in front of it
 // and asking again. There is no such answer when the reply was empty, so the
 // repair is a second full-price call asking the identical question of a model
-// that just failed to answer it — and it failed the same way both times in the
-// journal. One wasted call is the ceiling on what a failed reflex may cost.
-func TestAnEmptyReflexAnswerIsNotRepaired(t *testing.T) {
+// that gave no evidence more room would help. Only finish=length at the ceiling
+// gets that retry; an ordinary blank remains one call.
+func TestAnUncappedEmptyReflexAnswerIsNotRepaired(t *testing.T) {
 	silent := &fake{replies: []string{"", ""}}
 
 	_, err := Route(context.Background(), silent, "what did we decide?", index)
@@ -145,5 +148,119 @@ func TestABoundReasoningMandatoryModelGetsRoomToThink(t *testing.T) {
 	}
 	if got := plain.budgets[0]; got != answerTokens {
 		t.Fatalf("ceiling for an ordinary model was %d, want %d", got, answerTokens)
+	}
+}
+
+func cappedEmpty(tokens int) *ai.Response {
+	response := reply(" \n")
+	response.Choices[0].FinishReason = "length"
+	response.Usage = &ai.Usage{CompletionTokens: tokens}
+	return response
+}
+
+func TestAnEmptyLengthCappedAnswerRetriesOnceWithRoom(t *testing.T) {
+	const model = "test-vendor/silent-disable"
+	quirksAt := filepath.Join(t.TempDir(), "quirks")
+	provider.LoadQuirks(quirksAt)
+	client := &fake{responses: []*ai.Response{
+		cappedEmpty(answerTokens),
+		reply(`{"inject":["m3"],"cmd":null}`),
+		reply(`{"inject":[],"cmd":null}`),
+	}}
+	session := &Session{}
+	bound := session.Bind(client, model, "test-vendor/low", nil)
+
+	result, err := Route(context.Background(), bound, "what did we decide about tests?", index)
+	if err != nil {
+		t.Fatalf("Route after the larger retry: %v", err)
+	}
+	if len(result.Inject) != 1 || result.Inject[0] != "m3" {
+		t.Fatalf("Route returned %+v, want the retry's answer", result)
+	}
+	if len(client.calls) != 2 {
+		t.Fatalf("the capped answer made %d calls, want one retry", len(client.calls))
+	}
+	if got := *client.calls[0].MaxTokens; got != answerTokens {
+		t.Fatalf("first ceiling = %d, want %d", got, answerTokens)
+	}
+	if got := *client.calls[1].MaxTokens; got != thinkingAnswerTokens {
+		t.Fatalf("retry ceiling = %d, want %d", got, thinkingAnswerTokens)
+	}
+	if !provider.ReasoningDisableIgnored(model) {
+		t.Fatal("the answer at the larger ceiling did not teach the model quirk")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		raw, readErr := os.ReadFile(filepath.Join(quirksAt, "model-quirks.json"))
+		if readErr == nil && strings.Contains(string(raw), model) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the learned quirk was not persisted: %v, %s", readErr, raw)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if _, err := Route(context.Background(), bound, "what else did we decide?", index); err != nil {
+		t.Fatalf("later Route: %v", err)
+	}
+	if got := *client.calls[2].MaxTokens; got != thinkingAnswerTokens {
+		t.Fatalf("later ceiling = %d, want the learned %d", got, thinkingAnswerTokens)
+	}
+}
+
+func TestTwoEmptyLengthCappedAnswersFallBackOnceAndSaySoOnce(t *testing.T) {
+	const primary = "test-vendor/never-answers"
+	const low = "test-vendor/low"
+	client := &fake{responses: []*ai.Response{
+		cappedEmpty(answerTokens),
+		cappedEmpty(thinkingAnswerTokens),
+		reply(`{"inject":["m7"],"cmd":null}`),
+		reply(`{"inject":[],"cmd":null}`),
+	}}
+	var notices []string
+	session := &Session{}
+	bound := session.Bind(client, primary, low, func(text string) {
+		notices = append(notices, text)
+	})
+
+	result, err := Route(context.Background(), bound, "what themes do I like?", index)
+	if err != nil {
+		t.Fatalf("Route after fallback: %v", err)
+	}
+	if len(result.Inject) != 1 || result.Inject[0] != "m7" {
+		t.Fatalf("Route returned %+v, want the low tier's answer", result)
+	}
+	if len(client.calls) != 3 {
+		t.Fatalf("fallback used %d calls, want small, larger, then low", len(client.calls))
+	}
+	for call, want := range []string{primary, primary, low} {
+		if got := client.calls[call].Model; got != want {
+			t.Fatalf("call %d model = %q, want %q", call+1, got, want)
+		}
+	}
+	if len(notices) != 1 || notices[0] !=
+		"the reflex model answers nothing at its budget; using "+low+" for this session" {
+		t.Fatalf("notices = %q, want the one fallback line", notices)
+	}
+
+	if _, err := Route(context.Background(), bound, "what themes should I use?", index); err != nil {
+		t.Fatalf("later Route on fallback: %v", err)
+	}
+	if len(client.calls) != 4 || client.calls[3].Model != low {
+		t.Fatalf("later calls = %+v, want the low tier directly", client.calls)
+	}
+	if len(notices) != 1 {
+		t.Fatalf("fallback was announced %d times, want once", len(notices))
+	}
+}
+
+func TestANormalAnswerDoesNotBuyTheThinkingRetry(t *testing.T) {
+	client := &fake{responses: []*ai.Response{reply(`{"inject":[],"cmd":null}`)}}
+	if _, err := Route(context.Background(), client, "what did we decide?", index); err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("a normal answer cost %d calls, want one", len(client.calls))
 	}
 }

@@ -138,7 +138,7 @@ func TestTheTimelineRefusesWhereTheInlineModeDoes(t *testing.T) {
 		hold func(*app)
 	}{
 		{"copy mode", func(a *app) { a.copy.on = true }},
-		{"the settings panel", func(a *app) { a.sheet.open = true }},
+		{"the settings panel", func(a *app) { a.raisePlace(pageSettings) }},
 		{"the inline rewind", func(a *app) { runCmd(a.enterRewind()) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

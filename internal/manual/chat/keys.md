@@ -7,8 +7,13 @@
 `alt+enter` opens a new line inside the message without sending. `ctrl+j` does the
 same thing — it is a second spelling for terminals that swallow `alt+enter`.
 
-`shift+enter` is **not bound** anywhere in the v3 chat. If you press it, nothing
-happens. Use `alt+enter` or `ctrl+j`.
+`shift+enter` does **not** open a line. While a turn is running it **stops the answer
+and sends what you have typed** — see "Interrupt and say something new in one key"
+below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
+
+`cmd+enter` while a turn is running **holds** what you have typed for the answer
+after this one. It is the secondary choice for when you do not want to change the
+work already under way. At rest it does nothing at all.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -22,36 +27,45 @@ What `enter` does depends on what is in the box:
   sent.
 - An empty box with nothing selected: nothing happens.
 
-While a turn is running, plain `enter` **holds** the message instead of sending it —
-see "Typing while an answer is still coming" below. `ctrl+q` instead hands the message
-to the session there and then, to run *after* the current turn; an empty box does
-nothing. Until its turn starts, a dim row above the box reads `  after yield · N`. If
-the queueing fails, aforge notes `follow-up failed: <error>`.
+While a turn is running, plain `enter` **steers**: it stops the model's current
+reply where it is, keeps what has arrived, and sends your words into the same turn.
+See "Typing while an answer is still coming" below. `ctrl+q` instead queues a fresh
+turn to run after the current one; an empty box does nothing. Until its turn starts,
+a dim row above the box reads `  after yield · N`. If queueing fails, aforge notes
+`follow-up failed: <error>`.
 
 ## Typing while an answer is still coming — interrupting and steering
 
 Typing is never blocked. The box works normally while an answer streams.
 
-`enter` while a turn is running does **not** send. The message is held on the surface
-and drawn in its own block directly above the box, in your own hue, with a dim line
-under it:
+`enter` while a turn is running steers. Your words appear at once as a line of your
+own in the transcript. A short dim clause beneath says where they landed, such as
+`stopped the reply here`, `kept running as job 3`, or `waiting for the running step`.
 
-```
-› do much more of a deep research please
-  waits for this answer · esc stops and sends · ↑ or click to edit
-```
+If text or reasoning is streaming, aforge cancels that one model request, keeps the
+partial answer it actually received, and continues the **same turn** with your words
+as the next user message. An incomplete tool call is dropped because a provider
+cannot accept a tool call with no result.
 
-It is not written into the conversation and it is never drawn inside the streaming
-reply. The box is cleared, so you can keep typing.
+If a short tool is running, aforge lets it finish and lands your words at that
+boundary. If a bash command has already been running for 3 seconds, aforge keeps it
+alive as a job and lands your steer immediately. The clause names the job and
+`jobs output N` shows its output. The exact words `stop`, `kill it`, `cancel`,
+`abort`, `ctrl-c` and their tiny variants stop that long command instead.
+
+## Enter, cmd+enter, shift+enter, and the waiting-message keys
 
 | What you do | What happens |
 |---|---|
-| the answer finishes | the waiting message sends itself as an ordinary new turn |
-| several are waiting | one per finished turn, oldest first, in the order you typed them |
+| `enter` | stops the current generation and sends the words into this turn |
+| `cmd+enter` | holds the message for an ordinary turn after this answer |
 | `esc` | stops the answer and sends the waiting message immediately |
+| `→` over an empty box | steers the oldest waiting words into the running answer |
+| click `→ steers it in` | the same, with the pointer |
+| `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
-| `enter` again | holds the edited sentence again |
+| `cmd+enter` again | holds the edited sentence again |
 
 Attachments in the tray go with the held message, and come back on the tray if you take
 it back. `/`-commands are **not** held: a slash command is something you said to this
@@ -63,27 +77,166 @@ messages dropped` — if the conversation is replaced under it by `/new` or by o
 session from the welcome box. Inside a **task room** `enter` steers the node instead
 and nothing is held; that is the room's own key (see the room section below).
 
-**Why it waits rather than going straight in.** The session can take a message into a
-running turn, but only at a *step boundary* — before the next model request. A turn
-whose last request has already gone out has no boundary left, so a message pushed into
-it would land in the transcript with nothing coming to answer it. Waiting for the turn
-to end means the message always gets a reply, and it is what makes the message editable
-until it goes.
+**Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
+The current generation is itself made into a legal boundary: aforge keeps its partial
+assistant message without incomplete tool calls, writes your user message after it,
+and asks the model again. A steer that races with a turn already sealing still lifts
+to the follow-up queue, so the words are never dropped.
+
+## Correct it without stopping the turn — `enter` stops only the current reply and steers
+
+`enter` while a turn is running sends what you have typed **into that turn**. The
+current provider request is stopped, what it already streamed remains in the
+transcript, and no second turn starts.
+
+**It is the same question, not a new one.** Your sentence is added to the transcript of
+the turn that is running, as your own words, and the model reads it at its next step —
+after everything it has already done about your original question. That is what makes
+it a correction rather than a restart: "no, the *other* file" arrives while the work
+is still going, and the work carries on from there.
+
+The correction appears on the page where you sent it, between the work already shown and
+the next tool row. It is flush left in your own column, with a dim `└` marking that it
+continues the same question. It stays in that position after the turn finishes and when
+the conversation is reopened from disk.
+
+**While it waits, the row says where it landed.** Next to your words, in dim, one of:
+`stopped the reply here` when the reply in flight was cut for it, `stopped the running
+command` when your words plainly told a long command to stop, `kept bash running as job 3`
+(or `…as jobs 3, 4`) when a long command was moved to the background so your correction
+could land, and `waiting for the running step` when a short tool is being allowed to
+finish first. The clause goes when the model is actually given the words; the position of
+the line is what says where they went from then on.
+
+This is the key for the moment you are watching an answer go the wrong way and you do not
+want to pay for stopping it. The three keys, side by side:
+
+| Key | What happens to the answer | What happens to your sentence |
+|---|---|---|
+| `enter` | current generation stops; partial kept | goes into the same turn now |
+| `cmd+enter` | keeps going | waits above the box until the answer finishes |
+| `shift+enter` | stopped, and what it said is kept | opens the next turn |
+
+**Over an empty box `enter` does nothing**, unless a waiting message offers the `→`
+shortcut. At rest, `enter` sends an ordinary new turn.
+
+**The `→` shortcut for a message that is already waiting.** If you pressed `cmd+enter` and
+your message is sitting above the box, `→` over an **empty** box sends that message in
+instead of leaving it to wait. It is the front of the queue that goes, and the dim line
+under the block says so: `→ steers it in`. You can click those words instead. With
+anything typed in the box, `→` is the caret key it always is — the shortcut only exists
+where `→` had nothing else to mean.
+
+**A message with pictures, or one marked with `ctrl+enter`, is left waiting.** Only
+words steer; pictures take their own durable attachment path, and a marked sentence
+is bound for the standing-order door. When either is at the front of the queue, the
+line does not offer `→ steers it in`.
+
+**The line that teaches it.** While a turn is running and you have typed something, the
+right end of the row under the message box reads exactly:
+
+```
+enter steers it in · cmd+enter waits · shift+enter stops and sends
+```
+
+## My message went in too late — the answer finished first, so it became the next message
+
+A sentence sent into a running turn is accepted only while the turn can still make a
+boundary. A steer normally creates that boundary by stopping the current generation.
+If the turn was already sealing, there is no request left to stop.
+
+**Nothing is dropped and nothing pretends.** When that happens your sentence is lifted
+out and simply becomes the next message: an ordinary one, waiting for a turn of its own.
+The screen says that is what happened, and the reply arrives in the turn that follows.
+You do not have to type it again, and you do not have to check.
+
+The fall-through message becomes an ordinary next turn. The surface removes its
+temporary steer clause and draws the normal user line when that next turn begins.
+
+## Why cmd+enter does nothing — the secondary wait key needs terminal support
+
+`cmd+enter` reaches a program only where your terminal can tell it apart from a plain
+`enter` — the kitty keyboard protocol, xterm's modifyOtherKeys, or win32-input. Ghostty,
+kitty, WezTerm and recent iTerm2 profiles all do; a plain Terminal.app does not.
+
+Where it cannot be spelled, the key arrives as ordinary `enter` and therefore
+**steers**. Use `ctrl+q` if you need a guaranteed fresh turn on such a terminal.
+
+On those terminals aforge never advertises the chord. The line under the box still
+reads `enter steers it in`, because plain enter works everywhere.
+
+**What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
+
+## Interrupt and say something new in one key — barge in, stop it and tell it something else
+
+`shift+enter` while a turn is running **stops the answer and sends what is in the box**,
+as one gesture. Unlike a steer, it ends the whole turn and starts your sentence as a
+new one after the stop finishes.
+
+What happens, in order:
+
+1. Your sentence goes onto the waiting queue exactly as `cmd+enter` would put it there.
+2. The turn is interrupted: everything it already said is **kept**, and the note
+   `interrupted` is added, exactly as `esc` does it.
+3. When that turn has actually finished stopping, your message opens the **next** turn.
+
+Nothing is sent into the turn you stopped. The transcript reads in the order it
+happened: the partial answer, the `interrupted` note, then your message.
+
+**The box is cleared** the moment you press it, and the draft file it came from is done
+with — from your side you have said the thing. Attachments in the tray go with it.
+
+**What it does not do.** A `/`-command is run at once and the turn is **left running** —
+a slash command is something you said to aforge rather than to the model, so there is
+nothing to interrupt for. The same is true of a live `/task` or `/stand` tag, of a picked
+harness, and of a refusal. The rule is simple: the turn is stopped only if the key
+actually queued a message.
+
+**With an empty box it does nothing at all** — not even a plain interrupt. Use `esc` for
+that. With nothing running it also does nothing: `enter` already sends.
+
+**It marks nothing.** `ctrl+enter` is the chord that means "keep this true"; this one
+means "instead of that". One key does not do both.
+
+**Where it does not exist.** Inside a **task room** there is nothing for it to mean —
+`enter` in a room steers the node there and then, with no queue to jump, and a room's way
+of ending work is `x` and a card that asks first. The chord is ignored there.
+
+**Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
+can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
+modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
+and your message **steers** instead. On those terminals aforge never advertises the
+chord. Use `esc` to stop the whole turn, then send the next message normally.
+
+**The line that teaches it.** While a turn is running and you have typed something, the
+right end of the row under the message box reads exactly:
+
+```
+enter steers it in
+```
+
+On a terminal that can spell the secondary chords, the line reads
+`enter steers it in · cmd+enter waits · shift+enter stops and sends`.
+
+It is shown only in that state — a turn running, something in the box, and a terminal that
+can deliver the chord. Over an empty box it goes back to `esc interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
-No. There are two moments, and both end in an answer.
+No. Every road ends in an answer.
 
-**Early in the turn**, your words land at the turn's next step boundary — between
-one tool batch and the next request — so the model reads them as part of the turn
-it is already in, and answers them there.
+**If you pressed `enter`**, aforge stops the current model request, keeps its partial
+reply, draws your words immediately, and continues the same turn from them.
 
-**In the last seconds of a turn** — while the final reply is streaming, or while
-aforge is naming the session and doing its tail work — there is no step boundary
-left, because the turn's last request has already gone out. Your message still
-lands in the conversation, in your own words, and aforge then starts one more turn
-by itself to answer it. You see your line, a pause, and then a reply. You do not
-have to type it again.
+**If you pressed `cmd+enter`**, the message is held above the box for the next turn.
+It is still yours: edit it with `↑`, click it, or let it go when the answer finishes.
+Pressing `→` over that waiting message steers it in instead.
+
+**If there was no step left** — the turn's last request had already gone out, or it
+finished a moment later — your words are not dropped and not pretended about. They become
+an ordinary message waiting for a turn of its own, the screen says so, and aforge answers
+them in the next turn. You see your line, a pause, and then a reply. You do not have to
+type it again.
 
 The same is true of a task or a background job that finishes in that window: its
 note lands and aforge speaks about it rather than leaving it sitting there.
@@ -92,26 +245,41 @@ The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
-## Interrupting a running turn — how to stop it
+## Interrupting a running turn — how do I stop it mid answer
 
 Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
 is stopped and everything it already said is kept.
 
 What happens:
 
-1. The session is told to stop, the state becomes `interrupted`, and a note
-   `interrupted` is added to the conversation.
-2. Any queued follow-ups are dropped, and aforge says so — `1 queued message
+1. The session is told to stop, and a note `stopped` is added to the conversation.
+2. The screen stops on the key: every spinner goes, and every call that was running keeps
+   the time it ran until you stopped it.
+3. Any queued follow-ups are dropped, and aforge says so — `1 queued message
    dropped`, or `N queued messages dropped`.
-3. `interrupted` stays as the status word until the next turn starts.
-4. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
+4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
+   status word until the next turn starts.
+5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
+**The words aforge uses for one stop.** They are four slots and one key press, so they
+are worth reading together: `stopping` is the status word while the turn is being let go,
+`interrupted` is the status word once it is over, `· stopped` is the note left in the
+conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. If
+you are looking for the word *interrupted* anywhere else on the screen, that is where it
+is — the status line, and only after the turn has truly ended.
+
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
-yours is waiting for the answer to finish. On the very first frame of a session the
-conversation carries the note `esc interrupts · ctrl+c twice quits`.
+message box reads exactly `esc interrupt` — or `enter steers it in · cmd+enter waits ·
+shift+enter stops and sends` while you have typed something and this terminal can
+deliver the secondary chords, or `esc stops and sends` while a message of yours is
+already waiting for the answer to finish. On the very first frame of a session the conversation carries the note
+`esc interrupts · ctrl+c twice quits`.
+
+**Stopping it and saying something new at once.** `shift+enter` does both in one key —
+see "Interrupt and say something new in one key" above. `esc` on its own stops without
+sending anything you have not already committed with `enter`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
 the interrupt last: a history recall is cancelled first, rewind is armed on the way
@@ -123,6 +291,30 @@ past, and any open list or overlay takes the key before the message box sees it.
 time straight away does not quit either: the press that stopped the turn does not
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Why is the turn still finishing after esc — the stopping window
+
+`esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
+`bash` call whose command left something holding its output waits up to three seconds
+before the pipes are forced shut, and a `jobs` kill spends two seconds on a polite signal
+and two more on the one that is not polite. For those seconds the status line reads
+`stopping` rather than `interrupted`, and that is the honest word: the work is being let
+go rather than gone.
+
+**Nothing moves in that window and nothing new is drawn.** The spinners are already gone
+from the status line and from every tool row. Any consent question, account offer or
+harness offer that was open is taken down on the key, because each was about work that is
+now over. Whatever the model says while the turn winds down is not shown — a sentence it
+was still speaking stops where it was, and a call it was half-way through asking for never
+becomes a row. Two things do still land, because neither can draw anything new: a call
+that was **already** on screen reports its own result if it returns in that moment, and
+what the turn spent is still counted.
+
+**No key makes it stop harder, and there is no second stage.** A second `esc` inside half
+a second is the rewind's door and `ctrl+c` is the quit arm, so neither is free — and there
+would be nothing behind a third key: the waits that make this window long are inside a
+tool that has already been cancelled. If something genuinely will not let go, `ctrl+c`
+twice quits and takes it with it.
 
 ## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
@@ -190,6 +382,19 @@ disk when you switched away from them.
 - Closing the terminal window is not a quit aforge sees; the draft written 300ms after
   you stopped typing is what survives that.
 
+## Keys — the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
+
+This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
+listens for is on this page, in the tables below.
+
+If you came here looking for a different kind of key, it is somewhere else:
+
+- an **API key** for a model — see *Models and cost* and *Connected accounts*
+- a **device key** or a **pairing code** for reaching another machine — see
+  *Reaching a machine with a pairing code*
+- an **ssh key** — that is your own ssh setup, and aforge runs your `ssh` unchanged; see
+  *Running on another machine*
+
 ## Keys in the message box: sending, stopping, and queueing
 
 These apply with no overlay up, no room open, and no mode on.
@@ -205,21 +410,31 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
-| `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
+| `cmd+enter` while a turn runs | Hold the message above the box until the answer finishes. Empty box: nothing. Nothing running: nothing |
+| `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
+| `→` over an empty box, a message waiting | Send that waiting message into the running answer. With text in the box it is the caret key |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
-`shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
+The enter family, shortest first: `enter` sends or steers, `cmd+enter` holds it for the
+next answer, `ctrl+enter` marks it as something to keep true, `shift+enter` stops the
+whole turn and sends, and `alt+enter` or `ctrl+j` opens a line.
+
+Neither `shift+enter` nor `cmd+enter` opens a line — use `alt+enter` or `ctrl+j` for that.
+Both need a terminal that can tell them apart from plain `enter`; where it cannot, the
+key arrives as ordinary `enter` and the message steers instead.
 
 ## Keys in the message box: opening things and moving the view
 
 | Chord | What it does |
 |---|---|
-| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Otherwise: fold or unfold this turn's tool cluster |
+| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: fold or unfold this turn's tool cluster |
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
-| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine. Does nothing when the box has words in it, or on a machine with nowhere else to go |
+| `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
+| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -236,6 +451,10 @@ These apply with no overlay up, no room open, and no mode on.
 | `left` | Empty box: step back a level — close the room, else clear the selection. Two `left` presses inside about 600ms go home to the live edge. Non-empty box: move the caret left |
 | `right` | Empty box: go into the next running task's room. Non-empty box: move the caret right |
 | `ctrl+f` | Move the caret right, always. Never navigation |
+| `alt+left` / `alt+b` / `ctrl+left` | Jump a word left. `option+←` arrives as one of the first two on a Mac. Does nothing over an empty box — the plain arrows keep their navigation meaning |
+| `alt+right` / `alt+f` / `ctrl+right` | Jump a word right, under the same three names |
+| `super+left` / `meta+left` / `ctrl+a` | Start of the line. `cmd+←` arrives as one of these on a Mac. Both `super` and `meta` are bound because a modified arrow and a modified letter arrive under different ones |
+| `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
@@ -244,6 +463,113 @@ These apply with no overlay up, no room open, and no mode on.
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
 not on the row your terminal wrapped it onto. `up` only reaches history when the
 caret is on the first logical line, and `down` only when it is on the last.
+
+A word jump crosses the same boundary the word kill deletes: spaces first, then
+the run of non-spaces, so `alt+left` then `ctrl+w` always deletes exactly the
+word it just crossed.
+
+## Click to move the cursor — clicking the message box places the caret
+
+A click anywhere on the message box puts the caret under the pointer: on the
+letter you aimed at, at the row's end when you click past the end of a line, and
+at the start of the text when you click on the prompt's side of it. It works on
+a wrapped, multi-line draft — the row you click is the row the caret lands on.
+
+It is the ordinary text-field gesture, and **the box on every place answers it
+too** — home, tasks, standing, memory, spend, search, settings. While a picker's
+filter box is standing in the box's place — the model picker, `/resume`,
+`/files`, the memory panel — or while the composer layer is up, a click does not
+move that box's caret; those are typed at and filtered, not edited by pointer.
+
+## Why option+left or cmd+left does nothing — word jump and line jump on a Mac
+
+**On a Mac, `option+←` / `option+→` are the word jumps and `cmd+←` / `cmd+→` are
+the line's ends, in every box aforge has.** They work in the message box, in
+home's box at the foot of the screen, in the errand pane, and in every filter and
+search box on every place and panel.
+
+They work because of what the terminal sends, and a Mac terminal sends them one
+of two ways — aforge answers both:
+
+- **iTerm2's Natural Text Editing key mappings** (the preset most people have)
+  send `esc b` for `option+←`, `esc f` for `option+→`, the byte `0x01` for
+  `cmd+←` and `0x05` for `cmd+→`. Those reach aforge as `alt+b`, `alt+f`,
+  `ctrl+a` and `ctrl+e`, and all four are bound. **This works with the option key
+  set to *Normal*** — the mappings do the work, so nothing has to be turned on.
+- **Terminals that keep option a modifier** — Ghostty, Kitty, WezTerm, and iTerm2
+  with **Settings → Profiles → Keys → Left Option Key** set to *Esc+* — send
+  `alt+left` / `alt+right` instead, and `meta+left` / `meta+right` for the `cmd`
+  arrows. Those are bound too.
+
+If `option+←` still does nothing, the profile has neither: set **Left Option
+Key** to *Esc+*, or load **Settings → Profiles → Keys → Presets → Natural Text
+Editing**. Either one is enough, and you only need one.
+
+**`ctrl+←` and `ctrl+→` are bound but will never arrive on a Mac.** macOS takes
+them for Mission Control's "Move left/right a space" before any terminal sees the
+keystroke. They are the Windows and Linux spelling of the word jump and they work
+there. On a Mac, to get them you would have to turn those two shortcuts off in
+**System Settings → Keyboard → Keyboard Shortcuts → Mission Control** — there is
+nothing aforge can do about it from inside.
+
+**`ctrl+a` and `ctrl+e` are the spellings that work on every terminal there is**,
+and they are the same two jumps. If you would rather not depend on any of the
+above, those are the keys.
+
+## Word jump and line jump work in every box, not only the message box
+
+The caret keys are one vocabulary and every box on the surface answers it: the
+message box, **home's box at the foot of the screen**, the errand pane on home,
+the settings filter and its value editor, the task page's filter, the rewind
+search, and every filterable overlay — the model picker, `/resume`, `/files`, the
+memory panel, the connect key box, the connections panel.
+
+| Chord | Everywhere |
+|---|---|
+| `alt+left` / `alt+b` / `ctrl+left` | A word back |
+| `alt+right` / `alt+f` / `ctrl+right` | A word forward |
+| `super+left` / `meta+left` / `ctrl+a` | Start of the line |
+| `super+right` / `meta+right` | End of the line |
+| `alt+backspace` / `ctrl+backspace` / `ctrl+w` | Delete the word behind the caret |
+| `ctrl+u` | Delete to the start of the line |
+
+This did not used to be true: until this wave the jumps were bound in the message
+box alone, so `option+←` moved a word in a conversation and did nothing at all in
+home's box — which is the first box most people type into. `home` and `end` are
+the exception and stay with the box that owns them: on the settings panel, the
+task page and the rewind sheet they move the **list**, not the caret.
+
+## cmd+right on home no longer puts a conversation away
+
+`ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
+archive, a standing item is paused, and the card's legend says `ctrl+e put away`.
+`cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
+to archive whatever the cursor was resting on.
+
+**It reads the caret now.** With the caret somewhere before the end of what you
+typed, `ctrl+e` moves it to the end of the line and leaves the row alone; from the
+end of the line — and over an empty box — it is the put-away key the legend names.
+So one press is never destructive, and the way back out of the archive still
+works: type the name of a row you put away, the list finds it, and `ctrl+e` from
+there brings it back.
+
+## Click the box to put the caret there — on home and on every place
+
+A click on the box puts the caret under the pointer: on the letter you aimed at,
+at the row's end when you click past the end of a line, and at the start of the
+text when you click on the prompt's side of it. It works on a wrapped, multi-line
+draft.
+
+It answers **on every place as well as in the conversation** — home, tasks,
+standing, memory, spend, search, settings. Until this wave only the conversation's
+message box answered it, so a click in home's box moved nothing.
+
+Two things it does not do. With **nothing typed** there is no caret to place, so
+the click falls through to the place underneath — the row is carrying a dim
+sentence rather than a draft. And while a picker's filter box is standing in the
+box's place — the model picker, `/resume`, `/files`, the memory panel — or while
+the composer layer is up, a click does not move that box's caret; those are typed
+at and filtered, not edited by pointer.
 
 ## Keys in the message box: deleting words and lines
 
@@ -275,7 +601,7 @@ combinations are sent to the program at all**, and several do not send them.
 | Ghostty | Yes |
 | Kitty | Yes |
 | WezTerm | Yes |
-| iTerm2 | Not by default. It has no default action for `cmd+delete` and does not forward it. You can make it work: **Settings → Profiles → Keys → Key Mappings**, add `⌘⌫`, action *Send Escape Sequence*, and give it `[127;9u` |
+| iTerm2 | Yes with the **Natural Text Editing** preset, which maps `⌘⌫` to the byte `0x15` — that reaches aforge as `ctrl+u`, the same deletion. Load it at **Settings → Profiles → Keys → Presets**. Without a mapping iTerm2 does not forward `cmd+delete` at all; you can also add one by hand at **Key Mappings**: `⌘⌫`, action *Send Escape Sequence*, `[127;9u` |
 | Terminal.app | No, and it cannot be made to. It does not speak the keyboard protocol that carries modifiers like `cmd` |
 | Anything over `ssh` or `tmux` | Only if the outer terminal is one of the first three, and tmux is passing the protocol through |
 
@@ -285,9 +611,10 @@ sitting, that is the key to use instead — nothing is missing and there is noth
 to turn on inside aforge.
 
 The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
-`ctrl+w` is *their* everywhere-spelling. aforge does not detect what your
-terminal sends and cannot tell you which of these it will deliver; the only test
-is pressing it.
+`ctrl+w` is *their* everywhere-spelling. On iTerm2's Natural Text Editing preset
+`⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
+aforge does not detect what your terminal sends and cannot tell you which of
+these it will deliver; the only test is pressing it.
 
 ## The message box itself
 
@@ -431,6 +758,12 @@ that has moved on. There is nothing to press; it is automatic.
   vanishing with the session.
 - It is cleared **only** when you send it, or queue it as a follow-up. `/new` does
   **not** clear it.
+- **A box holding only blank lines or spaces is not a draft**, and nothing is written
+  for it — the file is removed instead. Blank lines are what `ctrl+j` and `alt+enter`
+  leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
+  cannot send those chords, and nothing on the frame draws them. One kept on disk used
+  to be adopted by the next window in the directory, which then opened with a box that
+  looked empty, was not, and refused `space space` for home.
 - The file is keyed by the directory plus this process's id, and is written with mode
   0600.
 - At startup, if this window's own draft file is missing, aforge takes the newest
@@ -465,6 +798,55 @@ remembered as well.
 
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
+
+## The thinking chip above the message box — `ctrl+v`, and making this chat think harder
+
+The row above the message box carries a small chip naming how hard the model will think
+about your next turn:
+
+```
+                                                                      ⠿ high
+› what changed in the relay this week
+```
+
+The word is one of the five rungs of the effort ladder — `low`, `medium`, `high`,
+`xhigh`, `max` — and it is **what will actually happen**, not what somebody chose: it is
+the rung the next turn will ask for, whichever setting decided it. See *Making the model
+think harder, deeper, or less* on the "Models and cost" page for the whole ladder and for
+what each rung asks the provider for.
+
+**`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
+low → medium → high → xhigh → max → low. It works with a sentence half typed — it is a
+chord, it carries no text of its own, and it leaves your draft and your caret exactly
+where they were. Ordinary letters keep typing.
+
+**Clicking the chip opens the ladder**: five rows, cheapest first, with the rung you are
+on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes, and `ctrl+v` moves the cursor
+down a row while the list is up. While the list is up **every key belongs to it** — a
+plain letter does not type into the message box underneath. Clicking the chip a second
+time puts the list away, and a click on the chip never moves the caret in your draft.
+
+What it changes and what it does not:
+
+- It sets **this conversation's** rung. It is sticky — kept in this session's own
+  `meta.json` — so it is still there after you close aforge and come back.
+- The rung reaches the work this conversation hands out: task workers start at it too.
+- It does **not** change other conversations. The default for those is the **thinking**
+  row in `/settings`, which ships at `high`.
+- **`off` is not on the chip or in the list.** The five rungs are the ladder; turning
+  thinking off entirely is the `off` choice on the **thinking** settings row.
+- With thinking set to `off` and nothing else asking for any, there is **no chip at all** —
+  there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
+
+**When the chip will not move.** A thinking level dialled onto the model itself — the
+model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
+`ctrl+v` there and aforge says so in a note, naming the model and pointing at `ctrl+t`:
+*thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
+/model changes it*. Clear that level and the chip moves again.
+
+The chip is dim, like the rest of that row. It brightens for about two seconds after it
+changes, so you can see the new word without looking away from what you are typing, and
+then it goes quiet again.
 
 ## Attaching a picture
 
@@ -627,9 +1009,10 @@ snapshot already in memory and never touches the disk, so a slug pasted whole an
 sent in the same beat resolves to nothing and stays plain text. The entry remembered
 for `↑` is the sentence as you typed it, before expansion.
 
-**The honest limit: only `/image ` and `/export ` get path completion.** That is the
-whole list. Any other command that takes a path gets no completion at all, and says
-nothing about it.
+**The honest limit: `/image `, `/attach ` (and its `/upload ` alias), and `/export `
+get path completion.** That is the whole list. Any other command that takes a path gets
+no completion at all, and says nothing about it. Over `--host`, completion still walks
+the machine you are sitting at: `/attach` and `/image` send those local bytes across.
 
 ## Keys in the command list and the `@` list
 
@@ -661,9 +1044,10 @@ cancel`.
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
 
-**Welcome box:** it takes only two keys, and only over an empty message box —
-`up`/`down` walk the recent sessions and `enter` opens the selected one. Every other
-key dismisses the box and then does whatever it normally does.
+**The empty screen's greeting:** it takes only two keys, and only over an empty message
+box — `up`/`down` walk the recent sessions listed under it and `enter` opens the selected
+one. Every other key dismisses the greeting and then does whatever it normally does; the
+first letter you type lands in the box, which is drawn inside the greeting until then.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
@@ -710,13 +1094,15 @@ and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, steppi
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **every other printable key, the space included, types into the filter**, which narrows
-both sections at once and is shown at the foot as `filter · port`. Its foot reads
-`esc close · ↑↓ move · enter opens its room`, or
-`esc close · ↑↓ move · enter goes inside it` on a task another conversation ran, which has
-no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
-at all — which is a page holding only work running in other aforge windows — or
-`esc clears the filter · ↑↓ move · enter opens the row` while you are typing one. Clicking a row acts on the first press; the wheel walks the
-cursor. The tasks pages describe what is on it.
+every section at once and is shown at the foot as `filter · port`. `→` opens the row's
+verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
+still queued or running. Its foot is assembled from what is true of the row under the
+cursor — `enter open its room · → verbs: stop it · type to filter` over a task this window is
+running, `enter go inside it` on a task another conversation ran, which has no room to open,
+no `enter` clause at all where the row under the cursor has no door — which is a page
+holding only work running in other aforge windows — and `esc clear the filter` in place of
+`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
@@ -749,6 +1135,12 @@ chosen · `esc` leaves with nothing changed.
 **Harness panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`.
 
+**Thinking ladder** (click the `⠿ high` chip above the message box): `esc` closes ·
+`up`/`ctrl+p`, `down`/`ctrl+n` walk the five rungs · `ctrl+v` moves down one · `enter`
+applies the rung under the cursor. Clicking a rung applies it; clicking either of the
+two sentences around the rungs does nothing. Its foot reads
+`↑↓ · enter apply · esc · ctrl+v next rung`.
+
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
 `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` · `enter` **or `d`** to drop the
 line under the cursor. Press it twice; the first press arms it.
@@ -767,8 +1159,8 @@ seconds quits aforge.
 
 ## Go back to the last conversation — tab
 
-**`tab`, pressed with an empty message box, goes to the conversation you were in before
-this one.** Press it again and you are back. It is `cd -`.
+**`tab`, pressed in a conversation with an empty message box, goes to the conversation you
+were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
 terminal has been in before. A key that cannot act says so by not being advertised — and
@@ -778,83 +1170,164 @@ It works while a turn is running in either conversation. Nothing is interrupted:
 you leave keeps streaming into its own transcript, and it is redrawn from its first token
 when you come back.
 
+**On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
+search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+the same key doing the same kind of thing — going to the next thing of the kind you are
+looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
+
 **Everything else that wants `tab` gets it first**, and that is the whole rule rather than a
 claim that `tab` is free. In order: a paste bracket makes it a literal tab; the task roster
-eats it while it holds the keyboard (`esc` gives the keyboard back first); the settings
-panel changes page with it; the memory panel changes scope; the rewind timeline and the
-inline rewind lift with it; and path completion takes it over `/image ` or `/export `. Only
-when none of those is claiming it, and the box is empty, is it the way back.
+eats it while it holds the keyboard (`esc` gives the keyboard back first); a box that has
+taken the whole keyboard on a place keeps it — the errand pane on home, the value being
+edited in settings; the rewind timeline and the inline rewind lift with it; and path
+completion takes it over `/image ` or `/export `. Then, on a place, it is the next place.
+Only in a conversation, with none of those claiming it and the box empty, is it the way back.
+
+Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
+points the way they go: **the settings panel** changed its own section with `tab`, and now
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and now uses `alt+s`.
 
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
+
+## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
+
+On macOS every `alt+` below is drawn `⌥` — `alt+enter` is `⌥enter`, `alt+w` is `⌥w`, `alt+o`
+is `⌥o`. Same key, same chord, the spelling the keycap uses.
+
+`alt+enter` with something typed into the composer on any place opens the **composer
+layer**: the page behind dims, the box stays where it is, and the three facts a task needs
+appear under it. The places page has the layer in full; these are its keys.
+
+| Key | What it does |
+| --- | --- |
+| `alt+enter` | first press opens the layer; second press sends the task off |
+| `alt+w` | move the task to the next project aforge knows, and round again |
+| `alt+o` | open the model list for the **execution** slot — what the work runs on |
+| a digit, or `.` | type the spend cap; the figure changes as you type |
+| `backspace` | take one character off the cap |
+| `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
+| `esc` | back to the place you were on, sentence still in the box |
+
+`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
+neither can move a view while you are aiming at a destination, and pressing them with no
+layer up does nothing at all.
+
+While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
+letters do not reach the composer — what you typed is already written and is on the screen
+above you. Inside the model list `alt+o` opens, the keys are the model picker's own — type
+to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 ## Keys on home, and is there a shortcut for it
 
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
-taken, `ctrl+.` is the task page (`/history`), and the chords that were left — the `alt+`
-letters — arrive in some terminals and do nothing at all in others. `esc` was not available either: on an idle conversation it
+**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of seven places, and
+every one of them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold
+`alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
+keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
+`alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
+rather than on `ctrl`.
+
+**`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
+and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
+the first spelling and never will be — but a terminal running the kitty keyboard protocol
+sends exactly the keys that scheme cannot spell, and it tells aforge it does. Where that
+report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
+live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
+WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
+way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
+jumping" on the screen page.
+
+**The numbers work from a conversation as well as from a place.** They are the one class of
+place key that does: `tab` belongs to the composer's path completion while you are typing,
+and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
+is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
+number opens its room whatever is in it: a place with nothing of its own to draw spends the
+frame saying what it is for, and none of the seven is ever a key that does nothing.
+
+There is no `ctrl+<letter>` chord for home: every one this surface could use is already
+taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
+takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
-**The first space types itself.** The second one, finding a box holding exactly one space,
-takes both away and opens home — so a leading space you actually wanted is never eaten
-(space then `x` leaves ` x`). It does nothing when the box has words in it, nothing on a
-machine with nowhere else to go, and it is not a paste: text pasted with two leading spaces
-is two spaces.
+**The first space types itself.** The second one, finding a box that still shows nothing
+with that space behind the cursor, takes the whole draft away and opens home — so a leading
+space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
+the box has words in it, and it is not a paste: text pasted with two leading spaces is two
+spaces. A machine with one conversation, or none, opens an empty home; so does a session
+over `--host`, where what opens is the **far machine's** home.
+
+**A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
+`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
+draw nothing on the frame — and the gesture reads the box the same way the frame does, so
+two spaces open home and the blank lines go with the draft. The rule in one sentence:
+wherever the foot advertises `space space home`, two spaces open it.
 
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
-When the box is empty and there is somewhere to go, the legend line above the box says so:
+When the box is empty, the legend line above the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
 you type.
 
+**The door does not ask what the machine holds.** It is open on a machine with only this
+conversation and on one with none, from the first minute, and starting a second
+conversation with `/new` changes nothing about it. It used to be shut until the launch
+found somewhere else to go, and that rule is gone (the home page, *space space does
+nothing*).
+
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
-`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
-home opens with the cursor on **no row**, and **the first `down` lands at the top of the
-projects list** on a frame 110 columns or wider — the middle column, always, whatever the
-zones beside it hold; on a narrower frame, where the zones are strips over the list, it
-walks into `needs you` instead · `pgup`/`pgdown` jump four · `enter` acts on the row under
-the cursor · **`tab` moves to the
-next zone** on a frame 110 columns or wider, where home draws three columns — `needs you`,
-`moving`, the list, then round again, and from rest it enters `needs you`; the foot names
-it `tab next zone` · `backspace`,
+`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the headings and the section
+line · home opens with the cursor on **the conversation this window is holding**, and `↑`
+off the top of the list walks up onto **the tab bar**, from where the first `down` lands
+back on the row you left (*The tab bar is a row the cursor can stand on*) ·
+`pgup`/`pgdown` jump a screenful · `enter`
+acts on the row under the cursor · **`tab` is the next place** — home is one column now and
+there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
+**`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
+as aforge is running and neither written to disk · `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
 — home's own page has the table) · **anything else you type goes into the box**, which
 searches the whole machine and offers to start a new conversation at the same time.
 
-`→` and `←` are the fold's, the way they are in the task column: on a project's
-`…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
-`←` on a conversation inside an opened project folds that project too. On a conversation
-or watch row with the box empty, `→` opens **every folded band on the card** you are
-looking at and `←` folds them all back — one layer at a time, so `←` folds the card's
-bands before it folds anything on the list. **On the three-column frame (110 columns and
-up) the same arrows also cross the columns**: `→` off a row in `needs you` or `moving`
-crosses into the list and `←` off a conversation in the list crosses back, each landing
-on the same conversation when the far column holds it. While something is typed the two
-arrows move the caret in the box instead.
+**`→` opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
+of the list down by its own height, and while that strip is drawn its letters are the verbs
+and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
+`o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
+with no verbs the arrows are the fold's, the way they are in the task column: on home's one
+fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+folds them back, and on a card `→` opens every folded band while `←` folds them again.
+While something is typed the two arrows move the caret in the box instead.
 
-**A letter always types. Every letter, always** — there is no row, cursor, hover or pick
-that turns one into a shortcut, so "make me a site" comes out whole wherever the cursor
-is resting. The card's actions ride chords, which can never begin a word: **`ctrl+e` puts
-the conversation away into the archive** — the folded `archive · N put away` line at the
-very foot — and `ctrl+e` on a row inside the open archive brings it back (the archive
-page section has the whole shape). **`ctrl+t`** starts a new conversation in that row's
+**A letter always types**, unless the verb strip that names it is on screen — that visible
+strip is the one state where a printable key is a verb, and it is why it has to be drawn.
+Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
+actions otherwise ride chords, which can never begin a word: **`ctrl+e` puts the
+conversation away** — it leaves the list, and typing its name is how you find it again, with
+`ctrl+e` on the found row bringing it back. **`ctrl+t`** starts a new conversation in that row's
 project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
 folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
-**`ctrl+e` pauses** it and **`ctrl+x` stops it for good**. Each chord acts on the card you are looking at — the row
+**`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
+item thinks** one rung. **With the cursor on no row at all** — one `↑` up off the top row,
+where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
+instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
 under your pointer when there is one, the cursor's row otherwise — and the card's own
-dim legend names exactly the keys that work. The one printable exception is the digits
-on a waiting row's answer chips, which are drawn on the row itself.
+dim legend names the verbs, and the strip names the letters. The other printable exception
+is the digits on a waiting row's answer chips, which are drawn on the line above the box.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
-a click on a `…13 more` line toggles it in one press.
+a click on a `…13 more` line toggles it in one press. The wheel walks the list three rows a
+turn, and the **tab bar above the list is a control** — clicking a place's word goes there,
+and clicking a gap between two words does nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
@@ -863,15 +1336,22 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The top line carries `esc close` on the right. The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open`, and the line under it
-changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
-`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
-row, and `enter or → show them · esc close` on a folded project.
+The box row reads `› say what you want done`, with the scope chip — `here ~/aforge-v2` —
+against its right edge. The line under it is the foot, and **at rest it is exactly**
+`type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
+and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
+naming it, and `alt+.` draws the whole map when you want it.
+
+On any other row the foot says what THAT row's keys do and gains the two that are true
+everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
+on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
+on the fold, and
+`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+on the action row.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in, with the preview card beside it. **While anything is typed the list is a
-drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
+this window is in; a card stands beside it only at 160 columns and wider. **While anything
+is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
 `ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,
@@ -892,15 +1372,58 @@ Home is modal like the panels above: while it is up, every chord except `ctrl+c`
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
 seconds quits aforge.
 
+## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
+
+**On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
+the row of seven words under the top line. The word you are standing in wears the cursor's
+band there instead of its usual mark, and five keys mean something on that row:
+
+| Chord | What it does while the cursor is on the bar |
+| --- | --- |
+| `←` / `→` | walk one word along, wrapping round from either end. **Nothing opens** |
+| `enter` | go into the place under the cursor |
+| `↓` | the same — go into the place under the cursor |
+| `esc` | back into the page, on the row you walked up from. It does **not** close the place |
+| `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
+
+Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
+next and previous place, `alt+1` … `alt+7` jump, `alt+.` draws the map, and **any printable
+key goes into the composer** — taking the cursor back down into the page with it, because
+somebody who has started typing has stopped looking at the bar.
+
+**`←` and `→` are not the row's keys up here.** On a row they open that row's verb strip
+and its folds; the bar is not a row of any page's list, so both arrows are the walk along
+the words and nothing else.
+
+**The first `↓` back off the bar lands where you left.** `↑` onto the bar does not move the
+page's own cursor, so walking up and straight back down costs nothing.
+
+**And it works only where a bar is drawn.** Home on a phone-shaped frame and a task's record
+card draw something else in those cells, so `↑` there is the walk it has always been — no
+key does anything that is not on the screen.
+
+The **places** page has the same thing with the pointer's half beside it: *How do I move
+between the tabs with the arrow keys*.
+
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
-back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
-that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
+back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
+`w` widens the column and narrows it again. Its hint reads exactly
+`↑↓ move · →← tree · enter open · w wide · esc`. On a row whose work is still running or
+still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
+moves that task's thinking rung; a finished row does not offer it, because a finished
+task's rung is a fact about what happened.
+
+**`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
+and close the family. On a row whose **work has finished** they open and close that row's
+own detail line — the merge word and price, a job's log path — which a finished row keeps
+folded so that the column's height goes to work that is still moving. `→` on anything else
+does nothing.
 
 **The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
-project's record. Old tasks from earlier sessions are on the task page, reached from the
+project's record. Old tasks from earlier sessions are on the tasks place, reached from the
 column's own `ctrl+. earlier` line, from `ctrl+.` or from `/history`; `enter` on an
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
@@ -913,8 +1436,8 @@ standing orders page, and typing `/task ` is exactly what pressing `+ /task` put
 box. **No new key is added to the column by either of them.**
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
-cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
-move · enter opens its room`, and the strip that opens it is one full-width door
+cards a tap opens, its foot is a `‹ back` bar in place of the key legend
+`enter open its room · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
@@ -933,7 +1456,10 @@ The key falls through and does nothing only when there is no roster on the frame
 close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
 `ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
-empty column is still a column to close.
+empty column is still a column to close. On the untouched empty screen there is no
+column yet; there `ctrl+g` is a first keystroke like any other — the greeting goes and
+the key then closes the column it would just have raised, so a second press brings it
+back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
@@ -1031,6 +1557,12 @@ Once answered the four go away and one dim line takes their place saying what yo
 The same four are clickable on the card. See the tasks page for what each answer does to
 the work.
 
+**Inside the task's room the same four keys need no selection.** The room is the task, so
+`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+at the foot of the page where `task finished — esc to return` would otherwise be, and the
+hint slot reads `a accept · l look again · n not right` while the question stands. The room
+and the card are one question: answer in either and both show the receipt.
+
 ## The mouse: what you can click
 
 aforge owns the pointer by default, using all-motion tracking so hover works.
@@ -1050,7 +1582,9 @@ Only the left button acts. A press is resolved in this order:
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
-4. An attachment chip — removes it.
+4. The row above the message box: an **attachment chip** or a picked harness's chip
+   removes it, and the **thinking chip** at the right end of that row opens the five-rung
+   ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
    the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
@@ -1116,11 +1650,17 @@ under the pointer".
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
 routed to copy mode, then the settings panel, then the task page, then home, then the
 rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
-roster, then an open room, and otherwise the conversation.
+roster, then **the task column** when the pointer is over it, then an open room, and
+otherwise the conversation.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
 window follows the cursor.
+
+**The task column on the right scrolls under the pointer** and leaves the conversation
+beside it where it is. It moves the column's own window — running work stays pinned at the
+top, and the `tasks` label with it — unless the column is holding the keyboard (`ctrl+t`),
+in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
 up drops out of it.
@@ -1165,6 +1705,13 @@ did. (Under the hood the body's click now fires on release, the way every button
 every GUI does, which is what lets a drag never trigger the thing it started on — a
 sweep that begins on a thinking block does not collapse it.)
 
+**A click is allowed to wobble.** A hand is not a vice, so a press that drifts up to
+**two columns sideways or one row up or down** before you let go is still a click, and
+it lands on the row you pressed rather than the row you drifted onto. Past that it is a
+sweep. The cost of the tolerance is one gesture: you cannot select exactly two adjacent
+rows by dragging down exactly one row — sweep past them and come back, or sweep sideways
+within a single row to select that one row.
+
 aforge still owns the pointer by default — that is what makes wheel scrolling,
 clickable paths and pressable rows work — and there is no scrollback to fall back on,
 because aforge runs in the alternate screen. Two further doors remain for when you
@@ -1185,6 +1732,40 @@ permanently, and `/select` says exactly:
 ```
 your terminal already has the pointer — drag to select.
 ```
+
+## Clicking does not seem to do anything — what to check when the mouse is dead
+
+Five things stop a click, and only one of them is a setting.
+
+**You pressed `ctrl+s`.** That hands the pointer to your terminal so you can drag-select,
+and it is a **toggle** — it is the one key excepted from the automatic handback, so if you
+press it and then only touch the mouse, nothing aforge draws will answer a click until you
+press a key or press `ctrl+s` again. While the pointer is out, the row under the message
+box reads exactly `drag to select · any key ends it`. That line is how you tell this apart
+from everything else here.
+
+**The `ui.mouse` setting is off.** It is **on** by default — `/settings`, the Display
+section, the row labelled `mouse`. With it off, aforge never asks your terminal to report
+the pointer at all: no hover, no click, no wheel, and your terminal keeps drag-select
+permanently. `/select` then says `your terminal already has the pointer — drag to select.`
+
+**Your click drifted.** A press that moves more than two columns or more than one row
+before you release is a **sweep**, not a click: it copies the rows it crossed and the
+status line says `copied · N lines` instead of opening anything. See "selecting text with
+your mouse" above.
+
+**There is nothing under the pointer.** A click on empty space does nothing anywhere on
+this surface, including the gap between two words of the tab bar and the blank rows of a
+task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
+snapshot.
+
+**The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
+as the frame narrows, and at its narrowest it carries only the place you are standing in —
+so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
+and `alt+1`…`alt+7` still go everywhere.
+
+**A file path is your terminal's click, not aforge's** — usually **cmd+click**
+(ctrl+click on Linux). If a plain click on a path does nothing, that is why.
 
 ## Copy mode: taking text out of the conversation
 
@@ -1251,7 +1832,20 @@ stripped off it.
 
 ## Chords that mean more than one thing
 
-Two chords carry unrelated meanings. Which one you get depends on where you are.
+Three chords carry unrelated meanings. Which one you get depends on where you are.
+A fourth, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
+the thing you are standing on — and its own section below has the table.
+
+**`ctrl+.` — two meanings, and the two screens can never both be up:**
+
+| Where you are | What it does |
+| --- | --- |
+| in a conversation | every task this project has run — the same list `/history` opens |
+| on a place | draws the key map, exactly as `alt+.` (`⌥.`) does — **only** on terminals that report they can send `ctrl+<digit>` |
+
+A place takes the whole frame, so while one is standing the conversation's keys are not
+under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
+reading simply does not exist and the chord does nothing there.
 
 **`ctrl+t` — two meanings:**
 
@@ -1260,14 +1854,29 @@ Two chords carry unrelated meanings. Which one you get depends on where you are.
 | Message box | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | Model picker only | Cycle the reasoning effort |
 
-**`ctrl+o` — four meanings:**
+**`ctrl+o` — five meanings:**
 
 | Where | What it does |
 |---|---|
 | A landed card is selected | Open its output |
 | A proposal is selected | Open its brief |
 | Phone tool detail sheet | Lift the line cap |
+| Inside a task's page, with a long instruction at the top | Open the rest of it, and press again to fold it back |
 | Nothing selected | Fold or unfold this turn's tool cluster |
+
+Inside a task's page the first thing `ctrl+o` reaches is the **instruction** the task was
+given, where that instruction is longer than three lines: the page shows the first three
+and one dim line reading `▸ …14 more lines · ctrl+o`, and the chord opens the whole of it.
+Pressing it again folds it back, and the line then reads `▾ …14 fewer · ctrl+o`. A short
+instruction has no such line and the chord falls through to the fold below. See *tasks*,
+"The long brief at the top of a task's page".
+
+`ctrl+o` also folds and unfolds a task page's own tool cluster where there is one, and
+scrolling up at the top of the page opens that fold as well; the fold line there reads
+`N earlier tool calls · scroll up or ctrl+o`.
+
+`ctrl+o` is a chord, so it never costs you a character: you can press it with half a
+sentence in the box and go on typing into the same words.
 
 Two more chords surprise people:
 
@@ -1279,6 +1888,49 @@ Two more chords surprise people:
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
 
+## ctrl+v — how hard the thing you are looking at thinks
+
+`ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
+and it moves the rung of **the thing you are standing on**. One chord, three scopes:
+
+| Where you are | What moves |
+|---|---|
+| The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
+| The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
+| You are inside a task's page | That task's rung |
+| Home, with the cursor on a `◦` standing item row or its card | That item's rung |
+
+Everywhere else it does nothing at all. A conversation row on home is deliberately not on
+the list: a conversation's rung belongs to the window that conversation is open in, where
+the chip above its message box moves it.
+
+**The machine's own default is not one of the scopes.** It used to be — home had a state
+where the cursor stood on no row at all and the right-hand side became a card about the
+machine, and this chord moved the install's rung from there. `↑` off the top of home's list
+reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+default, open `/settings` and walk to the **`thinking`** row, which is the setting both
+roads always wrote.
+
+**It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
+never returns to "nobody said" — clearing a rung hands the work back to whatever stands
+over it, which is a decision rather than something a wheel does on its way past. Set a
+thing back to nothing in the place it is written down: the `thinking` row's own `off`.
+
+**The rung reads as a quiet clause where the thing already states its facts.** A task's is
+on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
+thinking high` — and on the roster's own figures row when the column is wide enough to hold
+it. An item's is on that item's card. The machine's own is the `thinking` row of
+`/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
+
+**On a task it lands on the next call, not this one.** A worker already running keeps the
+rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
+next call takes it`. A task that has finished refuses, in the engine's own words — `task 7
+is done, not running` — because what it spent is a fact you may read and must not edit.
+
+**Every card that takes it says so.** The card's dim legend reads `ctrl+v think harder`,
+and it is drawn only where the key would work: a settled task's roster row does not offer
+it, and neither does a window with nowhere to write the setting.
+
 ## Chords that are not bound
 
 These do nothing in the v3 chat. If you expect one of them, here is the straight
@@ -1286,13 +1938,18 @@ answer:
 
 | Chord | Status |
 |---|---|
-| `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
+| `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
+| `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
-| `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
+| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
+| `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
+| `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries
@@ -1365,12 +2022,44 @@ count is an estimate at 4 bytes per token.
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.
 
+## Why did aforge add a [silent] note while tools were running?
+
+The chat loop watches for a model that keeps calling tools without putting any visible
+words between the calls. After **6 consecutive tool-using replies with no visible assistant
+text**, it adds a note beginning `[silent]`. If the silence continues, stronger notes arrive
+at **12** and **24** replies. The last says the harness will hand the turn over. Each note asks
+the model to write what it has learned, what it will check next, and why before making
+another call.
+
+That request matters for reasoning models because their streamed thinking is shown on the
+screen but is not put into the next request. Of the model's prose, only visible assistant
+text becomes part of the conversation the following step can read. A visible note resets
+the count. A successful `edit` or `write` resets it too, because the turn is landing work
+even if the model says nothing. Each rung is issued once in one silent stretch; after a
+reset, a later silent stretch begins again at 6.
+
+The loop also notices command variants that keep returning information already seen. After
+**5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
+note says: `the last 5 rounds read nothing new; what you are looking for is already in the
+transcript`. A result with a fresh line or a successful write resets that count.
+
+All loop signals share one warning limit. After two notes, another loop signal ends the
+turn instead of adding a third ineffective note. In an interactive conversation, aforge
+uses the same checkpoint hand-off as any other overlong turn and moves the remains to a
+watched task. If that hand-off cannot be made — for example inside a task or without a
+consent surface — it ends the turn with
+`this turn is going in circles · stopping here with anything remaining left undone`.
+
 ## What does the indented part mean?
 
 Flush-left text is said to you: your messages and aforge's trailing answer. Text with a
 two-column gutter is work done on your behalf: thinking, tool calls and their details or
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
+
+Indented reply text is also **greyer** than the answer, and carries no markdown — no
+bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
+the actual answer" on the screen page.
 
 ## How do I see what aforge did?
 
@@ -1382,14 +2071,22 @@ When a successful turn has work and a trailing answer, the finished work collaps
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
 elapsed time, the thinking block's time when there was one, and the real call count.
+There is a blank row between the chip and the answer under it.
+
+**A turn you stopped with `esc` says so instead**, and it collapses whole:
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
+A stopped turn never reached an answer, so there is no answer to leave out of the chip —
+that is the point of the wording. aforge's own lines about the stop (`· stopped`, and
+what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
 no transcript cursor, so the key chooses the latest completed turn's work in the
 conversation. Opening restores the existing bounded views: thinking remains its
 own chip and only the latest 3 tool calls show until those are opened separately.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
-answer are never hidden. Fold state belongs to this window; resumed sessions derive
-fresh closed chips from their saved entries.
+answer are never hidden — nor is a second message you sent into a running turn, which
+ends the chip above it and starts a new one. Fold state belongs to this window; resumed
+sessions derive fresh closed chips from their saved entries.
 
 **The chip is the conversation's alone.** A task's room, and a node's transcript inside an
 adaptive run's page, never fold their work: those pages are the machinery, and a chip there

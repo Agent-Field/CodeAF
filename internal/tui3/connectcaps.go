@@ -1163,7 +1163,7 @@ func (a *app) disconnectService(row *connRow) tea.Cmd {
 // page would be this one tab inventing a meaning for it.
 func (a *app) connEsc() bool {
 	s := &a.sheet
-	if !s.open || !s.onConnections() {
+	if !a.at(pageSettings) || !s.onConnections() {
 		return false
 	}
 	switch {
@@ -1224,7 +1224,7 @@ func (a *app) connTabStopped(service, why string) {
 	mine := s.conn.pending == service
 	keyed := s.conn.pendingKey
 	s.conn.pending, s.conn.pendingKey = "", false
-	if !mine || !s.open || !s.onConnections() {
+	if !mine || !a.at(pageSettings) || !s.onConnections() {
 		return
 	}
 	s.reloadConnections()
@@ -1275,7 +1275,7 @@ func (a *app) connTabSettled(service, name string, connected bool, why string) {
 	mine := s.conn.pending == service
 	keyed := s.conn.pendingKey
 	s.conn.pending, s.conn.pendingKey = "", false
-	if !s.open || !s.onConnections() {
+	if !a.at(pageSettings) || !s.onConnections() {
 		return
 	}
 	s.reloadConnections()

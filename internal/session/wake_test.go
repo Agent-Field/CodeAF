@@ -323,6 +323,12 @@ func TestInterruptedTurnDoesNotWakeOnTheNoteItDrained(t *testing.T) {
 	}
 	<-inFlight
 	settleTask(t, agent, "research oauth", "wrote the comparison to ~/oauth.md")
+	// The graph settles before its reporting goroutine necessarily reaches the
+	// queue. This test is about a note THE TURN DRAINED, so establish that fact
+	// before racing the interrupt against an unrelated handoff seam.
+	waitFor(t, "the settled task's note to reach the running turn", func() bool {
+		return steeringContains(agent, "wrote the comparison to ~/oauth.md")
+	})
 	agent.Interrupt()
 	collect(t, events)
 
@@ -351,7 +357,169 @@ func TestAmbientNoteDoesNotWakeAnIdleSession(t *testing.T) {
 		t.Fatalf("an ambient note started %d turns, want none", count)
 	}
 	if queued := steeringQueue(agent); len(queued) != 1 {
-		t.Fatalf("the ambient note is not waiting on the queue: %v", queued)
+		t.Fatalf("the step-scoped ambient note is not waiting on steering: %v", queued)
+	}
+}
+
+// Three watch deltas across a five-request tool turn stay out of every
+// mid-turn request. The turn-end boundary folds them into one authored note,
+// and the next turn sees only the count and newest fact.
+func TestWatchDeltasWaitForOneBatchAfterAFiveRoundTurn(t *testing.T) {
+	entered := make([]chan []ai.Message, 6)
+	release := make([]chan struct{}, 5)
+	steps := make([]step, 0, 6)
+	for round := 0; round < 5; round++ {
+		entered[round] = make(chan []ai.Message, 1)
+		release[round] = make(chan struct{})
+		index := round
+		steps = append(steps, func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			entered[index] <- messages
+			<-release[index]
+			if index == 4 {
+				return textResponse("the original work is done"), nil
+			}
+			return toolResponse(fmt.Sprintf("call-%d", index+1), "ls", `{"path":"."}`), nil
+		})
+	}
+	entered[5] = make(chan []ai.Message, 1)
+	steps = append(steps, func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		entered[5] <- messages
+		return textResponse("and I saw the watch summary"), nil
+	})
+	completer := &scriptedCompleter{steps: steps}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events, err := agent.Submit(context.Background(), "do the five-round job")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	for round := 0; round < 5; round++ {
+		request := <-entered[round]
+		if text := userTextIn(request); strings.Contains(text, "codex-jobs watch") ||
+			strings.Contains(text, "fix one") || strings.Contains(text, "fix two") ||
+			strings.Contains(text, "fix three") {
+			t.Fatalf("round %d was interrupted by ambient watch news:\n%s", round+1, text)
+		}
+		if round < 3 {
+			agent.jobs.notifyWatch("codex-jobs",
+				watchNote("codex-jobs", "1 line new", []string{fmt.Sprintf("fix %s", []string{"one", "two", "three"}[round])}))
+		}
+		close(release[round])
+	}
+	collect(t, events)
+
+	if queued := ambientQueue(agent); len(queued) != 0 {
+		t.Fatalf("the turn boundary left watch updates queued: %v", queued)
+	}
+	if count := strings.Count(transcriptText(agent), "codex-jobs watch: 3 updates"); count != 1 {
+		t.Fatalf("the transcript has %d watch batches, want one:\n%s", count, transcriptText(agent))
+	}
+
+	follow, err := agent.Submit(context.Background(), "what happened while you worked?")
+	if err != nil {
+		t.Fatalf("follow-up submit: %v", err)
+	}
+	collect(t, follow)
+	request := <-entered[5]
+	text := userTextIn(request)
+	if strings.Count(text, "while you worked:") != 1 ||
+		!strings.Contains(text, "codex-jobs watch: 3 updates — latest: 1 line new — fix three") {
+		t.Fatalf("the next turn did not receive one compact watch batch:\n%s", text)
+	}
+	for _, old := range []string{"fix one", "fix two"} {
+		if strings.Contains(text, old) {
+			t.Fatalf("the compact batch repeated old detail %q:\n%s", old, text)
+		}
+	}
+}
+
+// An owed job ending is different from a periodic watch tick: it enters the
+// very next step once, while its full output remains behind the jobs tool.
+func TestOwedJobExitLandsAtTheNextStepBoundaryOnce(t *testing.T) {
+	first := newHeldTurn()
+	second := make(chan []ai.Message, 1)
+	third := make(chan []ai.Message, 1)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(first.entered)
+			<-first.release
+			return toolResponse("call-1", "ls", `{"path":"."}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			second <- messages
+			return toolResponse("call-2", "ls", `{"path":"."}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			third <- messages
+			return textResponse("the build is done"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events, err := agent.Submit(context.Background(), "start the build and wait for it")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	first.wait(t)
+	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output")
+	close(first.release)
+	collect(t, events)
+
+	next := <-second
+	if text := userTextIn(next); strings.Count(text, "while you worked:") != 1 ||
+		!strings.Contains(text, "job 6 exited 0: BUILD OK") ||
+		strings.Contains(text, "all of the long output") {
+		t.Fatalf("the next step did not receive one compact owed note:\n%s", text)
+	}
+	after := <-third
+	if text := userTextIn(after); strings.Count(text, "job 6 exited 0") != 1 {
+		t.Fatalf("the owed job ending was delivered more than once:\n%s", text)
+	}
+}
+
+// An interrupt ends the turn but not its ambient account. The end drain records
+// one batch without waking, and the next person-started turn can still read it.
+func TestInterruptedTurnKeepsItsAmbientBatchForTheNextTurn(t *testing.T) {
+	inFlight := make(chan struct{})
+	next := make(chan []ai.Message, 1)
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(inFlight)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			next <- messages
+			return textResponse("picked it back up"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events, err := agent.Submit(context.Background(), "work until I stop you")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	<-inFlight
+	for _, line := range []string{"one", "two", "three"} {
+		agent.jobs.notifyWatch("build", watchNote("build", "1 line new", []string{line}))
+	}
+	agent.Interrupt()
+	collect(t, events)
+
+	if count := conversationRequests(completer); count != 1 {
+		t.Fatalf("the interrupted turn was resurrected into %d requests", count)
+	}
+	if count := strings.Count(transcriptText(agent), "build watch: 3 updates"); count != 1 {
+		t.Fatalf("the interrupt lost or split the ambient batch:\n%s", transcriptText(agent))
+	}
+
+	follow, err := agent.Submit(context.Background(), "continue now")
+	if err != nil {
+		t.Fatalf("continue: %v", err)
+	}
+	collect(t, follow)
+	if text := userTextIn(<-next); !strings.Contains(text, "build watch: 3 updates — latest: 1 line new — three") {
+		t.Fatalf("the next turn lost the interrupted turn's ambient news:\n%s", text)
 	}
 }
 
@@ -396,17 +564,10 @@ func TestExitingJobWakesAnIdleSession(t *testing.T) {
 	})
 }
 
-// A WATCH WITH NEWS WAKES ONE TOO, which is the half a watch cannot do without:
-// the tool exists because the model STOPPED polling, so on an idle session there
-// is nothing left that will ever come and look.
-func TestWatchDeltaWakesAnIdleSession(t *testing.T) {
-	asked := make(chan []ai.Message, 4)
-	completer := &scriptedCompleter{steps: []step{
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			asked <- messages
-			return textResponse("the disk filled up"), nil
-		},
-	}}
+// A WATCH WITH NEWS IS AMBIENT. It updates the live job row and log, but it
+// never starts a conversation with itself while the person and model are idle.
+func TestWatchDeltaWaitsForTheNextTurnBoundary(t *testing.T) {
+	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, nil)
 	feed(t, workspace, "app.log", "INFO starting")
 
@@ -421,13 +582,16 @@ func TestWatchDeltaWakesAnIdleSession(t *testing.T) {
 	waitTicks(t, agent, watchID(t, agent), 1)
 	feed(t, workspace, "app.log", "INFO starting", "ERROR disk full")
 
-	select {
-	case messages := <-asked:
-		if !strings.Contains(userTextIn(messages), "ERROR disk full") {
-			t.Fatalf("the woken turn did not carry the delta:\n%s", userTextIn(messages))
-		}
-	case <-time.After(20 * time.Second):
-		t.Fatal("a watch's news never started a turn: nothing else was going to look")
+	waitFor(t, "the watch update to reach the ambient queue", func() bool {
+		return len(ambientQueue(agent)) == 1
+	})
+	time.Sleep(100 * time.Millisecond)
+	if count := conversationRequests(completer); count != 0 {
+		t.Fatalf("a watch update started %d turns, want none", count)
+	}
+	queued := ambientQueue(agent)
+	if !strings.Contains(queued[0], "ERROR disk full") {
+		t.Fatalf("the boundary summary lost the latest fact: %q", queued[0])
 	}
 }
 

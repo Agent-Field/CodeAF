@@ -131,7 +131,10 @@ var settingReaders = map[string]string{
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).
 	KeyTaskColumn: "TaskColumnAt",
-	KeyNerdFont:   "NerdFontChosenAt",
+	// The hints row names its accessor too: the surface reads it at boot and at
+	// every turn end, beside the mouse row (internal/tui3's notice.go).
+	KeyHints:    "HintsAt",
+	KeyNerdFont: "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls
@@ -169,8 +172,13 @@ var settingReaders = map[string]string{
 	KeyTimestamps: "TimestampsAt",
 	// The routing row is read by the v3 door and becomes session.Config.Routing,
 	// which the adapter turns into the preference object on every request
-	// (internal/provider's velocity.go). It names the accessor the door touches.
-	KeyRouting: "RoutingAt",
+	// (internal/provider's velocity.go). It names the accessor the door touches,
+	// which is the CHOICE reader rather than the resolved one: the door has to be
+	// able to hand down "nobody wrote a word", because that is what lets the
+	// adapter route a person's own turn by speed and an errand by price while an
+	// actual word still wins. RoutingAt is the settings sheet's read of the same
+	// row and stays what it always was.
+	KeyRouting: "RoutingChoiceAt",
 	// The fallback chain is read by the v3 door and becomes
 	// session.Config.ModelFallbacks, which the adapter walks when no endpoint
 	// serving the session's model will accept the request at all
@@ -242,6 +250,7 @@ var settingReaders = map[string]string{
 	// rather than the mapping they share, so a row that stops being read
 	// cannot be proven by its neighbours' call site.
 	KeySearchProvider: "SearchProviderAt",
+	KeyAPIKey:         "APIKeyAt",
 	KeyExaKey:         "ExaKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
 	// The Google pair is read by the v3 door, which turns it into the manager
@@ -259,6 +268,17 @@ var settingReaders = map[string]string{
 	KeyCompletionReserve: "AFORGE_COMPLETION_RESERVE",
 	KeyWorkingSet:        "AFORGE_WORKING_SET",
 	KeyContextReuse:      "AFORGE_CONTEXT_REUSE_PCT",
+	// The install's rung on the effort ladder. The v3 door reads it into the
+	// session's posture, from where the resolver hands it to every model call
+	// that has nothing more specific to go on (internal/effort).
+	KeyEffort: "DefaultEffortAt",
+	// The four ssh rows resolve as one transport policy at the local --host
+	// door, because passing four separately-read values to one process would
+	// let a settings edit split one launch across two snapshots.
+	KeySSHControlPersist: "SSHTransportAt",
+	KeySSHServerAlive:    "SSHTransportAt",
+	KeySSHServerMisses:   "SSHTransportAt",
+	KeySSHIPQoS:          "SSHTransportAt",
 }
 
 // Every persisted row names a reader, and every named reader is really there.

@@ -4,20 +4,27 @@ import (
 	"testing"
 )
 
-// THE SEAMS THE FOUR BIG HANDS ARE BUILT FROM.
+// THE SEAMS THE BIG MACHINES ARE BUILT FROM.
 //
-// build_harness, list_harnesses, run_adaptive and propose_task are absent from
-// the belt rather than broken when their machinery is missing (internal/session's
-// tools.go), which is the right posture and a silent one: a door that forgot to
-// fill a seam ships a model that simply never has the verb, and nothing anywhere
-// says so. internal/session's belt_wiring_test.go pins what filling the seams
-// buys; this pins that THIS DOOR fills them.
+// build_harness, list_harnesses and propose_task are absent from the belt rather
+// than broken when their machinery is missing (internal/session's tools.go),
+// which is the right posture and a silent one: a door that forgot to fill a seam
+// ships a model that simply never has the verb, and nothing anywhere says so.
+// internal/session's belt_wiring_test.go pins what filling the seams buys; this
+// pins that THIS DOOR fills them.
+//
+// THE ADAPTIVE SEAM IS HERE WITHOUT A HAND ABOVE IT. `run_adaptive` was the
+// fourth of these and is off the belt outright now (internal/session's
+// tools.go), so OrchestrateRunner no longer buys the model a verb — it buys the
+// engine a caller, for the one door left onto a planned run: a person naming one
+// in so many words (internal/session's orchestrate.go). An unfilled seam there
+// is a cue that answers nothing, which is exactly as silent a failure.
 //
 // The gates, and what fills each here:
 //
 //	build_harness, list_harnesses   HarnessStore + RunHarness + AskConsent
-//	run_adaptive                    OrchestrateRunner + AskConsent
 //	propose_task                    a conversation rather than a task node
+//	the anchored adaptive cue       OrchestrateRunner + AskConsent
 func TestTheV3DoorFillsEverySeamTheBigHandsNeed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
@@ -46,7 +53,7 @@ func TestTheV3DoorFillsEverySeamTheBigHandsNeed(t *testing.T) {
 	// goes through (chatv3_orchestrate.go).
 	cfg, runs := v3Adaptive(cfg)
 	if cfg.OrchestrateRunner == nil || runs == nil {
-		t.Fatal("no adaptive runner reached the session: run_adaptive is off")
+		t.Fatal("no adaptive runner reached the session: naming a run does nothing")
 	}
 	// propose_task's own gate: a conversation has the hand and a task node does
 	// not, because there is nobody in a node's world to show a proposal to.

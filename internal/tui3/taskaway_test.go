@@ -42,7 +42,10 @@ func awayApp(t *testing.T) (*app, *awayFake, func(time.Duration)) {
 	}}
 	a := newTestApp(agent)
 	a.width, a.height = 200, 24
-	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
+	// The places root is pinned for [taskApp]'s reason: the tasks place reads the
+	// MACHINE, so an unpinned root reads the developer's own history.
+	a.homeRoot = t.TempDir()
+	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
@@ -92,7 +95,7 @@ func TestARowClaimingToRunMovesWhenNobodyIsBehindIt(t *testing.T) {
 			ID: "3", Title: "Port the parser", State: string(session.TaskRunning)}))
 
 	a.slash("/history")
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("/history did not open over another window's running work")
 	}
 	row := awayRowWith(t, taskSheetText(a), "Port the parser")
@@ -144,13 +147,16 @@ func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 	}
 	// And it stays off the column when nobody is holding it either: a row that
 	// claims to be running with nothing behind it is still not this conversation's
-	// work, and the page is where that judgement is drawn.
+	// work, and the place is where that judgement is drawn.
 	agent.away, a.away = session.Elsewhere{}, elsewhereCache{}
 	if row, ok := railRowFor(a, 20, "Port it"); ok {
 		t.Fatalf("a row nobody is running turned up on the column: %q", row)
 	}
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a row nobody is running")
+	}
 	if row := awayRowWith(t, taskSheetText(a), "Port it"); !strings.Contains(row, taskRecordStoppedWord) {
-		t.Fatalf("the page does not say the row is %q:\n%s", taskRecordStoppedWord, row)
+		t.Fatalf("the place does not say the row is %q:\n%s", taskRecordStoppedWord, row)
 	}
 }
 
@@ -158,17 +164,9 @@ func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 // is the only way to tell "running" from "earlier" apart on a flat frame.
 func awaySectionOf(t *testing.T, a *app, title string) string {
 	t.Helper()
-	section := ""
-	for _, item := range a.taskSheetItems() {
-		switch {
-		case item.heading():
-			section = item.head
-		case item.away != nil && item.away.Task.Title == title:
-			return section
-		case item.entry != nil && item.entry.Title == title:
-			return section
-		case item.node != nil && item.node.title == title:
-			return section
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.Title == title {
+			return tasksSectionWord(item.section)
 		}
 	}
 	t.Fatalf("no row on the page is %q", title)
@@ -188,7 +186,7 @@ func TestTheHistoryPageShowsAnotherWindowsRunningWork(t *testing.T) {
 
 	// The session itself has run nothing and the project's file is empty: every
 	// row on this page belongs to somebody else.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over work happening in another window")
 	}
 	page := taskSheetText(a)
@@ -220,7 +218,7 @@ func TestAnotherWindowWithNoNameSaysOnlyThatItIsAnotherWindow(t *testing.T) {
 	agent.away = session.NewElsewhere(time.Now(), nil,
 		window("the-other-window", session.PresenceTask{
 			ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	row := awayRowWith(t, taskSheetText(a), "Sweep the call sites")
@@ -264,14 +262,16 @@ func TestAnotherWindowsRowTakesNoCursor(t *testing.T) {
 	agent.away = session.NewElsewhere(time.Now(), nil,
 		window("the-other-window", session.PresenceTask{
 			ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	if _, ok := a.taskSheetCurrent(); ok {
 		t.Fatal("the cursor is standing on another window's work")
 	}
-	// And the foot promises nothing about enter, because enter does nothing here.
-	if line := a.taskSheetKeysLine(); line != taskSheetReadKeys {
+	// And the foot promises nothing about enter, and no verb either, because
+	// neither does anything here. What is left of SCREEN 1e's line is the one
+	// clause that is still true.
+	if line := a.taskSheetKeysLine(); line != tasksTypeWord {
 		t.Fatalf("the foot says %q over a page with no door on it", line)
 	}
 	// enter is a no-op rather than a panic or a mention of nothing.
@@ -293,7 +293,7 @@ func TestTheFilterReachesAnotherWindowsWork(t *testing.T) {
 		window("the-other-window",
 			session.PresenceTask{ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)},
 			session.PresenceTask{ID: "8", Title: "Port the parser", State: string(session.TaskRunning)}))
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
 	a.taskSheet.query.setText("parser")

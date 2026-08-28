@@ -1,6 +1,6 @@
 # Running on another machine
 
-## What --host is
+## What --host is — running this on my dev box, over ssh
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -21,8 +21,15 @@ The flag's own help text reads:
 run the session on another machine over ssh: host, user@host, or host:path/to/project
 ```
 
-This is a session you sit in front of, the same as a local one. Closing the terminal ends
-it; nothing keeps running on the far machine afterwards.
+This is a session you sit in front of, the same as a local one — but **it is no longer tied to
+this terminal.** The conversation lives on the far machine and your window attaches to it. Close
+the lid mid-answer, lose your wifi, kill the terminal: the turn keeps running over there, and
+running the same command puts you back in it, including whatever finished while you were away.
+See *Staying on that machine* and *When the connection drops*.
+
+The one case where closing really does end it is a far machine running `aforge engine` by hand
+on a pipe, with no session host behind it. Then the pipe **is** the conversation's life. The
+surface knows which of the two it has and never promises the stronger one.
 
 ## How to type the target
 
@@ -69,7 +76,39 @@ passphrase prompt, an unknown-host-key question, or a version mismatch between t
 builds are plain text on a plain terminal, not a dialog inside a full-screen surface.
 ssh's own stderr is printed as it arrives.
 
-## When the connection cannot be made
+## Trying it against your own machine first — `--host localhost`
+
+You do not need a second machine to rehearse this. If `ssh localhost` works on the machine
+you are sitting at, `--host localhost` is a real connection over a real ssh pipe, and it
+exercises every part of this page except one:
+
+```
+aforge chat --host localhost:code/app
+```
+
+The engine starts over there — which is here — through ssh, the session lives in its own
+project folder, and dropping the link behaves exactly as it does against a machine across
+the room. It is the fastest way to see what a dropped connection looks like before it
+happens to you for real.
+
+**What it cannot prove** is that the two halves do not quietly share a disk. Over
+`localhost` they do: the same home directory, the same `~/.aforge`, the same files. So a
+path that only works because both ends are one filesystem will pass here and fail against
+a real machine. For that, use a machine you actually ssh to.
+
+**To see a drop and a recovery on purpose,** ask for something slow, and from another
+terminal kill the ssh child this session started:
+
+```
+pkill -f "ssh -T localhost aforge engine"
+```
+
+The status line grows its `connection` segment, the surface redials itself, and the answer
+continues rather than restarting. Send something while it is down and the message is not
+lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
+in a moment`, and pressing enter again once it is back sends it.
+
+## The far machine says a different version — when the connection cannot be made
 
 The failed dial says what it found, rather than guessing:
 
@@ -87,6 +126,62 @@ side says:
 <dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
 ```
 
+When the **far** machine is the older one it refuses first, and what you see is its own
+sentence rather than that one:
+
+```
+error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
+```
+
+If something on that machine is still holding a conversation from the older build, that
+same sentence gains a clause naming it, because then the machine — not the binary — is
+what is behind:
+
+```
+error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+```
+
+Either way the fix is one command: update aforge on the machine that is behind. Nothing is
+negotiated down — two builds that might disagree about a frame must not find that out three
+turns into a conversation.
+
+## I updated aforge on that machine and it still says the versions differ
+
+It works on the next connection, and there is nothing left to clean up by hand.
+
+Something over there holds your conversation between connections. It is started by the
+first connection and outlives it, which is what lets a turn keep running after you close
+the lid — and it is a **running copy of the build that started it**, so replacing the
+binary does not replace it. `aforge version` on that machine reports the new build while
+the old one is still answering, which is how you can be told to update something you
+updated an hour ago.
+
+So before it hands your window over, `aforge engine` asks whatever is already holding that
+workspace which build it is. Three things can be true:
+
+- **It is this build.** Your window attaches to it exactly as before. This is the ordinary
+  case, and it costs one question on a local socket.
+- **It is another build, holding nothing** — no window attached, no turn running, no
+  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
+  and a fresh one starts from the binary that is on disk now. You see none of it.
+- **It is another build and something is still going in it.** Nobody's turn is ended for
+  you. The connection is refused instead, in these words:
+
+```
+engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on spark
+```
+
+A copy too old to answer the question at all is refused the same way and left alone,
+because a process that cannot say whether it is busy is not one to guess about:
+
+```
+engine: spark is still holding this conversation on an older aforge — run aforge engine --stop on spark
+```
+
+One nobody connects to again lets itself go on its own: it notices that the file it was
+started from has been removed or rebuilt, and retires the next time it is holding nothing.
+`aforge engine --stop` is on the *Staying on that machine* page.
+
 ## What runs on the far machine, and what stays local
 
 The **far** machine owns the conversation and everything it touches:
@@ -100,6 +195,9 @@ The **far** machine owns the conversation and everything it touches:
 - the session file the conversation is written to
 - **everything you set up that keeps working** — reminders, watches, rules, overnight work:
   the store they live in, the clock that checks them, and the machine they run on
+- **the places** — home, tasks and standing all list the far machine's own disk, because a
+  place is a listing of a machine and the machine that matters is the one the work is on
+  (*The places over --host*, on the Places page)
 
 The **near** machine — the one you are sitting at — owns the surface:
 
@@ -108,6 +206,9 @@ The **near** machine — the one you are sitting at — owns the surface:
 - the model picker's cached list
 - the terminal itself
 - **the paths for `/image` and for `@` completion**, which are anchored here
+- **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
+  window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
+  that is on the other machine (*Opening files from that machine*)
 
 Because the launch forks before this machine reads any of its own settings, a missing
 local `OPENROUTER_API_KEY` is not an error on this path. The key that matters is the one
@@ -115,8 +216,16 @@ on the far machine.
 
 ## How you can tell you are on another machine
 
-**The machine is shown as part of the place, and nowhere else.** There is no badge, no
-icon, no "connected" word and no extra segment in the status line.
+**The machine is part of the place, and the link's speed is a measured segment.** There is
+no badge, icon or "connected" word. The connection segment begins empty; after its first
+empty round trip answers it reads like `devbox · 3ms`. The figure is a rolling estimate,
+asked every few seconds and never on the frame path. It is not guessed, so there is no
+segment before the first answer and never a `0ms` placeholder.
+
+When a dropped link is being redialled, its sentence wins over the last measurement. The
+`connection` segment reads
+`reconnecting to devbox — trying for up to 5 minutes`, and it goes away again when the link
+is back. No latency check is sent while the redial is in progress.
 
 The workspace is written with the machine in front of it and a colon between, the way you
 would type it into `scp`:
@@ -130,10 +239,97 @@ than as a path prefix, because that line carries the conversation's name and not
 folder: `devbox · porting the parser`.
 
 `/status` also names the session file with its machine in front of it, because that is a
-path you may want to copy.
+path you may want to copy. Once a measurement exists it also says `the round trip to
+devbox is about 3ms` under `connection`.
+
+**And if another window is on the same conversation, you can tell from the input box.** A
+window that does not hold the keyboard draws one dim line where its box was —
+`typing from spark now` on the left, `enter takes it back` on the right — and nothing else
+about the screen changes. A window that does hold it says nothing at all. See *Staying on
+that machine* for the whole of how two terminals on one chat behave.
 
 The `~` collapse still runs against **this** machine's home directory, so it rarely fires
 on a remote path — expect to see the full path.
+
+## Do home, tasks and my projects work over --host
+
+Yes, and they show **the far machine's**.
+
+`space` `space` opens the home of the machine your session runs on: its projects, its
+conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
+that conversation — the engine swaps to it and this window keeps drawing, the same door
+`aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+see whose afternoon you are looking at, and it is not there at all on a local session.
+
+Three of the seven places still read the machine this window is running on, and each says so
+in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+and why the look-stamp behind each tab's number is kept per machine, is on the Places page
+under *The places over --host*.
+
+This is new. Home over a connection used to draw one dim line saying its projects belonged
+to the wrong machine, and before that it refused to open.
+
+## How do I work on the same conversation from two computers — another window, and another machine
+
+These are two different things and they are easy to run together.
+
+**Another window** is a second aforge on the *same* machine holding a conversation you can
+see on home. Its row says `another window` in the right margin, and `enter` on it will not
+open a second copy — one conversation, one writer. Go to that terminal, or start a new
+conversation here.
+
+**Another machine** is `--host`. The conversation lives over there and your terminal
+*attaches* to it: what you type crosses the wire, the work runs on that machine, and the
+answer comes back. Close the lid and the turn keeps going if the far end is a session host;
+open a terminal somewhere else, attach to the same session, and you are back in it with the
+gap replayed. That is what "it just transfers and works" actually is — attaching, not
+copying, and the place a conversation lives never moves.
+
+**And the places are neither.** They are a listing of one machine's disk, and they follow the
+machine your session is on. Nothing about them opens a second window or moves a conversation.
+
+## What happens when you press enter over --host — your message appears at once
+
+**Your sentence goes onto the page the moment you press enter**, in the exact place it
+will keep, and it is drawn **a shade quieter than usual** until the far machine has
+taken it.
+
+That quiet shade is the only thing the wait changes. The `›` mark, the column and the
+wrapping are already final, so nothing moves when the line settles — it simply comes up
+to its normal brightness. There is no spinner, no badge and no "sending" word: on a
+healthy connection the settling happens in a few frames and you will most likely never
+notice it.
+
+If the far machine **refuses** the message, the line is **taken back off the page** and
+that machine's own reason is printed where it was. A message that was refused never
+reached the model, so it is not left in the transcript looking as though it did — the
+record of the conversation only ever shows what was actually asked. Your words are still
+in the box, so you can send them again.
+
+At this machine there is no such wait, so nothing is ever drawn quietly: your message
+appears at full brightness straight away, exactly as it always has.
+
+## Why the status line keeps moving over --host without asking that machine anything
+
+**The far machine tells this one what changed; this one never asks.** The model, the
+conversation's name, what has been spent, what the conversation weighs and the effort
+level are all sent down when the connection opens and again whenever any of them moves —
+at the end of a turn, when the session names itself, after a compaction, and when you
+change the model or the effort.
+
+So drawing a frame and typing a key reach across the connection **zero times**. The only
+things that travel when you are working are the things that machine cannot know on its
+own: the message you sent, the answer you gave a question, the key you pressed to stop
+something. Pressing enter is exactly **one** trip across.
+
+This is why the bottom of the screen keeps ticking over a slow link while an answer
+streams in, and why the composer does not stutter as you type: nothing you can see is
+waiting on the network.
+
+If the link drops, those figures **stop moving and stay where they were** rather than
+emptying out — which is the truth, because the conversation is not moving either. The
+`connection` segment says what is happening, and everything comes back up to date the
+moment the link does.
 
 ## What does not work over --host
 
@@ -168,6 +364,38 @@ exact sentence each one says.
 
 The second half of the list, with the exact sentence each one says.
 
+`/cache`, `/permissions`, `/crew`, `/memory <query>`, `/memories`, `/remember`,
+`/forget`, `/subharness` and `/harness` describe stores or settings belonging to the
+machine that runs the session, but this build has no wire door for them. They do not read
+or change this machine's copy. The cache, permissions, crew and harness commands name the
+connected machine and say `change it on that machine`; the memory commands say `memory
+shows what this machine has learned, and this session is on another`. In particular,
+`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/subharness` does not claim the far registry is empty.
+
+## Did cache clean delete the laptop cache or the remote machine's cache?
+
+Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot reach the
+connected machine's build cache and refuse before touching this machine's cache. The
+answer names the connected machine and says to change it there.
+
+## Why didn't crew max change the crew on the remote machine?
+
+`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
+refuse before reading or writing this machine's profile, name the connected machine, and
+say to change the crew there.
+
+## Why does remember over host not say whether memory is off?
+
+The surface has not asked the connected machine whether memory is enabled. `/remember`,
+`/forget`, `/memories`, and `/memory <query>` therefore say only that this session is on
+another machine; they neither claim memory is off there nor read this machine's memories.
+
+## Does subharness know whether the remote machine has saved programs?
+
+No. `/subharness`, `/sub`, and `/harness` have no door onto the connected machine's
+registry yet. They name that machine and refuse; they do not report its registry empty.
+
 6. **The consent card's "always" writes nothing.** No save seams are handed over a
    connection, so the row says `allowed` rather than the local
    `always · saved — /permissions to change`. That is the truth: the answer holds for this
@@ -179,42 +407,88 @@ The second half of the list, with the exact sentence each one says.
    consulted.
 
 8. **`/harness` is unavailable.** The registry is the far machine's and this build has no
-   door onto it over the wire, so the command says exactly:
-   `harnesses are unavailable here`
+   door onto it over the wire, so the command says `<machine> owns harnesses ·
+   change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-9. **The task rail is absent by construction.** The remote session does not carry it, so
-   there is no rail and no room. It says nothing; there is nothing to draw.
+## Why is the task roster empty over host, can I start a task, and why did it say no task door?
 
-10. **`/image` and `@` are local, deliberately.** The picture is on the machine you are
-    sitting at and the bytes travel with the message, so a relative path and the
-    completion walk are both anchored here rather than on the remote workspace. The image
+The task roster lists this far conversation's work. Its rows come from the far
+   machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
+   you would see while sitting at that machine. Opening one first says
+   `bringing this task's transcript from the other machine…`, then draws the task's own
+   transcript when it arrives. A running row opens too: its page reads the bounded tail on
+   its own beat, says `nothing on this page yet — it fills in as the task works` before the
+   first block, and fills as the far worker writes. `enter` steers that worker and `x`
+   stops it through the far engine. Changing its model is still absent.
+
+9. **Starting tasks works on the far machine.** `/task <brief>`, `/task solo <brief>` and
+   `/task adaptive <brief>` send the brief to that conversation's engine. The far machine
+   shapes, admits and records the work, and the surface answers with `single task <id>
+   started · <title>` or `adaptive task <id> started · <title>`. A `propose_task` card works
+   the same way: answering yes crosses to the engine, which starts and records the task.
+   The rail refreshes from the far task record. Opening its running row never answers
+   `room unavailable — this session has no task rooms`; the far task id opens its live
+   room, and steering and stopping cross to that task's engine.
+
+10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
+    much as a limit. The picture or file is on the machine you are sitting at and its bytes
+    travel with the message, so a relative path and the completion walk are anchored here
+    rather than on the remote workspace. What you attach really does arrive over there; see
+    *Attaching files*. The image
     ceilings are applied on this side, with the same words a local session uses:
     `session: <path> is over the 10MB image limit` and
     `session: these images total more than the 20MB a single message may carry — send them across a few messages`
 
 11. **`/export` writes here, and the note says so.** The transcript is assembled from what
-    this surface is holding; there is no door for putting a file on the far machine's
-    disk. The success note gains the suffix, exactly:
+    this surface is holding, so the file lands on the machine you are sitting at. The success
+    note gains the suffix, exactly:
     ` · on this machine`
+    That is a fact about `/export` alone and no longer a fact about the connection — files do
+    cross, both ways (*Attaching files*).
 
-12. **Building a new sub-harness is switched off.** The card that asks whether to keep a
-    finished design arrives on a standing lane a connection does not carry, so the
-    designer is not offered at all over `--host` and aforge says it cannot build one from
-    here. Running a harness that already exists is unaffected.
+12. **Building a new sub-harness is switched off**, and not for the reason it used to be. A
+    question raised while nobody is attached now *waits* for the next window — but a design's
+    card never reaches this connection at all, because it is announced on a subscription this
+    protocol has no door for rather than on a turn's stream. So there is nothing to hold. The
+    designer is not offered over `--host` and aforge says it cannot build one from here.
+    Running a harness that already exists is unaffected.
 
-13. **File paths are not clickable.** In a local session every real path on screen is a
-    hyperlink you can cmd+click. Here the files are on the far machine and the only
-    thing your terminal could open is a path of the same name on this one — so no path
-    is a link over `--host`. They are drawn in full instead, and `/status` names them
-    the way you would have to name them to reach them: `devbox:/srv/app/session.jsonl`.
+13. **Three of the seven places still read this machine.** Spend adds up the ledger every
+    model call on the machine this window runs on writes into, search reads the index of what
+    was said here, and memory reads what sessions here learned — and there is no door on the
+    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
+    says one line where its rows would be:
+    `spend shows what this machine has cost, and this session is on another`
+    `search reads what was said on this machine, and this session is on another`
+    `memory shows what this machine has learned, and this session is on another`
+    Home, tasks, standing and settings all work and all answer for the right machine.
+
+14. **File paths are clickable again, and this is now a capability rather than a limit.**
+    They were not for a wave: the only thing your terminal could open was a path of the
+    same name on this machine. Now the far machine is asked whether the file is really
+    there, and a path it confirms is a link that fetches a read-only copy and opens that local copy — through a small
+    door this window owns on `127.0.0.1`, never through `file://`. A path it has not
+    confirmed stays plain text, exactly as at home, and a folder is not linked. `/files`
+    opens that machine's folder as a page in your browser, `/files <path>` brings one file
+    back and opens it in your own viewer, and a file dragged onto that page lands in the
+    conversation's `attachments/`. The whole of it — what turns into a link and what does
+    not, where the copies live, the 16MB ceiling, who else can reach those addresses — is
+    on *Opening files from that machine*.
+
+15. **A file dropped onto the terminal joins the attachment tray.** A terminal sends a
+    drop as a pasted local path. When the paste is only real files, aforge shows their
+    chips instead of putting those paths into the message. Pressing `enter` carries the
+    bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
+    take the reverse road automatically so their far bytes can be painted in this terminal.
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 
 **Standing items are the one ambient capability a connection does not take away.** A
-sub-harness design and an adaptive run are both switched off at the engine because their
-card would arrive in an empty room; this card does not — it crosses the wire as an
-ordinary event and your answer crosses back as its own frame.
+sub-harness design is switched off at the engine because its card would arrive in an empty
+room, and an adaptive run cannot be started from a conversation at all; this card is
+neither — it crosses the wire as an ordinary event and your answer crosses back as its own
+frame.
 
 So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host`. What to know is **whose machine they are on**:
@@ -228,17 +502,18 @@ all work over `--host`. What to know is **whose machine they are on**:
 - Pausing or stopping one writes to the far machine's store, and a write that store
   refuses is shown as its own refusal rather than redrawn as done.
 
-Three readings are absent over a connection, and each says nothing rather than guessing:
+**Home and the standing place both work, and both are about the far machine.** Home lists
+that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
+them; the standing place lists both what stands on this conversation and what stands anywhere
+else on that machine. The status line's `◦ keeping an eye on 2` counts the far machine's items
+for the workspace this window is on, because over `--host` that path is the far machine's own.
 
-- **Home does not open at all.** It says exactly:
-  `home shows this machine's projects, and this session is on another`
-  — so a remote session has no `◦` item band and no `p`/`s` keys on one. The status line's
-  `◦ keeping an eye on 2` still counts, and it counts the **far** machine's items for the
-  workspace this window is on, because over `--host` that path is the far machine's own.
+Two readings are absent over a connection, and each says nothing rather than guessing:
+
 - **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
   state is read from a file on that disk. A line drawn from this laptop's timer would be a
   status about a machine nobody consulted.
-- **No row ever shows the firing mark `●`.** Nothing on any disk says an item is firing at
+- **No row ever shows the firing mark `◐`.** Nothing on any disk says an item is firing at
   this instant — a run is in flight inside whichever process holds the tick lock — so the
   surface does not claim it. That is true locally too.
 
@@ -313,15 +588,20 @@ It does not list this machine's harnesses and offer to run them over there.
 
 **Building a new sub-harness is switched off over a remote connection.** The tools that
 design one are not on the far session's belt at all, so asking for one gets you a plain
-answer that it cannot be done from here — nothing starts and nothing is spent. The reason
-is that the card asking whether to keep the finished page arrives on a standing lane a
-remote connection does not carry, so a design left switched on would write a page and ask a
-question in an empty room. Build harnesses in a session running on that machine directly.
+answer that it cannot be done from here — nothing starts and nothing is spent. The reason is
+that the card asking whether to keep the finished page is announced on a subscription this
+protocol has no door for, so it never crosses at all. A question that *does* cross and finds
+nobody attached is held for the next window; this one is not one of those. Build harnesses in a
+session running on that machine directly.
 
-**Adaptive runs are switched off over a remote connection**, and for the same reason: a
-run's fuel gate arrives on that same standing lane. A run left switched on would spend the
-money, stop at its cap, and wait four hours for an answer nobody could give it. The
-`run_adaptive` tool is simply not there.
+**Adaptive runs are not something you can start here — and not because of the wire.** No
+conversation opens an adaptive run any more, on this machine or the far one: there is no
+command, no setting, no tool and no sentence that does it (*adaptive runs*, under *How do I
+start an adaptive run*). So a message beginning `orchestrate …` is an ordinary turn over
+`--host` for exactly the reason it is an ordinary turn locally. The remote session is also
+built with no adaptive runner at all, which is belt and braces rather than the reason: a
+run's fuel gate would arrive on the standing lane a connection does not carry, and a run
+that stopped at its cap would wait four hours for an answer nobody could give it.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering
@@ -334,7 +614,9 @@ are sitting at, and its bytes travel with the message.
 
 So a relative path you type after `/image`, and the `@` completion walk, are both anchored
 **here** — to the directory you launched from — and not to the remote workspace. If you
-want a file that lives on the far machine, that path will not find it.
+want a file that lives on the far machine, that path will not find it. To reach one of
+those, click it where the reply names it, or use `/files` — that is the other direction,
+and *Opening files from that machine* is the page for it.
 
 The image size ceilings are applied on this side, with the same words a local session
 uses:
@@ -347,8 +629,11 @@ session: these images total more than the 20MB a single message may carry — se
 ## Exporting over --host
 
 `/export` writes the file **on this machine**, the one you are sitting at. The transcript
-is assembled from what the surface in front of you is holding, and there is no door for
-putting a file on the far machine's disk.
+is assembled from what the surface in front of you is holding, so that is where it lands.
+
+**There is a door for moving files between the two machines** — it is simply not this one.
+`/attach` sends a file to the far machine, and a file the conversation made over there can be
+fetched back to this one. See *Attaching files*.
 
 The success note says so. It gains the suffix ` · on this machine`, so the whole note
 reads, for example:
@@ -385,11 +670,19 @@ model.
 
 ## When the connection drops
 
-Every call gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
-When the connection dies, every call in flight fails and every open stream is closed with
-an error, so no turn is left spinning.
+**It redials by itself.** A dropped link is not the end of the session any more — the surface
+keeps trying, and when it gets back in it picks the conversation up where you left it,
+including the turn that was running while you were gone.
 
-You see one sentence:
+While that is happening the status line says, quietly:
+
+```
+reconnecting to devbox — trying for up to 5 minutes
+```
+
+Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+
+If it cannot get back at all, you see the sentence you always saw:
 
 ```
 the connection to devbox is gone — run the same command to pick the conversation back up
@@ -398,11 +691,17 @@ the connection to devbox is gone — run the same command to pick the conversati
 If the far end said why, its reason is added in parentheses. A connection you closed from
 this side reads `this connection is closed` instead.
 
-**Run the same command again.** That is not advice dressed up: the conversation is on the
-far machine's disk, and the same command opens it again. Nothing that reached the session
-file is lost — the far machine is the only writer of it, and on every road out it
-interrupts the turn in flight (keeping its partial reply, exactly as a mid-turn `ctrl+c` does) and
-flushes the file. A closed lid, a killed ssh and a closed surface are all the same event.
+**The three roads out are three different things now**, which is what makes the above safe.
+Closing the window on purpose leaves the conversation running. A link that simply dies means
+the same — the far machine assumes you are coming back. Ending the conversation is its own
+gesture. Only against a far machine with no session host do all three collapse back into one,
+and there the pipe really is the conversation's life.
+
+Nothing that reached the session file is lost either way: the far machine is the only writer of
+it, and it flushes on every road out.
+
+A fuller account of what survives, and what a returning window does and does not get back, is
+in *When the connection drops* and *Staying on that machine*.
 
 ## One headless message over a connection
 

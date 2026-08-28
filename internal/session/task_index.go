@@ -130,6 +130,33 @@ type TaskIndexEntry struct {
 	// the title as it was groomed, uncut, for the pointer block and the search.
 	Label string `json:"label"`
 	Title string `json:"title"`
+	// Kind is what SORT of work this row was: an adaptive run, a saved shape
+	// running, a saved shape being made — or empty for ordinary work, which is
+	// most of the file ([TaskKind], and [TaskKindWord] for the word a person
+	// reads).
+	//
+	// IT IS ADDITIVE AND ABSENCE IS ORDINARY. Rows written before this field
+	// existed decode with none, which is exactly what almost all of them were;
+	// unlike [TaskIndexEntry.Files], where absence is unknown, there is nothing
+	// here for a reader to be careful about — a blank kind and a plain task are
+	// drawn the same way on purpose.
+	//
+	// IT IS HERE BECAUSE THE KNOWLEDGE WAS BEING THROWN AWAY ON THE WAY TO THE
+	// FILE. A node has carried its kind since it was admitted ([TaskNode.kind],
+	// from [taskSpec.kind]) and an adaptive run has always known it was one, and
+	// a surface that wanted to say "adaptive" on a row could only string-match
+	// the title or sniff the shape of the transcript's path — both of which are
+	// guesses about a fact the engine held.
+	//
+	// A BACKGROUND JOB NEVER REACHES THIS FILE, and the constant existing does
+	// not change that: jobrow.go's own law is that a job publishes a roster row
+	// and no project index row, no landing note and no card. [TaskKindJob] is
+	// spelled in [TaskKindWord] so that a live row merged in from a graph reads
+	// the same way as a landed one, not because the file holds any.
+	Kind TaskKind `json:"kind,omitempty"`
+	// Where is the worker's resolved directory, or the explicit placement from a
+	// restored proposal that has not started yet.
+	Where string `json:"where,omitempty"`
 	// Status is the node's final state — "done", "failed", "unverified" — or its
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
@@ -160,6 +187,24 @@ type TaskIndexEntry struct {
 	// invent an answer (the emptiness law), which is why [LandedTouching] answers
 	// with two lists instead of one.
 	Files []string `json:"files,omitempty"`
+	// MaySplit is WHETHER THIS WORK WAS EVER ALLOWED TO HAND ITS PARTS OUT, and
+	// which reader allowed it: "wide" for a model's own judgement of breadth,
+	// "judged" for the sizing call at the typed door, "counted" for a brief that
+	// named enough separate items on its own (task_divide.go's arming words).
+	// ABSENT MEANS THE VERB WAS NEVER ON THE BELT.
+	//
+	// IT IS HERE BECAUSE THE ABSENCE OF PARTS IS THREE DIFFERENT FACTS. A row for
+	// a task that ran alone can mean the worker was never given `divide_work`,
+	// or had it and never reached for it, or asked and was told no — and until
+	// this field existed the file said the same thing about all three, so anybody
+	// reading the record to find out whether the road was working could only
+	// count parts and guess. The reason word separates the first from the other
+	// two, and separates a road nobody armed from a road nobody used.
+	//
+	// IT IS THE READING AND NOT THE OUTCOME. A task armed and never divided still
+	// says so, because what this answers is what the task was ALLOWED to do; the
+	// parts themselves are rows of their own, carrying this node's id as Parent.
+	MaySplit string `json:"maySplit,omitempty"`
 	// Cost is what the node spent, in dollars, or 0 when nobody could say.
 	Cost float64 `json:"cost,omitempty"`
 	// Model is what the node ran on, and empty when it simply took the
@@ -168,6 +213,20 @@ type TaskIndexEntry struct {
 	// checkpoint and in the node journal's header too, and a row without it made
 	// re-pricing a landed task a three-file join.
 	Model string `json:"model,omitempty"`
+	// RepairedOn is the model a REPAIR ROUND ran on, and it is here only when
+	// that was not the model beside it: work the checker sent back is handed to
+	// the careful tier (internal/session's repair_role.go), and this is the one
+	// row in this file that says an escalation was bought.
+	//
+	// IT IS THE COMPANION TO Cost AND IT ANSWERS THE SAME QUESTION Model DOES,
+	// one layer down. A node's bill is the sum of every agent it took — the
+	// worker, each correction round, each check — so a row carrying one model and
+	// one figure cannot say whether an expensive total was an expensive task or a
+	// cheap task that needed rescuing, and those are different facts about a
+	// crew's economics. Additive, and absent means the ladder floored: either
+	// nothing was sent back, or the careful tier resolves to the model the work
+	// was already on.
+	RepairedOn string `json:"repairedOn,omitempty"`
 	// Tokens is input plus output, as ONE sum. The index carries citations, and
 	// the four-way split — with the cache share in it — lives in the journal
 	// this row's TranscriptURI names; a row that spelled out all four would be
@@ -604,15 +663,25 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	// ([Agent.presenceTasks]), not this file's.
 	files, wrote := taskFileCitations(n.changed)
 	entry := TaskIndexEntry{
-		ID:           strconv.FormatUint(n.id, 10),
-		Parent:       taskIndexParent(n.parent),
-		Name:         TaskSlug(n.spec.title),
-		Label:        taskLabel(n.spec.title),
-		Title:        strings.TrimSpace(n.spec.title),
+		ID:     strconv.FormatUint(n.id, 10),
+		Parent: taskIndexParent(n.parent),
+		Name:   TaskSlug(n.spec.title),
+		Label:  taskLabel(n.spec.title),
+		Title:  strings.TrimSpace(n.spec.title),
+		// The node's OWN kind, which was settled at admission and never moves
+		// (task_contract.go says so out loud): reading n.kind rather than
+		// re-deriving it from the spec is what keeps the row and the roster from
+		// ever disagreeing about one piece of work.
+		Kind:         n.kind,
+		Where:        strings.TrimSpace(n.worktree),
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,
 		Files:        files,
+		// WHETHER THIS WORK COULD EVER HAVE SPLIT ITSELF, straight off the spec's
+		// own arming word — the graph is already held here, which is the lock
+		// [TaskNode.armedBy] would otherwise take.
+		MaySplit: n.spec.armed,
 		// The FROZEN figure, read straight off the node: this runs with the graph
 		// held and [TaskNode.spend] takes that lock itself. A row for a node still
 		// running carries no price, which is what it has always carried.
@@ -621,12 +690,19 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// run up at, and empty when it took the conversation's. Tokens is the
 		// same frozen tally as the cost beside it, summed to the one figure a
 		// citation carries.
-		Model:         n.spec.model,
+		Model: n.spec.model,
+		// AND WHERE THE ESCALATION WENT, straight off the node, written only when
+		// a correction round really did move ([TaskNode.repairedOn] holds that
+		// rule so no reader has to).
+		RepairedOn:    n.repaired,
 		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
 		SessionID:     session,
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),
 		TranscriptURI: taskURI(n.journal),
+	}
+	if entry.Where == "" {
+		entry.Where = strings.TrimSpace(n.spec.where)
 	}
 	// A LIVE ROW SAYS WHAT IS HAPPENING IN IT. The recorder is read here, under
 	// the graph's lock, because this is the one place a row is built and both

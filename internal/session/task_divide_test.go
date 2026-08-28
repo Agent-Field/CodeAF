@@ -13,12 +13,18 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -32,12 +38,45 @@ type divideNest struct {
 	graph   *TaskGraph
 	parent  *TaskNode
 	node    *Agent
+	// journal is the worker's own session file, which is where a node writes down
+	// what the division road decided (sessionfile.go's [journalDivision]). A real
+	// node always has one ([Agent.newTaskAgentOn] mints it), so the fixture gives
+	// the worker one too — a record only the tests that ask about it read.
+	journal string
 }
 
 // newDivideNest builds that shape. brief is what the task was admitted with —
 // which is also what arms it, since [Agent.armDivision] weighs the work's own
 // text — and limit is the person's task.parallel cap, 0 for none.
 func newDivideNest(t *testing.T, brief string, limit int) *divideNest {
+	t.Helper()
+	// AN EMPTY SCRIPT IS A REVIEWER THAT CANNOT ANSWER, which is the fail-open
+	// path and therefore the division exactly as the worker wrote it. That is
+	// what every test in this file that says nothing about the review wants:
+	// the road with its second opinion absent behaves as it did before there
+	// was one (task_divide.go's header states the law).
+	return newDivideNestOn(t, brief, limit, &scriptedCompleter{}, nil)
+}
+
+// newDivideNestOn is [newDivideNest] with the two things the review wave needs
+// to vary: the model behind the WORKER — which is the model the division review
+// is asked of — and the settings the roles ladder reads, which is what decides
+// where a part graded `careful` is minted.
+func newDivideNestOn(t *testing.T, brief string, limit int, worker Completer, source func(string) (string, bool)) *divideNest {
+	t.Helper()
+	// THE PERSON'S OWN SENTENCE rides on the node, which is where a worker
+	// inside it reads its own from ([Agent.taskRequest]) — a conversation's
+	// personAsk is not what a node inherits.
+	return newDivideNestFrom(t, taskSpec{title: "the whole job", request: personSentence,
+		brief: brief, acceptance: "a", depth: 1}, limit, worker, source)
+}
+
+// newDivideNestFrom is the same shape built from a SPEC rather than from a
+// brief, which is the one thing the tiebreak's tests need to vary: what armed
+// the parent. A brief that counts its own items and a judge's `wide` on work
+// whose text counts nothing are two different readers, and the tiebreak is about
+// exactly that difference ([TaskNode.armedByJudgement]).
+func newDivideNestFrom(t *testing.T, spec taskSpec, limit int, worker Completer, source func(string) (string, bool)) *divideNest {
 	t.Helper()
 	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Divide = true
@@ -47,29 +86,28 @@ func newDivideNest(t *testing.T, brief string, limit int) *divideNest {
 	graph.run = func(*TaskNode) {}
 
 	id := graph.reserve()
-	// THE PERSON'S OWN SENTENCE rides on the node, which is where a worker
-	// inside it reads its own from ([Agent.taskRequest]) — a conversation's
-	// personAsk is not what a node inherits.
-	graph.admit(id, taskSpec{title: "the whole job", request: personSentence,
-		brief: brief, acceptance: "a", depth: 1})
+	graph.admit(id, spec)
 	parent := graph.node(id)
 
+	journal := filepath.Join(t.TempDir(), "worker.jsonl")
 	node, err := newAgent(Config{
-		Workspace: t.TempDir(),
-		Model:     "test/model",
-		System:    "SYSTEM",
-		InTask:    true,
-		Divide:    true,
-		tasker:    graph,
-		taskID:    id,
-		taskDepth: 1,
-	}, &scriptedCompleter{})
+		Workspace:   t.TempDir(),
+		Model:       "test/model",
+		System:      "SYSTEM",
+		SessionFile: journal,
+		InTask:      true,
+		Divide:      true,
+		RolesSource: source,
+		tasker:      graph,
+		taskID:      id,
+		taskDepth:   1,
+	}, worker)
 	if err != nil {
 		t.Fatalf("newAgent for the worker: %v", err)
 	}
 	t.Cleanup(func() { _ = node.Close() })
 	parent.openRoom().speaking(node)
-	return &divideNest{session: session, graph: graph, parent: parent, node: node}
+	return &divideNest{session: session, graph: graph, parent: parent, node: node, journal: journal}
 }
 
 // personSentence is what somebody typed to start all of this. A part three
@@ -107,6 +145,75 @@ func divideArgs(evidence string, n int) json.RawMessage {
 	}
 	return json.RawMessage(fmt.Sprintf(`{"evidence":%q,"parts":[%s]}`,
 		evidence, strings.Join(parts, ",")))
+}
+
+// divideGradedArgs is one well-formed call whose parts carry the grades named.
+// An empty word writes NO grade field at all, which is the ordinary shape and
+// the one that must read as mechanical.
+func divideGradedArgs(evidence string, grades ...string) json.RawMessage {
+	parts := make([]string, 0, len(grades))
+	for i, grade := range grades {
+		field := ""
+		if grade != "" {
+			field = fmt.Sprintf(`,"grade":%q`, grade)
+		}
+		parts = append(parts, fmt.Sprintf(
+			`{"title":"part %d","summary":"s","brief":"b","acceptance":"a"%s}`, i+1, field))
+	}
+	return json.RawMessage(fmt.Sprintf(`{"evidence":%q,"parts":[%s]}`,
+		evidence, strings.Join(parts, ",")))
+}
+
+// divideReviewer is the tier that thinks, standing behind one division. It
+// dispatches on the review's own brief, so a worker turn that never made the
+// call is visible as a count of zero rather than as an answer nobody asked for.
+type divideReviewer struct {
+	mu     sync.Mutex
+	answer string
+	fails  bool
+	asked  int
+	model  string
+	shown  string
+}
+
+func (r *divideReviewer) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	if len(messages) == 0 || messageText(messages[0]) != divideReviewBrief {
+		return textResponse("(unscripted)"), nil
+	}
+	r.mu.Lock()
+	r.asked++
+	r.model = request.Model
+	if len(messages) > 1 {
+		r.shown = messageText(messages[1])
+	}
+	answer, fails := r.answer, r.fails
+	r.mu.Unlock()
+	if fails {
+		return nil, errors.New("the reviewer could not be reached")
+	}
+	return textResponse(answer), nil
+}
+
+func (r *divideReviewer) reads() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.asked
+}
+
+func (r *divideReviewer) rode() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.model
+}
+
+func (r *divideReviewer) saw() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.shown
 }
 
 // divide makes one division from inside the worker and returns what the model
@@ -445,6 +552,306 @@ func TestABusyMachineHoldsTheDivisionsPartsRatherThanRefusingIt(t *testing.T) {
 	}
 }
 
+// ── THE TIEBREAK: TWO READERS OF ONE PIECE OF WORK DISAGREEING ──────────────
+//
+// The floor counts items a counter can see. Four whole ISSUES — each a complete
+// ask with its own done-condition — count as nothing, and so do four modules,
+// which the bench measured losing: no free counter over free text tells those
+// apart. So the floor does not move and nothing here teaches it a word. What
+// these hold is the one case where its no is not the last word: the counter
+// refuses AND a model that read the request had already said the work was broad.
+//
+// judgedWide is that spec — work a judge armed, whose own text arms nothing.
+var judgedWide = taskSpec{
+	title:      "the four issues",
+	request:    personSentence,
+	brief:      "work through the issues the person raised and fix each of them",
+	acceptance: "a",
+	depth:      1,
+	wide:       true,
+}
+
+// issueEvidence is four whole jobs said the way a worker actually says them.
+// The counter reads no items in it at all, which is the entire point.
+const issueEvidence = "the person raised four separate asks: the auth test flakes, the http client is a major version behind, the release notes for 2.4 do not exist, and the billing code is dead"
+
+func TestTheFloorsRefusalIsFinalOnWorkNoModelCalledWide(t *testing.T) {
+	// The parent is armed by its own text — the same counter that is about to
+	// refuse the evidence — so there is no disagreement to settle and nobody is
+	// paid to look at one.
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"two","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+	if nest.parent.armedBy() != armedCounted {
+		t.Fatalf("this parent was armed by %q, want the text gate's own yes", nest.parent.armedBy())
+	}
+	spentBefore := nest.node.Usage()
+
+	answer := nest.divide(t, divideArgs(narrowEvidence, 3))
+
+	if !strings.Contains(answer, "not split") {
+		t.Fatalf("the worker was told %q, want the floor's refusal unchanged", answer)
+	}
+	if reviewer.reads() != 0 {
+		t.Fatalf("a floor refusal on work nobody judged was read %d times: deciding must stay free",
+			reviewer.reads())
+	}
+	if spent := nest.node.Usage(); spent.Calls != spentBefore.Calls {
+		t.Fatalf("a floor refusal spent %d calls", spent.Calls-spentBefore.Calls)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts were born from a refused division", len(kids))
+	}
+}
+
+// AND THE SAME REFUSAL ON JUDGE-ARMED WORK REACHES THE ONE READER THAT CAN
+// SETTLE IT. The reviewer was going to read these parts anyway; what it is asked
+// on this path is whether they are a division at all, and its yes admits them
+// under the same review it already performs.
+func TestAFloorRefusalOnJudgedWideWorkIsPutToTheReviewer(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"the auth test","summary":"s","brief":"SHARPENED ONE","acceptance":"it passes ten runs"},` +
+		`{"title":"the release notes","summary":"s","brief":"SHARPENED TWO","acceptance":"RELEASE-2.4.md exists"}]}`}
+	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
+	if nest.parent.armedBy() != armedWide {
+		t.Fatalf("this parent was armed by %q, want a judge's own reading of breadth", nest.parent.armedBy())
+	}
+	if splitgate.WorthIt(issueEvidence) {
+		t.Fatal("this evidence passes the floor on its own, so it cannot show the tiebreak admitted it")
+	}
+
+	answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if reviewer.reads() != 1 {
+		t.Fatalf("the division was read %d times, want once", reviewer.reads())
+	}
+	// IT IS TOLD WHAT IT IS DECIDING, or its silence on the bigger question would
+	// be read as a yes — and it is never handed the count, which would be
+	// inviting it to agree with the reader it is there to disagree with.
+	if !strings.Contains(reviewer.saw(), "THIS ONE IS YOURS TO DECIDE") {
+		t.Fatalf("the reviewer was asked to sharpen a division it was deciding: %q", reviewer.saw())
+	}
+	if strings.Contains(reviewer.saw(), strconv.Itoa(splitgate.Floor)) {
+		t.Fatalf("the reviewer was shown the floor it is being asked to overrule: %q", reviewer.saw())
+	}
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want the division the reviewer admitted", answer)
+	}
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the admitted division bore %d parts, want 2", len(kids))
+	}
+	if !strings.Contains(kids[0].instruction(), "SHARPENED ONE") {
+		t.Fatalf("part %d works from %q, want the reviewer's brief", kids[0].id, kids[0].instruction())
+	}
+}
+
+// AND A REVIEWER THAT SAYS NO LEAVES THE FLOOR'S REFUSAL EXACTLY WHERE IT WAS.
+// Nothing is admitted, nothing is cancelled, and the worker carries on as one
+// worker — the gates' own ending, which is the one thing about any of this that
+// must not be new.
+func TestAReviewerThatWillNotOverruleTheFloorLeavesTheRefusalStanding(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		reviewer *divideReviewer
+	}{
+		// A REFUSAL IS THE ANSWER THE BRIEF ASKS FOR.
+		{"it reads them as one job", &divideReviewer{answer: `{"refuse": true, "why": "these are stages of one job"}`}},
+		// AND SO IS NO ANSWER AT ALL, WHICH IS THIS PATH'S OWN POSTURE. Everywhere
+		// else a review that cannot be had admits the parts, because two measured
+		// gates had already passed them. Here it is the ONLY reader that has said
+		// yes to this division, so failing open would let an unreachable mastermind
+		// admit every below-floor division the road ever armed.
+		{"it cannot be reached", &divideReviewer{fails: true}},
+		{"it answers something unusable", &divideReviewer{answer: "This looks sensible to me."}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			nest := newDivideNestFrom(t, judgedWide, 0, test.reviewer, nil)
+			answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+			if !strings.HasPrefix(answer, "not split:") {
+				t.Fatalf("the worker was told %q, want a refusal", answer)
+			}
+			if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+				t.Fatalf("%d parts were born from a division nobody admitted", len(kids))
+			}
+			// AND NO SLOT IS STILL HELD, which is what would silently lower the fan
+			// cap for every later division of this work.
+			nest.graph.mu.Lock()
+			held := nest.graph.claims[nest.parent.id]
+			nest.graph.mu.Unlock()
+			if held != 0 {
+				t.Fatalf("%d slots are still held after a refused division", held)
+			}
+		})
+	}
+}
+
+// AND IT IS ONE ADJUDICATION PER TASK, HOWEVER OFTEN THE WORKER ASKS. The
+// refusal it stands in front of invites the worker to come back with a better
+// count, which is right — but a retry that reached the mastermind every time
+// would be paying to argue with a reader that has already read this work.
+func TestTheTiebreakIsOfferedOncePerTask(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"refuse": true, "why": "these are stages of one job"}`}
+	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
+
+	if answer := nest.divide(t, divideArgs(issueEvidence, 2)); !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the first ask was told %q", answer)
+	}
+	spentAfterFirst := nest.node.Usage()
+
+	answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if !strings.Contains(answer, "work is only split at") {
+		t.Fatalf("the second ask was told %q, want the counter's own answer", answer)
+	}
+	if reviewer.reads() != 1 {
+		t.Fatalf("the work was read %d times over two asks, want once", reviewer.reads())
+	}
+	if spent := nest.node.Usage(); spent.Calls != spentAfterFirst.Calls {
+		t.Fatalf("the second ask spent %d more calls", spent.Calls-spentAfterFirst.Calls)
+	}
+}
+
+// THE CAPACITY GATE IS UNTOUCHED BY THE TIEBREAK. It is the other measured gate
+// and it binds on this path exactly as on every other: nothing divides work
+// nobody is free to pick up, and a division nobody could run is refused for free
+// rather than read by anybody.
+func TestTheTiebreakNeverDividesWorkNobodyIsFreeToPickUp(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"two","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestFrom(t, judgedWide, 1, reviewer, nil)
+	nest.graph.mu.Lock()
+	nest.graph.running = 1
+	nest.graph.mu.Unlock()
+
+	answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if !strings.Contains(answer, "one task at a time") {
+		t.Fatalf("the worker was told %q, want the person's own cap named", answer)
+	}
+	if reviewer.reads() != 0 {
+		t.Fatalf("a division nobody could run was read %d times", reviewer.reads())
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts were born with nobody free to run them", len(kids))
+	}
+}
+
+// AND EVIDENCE THAT CLEARS THE FLOOR IS THE ROAD IT ALWAYS WAS. A judge-armed
+// task whose worker counts eleven files is not adjudicating anything: the review
+// is the ordinary one, it is not told to decide, and it still fails open.
+func TestJudgedWideWorkOverTheFloorTakesTheOrdinaryRoad(t *testing.T) {
+	reviewer := &divideReviewer{fails: true}
+	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 3))
+
+	if !strings.HasPrefix(answer, "split into 3 parts:") {
+		t.Fatalf("the worker was told %q, want the division it wrote admitted unchanged", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
+		t.Fatalf("the division bore %d parts, want the 3 the worker wrote", len(kids))
+	}
+}
+
+// ── THE RECORD SAYS WHETHER THE ROAD WAS EVER OPEN ──────────────────────────
+//
+// A task that ran alone leaves a row with no parts under it, and that one fact
+// used to cover three different stories: a worker that never had `divide_work`,
+// one that had it and never reached for it, and one that asked and was told no.
+// Anybody reading the project's own record to find out whether this road works
+// could only count parts and guess. The arming word separates the first from the
+// other two — and names which reader opened it.
+func TestTheRecordSaysWhetherTheWorkWasEverAllowedToSplit(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		spec taskSpec
+		want string
+	}{
+		{"a judge read the request and said it was broad", judgedWide, armedWide},
+		{"the work's own words count the items", taskSpec{title: "the adapters",
+			brief: wideBrief, acceptance: "a", depth: 1}, armedCounted},
+		{"nobody said anything and the words count nothing", taskSpec{title: "one job",
+			brief: "fix the failing reconciler test", acceptance: "a", depth: 1}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Divide = true
+			})
+			graph := session.graph()
+			graph.run = func(*TaskNode) {}
+			id := graph.reserve()
+			graph.admit(id, test.spec)
+			node := graph.node(id)
+
+			graph.mu.Lock()
+			entry := node.indexEntryLocked("aaaa1111aaaa1111")
+			graph.mu.Unlock()
+			if entry.MaySplit != test.want {
+				t.Fatalf("the row says the work could split because %q, want %q", entry.MaySplit, test.want)
+			}
+
+			// AND IT SURVIVES THE FILE, which is the only place anybody reads it.
+			path := filepath.Join(t.TempDir(), taskIndexName)
+			appendTaskIndex(path, entry)
+			rows := ReadTaskIndex(path)
+			if len(rows) != 1 {
+				t.Fatalf("read back %d rows, want one", len(rows))
+			}
+			if rows[0].MaySplit != test.want {
+				t.Fatalf("the row came back saying %q, want %q", rows[0].MaySplit, test.want)
+			}
+			// Work nobody armed writes NOTHING rather than a word for it, which is
+			// the emptiness law: absent is the honest spelling of "never allowed".
+			raw, err := json.Marshal(entry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var back map[string]any
+			if err := json.Unmarshal(raw, &back); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := back["maySplit"]; ok != (test.want != "") {
+				t.Fatalf("the row on disk is %s, want the field %v", raw, test.want != "")
+			}
+		})
+	}
+}
+
+// AND THE SIZING JUDGE'S OWN YES IS ITS OWN WORD. It is the third reader, and it
+// is the one a restart loses — a row that said only "armed" could not tell the
+// three of them apart afterwards.
+func TestTheSizingJudgesYesIsRecordedAsItsOwnReader(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = true
+	})
+	ask := "go through the regional reports and bring each one up to date"
+	if splitgate.WorthIt(ask) {
+		t.Fatal("this ask arms itself, so it cannot show the judge's answer is what armed it")
+	}
+	session.rememberDivisible(ask)
+
+	graph := session.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the reports", request: ask, brief: "shaped words a model wrote",
+		acceptance: "a", depth: 1})
+	node := graph.node(id)
+
+	if got := node.armedBy(); got != armedJudged {
+		t.Fatalf("the sizing judge's yes was recorded as %q, want %q", got, armedJudged)
+	}
+	// AND IT DOES NOT EARN THE TIEBREAK'S SIBLING'S ANSWER BY ACCIDENT: it is a
+	// model's reading of the work, so it settles a disagreement with the counter
+	// exactly as a `wide` verdict does.
+	if !node.armedByJudgement() {
+		t.Fatal("the sizing judge is a model reading the work and its yes did not count as one")
+	}
+}
+
 // ── the parts, once they exist ──────────────────────────────────────────────
 
 func TestAForcedWideDivisionBearsPartsOnTheNestingRoad(t *testing.T) {
@@ -641,6 +1048,282 @@ func TestEveryPartNeedsSomethingToBeFinishedAgainst(t *testing.T) {
 	}
 }
 
+// ── the gate, on a part ─────────────────────────────────────────────────────
+
+// A PART CARRIES ITS OWN CONTRACT, AND THE PARENT'S DOES NOT MOVE.
+//
+// The schema makes `acceptance` required of every part for one reason: a session
+// worker is finished by a checker judging it against a done-condition, and a part
+// admitted without one would be judged against nothing (task_divide.go's
+// divideSchemaJSON). This is that wiring, asserted where it lands — on the node's
+// own FROZEN acceptance, which is the text the checker is handed and the only
+// text it is shown (task_audit.go's auditQuestion).
+//
+// AND THE PARENT KEEPS THE ORIGINAL. Handing the parts out is not a re-statement
+// of what the whole job has to be: the parent stays open, folds the reports into
+// one deliverable, and is checked against the condition it was admitted with.
+func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	const (
+		alphaDone = "alpha.go compiles and declares Alpha"
+		betaDone  = "beta.go compiles and declares Beta"
+	)
+	original := nest.parent.acceptance()
+
+	nest.divide(t, json.RawMessage(fmt.Sprintf(
+		`{"evidence":%q,"parts":[`+
+			`{"title":"alpha","summary":"s","brief":"b","acceptance":%q},`+
+			`{"title":"beta","summary":"s","brief":"b","acceptance":%q}]}`,
+		wideEvidence, alphaDone, betaDone)))
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	for i, want := range []string{alphaDone, betaDone} {
+		if got := kids[i].acceptance(); got != want {
+			t.Fatalf("part %d is finished against %q, want its own %q", kids[i].id, got, want)
+		}
+		// The checker sees the acceptance and nothing else about the goal, so the
+		// question it is actually asked is where this has to be true.
+		question := auditQuestion(kids[i], taskTree{}, auditGround{}, auditDoor{}, nil, "")
+		if !strings.Contains(question, want) {
+			t.Fatalf("the checker for part %d was asked %q, want its own done-condition", kids[i].id, question)
+		}
+		// A PART IS ORDINARY WORK, which is what puts it through the same gate as
+		// every other node: an empty kind is the worker-in-a-worktree body, and
+		// that body is the one that holds the check (task_run.go's workTaskNode).
+		if kind := kids[i].spec.kind(); kind != "" {
+			t.Fatalf("part %d was admitted as %q, so it does not run the body the check lives in", kids[i].id, kind)
+		}
+	}
+	if got := nest.parent.acceptance(); got != original {
+		t.Fatalf("the whole job is now finished against %q, want the condition it was admitted with", got)
+	}
+	if strings.Contains(auditQuestion(nest.parent, taskTree{}, auditGround{}, auditDoor{}, nil, ""), alphaDone) {
+		t.Fatal("the whole job is being checked against one of its parts' conditions")
+	}
+}
+
+// AND THE CHECK ACTUALLY FIRES ON A PART, ONE PART AT A TIME, AGAINST ITS OWN
+// CONDITION — end to end, over a real repository.
+//
+// Two parts are handed out from inside a worker. Each runs in its own copy of
+// the repository and writes its file; a checker is put in each copy and is asked
+// that part's own done-condition; the one whose work holds comes home to the
+// person's branch and the one that does not is kept on its branch with the gap
+// written down. It is the same gate a plain task passes through, on the road
+// wide work now takes by default, and nothing about a part is exempt from it.
+func TestAPartIsCheckedLikeAnyOtherWorkAndOnlyTheOneThatHoldsComesHome(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	const (
+		alphaDone = "alpha.go is there and declares Alpha"
+		betaDone  = "beta.go is there and declares Beta"
+	)
+	completer := &partCompleter{alpha: alphaDone, beta: betaDone}
+
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		// NO REPAIR ROUND, so the refuted part lands on the first finding: what
+		// is under test here is the gate, and the loop in front of it has its own
+		// tests (task_repair_test.go).
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	// THE PARENT IS THIS TEST'S OWN and stays where it is: it is the dividing
+	// worker, and the frontier starting a second one in a worktree would be a
+	// third node nobody asked about. Its PARTS run for real.
+	graph.run = func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		graph.runOwned(node)
+	}
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the whole job", request: personSentence,
+		brief: wideBrief, acceptance: "both adapters are on the new interface", depth: 1})
+	parent := graph.node(id)
+
+	worker, err := newAgent(Config{
+		Workspace: repo, Model: "test/model", System: "SYSTEM",
+		InTask: true, Divide: true, TaskRepairRounds: 0,
+		// THE CHECK TRAVELS WITH THE WORK, which is what [Agent.newTaskAgent]
+		// does for a worker the runner builds: a part is judged by whatever the
+		// person said should judge a task (task_run.go's child config).
+		TaskAudit: true,
+		tasker:    graph, taskID: id, taskDepth: 1,
+	}, completer)
+	if err != nil {
+		t.Fatalf("newAgent for the worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	parent.openRoom().speaking(worker)
+
+	answer, _, err := worker.divideWork(context.Background(), json.RawMessage(fmt.Sprintf(
+		`{"evidence":%q,"parts":[`+
+			`{"title":"alpha","summary":"s","brief":"write alpha.go","acceptance":%q},`+
+			`{"title":"beta","summary":"s","brief":"write beta.go","acceptance":%q}]}`,
+		wideEvidence, alphaDone, betaDone)))
+	if err != nil {
+		t.Fatalf("divide_work: %v", err)
+	}
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q", answer)
+	}
+
+	parts := partsByTitle(t, graph, parent)
+	alpha, beta := parts["alpha"], parts["beta"]
+	waitDoneNode(t, alpha)
+	waitDoneNode(t, beta)
+
+	// EACH CHECKER WAS ASKED ITS OWN PART'S CONDITION AND NOBODY ELSE'S.
+	if seen := completer.audits(alphaDone); seen != 1 {
+		t.Fatalf("the part alpha was checked against its own done-condition %d times, want once", seen)
+	}
+	if seen := completer.audits(betaDone); seen != 1 {
+		t.Fatalf("the part beta was checked against its own done-condition %d times, want once", seen)
+	}
+	if completer.crossed() {
+		t.Fatal("a checker was handed two parts' done-conditions at once")
+	}
+
+	// THE PART THAT HOLDS COMES HOME.
+	if got := beta.notice(); got.State != TaskDone || got.Merge != mergeMerged {
+		t.Fatalf("the part that holds landed %s / %s: %q", got.State, got.Merge, got.Report)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "beta.go")); err != nil {
+		t.Fatalf("the checked part is not on the person's branch: %v", err)
+	}
+
+	// AND THE ONE THAT DOES NOT IS KEPT, WITH THE GAP WRITTEN DOWN. Nothing
+	// merges on a finding, and the report says what is missing in the person's
+	// own words rather than in the machinery's (task_audit.go).
+	failed := alpha.notice()
+	if failed.State != TaskFailed {
+		t.Fatalf("the part that did not hold landed %s: %q", failed.State, failed.Report)
+	}
+	if !strings.HasPrefix(failed.Report, incompleteLead) {
+		t.Fatalf("the report reads %q, want it to open by saying the work is not finished", failed.Report)
+	}
+	if !strings.Contains(failed.Report, "nothing declares Alpha") {
+		t.Fatalf("the report reads %q, want the checker's own evidence in it", failed.Report)
+	}
+	assertPlainWords(t, "the part's report", failed.Report)
+	if failed.Merge == mergeMerged {
+		t.Fatal("a part that did not hold was merged onto the person's branch")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "alpha.go")); !os.IsNotExist(err) {
+		t.Fatal("the unchecked part reached the person's branch anyway")
+	}
+}
+
+// partsByTitle is the two parts of one division, keyed by name, so a test can
+// name them rather than depend on the order the frontier happened to start them
+// in.
+func partsByTitle(t *testing.T, graph *TaskGraph, parent *TaskNode) map[string]*TaskNode {
+	t.Helper()
+	kids := graph.children(parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	byTitle := make(map[string]*TaskNode, len(kids))
+	for _, kid := range kids {
+		byTitle[kid.title()] = kid
+	}
+	for _, want := range []string{"alpha", "beta"} {
+		if byTitle[want] == nil {
+			t.Fatalf("no part called %q among %v", want, byTitle)
+		}
+	}
+	return byTitle
+}
+
+// partCompleter answers every lane one division touches, dispatching on WHAT IT
+// WAS ASKED rather than on how many calls came before it: two parts and two
+// checkers run at once, and a positional script over concurrent lanes is a test
+// asserting about whichever goroutine got there first.
+type partCompleter struct {
+	mu sync.Mutex
+	// alpha and beta are the two parts' done-conditions, which are also how a
+	// checker's question is told from its sibling's.
+	alpha, beta string
+	asked       []string
+}
+
+func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	system, whole := "", strings.Builder{}
+	if len(messages) > 0 {
+		system = messageText(messages[0])
+	}
+	tooled := false
+	for _, message := range messages {
+		whole.WriteString(messageText(message) + "\n")
+		if message.Role == "tool" {
+			tooled = true
+		}
+	}
+	text := whole.String()
+
+	switch {
+	case system == titleSystem:
+		return textResponse("the adapters"), nil
+	case strings.HasPrefix(system, "You are an AUDITOR"):
+		c.mu.Lock()
+		c.asked = append(c.asked, text)
+		c.mu.Unlock()
+		// THE CHECKER ANSWERS ON THE CONDITION IT WAS HANDED. beta's work is
+		// there; alpha's file was never written, and the checker says so in the
+		// words the report will carry.
+		if strings.Contains(text, c.beta) {
+			return textResponse("VERIFIED — beta.go is there and declares Beta"), nil
+		}
+		return textResponse("REFUTED — nothing declares Alpha: the file was never written"), nil
+	case strings.Contains(text, "write beta.go") && !tooled:
+		return writeResponse("call-beta", "beta.go", "package taskaudit\n\nfunc Beta() string { return \"beta\" }\n"), nil
+	case strings.Contains(text, "write beta.go"):
+		return textResponse("Wrote beta.go."), nil
+	case strings.Contains(text, "write alpha.go"):
+		// THE PART THAT DOES NOT DO THE WORK still says it did, which is the whole
+		// reason a checker stands in front of the word "done".
+		return textResponse("Alpha is done."), nil
+	}
+	// Everything else — the division review among it — gets nothing it can read,
+	// which is the fail-open path and the division exactly as the worker wrote it.
+	return textResponse("(unscripted)"), nil
+}
+
+// audits is how many checkers were handed one particular done-condition.
+func (c *partCompleter) audits(acceptance string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	seen := 0
+	for _, question := range c.asked {
+		if strings.Contains(question, acceptance) {
+			seen++
+		}
+	}
+	return seen
+}
+
+// crossed reports whether any one checker was shown both parts' conditions,
+// which would mean a part is being judged against work that is not its own.
+func (c *partCompleter) crossed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, question := range c.asked {
+		if strings.Contains(question, c.alpha) && strings.Contains(question, c.beta) {
+			return true
+		}
+	}
+	return false
+}
+
 // ── the free-hand count itself ──────────────────────────────────────────────
 
 func TestFreeHandsCountsTheLanesTheAskerIsNotStandingIn(t *testing.T) {
@@ -792,35 +1475,314 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 		t.Errorf("propose_task's schema has no wide argument: %s", task.Schema)
 	}
 
-	run, found := onBelt(agent, "run_adaptive")
-	if !found {
-		t.Fatal("the belt has no run_adaptive")
-	}
-	// IT STAYS, AND IT STAYS EXPLICIT. The exception has to be reachable — a
-	// person who asks for a planned graph gets one — and it has to say that it
-	// is the exception, or width reaches for it again.
-	for _, want := range []string{"THIS IS THE EXCEPTION", "merely WIDE", "propose_task"} {
-		if !strings.Contains(run.Description, want) {
-			t.Errorf("run_adaptive never says %q, so it still reads as the way to parallelize", want)
-		}
+	// AND THERE IS NOTHING ELSE ON THE BELT TO REACH FOR. `run_adaptive` used to
+	// sit beside propose_task carrying a paragraph about being the exception, and
+	// a paragraph is a weaker instrument than an absence: the verb is off the belt
+	// now (tools_harness.go), so width has nowhere else to go.
+	if _, found := onBelt(agent, "run_adaptive"); found {
+		t.Error("run_adaptive is back on the belt, so wide work has a planner to reach for again")
 	}
 
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
-	if !strings.Contains(systemPrompt, "WIDE WORK") || !strings.Contains(systemPrompt, "with `wide`") {
+	rendered := renderSystem(agent.config)
+	if !strings.Contains(rendered, "WIDE WORK") || !strings.Contains(rendered, "with `wide`") {
 		t.Error("prompts/system.md does not route wide work to propose_task")
 	}
-	if !strings.Contains(systemPrompt, "deliberate exception, not the way to") {
-		t.Error("prompts/system.md does not name run_adaptive as the exception")
+	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
+	// planner was the exception, which is a sentence that only makes sense while
+	// the verb is there to be excepted; the verb is gone, so what the prompt owes
+	// the model is the plain fact plus the road that replaced it.
+	if !strings.Contains(rendered, "THERE IS NO PLANNER ON YOUR BELT") {
+		t.Error("prompts/system.md does not tell the model it has no planner")
 	}
-	// And the sentence that produced the live reflex is gone rather than merely
-	// argued with somewhere else on the page.
+	if !strings.Contains(systemPrompt, "Wide\nwork is one task that hands its own parts out once the material shows the width\nis real") {
+		t.Error("prompts/system.md does not name the road that replaced the planner")
+	}
+	// And the sentences that produced the live reflex are gone rather than merely
+	// argued with somewhere else on the page — the verb itself included, because a
+	// prompt that still spells it is a prompt promising a hand the belt withheld.
 	for _, gone := range []string{
 		"Independent parts that share one goal and one synthesis: ONE adaptive run",
 		"the parallelism is already built",
+		"run_adaptive",
 	} {
-		if strings.Contains(systemPrompt, gone) {
+		if strings.Contains(rendered, gone) {
 			t.Errorf("prompts/system.md still says %q", gone)
 		}
+	}
+}
+
+// ── THE PLAN IS READ ONCE BY THE TIER THAT THINKS ───────────────────────────
+//
+// The two gates measure whether a division is WORTH it, and neither of them
+// reads the parts. But a part's brief is that worker's whole world, and it was
+// written by whatever model the parent task runs on — on a cheap crew, the cheap
+// one. So a division that has passed both gates is put once to the mastermind
+// tier, which reads the evidence, the parent's brief and every part together and
+// answers with them approved, amended, merged, or refused.
+
+// the model the high tier is set to in these tests, which is where a careful
+// part is minted and nowhere else.
+const carefulModelID = "test/careful-model"
+
+// THE TWO ROLES ARE THE DECISION, so the tiers are asserted rather than assumed.
+// A review that resolved low would be a cheap model reviewing a cheap model's
+// plan, and a careful part minted on the mastermind tier would spend a thinking
+// model's price on many turns of ordinary work.
+func TestTheDivisionsTwoRolesSitWhereTheyWereReasonedTo(t *testing.T) {
+	for role, want := range map[roles.Role]roles.Tier{
+		roles.RoleDivision: roles.TierMastermind,
+		roles.RoleCareful:  roles.TierHigh,
+	} {
+		tier, ok := roles.TierOf(role)
+		if !ok {
+			t.Fatalf("%q is not a registered role, so it resolves to nothing", role)
+		}
+		if tier != want {
+			t.Errorf("%q resolves on %q, want %q", role, tier, want)
+		}
+	}
+}
+
+// WHAT THE REVIEWER WRITES IS WHAT THE CHILDREN ACTUALLY GET. Three parts go in,
+// the reviewer merges them into two and sharpens both briefs, and the two
+// workers that exist afterwards are working from the reviewer's words — not from
+// the ones the dividing worker wrote.
+func TestTheReviewedBriefsAreWhatThePartsAreActuallyGiven(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"the eleven adapters","summary":"s","brief":"SHARPENED ONE — and do not touch the fixtures","acceptance":"the adapters compile"},` +
+		`{"title":"the fixtures","summary":"s","brief":"SHARPENED TWO","acceptance":"the fixtures compile"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 3))
+
+	if reviewer.reads() != 1 {
+		t.Fatalf("the plan was read %d times, want once and no repair turn", reviewer.reads())
+	}
+	// IT SEES THE WHOLE DIVISION: what the worker saw, the work it came out of,
+	// and every part.
+	for _, want := range []string{wideEvidence, personSentence, "part 1", "part 3", "grade: " + gradeMechanical} {
+		if !strings.Contains(reviewer.saw(), want) {
+			t.Errorf("the reviewer was never shown %q", want)
+		}
+	}
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want the division the reviewer settled", answer)
+	}
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the merged division bore %d parts, want 2", len(kids))
+	}
+	for i, want := range []string{"SHARPENED ONE", "SHARPENED TWO"} {
+		if !strings.Contains(kids[i].instruction(), want) {
+			t.Fatalf("part %d works from %q, want the reviewer's brief", kids[i].id, kids[i].instruction())
+		}
+	}
+	if got := kids[0].title(); got != "the eleven adapters" {
+		t.Fatalf("part 1 is called %q, want the reviewer's name for it", got)
+	}
+}
+
+// A REFUSAL ADMITS NOTHING AND THE WORKER CARRIES ON SOLO — the gates' own
+// ending, which is the one thing about it that must not be new. What is its own
+// is the SENTENCE: the other two refusals explain themselves in terms of a count
+// and a free lane, and either of those said over a plan refused for overlapping
+// scopes would send the worker back to fix a number that was never the problem.
+func TestAReviewThatRefusesLeavesTheWorkerWhereItWas(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"refuse": true, "why": "parts 2 and 3 are the same file"}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 3))
+
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("a refused plan still bore %d parts", len(kids))
+	}
+	if !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want the same refusal shape the gates use", answer)
+	}
+	if !strings.Contains(answer, "parts 2 and 3 are the same file") {
+		t.Fatalf("the refusal says %q and never what the worker could act on", answer)
+	}
+	if !strings.Contains(answer, "Carry on with the work in your own hands") {
+		t.Fatalf("the refusal says %q, want the gates' own ending", answer)
+	}
+	// THE VOCABULARY LAW: the worker reads this and so does a person, over its
+	// shoulder, in the journal.
+	for _, banned := range []string{"gate", "review", "mastermind", "verdict", "refused by"} {
+		if strings.Contains(strings.ToLower(answer), banned) {
+			t.Fatalf("the refusal says %q, which is machinery: %q", banned, answer)
+		}
+	}
+}
+
+// FAIL OPEN. A reviewer that cannot be reached, or that answers something the
+// contract does not allow, admits the ORIGINAL parts unchanged: the division has
+// already earned its way past two gates that were measured, and a flaky second
+// opinion must not be able to turn the road off.
+func TestAReviewerThatCannotAnswerAdmitsTheOriginalParts(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		reviewer *divideReviewer
+	}{
+		{"the call fails outright", &divideReviewer{fails: true}},
+		{"the answer is prose", &divideReviewer{answer: "This division looks sensible to me."}},
+		{"the answer is one part, which is the refusal it was told to spell out",
+			&divideReviewer{answer: `{"parts":[{"title":"all of it","summary":"s","brief":"b","acceptance":"a"}]}`}},
+		{"a part comes back with a field missing",
+			&divideReviewer{answer: `{"parts":[{"title":"one","summary":"s","brief":"b","acceptance":"a"},{"title":"two","summary":"s","brief":"","acceptance":"a"}]}`}},
+		{"more parts come back than one piece of work may be split into",
+			&divideReviewer{answer: `{"parts":[` + strings.TrimSuffix(strings.Repeat(
+				`{"title":"x","summary":"s","brief":"b","acceptance":"a"},`, taskFanLimit+1), ",") + `]}`}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			nest := newDivideNestOn(t, wideBrief, 0, test.reviewer, nil)
+			answer := nest.divide(t, divideArgs(wideEvidence, 3))
+			if !strings.HasPrefix(answer, "split into 3 parts:") {
+				t.Fatalf("the worker was told %q, want the division it wrote", answer)
+			}
+			if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
+				t.Fatalf("the division bore %d parts, want the 3 the worker wrote", len(kids))
+			}
+		})
+	}
+}
+
+// AND IT IS NEVER PAID FOR BY A DIVISION THE GATES REFUSE. The review is the one
+// step on this road that costs money, so it stands AFTER both free gates: a
+// worker whose work is not wide, or whose session has no free hand, never
+// reaches it.
+func TestTheGatesRefuseADivisionBeforeAnybodyPaysToReadIt(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		limit    int
+		evidence string
+	}{
+		{"the evidence names too few items", 0, narrowEvidence},
+		{"nobody is free to pick the parts up", 1, wideEvidence},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reviewer := &divideReviewer{answer: `{"refuse": true}`}
+			nest := newDivideNestOn(t, wideBrief, test.limit, reviewer, nil)
+			if answer := nest.divide(t, divideArgs(test.evidence, 3)); !strings.HasPrefix(answer, "not split:") {
+				t.Fatalf("the worker was told %q", answer)
+			}
+			if reviewer.reads() != 0 {
+				t.Fatalf("a division the gates refused was read %d times", reviewer.reads())
+			}
+		})
+	}
+}
+
+// ── A PART'S GRADE IS WHICH MODEL IT RUNS ON ────────────────────────────────
+
+// THE GRADE DECIDES THE TIER AND NOTHING ELSE ABOUT THE PART. A careful part is
+// minted on the high tier, a mechanical one keeps the parent task's model, and a
+// part that said nothing is mechanical — which is what makes the field free.
+func TestACarefulPartIsMintedOnTheHighTierAndAMechanicalOneIsNot(t *testing.T) {
+	nest := newDivideNestOn(t, wideBrief, 0, &scriptedCompleter{},
+		tierSettings(map[string]string{roles.TierKey(roles.TierHigh): carefulModelID}))
+
+	nest.divide(t, divideGradedArgs(wideEvidence, gradeCareful, "", gradeMechanical))
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 3 {
+		t.Fatalf("the division bore %d parts, want 3", len(kids))
+	}
+	if got := kids[0].spec.model; got != carefulModelID {
+		t.Fatalf("the careful part runs on %q, want the high tier's model", got)
+	}
+	for _, kid := range kids[1:] {
+		if got := kid.spec.model; got != "test/model" {
+			t.Fatalf("part %d runs on %q, want the model its parent task runs on", kid.id, got)
+		}
+	}
+}
+
+// AND WITH NO TIERS CONFIGURED THE FIELD COSTS NOTHING. The ladder floors on the
+// model the work is already on (internal/roles), so an install nobody has opened
+// the settings sheet in mints a careful part exactly where a mechanical one goes
+// — the grade is a word on the wire and no model id is written anywhere.
+func TestACarefulPartOnAnInstallWithNoTiersRunsWhereItsParentDoes(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+
+	nest.divide(t, divideGradedArgs(wideEvidence, gradeCareful, gradeCareful))
+
+	for _, kid := range nest.graph.children(nest.parent.id) {
+		if got := kid.spec.model; got != "test/model" {
+			t.Fatalf("part %d runs on %q, want the model its parent task runs on", kid.id, got)
+		}
+	}
+}
+
+// A WORD NOBODY TAUGHT THE MODEL IS MECHANICAL, and a whole division is never
+// refused over one. The cheap answer is the safe one to be wrong with.
+func TestAnUnknownGradeIsOrdinaryWork(t *testing.T) {
+	nest := newDivideNestOn(t, wideBrief, 0, &scriptedCompleter{},
+		tierSettings(map[string]string{roles.TierKey(roles.TierHigh): carefulModelID}))
+
+	answer := nest.divide(t, divideGradedArgs(wideEvidence, "URGENT", "Careful"))
+
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want a division a strange word did not refuse", answer)
+	}
+	kids := nest.graph.children(nest.parent.id)
+	if got := kids[0].spec.model; got != "test/model" {
+		t.Fatalf("a part graded with a word nobody taught runs on %q, want its parent's model", got)
+	}
+	// AND THE WORD IS READ THE WAY A MODEL WOULD WRITE IT. "Careful" is the
+	// grade, capitalised by a model that was writing a sentence.
+	if got := kids[1].spec.model; got != carefulModelID {
+		t.Fatalf("a part graded \"Careful\" runs on %q, want the high tier's model", got)
+	}
+}
+
+// THE REVIEWER HOLDS THE GRADE TOO, because it is the one reader that can tell
+// which of these parts actually needs thinking — it has the whole division in
+// front of it and the worker had only the material.
+func TestTheReviewerMayPromoteAPartToCareful(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"the tricky one","summary":"s","brief":"b","acceptance":"a","grade":"` + gradeCareful + `"},` +
+		`{"title":"the rest","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer,
+		tierSettings(map[string]string{roles.TierKey(roles.TierHigh): carefulModelID}))
+
+	nest.divide(t, divideArgs(wideEvidence, 2))
+
+	kids := nest.graph.children(nest.parent.id)
+	if got := kids[0].spec.model; got != carefulModelID {
+		t.Fatalf("the part the reviewer graded careful runs on %q, want the high tier's model", got)
+	}
+	if got := kids[1].spec.model; got != "test/model" {
+		t.Fatalf("the part the reviewer left alone runs on %q, want its parent's model", got)
+	}
+}
+
+// AND THE FIELD IS ON THE WIRE. A grade the schema does not carry is a grade no
+// model can write, and everything above it would be machinery nothing reaches.
+func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	tool, found := onBelt(nest.node, "divide_work")
+	if !found {
+		t.Fatal("this worker was built armed and has no divide_work")
+	}
+	schema := string(tool.Schema)
+	for _, want := range []string{`"grade"`, gradeMechanical, gradeCareful} {
+		if !strings.Contains(schema, want) {
+			t.Errorf("divide_work's schema never says %q: %s", want, schema)
+		}
+	}
+	// IT IS THE ONE FIELD A PART MAY LEAVE OUT, and the required list is where
+	// that is actually said.
+	if strings.Contains(schema, `"required":["title","summary","brief","acceptance","grade"]`) {
+		t.Error("grade is required, so a part cannot simply be ordinary work")
+	}
+	// AND THE WORKER IS TOLD WHAT IT IS FOR where it reads about the verb at all.
+	if !strings.Contains(tool.Description, "grade") || !strings.Contains(tool.Description, gradeCareful) {
+		t.Errorf("divide_work never tells the worker about the grade: %s", tool.Description)
+	}
+	// ONE SOURCE OF TRUTH: the page the worker is given teaches the same field.
+	if !strings.Contains(renderSystem(nest.node.config), gradeCareful) {
+		t.Error("prompts/divide.md does not teach the grade the schema asks for")
 	}
 }

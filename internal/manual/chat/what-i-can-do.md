@@ -10,7 +10,7 @@ Yes. Three tools do this, and they work on the workspace you started aforge in.
 | Tool | What it does |
 | --- | --- |
 | `read` | Reads one file's contents, optionally from a start line (`offset`) for a number of lines (`limit`) |
-| `write` | Creates or overwrites one file, making parent directories as needed |
+| `write` | Creates or overwrites one file, making parent directories as needed; with `append:true` it adds to the end instead |
 | `edit` | Replaces exact strings inside one file |
 
 `read` output is cut at **2000 lines or 50KB**, whichever comes first, and the
@@ -29,12 +29,47 @@ disk?" below for what comes back and what it costs.
 `read` cannot open a **directory**. It answers
 `Error reading file: read <path>: is a directory`. Use `ls` to list a directory.
 
+Over `--host`, `read`, `write`, `edit` and `ls` run on the other machine, inside the
+workspace shown for the session. A path in a task brief is read there too. A path the
+model names in its reply can be opened here: aforge confirms it on the far disk and
+fetches it through a short-lived local file door. Copy mode, `ctrl+s`, mouse drag-copy
+and `m puts it in your message` only copy or compose words on this screen, so they work
+the same way over a connection and do not move a file.
+
 `edit` takes a list of replacements. Each `oldText` must appear exactly once,
 and all of them are matched against the original file rather than one after the
 other. Success reads `Successfully replaced N block(s) in <path>.`; a missing
 file reads `Could not edit file: <path>. Error code: ENOENT.`
 
-`write` reports `Successfully wrote N bytes to <path>`.
+`write` reports `Successfully wrote N bytes to <path>`. With `append:true` it
+adds the content to the end of the file instead of replacing it and reports
+`Appended N lines to <path>; the file now has M lines.` — appending to a file
+that does not exist yet simply creates it.
+
+## Can you append to a file, or add to the end without rewriting it?
+
+Yes. `write` takes an optional `append:true`, which adds the new content after
+whatever the file already holds instead of replacing it. It is how a very large
+file is written in parts, and how a write that was cut off mid-stream is
+finished without paying for the whole file again (next section).
+
+## What happens when a big write gets cut off — half-written, truncated, interrupted files
+
+A model reply has an output limit, and a very large `write` can hit it partway
+through the file's content. When that happens the complete lines that did
+arrive are **saved to the file** — never a half line, so the file is not left
+corrupted mid-word — and the tool result says so: it starts
+`Saved what arrived:`, names the file, shows the last lines on disk, and asks
+for one `write` with `append:true` carrying only the rest. The transcript row
+for that call reads `wrote <path> (cut short; saved what arrived)`. The
+continuation then costs the missing tail, not the whole file again.
+
+If the cut fell too early for anything worth saving — inside the path, before
+any complete line — nothing is written and the result says so:
+`This write was cut off at the output limit before enough of it arrived to
+save; nothing was written.` A cut that severs any **other** tool call — a
+`bash` command, an `edit` — never runs on a guessed tail: the call is refused
+with `nothing was run` and a suggestion to retry in smaller pieces.
 
 `read` never asks your permission. `edit` and `write` follow whatever approval
 mode you are in, which asks by default.
@@ -49,14 +84,20 @@ the short list of commands that always ask no matter what the settings say.
 
 Yes, three ways.
 
-**`grep` — search inside files.** It shells out to ripgrep and respects
-`.gitignore`. Arguments: `pattern` (required), `path`, `glob`, `ignoreCase`,
-`literal`, `context`, `limit`. It returns at most **100 matches** by default and
-says so at the cap:
+**`grep` — search inside files.** Arguments: `pattern` (required), `path`,
+`glob`, `ignoreCase`, `literal`, `context`, `limit`. It returns at most **100
+matches** by default and says so at the cap:
 `100 matches limit reached. Use limit=200 for more, or refine pattern`.
 Any single line longer than 500 characters is cut and marked `... [truncated]`.
-Without ripgrep on the machine it answers
-`ripgrep (rg) is not available and could not be downloaded`.
+
+**It works whether or not the machine has ripgrep.** With ripgrep it shells out
+to it and respects `.gitignore`. Without ripgrep it walks the tree itself, with
+the same arguments, the same caps and the same output — it just does not read
+`.gitignore`, and skips `.git`, `node_modules`, `vendor` and files that look
+binary instead. The tool description says which of the two you have. It never
+answers `ripgrep (rg) is not available and could not be downloaded` any more:
+that sentence was every grep call on a machine with no ripgrep and no way to
+fetch one, and a search that cannot fail is worth more than an accurate excuse.
 
 **`find` — find files by name.** It shells out to fd and respects `.gitignore`.
 Arguments: `pattern` (required), `path`, `limit`. Default **1000 results**, and
@@ -83,13 +124,29 @@ with the environment aforge itself was started with.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
 
-**Foreground commands time out after 120 seconds by default, and 600 seconds is
-the maximum** you can ask for. A higher `timeout` is quietly clamped to 600. A
-`timeout` that is missing, null, zero or negative is the same as not asking: 120
-seconds is written in for it, so there is no way to spell a foreground command
-that runs unbounded.
+**aforge waits for the command.** A foreground call runs for as long as its own
+`timeout` argument says, and **600 seconds — ten minutes — is the ceiling**. A
+higher `timeout` is quietly clamped to 600. A `timeout` that is missing, null,
+zero or negative is the same as not asking, and gets the full ten minutes, so
+there is no way to spell a foreground command that runs unbounded and no way for
+one to be sent to the background before the time it asked for is up.
 
-**Reaching that bound does not kill the command.** It is handed to the job
+It used to be two minutes by default with ten as the cap, and the gap between
+them was expensive: a four-minute script hit the two-minute default every single
+time and came back as a background job nobody had asked for, which the model then
+had to chase. One number now, and the escape for anything genuinely longer is
+`background: true`, which is a decision rather than an accident of the clock.
+
+**A long command's output arrives while it runs, not all at once at the end.**
+Programs writing to a pipe normally hold their output back in 4KB blocks —
+Python especially — which used to leave a long job's log at zero bytes until the
+moment it finished, so a job that was working perfectly looked dead. aforge runs
+commands line-buffered (`stdbuf` where the machine has it, plus
+`PYTHONUNBUFFERED=1` for Python, which does its own buffering), so the log fills
+as the work happens. If you had already exported `PYTHONUNBUFFERED` yourself,
+your value is left alone.
+
+**Reaching the ceiling does not kill the command.** It is handed to the job
 registry and keeps running — see the next section.
 
 A command that exits non-zero answers `Command exited with code N`. An
@@ -104,19 +161,23 @@ is better started in the background from the start, where no clock runs at all.
 ## The command took too long — is the work lost, or does it keep running?
 
 It keeps running. A foreground command that reaches its timeout is **adopted as
-a background job**, not killed, and the call answers with one line:
+a background job**, not killed, and the call answers with one line and then
+whatever the command had already printed:
 
 ```
-still running as job 3; log at /path/to/workspace/.aforge-v3/jobs/3.log
+still running as job 3; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
+
+collecting 120 cases
+scored case 1
+scored case 2
 ```
 
-That is the same sentence a command started with `background: true` answers with,
-and from that moment it *is* an ordinary job: a row in `jobs list`, a tail in
-`jobs output`, `jobs kill` reaches its whole process group, and when it finally
-exits aforge is told at the next step — `job 3 exited 0: BUILD OK`. The turn
+The first line is the same sentence a command started with `background: true`
+answers with, and from that moment it *is* an ordinary job: a row in `jobs list`,
+a tail in `jobs output`, `jobs kill` reaches its whole process group. The turn
 carries on straight away rather than waiting.
 
-So a nine-minute `make` behind a two-minute bound costs nothing. Nothing is
+So a fifteen-minute `make` behind a ten-minute ceiling costs nothing. Nothing is
 thrown away and nothing is run twice. The old behaviour — the process group
 killed and `Command timed out after N seconds` — is what a bare subharness leaf
 still does; the chat does not.
@@ -134,6 +195,53 @@ with everything the command printed afterwards. For a command that had printed
 truly enormous amounts before it was promoted, the log begins where aforge's own
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
+
+## Does aforge poll a background job, or does it get told — how does it know a job finished?
+
+**It gets told, and it never has to poll.** Two things arrive without anybody
+asking for them.
+
+**While a job runs**, every tool result aforge reads carries one line per
+outstanding job at the bottom of it, the way a shell prints its background jobs
+under the prompt:
+
+```
+[job 1] running 3m12s · last: scored case 41
+```
+
+Three facts — it is alive, it has been alive this long, this is the last thing it
+said — on every result, so "is it still going" is answered before it can be
+asked. A finished or killed job drops off the list immediately.
+
+**A forked hand is on that same footer**, named, because a hand is a job too (see
+"Hands" in the tasks page):
+
+```
+[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+```
+
+**When a job ends**, its exit code and last non-empty output line arrive in the
+conversation on their own:
+
+```
+while you worked: job 3 exited 0: BUILD OK
+```
+
+If aforge is mid-turn the note lands at the next step; if the turn had already
+ended, the note starts a new one, exactly as a finished task does. Several
+session notes waiting at that boundary are one `while you worked:` message, not
+several synthetic user messages between tool calls.
+
+The rest stays behind `jobs output`: its default is the last 50 lines and its
+footer names the whole log. This keeps a long build tail from dragging the model
+away from the work it was already doing while preserving every line when it
+needs the detail.
+
+So you should never see aforge running `sleep 30 && tail …` to wait for
+something. That loop was real — it cost one benchmark worker two thirds of its
+wall clock, waiting on a log that was empty because of buffering — and the two
+mechanisms above are what replaced it. `jobs output` is still there for an
+intermediate look at a job you asked about; it is not how waiting is done.
 
 ## Can I send a running command to the background myself?
 
@@ -179,14 +287,16 @@ Yes. `bash` with `background: true` registers the command as a **job**, runs it
 in its own process group, and returns immediately:
 
 ```
-job 3 started; log at /path/to/workspace/.aforge-v3/jobs/3.log
+job 3 started; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
 Everything it writes goes to that log file; the last **64KB** is also held in
-memory for quick reads. When the job exits, aforge is told at the next step,
-e.g. `job 3 exited 1: make: *** [build] Error 1` — the last non-empty log line,
-clipped to 120 characters.
+memory for quick reads. When the job exits, aforge is told at the next step in
+one boundary batch, e.g.
+`while you worked: job 3 exited 1: make: *** [build] Error 1` — the last
+non-empty log line, clipped to 120 characters. Use `jobs output` for the output
+behind that headline.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 
@@ -194,22 +304,33 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   Status is `running`, `exited(N)` or `killed`. Nothing running reads
   `No background jobs.` A job that started life as a foreground command and was
   promoted — by its timeout, or by `ctrl+g` — has exactly this row, with no mark
-  saying where it came from: it is a job like any other.
+  saying where it came from: it is a job like any other. A forked **hand** is in
+  this list too, as `job 4 · hand 2 · running · 12.0s · the docs`, and its status
+  when it ends is `finished` — a hand has no exit code, it has a report.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
   most**, with a footer naming the full log:
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
-  Answers `job 1 killed`.
+  Answers `job 1 killed`. Killing a **hand** answers
+  `hand 2 (job 4) stopped; what it had already written is still in your working
+  copy and may be half-made — no report is coming`.
 
 Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).`
 
 **Jobs do not outlive the conversation.** When the session closes, every running
 job is sent SIGTERM, given a shared 2-second grace, then killed. The log files
-under `<workspace>/.aforge-v3/jobs/` stay on disk for you to read afterwards.
+stay on disk for you to read afterwards, in **this conversation's own folder**
+under `logs/jobs/` — never in your project. That is true of every job aforge
+runs, including one a task's worker started in its own checkout: a job log is
+the harness's own droppings, not your work, so it is kept beside the transcript
+that explains what it was for and goes when you delete the conversation. Only a
+conversation with no folder at all still keeps them at
+`<workspace>/.aforge-v3/jobs/`.
 
 **You can see a job without asking.** Every job this conversation starts is also a row on
 the task column on the right, from the moment it starts until it ends — the command as its
-name, and `job 3 · log <path>` under it. A running job counts in the column's `N working`
+name, and `job 3 · log <path>` under it while it runs, folded under the row once it has
+ended (`→` on the row brings it back). A running job counts in the column's `N working`
 tail. It has no room to walk into and no `✕`: the log is where a job is read, and `jobs
 kill` is how one is ended. The tasks page has the whole of it under *Background jobs on the
 column*.
@@ -255,8 +376,12 @@ with `jobs kill`. Starting one answers
 **At most 3 watches run at once.** Over that:
 `this session already has 3 watches running, which is the limit — stop one with jobs kill first, or use bash background:true for a command that ends on its own`
 
-Three identical failures in a row end a watch. A watch note wakes an idle
-session, and watches die with the session like any other job.
+Three identical failures in a row end a watch. Watch updates never interrupt a
+running turn and do not wake an idle session. At the next turn boundary they
+arrive as one compact item such as
+`codex-jobs watch: 3 updates — latest: 7 lines new — fixed the parser`; every
+tick remains available through `jobs output`. Watches die with the session like
+any other job.
 
 For something that has to keep an eye on the world **after** this window is
 closed — "tell me when CI goes red", "every Monday draft the update", "keep main
@@ -474,13 +599,16 @@ kind is a separate answer, so drawing may be there while filming is not.
   name one.
 - `generate_music` composes a piece from a description of the music — genre,
   instruments, tempo, mood. It is a different model from `speak` and has no
-  length argument: you get a piece of the model's own choosing, around a minute,
-  for a flat price per call.
+  length argument: you get a piece of the model's own choosing, half a minute
+  to a minute in practice, for a flat price per call. It **returns straight
+  away with a background job**, like `generate_video`.
 - `generate_video` renders a short video. It **returns straight away with a
   background job** because a render takes minutes; the finished file arrives as a
-  note naming it, and `jobs kill` stops it.
+  note naming it, and `jobs kill` stops it. Both keep working while aforge
+  carries on with other things.
 
-Each saves a file and answers with its path — never the media itself — and each
+Each saves a file and names its path — in the call's own answer for a picture or a
+voiceover, in the job's note for music or a video — never the media itself, and each
 costs real money, a video most of all. A path is all that goes into the
 conversation, but **you see a picture without leaving the terminal and without
 asking**: the moment `generate_image` finishes, the image is drawn under its row
@@ -616,6 +744,33 @@ along with `watch`.
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
 
+## How do you decide how to go about a piece of work?
+
+Three working habits are in aforge's own instructions, and **the chat reads the same
+three as a task does** — the same words, from one page both are given. They are written
+as principles rather than examples, because aforge is handed prose, research, data,
+operations and code through the same door.
+
+- **When the work comes with its own measure, that measure is the loop, not the report.**
+  A check to run, a count to reach, a reading somebody will take: aforge works *between*
+  readings rather than saving the reading for the end, and takes them **more often when
+  the reading is zero**, changing less in between.
+- **Nothing on every count is one shared fault, not many separate ones.** When everything
+  reads zero, aforge looks for what they have in common — how they are reached, the step
+  before any of them runs — and proves that shared path carries one case end to end
+  before touching any single part. Uneven readings mean the opposite.
+- **Before making a thing itself, it spends one step asking whether it already exists** in
+  a form it can use: a tool, a source, a service, something the work already carries,
+  something done here before. Asking costs one step; not asking costs the whole thing.
+  It asks *before* the first piece exists.
+
+The chat carries them because **the approach is chosen in the conversation**, usually in
+the first minutes, before any task exists — measured over a set of runs of the same
+brief, the ones whose conversation asked whether the thing already existed got to a real
+result, and the ones that set about building it by hand did not. A habit that only
+reached the worker arrived after the decision it was meant to shape. *How work on its
+own actually runs* describes the same three from the task's side.
+
 ## Can I run a subharness — one of the typed programs?
 
 `/subharness` (or `/sub`) lists them, `enter` opens that one's intake card, and
@@ -733,11 +888,13 @@ Plainly, so you do not have to find out the hard way.
 - **`read` cannot look at an image, listen to audio or watch a video when no
   model is set for that sense.** It says which one is missing rather than
   showing you the bytes.
-- **`grep` needs ripgrep and `find` needs fd** on the machine. Neither is
-  downloaded on demand; without them those tools say so and stop.
+- **`find` needs fd** on the machine, and it is not downloaded on demand; without
+  it `find` says `fd is not available and could not be downloaded` and stops.
+  `grep` is no longer in this position — it works without ripgrep, on its own
+  legs, and only its treatment of `.gitignore` changes.
 - **`bash` in the foreground cannot run longer than 600 seconds** — but reaching
-  that bound does not throw the work away: the command becomes a background job
-  and keeps going.
+  that ceiling does not throw the work away: the command becomes a background job
+  and keeps going, and the call hands back what it had printed so far.
 - **A scanned PDF is not readable by `read`**, only by `read_document`.
 - **More than 3 watches at once is refused.**
 
@@ -745,7 +902,7 @@ Plainly, so you do not have to find out the hard way.
 
 - **Background jobs and watches**, including a foreground command that was
   promoted into one. Every running job is killed when the session closes. Their
-  log files stay under `<workspace>/.aforge-v3/jobs/`.
+  log files stay under this conversation's own folder, in `logs/jobs/`.
 - **A "don't ask again" answer to a permission question.** It is held in memory
   for this session only and is never written down, so the next session asks
   again.

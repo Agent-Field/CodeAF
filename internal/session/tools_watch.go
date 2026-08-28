@@ -28,20 +28,17 @@ package session
 //     baseline delivered as news would be exactly the fifty-line chunk this tool
 //     exists to stop sending.
 //
-//   - IT RIDES THE STEERING LANE. The note is appended by the same registry
-//     notify a job's exit note uses (jobs.go), drained into the transcript at
-//     the next step boundary, read as plain user text. No push, no new event, no
-//     change to any surface: news that arrives while the model is busy already
-//     has a lane, and a second one would be a second ordering rule and a second
-//     way to land inside a tool batch, which every provider rejects.
+//   - IT RIDES THE AMBIENT LANE. The full tick is kept in the job log, while a
+//     compact update waits in agent.go until the turn boundary. Several ticks
+//     become one count plus the newest fact. No push and no new surface event:
+//     the job row and log remain live, while the model is protected from a
+//     synthetic user message in the middle of unrelated work.
 //
-//     AND IT WAKES AN IDLE SESSION, which is the half a watch cannot do without.
-//     The tool exists because the model STOPPED polling, so on an idle session
-//     there is nothing left that will ever come and look: a delta that only
-//     queued would wait for the person to type, which is the poll this replaced,
-//     moved onto them. The wake and its coalescing are agent.go's
-//     ([Agent.enqueueSteering]) — a watch ticking every ten seconds into a
-//     running turn adds lines to it and starts nothing.
+//     IT DOES NOT WAKE AN IDLE SESSION. A watch is periodic telemetry rather
+//     than a new question, and waking once per delta turns a quiet observer into
+//     an autonomous conversation. Its accumulated result is waiting in the
+//     next turn's opening batch, and `jobs output` holds every tick if the model
+//     needs the detail.
 //
 // Two governors, because a timer that never stops is a way to burn a session
 // down. THREE WATCHES AT A TIME, so a model that discovers the tool cannot turn
@@ -60,6 +57,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -199,16 +197,31 @@ type watchState struct {
 
 // ── the tool ────────────────────────────────────────────────────────────────
 
-const watchDescription = "Run a command on a timer and be told ONLY when there is news, instead of re-running it yourself every turn. Use this for anything you would otherwise poll: a log that should stay quiet, a build whose output you want when it moves, a counter you want to see climb, a file that should eventually contain a line. The watch runs in the background as a job (kind watch: it shows in the jobs tool's list, and jobs kill stops it) and delivers a short note into the conversation at the next step boundary whenever its rule fires — the new lines only, capped, never the whole output. The first run establishes the baseline and says nothing (except with on=always). Modes: 'change' — the output differs from last time, and you get the new lines; 'match' — new lines matching your pattern, and nothing else; 'always' — the last 10 lines every tick, for watching a number move; 'quiet' — the output has NOT changed for quiet_ticks ticks in a row, which is how you learn that something finished without saying so, and which ends the watch with one final note. on is a single mode: quiet cannot be combined with change, match or always, and quiet_ticks is refused unless on is quiet. Give 'until' a pattern to end the watch the moment it appears. At most 3 watches run at once. A WATCH DIES WITH THIS CONVERSATION: it is a job in this session, so the window closing stops it and nothing looks again. For anything that has to keep looking AFTER this window is closed — \"tell me when CI goes red\", \"tell me when that file says red\", \"every Monday draft the update\", \"keep main green\" — this is the wrong tool and `stand` is the right one."
+// WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST OF EVERY
+// TURN. The belt's schemas ride in front of each request the model makes, so a
+// sentence here is paid dozens of times in one task while the prose above it is
+// free. Every rule the long version stated survives; what went is the worked
+// examples and the second telling of what the `on` field already says. The
+// boundary with `stand` stays in full, because that one is a defect a real
+// model made (standing_boundary_test.go pins the words).
+//
+// The concurrency limit is INTERPOLATED, never typed: [watchMaxConcurrent] is
+// what claimWatch actually enforces and a digit here would be the second copy
+// that drifts.
+var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists and kills it) whose updates are batched at the turn boundary, never injected mid-turn; use jobs output for every tick. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
 
-const watchSchemaJSON = `{"type":"object","properties":{` +
-	`"command":{"type":"string","description":"The shell command to run on each tick, in the workspace"},` +
-	`"every_seconds":{"type":"number","description":"Seconds between runs (default: 10, minimum: 2, maximum: 3600)"},` +
-	`"on":{"type":"string","description":"What counts as news: change (output differs from the previous tick), match (new lines matching pattern), always (the last 10 lines every tick), quiet (the output has NOT changed for quiet_ticks ticks in a row, delivered as one final note that ends the watch). Exactly one mode: quiet is incompatible with change, match and always","enum":["change","match","always","quiet"]},` +
-	`"quiet_ticks":{"type":"number","description":"How many consecutive unchanged ticks end an on=quiet watch (default: 6, minimum: 2, maximum: 100). Only valid when on is quiet"},` +
-	`"pattern":{"type":"string","description":"Regular expression selecting the lines worth reporting (required when on is match)"},` +
-	`"until":{"type":"string","description":"Regular expression that ends the watch: the first output line matching it is delivered as a final note and the watch stops"},` +
-	`"name":{"type":"string","description":"Short label for this watch, used in its notes and in the jobs list (default: derived from the command)"}` +
+// Every bound in the schema is INTERPOLATED from the constant the parser clamps
+// against ([parseWatchArguments]), for the one-source-of-truth law's reason: a
+// model reasons from the figure it is shown, and a hand-typed digit is the copy
+// that goes stale the day the constant moves.
+var watchSchemaJSON = `{"type":"object","properties":{` +
+	`"command":{"type":"string","description":"Command run each tick in the workspace."},` +
+	`"every_seconds":{"type":"number","description":"Seconds per tick (default: ` + strconv.Itoa(watchDefaultEvery) + `, min: ` + strconv.Itoa(watchMinEvery) + `, max: ` + strconv.Itoa(watchMaxEvery) + `)"},` +
+	`"on":{"type":"string","description":"News, one mode only. change: new lines when output differs. match: new lines matching pattern. always: the last ` + strconv.Itoa(watchTailLines) + ` lines each tick. quiet: unchanged for quiet_ticks ticks running, which catches a silent finish and ends the watch. Tick one is a silent baseline, except always.","enum":["change","match","always","quiet"]},` +
+	`"quiet_ticks":{"type":"number","description":"Ticks for on=quiet (default: ` + strconv.Itoa(watchDefaultQuietTicks) + `, min: ` + strconv.Itoa(watchMinQuietTicks) + `, max: ` + strconv.Itoa(watchMaxQuietTicks) + `); refused in other modes."},` +
+	`"pattern":{"type":"string","description":"Lines to report, as a regex; required when on is match."},` +
+	`"until":{"type":"string","description":"Regex ending the watch; its first match is the last note."},` +
+	`"name":{"type":"string","description":"Label for notes and the jobs row (default: from the command)."}` +
 	`},"required":["command"],"additionalProperties":false}`
 
 // watchArguments is the wire form. everySeconds is a pointer so an absent
@@ -464,8 +477,8 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 		if ctx.Err() != nil {
 			break
 		}
-		if note != "" && r.notify != nil {
-			r.notify(note)
+		if note != "" && r.notifyWatch != nil {
+			r.notifyWatch(spec.name, note)
 		}
 		if final {
 			break

@@ -3,23 +3,32 @@ package session
 // PROMOTING A RUNNING FOREGROUND COMMAND INTO A JOB.
 //
 // A foreground `bash` call used to be committed at the moment it was made. When
-// the command turned out to be a nine-minute build, the 120-second law killed
-// the process group, the call answered `Command timed out after 120 seconds`,
-// and the only way forward was to run the whole thing AGAIN with
-// background:true. Two minutes of work thrown away, every time, for a judgement
-// nobody could make in advance: no model and no person knows which side of the
-// line `make` falls on until it is already past it.
+// the command turned out to be a fifteen-minute build, the timeout killed the
+// process group, the call answered `Command timed out after N seconds`, and the
+// only way forward was to run the whole thing AGAIN with background:true. The
+// elapsed work thrown away, every time, for a judgement nobody could make in
+// advance: no model and no person knows which side of the line `make` falls on
+// until it is already past it.
 //
 // So a call that hits its bound is now ADOPTED rather than killed. The process
 // keeps running, the registry takes it over, and the call answers
 //
 //	still running as job 3; log at /path/to/.aforge-v3/jobs/3.log
 //
-// which is the sentence a background start already speaks (tools_jobs.go). From
-// there it is a job in every way that matters — a row in `jobs list`, a tail in
-// `jobs output`, a kill that reaches its whole process group, a death at Close,
-// and an exit note on the steering lane at the next step boundary. Nothing new
-// was invented; one existing capability grew one door.
+// followed by everything the command has printed so far ([promotedSentence]).
+// The first line is the sentence a background start already speaks
+// (tools_jobs.go). From there it is a job in every way that matters — a row in
+// `jobs list`, a tail in `jobs output`, a kill that reaches its whole process
+// group, a death at Close, and an exit note carrying its output on the steering
+// lane at the next step boundary. Nothing new was invented; one existing
+// capability grew one door.
+//
+// THE BOUND IT HITS IS TEN MINUTES AND IS THE MODEL'S OWN
+// ([BashCeilingSeconds]). That matters to this file's purpose: a promotion is
+// for the command nobody could have predicted, and it stops being a promotion
+// the moment it happens to work that anybody could have. It used to fire at two
+// minutes, which put every ordinary test suite and scoring script through this
+// door and handed the model a background job it had not asked for.
 //
 // ── WHERE THE SEAM IS, AND WHY THERE ──
 //
@@ -77,17 +86,41 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-// promotedSentence is the one line a promoted call answers with. It is
-// deliberately the shape [Agent.backgroundBash] already speaks for a background
-// start — an id and a path, and nothing else — because the model should not
-// have to learn two ways of being told the same fact.
-func promotedSentence(id int, logPath string) string {
-	return fmt.Sprintf("still running as job %d; log at %s", id, logPath)
+// promotedSentence is what a promoted call answers with: the line
+// [Agent.backgroundBash] already speaks for a background start — an id and a
+// path — and then THE OUTPUT THE COMMAND HAS ALREADY PRODUCED.
+//
+// ── WHY THE OUTPUT IS HERE AND NOT LEFT IN THE LOG ──
+//
+// The id and the path used to be the whole answer, on the reasoning that the
+// model could go and read the rest. What that cost was measured: a model handed
+// a bare id has learned nothing about the work, so its next move is to look at
+// the log — and a command that is still running has usually printed the part
+// that matters (the plan, the first failures, the progress) long before it
+// exits. Handing that back with the id turns a promotion from a question into an
+// answer, and the commonest next call from a model that reads a promotion — go
+// and tail this — stops being worth making.
+//
+// It is bounded by [bare.TailForResult], which is the SAME truncation this
+// command's own result would have been cut by had it finished: last whole lines
+// inside pi's line and byte caps. A promoted call and a finished one are the
+// same command, so the amount of it the model may read is the same number.
+//
+// THE ID LEADS. Everything downstream reads this sentence from the front — the
+// surface, the tests, a person's eye — and a tail of build output above it would
+// bury the one fact that says what happened.
+func promotedSentence(id int, logPath, sofar string) string {
+	line := fmt.Sprintf("still running as job %d; log at %s", id, logPath)
+	if strings.TrimSpace(sofar) == "" {
+		return line
+	}
+	return line + "\n\n" + bare.TailForResult(sofar)
 }
 
 // ── the call id, carried to the tool ────────────────────────────────────────
@@ -182,6 +215,16 @@ func (p *promotableCalls) find(id string) *bare.BashCall {
 	return p.calls[id]
 }
 
+func (p *promotableCalls) snapshot() []*bare.BashCall {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	calls := make([]*bare.BashCall, 0, len(p.calls))
+	for _, call := range p.calls {
+		calls = append(calls, call)
+	}
+	return calls
+}
+
 func (a *Agent) holdPromotable(id string, call *bare.BashCall) {
 	a.inFlightBash.hold(id, call)
 }
@@ -202,18 +245,35 @@ func (a *Agent) releasePromotable(id string) { a.inFlightBash.release(id) }
 // capability whose whole promise is "and the work is not lost".
 func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 	var answer string
-	adopted := call.Adopt(func() (string, bool, bool) {
-		started, err := a.jobs.adopt(call)
-		if err != nil {
-			return "", false, false
-		}
-		answer = promotedSentence(started.id, started.logPath)
-		return answer, false, true
+	_, adopted := a.adoptRunningBashAs(call, func(started *job) string {
+		answer = promotedSentence(started.id, started.logPath, started.sink.text())
+		return answer
 	})
 	if !adopted {
 		return "", false
 	}
 	return answer, true
+}
+
+// adoptRunningBashAs is the one adoption claim with the tool-result sentence
+// left to the caller. Timeout promotion, a person's steer and a person's stop
+// all take the same process into the same registry; only the immediate account
+// returned to the interrupted tool call differs.
+func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, quiet ...bool) (*job, bool) {
+	var started *job
+	adopted := call.Adopt(func() (string, bool, bool) {
+		var err error
+		started, err = a.jobs.adopt(call, quiet...)
+		if err != nil {
+			return "", false, false
+		}
+		answer := answerFor(started)
+		return answer, false, true
+	})
+	if !adopted {
+		return nil, false
+	}
+	return started, true
 }
 
 // PromoteCall sends a running foreground bash call to the background and

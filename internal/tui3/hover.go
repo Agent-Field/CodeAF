@@ -48,12 +48,21 @@ type hoverKind uint8
 
 const (
 	hoverNothing hoverKind = iota
+	hoverPaste
 	// hoverEntry is a conversation row that belongs to an entry — a tool call,
 	// its expansion, its "more" foot, a thinking block.
 	hoverEntry
 	// hoverFold is the "N earlier tool calls" line, which belongs to a turn
 	// rather than to an entry.
 	hoverFold
+	// hoverBrief is the door under a node's folded instruction (brieffold.go).
+	// It is a kind of its own rather than a hoverFold because that one is keyed
+	// by TURN and the instruction shares its turn with the node's first calls —
+	// so a pointer on one door would light the other. And it is not a hoverEntry
+	// because that brightens the WHOLE block, which is right for "click to
+	// expand" and wrong here: the three lines above the door are the person's own
+	// words and a press on them does nothing.
+	hoverBrief
 	// hoverChoices is the consent block's offer line.
 	hoverChoices
 	// hoverConnectAsk is the connect offer's answers line (connect.go). It is a
@@ -306,6 +315,9 @@ func (a *app) setHover(x, y int) {
 // overlap — three regions can be true of one screen row — so a hover resolved
 // differently from a press is a surface that lights one thing and does another.
 func (a *app) hoverTarget(x, y int) hoverAt {
+	if a.pasteEdit.open {
+		return hoverAt{}
+	}
 	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
 	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is
 	// asked first because none of the ordinary targets below mean anything in a
@@ -410,7 +422,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// pointer is
 			// on is a question about the column, and a row that lit as a whole would
 			// promise that pressing anywhere on it did something (tasksettle.go).
-			if card := a.doneCardAt(r.entry); card != nil {
+			//
+			// A ROOM'S FOOT IS THE SAME ROW WITH NO ENTRY UNDER IT, so the card is
+			// asked for through the seam that knows which of the two it is
+			// (tasksettle.go's [app.settleCardOf]).
+			if card := a.settleCardOf(r.entry); card != nil {
 				for i, chip := range card.chips {
 					if chip.span.holds(x) {
 						return hoverAt{kind: hoverSettle, entry: r.entry, index: i}
@@ -420,6 +436,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{}
 		case r.hit == hitFold || r.hit == hitWorkFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
+		case r.hit == hitBrief:
+			return hoverAt{kind: hoverBrief, entry: r.entry}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
 			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is
@@ -492,6 +510,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// line under the block carries no mark and answers to nothing, which is
 			// what [app.parkedMark] already says (park.go).
 			return hoverAt{kind: hoverParked, index: mark.index}
+		case chromeDraft:
+			if n := a.pastePointerAt(x, mark.index); n > 0 {
+				return hoverAt{kind: hoverPaste, index: n}
+			}
 		case chromeOverlay:
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
@@ -511,7 +533,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// identity's own row, then the columns the render recorded for the model.
 			// Any of them answering differently here would be a name that brightens
 			// and then does nothing.
-			if a.copy.on || a.sheet.open || a.pick.open {
+			if a.copy.on || a.at(pageSettings) || a.pick.open {
 				return hoverAt{}
 			}
 			// AT PHONE WIDTH THE ROW IS A DECK AND THE DECK ANSWERS FOR BOTH OF ITS

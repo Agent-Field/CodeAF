@@ -14,7 +14,7 @@ import (
 // (commands.go), and neither of them brought a word that already meant
 // something else.
 func TestStatusAndCostAreOnTheCommandList(t *testing.T) {
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, name := range []string{"status", "cost"} {
 		found := false
 		for _, c := range commands {
@@ -125,6 +125,24 @@ func TestCostCountsEveryModelCallAndNotJustTheTurns(t *testing.T) {
 	}
 }
 
+func TestCostNamesTheReflexCallsThatSpentTheirCeilingOnNoAnswer(t *testing.T) {
+	a := newTestApp(&fakeAgent{usage: session.Usage{
+		Input: 2_000, Output: 400, Calls: 4, EmptyReflex: 2,
+	}})
+
+	a.slash("/cost")
+	text := lastNote(t, a)
+	line := ""
+	for _, row := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(row), "empty reflex answers") {
+			line = strings.TrimSpace(row)
+		}
+	}
+	if line == "" || !strings.HasSuffix(line, " 2") {
+		t.Fatalf("the empty reflex line reads %q in:\n%s", line, text)
+	}
+}
+
 // THE CACHE LINE IS WHAT WAS READ, AND WHAT THAT WAS WORTH — and the money half
 // appears only when a price was published while the reads were happening
 // (app.go's [app.cacheSaved], which is not derivable afterwards).
@@ -223,7 +241,7 @@ func TestStatusSaysNothingAboutAContextItCannotMeasure(t *testing.T) {
 	}
 }
 
-// The file is the one line the sheet does not carry, and it is here because a
+// The file is one identity line the sheet does not carry, and it is here because a
 // path is a thing people copy into another program rather than a thing they
 // read off a row (statusnote.go states the trade).
 func TestStatusNamesTheFileWhenThereIsOne(t *testing.T) {
@@ -238,5 +256,15 @@ func TestStatusNamesTheFileWhenThereIsOne(t *testing.T) {
 	a.slash("/status")
 	if !strings.Contains(lastNote(t, a), a.file) {
 		t.Fatalf("the note lost the session file:\n%s", lastNote(t, a))
+	}
+}
+
+func TestStatusNamesTheBuildHoldingTheConversation(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.build = "1265feda (dirty) built 2026-08-27 13:28"
+
+	a.slash("/status")
+	if text := lastNote(t, a); !strings.Contains(text, "\nbuild") || !strings.Contains(text, a.build) {
+		t.Fatalf("the note lost the build:\n%s", text)
 	}
 }

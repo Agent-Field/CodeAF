@@ -64,6 +64,12 @@ func benchTools(count int) []ai.ToolDefinition {
 // and the interesting number is how the cost per call grows with them: encode
 // is paid once per provider call, so a cost linear in transcript length is a
 // total cost quadratic in the length of the run.
+//
+// It runs through the MEMO, because that is what a client pays (memo.go). The
+// transcript is the same on every iteration, which is the steady state a tool
+// loop is in: the head of turn N+1 is the whole of turn N. What survives the
+// memo is the two breakpoint positions, which is why the breakpoints dialect
+// still marshals here and the automatic one does not.
 func BenchmarkEncodeMessages(b *testing.B) {
 	for _, turns := range []int{8, 45, 81} {
 		messages := benchTranscript(turns)
@@ -72,9 +78,10 @@ func BenchmarkEncodeMessages(b *testing.B) {
 			d    cacheDialect
 		}{{"automatic", cacheDialectAutomatic}, {"breakpoints", cacheDialectBreakpoints}} {
 			b.Run(fmt.Sprintf("turns=%d/%s", turns, dialect.name), func(b *testing.B) {
+				var memo encodeMemo
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
-					if _, err := encodeMessages(messages, dialect.d); err != nil {
+					if _, err := memo.encodeMessages(messages, dialect.d); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -83,16 +90,30 @@ func BenchmarkEncodeMessages(b *testing.B) {
 	}
 }
 
+// BenchmarkEncodeMessagesCold is the same work with nothing remembered: the
+// first call of a conversation, and the cost every call paid before the memo
+// existed.
+func BenchmarkEncodeMessagesCold(b *testing.B) {
+	messages := benchTranscript(81)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := encodeMessages(messages, cacheDialectBreakpoints); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // BenchmarkEncodeTools is the tool-schema serialization. The schemas do not
-// change between calls within a run, so every allocation here is repeated work
-// by construction.
+// change between calls within a run — the belt is append-only — so every
+// allocation the memo does not take away here is repeated work by construction.
 func BenchmarkEncodeTools(b *testing.B) {
 	for _, count := range []int{12, 30} {
 		tools := benchTools(count)
 		b.Run(fmt.Sprintf("tools=%d", count), func(b *testing.B) {
+			var memo encodeMemo
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if _, err := encodeTools(tools, cacheDialectBreakpoints); err != nil {
+				if _, err := memo.encodeTools(tools, cacheDialectBreakpoints); err != nil {
 					b.Fatal(err)
 				}
 			}

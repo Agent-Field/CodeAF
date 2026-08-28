@@ -93,6 +93,89 @@ func TestAttachReplaysTheTurnThenItsLiveTail(t *testing.T) {
 	}
 }
 
+// TestAttachReplayHandsTheTurnToTheStreamNotTheEntries pins the atomic door's
+// whole reason to exist: a turn's completed steps are journaled the moment they
+// complete, so a surface that replayed the transcript and then attached drew
+// those steps twice — once in their journal form, once again out of the
+// backlog. AttachReplay splits the conversation at the turn's floor instead:
+// the entries stop where the running turn's work begins, the stream carries the
+// turn whole, and the person's own words are in the entries because no event
+// ever re-carries them.
+func TestAttachReplayHandsTheTurnToTheStreamNotTheEntries(t *testing.T) {
+	midTurn := make(chan struct{})
+	carryOn := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			// One whole step — prose and a tool call — recorded in the
+			// transcript before the turn's second request goes out.
+			return toolResponseWithText("call-1", "read", `{"path":"go.mod"}`, "let me look first"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(midTurn)
+			<-carryOn
+			return textResponse("the answer"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	first, err := agent.Submit(context.Background(), "go look")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	<-midTurn
+
+	entries, events, stop := agent.AttachReplay()
+	if events == nil {
+		t.Fatal("AttachReplay during a turn answered with no stream")
+	}
+	defer stop()
+	// THE ENTRIES HOLD THE QUESTION AND NONE OF THE TURN'S WORK. The completed
+	// first step is already in the transcript — that is the defect's whole
+	// setup — and it must be the stream's to draw, not the replay's.
+	saidGoLook := false
+	for _, entry := range entries {
+		if entry.Role == "user" && strings.Contains(entry.Text, "go look") {
+			saidGoLook = true
+		}
+		if entry.Tool == "read" || strings.Contains(entry.Text, "let me look first") {
+			t.Fatalf("the running turn's work leaked into the replay entries: %+v", entry)
+		}
+	}
+	if !saidGoLook {
+		t.Fatal("the person's own message is missing from the replay entries")
+	}
+
+	close(carryOn)
+	streamed := collect(t, events)
+	sawRead := false
+	for _, event := range streamed {
+		if event.Tool == "read" {
+			sawRead = true
+		}
+	}
+	if !sawRead {
+		t.Fatal("the backlog did not replay the completed step's tool call")
+	}
+	collect(t, first)
+
+	// AND ONCE THE TURN IS OVER THE SAME DOOR IS THE WHOLE RECORD: no stream,
+	// and the work that was the stream's to draw is the entries' again.
+	entries, events, stop = agent.AttachReplay()
+	if events != nil {
+		t.Fatal("AttachReplay on an idle session handed back a stream")
+	}
+	stop()
+	sawRead = false
+	for _, entry := range entries {
+		if entry.Tool == "read" {
+			sawRead = true
+		}
+	}
+	if !sawRead {
+		t.Fatal("the settled turn's work is missing from the idle replay entries")
+	}
+}
+
 // TestAttachWithNoTurnRunningSaysSo is the other half of the contract: nothing
 // to watch is an answer, not an empty stream a caller has to wait on.
 func TestAttachWithNoTurnRunningSaysSo(t *testing.T) {
@@ -447,6 +530,55 @@ func TestAPausedRunSaysWaitingOnYouInTheRunsOwnWords(t *testing.T) {
 	}
 	if state := agent.presenceSnapshot(time.Now()).State; state == PresenceWaiting {
 		t.Fatal("presence still says waiting on you about a run that is over")
+	}
+}
+
+// THE FOLD IS AN ACCUMULATION, AND IT SPELLS THE SAME STRING. The backlog holds
+// a run of text deltas as chunks and joins them only when somebody can read it
+// ([eventHub.foldedLocked]), because `Text += delta` per delta copies the whole
+// answer so far and turns one long reply into a quadratic amount of copying
+// under the hub's lock. Two attaches on either side of the same run is the shape
+// that catches a wrong accumulation: the first settles the run and the second
+// must still be handed every word of it, in order, once.
+func TestABacklogFoldedAcrossTwoAttachesStillSpellsTheWholeAnswer(t *testing.T) {
+	hub := newEventHub()
+	whole := ""
+	send := func(chunks ...string) {
+		for _, chunk := range chunks {
+			whole += chunk
+			hub.send(Event{Kind: EventTextDelta, Text: chunk})
+		}
+	}
+
+	send("the ", "answer ")
+	early, running := hub.attach()
+	if !running {
+		t.Fatal("attach to a live hub said nothing was running")
+	}
+	// The run CONTINUES past the attach, into the same backlog entry the first
+	// reader was just handed.
+	send("so ", "far", ", and ", "the rest")
+	late, running := hub.attach()
+	if !running {
+		t.Fatal("the second attach to a live hub said nothing was running")
+	}
+	hub.close()
+
+	earlyText, earlyDeltas := deltaText(collect(t, early.out))
+	if earlyText != whole {
+		t.Fatalf("the first reader saw %q, want the whole run %q", earlyText, whole)
+	}
+	// One folded delta for the two chunks that had already gone out, then the
+	// four that came after it live.
+	if earlyDeltas != 5 {
+		t.Fatalf("the first reader saw %d deltas, want 5", earlyDeltas)
+	}
+	lateText, lateDeltas := deltaText(collect(t, late.out))
+	if lateText != whole {
+		t.Fatalf("the second reader saw %q, want the whole run %q", lateText, whole)
+	}
+	if lateDeltas != 1 {
+		t.Fatalf("the second reader saw %d deltas, want the run folded into 1", lateDeltas)
 	}
 }
 

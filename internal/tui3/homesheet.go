@@ -3,7 +3,7 @@ package tui3
 // THE SHEET: A ROW'S CARD, OVER THE WHOLE FRAME.
 //
 // The card is home's right column and the right column goes at eighty
-// ([homeMinDetail]). Under sixty there is no second column and there is not
+// ([homeCardMin]). Under sixty there is no second column and there is not
 // going to be one — thirty cells beside thirty cells is two truncated columns —
 // so the card takes the FRAME instead, opened by the same gesture that would
 // have previewed it on a wide one: enter on the row, or a tap.
@@ -534,7 +534,9 @@ func (a *app) homeAnswerBand(chip answerChip, width int, pal palette) string {
 	if room := width - len(consentBandPad) - ansi.StringWidth(chip.key) - 1; ansi.StringWidth(word) > room {
 		word = fit(word, room)
 	}
-	return pal.ask(consentBandPad) + pal.askBold(chip.key) + pal.ask(" "+word)
+	// The phone's chip is the wide tier's chip, said in the same amber
+	// ([app.answerChipLines] holds the reasoning).
+	return pal.warn(consentBandPad) + pal.warnBold(chip.key) + pal.warn(" "+word)
 }
 
 // ── the errand's sheet ──────────────────────────────────────────────────────
@@ -578,7 +580,7 @@ func (a *app) homeErrandSheet(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1, homeSheetHit{})
 	text := ex.box.String()
-	add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1, homeSheetHit{})
+	add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1, homeSheetHit{})
 	caretX, caretY := 3+ansi.StringWidth(text), len(lines)-1
 	if caretX > width-1 {
 		caretX = width - 1
@@ -771,6 +773,15 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 				return a.homeItemWrite(line, standing.StatusPaused), true
 			}
 			return a.homeItemWrite(line, standing.StatusRetired), true
+		}
+		return nil, true
+	case "ctrl+v":
+		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
+		// card's legend names works wherever the card is drawn (homeeffort.go).
+		// An item's rung is the only one this chord moves anywhere now, so there
+		// is nothing else it could mean here.
+		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
+			return a.cycleItemEffort(line.item), true
 		}
 		return nil, true
 	}

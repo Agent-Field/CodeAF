@@ -402,7 +402,7 @@ func (r *Reconciler) briefStanding(byID map[string]store.Node, throughSeq int64)
 	rows := make([]BriefEvent, 0, briefStandingRows)
 	blocked := make(map[string]bool)
 
-	questions, err := r.store.UnresolvedQuestions(200)
+	questions, err := r.store.UnresolvedQuestions(unresolvedQuestionScan)
 	if err != nil {
 		return nil, err
 	}

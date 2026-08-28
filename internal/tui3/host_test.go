@@ -227,11 +227,55 @@ func TestSettingsSaysWhoseRowsTheseAre(t *testing.T) {
 	a, _ := hostLab(t)
 	a.openSettings()
 	said := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(said, "this machine's") {
+	if !strings.Contains(said, "belong to this machine") {
 		t.Fatalf("the settings panel opened without saying whose rows it edits: %s", said)
 	}
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("the panel refused to open, taking the rows that DO work with it")
+	}
+}
+
+func TestCommandsWithoutAFarDoorNameTheMachineAndTouchNoLocalState(t *testing.T) {
+	a, _ := hostLab(t)
+	profile := t.TempDir()
+	a.profileDir = profile
+
+	checks := []struct {
+		name string
+		run  func()
+	}{
+		{"cache", func() { a.runCacheCommand("clean now") }},
+		{"permissions", a.openPermissions},
+		{"crew", func() { a.runCrew("frugal") }},
+		{"memories", func() { a.runMemories("") }},
+		{"memory query", func() { a.runMemories("Ada") }},
+		{"remember", func() { a.runRemember("Ada likes tea") }},
+		{"forget", func() { a.runForget("Ada") }},
+		{"subharness", func() { a.openSubharness("") }},
+		{"harness", a.openHarness},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			before, err := os.ReadDir(profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check.run()
+			said := strings.Join(plainRows(a), "\n")
+			if !strings.Contains(said, "devbox") {
+				t.Fatalf("the refusal did not name the machine: %s", said)
+			}
+			after, err := os.ReadDir(profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(after) != len(before) {
+				t.Fatalf("the remote refusal changed this machine's profile: before %d files, after %d", len(before), len(after))
+			}
+		})
+	}
+	if a.permPanel.open || a.harnPanel.open || a.subPage.open {
+		t.Fatal("a list backed by this machine opened over --host")
 	}
 }
 

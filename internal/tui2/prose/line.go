@@ -171,6 +171,30 @@ func newPainter(s *tokens.Styler) painter {
 // and not a failure.
 func (p painter) plain() bool { return p.profile == tokens.NoColor }
 
+// fg is the foreground sequence for a token, ASKED OF THE STYLER rather than of
+// the token.
+//
+// The two answers are the same for every Styler this package was written
+// against, and they stop being the same the moment a caller states one of its
+// own ([tokens.Styler.WithBodyInk], which internal/tui3 uses so a reply's body
+// wears that surface's ink instead of a second, brighter white). The decorated
+// path below assembles its escapes by hand — the Styler seam has no vocabulary
+// for bold — and a hand-assembled span that read the token directly would be the
+// one place on the screen where a bold word or a link label kept the colour the
+// paragraph around it had just stopped wearing.
+//
+// The nil branch is the token's own answer rather than nothing, and it is there
+// for honesty rather than for use: [newPainter] gives a nil Styler the [NoColor]
+// profile, so [painter.plain] has already returned before anything asks. A
+// function that quietly depended on that would be a function that breaks the day
+// somebody constructs a painter another way.
+func (p painter) fg(t tokens.Token) string {
+	if p.styler == nil {
+		return t.Fg(p.profile, p.focus)
+	}
+	return p.styler.Fg(t)
+}
+
 // paint wraps text in the escape sequences its style asks for. It obeys the
 // blocks contract that painting must not change printable width: only escapes
 // are added, never a printable byte.
@@ -184,7 +208,7 @@ func (p painter) paint(text string, st style) string {
 	if text == "" || p.plain() {
 		return text
 	}
-	fg := st.tok.Fg(p.profile, p.focus)
+	fg := p.fg(st.tok)
 	if st.code && tokens.CodeHighlighting(p.profile) {
 		fg = st.slot.Fg(p.profile, p.focus)
 	}

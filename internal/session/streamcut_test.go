@@ -19,12 +19,28 @@ import (
 // cutStep is one scripted request that streams some text and is then cut, the
 // way a real guarded stream behaves: the person watched the deltas arrive and
 // no response exists.
+//
+// It is REROUTED, which is the ordinary production case — the stream named the
+// endpoint that served it and the ledger struck that lane, so the next attempt
+// is genuinely served by somebody else. [blindCutStep] is the other case.
 func cutStep(reason provider.CutReason, streamed string) step {
+	return cutStepAs(reason, streamed, true)
+}
+
+// blindCutStep is a cut that changed nothing about where the next attempt
+// lands: `routing off`, or a stream that died before any chunk named its
+// endpoint. The turn loop gives that case a shorter budget and moves to another
+// model sooner ([cutBudget]).
+func blindCutStep(reason provider.CutReason, streamed string) step {
+	return cutStepAs(reason, streamed, false)
+}
+
+func cutStepAs(reason provider.CutReason, streamed string, rerouted bool) step {
 	return func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
 		if streamed != "" {
 			provider.Emit(ctx, provider.StreamDelta, streamed)
 		}
-		return nil, &provider.StreamCut{Reason: reason}
+		return nil, &provider.StreamCut{Reason: reason, Rerouted: rerouted}
 	}
 }
 

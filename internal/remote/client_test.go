@@ -52,12 +52,28 @@ type engine struct {
 }
 
 func newEngine(t *testing.T) (*Client, *engine) {
+	return newEngineStating(t, nil)
+}
+
+// newEngineStating is [newEngine] with the fact set the engine states at the
+// door shaped by the caller. It is a second door rather than a field because
+// the welcome is written BEFORE the handshake and read during it: a test that
+// set the facts on the engine it was handed back would be setting them after
+// the surface had already been told.
+func newEngineStating(t *testing.T, shape func(*Welcome)) (*Client, *engine) {
 	t.Helper()
 	ours, theirs := net.Pipe()
+	welcome := Welcome{
+		Version: Version, Workspace: "/srv/app", SessionFile: "/srv/j.jsonl", Model: "a/b",
+		Facts: &FactsPush{Rev: 1, Facts: session.Facts{Model: "a/b"}},
+	}
+	if shape != nil {
+		shape(&welcome)
+	}
 	e := &engine{
 		t:       t,
 		conn:    theirs,
-		welcome: Welcome{Version: Version, Workspace: "/srv/app", SessionFile: "/srv/j.jsonl", Model: "a/b"},
+		welcome: welcome,
 		answers: map[string]any{},
 		fails:   map[string]string{},
 		silent:  map[string]bool{},
@@ -118,7 +134,7 @@ func (e *engine) answer(frame Frame) {
 		return
 	}
 	switch frame.Method {
-	case MethodSubmit, MethodSubmitImage, MethodFollowUp:
+	case MethodSubmit, MethodSubmitImage, MethodFollowUp, MethodSteer:
 		e.streams++
 		stream := e.streams
 		e.send(Frame{Kind: "result", ID: frame.ID, Payload: mustClientJSON(StreamRef{Stream: stream})})
@@ -151,6 +167,12 @@ func (e *engine) event(stream uint64, ev session.Event) {
 }
 
 func (e *engine) closeStream(stream uint64) { e.send(Frame{Kind: "closed", ID: stream}) }
+
+// state pushes one fact set, unasked — the engine half of "intent up, facts
+// down" (wire.go's version 4). It belongs to no stream and answers no call.
+func (e *engine) state(rev uint64, facts session.Facts) {
+	e.send(Frame{Kind: "facts", Payload: mustClientJSON(FactsPush{Rev: rev, Facts: facts})})
+}
 
 // calls is every call the engine saw, by method.
 func (e *engine) calls(method string) []Frame {
@@ -193,6 +215,9 @@ func TestDialCarriesTheWorkspaceAndKeepsTheWelcome(t *testing.T) {
 			if hello.Workspace != "app" {
 				t.Fatalf("hello workspace = %q, want the path as typed", hello.Workspace)
 			}
+			if !supportsEncoding(hello.Encodings, frameEncodingGzip) {
+				t.Fatalf("hello encodings = %q, want gzip offered additively", hello.Encodings)
+			}
 		}
 	}
 	e.mu.Unlock()
@@ -230,18 +255,22 @@ func TestDialRefusesAnotherProtocolVersionAtTheDoor(t *testing.T) {
 
 // ── the agent's own methods ─────────────────────────────────────────────────
 
-func TestEveryGetterIsOneRoundTrip(t *testing.T) {
-	client, e := newEngine(t)
-	e.answers[MethodModel] = "openai/gpt-5"
-	e.answers[MethodTitle] = "the roof leaks"
-	e.answers[MethodContextTokens] = 4212
-	e.answers[MethodUsage] = session.Usage{Turns: 3, CostUSD: 0.25}
-	e.answers[MethodReasoningFor] = "high"
-	e.answers[MethodTranscript] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
-	e.answers[MethodRewindPoints] = []session.RewindPoint{{Index: 2, Turn: true, Said: "hello"}}
-	e.answers[MethodRewindAt] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
+// THE FACT SET IS THE WELCOME'S, AND ASKING FOR IT COSTS NOTHING. The five
+// getters a frame draws read the replica (replica.go), so the engine below is
+// given no answer for any of their methods and the readings are still right.
+func TestTheFactsAFrameReadsCostNoRoundTrip(t *testing.T) {
+	client, _ := newEngineStating(t, func(w *Welcome) {
+		w.Facts = &FactsPush{Rev: 1, Facts: session.Facts{
+			Model:         "openai/gpt-5",
+			Title:         "the roof leaks",
+			Spent:         session.Usage{Turns: 3, CostUSD: 0.25},
+			ContextTokens: 4212,
+			Reasoning:     map[string]string{"openai/gpt-5": "high"},
+		}}
+	})
 
 	agent := client.Agent()
+	before := client.CallsMade()
 	if got := agent.Model(); got != "openai/gpt-5" {
 		t.Fatalf("Model = %q", got)
 	}
@@ -254,9 +283,23 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	if got := agent.Usage(); got.Turns != 3 || got.CostUSD != 0.25 {
 		t.Fatalf("Usage = %+v", got)
 	}
-	if got := agent.ReasoningFor("openai/gpt-5"); got != "high" {
+	// AND THE LEVEL IS FOUND UNDER ANY SPELLING OF THE ID, because the map is
+	// keyed the way internal/session keys it ([session.ReasoningKey]).
+	if got := agent.ReasoningFor("OpenAI/GPT-5"); got != "high" {
 		t.Fatalf("ReasoningFor = %q", got)
 	}
+	if spent := client.CallsMade() - before; spent != 0 {
+		t.Fatalf("the five facts a frame draws cost %d round trips, want 0", spent)
+	}
+}
+
+func TestEveryGetterIsOneRoundTrip(t *testing.T) {
+	client, e := newEngine(t)
+	e.answers[MethodTranscript] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
+	e.answers[MethodRewindPoints] = []session.RewindPoint{{Index: 2, Turn: true, Said: "hello"}}
+	e.answers[MethodRewindAt] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
+
+	agent := client.Agent()
 	if got := agent.Transcript(); len(got) != 1 || got[0].Text != "hello" {
 		t.Fatalf("Transcript = %+v", got)
 	}
@@ -287,13 +330,16 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	}
 
 	for _, method := range []string{
-		MethodSetModel, MethodSetContext, MethodSetReasoningFor, MethodInterrupt,
+		MethodSetModel, MethodSetReasoningFor, MethodInterrupt,
 		MethodConsent, MethodConsentRemember, MethodHarness, MethodConnect,
 		MethodConnectKey, MethodNoteConnected, MethodCompact, MethodClose,
 	} {
 		if len(e.calls(method)) != 1 {
 			t.Fatalf("%s did not travel exactly once", method)
 		}
+	}
+	if len(e.calls(MethodSetContext)) != 0 {
+		t.Fatal("the laptop's context window crossed to the engine")
 	}
 	// The arguments are the method's own struct, not a guess.
 	var consent ConsentArgs
@@ -368,6 +414,29 @@ func TestSubmitStreamsEventsInOrderAndClosesOnClosed(t *testing.T) {
 	}
 }
 
+func TestSteerOpensTheRunningTurnsTail(t *testing.T) {
+	client, e := newEngine(t)
+	e.after = func(e *engine, stream uint64) {
+		e.event(stream, session.Event{Kind: session.EventSteerAccepted, Steer: &session.SteerNote{ID: 7, Words: "use staging"}})
+		e.closeStream(stream)
+	}
+	events, err := client.Agent().Steer("use staging")
+	if err != nil {
+		t.Fatalf("Steer: %v", err)
+	}
+	ev := <-events
+	if ev.Kind != session.EventSteerAccepted || ev.Steer == nil || ev.Steer.Words != "use staging" {
+		t.Fatalf("steer event = %+v", ev)
+	}
+	var args SubmitArgs
+	if err := json.Unmarshal(e.calls(MethodSteer)[0].Payload, &args); err != nil {
+		t.Fatalf("steer payload: %v", err)
+	}
+	if args.Text != "use staging" {
+		t.Fatalf("steer args = %+v", args)
+	}
+}
+
 func TestEventsThatArriveBeforeTheResultAreNotLost(t *testing.T) {
 	// The engine is allowed to write the events immediately behind the result,
 	// and on a fast pipe the reader can see them before the caller of Submit has
@@ -395,7 +464,6 @@ func TestAGetterDuringALiveStreamDoesNotDeadlock(t *testing.T) {
 	// loop. If the reader goroutine ever blocked handing an event over, a getter
 	// asked between two events would wait for a reader that was waiting for it.
 	client, e := newEngine(t)
-	e.answers[MethodModel] = "a/b"
 	e.after = func(e *engine, stream uint64) {
 		go func() {
 			for i := 0; i < 200; i++ {
@@ -409,9 +477,15 @@ func TestAGetterDuringALiveStreamDoesNotDeadlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	// Ask a getter WITHOUT draining first, which is the deadlock shape.
+	// Ask a getter WITHOUT draining first, which is the deadlock shape. The
+	// facts a frame draws no longer take the wire at all, so the shape is gone
+	// rather than survived — but the readings must still be right mid-flood, and
+	// a fetch that DOES ask (the transcript) must still get through.
 	if got := agent.Model(); got != "a/b" {
 		t.Fatalf("Model during a live stream = %q", got)
+	}
+	if got := agent.Transcript(); got != nil {
+		t.Fatalf("Transcript during a live stream = %+v", got)
 	}
 	count := 0
 	for range events {

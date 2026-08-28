@@ -8,9 +8,11 @@ package remote
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -38,11 +40,14 @@ func TestMain(m *testing.M) {
 type fakeAgent struct {
 	mu sync.Mutex
 
-	streams []chan session.Event
-	sent    []string
-	marked  []string
-	follows []string
-	images  []session.Image
+	streams  []chan session.Event
+	sent     []string
+	marked   []string
+	follows  []string
+	steered  []string
+	images   []session.Image
+	tasks    []string
+	planners []string
 
 	model  string
 	window int
@@ -71,11 +76,42 @@ type fakeAgent struct {
 	// catches a pump overtaking the result that names its stream.
 	prefill []session.Event
 
-	failing   error
-	compactBy error
-	rewindBy  error
-	panicking bool
+	failing     error
+	compactBy   error
+	rewindBy    error
+	panicking   bool
+	taskJournal string
+	cancelled   []string
 }
+
+func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
+
+func (f *fakeAgent) SteerTask(id uint64, line string) (bool, error) {
+	f.steered = append(f.steered, fmt.Sprintf("%d:%s", id, line))
+	return true, f.failing
+}
+
+func (f *fakeAgent) Cancel(id string) (string, error) {
+	f.cancelled = append(f.cancelled, id)
+	return "stopping task 17", f.failing
+}
+
+func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, error) {
+	f.tasks = append(f.tasks, brief)
+	return 17, "far task", f.failing
+}
+
+func (f *fakeAgent) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
+	f.planners = append(f.planners, brief+"|"+hint)
+	return "run-8", "far plan", f.failing
+}
+
+func (f *fakeAgent) JudgeDecomposable(_ context.Context, brief string) (bool, []string, string) {
+	f.tasks = append(f.tasks, "judge:"+brief)
+	return true, []string{"one", "two"}, "independent"
+}
+
+func (f *fakeAgent) PendingConnect() []string { return nil }
 
 func (f *fakeAgent) open() <-chan session.Event {
 	stream := make(chan session.Event, 64)
@@ -129,6 +165,16 @@ func (f *fakeAgent) FollowUp(text string) (<-chan session.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.follows = append(f.follows, text)
+	if f.failing != nil {
+		return nil, f.failing
+	}
+	return f.open(), nil
+}
+
+func (f *fakeAgent) Steer(text string) (<-chan session.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steered = append(f.steered, text)
 	if f.failing != nil {
 		return nil, f.failing
 	}
@@ -202,22 +248,50 @@ func (f *fakeAgent) SetContextWindow(tokens int) {
 	f.window = tokens
 }
 
+// THE LEVELS ARE KEYED THE WAY internal/session KEYS THEM ([session.ReasoningKey]),
+// because a double that stored them under the caller's own spelling would let a
+// level set from a picker row go missing from a lookup by a slug typed in
+// another case — a bug the real agent does not have, invented here.
 func (f *fakeAgent) ReasoningFor(model string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.panicking {
 		panic("the reasoning map is not there")
 	}
-	return f.levels[model]
+	return f.levels[session.ReasoningKey(model)]
+}
+
+// ReasoningLevels is the whole map, copied — the fact set's own read
+// ([session.FactsOf]).
+func (f *fakeAgent) ReasoningLevels() map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.levels) == 0 {
+		return nil
+	}
+	levels := make(map[string]string, len(f.levels))
+	for model, level := range f.levels {
+		levels[model] = level
+	}
+	return levels
 }
 
 func (f *fakeAgent) SetReasoningFor(model, level string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	key := session.ReasoningKey(model)
+	if key == "" {
+		return
+	}
+	// Absence is stored as absence, exactly as the agent stores it.
+	if level == "" {
+		delete(f.levels, key)
+		return
+	}
 	if f.levels == nil {
 		f.levels = map[string]string{}
 	}
-	f.levels[model] = level
+	f.levels[key] = level
 }
 
 func (f *fakeAgent) ResolveConsent(id uint64, allow bool) {
@@ -347,6 +421,12 @@ type link struct {
 	frames chan Frame
 	spare  []Frame
 	served chan error
+	// stated is every "facts" frame this link has passed over. THE FACT PUSH IS
+	// UNSOLICITED (wire.go's version 4): it answers no call and belongs to no
+	// stream, so a reader walking a turn's frames in order has to be able to
+	// step past one — exactly as the real client's reader does, by kind. They
+	// are kept rather than dropped so a test can assert one was sent.
+	stated []Frame
 }
 
 // unparsable is the kind the reader invents for a line that is not a frame. It
@@ -400,8 +480,22 @@ func (l *link) write(frame Frame) {
 	}
 }
 
-// recv is the next frame, from the stash first and then the wire.
+// recv is the next frame a caller ASKED FOR, from the stash first and then the
+// wire, stepping over the engine's unsolicited fact pushes on the way.
 func (l *link) recv() Frame {
+	l.t.Helper()
+	for {
+		frame := l.recvAny()
+		if frame.Kind == "facts" {
+			l.stated = append(l.stated, frame)
+			continue
+		}
+		return frame
+	}
+}
+
+// recvAny is the next frame whatever it is, fact pushes included.
+func (l *link) recvAny() Frame {
 	l.t.Helper()
 	if len(l.spare) > 0 {
 		frame := l.spare[0]
@@ -536,6 +630,63 @@ func TestServeWelcomesAHello(t *testing.T) {
 	}
 }
 
+func TestLargeFramesCompressOnlyAfterNegotiation(t *testing.T) {
+	entries := []session.DisplayEntry{{Role: "assistant", Text: strings.Repeat("compressible transcript ", 4000)}}
+	agent := &fakeAgent{transcript: entries}
+
+	oldSurface := dialAgent(t, engineOn(agent))
+	welcome := decode[Welcome](t, oldSurface.hello(Hello{Version: Version}).Payload)
+	if welcome.Encoding != "" {
+		t.Fatalf("an old surface was assigned %q", welcome.Encoding)
+	}
+	plain := oldSurface.ok(1, MethodTranscript, nil)
+	if plain.Encoding != "" || len(plain.Payload) < compressionThreshold {
+		t.Fatalf("old surface got encoding=%q payload=%d", plain.Encoding, len(plain.Payload))
+	}
+	_ = oldSurface.end()
+
+	newSurface := dialAgent(t, engineOn(agent))
+	welcome = decode[Welcome](t, newSurface.hello(Hello{Version: Version, Encodings: []string{frameEncodingGzip}}).Payload)
+	if welcome.Encoding != frameEncodingGzip {
+		t.Fatalf("negotiated encoding = %q", welcome.Encoding)
+	}
+	compressed := newSurface.call(1, MethodTranscript, nil)
+	if compressed.Encoding != frameEncodingGzip || len(compressed.Payload) != 0 || len(compressed.Data) == 0 {
+		t.Fatalf("negotiated frame = encoding %q payload %d data %d", compressed.Encoding, len(compressed.Payload), len(compressed.Data))
+	}
+	if err := expandFrame(&compressed); err != nil {
+		t.Fatal(err)
+	}
+	if got := decode[[]session.DisplayEntry](t, compressed.Payload); len(got) != 1 || got[0].Text != entries[0].Text {
+		t.Fatal("expanded transcript changed")
+	}
+	_ = newSurface.end()
+}
+
+type flushCountingWriter struct {
+	bytes.Buffer
+	flushes int
+}
+
+func (w *flushCountingWriter) Flush() error {
+	w.flushes++
+	return nil
+}
+
+func TestEveryServerFrameIsFlushed(t *testing.T) {
+	out := &flushCountingWriter{}
+	s := &server{out: out}
+	if err := s.send(Frame{Kind: "result", ID: 1, Payload: raw(t, "ready")}); err != nil {
+		t.Fatal(err)
+	}
+	if out.flushes != 1 {
+		t.Fatalf("flushes = %d, want one for one frame", out.flushes)
+	}
+	if !strings.HasSuffix(out.String(), "\n") {
+		t.Fatalf("frame was not completed as one line: %q", out.String())
+	}
+}
+
 func TestServeRefusesAnotherVersion(t *testing.T) {
 	agent := &fakeAgent{}
 	l := dialAgent(t, engineOn(agent))
@@ -610,12 +761,15 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 		t.Fatalf("handshake: %s", frame.Error)
 	}
 
-	// The three stream-openers answer with a stream id and nothing else.
+	// The stream-openers answer with a stream id and nothing else.
 	if ref := decode[StreamRef](t, l.ok(1, MethodSubmit, SubmitArgs{Text: "write the readme"}).Payload); ref.Stream == 0 {
 		t.Error("Submit answered with no stream")
 	}
 	if ref := decode[StreamRef](t, l.ok(2, MethodFollowUp, SubmitArgs{Text: "and the changelog"}).Payload); ref.Stream == 0 {
 		t.Error("FollowUp answered with no stream")
+	}
+	if ref := decode[StreamRef](t, l.ok(99, MethodSteer, SubmitArgs{Text: "use staging"}).Payload); ref.Stream == 0 {
+		t.Error("Steer answered with no stream")
 	}
 
 	l.ok(3, MethodInterrupt, nil)
@@ -666,6 +820,9 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 	}
 	if len(agent.follows) != 1 || agent.follows[0] != "and the changelog" {
 		t.Errorf("FollowUp carried %q", agent.follows)
+	}
+	if len(agent.steered) != 1 || agent.steered[0] != "use staging" {
+		t.Errorf("Steer carried %q", agent.steered)
 	}
 	if agent.interrupts != 1 || agent.compacts != 1 || agent.window != 200000 {
 		t.Errorf("interrupts=%d compacts=%d window=%d", agent.interrupts, agent.compacts, agent.window)

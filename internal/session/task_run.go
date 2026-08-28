@@ -73,6 +73,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -84,8 +85,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -129,6 +131,14 @@ const (
 	// no NEW information and no new dirt is the shape of a spin — the detector
 	// reads novelty now, so it only fires when a node is genuinely re-treading
 	// the same call, and it fires in a minute rather than in thirty.
+	//
+	// SIX IS NOT RETUNED FOR A FAST WORKER. A node calling a tool every three
+	// seconds spends six dead steps in eighteen of them, which reads like a hair
+	// trigger and is not one: the number bounds what is SPENT — six model
+	// round-trips and six tool calls that added nothing — and a worker that is
+	// cheap per step is not thereby entitled to more of them. What was wrong in
+	// the runs that made this comment was never the six; it was three shapes of
+	// real work being counted as dead ([addedSomething]).
 	taskMaxSteps   = 200
 	taskNoProgress = 6
 	// Four renewals plus the original allowance make five equal budgets: 1000
@@ -172,6 +182,16 @@ const (
 	// provider's pacing (internal/provider's patience.go). It is the only one of
 	// the three that is true of a node with a worktree and a child agent.
 	waitingRateLimited = "rate limited"
+	// waitingOnItsParts is a RUNNING node that handed its work out and is parked
+	// on the reports of the parts it handed out ([TaskGraph.park]). It is the
+	// PARENT-STAYS state said out loud: the node is not finished, nothing has
+	// gone wrong with it, and it is deliberately not being asked anything until
+	// its parts are in (task_divide.go's parent-stays law). Before this it was
+	// drawn as a node simply running, which is the one reading a person must not
+	// be left with — a row that has said nothing for four minutes and a row that
+	// is waiting on three workers look identical, and only one of them is worth
+	// worrying about.
+	waitingOnItsParts = "its parts"
 )
 
 // The three merge outcomes, and the fourth that says a branch never came home.
@@ -255,7 +275,16 @@ type TaskNode struct {
 	// word its history still needs (task_store.go).
 	kind  TaskKind
 	brief string
-	state TaskState
+	// adjudicated says this node has already spent its one tiebreak: a division
+	// the evidence gate refused on the floor has been put to the mastermind once
+	// on the strength of a judge's wide reading, and the answer — whatever it was
+	// — is the answer ([TaskNode.takeTiebreak], task_divide.go). It is guarded by
+	// the graph's lock like every other field a worker's goroutine touches, and it
+	// is deliberately NOT on the checkpoint: a restart loses the judge's reading
+	// too (task_store.go re-arms from the text alone), so a node that comes back
+	// cannot reach this path at all.
+	adjudicated bool
+	state       TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
 	// written by the goroutine that ran it and read by everybody else. worktree
 	// is where it worked, and it is kept for one reader only: a recovery that has
@@ -275,7 +304,13 @@ type TaskNode struct {
 	// IT IS A FACT AND NOT AN INTENT. A path is added when a saving call has come
 	// back successful and never because the node said it meant to write
 	// something, which is the same bar changed is held to.
-	wrote    []string
+	wrote []string
+	// receipts is the tail of what the node's last worker actually RAN, kept for
+	// the one reader that never watched it happen: the auditor
+	// ([lastToolReceipts], task_audit.go). It is not in the checkpoint and it is
+	// not drawn anywhere — it is evidence for one question, refreshed by whichever
+	// worker spoke last, and a resumed node simply has none.
+	receipts []toolReceipt
 	branch   string
 	worktree string
 	merge    string
@@ -353,6 +388,12 @@ type TaskNode struct {
 	// beside an audit — and the node stops being paced when the LAST of them
 	// gets through, not when the first does.
 	paced int
+	// beat is this node's pulse on disk while it runs, and nil for a node that
+	// is not running or has no store behind it (task_beat.go). Every agent that
+	// stands in for the node carries a pointer to the same one — the worker, the
+	// checker, each repair round — because they are one node working, and a
+	// reader outside the process is asking about the node.
+	beat *taskBeat
 	// cancel ends this node's run: the deadline's context, cancelled early by
 	// jobs kill or by Close.
 	cancel context.CancelFunc
@@ -367,7 +408,10 @@ type TaskNode struct {
 	// when the node lands.
 	room *taskRoom
 	// journal is where this node's transcript was written, recorded when its
-	// child agent was built. It is the node's history, and it outlives the room.
+	// child agent was built. It is the node's history, and it outlives the room
+	// — and the process: it rides the checkpoint (task_store.go's
+	// taskRecord.Journal), so a resumed session opens a finished task on its
+	// whole transcript rather than on a blank page.
 	journal string
 	// revise is the lane a DESIGN's thread asks for its page to be rewritten on,
 	// and nil on every other kind of node — which is what keeps the revise_design
@@ -427,6 +471,18 @@ type TaskNode struct {
 	// id while `mend` on the same card said "model X has no tools; using Y", so
 	// one row disagreed with itself about what was running.
 	ran string
+	// repaired is the model a REPAIR ROUND ran on, when the cascade moved that
+	// round off the model the node itself is on (repair_role.go). It is "" for
+	// every node that was never sent back, and for every node whose repair
+	// floored onto its own model — an all-flash crew, or a model somebody named.
+	//
+	// IT IS THE BILL AND NOT THE ROW. [TaskNode.ran] answers "what is this node
+	// running on", which is a fact a surface draws; this answers "what did the
+	// last ten percent of this node cost extra", which is a question asked of the
+	// project's record afterwards, so it reaches the index
+	// ([TaskNode.indexEntryLocked]) and nothing a person is looking at while the
+	// work runs.
+	repaired string
 	// settling NAMES the resolution in flight over a landed node, in the plain
 	// words a second caller is told, and it is "" when nobody holds the node
 	// (task_audit.go's ResolveUnverified).
@@ -683,7 +739,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// because the conversation is where the road is wired and where the sizing
 	// judge's answer was banked; a scripted graph in a test has no conversation
 	// and gets the honest false ([Agent.armDivision] is nil-safe).
-	spec.divide = g.home.armDivision(spec)
+	spec.armed = g.home.armDivision(spec)
 	node := &TaskNode{
 		graph:     g,
 		id:        id,
@@ -1101,6 +1157,19 @@ func (g *TaskGraph) announce(node *TaskNode) {
 	}
 }
 
+// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
+// is built, which is the shape a standing firing's own graph has: the session
+// that is going to own it cannot be constructed until the graph is in its config
+// (standing_run.go's [standingWideWork]). A conversation's graph binds the
+// method directly ([Agent.graph]) because by then there is an agent to bind to;
+// this reads the same field one moment later and answers nothing before there
+// is one.
+func (g *TaskGraph) reportHome(node *TaskNode) {
+	if g != nil && g.home != nil {
+		g.home.reportTaskNode(node)
+	}
+}
+
 // node looks one up by id.
 func (g *TaskGraph) node(id uint64) *TaskNode {
 	g.mu.Lock()
@@ -1150,10 +1219,16 @@ func (n *TaskNode) model() string {
 // just chose. The sentence beside it goes with it, and only when it is the
 // rescue's own: a repair round's `mend` is about the work and has nothing to do
 // with this.
+// AND THE WORD IS WRITTEN BESIDE THE ID, because a pick made here is a pick.
+// [TaskNode.modelPicked] reads the word to answer "did anybody name a model for
+// this work" — which is what holds the repair cascade off a node whose model
+// somebody chose (repair_role.go) — and a retarget that moved only the id would
+// leave the person's own choice looking like an inherited default.
 func (n *TaskNode) retarget(model string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	n.spec.model = model
+	n.spec.modelWord = model
 	if n.ran != "" {
 		n.ran = ""
 		if isTaskModelRescueNote(n.mend) {
@@ -1172,6 +1247,39 @@ func (n *TaskNode) runModelLocked() string {
 		return n.ran
 	}
 	return n.spec.model
+}
+
+// runModel is [TaskNode.runModelLocked] from outside the lock: the model this
+// node is ACTUALLY on, which is the frozen admitted id until something moved it.
+func (n *TaskNode) runModel() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.runModelLocked()
+}
+
+// effortRung is the rung set on this node, under the same lock the model is
+// read under and for the same reason: [Agent.SetTaskEffort] can move it while a
+// worker is being prepared.
+func (n *TaskNode) effortRung() effort.Rung {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.effort
+}
+
+// runOn moves a node onto another model WITHOUT touching the id it was admitted
+// with, and writes the one line a row carries about why.
+//
+// It is the difference between a rescue and a choice, and that difference is the
+// whole reason it is not [TaskNode.retarget]. A person picking a model in this
+// node's room has decided something, and the spec learns it. A worker whose
+// provider could not answer has decided nothing — the admitted id is still the
+// answer to "what was this work handed to", and a rescue that overwrote it would
+// erase the fact that a rescue happened at all.
+func (n *TaskNode) runOn(model, note string) {
+	n.graph.mu.Lock()
+	n.ran = strings.TrimSpace(model)
+	n.mend = note
+	n.graph.mu.Unlock()
 }
 
 // assembledBrief is the brief the node is actually working from: its own, plus
@@ -1234,6 +1342,38 @@ func (n *TaskNode) limits() taskLimits {
 	}
 }
 
+// familyPlace is the SESSION FOLDER a node's work belongs in, and it is the
+// CONVERSATION'S rather than whichever agent happens to own the node.
+//
+// Every path a running node needs is arithmetic on one Place: the worktree it
+// works in ([prepareTaskTree]), the transcript it writes ([taskJournalPath]) and
+// the file its merge takes the repository's lock on (task_lock.go). There is
+// exactly one right answer to which Place that is — the session that
+// commissioned the family — and reading it off the OWNER was that answer only
+// for as long as every node's owner was the conversation.
+//
+// A NODE THAT HANDS PART OF ITS WORK FURTHER OUT BREAKS THAT. A part's owner is
+// its parent's WORKER, whose config carries no Place at all (see
+// [Agent.newTaskAgent], which deliberately does not make a node into a second
+// session), so a part's worktree landed in the person's own repository under the
+// legacy flat layout while its parent's sat inside the session folder (Decision
+// 26) — and the two halves of one family took the git root's lock on two
+// different files, which is the one thing task_lock.go says must never happen.
+//
+// The zero Place is still the legacy layout and still answers "" to everything;
+// what this fixes is a family disagreeing with itself about which layout it is
+// in.
+func (a *Agent) familyPlace(node *TaskNode) Place {
+	if node != nil && node.graph != nil {
+		// home is written once, before any node can run, and read without the
+		// graph's lock exactly as [TaskGraph.runner] reads it.
+		if home := node.graph.home; home != nil {
+			return home.config.Place
+		}
+	}
+	return a.config.Place
+}
+
 func (a *Agent) taskLimits(node *TaskNode) taskLimits {
 	limits := node.limits()
 	if a.config.TaskDeadline > 0 {
@@ -1248,10 +1388,12 @@ type taskLimits struct {
 	// maxSteps is the whole budget: the node stops when it has taken this many.
 	maxSteps int
 	// noProgress is how many CONSECUTIVE steps may pass with no progress —
-	// and progress is broader than an edit: a successful edit or write, a
-	// bash that leaves the worktree dirtier, or a read/search/fetch of a
-	// target the node has not looked at before all reset it to zero. What it
-	// catches is the spin: the same query, the same file, the same nothing.
+	// and progress is broader than an edit: a successful edit or write, a bash
+	// that leaves the worktree dirtier, a reading taken over work that has just
+	// changed, a question the node has not asked before whose answer brought
+	// something back, or a re-run whose result was more new than old all reset
+	// it to zero ([addedSomething]). What it catches is the spin: the same
+	// query, the same file, the same nothing.
 	noProgress int
 	// deadline is one checkpoint interval, renewed in the same-sized unit.
 	deadline time.Duration
@@ -1320,6 +1462,19 @@ func (n *TaskNode) noteWrote(path string) {
 		}
 	}
 	n.wrote = append(n.wrote, path)
+}
+
+// rememberedWrites is everything this node has already put its name to: the
+// live list a running claim is drawn from ([TaskNode.noteWrote], carried in the
+// checkpoint) and the list a landing kept. Both, because a node can be resumed
+// from either side of a landing and the two are the same fact at two ages.
+func (n *TaskNode) rememberedWrites() []string {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return mergePaths(append([]string(nil), n.wrote...), n.changed)
 }
 
 // leavings is what a landed node left behind: what it said, what it wrote, and
@@ -1417,6 +1572,45 @@ func (n *TaskNode) pacing(parked bool) {
 	if changed && running {
 		n.graph.announce(n)
 	}
+}
+
+// armBeat starts this node's pulse and hands it back so the runner can stop it
+// (task_beat.go). It is called once, by [Agent.runTaskNode], the one door every
+// kind of node goes through.
+//
+// The first row is written OUTSIDE the graph's lock, which is the whole reason
+// this is two steps rather than one: a node starting is a state transition the
+// frontier makes with the graph held, and a disk write under that lock would put
+// every other node in the family behind it.
+func (n *TaskNode) armBeat() *taskBeat {
+	// A NODE WITH NO GRAPH HAS NO STORE AND THEREFORE NO PULSE. Every scripted
+	// node in the tests is one, and so is a node whose session has no journal —
+	// the same nothing [TaskGraph.checkpoint] answers with.
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	beat := newTaskBeat(n.graph.store.beatPath(n.id), n.id, n.spec.title, n.started)
+	n.beat = beat
+	n.graph.mu.Unlock()
+	beat.arm()
+	return beat
+}
+
+// beatWriter is the pulse an agent built for this node writes into.
+func (n *TaskNode) beatWriter() *taskBeat {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.beat
+}
+
+// beatPhase moves the node's pulse into one of task_beat.go's three words and
+// hands back the way out, so a caller writes `defer node.beatPhase(x)()`.
+func (n *TaskNode) beatPhase(name string) func() {
+	return n.beatWriter().phase(name)
 }
 
 // claimSettle claims a node that NEEDS A LOOK for exactly one resolution, and
@@ -1616,18 +1810,29 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	}
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
-	// The two halves of Waiting, and they cannot both be true of one node: held
-	// is written only while a node is queued, paced only while its child agent
-	// is making calls. A running node that is parked on the provider is the one
-	// that outranks, because it is the one that is happening now.
+	// The three halves of Waiting, and no two of them can be true of one node:
+	// held is written only while a node is QUEUED, and the other two are running
+	// nodes — one parked on its parts, which makes no calls at all, and one whose
+	// calls are being paced. A running node outranks a stale hold because it is
+	// the one that is happening now, and the parts outrank the pacing because a
+	// parked node has no call for a provider to pace.
 	waiting := n.held
-	if n.state == TaskRunning && n.paced > 0 {
+	switch {
+	case n.state != TaskRunning:
+	case n.parked:
+		waiting = waitingOnItsParts
+	case n.paced > 0:
 		waiting = waitingRateLimited
+	}
+	where := strings.TrimSpace(n.worktree)
+	if where == "" {
+		where = n.spec.where
 	}
 	return TaskNotice{
 		ID:        n.id,
 		Title:     n.spec.title,
 		Kind:      n.kind,
+		Where:     where,
 		DependsOn: n.dependsOn,
 		Parent:    n.parent,
 		State:     n.state,
@@ -1699,7 +1904,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy())
+	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -1711,16 +1916,17 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	// already on screen saying what became of it — so a turn started here would be
 	// the model reading their own answer back to them. The note is ambient: real,
 	// carried, and read by whatever they say next (harness_task.go).
-	if notice.Kind == TaskKindHarness {
-		a.enqueueAmbientNote(note)
-	} else {
-		a.deliverTaskNote(node, note)
-	}
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
 	// history instead of telling the model that finished work has just landed
-	// (task_store.go).
-	node.markNoted()
+	// (task_store.go). On the delivery road the mark is made INSIDE the handover,
+	// between the queue and the wake, for the reason stated there.
+	if notice.Kind == TaskKindHarness {
+		a.enqueueAmbientNote(note)
+		node.markNoted()
+	} else {
+		a.deliverTaskNote(node, note)
+	}
 }
 
 // deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
@@ -1742,7 +1948,27 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 			}
 		}
 	}
-	reader.enqueueSteering(note)
+	message := wakeNote(note)
+	message.replyTags = []TaskReplyTag{{
+		ID: node.id, Title: node.title(), Request: node.request(),
+	}}
+	reader.enqueueNote(message)
+	// ── THE QUEUE, THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER ──
+	//
+	// A parent parked on its pieces asks two questions of this moment and the
+	// answers must not be able to disagree: is anything still outstanding
+	// ([Agent.childrenOutstanding], which is `noted` read from outside), and is
+	// anything owed to the model ([Agent.taskNewsOwed]). Sliding the mark between
+	// the two calls below is what makes both readings safe whichever instant the
+	// waiter took them in.
+	//
+	// MARKED AFTER THE QUEUE, so a waiter that sees this child is no longer
+	// outstanding also sees a note owed and re-enters the model with it. Marked
+	// before the wake, so a waiter that read "still outstanding" a moment ago is
+	// released by the close below rather than parking on a generation that nothing
+	// is ever going to close again. The old order — deliver, wake, mark — left
+	// exactly that gap, and it is a parent asleep for the rest of the run.
+	node.markNoted()
 	reader.postTaskNews()
 }
 
@@ -1785,7 +2011,42 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 // settlePolicy is this agent's standing answer to "who decides a landing nobody
 // could check" (task_contract.go's [TaskSettle]). A blank row reads as asking,
 // which is the default and the only safe reading of a caller that said nothing.
-func (a *Agent) settlePolicy() TaskSettle { return settleOrAsk(a.config.TaskSettle) }
+//
+// EXCEPT THAT A LADDER MAY NOT END IN A PERSON WHO IS NOT THERE.
+//
+// [Config.AskConsent] is this build's one notion of "somebody is watching this
+// session and will answer" — it is what an interactive surface sets and what
+// `--once` and every other headless door deliberately leaves false. Where it is
+// false there is no card to press `[d] decide these for me` on, no settings
+// panel to turn `task.settle` to auto in, and nobody to read a landing that says
+// it is waiting on them. A node that landed needing a look in such a session is
+// a run that has stopped, and it was measured stopping: on a ten-hour benchmark
+// the main task landed "finished, but needs your look" and the harness sat there
+// until the wall clock ran out.
+//
+// So an unattended session reads as AUTO, which is not a bypass and not a new
+// road: it is the same [TaskSettleAuto] the person's own "decide these for me"
+// button sets (internal/tui3's settleAlways), reached by the same landing note,
+// answered by the same `tasks … resolve` verb, with the same standing escape —
+// the auto note tells the model to come back to the person when it genuinely
+// cannot tell. What changes is only who is asked FIRST, which is all this policy
+// has ever changed.
+//
+// IT NEVER GOES THE OTHER WAY. A session somebody IS watching keeps the row they
+// set, and a blank row still reads as asking: a build that started deciding on
+// behalf of a person who is sitting right there would be the opposite defect.
+func (a *Agent) settlePolicy() TaskSettle {
+	// NOBODY WATCHING AND NOBODY TO WATCH FOR ARE THE SAME FACT HERE. The first
+	// arm is a headless run with no events going anywhere; the second is a
+	// session that is being watched by a terminal nobody is sitting at, which is
+	// what a [Steward] means (principal.go). Both leave the ask clause naming a
+	// card and a person who will never answer it, and a landing that waits for an
+	// answer nobody is coming to give is a landing that waits forever.
+	if !a.config.AskConsent || a.steward() != nil {
+		return TaskSettleAuto
+	}
+	return settleOrAsk(a.config.TaskSettle)
+}
 
 // The two sentences a landing nobody could check ends with, and which one is
 // written is the whole of what `task.settle` changes.
@@ -1816,7 +2077,25 @@ func settleClause(id uint64, settle TaskSettle) string {
 	return settleAskLead + address + settleAskTail
 }
 
-func taskNote(notice TaskNotice, transcript string, settle TaskSettle) string {
+// landingAddress is WHAT THIS SESSION'S GOAL OWNER SAID about one landing, in
+// the only two shapes the note has any use for (principal.go).
+//
+// brief is what the next attempt opens on, and an empty one means nothing more
+// is being started on the strength of this landing. person says there is
+// somebody to offer a follow-up TO — which is the whole of what the old note
+// assumed and never checked.
+//
+// THE TWO ARE NOT OPPOSITES. A [Steward] whose loop guard has fired answers
+// neither: there is no brief, because the same thing has stopped this three
+// times, and there is no person, because nobody is there. That ending had no
+// sentence at all before this type existed; it had the person's one, addressed
+// to an empty room.
+type landingAddress struct {
+	brief  string
+	person bool
+}
+
+func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	verb := "finished"
 	switch {
@@ -1854,7 +2133,7 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle) string {
 	// a killed node and a node that ran out of time reach TaskFailed too, and
 	// neither of them has a gap anybody could offer to close.
 	if notice.State == TaskFailed && strings.HasPrefix(notice.Report, incompleteLead) {
-		note.WriteString("\nwhat is missing is above and the branch is kept: offer them a follow-up in their own words before anything else is spent on it")
+		note.WriteString(incompleteClause(address))
 	}
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
@@ -2090,6 +2369,13 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	defer cancel()
 	node.setCancel(cancel)
 
+	// AND THE STORE LEARNS IT IS ALIVE AT THE CADENCE OF ITS WORK (task_beat.go).
+	// The checkpoint is written at admission and at landing, so between them the
+	// only thing an outside reader could do was guess; from here the node writes a
+	// pulse of its own at every provider call boundary, and the pulse goes away
+	// when the node lands and the checkpoint's row becomes the authority again.
+	defer node.armBeat().stop()
+
 	// The node is a JOB, from the registry every other piece of background work
 	// comes from: one id space, one row in `jobs list`, one `jobs kill`, one
 	// death at Close. What differs is the middle, which is this function.
@@ -2114,6 +2400,14 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	if state == "" {
 		// Close interrupted this process-owned run. Keep TaskRunning in the
 		// checkpoint; recovery turns it back into queued work and resumes it.
+		//
+		// THE LANE GOES BACK ANYWAY, because the goroutine that was holding it is
+		// returning on this line. The state is left alone — that is what recovery
+		// reads — but a slot booked against a node nothing is doing is the
+		// concurrency cap quietly falling by one for every node that comes after,
+		// and a frontier that is never turned again is the queue behind it never
+		// moving ([TaskGraph.handBackLane]).
+		node.graph.handBackLane(node)
 		return
 	}
 	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
@@ -2121,8 +2415,9 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// running after its parent has landed is work with nowhere to come home to.
 	// In the ordinary case there is nothing here to stop — the runner above does
 	// not let the node land while a child of it is still going (see
-	// [runTaskChild]) — and this is what answers the parent that was killed or
-	// ran out of time.
+	// [runTaskChild]), and [Agent.workTaskNode] has already cut them on every
+	// road where it did not — and this is what answers the two bodies that are
+	// not a worker in a worktree.
 	node.graph.stopChildren(node.id)
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
@@ -2159,7 +2454,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 		}
 		notice := kid.notice()
 		note := orphanLead(node) + "\n" +
-			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy())
+			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy(), a.quietAddress())
 		a.deliverTaskNote(node, note)
 	}
 }
@@ -2195,19 +2490,49 @@ func (g *TaskGraph) park(node *TaskNode) {
 		g.running--
 	}
 	g.mu.Unlock()
+	// AND THE ROW SAYS SO. A hold is not a state — nothing about this node moved —
+	// so it travels as [TaskNotice.Waiting] on an update of its own, exactly as a
+	// queued node's slot and a paced node's provider do (see [waitingOnItsParts]).
+	g.announce(node)
 	// The lane is free NOW, and the piece this parent is waiting for is very
 	// often the node that was queued behind it.
 	g.runFrontier()
 }
 
+// handBackLane gives one node's slot back WITHOUT settling it, and turns the
+// frontier on what that freed.
+//
+// It is for the one ending that is not an ending: a run whose process is going
+// away, whose node stays TaskRunning in the checkpoint so the next session
+// resumes it ([Agent.runTaskNode]). The state is deliberately untouched — that
+// is the whole mechanism recovery reads — but the goroutine is gone, and a lane
+// held by nobody is the person's task.parallel cap silently shrinking for the
+// rest of the process.
+//
+// It borrows `parked`, which is exactly the fact being recorded: this node has
+// handed its lane back and is not using one. [TaskGraph.complete] already knows
+// not to hand the same lane back twice for such a node, so a recovery that later
+// settles it cannot double-count.
+func (g *TaskGraph) handBackLane(node *TaskNode) {
+	if node == nil || g == nil {
+		return
+	}
+	g.park(node)
+}
+
 func (g *TaskGraph) unpark(node *TaskNode) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	if !node.parked {
+		g.mu.Unlock()
 		return
 	}
 	node.parked = false
 	g.running++
+	g.mu.Unlock()
+	// A hold ENDING is news the same way a hold starting is, and the row would
+	// otherwise wear "waiting · its parts" until whatever this node does next
+	// happens to send an update.
+	g.announce(node)
 }
 
 // park and unpark reach [TaskGraph.park] from the node, and they are NIL-SAFE on
@@ -2228,6 +2553,20 @@ func (n *TaskNode) unpark() {
 	n.graph.unpark(n)
 }
 
+// waitingOnItsPieces reports whether this node has handed its lane back and is
+// waiting on the work it handed out. It is what lets a room say which kind of
+// wait a steered line is landing in ([Agent.SteerTask]): a node in the middle of
+// a step reads the line at its next one, and a node parked here has no step
+// coming until somebody wakes it.
+func (n *TaskNode) waitingOnItsPieces() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.parked
+}
+
 // stopChildren ends every unsettled node one parent handed out, exactly as
 // `jobs kill` ends one ([TaskGraph.stop]): the child's branch is kept, its
 // report says a person's stop did it, and its dependents cascade. A child that
@@ -2246,10 +2585,15 @@ func (g *TaskGraph) stopChildren(parent uint64) {
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	tree, resumed := node.resumeTree(a.config.Place, a.config.Workspace)
+	// The FAMILY'S place and the OWNER'S workspace, which are two different
+	// questions: where this session keeps things ([Agent.familyPlace]) and which
+	// checkout this node's branch comes off, which for a part is its parent's
+	// worktree.
+	place := a.familyPlace(node)
+	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTree(a.config.Place, a.config.Workspace, a.journalID(), node.id, node.title())
+		tree, err = prepareTaskTreeAt(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.spec.where)
 	}
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
@@ -2260,30 +2604,149 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
 
-	child, err := a.newTaskAgent(ctx, tree.dir, node, "")
-	if err != nil {
-		node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
-		return TaskFailed
-	}
-	defer func() {
+	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
+	// auxiliary usage — the pocket the title and the compaction summary come out
+	// of — rather than charged to whichever turn happened to propose it. It is
+	// kept ON THE NODE as well, in the same call, because the node outlives its
+	// child: a surface asking a landed node what it cost has nobody else to ask
+	// (see [TaskNode.spend]). A node that was re-modelled has TWO children, and
+	// both of them cost money, so the fold is per child rather than per node.
+	var child *Agent
+	retire := func() {
+		if child == nil {
+			return
+		}
 		_ = child.Close()
-		// The node's spend is the person's, so it is folded into the session's
-		// auxiliary usage — the pocket the title and the compaction summary come
-		// out of — rather than charged to whichever turn happened to propose it.
-		// It is kept ON THE NODE as well, in the same call, because the node
-		// outlives its child: a surface asking a landed node what it cost has
-		// nobody else to ask (see [TaskNode.spend]).
 		a.foldTaskUsage(node, child)
-	}()
+		child = nil
+	}
+	defer retire()
+	// ── THE NURSERY LAW: NO PART OUTLIVES THE COORDINATION IT WAS CUT OUT OF ──
+	//
+	// REGISTERED AFTER retire SO IT RUNS BEFORE IT, and the order is the whole
+	// point. A part's job row lives in its OWNER'S registry, and a part's owner is
+	// this node's WORKER (task_divide.go) — so `child.Close()` reaches every part
+	// still running through [jobRegistry.shutdown], which cancels a task job's
+	// context WITHOUT marking it stopped ([job.signal] takes the `stop` handle and
+	// never the explicit one, which only [jobRegistry.kill] calls). A part cut that
+	// way reads its own cancel as A PROCESS QUITTING: it lands on the "paused — it
+	// resumes" road below, whose whole meaning is that a NEXT process will pick the
+	// node up — and it returns "" so the state stays TaskRunning for recovery to
+	// find. There is no next process. The part sat in the graph as running work
+	// nothing was doing, its lane never handed back, its `done` never closed, for
+	// fifty minutes until the run hit its wall.
+	//
+	// So the parts are stopped HERE, on every road out of this function, while the
+	// worker they belong to is still open: [TaskGraph.stop] marks each one before
+	// it cuts it, so a part reads its ending as what it is — stopped, its branch
+	// kept, its report saying so — settles, hands its lane back and cascades. The
+	// ordinary road, where the tail loop already waited for every report, finds
+	// nothing to do: stopChildren skips a settled child.
+	//
+	// IT IS NOT PART OF retire, which also runs mid-loop when a provider fault
+	// sends this node round again on another model — and that node is the SAME node
+	// with the SAME parts still working for it (see `handedOut` below).
+	defer node.graph.stopChildren(node.id)
 
-	// THE ROOM OPENS HERE, because this is the first moment there is anybody in
-	// it: from now until the node lands, its events reach whoever is watching
-	// and the person's words reach this child's steering lane (task_room.go).
-	room := node.openRoom()
-	room.speaking(child)
+	var (
+		// A RESUMED NODE STARTS WITH WHAT IT ALREADY WROTE. The landing stages by
+		// name ([stageTaskWork]), and the process that died took this run's own
+		// tally with it while leaving the files on disk — so a second attempt that
+		// started from nothing would abandon everything the first one made. A node
+		// that has never run answers with nothing, which is every other node.
+		changed = node.rememberedWrites()
+		stopped string
+		runErr  error
+		report  string
+		// movedFrom is the model this node was admitted on, once it has stopped
+		// being the model it is running on. Empty is the ordinary case.
+		movedFrom string
+		// handedOut is the receipt for the parts the harness gave away on this
+		// node's behalf before it started, and an empty string is every node that
+		// was not handed a division (task_divide_sketch.go). It is kept OUTSIDE the
+		// loop because a second worker built after a provider fault is the same node
+		// with the same parts already running: it must read the same sentence, and
+		// the division must not be put a second time.
+		handedOut string
+	)
+	// ONE WORKER, OR TWO. The second exists for exactly one reason, stated at
+	// [terminalProviderFailure]: a node whose worker died because the PROVIDER
+	// could not answer has learned nothing about the work, and throwing away a
+	// prepared worktree over that is throwing away the part that was expensive.
+	for {
+		worker, err := a.newTaskAgent(ctx, tree.dir, node, "")
+		if err != nil {
+			node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
+			return TaskFailed
+		}
+		child = worker
+		// THE ROOM OPENS HERE, because this is the first moment there is anybody
+		// in it: from now until the node lands, its events reach whoever is
+		// watching and the person's words reach this child's steering lane
+		// (task_room.go).
+		room := node.openRoom()
+		room.speaking(child)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, node.instruction(), tree.dir, a.taskLimits(node), room, log)
-	report := taskReport(child)
+		// AND THE DIVISION SOMEBODY ALREADY DREW IS PUT HERE, BEFORE THE FIRST
+		// REQUEST. A turn handed over on a mark's sketch arrives with its parts
+		// already named by a mastermind, and waiting for a cheap worker to re-derive
+		// them was measured never happening at all — so the harness submits the
+		// drawing on this worker's behalf, through the same verb and the same gates
+		// the worker's own division goes through (task_divide_sketch.go). It lands
+		// the node in the coordinating state a mid-run division lands it in, by the
+		// same road: the parts are children, so the tail of [runTaskChild] holds this
+		// node open and folds their reports.
+		//
+		// A NODE WITH NOTHING DRAWN, A ROAD THAT IS OFF, AND A DIVISION THE GATES OR
+		// THE REVIEWER REFUSED ALL ANSWER THE SAME EMPTY STRING, and the node then
+		// runs as one worker — which is what every task did before this existed.
+		if handedOut == "" {
+			handedOut = child.divideFromSketch(ctx)
+		}
+
+		var wrote []string
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), handedOut), tree.dir, a.taskLimits(node), room, log)
+		// The files SURVIVE the worker that wrote them. A second run starts in
+		// the same working copy, so what the first one saved is still on disk and
+		// still the node's leavings.
+		changed = mergePaths(changed, wrote)
+		report = taskReport(child)
+		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
+		// The check a worker runs last is usually the most expensive thing in the
+		// task, and an auditor made to rediscover and repeat it from nothing is an
+		// auditor that spends its whole deadline finding out what the worker already
+		// knew (task_audit.go's [lastToolReceipts]). It is read here, while the
+		// worker's transcript still exists — `retire` closes it.
+		node.keepReceipts(lastToolReceipts(child, auditReceiptCount))
+		// AND THE FILES THE NODE MADE WITH A COMMAND AND THEN NAMED. They are
+		// folded into the same list on the way past, so everything downstream —
+		// the card, the auditor's packet, the index it stages — reads ONE account
+		// of what this node produced ([declaredFiles]).
+		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
+
+		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !a.movesForFailure(node, runErr, log) {
+			break
+		}
+		next, moved := a.escalateNodeModel(node)
+		if !moved {
+			break
+		}
+		movedFrom = node.runModel()
+		fmt.Fprintf(log, "%s could not answer: running again on %s\n", movedFrom, next)
+		// The retarget machinery is the room's own (task_room.go's RetargetTask):
+		// the row, the roster, the card and the checkpoint all learn the new model
+		// from these three lines, and the worker below reads it off the node.
+		node.runOn(next, taskModelMovedNote(movedFrom, next))
+		node.graph.checkpoint()
+		a.emitTaskUpdate(node.notice())
+		retire()
+	}
+	// AND THE REPORT SAYS SO, on every road out of here — done, failed, stopped,
+	// unchecked. A node that quietly finished on a model nobody chose is a card
+	// whose cost, voice and quality all belong to a model the person never sees.
+	if movedFrom != "" {
+		report = withReport(taskModelMovedSentence(movedFrom, node.runModel()), report)
+	}
 
 	switch {
 	// The threshold comes FIRST because it is the most specific answer: it
@@ -2328,8 +2791,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return a.landShifted(node, tree, changed,
 				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
 		}
-		merge, detail := tree.comeHome(node.title())
+		merge, detail := tree.comeHome(node.title(), changed)
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
+		if merge == mergeConflicted {
+			return a.landConflicted(node, tree, changed,
+				withReport("nothing checked this work: the task.audit setting is off", report), detail, log)
+		}
 		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
 		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
 		// off, this is the row's name, and a sentence that translated it would
@@ -2346,10 +2813,29 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	changed, report = outcome.changed, outcome.claim
 	verdict := outcome.verdict
 	switch {
+	// ── A CANCEL IS AN INTERRUPTION, NEVER A FINDING ──
+	//
+	// The check was running and something outside the work cut it: a settle-kill
+	// from the runner, a quit, a deadline on the session rather than on the node.
+	// None of those looked at the deliverable, and until this arm was written the
+	// KILL WROTE THE VERDICT — the node landed FAILED with "stopped while its work
+	// was being checked" as its whole account, on a benchmark cell where the
+	// runner's own settle produced the ctx.Err() it was reading.
+	//
+	// SO IT LANDS AS UNFINISHED WORK AND KEEPS BOTH HALVES. The node's own claim
+	// is what it says it did, [auditVerdict.checkedSoFar] is whatever the check had
+	// already said before it was cut, and the lead is the vocabulary a landing
+	// already has for work nobody could stand behind (task_audit.go's
+	// [incompleteLead], withdrawn.go's [unverifiedEdits]). Unverified rather than
+	// failed is the state that matches the sentence: nothing merges on a check that
+	// never finished, and nobody made a finding to fail it on. It is the arm two
+	// hundred lines above ("paused — it resumes") reasoning about the same fact one
+	// phase later, where there is a claim and possibly a verdict to carry.
 	case ctx.Err() != nil:
 		merge, changed := keptWork(tree, node.title(), changed)
-		node.finish(withReport("stopped while its work was being checked", report), changed, tree.branch, merge)
-		return TaskFailed
+		node.finish(withReport(taskCutMidCheck, withReport(report, verdict.checkedSoFar())),
+			changed, tree.branch, merge)
+		return TaskUnverified
 	case !verdict.answered:
 		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
 		// and not failed either, because no finding was made about this work.
@@ -2378,8 +2864,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 	}
 
-	merge, detail := tree.comeHome(node.title())
+	merge, detail := tree.comeHome(node.title(), changed)
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
+	if merge == mergeConflicted {
+		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes
 	// its first sentence as what came of the work, the project's index keeps that
@@ -2452,8 +2941,11 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 			if shift := a.groundShift(node, changed); shift != "" {
 				return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 			}
-			merge, detail := tree.comeHome(node.title())
+			merge, detail := tree.comeHome(node.title(), changed)
 			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
+			if merge == mergeConflicted {
+				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+			}
 			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
 			// leads, what it was checked on stands under it, and nothing anywhere in
 			// it mentions the counter — the run was interrupted, the deliverable was
@@ -2497,6 +2989,33 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 	merge, kept := keptWork(tree, node.title(), changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
 	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
+	return TaskUnverified
+}
+
+// landConflicted settles a node whose work holds and whose branch WOULD NOT
+// MERGE — the same file changed here and on the person's branch while the node
+// worked.
+//
+// A CONFLICTED MERGE IS NOT A LANDING, and that is the defect this repairs. The
+// merge was already attempted and abandoned by [taskTree.comeHome]; what came
+// back was a branch nobody had taken, and every caller marked the node done
+// anyway. A measured task settled with a patch that was an unresolved merge —
+// no reviewable diff, its own report admitting the branch had not merged —
+// while the card read as finished work. Nothing about "done" was true.
+//
+// SO IT ENDS WHERE [Agent.landShifted] ENDS: needs your look, the branch kept
+// with the work committed on it, the conflicting files named in the report. The
+// person's tree is untouched — no markers, no half-merge ([abandonMerge]) — and
+// merging is a thing they do when they are ready, which is what the completion
+// note has always said a kept branch means.
+//
+// IT DOES NOT COMMIT AGAIN. comeHome committed before it tried the merge, so
+// the branch already holds the work; the mark stays [mergeConflicted] rather
+// than becoming aborted because the two are different news — one says nobody
+// took it, the other says it would not go.
+func (a *Agent) landConflicted(node *TaskNode, tree taskTree, changed []string, report, detail string, log io.Writer) TaskState {
+	fmt.Fprintf(log, "not merged: %s\n", detail)
+	node.finish(withReport(needsLookLead+detail, report), changed, tree.branch, mergeConflicted)
 	return TaskUnverified
 }
 
@@ -2576,7 +3095,42 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	return mergeAborted, alsoChanged(changed, commitTaskWork(tree.dir, title))
+	changed = alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
+	tree.releaseKept()
+	return mergeAborted, changed
+}
+
+// releaseKept unregisters a settled task's worktree while preserving its
+// branch. THE BRANCH IS THE RECOVERY ARTIFACT; a registered task directory is
+// only live machinery, and failed or aborted machinery must not remain in the
+// person's repository after the node has stopped.
+func (t taskTree) releaseKept() {
+	if t.root == "" || t.dir == "" || t.merge == mergeInPlace {
+		return
+	}
+	defer lockGitRoot(t.place, t.root)()
+	t.releaseKeptLocked()
+}
+
+// releaseKeptLocked is the same cleanup for a caller already holding the root
+// lock, which is the conflict arm inside [taskTree.comeHome].
+func (t taskTree) releaseKeptLocked() {
+	left := leftBehind(t.dir)
+	rememberLeftBehind(t.dir, left)
+	// Keep the task folder's uncommitted leavings without keeping a git
+	// registration. Moving it aside lets git remove its administrative record;
+	// removing the pointer file then turns the restored directory into ordinary
+	// files rather than a broken worktree.
+	aside := t.dir + ".unregistering"
+	if err := os.Rename(t.dir, aside); err == nil {
+		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
+		_ = os.Remove(filepath.Join(aside, ".git"))
+		_ = os.Rename(aside, t.dir)
+	} else {
+		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
+	}
+	_, _ = git(t.root, "worktree", "prune")
+	_ = os.Remove(filepath.Dir(t.dir))
 }
 
 // runTaskChild submits the brief, consumes the node's own events internally,
@@ -2599,13 +3153,22 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
 // side of the wall sees the calls they produce. PROGRESS is any of the three
-// halves of the job — a SUCCESSFUL call to a hand that saves a file
-// ([savingTools], on EventToolEnd and never EventToolFailed, because an edit
-// whose oldText did not match changed nothing and a node repeating it is the
-// exact spin the counter exists to catch), a step that left the worktree
+// halves of the job ([addedSomething]) — a SUCCESSFUL call to a hand that saves
+// a file ([savingTools], on EventToolEnd and never EventToolFailed, because an
+// edit whose oldText did not match changed nothing and a node repeating it is
+// the exact spin the counter exists to catch), a step that left the worktree
 // different from how it found it ([worktreeMoved]), or a step that TAUGHT the
 // node something it did not know ([taughtSomething]). What the counter kills is
 // the fourth thing: the same call again, changing nothing, learning nothing.
+//
+// AND "TAUGHT" IS ASKED OF THE SHAPE IT WAS BUILT FOR. A reading taken over a
+// deliverable that has just changed is information by construction, and so is a
+// question the node has never asked whose answer brought something back; line
+// novelty judges the third case, which is the same question asked again of work
+// that has not moved (novelty.go's [progressLedger]). The unit is still the
+// STEP and not the second: what the counter is spending is a model round-trip
+// and a tool call, and six of those that added nothing is a spin whether they
+// took eighteen seconds or eighteen minutes.
 //
 // The cancel is this function's own, hung off the node's context, so tripping a
 // threshold ends the child the way `jobs kill` does — a cancelled turn, its
@@ -2619,22 +3182,26 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	events, err := child.Submit(runCtx, instruction)
-	if err != nil {
-		return nil, "", err
-	}
 	var (
-		changed    []string
-		seen       = map[string]bool{}
-		seenInfo   = map[string]bool{}
-		lastDirt   string
-		failure    error
-		stopped    string
-		steps      int
-		idle       int
+		changed  []string
+		seen     = map[string]bool{}
+		ledger   = newProgressLedger()
+		lastDirt string
+		failure  error
+		stopped  string
+		steps    int
+		idle     int
+		// ranCheck says this node had been RUNNING its work — a build, a test, a
+		// script — before anything was taken off its belt. It is what makes the
+		// landing's "unverified" sentence a fact rather than a guess: a node that
+		// never ran a check is not a node whose last edits went unchecked.
+		ranCheck   bool
 		extensions int
 		deadline   = time.Now().Add(limits.deadline)
 		evidence   []string
+		// reportedParts is monotone for this worker's division. A landing is
+		// progress even when its note races the event drain below.
+		reportedParts = child.reportedChildren()
 	)
 	checkpoint := func(threshold string) bool {
 		if node == nil {
@@ -2677,6 +3244,15 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				if len(evidence) > 24 {
 					evidence = evidence[len(evidence)-24:]
 				}
+				// AND WHETHER THIS NODE WAS RUNNING ITS WORK, which is not a
+				// question about progress at all — it is what makes the landing's
+				// "unverified" sentence below a fact rather than a guess
+				// (withdrawn.go's [checkingTools]). A harness-made failure does not
+				// count: an answer this side of the wall wrote is not the node
+				// having run anything.
+				if checkingTools[event.Tool] && !event.HarnessMade {
+					ranCheck = true
+				}
 				// ALL THREE QUESTIONS ARE ASKED OF EVERY STEP, and each is
 				// asked before any of them is read, because two of them RECORD
 				// as they answer. The worktree fingerprint has to be refreshed
@@ -2685,10 +3261,21 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// as its own; the target has to be recorded even on a step that
 				// was already progress for another reason, or the same call can
 				// be spent twice. A short-circuiting `switch` did both wrong.
+				//
+				// THE THREE ARE READ IN ONE PLACE ([addedSomething]), because
+				// they are one rule and because the ledger they keep has state
+				// now — a step that moved the work arms the reading after it
+				// (novelty.go's [progressLedger]) — and a rule with state that
+				// is spelled out at its call site is a rule with two versions.
 				moved := worktreeMoved(dir, &lastDirt)
-				learned := taughtSomething(event, seenInfo)
 				path, wrote := changedPath(event, dir)
 				saved := wrote && event.Kind == EventToolEnd
+				added := addedSomething(event, saved, moved, ledger)
+				reports := child.reportedChildren()
+				partLanded := reports > reportedParts
+				if partLanded {
+					reportedParts = reports
+				}
 				if saved && !seen[path] {
 					seen[path] = true
 					changed = append(changed, path)
@@ -2698,6 +3285,41 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 					node.noteWrote(path)
 				}
 				switch {
+				// A PART LANDING IS PROGRESS EVEN WHEN THIS EVENT IS OLD NEWS. Tool
+				// events and model requests travel on separate lanes, so a fast part
+				// can report after a request was made but before this drain reaches
+				// that request's last tool event. Reading only
+				// [Agent.childrenOutstanding] at this instant then mislabels the old
+				// step as a new idle one. The monotone report count gives the landing
+				// one exact place in the ledger, whether the part finished or failed.
+				case partLanded:
+					idle = 0
+				// ── A STEP THE HARNESS FAILED IS THE HARNESS'S STEP ──
+				//
+				// It comes FIRST, ahead of every other reading, because it is not a
+				// finding about the node at all: the tool never ran, the world never
+				// answered, and the bytes the node read were written on this side of
+				// the wall — a hand that was withdrawn, a door that refused the call
+				// (withdrawn.go's [Event.HarnessMade]).
+				//
+				// Measured in SWE-Marathon s4: the landing pass took `bash` off a
+				// worker's belt and the harness then answered eight retries with
+				// "Unknown tool", each of which was a step that taught nothing, saved
+				// nothing and moved no worktree — a counter reading them would have
+				// been counting its own refusals against the model. NEITHER
+				// DIRECTION: it is not progress either, so a harness failure cannot
+				// launder a genuine spin by resetting the count. The step still
+				// costs a step and still stands in the evidence, because the money
+				// was really spent and the auditor should see what happened.
+				case event.HarnessMade:
+				case child.taskNewsOwed() > 0:
+					// AND A REPORT WAITING FOR ITS READER SUSPENDS OLD STEPS. Until
+					// the next request carries the queued note, an event reaching this
+					// drain may still belong to the turn from before the report landed.
+					// Counting those delayed events would spend the freshly reset
+					// allowance before the parent had seen the news it is meant to
+					// integrate. Once [Agent.drainSteering] carries the note it clears
+					// this count, and genuine spinning over the fold is counted again.
 				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
 				// node may never write until its final words; a build node may
 				// spend its first dozen steps reading; a node making pictures
@@ -2706,8 +3328,28 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// the same target again, no new file, no new dirt — not the
 				// absence of an edit (PMCoder's "reads saturated", not "reads
 				// happened").
-				case saved, moved, learned:
+				case added:
 					idle = 0
+				case child.childrenOutstanding():
+					// AND A NODE WHOSE WORK IS IN SOMEBODY ELSE'S HANDS IS NOT
+					// SPINNING. The counter's whole claim is that a step which
+					// taught nothing and saved nothing is a step the node had no
+					// business taking — and that claim is false the moment the
+					// work itself is elsewhere. A parent between its parts' reports
+					// has nothing left to write (the parts hold it), nothing left
+					// to learn (the answer is being made in three other
+					// worktrees), and the only hands it can reach for are the ones
+					// that look at what its parts are doing. Six of those and it
+					// killed itself while every part was still working — the
+					// division bought three workers and delivered nothing, because
+					// the one node that could integrate them was gone.
+					//
+					// SUSPENDED AND NOT SWITCHED OFF. The moment the last report
+					// lands the counter starts again from zero, so a parent that
+					// spins over the FOLD is caught exactly as it always was. What
+					// is still standing over this stretch is the step budget
+					// ([taskLimits.maxSteps]) and the deadline, which are bounds on
+					// spend rather than findings about the work.
 				default:
 					idle++
 				}
@@ -2732,7 +3374,36 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 			}
 		}
 	}
-	drain(events)
+	// ── THE FIRST REQUEST, OR NONE AT ALL ──
+	//
+	// A node that was handed a drawn division before it started has ALREADY given
+	// its work away: the parts were submitted on its behalf between the worker
+	// being built and this line (task_divide_sketch.go), and they are running now.
+	// Asking it anything before their reports are in is buying a turn about
+	// waiting — which is exactly what was measured: thirty-one requests at a five
+	// second cadence, none of them able to write a line the parts were not already
+	// writing, ending in the no-progress counter killing the one node that could
+	// have folded them together.
+	//
+	// SO THE BRIEF IS QUEUED RATHER THAN ASKED. It sits on the steering queue with
+	// nobody having read it, the tail loop below parks, and the turn that reads it
+	// is the turn the last report starts — one request holding the brief, the
+	// drawing's own "AND THIS IS YOURS, ONCE THEIR REPORTS ARE IN"
+	// ([drawnDivision.afterParts]) and every part's news at once, which is the
+	// integration the division was drawn for.
+	//
+	// EVERY OTHER NODE OPENS EXACTLY AS IT ALWAYS DID. A node with no parts out —
+	// which is nearly all of them, including one that divides mid-run and is
+	// already talking when it does — submits its brief here and runs.
+	if child.childrenOutstanding() {
+		child.enqueueNote(briefNote(instruction))
+	} else {
+		events, err := child.Submit(runCtx, instruction)
+		if err != nil {
+			return nil, "", err
+		}
+		drain(events)
+	}
 	if stopped != "" && ctx.Err() == nil {
 		// THE LANDING TURN happens after the active request has drained. It is a
 		// fresh turn so no request is killed mid-flight; the instruction forbids
@@ -2745,12 +3416,17 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		// being ordered to produce — see [landingInstruction] for what the node
 		// then said. The instruction is generated FROM the belt, so a media verb
 		// the machine does not have is neither offered nor named.
-		child.armMu.Lock()
-		oldTools, oldDefinitions := child.tools, child.definitions
-		child.tools = landingBelt(oldTools)
-		child.definitions, _ = toolDefinitions(child.tools)
-		landing := landingInstruction(child.tools)
-		child.armMu.Unlock()
+		//
+		// THE NARROWING IS A WITHDRAWAL AND SAYS SO (withdrawn.go). It used to be
+		// two slice headers swapped in place, which left the dispatcher unable to
+		// tell a hand that was TAKEN from a name that never existed — so a node
+		// reaching for its build was answered "Unknown tool: bash", retried eight
+		// times because eighteen bytes gave it no reason not to, and was then
+		// nudged for repeating itself. Going through [Agent.withdrawTools] records
+		// what went and what is left, under the same lock as the swap.
+		restore := child.withdrawTools(landingBelt, landingWithdrawal)
+		landing := landingInstruction(child.beltTools())
+		savedInLanding := false
 		if events, err := child.Submit(ctx, landing); err == nil {
 			for event := range events {
 				room.publish(event)
@@ -2760,12 +3436,34 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 						changed = append(changed, path)
 						node.noteWrote(path)
 					}
+					if savingTools[event.Tool] {
+						savedInLanding = true
+					}
 				}
 			}
 		}
-		child.armMu.Lock()
-		child.tools, child.definitions = oldTools, oldDefinitions
-		child.armMu.Unlock()
+		lostItsCheck := child.landingLostTheCheck()
+		restore()
+		// ── AND WHAT IT SAVED IN THAT TURN WAS NEVER CHECKED ──
+		//
+		// Measured in SWE-Marathon s4: a worker that had been building and testing
+		// all run was landed, lost `bash` with the narrowing, and then edited two
+		// source files anyway — the last two things it did. They never compiled.
+		// The report said the work was done, the parent believed it, and the
+		// conversation discovered the breakage five minutes later.
+		//
+		// THREE FACTS MAKE THE SENTENCE TRUE, and it is written only when all
+		// three hold: the node had been running a check, the narrowing took that
+		// hand away, and it saved something afterwards. It says nothing about what
+		// the check was, what language the work is in, or whether the edits are
+		// good — only that nothing looked at them, which is the one thing the
+		// reader downstream cannot see for itself. The words are the vocabulary a
+		// landing already uses for work nobody could stand behind, and they lead
+		// the report, so a parent reading a stopped node's account is never handed
+		// unverified edits as finished ones ([Agent.landStopped]).
+		if savedInLanding && ranCheck && lostItsCheck {
+			stopped = withReport(stopped, unverifiedEdits)
+		}
 	}
 
 	// ── THE NODE THAT HANDED PART OF ITS WORK OUT ──
@@ -2785,23 +3483,76 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	// A tripped threshold or a cut context ends this exactly as it ends the
 	// turn above: the children are stopped with the parent (see
 	// [TaskGraph.stopChildren]) and their branches are kept.
+	//
+	// AND THE PERSON CAN STILL REACH IT WHILE IT WAITS. A parent parked on its
+	// pieces has no turn running, and [Agent.wakeLocked] declines inside a task —
+	// so a line steered into its room (task_room.go) has nothing of its own to
+	// land in. It is held on the same queue the reports ride and it is READ HERE:
+	// `held` keeps this loop from parking on top of somebody's words and from
+	// closing the child while they are still queued, and the resumeTurn below is
+	// the turn that puts them in front of the model. Without it the sentence sat
+	// there for as long as the slowest piece ran and was dropped outright when
+	// the last report came in, having been accepted with a note saying it had
+	// arrived.
 	for stopped == "" && runCtx.Err() == nil {
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := child.taskNewsWait()
 		owed, working := child.taskNewsOwed(), child.childrenOutstanding()
-		if owed == 0 && !working {
+		held := child.steeringHeld()
+		if owed == 0 && !held && !working {
 			break
 		}
-		if owed == 0 {
+		// ── WAITING IS NOT WORKING, AND IT IS NOT ASKED FOR EITHER ──
+		//
+		// While ANY part is still out this node is PARKED: no request, no step, no
+		// counter, no clock. It used to be parked only in the gaps between reports
+		// and re-entered on each one, and the difference is a whole coordination
+		// pattern. A parent asked after the first of three reports has two thirds
+		// of an answer and one honest thing to say about it — that it is waiting —
+		// and every turn it spends saying so is money, transcript and, because the
+		// harness cannot tell waiting from spinning, six steps closer to being
+		// killed on the spot. The reports simply QUEUE instead ([Agent.enqueueNote]
+		// keeps them in the order they landed), and the turn that reads them reads
+		// all of them, which is the only turn whose brief — fold these into one
+		// deliverable — it can actually carry out.
+		//
+		// THE PERSON IS THE EXCEPTION AND THE ONLY ONE. A line steered into this
+		// node's room (task_room.go) is somebody at a keyboard waiting for an
+		// answer, and holding it for as long as the slowest part runs would be the
+		// room going silent on them. `held` takes the loop past the park, the turn
+		// answers them, and the park takes it back on the next pass.
+		if working && !held {
 			// The lane goes back for exactly as long as the wait lasts
 			// ([TaskGraph.park]).
+			since := time.Now()
 			node.park()
 			select {
 			case <-news:
 			case <-runCtx.Done():
 			}
 			node.unpark()
+			// ── AND THE WAIT COSTS THE NODE NOTHING IT WOULD HAVE SPENT WORKING ──
+			//
+			// THE CLOCK IS PUSHED BY EXACTLY THE PARKED TIME. The deadline is a
+			// bound on how long this node may WORK before somebody looks at whether
+			// it is getting anywhere ([taskLimits.deadline]); a stretch in which it
+			// made no request and took no step is not that. Left running, it was a
+			// node whose parts took twenty minutes tripping the deadline checkpoint
+			// on its first step of integration and being audited for spinning while
+			// holding three finished reports it had not been given a chance to read.
+			//
+			// AND THE NO-PROGRESS COUNTER STARTS AGAIN FROM ZERO, because a report
+			// landing is the largest single thing this node can learn. Whatever it
+			// had accrued reaching for the only hands it had while it waited is
+			// spent, and the fold is judged on the fold.
+			//
+			// THE STEP BUDGET NEEDS NOTHING DONE TO IT: a step is one finished tool
+			// call and a parked node makes none. Nor does the harness's own ceiling,
+			// which never stands over a node at all ([Agent.checkpoints] refuses
+			// InTask) — so a park cannot move that meter either.
+			deadline = deadline.Add(time.Since(since))
+			idle = 0
 			continue
 		}
 		next := child.resumeTurn(runCtx)
@@ -2817,7 +3568,11 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	if check := a.config.TaskProgressCheck; check != nil {
 		return check(node.instruction(), append([]string(nil), evidence...))
 	}
-	auditor, err := a.newAuditAgent(dir, node)
+	// THE SAME DOOR THE NODE'S OWN AUDIT WOULD GET (task_checks.go). A progress
+	// check reads a running tree and decides whether the work is moving; it has
+	// no business with a wider hand than the judge that will grade the result,
+	// and no reason for a narrower one.
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, auditPlace{ground: dir, ran: dir}))
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}
@@ -2849,7 +3604,20 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 // childrenOutstanding reports whether any sub-task THIS agent handed out has
 // yet to deliver its report. It is false in a conversation and in a node that
 // never fanned out: neither has a family to be outstanding.
+//
+// A FORKED HAND COUNTS HERE TOO, and it is the same question with a smaller
+// piece of work in it: this agent handed part of what it is doing to something
+// else, and has not been told what came of it. A hand is a stream now rather
+// than a barrier (fork.go), so a node CAN reach the end of its turn with hands
+// still out — and the two readers of this answer are exactly the two that must
+// not get it wrong. The tail loop in [runTaskChild] would land the node on top
+// of a hand's unread report and throw away the writes the fork was for; the
+// no-progress counter would read a node whose work is in somebody else's hands
+// as a node spinning.
 func (a *Agent) childrenOutstanding() bool {
+	if a.jobs.handsOutstanding() {
+		return true
+	}
 	a.mu.Lock()
 	graph, parent := a.config.tasker, a.config.taskID
 	a.mu.Unlock()
@@ -2859,6 +3627,26 @@ func (a *Agent) childrenOutstanding() bool {
 		}
 	}
 	return false
+}
+
+// reportedChildren counts the task reports this worker has already been handed.
+// It is separate from [Agent.childrenOutstanding] because the transition from
+// one count to the next is news even when the last child made "outstanding"
+// false before the runner reached the event that was already in flight.
+func (a *Agent) reportedChildren() int {
+	a.mu.Lock()
+	graph, parent := a.config.tasker, a.config.taskID
+	a.mu.Unlock()
+	if graph == nil {
+		return 0
+	}
+	reported := 0
+	for _, kid := range graph.children(parent) {
+		if kid.reported() {
+			reported++
+		}
+	}
+	return reported
 }
 
 // familyDepth is how many tasks deep this node sits, and 1 is the floor: a node
@@ -2927,47 +3715,120 @@ var knowledgeTools = map[string]bool{
 }
 
 // taughtSomething reports whether one call advanced the node's KNOWLEDGE: a
-// knowledge tool, or a bash, aimed at a target it has not aimed at before. The
-// same search retried is not new information, and SUCCESS is not required — a
-// new target that failed still taught the node that it failed. The seen map
-// keys tool+target so re-reading one file while reading another new one still
-// counts exactly once.
+// knowledge tool, or a bash, whose RESULT was MORE NEW THAN OLD to this node —
+// measured line by line, over the lines it has already been shown (novelty.go).
+//
+// ── PROGRESS IS INFORMATION, NEVER ACTIVITY ──
+//
+// This used to ask whether the CALL was new — a target the node had not aimed at
+// before — and the difference between the two questions was measured at nine
+// wasted polls in a row. A model waiting on a background job wrote
+// `sleep 30 && tail jobs/1.log`, then `sleep 45 && tail jobs/1.log`, then
+// `sleep 60 && …`: nine distinct command strings, nine identical `(no output)`
+// answers, and every one of them reset the no-progress counter, because typing a
+// different number is activity and the counter was measuring activity. The node
+// learned nothing nine times and the one mechanism built to notice that told it
+// it was doing well.
+//
+// So the key is the RESULT and not the call. A new command whose answer the node
+// has already been given is not a discovery; the same command run twice with a
+// different answer IS one, which is the honest reading of `go test` after an
+// edit. SUCCESS is still not required — a new failure is new information — and
+// the seen map still keys per node, so one node's discoveries say nothing about
+// another's.
 //
 // BASH IS BOTH HANDS and is admitted here on the knowledge half alone. `go
 // build` writes, `go test ./...`, `git log` and `rg` do not, and the tool name
-// says nothing about which one this was — so a command the node has never run
-// counts as the world answering a question it has never asked, and the writing
-// half of the same call is answered by the worktree, one caller up
+// says nothing about which one this was — so a command whose output the node has
+// never read counts as the world answering a question it has never asked, and
+// the writing half of the same call is answered by the worktree, one caller up
 // ([worktreeMoved]), which asks it of every hand rather than of this one.
 //
 // It RECORDS AS IT ANSWERS, so the caller must ask it on every step and never
-// behind a short-circuit: a call that was already progress for some other
-// reason must not also be spendable as a fresh target the next time it is made.
+// behind a short-circuit: a result that was already progress for some other
+// reason must not also be spendable as a fresh one the next time it comes back.
 //
-// The judgement is made on the CALL and never on the result: [Event.Output] is
-// a display copy, capped, and a counter that read it would be deciding a node's
-// life from bytes that were truncated for a person's screen.
-func taughtSomething(event Event, seen map[string]bool) bool {
+// THE TOOL NAME STAYS IN THE KEY. Two different hands that happen to answer the
+// same bytes — an `ls` and a `bash ls` — are two ways of learning the same
+// thing, and only the second of them is a spin.
+//
+// AND A RESULT THE HARNESS WROTE IS NOT THE WORLD ANSWERING. A withdrawn hand
+// and a refused door (withdrawn.go's [Event.HarnessMade]) are neither progress
+// nor a spin, which the caller's own reading already has right — this returns
+// early so that those bytes are not remembered EITHER, because a sentence this
+// side of the wall wrote must not be able to make a later, real result look
+// like something the node had already been told.
+func taughtSomething(event Event, ledger *progressLedger) bool {
+	if event.HarnessMade {
+		return false
+	}
 	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
 		return false
 	}
-	return freshTarget(event, seen)
+	return freshAnswer(event, ledger)
 }
 
-// freshTarget reports whether this call aimed somewhere the node has not aimed
-// before, and records it either way.
+// addedSomething is the WHOLE of what resets the no-progress counter, in one
+// place so the runner's switch and the tests that hold it to the law cannot
+// answer differently.
 //
-// The WHOLE CALL is the target, not one field of it: paging one long file by
-// offset is exploration, fetching one page twice is a spin, and only the args in
-// full tell them apart. Display-capped args compare fine — two calls capped at
-// the same mark are the same call as far as anyone can see.
-func freshTarget(event Event, seen map[string]bool) bool {
-	key := event.Tool + " " + strings.TrimSpace(event.Args)
-	if seen[key] {
+// Three ways a step adds to the run, and the ledger's books are kept as it
+// answers:
+//
+//   - it SAVED a file ([savingTools], on a call that ended rather than failed);
+//   - it CHANGED THE WORKTREE ([worktreeMoved]), which is the backstop under
+//     every hand nobody classified;
+//   - it TAUGHT the node something ([taughtSomething] → [progressLedger.read]),
+//     which is now three questions and not one — see the ledger for why.
+//
+// A HARNESS-MADE RESULT IS NEITHER, and it returns before anything is recorded:
+// a hand that was withdrawn and a door that refused the call never reached the
+// world, so those bytes must not be able to make a later real result look like
+// something the node had already been told (withdrawn.go).
+//
+// AND THE TWO THAT MOVED THE WORK ARM THE NEXT READING. A step that changed the
+// deliverable is information itself, and it also makes the reading after it
+// information by construction — the node is about to measure a state that did
+// not exist a step ago.
+func addedSomething(event Event, saved, moved bool, ledger *progressLedger) bool {
+	if event.HarnessMade {
 		return false
 	}
-	seen[key] = true
-	return true
+	added := taughtSomething(event, ledger) || saved || moved
+	if added {
+		ledger.informed()
+	}
+	if saved || moved {
+		ledger.wrote()
+	}
+	return added
+}
+
+// freshAnswer reports whether this call came back with bytes the node has not
+// been told before, and records them either way.
+//
+// [Event.Output] is a display copy, capped ([capOutput]) — which is the right
+// thing to compare and not a compromise: two results capped at the same mark are
+// the same result as far as anybody, model included, can see, and the cap is the
+// same on every call so it can never make two different answers look alike more
+// than one truncated page deep.
+//
+// THE JOB FOOTER COMES OFF FIRST, and it is the reason this function cannot just
+// hash the string it is handed. Every result carries the state of every
+// outstanding job at its foot (jobfooter.go), and that line holds an elapsed
+// time — so it differs on every single call, and a hash taken over it would
+// report novelty for a result that had not changed a byte. That is exactly the
+// defect above, with the counter's one honest signal inverted into noise.
+//
+// AND THE NOVELTY IS MEASURED AT THE LINE (novelty.go). Stripping the footer
+// answers the one line the harness itself appends; it cannot answer the clock
+// the WORLD prints, and every long-running command has one. So the question is
+// not "have I seen this result" but "how much of this result have I seen" —
+// more new than old ([taughtLineThreshold]) is a step that taught the node
+// something, and one changed line in sixteen is not.
+func freshAnswer(event Event, ledger *progressLedger) bool {
+	added, _, _ := ledger.read(event.Tool, event.Args, stripJobFooter(event.Output))
+	return added
 }
 
 // argField reads one string field out of a tool call's display args. The args
@@ -3054,8 +3915,12 @@ const aforgeDroppings = ".aforge-v3"
 // A call that saved something under a name it did NOT give — generate_image
 // with no path, which lands under a timestamped name of its own — is not
 // nameable from the arguments and is not listed here as a file. It is still
-// progress: the worktree noticed it ([worktreeMoved]), and what it left behind
-// is picked up by name when the node's work is committed ([commitTaskWork]).
+// progress: the worktree noticed it ([worktreeMoved]). What it is NOT is
+// something that comes home on its own. Inside a node the unnamed picture lands
+// in the harness's own corner (landing.go's ImagesDir over a node's empty
+// Place), which is the one directory a landing never stages; a node whose
+// deliverable that picture IS says so in its report and it lands by name
+// ([declaredFiles]).
 //
 // IT IS ALSO THE LANDING BELT. The turn that lands a stopped node is allowed
 // exactly these hands and no others ([runTaskChild]'s LAND NOW pass), because
@@ -3072,13 +3937,28 @@ var savingTools = map[string]bool{
 	"speak":          true,
 }
 
-// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools] and
-// nothing else, in the order the node already had them so the model sees the
-// same list minus the hands it is being told not to reach for.
+// landsLater are the saving hands whose file arrives AFTER the call returns —
+// the verbs that answer with a job id and land as a note minutes on
+// (tools_video.go, tools_music.go). Every name here is in [savingTools] too:
+// a finished render did save something, and it counts as progress the moment
+// its note says so. What they cannot do is land on a LANDING TURN. The node is
+// closed the instant that turn ends, Close kills every job it still owns
+// after a two-second grace ([jobShutdownGrace]), and a render is minutes — so
+// a landing turn handed these verbs would submit, hear "job 1 started", and
+// have its work cancelled before the bytes existed, while the person was
+// told the file was produced. Absent is honest; present and doomed is not.
+var landsLater = map[string]bool{
+	"generate_music": true,
+	"generate_video": true,
+}
+
+// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools]
+// minus [landsLater], in the order the node already had them so the model sees
+// the same list minus the hands it is being told not to reach for.
 func landingBelt(tools []bare.Tool) []bare.Tool {
 	kept := make([]bare.Tool, 0, len(savingTools))
 	for _, tool := range tools {
-		if savingTools[tool.Name] {
+		if savingTools[tool.Name] && !landsLater[tool.Name] {
 			kept = append(kept, tool)
 		}
 	}
@@ -3139,6 +4019,96 @@ func changedPath(event Event, dir string) (string, bool) {
 	return filepath.ToSlash(path), true
 }
 
+// declaredFiles are the deliverables a node NAMED in its last words, and they
+// are the one door left open by the law that only what a node's own hands wrote
+// comes home ([stageTaskWork]).
+//
+// THE HONEST CASE IT EXISTS FOR: a node whose job is to run a scaffold. The
+// files are real, they are the deliverable, and no `write` or `edit` call ever
+// named one of them — so the node says so, on one line, and they land. A node
+// that ran `pip install` says nothing and the virtualenv stays where it fell.
+// The declaration is the node taking responsibility for a file it did not type,
+// which is exactly the difference between a deliverable and a dropping.
+//
+// IT IS READ OFF THE NODE'S WHOLE LAST MESSAGE and not off the carried report,
+// which is cut to its first few lines ([taskReport]): the line belongs at the
+// bottom, under the account of the work, where it is out of the person's way.
+//
+// EVERY NAME IS CHECKED AGAINST THE DISK BEFORE IT IS BELIEVED. A model listing
+// a file it meant to write is the ordinary failure here, and a name with nothing
+// behind it must not become a path on a card or an error in a staging call.
+func declaredFiles(said, dir string) []string {
+	var declared []string
+	for _, line := range strings.Split(said, "\n") {
+		rest, found := cutDeclaration(line)
+		if !found {
+			continue
+		}
+		for _, name := range strings.Split(rest, ",") {
+			name = strings.Trim(strings.TrimSpace(name), "`'\"*")
+			if name == "" || len(declared) >= declaredFilesLimit {
+				continue
+			}
+			relative, ok := insideWorktree(dir, name)
+			if !ok {
+				continue
+			}
+			if info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(relative))); err != nil || info.IsDir() {
+				continue
+			}
+			declared = append(declared, relative)
+		}
+	}
+	return declared
+}
+
+// declaredFilesLimit bounds one report's declaration. A node that names two
+// hundred files has stopped declaring a deliverable and started pasting a
+// directory listing, and the cap is what keeps a report from becoming a staging
+// script.
+const declaredFilesLimit = 50
+
+// cutDeclaration finds the `files:` line and hands back what it named. The
+// leading bullet and the bold markers a model reaches for are trimmed first,
+// because "- **files:** a.go" is the same sentence and refusing it would teach
+// nobody anything.
+func cutDeclaration(line string) (string, bool) {
+	trimmed := strings.TrimLeft(strings.TrimSpace(line), "-*• \t")
+	if len(trimmed) < len(declarationWord) {
+		return "", false
+	}
+	if !strings.EqualFold(trimmed[:len(declarationWord)], declarationWord) {
+		return "", false
+	}
+	return strings.TrimLeft(trimmed[len(declarationWord):], "* \t"), true
+}
+
+// declarationWord is the one spelling, said once here and once in the node's
+// own prompt (prompts/task.md's "What comes home"), because a prompt that asked
+// for a word this did not read would be a promise the harness does not keep.
+const declarationWord = "files:"
+
+// insideWorktree answers whether a name the model wrote points at something in
+// the node's own working copy, and gives it back worktree-relative.
+func insideWorktree(dir, name string) (string, bool) {
+	name = filepath.FromSlash(strings.TrimSpace(name))
+	if name == "" {
+		return "", false
+	}
+	if filepath.IsAbs(name) {
+		relative, err := filepath.Rel(dir, name)
+		if err != nil {
+			return "", false
+		}
+		name = relative
+	}
+	clean := filepath.ToSlash(filepath.Clean(name))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", false
+	}
+	return clean, true
+}
+
 // taskReport is the node's last word: the final assistant message, cut to three
 // lines. It is read off the child's transcript rather than accumulated from its
 // deltas because both paths — a streaming provider and a non-streaming one —
@@ -3197,7 +4167,10 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// requests to that model, and folding it in as a single call on the model the
 	// person is chatting to would put a number in the session's books that never
 	// happened.
-	a.spendLedger(node).addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+	// THE FOLD DOOR, not the ordinary auxiliary one: the node journaled these
+	// same tokens into the machine's usage ledger as it spent them, and folding
+	// the total in again would count them twice ([Agent.addFoldedUsage]).
+	a.spendLedger(node).addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
@@ -3276,7 +4249,28 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // store, no reflex, or a router that answered nothing: the node opens with
 // exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
-	model := node.model()
+	return a.newTaskAgentOn(ctx, dir, node, suffix, "")
+}
+
+// newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
+// exists for exactly one caller: the repair round, whose model is the cascade's
+// answer rather than the node's (repair_role.go, task_audit.go's repairNode).
+//
+// AN EMPTY `on` IS THE ORDINARY CASE and means "the node's own", so every other
+// caller is byte-for-byte where it was. What a named model does NOT do is move
+// the node: the spec is not touched, the row is not touched, and the escalation
+// is recorded as a bill rather than as a retarget — a repair round is one worker
+// among several a node takes, and a node whose row started naming the repair's
+// model would be telling a person their work moved when it did not.
+func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string) (*Agent, error) {
+	// The model it is ACTUALLY on rather than the id it was admitted with, so a
+	// second worker built for a node that was moved is built for where the node
+	// now is ([TaskNode.runOn]). They are the same string for every node nothing
+	// has moved, which is almost all of them.
+	model := node.runModel()
+	if on = strings.TrimSpace(on); on != "" {
+		model = on
+	}
 	var (
 		tasker *TaskGraph
 		nodeID uint64
@@ -3290,6 +4284,12 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 	if strings.TrimSpace(model) == "" {
 		model = a.model
 	}
+	// The rung this session's own next turn would ask for, resolved once here
+	// under the lock the ladder's fields are read under, and carried into the
+	// child as its floor (effort.go). It is read for the PARENT'S model rather
+	// than the node's: what is being inherited is the person's depth, and their
+	// dial is a fact about the conversation they turned it in.
+	inherited := a.effortLocked(a.model)
 	// A TASK WITHOUT TOOLS CANNOT START. The catalog's supported-parameter row
 	// is the same capability fact the picker filters on. Swap once to the
 	// worker tier; if that is the same incapable model, refuse here rather than
@@ -3305,13 +4305,21 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 				a.mu.Unlock()
 				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
 			}
-			node.graph.mu.Lock()
-			node.mend = taskModelRescueNote(model, fallback)
-			// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
-			// on: the sentence above and [TaskNode.notice]'s model are two halves of
-			// one card, and until this line they named different models.
-			node.ran = fallback
-			node.graph.mu.Unlock()
+			// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model
+			// belongs to one round and not to the node (see [Agent.newTaskAgentOn]),
+			// so a rescue inside a repair round swaps the model it is about to call
+			// and says nothing on the card: the sentence would be about a worker the
+			// person was never told existed, and it would overwrite the one line the
+			// repair loop legitimately owns there — the gap being closed.
+			if on == "" {
+				node.graph.mu.Lock()
+				node.mend = taskModelRescueNote(model, fallback)
+				// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
+				// on: the sentence above and [TaskNode.notice]'s model are two halves of
+				// one card, and until this line they named different models.
+				node.ran = fallback
+				node.graph.mu.Unlock()
+			}
 			model = fallback
 		}
 	}
@@ -3324,8 +4332,24 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// has. Compacting early costs a summary; overflowing costs the turn.
 		window = 0
 	}
+	// AND THE PROVIDER REPAIR TRAVELS WITH THE CLIENT, WHICH IS WHY IT IS NOT IN
+	// THE LITERAL BELOW. Routing, ModelFallbacks and NearestModels are read in
+	// exactly one place — [New], where they are handed to the provider client
+	// (agent.go) — and this hands the node THAT CLIENT. So a worker asks through
+	// the person's own routing strategy, falls back down the person's own list,
+	// and gets the catalog's nearest-model rescue when there is no list, without
+	// carrying a copy of any of the three: they are facts about the connection,
+	// and there is one connection. Copying them onto the node's Config would be
+	// three fields nothing reads. What a node must NOT share is the request
+	// wrapper around that client — see [unwrapCompleter] for the cache lineage.
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, suffix)
+	// ONE PLACE ANSWERS BOTH QUESTIONS ABOUT THIS WORKER'S FILES, and they are the
+	// same question: the transcript it writes and the litter it leaves both belong
+	// to the family, never to the directory it happens to be working in
+	// ([Agent.familyPlace], landing.go). It is read here, under the lock, because
+	// the literal below is built after it is released.
+	family := a.familyPlace(node)
+	journal := taskJournalPath(family, a.sessionID(), node.id, suffix)
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
@@ -3349,7 +4373,18 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// alone). A worker hammering a build in a worktree is the richest source
 		// of error→fix pairs this product has, and every one of them would be
 		// lost in a private file nobody reads.
-		fixesDir:       a.config.fixesBucket(),
+		fixesDir: a.config.fixesBucket(),
+		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
+		// session and carries no Place — that is deliberate (session.go) — so with
+		// nothing here its job logs and its stubbed tool results landed in
+		// <workspace>/.aforge-v3, and a worker's workspace is the person's
+		// repository or a worktree of it. landing.go states the law and the
+		// measured failure; this line is the whole of the fix for a task node.
+		droppings: family,
+		// AND WHETHER THIS DIRECTORY IS A PROJECT, which is the family's question
+		// and not the worker's: a worker carries no Place (session.go), so the
+		// answer is settled here, once, while the family's is in hand.
+		ownSpace:       standingInOwnSpace(family, dir),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,
@@ -3357,6 +4392,27 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		ContextWindow:  window,
 		CompactEnabled: parent.CompactEnabled,
 		SessionFile:    journal,
+		// ── how hard this worker thinks ─────────────────────────────────────
+		//
+		// A NODE IS THE PERSON'S OWN WORK AT ONE REMOVE, so it inherits their
+		// depth rather than running at whatever a child agent's zero value is —
+		// which is what it did, silently, and made a conversation dialled to
+		// max hand its hardest part to a worker asking for nothing.
+		//
+		// THE NODE'S OWN RUNG IS THE WORK'S, AND THE PARENT'S ANSWER IS THE
+		// FLOOR UNDER IT. What arrives as this child's default is the rung the
+		// parent's own next turn would ask for — already resolved, so a dial the
+		// person turned, the conversation's sticky rung and the install's row
+		// have all been folded once and cannot disagree here. A rung set on THIS
+		// task then sits above it, which is the whole reason [Agent.SetTaskEffort]
+		// is worth having: a person who dials one piece of work deeper means that
+		// piece of work, not the conversation it came from.
+		//
+		// The role is worker, which has no floor of its own — a task is not
+		// machinery running while nobody watches, it is the job.
+		Effort:        node.effortRung(),
+		EffortRole:    effort.RoleWorker,
+		DefaultEffort: inherited,
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
@@ -3369,6 +4425,17 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
+		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
+		// checker and each repair round are the same NODE working, so a reader
+		// outside the process must see one heartbeat across all of them rather
+		// than three files appearing and disappearing (task_beat.go).
+		beat: node.beatWriter(),
+		// AND SO DOES THE NODE'S TALLY OF ITS OWN FAILURES, for the pulse's
+		// reason one layer in: the worker, each repair round and the gate are the
+		// same NODE, and the one question the gate cannot answer alone is whether
+		// the round it is judging lost its calls on the wire
+		// (taxonomy_boundary.go).
+		failures: a.tallyFor(node),
 		// AND A DESIGN THREAD IS A ROOM RATHER THAN A WORKER, which is the one
 		// place the two node kinds want different agents. A worker's turns belong
 		// to the runner driving it, so a line steered at it lands in the turn it
@@ -3385,9 +4452,25 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// off every other belt (harness_task.go's reviseDoor).
 		reviseDesign:   node.reviseDoor(),
 		SupportsImages: parent.SupportsImages,
-		RolesSource:    parent.RolesSource,
-		SearchProvider: parent.SearchProvider,
-		SearchFetcher:  parent.SearchFetcher,
+		// AND THE ANSWER TO "CAN THIS MODEL HOLD A TOOL", without which the
+		// rescue above works exactly one level deep. It is read at the top of
+		// THIS constructor, off the parent's config, so a worker that did not
+		// carry it built its own pieces with no check at all: a part, or a
+		// propose_task child of a node, would start on a model that cannot call
+		// a tool and spend a whole run discovering it. It is the same catalog
+		// row the picker filters on, and a node is the same worker doing the
+		// same job somewhere quieter.
+		SupportsParameter: parent.SupportsParameter,
+		// The leash's checkpoint seam travels for the reason a seam exists at
+		// all: it stands in for the read-only checker on the agent that OWNS the
+		// node ([Agent.taskProgress]), and a part's owner is its parent's worker.
+		// Production leaves it nil and asks the real checker either way; a seam
+		// that stopped one level short meant a part's leash was the one threshold
+		// nothing could put a deterministic answer behind.
+		TaskProgressCheck: parent.TaskProgressCheck,
+		RolesSource:       parent.RolesSource,
+		SearchProvider:    parent.SearchProvider,
+		SearchFetcher:     parent.SearchFetcher,
 		// The person's connected accounts travel too, for the reason the search
 		// pair does: a node is the same worker doing the same job somewhere
 		// quieter, and work briefed around a mailbox needs the mailbox. What a
@@ -3491,13 +4574,65 @@ func (a *Agent) journalID() string {
 // handed one path would be one agent with two names (task_audit.go).
 func taskJournalPath(place Place, session string, id uint64, suffix string) string {
 	name := fmt.Sprintf("%s_%d%s.jsonl", time.Now().Format("20060102-150405"), id, suffix)
+	return filepath.Join(taskJournalDir(place, session), name)
+}
+
+// taskJournalDir is the directory every one of a session's node transcripts is
+// written into: the session folder's tasks/, or the legacy parallel tree for a
+// session with no folder. It is the one answer to "where would this session's
+// task journals be" — [taskJournalPath] mints new names inside it and
+// [findTaskJournal] looks for old ones in it — so the two cannot look in
+// different places.
+func taskJournalDir(place Place, session string) string {
 	if journals := place.NodeJournals(); journals != "" {
-		return filepath.Join(journals, name)
+		return journals
 	}
 	// The legacy tree, through the one seam: os.UserHomeDir was read directly
 	// here, which is why AFORGE_HOME moved every other v3 file and left a node's
 	// transcript behind in the real home (Decision 26, "one home, one seam").
-	return filepath.Join(home.Dir(), "v3", "tasks", session, name)
+	return filepath.Join(LooseTasksRoot(), session)
+}
+
+// findTaskJournal is the node's transcript found by its id rather than by its
+// name: the newest `<stamp>_<id>.jsonl` in the session's journal directory, or
+// "" when there is none.
+//
+// It exists for checkpoints written before the journal path was carried on the
+// record (task_store.go's taskRecord.Journal): the file is on disk and named
+// with the node's id, so a session that never learned the name can still find
+// the file. THE MAIN TRANSCRIPT ONLY — the stem must end in exactly `_<id>`, so
+// the audits (`_<id>-audit-<nonce>`) and repair rounds (`_<id>-repair1`) that
+// sit beside it under the same id are never mistaken for the run that IS the
+// node. Several mains under one id are a node that ran more than once — an
+// interrupt resumed — and the stamp leads the name, so the greatest name is the
+// latest run.
+func findTaskJournal(dir string, id uint64) string {
+	if strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	want := fmt.Sprintf("_%d", id)
+	var newest string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".jsonl")
+		if !strings.HasSuffix(stem, want) || stem == want {
+			continue
+		}
+		if name > newest {
+			newest = name
+		}
+	}
+	if newest == "" {
+		return ""
+	}
+	return filepath.Join(dir, newest)
 }
 
 // unwrapCompleter reaches past the session's own request wrapper.
@@ -3580,6 +4715,45 @@ var gitRoot sync.Mutex
 // one session's folder, so the forced remove below can only ever be reclaiming
 // after ourselves.
 func prepareTaskTree(place Place, workspace, session string, id uint64, title string) (taskTree, error) {
+	return prepareTaskTreeAt(place, workspace, session, id, title, "")
+}
+
+// prepareTaskTreeAt applies the placement contract before it touches git. An
+// explicit place is worked in exactly as named; only an empty where takes the
+// default road of cutting a worktree from the conversation's repository.
+func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
+	where = strings.TrimSpace(where)
+	if strings.EqualFold(where, "in place") {
+		return taskTree{dir: workspace, merge: mergeInPlace}, nil
+	}
+	if where != "" {
+		dir, err := resolveTaskWhere(where, workspace)
+		if err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
+		// NAMING A PLACE IS ASKING FOR IT. [resolveTaskWhere] deliberately does
+		// not touch the disk, because the proposal card resolves the same words
+		// only to SHOW them ([taskWhereNotice]) and a preview may not leave a
+		// directory behind. This is the other side of that split: the moment the
+		// work is actually being placed, a person who said `use ~/scratch` about
+		// a folder that is not there yet meant "work there", and answering "no
+		// such file" would be the surface refusing an errand it can simply run.
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
+		return taskTree{dir: dir, merge: mergeInPlace}, nil
+	}
+	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
+	// for it. A conversation opened outside any project has a workspace of its
+	// own — work/, which the door makes into a repository with a first commit
+	// precisely so that tasks get worktrees (cmd/aforge's prepareOwnedWorkspace)
+	// — so it HAS somewhere to stand and needs nothing said about projects. This
+	// once refused every such task with "this task needs a project", which was a
+	// person being turned away from work that needed no repository at all: file
+	// an issue, read something, write a document. The two roads below already
+	// answer the only case that has nowhere to branch from — an owned workspace
+	// from an older build, or one whose git init failed, which is not a
+	// repository and runs in place and says so.
 	root, ok := repositoryRoot(workspace)
 	if !ok {
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
@@ -3595,6 +4769,10 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 	if trees := place.Trees(); trees != "" {
 		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
 	}
+	// Git resolves symlinks before it registers a worktree. Record that same
+	// spelling from the start so the checkpoint, cleanup and git all name one
+	// directory even while the final path does not exist yet.
+	dir = canonicalPath(dir)
 	branch := "task/" + slugify(title) + "-" + shortID()
 
 	defer lockGitRoot(place, root)()
@@ -3625,6 +4803,85 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
 }
 
+// inOwnSpace is [standingInOwnSpace] asked of a whole Config, and the two
+// answers are the two kinds of agent there are. A CONVERSATION carries its Place
+// and can be asked directly. A WORKER carries none on purpose (session.go's
+// droppings states why), so the constructor that built it wrote the answer down.
+func (c Config) inOwnSpace() bool {
+	return c.ownSpace || standingInOwnSpace(c.Place, c.Workspace)
+}
+
+// standingInOwnSpace answers whether a worker's directory is THE CONVERSATION'S
+// OWN SPACE rather than a project: the owned session's work/ repository, or a
+// worktree cut from it under trees/.
+//
+// IT IS ASKED BECAUSE THE TWO LOOK IDENTICAL FROM INSIDE. A worker that opens a
+// directory holding nothing cannot tell a conversation that never had a project
+// from a checkout that failed, and the second reading is the one that sends it
+// hunting for a repository nobody ever named. One line in its prompt settles it
+// (prompt.go), and the line is only true of these directories: a place the
+// person named explicitly is somewhere they chose, and never this.
+func standingInOwnSpace(place Place, dir string) bool {
+	if !place.Owned {
+		return false
+	}
+	dir = canonicalPath(strings.TrimSpace(dir))
+	if dir == "" {
+		return false
+	}
+	for _, own := range []string{place.Workspace, place.Work(), place.Trees()} {
+		own = canonicalPath(strings.TrimSpace(own))
+		if own == "" {
+			continue
+		}
+		if dir == own || strings.HasPrefix(dir, own+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveTaskWhere turns the words a person or a proposal spelled for `where`
+// into one absolute directory: `~` is their home, a relative name hangs off the
+// conversation's own workspace, and an absolute path is taken as it stands.
+//
+// A PATH THAT IS NOT THERE YET IS NOT AN ERROR. Somebody who names a fresh
+// folder is saying where the work should go, not making a claim about what is
+// already on disk, and the caller that is really placing work creates it
+// ([prepareTaskTreeAt]). The one refusal left is a path that EXISTS and is not a
+// directory — a file cannot be worked in, and silently creating something beside
+// it would be the surface guessing.
+//
+// IT READS THE DISK AND NEVER WRITES IT, because the proposal card resolves the
+// same words for display before the person has said yes ([taskWhereNotice]).
+func resolveTaskWhere(where, workspace string) (string, error) {
+	if where == "~" || strings.HasPrefix(where, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		where = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(where, "~"), string(filepath.Separator)))
+	}
+	if !filepath.IsAbs(where) {
+		where = filepath.Join(workspace, where)
+	}
+	dir, err := filepath.Abs(where)
+	if err != nil {
+		return "", err
+	}
+	switch info, err := os.Stat(dir); {
+	case errors.Is(err, os.ErrNotExist):
+		// Nothing there yet, which is the ordinary shape of naming a new place.
+	case err != nil:
+		// Anything else — a permission wall, a broken mount — is a real fact
+		// about the disk and is handed back rather than papered over.
+		return "", err
+	case !info.IsDir():
+		return "", fmt.Errorf("%s is not a directory", dir)
+	}
+	return filepath.Clean(dir), nil
+}
+
 // taskTreeSession is the path segment that keeps one window's worktrees away
 // from another's: the conversation's own id, which is 16 random hex characters
 // minted per session file (sessionfile.go's newSessionID).
@@ -3649,11 +4906,19 @@ func taskTreeSession(session string) string {
 // use and stable for the life of the process.
 var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID() })
 
-// comeHome commits whatever the node wrote and merges its branch into the
-// person's. It reports the outcome and, ONLY when the outcome needs explaining,
-// one line for the node's report: an ordinary merge is already said by the
-// Merge and Branch fields and by the completion note, and saying it a third
-// time inside the report is the same sentence three times on one card.
+// comeHome commits what the node WROTE and merges its branch into the person's.
+// It reports the outcome and, ONLY when the outcome needs explaining, a line or
+// two for the node's report: an ordinary merge is already said by the Merge and
+// Branch fields and by the completion note, and saying it a third time inside
+// the report is the same sentence three times on one card. A conflict and a
+// working copy full of things nobody wrote are both worth explaining, and both
+// come back here.
+//
+// WHAT COMES HOME IS WHAT THE NODE'S OWN HANDS WROTE, which is the whole of
+// [stageTaskWork]'s law and the reason wrote is an argument rather than a walk
+// of the directory. A node that ran `pip install` inside its worktree has a
+// virtualenv in it and did not write one; landing it committed 26 hunks of
+// vendored noise over a change nobody could find.
 //
 // THE MERGE IS ATTEMPTED WHATEVER THE PERSON'S TREE LOOKS LIKE. A dirty
 // checkout is the normal state of somebody who has been working, and refusing
@@ -3661,11 +4926,15 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string) (string, string) {
+func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, ""
 	}
-	_ = commitTaskWork(t.dir, title)
+	_ = commitTaskWork(t.dir, title, wrote)
+	// Read AFTER the commit and BEFORE the worktree is removed: what is still
+	// sitting there once the node's own work is committed is by definition what
+	// the node did not write, and this is the only moment it can be named.
+	left := leftBehind(t.dir)
 
 	defer lockGitRoot(t.place, t.root)()
 	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
@@ -3677,11 +4946,17 @@ func (t taskTree) comeHome(title string) (string, string) {
 	if out, err := git(t.root,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"merge", "--no-edit", t.branch); err != nil {
-		// --abort is best-effort: a merge that never started (git refused
-		// before touching the index) has nothing to abort, and it says so.
-		_, _ = git(t.root, "merge", "--abort")
-		return mergeConflicted, fmt.Sprintf("its branch %s did not merge cleanly and was kept: %s",
-			t.branch, firstLine(out))
+		// THE PATHS ARE READ BEFORE THE MERGE IS ABANDONED, because abandoning it
+		// is what removes the evidence: a conflicted index knows which files were
+		// changed on both sides, and one second later nothing does.
+		clashing := conflictedPaths(t.root)
+		abandonMerge(t.root)
+		// The committed branch is the durable recovery point. Keeping the failed
+		// worktree registered would leave the person's repository pointing into a
+		// task folder that a later sweep may remove underneath it.
+		t.releaseKeptLocked()
+		return mergeConflicted, withReport(conflictSentence(t.branch, clashing, out),
+			leftBehindSentence(left, true))
 	}
 	// The branch is gone only once its work is in: removing the worktree first
 	// keeps `git branch -d` from refusing on a checked-out branch.
@@ -3697,28 +4972,206 @@ func (t taskTree) comeHome(title string) (string, string) {
 	// remove empties trees/ when the last node comes home, which costs nothing
 	// and leaves the folder listing honest.
 	_ = os.Remove(filepath.Dir(t.dir))
-	return mergeMerged, ""
+	// The working copy has just gone, and the sentence says where its leavings
+	// went with it rather than sending anybody to look in a directory that is no
+	// longer there.
+	return mergeMerged, leftBehindSentence(left, false)
 }
 
-// commitTaskWork puts everything the node wrote into one commit on its own
-// branch. Without it there would be nothing to merge: a node's work is files on
-// disk, and git only moves what has been committed.
+// conflictSentence is what a person reads when a branch would not merge: which
+// files were changed on both sides, in their own words and by name.
+//
+// It NAMES THE FILES rather than quoting git, because git's first line on a
+// failed merge is usually "Auto-merging x" — the last thing that worked, not the
+// thing that did not. The quote is kept for the other shape of failure, the
+// merge git refused before it started (local changes it would have to
+// overwrite), where git's own sentence is the only account there is.
+func conflictSentence(branch string, clashing []string, out string) string {
+	line := "its branch " + branch + " did not merge cleanly and was kept: "
+	if len(clashing) == 0 {
+		return line + firstLine(out)
+	}
+	return line + namedFew(clashing, conflictNamesShown) + " changed on both sides"
+}
+
+// conflictNamesShown and leftBehindNamesShown are how many paths a sentence
+// carries before it stops naming them. A conflict is usually one or two files
+// and a person wants every one; a working copy full of somebody's virtualenv is
+// three thousand, and a report that listed them would be the noise this whole
+// file exists to keep off their branch.
+const (
+	conflictNamesShown   = 8
+	leftBehindNamesShown = 5
+)
+
+// conflictedPaths are the files a merge could not settle, read off the index
+// while the merge is still in progress. An empty answer is a merge that failed
+// before it touched the index.
+func conflictedPaths(root string) []string {
+	out, err := git(root, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil
+	}
+	return nonEmptyLines(out)
+}
+
+// abandonMerge takes the person's checkout back out of a merge, and it exists
+// because of one law: A CONFLICT MARKER IS NEVER WRITTEN ONTO THE PERSON'S
+// BRANCH. A task that leaves `<<<<<<<` in a file they did not open has handed
+// them a broken tree and called it a landing.
+//
+// `merge --abort` is the whole answer whenever there is a merge to abort, and it
+// fails harmlessly when git refused before touching the index — so the second
+// move is asked for only when the repository says it is still mid-merge, which
+// is the one case where doing nothing would leave the markers behind.
+func abandonMerge(root string) {
+	if _, err := git(root, "merge", "--abort"); err == nil {
+		return
+	}
+	if _, err := git(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); err != nil {
+		return
+	}
+	_, _ = git(root, "reset", "--merge")
+}
+
+// leftBehind is what is sitting in the node's working copy that the node did
+// not write: a virtualenv a command built, a compiler's output, a cache. It is
+// read after [commitTaskWork] has staged and committed the node's own work, so
+// everything git still reports is by definition something nothing wrote down.
+//
+// IGNORED FILES ARE NOT IN IT, exactly as they are not in the commit: a
+// repository that has said it does not care about a path has already answered
+// this question, and repeating it in the report would be the harness arguing
+// with the person's .gitignore.
+func leftBehind(dir string) []string {
+	// Once a failed task has been unregistered, this ordinary directory may sit
+	// beneath the repository and `git status` would report paths from that
+	// parent. The snapshot was taken while the worktree still knew its own root.
+	if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {
+		if paths := rememberedLeftBehind(dir); paths != nil {
+			return paths
+		}
+	}
+	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
+		"--", ".", ":(exclude)"+aforgeDroppings)
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, line := range nonEmptyLines(out) {
+		if len(line) < 4 {
+			continue
+		}
+		// The porcelain line is two status letters, a space, then the path; a
+		// rename carries both names and the one that exists now is the second.
+		path := strings.TrimSpace(line[3:])
+		if _, renamed, found := strings.Cut(path, " -> "); found {
+			path = renamed
+		}
+		if path = strings.Trim(path, `"`); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+const leftBehindRecord = "left-behind.json"
+
+// rememberLeftBehind keeps the answer in aforge's private task metadata before
+// Git forgets the worktree. It writes an empty array too: that distinguishes a
+// task known to have no leavings from an older folder with no snapshot.
+func rememberLeftBehind(dir string, paths []string) {
+	metadata := filepath.Join(dir, aforgeDroppings)
+	if err := os.MkdirAll(metadata, 0o755); err != nil {
+		return
+	}
+	if paths == nil {
+		paths = []string{}
+	}
+	contents, err := json.Marshal(paths)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(metadata, leftBehindRecord), contents, 0o600)
+}
+
+// rememberedLeftBehind distinguishes no record from a recorded empty answer:
+// nil means the folder predates this cleanup law and should use Git's answer.
+func rememberedLeftBehind(dir string) []string {
+	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, leftBehindRecord))
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	if err := json.Unmarshal(contents, &paths); err != nil {
+		return nil
+	}
+	return paths
+}
+
+// leftBehindSentence is the one line a person gets about those files, and WHERE
+// THEY ARE NOW is the half of it that has to be true.
+//
+// A merged node's working copy is removed the moment its work is in, taking an
+// installed environment and a directory of build output with it — which is what
+// a throwaway checkout is for, and which a sentence saying the files are "still
+// there" would send somebody looking for. A kept one is still on disk, and there
+// the same files really are waiting.
+func leftBehindSentence(paths []string, kept bool) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	line := "it left files it did not write, and they went with its working copy rather than onto your branch: "
+	if kept {
+		line = "it left files it did not write, and they are still in its task folder rather than on its branch: "
+	}
+	return line + namedFew(paths, leftBehindNamesShown)
+}
+
+// namedFew lists paths the way a sentence does — the first few by name and the
+// rest as a count, because a person reading a card wants to recognise the thing
+// rather than audit it.
+func namedFew(paths []string, most int) string {
+	if len(paths) <= most {
+		return strings.Join(paths, ", ")
+	}
+	return strings.Join(paths[:most], ", ") + fmt.Sprintf(" and %d more", len(paths)-most)
+}
+
+// nonEmptyLines is the shape every plumbing answer in this file comes back in:
+// one path per line, blanks dropped.
+func nonEmptyLines(out string) []string {
+	var lines []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// commitTaskWork puts what the node wrote into one commit on its own branch.
+// Without it there would be nothing to merge: a node's work is files on disk,
+// and git only moves what has been committed.
 //
 // The identity is passed per-command rather than configured, so a machine with
 // no git identity still commits and the person's own config is not touched.
 // "nothing to commit" is not a failure — a node that only read is a node with
 // an empty branch, and an empty branch merges cleanly.
 //
-// It ANSWERS WITH THE FILES IT COMMITTED, read off the index it just built,
-// because the index is the only complete account of what a node left behind: a
-// hand that saved a file under a name it chose for itself is in there, and no
-// argument the model wrote ever said that name ([savingTools]). A node whose
-// branch never comes home is told about its work out of this list.
-func commitTaskWork(dir, title string) []string {
-	if !stageTaskWork(dir) {
+// It ANSWERS WITH THE FILES IT COMMITTED, read off the index it just built
+// rather than off the list it was handed, because the two can differ honestly:
+// a path the node wrote and then deleted, a path .gitignore refuses, a path the
+// node saved outside its own worktree. A node whose branch never comes home is
+// told about its work out of this list.
+func commitTaskWork(dir, title string, wrote []string) []string {
+	if !stageTaskWork(dir, wrote) {
 		return nil
 	}
 	saved := stagedPaths(dir)
+	if len(saved) == 0 {
+		return nil
+	}
 	_, _ = git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", "task: "+clip(firstLine(title), 72))
@@ -3732,17 +5185,29 @@ func stagedPaths(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			paths = append(paths, line)
-		}
-	}
-	return paths
+	return nonEmptyLines(out)
 }
 
-// stageTaskWork puts everything the node wrote into the worktree's index, and
-// it is the step BOTH the audit and the commit need.
+// stagedDiffStat is the node's change AS A SHAPE: one line per file with how
+// much of it moved, read off the same index [stagedPaths] reads.
+//
+// It is the `--stat` and never the diff itself. The whole diff is already in the
+// working copy the reader is standing in — a repair round can open any of it
+// with `git diff --cached` and nothing here should pay to copy it into a prompt
+// — and what a reader cannot get in one glance is the SHAPE: which files, how
+// big, and therefore where the ninety percent that already works lives
+// (task_audit.go's repairInstruction is the one caller). An empty answer is what
+// a workspace that is not a repository gives, and it renders as nothing.
+func stagedDiffStat(dir string) string {
+	out, err := git(dir, "diff", "--cached", "--stat")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// stageTaskWork puts THE PATHS THE NODE'S OWN HANDS WROTE into the worktree's
+// index, and it is the step BOTH the audit and the commit need.
 //
 // The audit needs it because `git diff` shows tracked files only: a node whose
 // whole change was three new files has an empty diff and a full index, and an
@@ -3753,18 +5218,91 @@ func stagedPaths(dir string) []string {
 // two places would be the audit and the merge disagreeing about what the node
 // wrote.
 //
-// The harness's own droppings are not the node's work: a background job the
-// node started wrote its log under the workspace (jobs.go), and a build log in
-// the diff — or merged into the person's branch — is noise they did not ask for.
-func stageTaskWork(dir string) bool {
-	if _, err := git(dir, "add", "-A"); err != nil {
+// IT IS NOT `git add -A`, AND THAT IS THE WHOLE POINT OF IT. A node works in a
+// directory it is free to make a mess in: it runs the test suite, it installs
+// what the suite needs, it builds. `add -A` called every one of those droppings
+// the deliverable — one measured task landed twenty-six hunks of vendored
+// virtualenv and not one line of the change it was asked for, and another
+// committed three thousand files of a `.venv_test`. A file a COMMAND made is
+// not what the node wrote; a file the node's own `write` or `edit` made is
+// (see [savingTools], and [declaredFiles] for the deliverable a command
+// generated and the node then named).
+//
+// wrote is worktree-relative and comes from the run's own record of its saving
+// calls ([runTaskChild]'s changed, the same list the auditor is shown and the
+// same list the card names) — ONE source of truth, never a second walk of the
+// directory that could disagree with it.
+//
+// The batch is one call because the ordinary node writes a handful of files. It
+// falls back to one call per path because a single path git refuses — one that
+// .gitignore covers, one the node deleted from outside its own worktree — fails
+// the whole batch, and one unstageable name must not cost the node everything
+// else it wrote. IGNORED PATHS STAY IGNORED either way, exactly as they did
+// under `add -A`: git refuses them and the loop moves on.
+//
+// The harness's own droppings are not the node's work either: a background job
+// the node started wrote its log under the workspace (jobs.go), and a build log
+// in the diff — or merged into the person's branch — is noise they did not ask
+// for.
+func stageTaskWork(dir string, wrote []string) bool {
+	if _, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return false
+	}
+	paths := stageableWork(dir, wrote)
+	if len(paths) == 0 {
+		return true
+	}
+	if _, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
+		for _, path := range paths {
+			_, _ = git(dir, "add", "--all", "--", path)
+		}
 	}
 	_, _ = git(dir, "reset", "--quiet", "--", aforgeDroppings)
 	return true
 }
 
-// repositoryRoot is the top of the repository a directory sits in.
+// stageableWork turns the run's record of what it wrote into pathspecs git can
+// be handed: inside the worktree, deduped, and never the harness's own corner.
+//
+// EVERY PATH IS LITERAL. A file a node wrote called `report[1].md` is a glob to
+// git's pathspec parser and a filename to everybody else, and the `:(literal)`
+// prefix is how a name gets to mean itself.
+//
+// A path OUTSIDE the worktree is dropped rather than reached for. A node that
+// saved something into the person's home has not made it part of this branch,
+// and `git add ../..` is either an error or a much worse kind of success.
+func stageableWork(dir string, wrote []string) []string {
+	seen := make(map[string]bool, len(wrote))
+	paths := make([]string, 0, len(wrote))
+	for _, raw := range wrote {
+		clean := strings.TrimSpace(raw)
+		if clean == "" {
+			continue
+		}
+		if filepath.IsAbs(filepath.FromSlash(clean)) {
+			relative, err := filepath.Rel(dir, filepath.FromSlash(clean))
+			if err != nil {
+				continue
+			}
+			clean = relative
+		}
+		clean = filepath.ToSlash(filepath.Clean(filepath.FromSlash(clean)))
+		switch {
+		case clean == "" || clean == "." || clean == "..", strings.HasPrefix(clean, "../"),
+			clean == aforgeDroppings, strings.HasPrefix(clean, aforgeDroppings+"/"),
+			seen[clean]:
+			continue
+		}
+		seen[clean] = true
+		paths = append(paths, ":(literal)"+clean)
+	}
+	return paths
+}
+
+// repositoryRoot is the canonical top of the repository a directory sits in.
+// Git may report a resolved path even when its caller arrived through a
+// symlink; canonicalizing here makes every later path and repository lock use
+// that same spelling.
 func repositoryRoot(dir string) (string, bool) {
 	out, err := git(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -3774,7 +5312,7 @@ func repositoryRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
-	return root, true
+	return canonicalPath(root), true
 }
 
 // git runs one command in a directory and returns its combined output. There is
@@ -3826,4 +5364,90 @@ func shortID() string {
 		return strconv.FormatInt(time.Now().UnixNano()%0xffffff, 16)
 	}
 	return hex.EncodeToString(raw[:])
+}
+
+// ── ONE MOVE, WHEN THE PROVIDER RATHER THAN THE WORK FAILED ─────────────────
+
+// terminalProviderFailure reports whether the error a worker ended on is the
+// PROVIDER having failed this node, rather than anything about the work.
+//
+// The distinction is what keeps this from becoming a second audit. A tool that
+// failed never reaches here at all — a failed call is a result the worker reads
+// and goes on from, and only a turn that could not be completed ends a run. Work
+// that is merely incomplete does not reach here either: that is a finished
+// worker with a thin claim, and whether it holds is task_audit.go's question and
+// nobody else's. What is left is the shape this answers — a refusal, an account
+// limit, an exhausted set of retries against a provider that would not serve
+// this model — and none of those says one word about the brief.
+//
+// TWO ARE DELIBERATELY EXCLUDED:
+//
+//   - A CUT THE TURN ALREADY ANSWERED. A stream cut over and over has already
+//     walked the fallback chain inside the turn that died (loop.go), so the
+//     first model this would move to is the model that just failed there. A
+//     whole second worker to re-learn that is the most expensive way to find out
+//     nothing.
+//   - A CONTEXT OVERFLOW, which is a fact about the transcript. The answer to it
+//     is a shorter conversation, which the turn loop already tries; another
+//     model with another window is a guess dressed as a rescue.
+func terminalProviderFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, isCut := provider.CutFrom(err); isCut {
+		return false
+	}
+	if isContextOverflow(err.Error()) {
+		return false
+	}
+	var refusal *provider.RefusalError
+	if errors.As(err, &refusal) {
+		return true
+	}
+	var api *provider.APIError
+	return errors.As(err, &api)
+}
+
+// nextNodeModel is where a node goes when the model it is on cannot answer: the
+// ADAPTER'S OWN CHAIN, the same one a conversation's turn hops along and the
+// same one an endpoint refusal walks (internal/provider's endpoints.go).
+//
+// One spelling of "the next model" for the whole binary. A second list here —
+// the worker tier, a catalog guess of this file's own — would be a second answer
+// to a question already answered, and the first thing to drift.
+//
+// Empty is A MOVE THAT IS ABSENT rather than one that fails: a build with no
+// chain, or `--one-model`, and the node fails on the error it always failed on.
+func (a *Agent) nextNodeModel(node *TaskNode) (string, bool) {
+	chain, ok := a.client.(modelChain)
+	if !ok {
+		return "", false
+	}
+	options := chain.FallbackModels(node.runModel())
+	if len(options) == 0 {
+		return "", false
+	}
+	return options[0], true
+}
+
+// mergePaths adds what a second worker wrote to what the first one did, in
+// order and without repeats. The working copy is the same one, so a file the
+// first run saved is still the node's leavings whether or not the second run
+// touched it again.
+func mergePaths(kept, added []string) []string {
+	if len(kept) == 0 {
+		return added
+	}
+	seen := make(map[string]bool, len(kept))
+	for _, path := range kept {
+		seen[path] = true
+	}
+	for _, path := range added {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		kept = append(kept, path)
+	}
+	return kept
 }

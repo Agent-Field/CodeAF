@@ -444,10 +444,12 @@ func (a *Agent) refreshElsewhere() {
 
 	a.mu.Lock()
 	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
-	if block := renderElsewhereBlock(a.elsewhereTold, live); block != a.elsewhereText {
-		a.elsewhereText = block
-		a.refreshSystemLocked()
-	}
+	// The assignment alone: the block reaches the model at the tail of the
+	// transcript, in the note the drain lands immediately before the first
+	// request of this turn ([Agent.landVolatileLocked]), and not in message[0]
+	// where it used to sit. Writing it there re-priced every message of the
+	// conversation behind it each time another window landed something.
+	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
 	a.mu.Unlock()
 }
 

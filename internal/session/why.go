@@ -106,8 +106,16 @@ func whyPhrase(call ai.ToolCall, result string) string {
 		if path == "" {
 			return "wrote a file"
 		}
-		if !strings.HasPrefix(result, "Successfully wrote") && result != "" {
+		// Three successes wear three sentences: pi's own, the append
+		// wrapper's (tools_write.go), and the salvage of a cut-off write
+		// (salvage.go), which lands part of the file and says so.
+		if !strings.HasPrefix(result, "Successfully wrote") &&
+			!strings.HasPrefix(result, "Appended") &&
+			!strings.HasPrefix(result, "Saved what arrived") && result != "" {
 			return "tried to write " + path + " (failed)"
+		}
+		if strings.HasPrefix(result, "Saved what arrived") {
+			return "wrote " + path + " (cut short; saved what arrived)"
 		}
 		return "wrote " + path
 	case "bash":

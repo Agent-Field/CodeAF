@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,7 +38,8 @@ type fakeAgent struct {
 	packs   int
 	failing error
 	// past is what a resumed session already holds — what [app.replay] draws.
-	past []session.DisplayEntry
+	past            []session.DisplayEntry
+	transcriptReads int
 	// earlier is what sits above its latest compaction — the region the
 	// scrollback reaches through the seam — and earlierFloor is how much of
 	// `past` that region replaces.
@@ -53,6 +56,15 @@ type fakeAgent struct {
 	// rather than folded into it because which door a message took is the whole
 	// question those tests ask.
 	marked []string
+	// steered is every sentence sent INTO a running turn (steer.go), and it is
+	// kept apart from `sent` for `marked`'s reason exactly: which door a message
+	// took is the whole question those tests ask, and a steer that showed up in
+	// `sent` would look like a second turn. steerErr is what the session answers
+	// instead, and steerCh the stream ONE steer gets back — the fall-through's
+	// own case, where the channel outlives the turn it was made on.
+	steered  []string
+	steerErr error
+	steerCh  chan session.Event
 }
 
 func (f *fakeAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -103,8 +115,11 @@ func (f *fakeAgent) SetReasoningFor(model, level string) {
 	}
 	f.levels[model] = level
 }
-func (f *fakeAgent) Usage() session.Usage               { return f.usage }
-func (f *fakeAgent) Transcript() []session.DisplayEntry { return f.past }
+func (f *fakeAgent) Usage() session.Usage { return f.usage }
+func (f *fakeAgent) Transcript() []session.DisplayEntry {
+	f.transcriptReads++
+	return f.past
+}
 
 // EarlierHistory is what the journal holds ABOVE the session's latest
 // compaction, and how much of `past` is the pass's rewritten copy of it. Both
@@ -127,6 +142,30 @@ func text(kind session.EventKind, s string) session.Event { return session.Event
 // outright: it fires every 33ms forever while working, so a harness that
 // followed it would never reach the end of the queue. The tests that care about
 // the clock deliver [frameMsg] themselves.
+// settleLevels spends the one frame of lateness reasoninglevel.go describes: it
+// puts the named models back in the queue and runs the background ask the frame
+// clock would have sent, so a test can assert on a level the SURFACE was never
+// the one to set.
+//
+// It is here beside [drive] and for [drive]'s own reason — the paint clock's
+// message is dropped there, so anything sent on that clock has to be spent by
+// hand — and it loops because one ask carries at most [levelBatchMax] ids.
+func settleLevels(a *app, ids ...string) {
+	for _, id := range ids {
+		delete(a.levels, id)
+		a.wantLevel(id)
+	}
+	for range 8 {
+		cmd := a.levelKick()
+		if cmd == nil {
+			return
+		}
+		if msg, ok := cmd().(levelsMsg); ok {
+			a.levelsBack(msg)
+		}
+	}
+}
+
 func drive(t *testing.T, a *app, msgs ...tea.Msg) {
 	t.Helper()
 	queue := append([]tea.Msg(nil), msgs...)
@@ -179,8 +218,33 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // rendered unpainted under NO_COLOR — or ASCII under LANG=C — would make every
 // assertion about an escape sequence or a rail marker a test of the
 // environment.
+// labLedger is THE ONE LEDGER EVERY TEST APP SPENDS INTO, made once per test
+// binary under the OS temp dir. The door hands the surface a path and an empty
+// path means "this machine's" (usage_ledger.go's [session.UsageCache] falls back
+// to [session.UsageLedgerPath]), so a test app that left it empty had the spend
+// place reading the developer's real ~/.aforge — and went red the first time
+// anything on the machine cost a cent, which on a box running several lanes is
+// always. It is one file rather than one per test because [newTestApp] has no
+// *testing.T to ask for a TempDir, and nothing here reads what another test
+// wrote: the file exists only so that the fallback is never taken.
+var (
+	labLedgerOnce sync.Once
+	labLedgerPath string
+)
+
+func labLedger() string {
+	labLedgerOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "aforge-tui3-lab-")
+		if err != nil {
+			panic(err)
+		}
+		labLedgerPath = filepath.Join(dir, session.UsageLedgerName)
+	})
+	return labLedgerPath
+}
+
 func newTestApp(agent Agent) *app {
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab"})
+	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger()})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	// AND IT PINS THE MULTIPLEXER, for exactly the same reason. [newApp] reads
@@ -203,6 +267,13 @@ func newTestApp(agent Agent) *app {
 	// machine and nowhere else. The posture has tests of its own that set the
 	// profile directory they read from.
 	a.railAway = false
+	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
+	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
+	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// read one way on a Mac and another way on Linux. The spelling has a table
+	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
+	// asserts the Mac reading against every place on purpose.
+	a.chords = chordSpelling{meta: chordAltWord}
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
@@ -248,11 +319,34 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "home":
+		return tea.KeyPressMsg{Code: tea.KeyHome}
+	case "end":
+		// THE TWO ENDS OF A LIST, spelled out for the same reason as the two page
+		// keys below: the tasks place binds both to its cursor, and without a
+		// case here a test that "pressed end" pressed the zero key — which is how
+		// a strip that survived them went unnoticed.
+		return tea.KeyPressMsg{Code: tea.KeyEnd}
+	case "pgup":
+		return tea.KeyPressMsg{Code: tea.KeyPgUp}
+	case "pgdown":
+		// THE TWO PAGE KEYS, spelled out for this switch's own stated reason: they
+		// are not single runes, so without a case here they fell through to the
+		// zero key and every test that "pressed pgdown" pressed nothing at all.
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
 	case standMarkKey:
 		// The marked send (standmark.go). It is spelled out here because the
 		// fall-through below only builds single-rune chords, and a chord that
 		// silently became the zero key would be a test pressing nothing.
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
+	case bargeKey:
+		// The barge-in (bargein.go), spelled out for the same reason as the chord
+		// directly above it — and carrying NO Text, which is how a real terminal
+		// sends it: ultraviolet gives KeyEnter the CR rune, which is not
+		// printable, so its decoder leaves the text empty however the shift
+		// modifier is set. A helper that invented text here would hide the one
+		// thing that makes falling through this chord safe.
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "alt+backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
 	case "ctrl+backspace":
@@ -267,6 +361,29 @@ func key(s string) tea.KeyPressMsg {
 	// be able to do.
 	if chord, ok := strings.CutPrefix(s, "ctrl+"); ok && len([]rune(chord)) == 1 {
 		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModCtrl}
+	}
+	// AND EVERY alt CHORD, WITH NO TEXT ON IT. That is not a shortcut: a modified
+	// key carries no text through ultraviolet's decoder, which clears it on the
+	// esc-prefix path explicitly — and it is exactly what makes the router's
+	// alt+digit and alt+letter classes safe to add under a page whose rule is
+	// "every printable key is the filter" (placekeys.go). A helper that invented
+	// text here would hide the one property the design depends on.
+	if chord, ok := strings.CutPrefix(s, "alt+"); ok && len([]rune(chord)) == 1 {
+		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModAlt}
+	}
+	switch s {
+	case "alt+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "shift+left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
+	case "shift+right":
+		return tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
+	case "shift+up":
+		return tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModShift}
+	case "shift+down":
+		return tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift}
 	}
 	return tea.KeyPressMsg{}
 }
@@ -482,22 +599,25 @@ func TestSpacingLaw(t *testing.T) {
 		}
 	}
 	got := strings.Join(collapse(shape), "")
-	// u w t _ x _ t _ x _ u x — the chip that heads the turn's work, then a blank
-	// before each user message, one on each side of a cluster that sits between
-	// two blocks of text, and nowhere else. The reply that FOLLOWS a user message
-	// takes none: the person's message already brought the boundary blank with
-	// it, and the chip rides at the top of the work rather than apart from it.
-	if want := "uwt_x_t_x_ux"; got != want {
+	// _ u _ w t _ x _ t _ x _ u _ x — one row of air where the conversation
+	// begins, a blank before each user message, the CHANGE-OF-SPEAKER blank
+	// after each one (render.go's wasUser: the reply is a different voice and
+	// does not open wedged under the question), one on each side of a cluster
+	// that sits between two blocks of text, and nowhere else. The chip still
+	// rides at the top of the work it stands for.
+	if want := "_u_wt_x_t_x_u_x"; got != want {
 		t.Fatalf("layout shape is %q, want %q:\n%s", got, want, strings.Join(list, "\n"))
 	}
 	for i, r := range list {
 		if strings.TrimSpace(r) != "" {
 			continue
 		}
-		if i == 0 || i+1 >= len(list) {
-			t.Fatalf("a blank row opens or closes the transcript:\n%s", strings.Join(list, "\n"))
+		// Row zero is the conversation's one deliberate opening breath
+		// (render.go's [app.layout]); a blank may still not CLOSE the page.
+		if i+1 >= len(list) {
+			t.Fatalf("a blank row closes the transcript:\n%s", strings.Join(list, "\n"))
 		}
-		if strings.TrimSpace(list[i-1]) == "" {
+		if i > 0 && strings.TrimSpace(list[i-1]) == "" {
 			t.Fatalf("two blank rows in a row at %d:\n%s", i, strings.Join(list, "\n"))
 		}
 	}
@@ -516,11 +636,12 @@ func collapse(shape []string) []string {
 	return out
 }
 
-// The one-blank rule holds around a cluster that is the WHOLE turn: a person
-// who asks for a build gets the call and then their own next message, with one
-// blank between them and no gap above. A turn with no trailing answer never
-// folds (workfold.go), so the call is on the page to be measured.
-func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
+// A cluster that is the WHOLE turn still opens under the change-of-speaker
+// blank: the person said "build it", and the surface answering with a call is
+// a different voice, so exactly one row of silence sits between the message
+// and the first tool line (render.go's wasUser). A turn with no trailing
+// answer never folds (workfold.go), so the call is on the page to be measured.
+func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
 		toolEnd("bash", "ok"),
@@ -534,8 +655,8 @@ func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
 		if !strings.HasPrefix(unindented(r), "╰─▶") {
 			continue
 		}
-		if i == 0 || strings.TrimSpace(list[i-1]) == "" {
-			t.Fatalf("a blank landed between the person's message and the call:\n%s",
+		if i < 2 || strings.TrimSpace(list[i-1]) != "" || strings.TrimSpace(list[i-2]) == "" {
+			t.Fatalf("the call does not sit one blank under the person's message:\n%s",
 				strings.Join(list, "\n"))
 		}
 		return
@@ -788,12 +909,21 @@ func TestUserAndAssistantReadDifferently(t *testing.T) {
 	}
 	accent := a.pal.accent("x")
 	accent = accent[:strings.Index(accent, "x")]
-	for i, r := range user {
-		if !strings.Contains(r.text, accent) {
-			t.Fatalf("user row %d is not in the accent hue: %q", i, r.text)
+	// THE ACCENT IS SPENT ON THE GLYPH AND NOWHERE IN THE WORDS. The `›` is the
+	// identity mark; the sentence behind it is ordinary ink, so a long question
+	// no longer outshines the answer it is a question about (render.go's user
+	// entry states the law).
+	if !strings.Contains(user[0].text, accent) {
+		t.Fatalf("the user's glyph row carries no accent: %q", user[0].text)
+	}
+	for i, r := range user[1:] {
+		if strings.Contains(r.text, accent) {
+			t.Fatalf("user continuation row %d wears the accent — the glyph is the mark, the words are ink: %q", i+1, r.text)
 		}
+	}
+	for i, r := range user {
 		if strings.Contains(r.text, "\x1b[1m") {
-			t.Fatalf("user row %d is bold: hue is the marker, not weight: %q", i, r.text)
+			t.Fatalf("user row %d is bold: weight belongs to markdown: %q", i, r.text)
 		}
 	}
 	for i, r := range assistant {
@@ -882,6 +1012,13 @@ func TestSettledEntriesAreNotReRendered(t *testing.T) {
 
 // The markdown swap: plain while the words are still arriving, rendered once
 // the turn is done.
+//
+// The streaming rows are plain in the sense that matters here — no markdown has
+// been applied to them, so a heading is still a hash and a bold run is still a
+// pair of asterisks — but they are not unpainted: the growing edge wears the
+// live tier until the turn settles (styles.go's [hueLive]). The want asks
+// [app.liveTail] for those rows rather than spelling the paint out, so this
+// stays a test of the SWAP and settle_test.go stays the test of the ink.
 func TestMarkdownArrivesOnSettle(t *testing.T) {
 	body := "# Title\n\nsome **words** about it"
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
@@ -897,8 +1034,14 @@ func TestMarkdownArrivesOnSettle(t *testing.T) {
 	if a.entries[at].settled {
 		t.Fatal("a streaming reply is already settled")
 	}
-	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(wrap(body, a.width)); !sameRows(got, want) {
+	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(a.liveTail(body, a.width)); !sameRows(got, want) {
 		t.Fatalf("a streaming reply is not plain:\n%#v\n%#v", got, want)
+	}
+	// And it really is unrendered: the hash and the asterisks are still there.
+	for _, want := range []string{"# Title", "**words**"} {
+		if !strings.Contains(plain(strings.Join(a.entries[at].rows, "\n")), want) {
+			t.Fatalf("a streaming reply lost %q to the renderer", want)
+		}
 	}
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTurnDone}})
@@ -949,8 +1092,8 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	// block is taller than a twenty-row test frame, so which of its rows the
 	// bottom of the screen happens to show is a fact about the terminal.
 	for _, want := range []string{"/model <slug>", "/compact"} {
-		if !strings.Contains(helpText(a.file), want) {
-			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file))
+		if !strings.Contains(helpText(a.file, a.chords), want) {
+			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file, a.chords))
 		}
 	}
 	// What the SCREEN is asserted on is the block's last row, because that is the
@@ -1015,8 +1158,12 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	if agent.stops != 1 {
 		t.Fatalf("esc did not interrupt (%d)", agent.stops)
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// The stream has not closed, so the word is the wind-down's own
+	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
+	// Asked of the status line rather than of the frame, because the note the
+	// stop writes into the transcript is on the same frame.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes
@@ -1045,10 +1192,10 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	}
 }
 
-// A SECOND ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
+// CMD+ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
 // above the box (park.go) and the answer keeps coming on the same channel, at
 // the same generation, into the same working state.
-func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
+func TestCmdEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "first"),
 	}}}
@@ -1056,7 +1203,7 @@ func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	typeLine(t, a, "one")
 	generation, stream := a.gen, a.stream
 
-	typeLine(t, a, "two")
+	parkLine(t, a, "two")
 	if a.gen != generation || a.stream != stream {
 		t.Fatal("a second enter replaced the stream that was still running")
 	}

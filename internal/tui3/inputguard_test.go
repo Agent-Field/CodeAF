@@ -136,6 +136,102 @@ func TestAPasteDismissesTheWelcomeBox(t *testing.T) {
 	}
 }
 
+// ── the questions above the router, and home over all of them ───────────────
+
+// A QUESTION NOBODY CAN SEE IS A QUESTION NOBODY CAN ANSWER.
+//
+// Three rungs of the router sit above home and each of them takes bare letters:
+// the connect offer and the harness offer swallow every key while they are up,
+// and the proposal takes y, r, n and the digits whenever the CONVERSATION's box
+// is empty — which says nothing about home's box, the one a person on that
+// screen is actually typing into. So a `y` meant for a search on home answered a
+// question that was off screen, and every other letter did nothing at all.
+//
+// The rule is one rule and it is stated in both directions: a question that
+// ARRIVES takes home down, exactly as the approval question always has
+// (app.go's EventConsentRequest), and a question found behind a home somebody
+// opened over it hands the letters back. Neither half is enough alone — the
+// first would leave a home opened afterwards deaf, the second would leave a
+// question standing where nobody could reach it.
+func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// start builds a surface with this question's session under it, the
+		// event that raises the question, and a way to ask whether it has been
+		// answered.
+		start func(t *testing.T) (*app, session.Event, func() bool)
+	}{
+		{"the connect offer", func(t *testing.T) (*app, session.Event, func() bool) {
+			agent, a, _ := connectApp(t)
+			return a, askConnectEvent("c1", "notion", "Notion"),
+				func() bool { return len(agent.resolved) > 0 }
+		}},
+		{"the harness offer", func(t *testing.T) (*app, session.Event, func() bool) {
+			agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m"}}
+			a := newTestApp(agent)
+			return a, session.Event{
+					Kind: session.EventHarnessOffer, ID: 3, Text: "research",
+					Hint: "Research a question across sources and write a report",
+				},
+				func() bool { return len(agent.answers) > 0 }
+		}},
+		{"the task proposal", func(t *testing.T) (*app, session.Event, func() bool) {
+			a, agent, _ := taskApp(t)
+			return a, proposal(a, 7, 0), func() bool { return len(agent.answered) > 0 }
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The question arriving takes home down, so it is asked where it can
+			// be read and answered.
+			a, ev, _ := tc.start(t)
+			a.openHome()
+			drive(t, a, streamOf(a, ev))
+			if a.at(pageHome) {
+				t.Fatal("home stayed up over a question the session is waiting on")
+			}
+
+			// And home opened OVER a live question keeps every letter.
+			a, ev, answered := tc.start(t)
+			drive(t, a, streamOf(a, ev))
+			a.openHome()
+			drive(t, a, key("y"))
+			if answered() {
+				t.Fatal("a letter typed on home answered the question behind it")
+			}
+			if got := a.home.box.String(); got != "y" {
+				t.Fatalf("the letter reached home's box as %q, want %q", got, "y")
+			}
+
+			// With home closed it is the answer it has always been.
+			a, ev, answered = tc.start(t)
+			drive(t, a, streamOf(a, ev), key("y"))
+			if !answered() {
+				t.Fatal("y stopped answering the question with home closed")
+			}
+		})
+	}
+}
+
+// AND THE STANDING CARD IS THE FOURTH QUESTION UNDER THAT RULE.
+//
+// It is not a row of the table above because home answers a standing card by
+// DIGIT rather than by letter — the card's own answers are enter, esc and its
+// numbered chips (standing.go), and home answers it in place on the asking
+// window's row (homeband_answer.go, which is where that half is held). What is
+// the same is the half this holds: the card arriving takes home down, so a
+// decision the session is blocked on is asked on the screen the person is
+// looking at rather than behind it.
+func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T) {
+	a, _, _ := standApp(t)
+	a.openHome()
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	})})
+	if a.at(pageHome) {
+		t.Fatal("home stayed up over a standing card the session is waiting on")
+	}
+}
+
 // ── the deletion keys ───────────────────────────────────────────────────────
 
 // EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to ctrl+w
@@ -197,6 +293,63 @@ func TestTheModifiedBackspacesDecodeToTheNamesWeBindThemUnder(t *testing.T) {
 		}
 		if got := uv.Key(press).String(); got != tc.want {
 			t.Fatalf("%q arrives as %q, but this surface binds %q", tc.seq, got, tc.want)
+		}
+	}
+}
+
+// AND SO ARE THE CARET JUMPS, for the reason above and one that already cost a
+// gesture: cmd+←/→ were bound as `super+left`/`super+right` and were DEAD ON
+// EVERY TERMINAL. A modified arrow and a modified letter travel by different
+// roads through ultraviolet — `CSI 127;9u` is read by the kitty reader, which
+// spells modifier 9 `super`, while `CSI 1;9D` is read against the static xterm
+// table, where the ninth column is `meta` — so cmd+delete worked, cmd+← arrived
+// as a name nothing bound, and no test in this package could tell: every table
+// above is written in the spelling the switch matches on, and the switch matched
+// itself perfectly.
+//
+// So every caret jump is driven from the WIRE here: the bytes a terminal sends,
+// through the real decoder, into the real router, and the caret is asked where
+// it went.
+func TestTheCaretJumpsDecodeToTheNamesWeBindThemUnder(t *testing.T) {
+	const draft = "read the config file" // 20 runes; "file" starts at 16
+	for _, tc := range []struct {
+		seq, name  string
+		from, want int
+	}{
+		// cmd+←/→ — the line's ends, and the whole reason this test exists.
+		{"\x1b[1;9D", "meta+left", len(draft), 0},
+		{"\x1b[1;9C", "meta+right", 0, len(draft)},
+		// option+←/→ on a Mac terminal that keeps option a modifier.
+		{"\x1b[1;3D", "alt+left", len(draft), 16},
+		{"\x1b[1;3C", "alt+right", 0, 4},
+		// The esc-b / esc-f a profile sends instead, which is readline's own.
+		{"\x1bb", "alt+b", len(draft), 16},
+		{"\x1bf", "alt+f", 0, 4},
+		// And ctrl+←/→, which is what Windows and Linux send.
+		{"\x1b[1;5D", "ctrl+left", len(draft), 16},
+		{"\x1b[1;5C", "ctrl+right", 0, 4},
+	} {
+		var decoder uv.EventDecoder
+		n, event := decoder.Decode([]byte(tc.seq))
+		press, ok := event.(uv.KeyPressEvent)
+		if !ok {
+			t.Fatalf("%q decoded to %#v, want a key press", tc.seq, event)
+		}
+		if n != len(tc.seq) {
+			t.Fatalf("%q was read %d bytes deep, want %d", tc.seq, n, len(tc.seq))
+		}
+		if got := uv.Key(press).String(); got != tc.name {
+			t.Fatalf("%q arrives as %q, but this surface binds %q", tc.seq, got, tc.name)
+		}
+		_, a := wired(nil)
+		a.input.setText(draft)
+		a.input.cursor = tc.from
+		drive(t, a, tea.KeyPressMsg(press))
+		if a.input.cursor != tc.want {
+			t.Fatalf("%q (%s) left the caret at %d, want %d", tc.seq, tc.name, a.input.cursor, tc.want)
+		}
+		if a.input.String() != draft {
+			t.Fatalf("%q (%s) changed the draft: %q", tc.seq, tc.name, a.input.String())
 		}
 	}
 }

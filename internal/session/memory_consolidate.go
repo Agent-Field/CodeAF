@@ -350,7 +350,10 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 	response, err := client.CompleteWithMessages(
 		// WithoutStream for the sentinel's reason: nobody is watching this, and
 		// a stream would be typing JSON into a room that is not open.
-		provider.WithoutStream(ctx),
+		// IntentBackground is the same fact aimed at the router: a pass that runs
+		// six hours from now is not waiting on the fastest endpoint, it is
+		// waiting on the cheapest one.
+		provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
 		[]ai.Message{
 			textMessage("system", consolidatePrompt),
 			textMessage("user", consolidateListing(batch)),

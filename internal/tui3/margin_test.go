@@ -15,15 +15,15 @@ import (
 //
 // Every test here asserts what is on the column and what a press on it does,
 // rather than the shape of the code under it. The fixture is the standing
-// page's own scripted session ([standPageFake]) at a frame wide enough for the
+// page's own scripted session ([standingPlaceFake]) at a frame wide enough for the
 // full column, because the two surfaces are two readings of one engine seam and
 // a second fake would be a second answer to what stands here.
 
 // marginApp is a surface with orders over it and a frame that lends the full
 // column ([railFloor]).
-func marginApp(t *testing.T, stand ...standing.Item) (*app, *standPageFake) {
+func marginApp(t *testing.T, stand ...standing.Item) (*app, *standingPlaceFake) {
 	t.Helper()
-	a, agent := standPageApp(t, stand, nil)
+	a, agent := standingPlaceApp(t, stand, nil)
 	a.width, a.height = 140, 24
 	return a, agent
 }
@@ -238,10 +238,10 @@ func TestPressingAStandingRowOpensThePageOnThatOrder(t *testing.T) {
 	)
 	_, y := marginLine(t, a, func(l railLine) bool { return l.stand == "p2" })
 	pressMargin(t, a, y)
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("the row opened no page")
 	}
-	item, ok := a.standPage.current()
+	item, ok := a.orders.current()
 	if !ok || item.ID != "p2" {
 		t.Fatalf("the page landed on %+v rather than on the row that was pressed", item)
 	}
@@ -265,7 +265,7 @@ func TestStandingWithWordsGoesThroughTheMarkedDoor(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != agent.marked[0] {
 		t.Fatalf("the journal did not get the person's own words: %v", agent.sent)
 	}
-	if a.standPage.open {
+	if a.at(pageStanding) {
 		t.Fatal("a sentence opened the page as well as standing")
 	}
 }
@@ -295,7 +295,7 @@ func TestTheStandingDoorsSentenceReachesTheMarkedDoor(t *testing.T) {
 func TestBareStandingStillOpensThePage(t *testing.T) {
 	a, agent := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
 	typeLine(t, a, "/standing")
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("/standing did not open the page")
 	}
 	if len(agent.marked) != 0 {
@@ -331,7 +331,7 @@ func TestABareTaskOpensTheTaskPage(t *testing.T) {
 			drive(t, a, msg)
 		}
 	}
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatalf("a bare /task opened no page:\n%s", plain(frame(a)))
 	}
 }
@@ -349,7 +349,7 @@ func TestTheTaskBriefFormsStillStartWork(t *testing.T) {
 	if msg := cmd(); msg != nil {
 		_, _ = a.Update(msg)
 	}
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("a brief opened the page instead of starting work")
 	}
 	if f.singleCalls != 1 || f.brief != "write the guard" {

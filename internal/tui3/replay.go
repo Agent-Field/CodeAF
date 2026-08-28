@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -62,6 +64,27 @@ const replayTail = 40
 // the drawn conversation is thrown away and rebuilt from the session's own
 // record (rewind.go's [app.rebuildTranscript], welcome.go's resume).
 func (a *app) replay() {
+	if a.agent == nil {
+		a.replayList(nil)
+		return
+	}
+	a.replayList(a.agent.Transcript())
+}
+
+// replayList is the replay over a list the caller already holds. It is the
+// door [app.attachConversation] takes with the entries an atomic attach handed
+// back — a reading that already left out the running turn's work, because the
+// stream beside it replays that work from its first event (switcher.go's
+// attachReplayer). Everything below the drawn window still pages in from
+// [Agent.Transcript] ([app.backfill]): the two lists are identical up to where
+// the running turn begins, and the backfill never walks past it.
+func (a *app) replayList(all []session.DisplayEntry) {
+	// THE TRANSCRIPT IS MIRRORED ON THE SURFACE. A hosted agent paid for this
+	// reading across ssh; paging the words afterwards must be a local slice read,
+	// not another engine call hidden inside a scroll gesture.
+	a.transcript = append([]session.DisplayEntry(nil), all...)
+	a.historyGen++
+	a.historyLoading = false
 	// THE BACKFILL'S BOOKKEEPING IS SET HERE, on every path including the one
 	// with nothing to replay. A fresh session that inherited a mark from the
 	// conversation before it would offer to scroll back into somebody else's
@@ -83,7 +106,6 @@ func (a *app) replay() {
 	a.earlier, a.earlierFloor = history.Entries, history.Floor
 	a.earlierFrom = len(a.earlier)
 
-	all := a.agent.Transcript()
 	if a.earlierFloor > len(all) {
 		a.earlierFloor = len(all)
 	}
@@ -156,6 +178,11 @@ func (a *app) rebase() {
 		return
 	}
 	crossed := len(a.earlier) > 0 && a.earlierFrom < len(a.earlier)
+	// Compaction replaced the engine's live prefix, so both halves of the local
+	// mirror are refreshed together before their splice is rebased.
+	a.historyGen++
+	a.historyLoading = false
+	a.transcript = append([]session.DisplayEntry(nil), a.agent.Transcript()...)
 	history := a.agent.EarlierHistory()
 	a.earlier, a.earlierFloor = history.Entries, history.Floor
 	switch {
@@ -219,7 +246,7 @@ func (a *app) backfill() bool {
 // backfillLive hands up one helping of the conversation below the floor — the
 // part of the transcript that is not a rewritten copy of anything.
 func (a *app) backfillLive() bool {
-	all := a.agent.Transcript()
+	all := a.transcript
 	to := a.replayFrom
 	if to > len(all) {
 		// A transcript that got SHORTER than the mark is one a rewind cut under
@@ -239,6 +266,85 @@ func (a *app) backfillLive() bool {
 	a.prepend(all[from:to], false)
 	a.replayFrom = from
 	return true
+}
+
+// prefetchHistory asks for the next local page once the viewport is within one
+// screen of the oldest materialized row. The command boundary is deliberate
+// even though the data is memory-resident: replaying entries can grow into
+// markdown work, and no key or wheel handler is allowed to wait for that page.
+func (a *app) prefetchHistory() tea.Cmd {
+	if a.historyLoading || a.room != nil || !a.moreHistory() {
+		return nil
+	}
+	height := a.viewHeight()
+	total := len(a.visible(a.bodyWidth()))
+	if a.offsetFor(total, height) > height {
+		return nil
+	}
+
+	msg := historyPageMsg{gen: a.historyGen}
+	var source []session.DisplayEntry
+	switch {
+	case a.replayFrom > a.earlierFloor:
+		msg.to = a.replayFrom
+		msg.from = msg.to - replayTail
+		if msg.from < a.earlierFloor {
+			msg.from = a.earlierFloor
+		}
+		if msg.to > len(a.transcript) || msg.from >= msg.to {
+			return nil
+		}
+		source = a.transcript
+	case a.earlierFrom > 0:
+		msg.earlier = true
+		msg.to = min(a.earlierFrom, len(a.earlier))
+		msg.from = max(0, msg.to-replayTail)
+		msg.seam = !a.earlierSeam
+		if msg.from >= msg.to {
+			return nil
+		}
+		source = a.earlier
+	default:
+		return nil
+	}
+
+	a.historyLoading = true
+	return func() tea.Msg {
+		msg.entries = append([]session.DisplayEntry(nil), source[msg.from:msg.to]...)
+		return msg
+	}
+}
+
+// historyPrefetched materializes one returned page above the viewport without
+// moving the line under the reader's eye. A stale answer is harmless: the
+// generation and source position must both still describe the current replay.
+func (a *app) historyPrefetched(msg historyPageMsg) tea.Cmd {
+	if msg.gen != a.historyGen {
+		return nil
+	}
+	a.historyLoading = false
+	if msg.earlier {
+		if a.earlierFrom != msg.to {
+			return a.prefetchHistory()
+		}
+	} else if a.replayFrom != msg.to {
+		return a.prefetchHistory()
+	}
+
+	height := a.viewHeight()
+	beforeTotal := len(a.visible(a.bodyWidth()))
+	beforeOffset := a.offsetFor(beforeTotal, height)
+	a.prepend(msg.entries, msg.seam)
+	if msg.earlier {
+		a.earlierFrom, a.earlierSeam = msg.from, true
+	} else {
+		a.replayFrom = msg.from
+	}
+	afterTotal := len(a.visible(a.bodyWidth()))
+	if !a.stick {
+		a.offset = beforeOffset + afterTotal - beforeTotal
+	}
+	return a.prefetchHistory()
 }
 
 // backfillEarlier hands up one helping from ABOVE the seam — the conversation
@@ -384,6 +490,43 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 		text := strings.TrimSpace(e.Text)
 		switch e.Role {
 		case "user":
+			// A LINE TYPED INTO THE TURN ABOVE IT IS NOT A QUESTION AND NEVER WAS
+			// (steerelbow.go). The journal is the only thing that remembers the
+			// difference — the message itself is an ordinary user message, because
+			// that is what the model had to read it as — and a replay that drew it
+			// as one would put a question in the transcript that nobody asked, in
+			// the middle of the turn it was correcting.
+			//
+			// SO IT COMES BACK AS THE BLOCK IT WAS, IN THE PLACE IT WAS. The
+			// journal keeps a steer where it happened — between the turn's own
+			// messages — so replaying it in order is the surface agreeing with the
+			// record rather than gathering the corrections back up under a question
+			// they were said minutes after. The turn is NOT counted, because a steer
+			// never opened one, and the mark's own instant and outcome come across
+			// with it. A file written before steering existed carries no mark and
+			// takes the ordinary road below, exactly as it always did.
+			//
+			// A REPLAYED CORRECTION IS SETTLED AND UNFADED. [steerElbow.landed] is
+			// left zero on purpose: the journal keeps the instant the person SENT
+			// the words and not the boundary the model was given them at, and a
+			// fade measured from the wrong instant would light a row from yesterday
+			// as though it had just landed.
+			//
+			// THE ENGINE'S OWN ACCOUNT OF WHERE IT LANDED comes back with it
+			// ([session.SteerMark.Landing]) — the reply it cut, the bash it adopted
+			// — so a mark the journal wrote as still waiting reads on the page
+			// exactly as it read live. On a landed correction the clause is gone
+			// already, because the block's position is what says where it went.
+			if e.Steer != nil && text != "" {
+				blocks = append(blocks, entry{
+					kind: entrySteer, turn: turn,
+					steer: &steerElbow{
+						words: text, at: e.Steer.At, consumed: e.Steer.Consumed,
+						landing: strings.TrimSpace(e.Steer.Landing),
+					},
+				})
+				continue
+			}
 			// The pictures are part of what was said, so a message that was only
 			// a picture is still a message: the markers alone are the line, and
 			// only a message with neither words nor attachments is skipped.
@@ -403,6 +546,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			}
 			blocks = append(blocks, entry{
 				kind: entryAssistant, text: text, turn: turn, settled: true,
+				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 
 		case "tool":

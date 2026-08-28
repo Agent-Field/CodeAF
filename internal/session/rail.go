@@ -49,3 +49,26 @@ func (a *Agent) railBlockLocked() error {
 	return fmt.Errorf("%w: this session has spent $%.2f of its $%.2f rail — raise it to keep going",
 		ErrSpendRail, spent, rail)
 }
+
+// railCap holds a run's fuel tank to the session's own rail.
+//
+// THE RAIL IS A CEILING ON EVERYTHING THIS SESSION SPENDS, and an adaptive run
+// is the one thing it starts that spends money somewhere the rail cannot see: a
+// run's nodes are child agents with tanks of their own, and [Agent.railBlockLocked]
+// only ever stops the NEXT turn of this conversation. So a session that was given
+// a cap hands out no tank larger than that cap, and the run's own gate — which
+// finishes what is in flight, starts nothing new and asks the person for more
+// (internal/orchestrate's Charge) — is where the figure is actually honoured.
+//
+// A session with no rail changes nothing: the caller's tank is the caller's, and
+// zero there still means the run nobody bounded.
+func (a *Agent) railCap(asked float64) float64 {
+	rail := a.config.SpendRailUSD
+	if rail <= 0 {
+		return asked
+	}
+	if asked <= 0 || asked > rail {
+		return rail
+	}
+	return asked
+}

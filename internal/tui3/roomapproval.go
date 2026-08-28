@@ -248,7 +248,7 @@ func (a *app) roomApprovalMark(i int) chromeRow {
 // that missed the keys and fell through would scroll the room out from under
 // somebody who was reaching for an answer.
 func (a *app) roomApprovalPress(x, y int) bool {
-	if a.roomApprovalHeight() != 2 || a.copy.on || a.sheet.open {
+	if a.roomApprovalHeight() != 2 || a.copy.on || a.at(pageSettings) {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN: laying the chrome out is what writes

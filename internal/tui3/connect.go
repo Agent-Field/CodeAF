@@ -154,7 +154,7 @@ func (a *app) keyBox() *editor {
 		return a.connAsks[0].key
 	case a.connPanel.open && a.connPanel.entry != nil:
 		return &a.connPanel.entry.box
-	case a.sheet.open && a.sheet.conn.entry != nil:
+	case a.at(pageSettings) && a.sheet.conn.entry != nil:
 		// AND THE THIRD ONE, which is the settings sheet's own row
 		// (connectcaps.go). It is the same box asked in the same words, so it
 		// takes the clipboard on the same terms — newlines dropped rather than
@@ -315,6 +315,15 @@ func (a *app) dropConnectAsks() {
 // would be teaching the keyboard instead of the choice.
 func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.asksConnect() {
+		return nil, false
+	}
+	// AND NOT BEHIND HOME, on the terms the approval question states in full
+	// (consent.go): home is the whole frame, so the offer and both its answers
+	// are off screen, and every printable key up there belongs to the box a
+	// conversation starts in. The offer keeps until home is closed — and an
+	// offer that ARRIVES closes it (app.go's EventConnectAsk), so this is only
+	// reached by a home opened over one already up.
+	if a.at(pageHome) {
 		return nil, false
 	}
 	if msg.String() == "ctrl+c" {
@@ -786,7 +795,7 @@ func (a *app) recordConnectTaps(parts []string) {
 // that missed the offer and fell through would expand a tool call while somebody
 // was trying to answer a question about their account.
 func (a *app) connectPress(x, y int) bool {
-	if !a.asksConnect() || a.copy.on || a.sheet.open {
+	if !a.asksConnect() || a.copy.on || a.at(pageSettings) {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN: laying the chrome out is what writes

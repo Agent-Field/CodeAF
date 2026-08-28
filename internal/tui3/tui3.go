@@ -51,6 +51,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -212,6 +213,9 @@ type Conversation struct {
 	Workspace string
 	Place     string
 	Owned     bool
+	// AnchorWorkspace is the one-shot project anchor for an owned conversation.
+	// It travels with the agent because /new and resume replace both together.
+	AnchorWorkspace func(path string) (string, error)
 	// Resumed says the transcript was picked up rather than made, and Notice is
 	// the one sentence the door wants on the entry line about how this
 	// conversation came to be open.
@@ -246,9 +250,106 @@ type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 
-	// Memory is the durable memory store behind /memory. Nil means the panel is
-	// unavailable; the live door passes the same store it gave the session.
+	// Build names the aforge process holding the conversation. The door hands
+	// it in because a hosted surface and its conversation run on different
+	// machines, where this process's own build would be the wrong answer.
+	Build string
+
+	// Memory is the durable memory store behind the memory place. Nil means the
+	// place is unavailable; the live door passes the same store it gave the
+	// session, wrapped so that the two READING methods are spelled the way this
+	// surface asks for them (cmd/aforge's v3MemorySeam).
 	Memory MemoryStore
+
+	// Search is the conversation index the search place reads: one full-text
+	// query over every message this machine has kept ([store.Store.SearchConversations]).
+	//
+	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
+	// owns where the database lives — and it is a SECOND seam beside Memory
+	// rather than a method on it because the two are different capabilities that
+	// fail apart: memory turned off in the settings opens no store, and searching
+	// what was said is not memory at all. A build with one and not the other is
+	// the ordinary case, and each place is absent on its own terms.
+	//
+	// Nil is a surface that cannot search, and the place says what it is for
+	// rather than drawing an empty result list.
+	Search SearchStore
+
+	// UsageLedger is the machine-wide spending ledger the spend place reads —
+	// one line per model call, written where the turn was taken
+	// (internal/session's usage_ledger.go). Empty falls through to
+	// [session.UsageLedgerPath], which is where every window on this machine
+	// writes: the field exists so a test can point one surface at a file it
+	// wrote itself, exactly as [Options.ArtifactsIndex] does.
+	//
+	// IT IS A PATH AND NOT A CACHE. The cache holds parsed lines and a file
+	// offset and belongs to ONE surface's goroutine ([session.UsageCache] says
+	// so in as many words), so a door handing one in would be handing over a
+	// thing two surfaces could then share.
+	UsageLedger string
+
+	// Ledger is the hosted reading of the machine-wide ledger. Nil keeps the
+	// local path above; a hosted surface receives a non-blocking cached answer.
+	Ledger func(since time.Time) (lines []session.UsageLine, held bool, known bool)
+
+	// Archive puts a conversation away on the machine that owns its row. Nil
+	// makes that action absent, so a hosted surface never writes a far path here.
+	Archive func(dir string, archived bool) error
+
+	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
+	//
+	// World is the walk of the conversations and projects on THE MACHINE THAT
+	// OWNS THE WORK, and nil is "this process's own disk" — which is every local
+	// launch, where the surface reads the places root itself and the two machines
+	// are one.
+	//
+	// IT ANSWERS A SECOND VALUE, AND THE SECOND VALUE IS NOT "IS IT EMPTY". It
+	// says whether this is an ANSWER: over a connection the world arrives from
+	// the other machine and the first frames are drawn before it has, and a
+	// surface that could not tell "that machine has no projects" from "that
+	// machine has not said yet" would greet a person with `nothing here yet` over
+	// a machine full of work. False draws NOTHING, which is the emptiness law
+	// applied to the one fact every place downstream is built out of
+	// ([app.worldKnown], home's [homeView.known]).
+	//
+	// AND IT MAY NOT BLOCK. It is asked on the open and on the three-second beat,
+	// which are the two moments a place may read anything — but over a wire those
+	// are still moments a person is waiting through. The door answers from a
+	// cache that refreshes behind itself (cmd/aforge's [hostWorld]), which is the
+	// same bargain and the same law [StandingSeam.Items] already keeps.
+	World func() (session.World, bool)
+
+	// WorldRoot is the state root [Options.World] was walked under, on the disk
+	// it was walked on. Empty falls through to this process's own places root.
+	//
+	// IT EXISTS BECAUSE A WORLD IS A SET OF PATHS AND A PATH NEEDS ITS DISK.
+	// [session.World.Adopt] puts the conversation THIS WINDOW is sitting in back
+	// into a walk taken too early to see it, and works out which bucket it
+	// belongs to from the root. Over a connection that bucket is on the far
+	// machine, and adopting against this laptop's root would file a conversation
+	// living on the server under a project on the laptop.
+	WorldRoot string
+
+	// TaskRecord is ONE ROW of that record read deeper than [Options.World]
+	// reads it: the last thing that piece of work said, out of the journal it
+	// left on the machine that ran it. nil is "this process's own disk", which is
+	// every local launch, where the card opens the journal itself.
+	//
+	// IT IS A CALL AND NOT A CACHE, which is where it parts company with the
+	// world beside it. The world is asked on every place's open and on the beat,
+	// so it has to answer from something warm; a record is asked once, when
+	// somebody presses one row, and there are four hundred rows — a cache of them
+	// would be a cache nobody reads twice. It is therefore ALLOWED to block, and
+	// the surface never calls it anywhere but off the loop, in a [tea.Cmd]
+	// (taskrecord.go's [app.readTaskTail]).
+	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
+	// TaskRoom reads a node by id, including before its transcript URI lands.
+	TaskRoom func(id uint64, tail int) (session.TaskRecord, error)
+
+	// TaskIndex is this conversation's rows from the same far world. False says
+	// the cache has not answered yet, so the roster waits instead of deciding
+	// that a machine full of work is empty.
+	TaskIndex func() ([]session.TaskIndexEntry, bool)
 
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no
@@ -280,6 +381,12 @@ type Options struct {
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
 
+	// AnchorWorkspace gives a project-less conversation the repository or folder
+	// the person named. It returns the resolved path because a repository subdir
+	// becomes its root, and the surface must draw the same place the engine uses.
+	// Nil means this conversation cannot be re-anchored.
+	AnchorWorkspace func(path string) (string, error)
+
 	// Errand builds the agent behind home's `ask here` (tui3's homeexchange.go):
 	// the same launch config [Fresh] uses, pointed at a transcript inside dir and
 	// working in workspace.
@@ -295,9 +402,14 @@ type Options struct {
 	// The workspace is the project the cursor was on, or the person's home
 	// directory when it was on none (docs/AMBIENT.md Part 5).
 	//
+	// IT TAKES ONE STRUCT AND NOT FOUR ARGUMENTS. The composer layer settles
+	// three things before a sentence leaves it — where it runs, what the work
+	// runs on, how much it may spend (SCREEN 2e) — and a fourth fact settled
+	// later is a field here rather than a break in every door that fills this in.
+	//
 	// Nil is a window that cannot ask from home: the row says so and nothing is
 	// created. A test and the --host door are both that window.
-	Errand func(dir, workspace string) (Agent, error)
+	Errand func(ErrandOrders) (Agent, error)
 
 	// Answer leaves one answer on ANOTHER session's doorstep: the question home
 	// read out of that session's presence file, answered by the key the chips
@@ -542,6 +654,29 @@ type Options struct {
 	// just asked for by name is the door second-guessing them.
 	Landing bool
 
+	// Setup says this launch may open the first-run setup — the three-step
+	// screen that asks for a key, a crew and a daily ceiling (firstrun.go) —
+	// if the profile is missing any of the three and has never been shown it.
+	//
+	// IT IS AN OPT-IN FOR [Options.Landing]'s REASON: only a person sitting at
+	// a full terminal with no particular conversation in mind is asked, and
+	// every other door — --once, --host, the picker, a named session, a test,
+	// a pipe — leaves it false by saying nothing. The one door that sets it is
+	// `aforge` and `aforge chat` bare on a TTY (cmd/aforge's chatv3.go), which
+	// is also the one launch the door lets open with no key at all.
+	Setup bool
+
+	// ApplyAPIKey hands a key the person just gave — on the setup screen or in
+	// the settings row — to the running session, so the next request rides it
+	// without a relaunch. The surface has already written it to the profile
+	// through the settings registry by the time this is called; this is the
+	// live half only.
+	//
+	// Nil is a surface whose key lands on the next launch, and the setup says
+	// nothing different: the profile is still the record. A test, and a door
+	// with no process behind it, are that surface.
+	ApplyAPIKey func(key string) error
+
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says
 	// it still says — the difference is that it says all of it in words and
@@ -571,10 +706,49 @@ type Options struct {
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
 
+	// Link is what the door can tell this surface about the connection the
+	// conversation is on the far end of: the sentence to draw while a dropped
+	// link is being redialled, the empty round trip to measure on a slow clock,
+	// the one-off news a redial discovered, and the questions raised while nobody
+	// was attached ([LinkSeam] says what each function owes, and hostlink.go says
+	// where each one lands on the screen).
+	//
+	// The zero value is a surface with no link to report, which is every LOCAL
+	// session: no segment on the status line, no notice looked for, no question
+	// asked about. Only the --host door fills it (cmd/aforge's chatv3_host.go).
+	Link LinkSeam
+
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
 	Width, Height int
+}
+
+// ErrandOrders is what the composer layer settled before the sentence left it,
+// and it is the whole argument to [Options.Errand].
+//
+// THE THREE FACTS A TASK NEEDS BEFORE IT LEAVES ARE WHERE, ON WHAT, AND HOW
+// MUCH (SCREEN 2e), so they travel together. Each is edited on the line that
+// shows it and each is honoured by a real field of the session the door builds
+// — the workspace it works in, the model its work runs on, the rail it stops at
+// — because a figure a person set and nothing read would be worse than a figure
+// they were never offered.
+type ErrandOrders struct {
+	// Dir is the folder the surface already made, under the standing root. The
+	// transcript and every sidecar go inside it.
+	Dir string
+	// Workspace is the project this errand is about: the destination the layer's
+	// `alt+w` cycled to, the project the cursor was on, or the person's home
+	// directory when it was on none.
+	Workspace string
+	// Model is what the WORK this errand hands out runs on — the execution slot
+	// (config's ModelSlotFor("work")), chosen on the layer's `alt+o`. Empty keeps
+	// whatever the launch bound, which is the ordinary case.
+	Model string
+	// CapUSD is the most this errand may spend before it stops and asks. Zero is
+	// the launch's own rail and therefore usually no cap at all; the layer never
+	// sends zero, because the line a person read said a figure.
+	CapUSD float64
 }
 
 // sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
@@ -600,6 +774,25 @@ type StandingSeam struct {
 	//
 	// Nil is a home with no item band, which is the ambient side switched off.
 	Items func(workspace string) []standing.Item
+
+	// All answers EVERY standing item this machine holds, in the store's own
+	// order, and each item carries the workspace it belongs to.
+	//
+	// IT EXISTS BECAUSE A PAGE THAT WANTS THE WHOLE SET WAS ASKING Items ONCE
+	// PER PROJECT. Items is the store's List filtered down to one workspace, so
+	// a page joining ids against titles across five projects paid five walks of
+	// the standing root and five parses of every document on the machine to
+	// build one map — a cost that grows as projects × orders, which PERF.md
+	// does not allow of anything a keystroke or a beat can reach. One question
+	// asked once is the same answer.
+	//
+	// Like [StandingSeam.Items] it must NOT block: the spend place asks it on
+	// the way in and on the three-second beat.
+	//
+	// Nil is a surface with no way to ask the question at all — a connection,
+	// whose door answers by workspace and has no "every workspace" on the wire
+	// — and a caller then names nothing rather than fanning out into N reads.
+	All func() []standing.Item
 
 	// Save writes one item back — the pause and the stop keys on a home row, and
 	// nothing else on this surface. It returns the write's error and home says
@@ -683,6 +876,22 @@ type StandingSeam struct {
 	// nil is a surface that simply draws no weekly line, which is the emptiness
 	// law applied to a fact nobody can answer.
 	Runs func(since time.Time) map[string]standing.Spend
+
+	// SetEffort moves the rung one item's firings and its checks think at
+	// (internal/standing's [Store.SetStandingEffort]) — `ctrl+v` on that item's
+	// card, and nothing else on this surface.
+	//
+	// IT IS ITS OWN FUNCTION AND NOT A FIELD ON THE ITEM [StandingSeam.Save]
+	// TAKES, and the store says why in full: Save writes a whole document, so a
+	// surface holding an item it read a beat ago would write back the check
+	// results, the spend and the next-due that the ticker has moved since — and
+	// quietly undo a firing to change a word nobody was looking at. The rung is
+	// a read-modify-write under the item's own lock and it happens in the store.
+	//
+	// Nil is a home where the key says the change cannot be made here, in the
+	// same sentence the pause and stop keys already say it in
+	// ([homeItemNoStore]).
+	SetEffort func(id string, rung effort.Rung) error
 }
 
 // Run opens the surface and blocks until it closes. A cancelled context closes

@@ -1,0 +1,326 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+)
+
+// ── WHAT A COLUMN OWES SOMEBODY GLANCING AT IT ──────────────────────────────
+//
+// The report this file is written from is a screenshot: thirteen background jobs
+// that had all landed hours ago, each of them spending three lines of a thirty
+// cell column on history nobody was reading, the `standing` section squeezed to
+// one cut-off row underneath them, and a wheel turned over the whole thing
+// scrolling the conversation beside it.
+//
+// Three laws come out of that, and these are them:
+//
+//   - A ROW THAT HAS LANDED IS ONE LINE, and what it had to say is tucked behind
+//     the fold the column already had rather than thrown away.
+//   - THE SECTIONS UNDER THE ROSTER ARE RESERVED, not stacked. A list that can
+//     grow without limit starves anything below it, every time.
+//   - THE WHEEL MOVES THE LIST UNDER THE POINTER, which is the oldest thing a
+//     pointer does.
+
+// railJobDone is one background job that has come home: the row every session
+// ends the day with a dozen of.
+func railJobDone(id uint64, title string) session.Event {
+	return update(id, title, session.TaskDone, session.TaskNotice{
+		Kind:   session.TaskKindJob,
+		Report: "job " + itoa(int(id)) + " · log /tmp/aforge/jobs/" + itoa(int(id)) + ".log",
+	})
+}
+
+// railBuild is one landed job's name, wide enough to read on a thirty-cell
+// column and numbered so that no name is a prefix of another — `build-1` inside
+// `build-12` would be a test that passed on a row it never drew.
+func railBuild(i int) string {
+	if i < 10 {
+		return "build-0" + itoa(i)
+	}
+	return "build-" + itoa(i)
+}
+
+// railLanded fills a session with landed jobs, which is the shape the column was
+// drowning in.
+func railLanded(a *app, n int) {
+	for i := 1; i <= n; i++ {
+		a.taskUpdate(railJobDone(uint64(i), railBuild(i)))
+	}
+}
+
+// ── 1. a landed row is one line ─────────────────────────────────────────────
+
+// THE WHOLE DEFECT, AND THE WHOLE FIX. Thirteen landed jobs used to spend
+// thirteen titles and thirteen log paths; they spend thirteen rows now, and the
+// column has room left for the sections under them.
+func TestALandedRowSpendsOneLineOnTheColumn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 13)
+
+	text := strings.Join(railText(a, 20), "\n")
+	for i := 1; i <= 13; i++ {
+		if !strings.Contains(text, railBuild(i)) {
+			t.Fatalf("landed job %d is off a twenty-row column:\n%s", i, text)
+		}
+	}
+	// AND THE HISTORY UNDER THEM IS NOT DRAWN. The log path is what a settled job
+	// used to spend its second row on; it is behind the fold now (see below), and
+	// a column that still drew it would not have fitted the thirteen rows above.
+	if strings.Contains(text, "log /tmp/aforge") {
+		t.Fatalf("a landed row still spends a line on its own history:\n%s", text)
+	}
+}
+
+// WORK THAT IS STILL GOING IS UNTOUCHED, which is what says the rule above is
+// about what is OVER and not about the column having gone quiet. A running job
+// still says where its output is going, because that is the only true thing
+// there is to say about it while it runs.
+func TestARunningRowKeepsWhatItIsDoing(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(4, "npm run dev", session.TaskRunning, session.TaskNotice{
+		Kind:   session.TaskKindJob,
+		Report: "job 4 · log /tmp/aforge/jobs/4.log",
+	}))
+
+	text := strings.Join(railText(a, 20), "\n")
+	if !strings.Contains(text, "job 4") {
+		t.Fatalf("a running job stopped saying where its output goes:\n%s", text)
+	}
+}
+
+// AND A ROW THAT HAS NOT STARTED KEEPS ITS SENTENCE TOO. `waits:` is the only
+// place this surface says what is in the way of a flat node, and queued is not
+// settled.
+func TestAQueuedRowStillSaysWhatItWaitsOn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Collect sources", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "Mix audio", session.TaskQueued, session.TaskNotice{DependsOn: []uint64{1}}))
+
+	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, "waits: Collect sources") {
+		t.Fatalf("a queued row lost the sentence saying what is in its way:\n%s", text)
+	}
+}
+
+// NOTHING IS THROWN AWAY — IT IS TUCKED. → opens a landed row's own block, ←
+// puts it back, and both are the keys a family already folds on: one fold
+// vocabulary down the whole column.
+func TestALandedRowGivesItsBlockBackWhenItIsOpened(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 3)
+	a.railTake(true)
+	railFocusOn(t, a, 2)
+
+	a.railOut()
+	text := strings.Join(railText(a, 20), "\n")
+	if !strings.Contains(text, "job 2") {
+		t.Fatalf("→ on a landed row disclosed nothing:\n%s", text)
+	}
+	// AND ONLY THAT ROW'S. The gesture is per row, exactly as a family's fold is
+	// per family.
+	if strings.Contains(text, "job 1") || strings.Contains(text, "job 3") {
+		t.Fatalf("opening one row opened its neighbours:\n%s", text)
+	}
+
+	a.railIn()
+	if text := strings.Join(railText(a, 20), "\n"); strings.Contains(text, "job 2") {
+		t.Fatalf("← did not tuck the block back away:\n%s", text)
+	}
+}
+
+// THE POINTER IS OFFERED THE SAME FOLD, in the cell the state was in — which is
+// the affordance law this column already keeps for a family root: the triangle
+// arrives when there is a hand on the row and never before.
+func TestALandedRowOffersItsDisclosureUnderThePointer(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 3)
+
+	line, y := marginLine(t, a, func(l railLine) bool {
+		return strings.Contains(plain(l.text), railBuild(2))
+	})
+	if strings.Contains(plain(line.text), glyphShut) {
+		t.Fatalf("a row nobody is pointing at already wears the disclosure:\n%q", plain(line.text))
+	}
+
+	x := a.railLeft() + 3
+	drive(t, a, tea.MouseMotionMsg{X: x, Y: y})
+	lit, _ := marginLine(t, a, func(l railLine) bool {
+		return strings.Contains(plain(l.text), railBuild(2))
+	})
+	if !strings.Contains(plain(lit.text), glyphShut) {
+		t.Fatalf("the row under the pointer offers no way into what it is holding:\n%q", plain(lit.text))
+	}
+
+	// AND THE PRESS ON THAT CELL IS THE FOLD, which is hover.go's own law: the
+	// set that lights is the set that acts.
+	drive(t, a, tea.MouseClickMsg{X: a.railLeft() + ansi.StringWidth(railSeam), Y: y, Button: tea.MouseLeft})
+	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, "job 2") {
+		t.Fatalf("a press on the disclosure opened nothing:\n%s", text)
+	}
+}
+
+// A ROW WITH NOTHING BEHIND IT OFFERS NOTHING. A triangle that answered a press
+// with silence would teach a person that the cell means nothing.
+func TestALandedRowWithNothingToSayOffersNoDisclosure(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{}))
+
+	entries := a.railEntries()
+	if len(entries) != 1 {
+		t.Fatalf("the column drew %d rows for one node", len(entries))
+	}
+	if a.railTucks(entries[0]) {
+		t.Fatal("a row with no block behind it still offers the fold")
+	}
+}
+
+// ── 2. the sections do not fight for space ──────────────────────────────────
+
+// THE STANDING SECTION KEEPS ITS ROWS UNDER A ROSTER OF ANY LENGTH. This is the
+// screenshot's second defect: the orders that govern the conversation were
+// reachable only by scrolling past every landed job in the session.
+func TestTheStandingSectionIsNotStarvedByALongRoster(t *testing.T) {
+	a, _ := marginApp(t,
+		standOrder("p1", "keep the tests green", standing.AltitudeProject),
+		standOrder("p2", "draft the weekly update", standing.AltitudeProject),
+	)
+	railLanded(a, 40)
+
+	rail := marginRail(a)
+	for _, want := range []string{
+		marginTasksWord, marginDoorWord(marginTaskType),
+		marginStandWord, "keep the tests green", "draft the weekly update",
+		marginDoorWord(marginStandType),
+	} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("forty landed rows squeezed %q off the column:\n%s", want, rail)
+		}
+	}
+	// AND THE ROSTER STILL HAS THE COLUMN. The block is reserved, not
+	// bottom-anchored: what is left over is the work's, and the work is what a
+	// person opened the column for.
+	shown := 0
+	for i := 1; i <= 40; i++ {
+		if strings.Contains(rail, railBuild(i)) {
+			shown++
+		}
+	}
+	if shown < railWorkFloor {
+		t.Fatalf("the reserved block left the roster %d rows:\n%s", shown, rail)
+	}
+}
+
+// THE SECTION LABEL IS PINNED, because a heading that scrolls away is a heading
+// nobody has at the moment they need it.
+func TestTheTasksLabelStaysWhileTheRosterScrolls(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 40)
+	a.railScroll(12)
+
+	rows := railText(a, 20)
+	if len(rows) == 0 || !strings.Contains(rows[0], marginTasksWord) {
+		t.Fatalf("the label scrolled away with the list:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// PAST A HANDFUL THE ORDERS ARE COUNTED RATHER THAN DRAWN, and the count is on
+// the label — the same shape the tasks label already carries its own count in.
+func TestTheStandingLabelCountsTheOrdersItCouldNotDraw(t *testing.T) {
+	orders := make([]standing.Item, 0, marginStandMax+3)
+	for i := 0; i < marginStandMax+3; i++ {
+		orders = append(orders, standOrder("p"+itoa(i), "order number "+itoa(i), standing.AltitudeProject))
+	}
+	a, _ := marginApp(t, orders...)
+
+	rail := marginRail(a)
+	drawn := 0
+	for i := 0; i < marginStandMax+3; i++ {
+		if strings.Contains(rail, "order number "+itoa(i)) {
+			drawn++
+		}
+	}
+	if drawn != marginStandMax {
+		t.Fatalf("the column drew %d orders, want %d:\n%s", drawn, marginStandMax, rail)
+	}
+	if !strings.Contains(rail, marginStandWord+" · 3 "+marginStandMoreWord) {
+		t.Fatalf("the label does not count what it is not showing:\n%s", rail)
+	}
+}
+
+// AND A SECTION SHOWING EVERYTHING IT HAS SAYS NOTHING ABOUT WHAT IT IS NOT
+// HIDING — the emptiness law, applied to a count.
+func TestTheStandingLabelIsBareWhenEveryOrderIsDrawn(t *testing.T) {
+	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
+	if rail := marginRail(a); strings.Contains(rail, marginStandMoreWord) {
+		t.Fatalf("a section showing all it has reported on what it is not hiding:\n%s", rail)
+	}
+}
+
+// ── 3. the wheel ────────────────────────────────────────────────────────────
+
+// THE WHEEL OVER THE COLUMN MOVES THE COLUMN. It used to move the conversation
+// beside it, which is the pointer landing on one list and acting on another.
+func TestTheWheelOverTheColumnScrollsTheColumn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 60)
+	drive(t, a, frameMsg{})
+	was, wasOffset := a.railTop, a.offset
+
+	y := a.topHeight() + 3
+	drive(t, a, tea.MouseWheelMsg{X: a.railLeft() + 3, Y: y, Button: tea.MouseWheelDown})
+	if a.railTop <= was {
+		t.Fatalf("the wheel over the column left it at row %d", a.railTop)
+	}
+	if a.offset != wasOffset {
+		t.Fatalf("the wheel over the column scrolled the conversation to %d", a.offset)
+	}
+	// AND IT COMES BACK. Up is up, and the top of the list is the end of it.
+	drive(t, a,
+		tea.MouseWheelMsg{X: a.railLeft() + 3, Y: y, Button: tea.MouseWheelUp},
+		tea.MouseWheelMsg{X: a.railLeft() + 3, Y: y, Button: tea.MouseWheelUp},
+	)
+	if a.railTop != 0 {
+		t.Fatalf("the wheel walked the column past its own top: %d", a.railTop)
+	}
+}
+
+// AND THE CONVERSATION IS STILL THE CONVERSATION'S. A column that claimed the
+// whole frame's wheel would have replaced one wrong answer with another.
+func TestTheWheelBesideTheColumnStillScrollsTheConversation(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 60)
+	for i := 0; i < 30; i++ {
+		typeLine(t, a, "line "+itoa(i))
+	}
+	drive(t, a, frameMsg{})
+	was := a.railTop
+
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: a.topHeight() + 3, Button: tea.MouseWheelUp})
+	if a.railTop != was {
+		t.Fatalf("a wheel over the transcript moved the column to %d", a.railTop)
+	}
+	if a.stick {
+		t.Fatal("a wheel over the transcript did not move the transcript")
+	}
+}
+
+// WHILE THE ROSTER HOLDS THE KEYBOARD THE WHEEL WALKS THE CURSOR, which is the
+// bargain the full-frame roster already makes: the window follows the focus, so
+// an offset nudged out from under it would be undone by the next layout.
+func TestTheWheelWalksTheCursorWhileTheColumnHoldsTheKeyboard(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railLanded(a, 60)
+	a.railTake(true)
+	was := a.railWhere.id
+
+	drive(t, a, tea.MouseWheelMsg{X: a.railLeft() + 3, Y: a.topHeight() + 3, Button: tea.MouseWheelDown})
+	if a.railWhere.id == was {
+		t.Fatalf("the wheel left the cursor on node %d", was)
+	}
+}

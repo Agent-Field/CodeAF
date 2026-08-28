@@ -1,7 +1,10 @@
 package tui3
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"mime"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -30,11 +34,39 @@ import (
 // survive a refusal: a message the surface could not send is a message the
 // person still holds, pictures included.
 //
+// ── AND ORDINARY FILES RIDE THE SAME TRAY (`/attach`) ───────────────────────
+//
+// A log, a CSV, a PDF is not a picture and does not travel as content: it
+// travels as a FILE, and what the model is told is its PATH, because the belt
+// has a `read` tool and a 4MB CSV in the context window is 4MB nobody asked
+// for. That is the one difference, and everything else about a file chip is a
+// picture chip — the same tray, the same backspace, the same survival of a
+// refusal.
+//
+// WHERE THE BYTES GO IS A QUESTION ABOUT WHOSE DISK IT IS, and there are
+// exactly two answers:
+//
+//   - LOCAL: the session runs on this machine, the path already means something
+//     to it, and nothing moves. The message names the file where it sits, which
+//     is what internal/remote's image.go already blesses in as many words for a
+//     picture that arrives with a path and no bytes.
+//   - OVER A CONNECTION: the engine has never seen this disk, so the bytes
+//     travel with the message and the engine writes them into that session's
+//     own `attachments/` folder before the turn opens — and the path in the
+//     sentence is a path on the machine that owns the journal (internal/remote's
+//     file.go holds the whole of that law).
+//
+// The ceilings below therefore apply to the second case and not the first: a
+// limit exists because bytes cross a wire, and refusing a file that is not
+// going anywhere would be a rule invented for its own sake.
+//
 // What lives where:
 //
 //	the tray's state      [app.chips], and [app.sent] while a message is in flight
 //	the row above the box [app.chipStrip], drawn by [app.inputBlock] (input.go)
 //	what enter does       [app.submitImages]
+//	what /image does      [app.attachPath]
+//	what /attach does     [app.attachFilePath]
 //	what the completion does when the file is an image  [app.completeFile]
 //	the gate              session.Config.SupportsImages, wired in cmd/aforge
 
@@ -49,6 +81,29 @@ import (
 // limit checked after the read is a limit that already pulled a
 // multi-gigabyte file into memory to discover it was too big.
 const maxAttachBytes = 10 << 20
+
+// maxAttachedFileBytes is the biggest single FILE this surface will put on a
+// message that has to cross a connection, and the number is arithmetic on the
+// wire's own ceiling rather than a taste.
+//
+// internal/remote's frameCap is 64MB and it is a cap on ONE LINE: a whole
+// message — its words, its pictures and its files — travels as a single JSON
+// frame, and bytes inside JSON are base64, which costs A THIRD MORE than the
+// file weighs. So 48MB of raw attachment is what an entire message may really
+// spend, and 16MB per file leaves room for two large ones, a screenshot and the
+// sentence they came with without ever putting the frame within reach of the
+// cap. It is not larger because every call on that wire has a ten-second
+// deadline (internal/remote's callDeadline): a ceiling much above this would be
+// a limit the connection failed before the number did.
+const maxAttachedFileBytes = 16 << 20
+
+// maxAttachedTotalBytes is what ALL the files on one message may weigh
+// together — two thirds of the 48MB budget above, leaving the rest for the
+// pictures on the same tray, which carry their own [maxAttachBytes] each.
+//
+// It exists because the per-file limit alone does not bound a message: four
+// files under the ceiling are still four files on one line.
+const maxAttachedTotalBytes = 32 << 20
 
 // chipGap is the space between two chips. Two cells, because one reads as a
 // single wrapped label and three reads as a column.
@@ -66,11 +121,24 @@ func isImagePath(path string) bool {
 	return imageExtensions[strings.ToLower(filepath.Ext(strings.TrimSpace(path)))]
 }
 
-// chip is one attached picture. It holds the RESOLVED path — the completion
-// offers workspace-relative names and a person types "~/shot.png", and the
-// thing that eventually reads the file must not have to know which — and the
-// tray shows its base name, because the tray is a reminder and not a location.
-type chip struct{ path string }
+// chip is one thing attached to the next message. It holds the RESOLVED path —
+// the completion offers workspace-relative names and a person types
+// "~/shot.png", and the thing that eventually reads the file must not have to
+// know which — and the tray shows its base name, because the tray is a reminder
+// and not a location.
+type chip struct {
+	path string
+	// file marks a chip that is NOT a picture: it travels as a file and the
+	// model is told its path, where a picture travels as content and is looked
+	// at (this file's header states the difference).
+	//
+	// It is a flag on the one chip type rather than a second tray, and the
+	// reason is that the tray is a fact about the MESSAGE: everything on it goes
+	// with the next thing the person sends, backspace takes the last one off
+	// whatever it was, and a refusal hands all of it back. Two lists would have
+	// been two answers to "what is this message carrying".
+	file bool
+}
 
 func (c chip) name() string { return filepath.Base(c.path) }
 
@@ -85,21 +153,81 @@ func chipMark(pal palette) string {
 	return "▣"
 }
 
+// fileChipMark is the same cell for a file: a page rather than a picture. It is
+// a DIFFERENT glyph on purpose — the two kinds of chip do different things to a
+// message, and a tray that drew them alike would leave a person wondering why
+// their CSV was never looked at.
+func fileChipMark(pal palette) string {
+	if pal.ascii {
+		return "+"
+	}
+	return "▤"
+}
+
+// pictureChips and fileChips split the tray into its two kinds.
+//
+// THE PICTURES ARE COUNTED AMONG THEMSELVES AND SO IS EVERYTHING THAT READS
+// THEM. `[image #2]` in a sentence means the second PICTURE, not the second
+// chip, so every place that numbers — the tray's own labels, the sentence's
+// tokens, the markers in the transcript, the renumber after one comes off — is
+// handed this slice and not the tray.
+func pictureChips(chips []chip) []chip {
+	out := make([]chip, 0, len(chips))
+	for _, c := range chips {
+		if !c.file {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func fileChips(chips []chip) []chip {
+	out := make([]chip, 0, len(chips))
+	for _, c := range chips {
+		if c.file {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// pictureOrdinal is where one chip sits among the pictures, counting from 1, or
+// zero for a file. It is what [app.forgetToken] is owed when a chip comes off.
+func pictureOrdinal(chips []chip, at int) int {
+	if at < 0 || at >= len(chips) || chips[at].file {
+		return 0
+	}
+	seen := 0
+	for i := 0; i <= at; i++ {
+		if !chips[i].file {
+			seen++
+		}
+	}
+	return seen
+}
+
 // attach adds one picture to the tray, and reports whether it changed anything.
 // The same file twice is one chip: a person who picked a name out of the
 // completion twice meant it once, and a message carrying the same photo two
 // times pays for it two times.
-func (a *app) attach(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
+func (a *app) attach(path string) bool { return a.attachChip(chip{path: path}) }
+
+// attachFile adds one ordinary file to the tray, by the same rules.
+func (a *app) attachFile(path string) bool {
+	return a.attachChip(chip{path: path, file: true})
+}
+
+func (a *app) attachChip(held chip) bool {
+	held.path = strings.TrimSpace(held.path)
+	if held.path == "" {
 		return false
 	}
-	for _, held := range a.chips {
-		if held.path == path {
+	for _, already := range a.chips {
+		if already.path == held.path {
 			return false
 		}
 	}
-	a.chips = append(a.chips, chip{path: path})
+	a.chips = append(a.chips, held)
 	a.touch()
 	return true
 }
@@ -123,9 +251,15 @@ func (a *app) removeChip(i int) {
 	if i < 0 || i >= len(a.chips) {
 		return
 	}
-	held := len(a.chips)
+	// THE NUMBER THAT MOVES IS A PICTURE'S. A file carries no token in the
+	// sentence — the model is told its path and not a `[image #n]` — so taking
+	// one off renumbers nothing, and handing the tray's own index to the
+	// renumber would count a CSV as a picture and shift every token behind it.
+	gone, pictures := pictureOrdinal(a.chips, i), len(pictureChips(a.chips))
 	a.chips = append(a.chips[:i], a.chips[i+1:]...)
-	a.forgetToken(i+1, held)
+	if gone > 0 {
+		a.forgetToken(gone, pictures)
+	}
 	a.touch()
 }
 
@@ -149,6 +283,52 @@ func (a *app) attachPath(raw string) {
 		return
 	}
 	if !a.attach(path) {
+		a.note(filepath.Base(path) + " is already attached")
+	}
+}
+
+// attachFilePath is the /attach command: one path, put on the tray as a FILE,
+// or one note saying why not. Every refusal names the file, for [app.attachPath]'s
+// reason — "no such file" about a path the person typed is a sentence they can
+// act on and "could not attach" is not.
+//
+// A PICTURE HANDED TO /attach IS STILL A PICTURE. Somebody who has learned one
+// word for putting a thing into a message should not have to learn that this
+// build has two, and a PNG sent as a file would be a path the model can read
+// bytes out of and never look at. So a picture goes on the tray as a picture,
+// which the chip's own glyph then says.
+func (a *app) attachFilePath(raw string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		a.note("/attach takes a path · try /attach server.log")
+		return
+	}
+	path := a.resolvePath(raw)
+	info, err := os.Stat(path)
+	if err != nil {
+		a.note("no such file: " + raw)
+		return
+	}
+	if info.IsDir() {
+		a.note(filepath.Base(path) + " is a folder · attach a file")
+		return
+	}
+	if isImagePath(path) {
+		if !a.attach(path) {
+			a.note(filepath.Base(path) + " is already attached")
+		}
+		return
+	}
+	// THE CEILING IS ASKED AT THE DOOR AND NOT AT ENTER, where it can still be
+	// asked about one file rather than about a message. It is only a ceiling
+	// where the bytes have to cross a connection (this file's header): a local
+	// session is about to be handed a path to a file it can already open, and a
+	// size limit on a file that is not moving is a rule with no reason under it.
+	if a.hosted() && info.Size() > maxAttachedFileBytes {
+		a.note(oversizeFile(filepath.Base(path), info.Size()))
+		return
+	}
+	if !a.attachFile(path) {
 		a.note(filepath.Base(path) + " is already attached")
 	}
 }
@@ -185,12 +365,27 @@ func (a *app) resolvePath(path string) string {
 func chipLabels(chips []chip, pal palette) []string {
 	mark := chipMark(pal)
 	out := make([]string, 0, len(chips))
-	for i, c := range chips {
-		// THE NUMBER IS AS MUCH THE POINT OF A CHIP AS THE NAME IS. It is what
-		// `[image #2]` in the sentence refers to and what the model sees second,
-		// and a tray that showed only names would leave the person counting from
-		// the left to find out which picture they were talking about.
-		out = append(out, mark+" #"+strconv.Itoa(i+1)+" "+c.name())
+	// The pictures are counted along the row rather than asked for one at a
+	// time, because this is rebuilt on every pointer motion that crosses the
+	// tray ([app.chipTrayTarget]).
+	seen := 0
+	for _, c := range chips {
+		// A FILE CARRIES NO NUMBER, because there is nothing for a number to
+		// refer to: the model is told the file's path, not `[file #2]`, so a
+		// digit here would be a reference to something that is not in the
+		// sentence. Its name is the whole of what it needs to say.
+		if c.file {
+			out = append(out, fileChipMark(pal)+" "+c.name())
+			continue
+		}
+		seen++
+		// THE NUMBER IS AS MUCH THE POINT OF A PICTURE'S CHIP AS THE NAME IS. It
+		// is what `[image #2]` in the sentence refers to and what the model sees
+		// second, and a tray that showed only names would leave the person
+		// counting from the left to find out which picture they were talking
+		// about. It counts PICTURES and not chips, so a file dropped between two
+		// screenshots does not move the second one's number ([pictureChips]).
+		out = append(out, mark+" #"+strconv.Itoa(seen)+" "+c.name())
 	}
 	return out
 }
@@ -203,10 +398,28 @@ func chipLabels(chips []chip, pal palette) []string {
 // kind of fact — something the next message carries besides its words — and the
 // tray is the one place this surface keeps those. Its own cell is INK rather
 // than dim, because it is the one thing up here that changes what enter does.
+// AND THE THINKING DIAL RIDES THE SAME ROW, LAST AND RIGHT-ALIGNED
+// (effortchip.go). It is the one cell up here that is not cargo — nothing comes
+// off the message when it is pressed — so it does not stand in the cargo's
+// queue: it keeps the same columns whether the tray is empty or carrying four
+// screenshots, which is what lets a hand learn where it is.
 func (a *app) chipStrip(width int) string {
+	// The dial's columns are recorded where the row is laid out, which is what
+	// keeps the press and the paint in step (jumpchip.go's [app.jumpChip] makes
+	// the same bargain for the same reason). Cleared first, so a frame that draws
+	// no dial cannot be pressed against the last frame that did.
+	a.effortSpan = hudSpan{}
 	cells := a.harnessTrayCells()
 	labels := chipLabels(a.chips, a.pal)
-	if len(cells) == 0 && len(labels) == 0 {
+	dial := a.effortChipText()
+	dialCells := ansi.StringWidth(dial)
+	// A CHIP THAT DOES NOT FIT IS DROPPED RATHER THAN TRUNCATED, which is
+	// pickrow.go's law about an answer and is the same law here: half a rung word
+	// is a word somebody reads as another rung.
+	if dial != "" && dialCells+effortTrayGap > width {
+		dial, dialCells = "", 0
+	}
+	if len(cells) == 0 && len(labels) == 0 && dial == "" {
 		return ""
 	}
 	painted := make([]string, 0, len(cells)+len(labels))
@@ -236,7 +449,18 @@ func (a *app) chipStrip(width int) string {
 		}
 		painted = append(painted, a.pal.dim(label))
 	}
-	return fit(strings.Join(painted, chipGap), width)
+	// The cargo is fitted to what is left after the dial, so a long file name
+	// ellipsizes rather than pushing the dial off the end of the row.
+	room := width
+	if dial != "" {
+		room = width - dialCells - effortTrayGap
+	}
+	cargo, cargoCells := fitWidth(strings.Join(painted, chipGap), room)
+	if dial == "" {
+		return cargo
+	}
+	a.effortSpan = hudSpan{from: width - dialCells, to: width}
+	return cargo + strings.Repeat(" ", width-cargoCells-dialCells) + a.paintEffortChip(dial)
 }
 
 // chipAt resolves a column to the chip drawn on it, or -1.
@@ -268,6 +492,15 @@ func (a *app) chipPress(x, y int) bool {
 		a.dropHarnessChip()
 		return true
 	}
+	// THE DIAL IS THE ONE CELL UP HERE THAT OPENS SOMETHING rather than taking
+	// something off (effortchip.go). It is the self-teaching door beside the
+	// chord, which docs/DESIGN-LANGUAGE.md requires of every chord on this
+	// surface: a person who never pressed ctrl+v can still find the five rungs,
+	// click one, and read the key off the list.
+	if at == trayEffortChip {
+		a.openEffortMenu()
+		return true
+	}
 	a.removeChip(at)
 	return true
 }
@@ -275,6 +508,12 @@ func (a *app) chipPress(x, y int) bool {
 // trayHarnessChip is what [app.chipTrayTarget] answers for the picked harness's
 // own cell, which is not one of [app.chips] and has a different thing done to it.
 const trayHarnessChip = -1
+
+// trayEffortChip is what [app.chipTrayTarget] answers for the thinking dial at
+// the right end of the row (effortchip.go). It is not one of [app.chips] either,
+// and what is done to it is the opposite of what is done to them: a press opens
+// the ladder rather than taking anything off the message.
+const trayEffortChip = -2
 
 // chipTrayTarget resolves a pointer on the tray to the one thing it is over, and
 // reports whether it was over anything at all.
@@ -292,7 +531,12 @@ const trayHarnessChip = -1
 // chrome this rebuilds.
 func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	cells := a.harnessTrayCells()
-	if (len(a.chips) == 0 && len(cells) == 0) || a.sheet.open || a.pick.open {
+	// THE DIAL KEEPS THIS ROW ALIVE ON A TRAY WITH NO CARGO ON IT
+	// (effortchip.go), so the field test asks about it too — and asks the cheap
+	// half first, because a session whose model wants no thinking at all draws no
+	// dial and should pay nothing for the question.
+	if (len(a.chips) == 0 && len(cells) == 0 && a.effortChipText() == "") ||
+		a.at(pageSettings) || a.pick.open {
 		return 0, false
 	}
 	width, height := a.size()
@@ -302,6 +546,13 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 		return 0, false
 	}
 	column := x - len(inputPad)
+	// THE DIAL IS ASKED FIRST BECAUSE IT IS THE ONE CELL WHOSE COLUMNS THE
+	// LAYOUT RECORDED, and laying the chrome out directly above is what wrote
+	// them — the same order [app.jumpPress] and [app.statusPress] keep. The
+	// cargo's own offsets are counted from the left and cannot reach this far.
+	if a.effortSpan.holds(column) {
+		return trayEffortChip, true
+	}
 	// THE HARNESS CELL IS ASKED FIRST BECAUSE IT IS DRAWN FIRST, and the
 	// pictures start after it — the offset is computed from the same cells the
 	// row was built from, so what is drawn and what a click resolves against
@@ -337,8 +588,18 @@ func chipMarkers(chips []chip, pal palette) string {
 		return ""
 	}
 	names := make([]string, 0, len(chips))
-	for i, c := range chips {
-		names = append(names, "[#"+strconv.Itoa(i+1)+" "+c.name()+"]")
+	seen := 0
+	for _, c := range chips {
+		// A FILE'S MARKER IS ITS NAME AND NOTHING ELSE, for [chipLabels]' reason
+		// — the number would refer to a token the sentence does not carry — and
+		// because the name is what a reader is actually looking for when they
+		// scroll back to "which log did I send it".
+		if c.file {
+			names = append(names, "["+c.name()+"]")
+			continue
+		}
+		seen++
+		names = append(names, "[#"+strconv.Itoa(seen)+" "+c.name()+"]")
 	}
 	return pal.dim(strings.Join(names, " "))
 }
@@ -372,16 +633,39 @@ func userLine(text string, chips []chip, pal palette) string {
 // was attached — and a refusal that also lost the person's attachments would
 // make them go and find the files again.
 func (a *app) submitImages(text string) tea.Cmd {
+	return a.submitImagesShown(text, text)
+}
+
+func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
+	pictures, files := pictureChips(chips), fileChips(chips)
 	// EVERY PICTURE IS NAMED IN THE WORDS THAT GO WITH IT. A pasted one already
 	// carries its `[image #n]` where the person put it; one attached by /image or
 	// the @ completion has none, and gets its token appended here so that "image
 	// 2" means something whichever door the picture came in by (imagepaste.go).
 	// The transcript is drawn from the same string, so what the person reads and
 	// what the model reads are one sentence.
-	text = imageSentence(text, chips)
+	text = imageSentence(text, pictures)
+	shown = imageSentence(shown, pictures)
+
+	// AND WHAT THE MODEL IS TOLD ABOUT A FILE IS A PATH, which is a sentence
+	// this surface writes only where the file is not going anywhere. On a local
+	// session the path already means something to the engine, so the words are
+	// composed here; over a connection the bytes travel and the ENGINE composes
+	// the same sentence about the paths it wrote them to, because those are the
+	// only paths that exist on the machine that owns the journal
+	// (internal/remote's file.go, whose [remote.AttachedSentence] both ends call
+	// so that a model never meets two phrasings of one fact).
+	//
+	// The transcript keeps the person's own line either way — the paths go to
+	// the model and the NAMES go on the screen ([chipMarkers]), because a
+	// scrollback full of absolute paths is a scrollback nobody reads.
+	hosted, spoken := a.hosted(), text
+	if len(files) > 0 && !hosted {
+		spoken = remote.AttachedSentence(text, chipPaths(files))
+	}
 
 	if a.stream == nil {
 		a.turn++
@@ -398,9 +682,14 @@ func (a *app) submitImages(text string) tea.Cmd {
 	// would be a picture-carrying message the history could not place
 	// (turncontext.go).
 	a.said(entry{
-		kind: entryUser, text: userLine(text, chips, a.pal), turn: a.turn,
+		kind: entryUser, text: userLine(shown, chips, a.pal), turn: a.turn,
 		context: a.turnContext(),
 	})
+	// And it is marked until the far end has it, for [app.submittingShown]'s
+	// reason and by the same door (echo.go). A message carrying files has a
+	// LONGER gap than a plain one — the bytes go up before the turn opens — so
+	// this is the road the mark matters most on.
+	mark := a.echoPending()
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
@@ -408,13 +697,64 @@ func (a *app) submitImages(text string) tea.Cmd {
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {
-		images, err := readAttachments(chips)
+		images, err := readAttachments(pictures)
 		if err != nil {
-			return submittedMsg{err: err}
+			return submittedMsg{err: err, echo: mark}
 		}
-		ch, err := agent.SubmitImage(ctx, text, images)
-		return submittedMsg{ch: ch, err: err}
+		// A MESSAGE WITH NO FILES AND A MESSAGE WHOSE FILES ARE ALREADY ON THE
+		// ENGINE'S OWN DISK ARE THE SAME CALL. Locally nothing is copied and
+		// nothing is read — the sentence composed above names the files where
+		// they sit, which is what internal/remote's image.go blesses in as many
+		// words for a picture that arrives with a path and no bytes: a caller
+		// naming a file on the engine's own disk, which the session reads itself.
+		if len(files) == 0 || !hosted {
+			ch, err := agent.SubmitImage(ctx, spoken, images)
+			return submittedMsg{ch: ch, err: err, echo: mark}
+		}
+		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A door that
+		// handed no file seam over is a connection this build cannot put a file
+		// through, and the honest thing is to say so with the person's tray
+		// still in their hands rather than to send the words without the file.
+		taker, ok := agent.(fileSubmitter)
+		if !ok {
+			return submittedMsg{err: errors.New(attachRemoteWord), echo: mark}
+		}
+		loaded, err := readFiles(files)
+		if err != nil {
+			return submittedMsg{err: err, echo: mark}
+		}
+		ch, err := taker.SubmitFiles(ctx, spoken, loaded, images)
+		return submittedMsg{ch: ch, err: err, echo: mark}
 	}, a.wake())
+}
+
+// fileSubmitter is the optional seam "this session can be handed a file the
+// surface read", and it is asserted rather than required for the reason task.go
+// asserts its own: a surface must not demand of every agent a method only one
+// kind of agent can have. The local agent does not implement it and does not
+// need to — the file is already on its disk.
+//
+// It is internal/remote's [remote.Agent] by shape and nothing else, and the
+// argument is that package's [remote.WireFile] because a Go method set is
+// matched on the exact type: a slice of a look-alike declared here would be a
+// seam nothing satisfies.
+type fileSubmitter interface {
+	SubmitFiles(ctx context.Context, text string, files []remote.WireFile, images []session.Image) (<-chan session.Event, error)
+}
+
+// attachRemoteWord is what a message carrying a file says when the connection
+// was opened without a door for one. It belongs with host.go's set — the whole
+// of what a connection cannot do, said in one voice — and lives here because it
+// is about the tray.
+const attachRemoteWord = "this connection cannot carry a file · the words were not sent"
+
+// chipPaths is the tray's paths, in order.
+func chipPaths(chips []chip) []string {
+	out := make([]string, 0, len(chips))
+	for _, c := range chips {
+		out = append(out, c.path)
+	}
+	return out
 }
 
 // chipsSettled is what a submit's answer does to the tray, and it is called for
@@ -485,4 +825,77 @@ func readAttachments(chips []chip) ([]session.Image, error) {
 
 func oversizeAttachment(c chip) error {
 	return fmt.Errorf("%s is over the %dMB image limit", c.name(), maxAttachBytes>>20)
+}
+
+// readFiles turns the file half of the tray into what travels, and it is
+// [readAttachments] for everything that is not a picture: stat first, refuse
+// what is too big, name the FILE in the refusal, and read the bytes at the
+// moment enter was pressed rather than leaving the far end to open something
+// that may have changed under it.
+//
+// IT IS ONLY EVER CALLED WHERE THE BYTES CROSS A CONNECTION. A local session
+// gets the path and no bytes at all (this file's header), so nothing here is
+// paid for by somebody whose file is not going anywhere.
+//
+// THE NAME IS A NAME AND NOT A PATH. The engine joins it to a directory of the
+// engine's own choosing, so a path in this field would be this surface asking a
+// remote machine to write wherever it liked — internal/remote's attachmentName
+// refuses one, and it is this side's job not to send one (wire.go's
+// [remote.WireFile] documents the field as a name for exactly that reason).
+func readFiles(chips []chip) ([]remote.WireFile, error) {
+	out := make([]remote.WireFile, 0, len(chips))
+	total := int64(0)
+	for _, c := range chips {
+		info, err := os.Stat(c.path)
+		if err != nil || info.IsDir() {
+			return nil, fmt.Errorf("could not read %s", c.name())
+		}
+		if info.Size() > maxAttachedFileBytes {
+			return nil, errors.New(oversizeFile(c.name(), info.Size()))
+		}
+		data, err := os.ReadFile(c.path)
+		if err != nil {
+			return nil, fmt.Errorf("could not read %s", c.name())
+		}
+		// Checked again, for [readAttachments]' reason: a file can grow between
+		// the stat and the read, and the ceiling that matters is the one on what
+		// is actually about to be put on the wire.
+		if int64(len(data)) > maxAttachedFileBytes {
+			return nil, errors.New(oversizeFile(c.name(), int64(len(data))))
+		}
+		total += int64(len(data))
+		if total > maxAttachedTotalBytes {
+			return nil, fmt.Errorf("the files on this message are over the %dMB limit", maxAttachedTotalBytes>>20)
+		}
+		out = append(out, remote.WireFile{Name: c.name(), MIME: fileMIME(c.path), Bytes: data})
+	}
+	return out, nil
+}
+
+// oversizeFile is the ceiling's sentence, and it is one function because the
+// door says it about a file being attached and the send says it about a file
+// that grew afterwards — one limit said one way (ONE SOURCE OF TRUTH).
+//
+// It is shaped exactly like the picture's, `%s is over the %dMB image limit`,
+// because they are the same refusal about two kinds of thing and a person who
+// has read one should recognize the other.
+// THE SIZE IS ROUNDED UP, so the sentence can never read "is 16MB and over the
+// 16MB limit" — which is what truncation says about a file one byte past the
+// ceiling, and is a sentence that reads like a bug rather than like a limit.
+func oversizeFile(name string, size int64) string {
+	const megabyte = 1 << 20
+	return fmt.Sprintf("%s is %dMB and over the %dMB file limit",
+		name, (size+megabyte-1)/megabyte, maxAttachedFileBytes>>20)
+}
+
+// fileMIME is what this surface believed the file was, or "" when it cannot
+// say. It is a HINT and nothing is refused for lacking it — wire.go's
+// [remote.WireFile] says so — which is the whole difference from a picture,
+// whose type the provider genuinely needs.
+func fileMIME(path string) string {
+	kind := mime.TypeByExtension(filepath.Ext(path))
+	if cut, _, found := strings.Cut(kind, ";"); found {
+		return strings.TrimSpace(cut)
+	}
+	return kind
 }

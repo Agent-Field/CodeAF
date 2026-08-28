@@ -20,13 +20,14 @@ package manual
 // be a second thing to keep honest.
 
 import (
-	"io/fs"
 	"math"
 	"path"
 	"sort"
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/Agent-Field/aforge-v2/internal/packed"
 )
 
 const (
@@ -61,7 +62,7 @@ type Section struct {
 // question asked of it, and never changes afterwards: the pages are embedded in
 // the binary, so a corpus that has been read is a corpus that is already right.
 type Corpus struct {
-	files fs.FS
+	files *packed.Folder
 	glob  string
 
 	once     sync.Once
@@ -83,7 +84,7 @@ type Corpus struct {
 
 // newCorpus names a folder to index. Nothing is read until the corpus is asked
 // a question, so declaring one costs nothing at startup.
-func newCorpus(files fs.FS, glob string) *Corpus {
+func newCorpus(files *packed.Folder, glob string) *Corpus {
 	return &Corpus{files: files, glob: glob}
 }
 
@@ -93,7 +94,7 @@ func (c *Corpus) load() *Corpus {
 }
 
 func (c *Corpus) build() {
-	entries, err := fs.Glob(c.files, c.glob)
+	entries, err := c.files.Glob(c.glob)
 	if err != nil {
 		panic("manual: glob embedded pages: " + err.Error())
 	}
@@ -102,7 +103,7 @@ func (c *Corpus) build() {
 	c.cues = map[string]bool{}
 	c.pageText = map[string]string{}
 	for _, entry := range entries {
-		raw, err := fs.ReadFile(c.files, entry)
+		raw, err := c.files.ReadFile(entry)
 		if err != nil {
 			panic("manual: read embedded page: " + err.Error())
 		}

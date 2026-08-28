@@ -112,8 +112,8 @@ func TestAPressAndReleaseInPlaceIsStillAClick(t *testing.T) {
 	}
 }
 
-// A press that wanders inside the slop is still a click; one that changes rows
-// is a sweep however small.
+// A press that wanders inside the slop is still a click — sideways OR by one
+// row — and a press that travels two rows is a sweep.
 func TestTheSlopSeparatesAJitteryClickFromASweep(t *testing.T) {
 	a := dragApp(t)
 	y := screenRowWith(t, a, "the person wants fmt")
@@ -124,12 +124,43 @@ func TestTheSlopSeparatesAJitteryClickFromASweep(t *testing.T) {
 		t.Fatal("a two-cell wobble became a selection")
 	}
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
-	if !a.drag.on {
-		t.Fatal("a row change did not become a selection")
+	if a.drag.on {
+		t.Fatal("a one-row wobble became a selection")
 	}
-	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y + 2, Button: tea.MouseLeft})
+	if !a.drag.on {
+		t.Fatal("a two-row travel did not become a selection")
+	}
+	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: y + 2, Button: tea.MouseLeft})
 	if a.entries[1].open != true {
 		t.Fatal("a sweep clicked the block it started on")
+	}
+}
+
+// THE GESTURE A REAL HAND MAKES AND A SYNTHETIC CLICK NEVER DOES: press, drift
+// one row, release there. It is a click on the row that was PRESSED, and it
+// copies nothing — the owner met the other answer, where the tool call under
+// the pointer did not open and the status line said `copied · 2 lines` instead.
+func TestAClickThatDriftsOneRowStillClicksTheRowItPressed(t *testing.T) {
+	a := dragApp(t)
+	y := screenRowWith(t, a, "the person wants fmt")
+	if !a.entries[1].open {
+		t.Fatal("the block this test toggles is not open to begin with")
+	}
+
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
+	model, cmd := a.Update(tea.MouseReleaseMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
+	a = model.(*app)
+
+	if a.entries[1].open {
+		t.Fatal("a click that drifted one row did not reach the block it pressed")
+	}
+	// AND NOTHING WENT TO THE CLIPBOARD. A drift that copied as well as clicked
+	// would be one gesture doing two things, and the copy would be of rows
+	// nobody swept.
+	if runCmd(cmd) != nil && strings.Contains(a.dragWord(), "copied · ") {
+		t.Fatalf("a one-row drift copied: the status line says %q", a.dragWord())
 	}
 }
 
@@ -171,7 +202,13 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 // longer there.
 func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	a := dragApp(t)
-	a.width, a.height = 80, 14
+	// Fifteen rows and not fourteen: the eight blocks that land below are one
+	// turn's prose, so THE ANSWER HIERARCHY demotes all but the last of them and
+	// opens one blank above the one it promotes (hierarchy.go's [answerBreath]).
+	// That row is the difference between the pressed block scrolling two rows up
+	// — which is what this test is about — and scrolling clean off the top,
+	// which is a different case with a test of its own below.
+	a.width, a.height = 80, 15
 	a.touch()
 
 	// The click: press the thinking block, let eight more rows land and the
@@ -194,11 +231,16 @@ func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	a.entries[1].open = true
 	a.touch()
 
-	// The sweep: anchor on the thinking block, sweep one row down to the
-	// answer, let three more rows land, release. What was highlighted is what
-	// must be copied, however far the body moved after the sweep.
+	// The sweep: anchor on the thinking block, sweep down past the answer, let
+	// three more rows land, release. What was highlighted is what must be
+	// copied, however far the body moved after the sweep.
+	//
+	// It sweeps a row further than it used to, and that is the slop rather than
+	// this test's subject: a travel of one row is a wobble now (dragselect.go's
+	// [dragSlopRows]), so a sweep that only wanted to prove it rides the scroll
+	// has to be a sweep a hand could not have made by accident.
 	from := screenRowWith(t, a, "the person wants fmt")
-	to := screenRowWith(t, a, "Use fmt.Println.")
+	to := screenRowWith(t, a, "a later line")
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
 	for i := 0; i < 3; i++ {
@@ -208,7 +250,7 @@ func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	model, cmd := a.Update(tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
 	a = model.(*app)
 	copied := rawPayload(t, runCmd(cmd))
-	for _, want := range []string{"the person wants fmt", "Use fmt.Println."} {
+	for _, want := range []string{"the person wants fmt", "Use fmt.Println.", "a later line"} {
 		if !strings.Contains(copied, want) {
 			t.Fatalf("the anchored sweep missed %q; it copied:\n%s", want, copied)
 		}

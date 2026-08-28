@@ -17,8 +17,39 @@ v3 is a **session you sit in front of**. The resident is an employee that keeps 
 while the terminal is closed. They share a repository and almost nothing else — do not
 carry vocabulary or assumptions between them.
 
-Build with `make build` → `bin/aforge`. Rebuild after every merge; the user runs that
-binary.
+## Build and ship — the owner's standing orders
+
+- **Always build with `make build`**, which writes `bin/aforge`. Never a bare
+  `go build -o` to some other path: `bin/aforge` is the ONE binary the owner
+  runs, and every stray copy becomes a shadow that rolls them back silently
+  (the root `./aforge` did it once, `~/.agentfield/bin/aforge` did it again on
+  2026-08-24 — if a shipped feature "stopped working", run `which -a aforge`
+  and `shasum` before debugging anything).
+- Rebuild after every merge. Never `cp` over a binary that may be running —
+  `rm` first, then install — or the next launch dies with `Killed: 9`.
+- **Finished work is committed and pushed to `origin chat-v3-task`** in the
+  same wave — never left sitting on a local branch or an unpushed worktree. If
+  the shared checkout is dirty with another session's work, merge and push
+  through a temporary detached worktree (`git worktree add --detach … origin/chat-v3-task`)
+  rather than touching their tree.
+
+`make check` is vet, the tests, the build, and the binary-size ratchet in `SIZE-BUDGET`.
+The performance laws it and the suite enforce — and the rule that changing any cap
+changes the doc in the same commit — are in [PERF.md](PERF.md).
+
+`make demo-home` builds a **throwaway home with something on every place** — three
+projects, twelve conversations, standing orders, memories, a fourteen-day spending
+ledger — and opens `bin/aforge` against it with `HOME` pointed there. Use it when you
+want to SEE a page full: on a machine that has just started using aforge the standing,
+memory and spend pages correctly draw nothing, which is indistinguishable from a page
+that is broken. It never touches `~/.aforge`. The seeder is `cmd/aforge-demo-home` and
+`docs/design/home-rethink/HANDOFF.md` says what is in the fixture and how to add to it.
+
+```sh
+make demo-home                                       # a fresh one, in a temp directory
+make demo-home DEMO_HOME=/tmp/aforge-demo            # somewhere you can name
+make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is already there
+```
 
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 
@@ -41,6 +72,11 @@ Three gates fail the build if you forget:
 | `internal/manual/chat_test.go` | every probe in its table — real questions in a person's own words (over a hundred by now) — still reaches the page that answers it |
 
 The failure message names the exact missing string.
+
+The corpus ships **packed** — `internal/manual/{pages,chat}.pack.gz`, generated from the
+folders by `make build` (see `internal/packed`). Edit the Markdown and never the archive;
+`internal/manual/packed_test.go` fails when the two disagree, so a page changed without a
+build is a page the binary has not learned.
 
 **When a question reaches the wrong page, fix the page, never the test.** Write the
 asker's vocabulary into a `## ` heading — people search for "saved" where a writer wrote
@@ -111,8 +147,30 @@ Several Claude sessions often work this repo at once, in the same working tree.
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
 `TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, four `internal/swepro`
-packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, and four
-`cmd/harness-design` tests. Two more FLAKE under full-suite load on a clean tree and pass
+packages, four `cmd/harness-design` tests, `internal/config
+TestRegistryCoversEveryUserFacingEnvironmentPin`
+(`AFORGE_RELAY` in `internal/pair/service.go` is not in the registry), two `internal/guard`
+tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
+`internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
+`internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
+`TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
+TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
+green with `TMPDIR=/tmp/eh`) — all verified failing at `origin/chat-v3-task`
+on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
 alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
 `TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
 believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
+
+**Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
+
+```sh
+go test ./internal/remote/ ./internal/enginehost/ ./internal/pair/... ./internal/relay/ ./internal/furrow/
+make test-remote          # three containers, no API key, ~50s; SKIPS GREEN with no docker
+```
+
+`make test-remote` builds its container binaries for **this machine's** architecture; an
+`Exec format error` from `modelstub` means that pin was reintroduced. With no second
+machine, `--host localhost` is a real connection over a real ssh pipe and exercises
+everything except the shared-disk law — `docs/remote-access-testing.md` §3.0 has the tmux
+recipe for driving the surface and killing the link on purpose.
+

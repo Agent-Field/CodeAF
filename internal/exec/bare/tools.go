@@ -3,6 +3,7 @@
 package bare
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -94,6 +95,12 @@ const findDescription = "Search for files by glob pattern. Returns matching file
 const lsDescription = "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first)."
 
 // ── path resolution ────────────────────────────────────────────────────────
+
+// ResolvePath is [resolveToCwd] for the wrappers the session fits around
+// these tools: write's append mode reads the file the inner write will land
+// on, and resolving that path any other way would be a second, driftable copy
+// of pi's normalization.
+func ResolvePath(path, cwd string) string { return resolveToCwd(path, cwd) }
 
 // resolveToCwd mirrors pi's path-utils.js:resolveToCwd. It expands ~, strips
 // a leading @, normalizes unicode spaces, and resolves the path against cwd.
@@ -305,7 +312,12 @@ func newBashTool(cwd string) Tool {
 				return fmt.Sprintf("Working directory does not exist: %s\nCannot execute bash commands.", cwd), true, nil
 			}
 
-			shell, shellArgs := getShellConfig()
+			// THE OUTPUT HAS TO EXIST BEFORE THE COMMAND ENDS, which is what
+			// [StreamingShell] and [StreamingEnv] buy: a command whose output is
+			// held in a 4KB buffer until it exits is a command that looks dead to
+			// anybody reading its log, and a long one gets killed for it
+			// (streaming.go states the whole case).
+			shell, shellArgs := StreamingShell(p.Command)
 
 			// THE COMMAND IS NOT BOUND TO THE CONTEXT, and the watcher below
 			// does the binding by hand. exec.CommandContext's own watcher kills
@@ -314,9 +326,9 @@ func newBashTool(cwd string) Tool {
 			// turn, and fatal for one that has been PROMOTED into a job that is
 			// supposed to outlive it (promote.go). The cancel semantics are
 			// unchanged: SIGKILL to the whole group, the moment ctx is done.
-			cmd := exec.Command(shell, append(shellArgs, p.Command)...)
+			cmd := exec.Command(shell, shellArgs...)
 			cmd.Dir = cwd
-			cmd.Env = os.Environ()
+			cmd.Env = StreamingEnv()
 			processgroup.Configure(cmd)
 			// A COMMAND THAT LEAVES A BACKGROUND CHILD SHARING ITS STDOUT MUST
 			// STILL COST ITS TIMEOUT AND NOTHING MORE. Killing the shell is not
@@ -832,29 +844,26 @@ func (a *outputAccumulator) append(data []byte) {
 	if a.finished {
 		return
 	}
-	decoded := string(data)
-	a.totalDecoded += len(decoded)
+	a.totalDecoded += len(data)
 	a.tailText = append(a.tailText, data...)
 	if len(a.tailText) > a.maxRollingBytes*2 {
 		a.trimTail()
 	}
 
-	newlines := 0
-	lastNewline := -1
-	for i := range decoded {
-		if decoded[i] == '\n' {
-			newlines++
-			lastNewline = i
-		}
-	}
+	// Counted over the bytes as they arrived. This used to run over a string
+	// copy of the chunk, which bought nothing — the only questions asked of it
+	// are how many newlines there are and how far the last one is from the end,
+	// and both are byte questions — while paying a full copy of every pipe read
+	// of a command that may be writing megabytes.
+	newlines := bytes.Count(data, []byte{'\n'})
 	if newlines == 0 {
-		a.currentLineBytes += len(decoded)
+		a.currentLineBytes += len(data)
 		a.hasOpenLine = true
 	} else {
 		a.completedLines += newlines
-		tail := decoded[lastNewline+1:]
-		a.currentLineBytes = len(tail)
-		a.hasOpenLine = len(tail) > 0
+		open := len(data) - bytes.LastIndexByte(data, '\n') - 1
+		a.currentLineBytes = open
+		a.hasOpenLine = open > 0
 	}
 	a.totalLines = a.completedLines
 	if a.hasOpenLine {

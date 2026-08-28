@@ -187,7 +187,7 @@ func (r *Reconciler) ensurePracticeCharter(now time.Time) (store.Charter, error)
 }
 
 func (r *Reconciler) scanSurpriseQuestions() error {
-	metrics, err := r.store.ScopeSurprises(profile.MinSamples)
+	metrics, err := r.scopeSurprisesLocked(profile.MinSamples)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (r *Reconciler) practiceCandidates() ([]practiceCandidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := r.store.ScopeSurprises(1)
+	metrics, err := r.scopeSurprisesLocked(1)
 	if err != nil {
 		return nil, err
 	}

@@ -121,7 +121,7 @@ func historyApp(t *testing.T, count int) *app {
 			"past-"+itoa(i), "task-"+itoa(i), "The "+fadeWord(i)+" errand", time.Duration(i+1)*time.Hour))
 	}
 	a.comp.tasks = rows
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open on a project with a record")
 	}
 	return a
@@ -130,15 +130,19 @@ func historyApp(t *testing.T, count int) *app {
 // fadeWord keeps the titles distinguishable without dragging in a word list.
 func fadeWord(i int) string { return strings.Repeat("i", i%7+1) + itoa(i) }
 
-// historyRows is the page's list region: the lines between the head and the foot.
+// historyRows is the place's list region: the lines between the head the router
+// draws ([placeHeadRows]) and the foot it draws under the body — a blank, a
+// rule, the place's own note, the composer and the hint.
 func historyRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
-	foot := 3
+	// The foot the router draws is five rows: a blank, a rule, the place's own
+	// note, the composer and the hint. A filter adds a second note row.
+	foot := 5
 	if a.taskSheetFiltering() {
 		foot++
 	}
-	return lines[3 : len(lines)-foot]
+	return lines[placeHeadRows : len(lines)-foot]
 }
 
 // THE TAIL OF THE RECORD FADES AND ITS HEAD DOES NOT. A page holding two hundred
@@ -151,12 +155,24 @@ func TestTheHistoryPagesTailFadesWithDepthAndItsHeadDoesNot(t *testing.T) {
 	}
 
 	// The last three step DOWN the ladder: the deepest row is the faintest.
+	//
+	// A BLANK LINE IS EXEMPT AND SAYS SO. The place separates its sections with
+	// whitespace, so the foot of a window can land on one — and a blank line has
+	// no ink to fade, which is the emptiness law rather than a hole in the ladder.
+	lit := 0
 	for depth := 0; depth < fadeSteps; depth++ {
 		at := len(rows) - 1 - depth
+		if strings.TrimSpace(plain(rows[at])) == "" {
+			continue
+		}
+		lit++
 		if stop := fadeStopOf(a.pal, rows[at]); stop != depth {
 			t.Fatalf("row %d (depth %d) came back at stop %d, want %d:\n%s",
 				at, depth, stop, depth, strings.Join(rows, "\n"))
 		}
+	}
+	if lit == 0 {
+		t.Fatalf("the last %d rows of the window are all blank:\n%s", fadeSteps, strings.Join(rows, "\n"))
 	}
 	// And nothing above them is faded at all.
 	noFadeAnywhere(t, a.pal, rows[:len(rows)-fadeSteps], "the head of the record")
@@ -183,7 +199,7 @@ func TestTheHistoryPageNeverFadesTheRowTheCursorIsOn(t *testing.T) {
 	}
 	rows := historyRows(a)
 	current, ok := a.taskSheetCurrent()
-	if !ok || current.entry == nil {
+	if !ok || current.entry.Title == "" {
 		t.Fatal("the cursor is not standing on a row of the record")
 	}
 	title := current.entry.Title
@@ -213,27 +229,35 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("past-1", "one", "An errand from before", time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open")
 	}
 	rows := historyRows(a)
 	head := -1
 	for i, row := range rows {
-		if strings.TrimSpace(plain(row)) == taskSheetPastHead {
+		if strings.TrimSpace(plain(row)) == taskSheetNowHead {
 			head = i
 		}
 	}
 	if head <= 0 {
-		t.Fatalf("the record's own section word is not on the page:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("a section word is not on the page:\n%s", strings.Join(rows, "\n"))
 	}
 	if got := strings.TrimSpace(plain(rows[head-1])); got != "" {
-		t.Fatalf("the line above the record's section is %q, want a blank line:\n%s",
+		t.Fatalf("the line above a section's word is %q, want a blank line:\n%s",
 			got, strings.Join(rows, "\n"))
 	}
-	// AND THE FIRST SECTION DOES NOT CARRY ONE: a blank line under the page's own
-	// rule would be the head of the page drifting away from it.
-	if got := strings.TrimSpace(plain(rows[0])); got != taskSheetNowHead {
-		t.Fatalf("the page opens on %q rather than on its first section word", got)
+	// AND ONE BLANK LINE AND NOT TWO: the breath between sections is a rhythm, and
+	// a double gap reads as a section that lost its rows.
+	if head >= 2 {
+		if got := strings.TrimSpace(plain(rows[head-2])); got == "" {
+			t.Fatalf("two blank lines stand above a section's word:\n%s", strings.Join(rows, "\n"))
+		}
+	}
+	// AND THE PAGE OPENS ON WHAT IT IS HOLDING rather than on air: a blank line
+	// under the router's own rule would be the head of the page drifting away
+	// from it.
+	if got := strings.TrimSpace(plain(rows[0])); !strings.HasPrefix(got, "work aforge ran on its own.") {
+		t.Fatalf("the page opens on %q rather than on what it is holding", got)
 	}
 }
 
@@ -335,17 +359,16 @@ func TestHomesListFadesItsTailOnlyWhenItRunsPastTheWindow(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 100, 24
 	openHomeOn(a, mine)
-	// A project folds its quiet tail behind one `…more` row, which is home
-	// refusing to be long in the first place. The subject here is what happens
-	// when it IS long, so the tail is opened and the cursor put back on the row
-	// the test arrived on.
-	for _, line := range a.home.lines {
-		if line.kind == homeQuiet {
-			a.home.fold(line.dir, true)
-			break
-		}
-	}
+	// THE RESTING LIST DRAWS EIGHT ROWS AND ONE DOOR, which is home refusing to
+	// be long in the first place ([switcherShown]). The subject here is what
+	// happens when it IS long, so the one fold is opened — every row on the
+	// column, no cap at all ([switcherReading.cap]) — and the cursor is put back
+	// on the row the test arrived on.
+	a.home.foldSwitch(true)
 	a.home.point(mine)
+	if len(a.home.lines) < 40 {
+		t.Fatalf("the opened fold left %d lines, which fits the frame:\n%s", len(a.home.lines), homeText(a))
+	}
 
 	width, height := a.size()
 	lines, _, _, _ := a.homeFrame(width, height)

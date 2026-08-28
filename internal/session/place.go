@@ -4,9 +4,11 @@
 // working state, the task checkpoint, the node journals, the droppings, the
 // worktrees and — for an owned session — the workspace itself all live inside
 // one directory, so deleting a session is removing one folder and exporting
-// one is zipping one. Every path below is arithmetic on [Place.Dir]; nothing
-// here touches the disk except [Meta]'s load and save, because where things
-// live and what lives there are one decision made in one file.
+// one is zipping one. Every path below starts as arithmetic on [Place.Dir];
+// only [Place.Trees] resolves that spelling against the disk, because git
+// records worktree paths after resolving symlinks. The other disk access here
+// is [Meta]'s load and save, because where things live and what lives there are
+// one decision made in one file.
 //
 // The zero Place is the LEGACY layout: every method on it answers "", and a
 // caller holding one keeps deriving sidecar paths the flat way. That is what
@@ -22,6 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 )
 
 // The names inside a session folder. They are constants and not configuration:
@@ -61,6 +65,38 @@ func (p Place) join(parts ...string) string {
 		return ""
 	}
 	return filepath.Join(append([]string{p.Dir}, parts...)...)
+}
+
+// canonicalPath gives every repository and worktree path one spelling.
+//
+// GIT RECORDS THE RESOLVED SPELLING. On macOS, for example, a directory made
+// beneath /var is reported beneath /private/var. Keeping the unresolved
+// spelling in a task checkpoint or deriving a lock from it would make one
+// directory look like two different places.
+//
+// A worktree path usually does not exist when it is first chosen. In that case
+// the nearest existing parent is resolved and the missing suffix is put back,
+// so the spelling is already stable before mkdir or `git worktree add`.
+// Failures other than absence keep the cleaned path: canonicalization must not
+// turn a path that may still be usable into an empty answer.
+func canonicalPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	path = filepath.Clean(path)
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return path
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(canonicalPath(parent), filepath.Base(path))
 }
 
 // ID is the session's id, which is the folder's own name — the same 16-hex id
@@ -114,8 +150,10 @@ func (p Place) Artifacts() string { return p.join(placeArtifacts) }
 // Trees holds the git worktrees, one per running node. Session deletion runs
 // git worktree remove/prune against [Meta.Workspace] BEFORE this directory
 // goes, or the repository is left holding registrations for paths that are
-// gone.
-func (p Place) Trees() string { return p.join(placeTrees) }
+// gone. It uses the same canonical spelling git records even before trees/
+// itself exists, so creation, checkpoints and later unregistering all name one
+// directory.
+func (p Place) Trees() string { return canonicalPath(p.join(placeTrees)) }
 
 // Work is the owned session's workspace, and "" for a borrowed one: a
 // borrowed session has no work/ at all, which is itself the record of which
@@ -128,10 +166,10 @@ func (p Place) Work() string {
 }
 
 // Meta is one session's identity, written where a picker can read it without
-// parsing a journal. It is a citation, not a copy: everything in it is
-// recoverable from the transcript, and a session whose meta.json is missing
-// or corrupt is a session with a blank row, never a session that will not
-// open.
+// parsing a journal. It is a citation, not a copy: every conversation fact in
+// it is recoverable from the transcript, while Build names the aforge that
+// wrote the citation. A session whose meta.json is missing or corrupt is a
+// session with a blank row, never a session that will not open.
 type Meta struct {
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
@@ -152,6 +190,19 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// Build names the aforge that most recently wrote this identity.
+	Build string `json:"build,omitempty"`
+	// Effort is the rung on the effort ladder this conversation was set to —
+	// how hard its turns ask the model to think (internal/effort). Empty is
+	// "nobody set one for this conversation", which is every session until
+	// somebody dials it, and it means the rung below decides instead: the work,
+	// the role, or the install's own `effort` row.
+	//
+	// IT IS HERE SO A DIAL SURVIVES A RESTART. The rung was a live field on the
+	// agent and only that, which made it the same defect the Model row above was
+	// written to fix: a person set it, worked in it, closed the terminal, and
+	// came back to a conversation that had quietly forgotten.
+	Effort string `json:"effort,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
@@ -240,6 +291,7 @@ func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
+	meta.Build = buildinfo.String()
 	raw, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("save session meta: %w", err)

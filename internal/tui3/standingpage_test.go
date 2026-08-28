@@ -19,14 +19,14 @@ import (
 // key is pressed — rather than the shape of the code under it
 // (standingpage.go).
 
-// standPageFake is a session that can be asked what stands over it. It embeds
+// standingPlaceFake is a session that can be asked what stands over it. It embeds
 // the scripted agent every other test here runs against, because the standing
 // seam is a widening of that session and not a different one, and it MOVES ITS
 // OWN ROWS the way the engine's resolver would: an order excepted from here
 // stops standing here and starts being a "not here" line, and one stood down
 // stops existing at all. A fake that answered the same three rows after every
 // write would let a page that never re-read the engine pass.
-type standPageFake struct {
+type standingPlaceFake struct {
 	*fakeAgent
 	stand    []standing.Item
 	excepted []standing.Item
@@ -39,11 +39,11 @@ type standPageFake struct {
 	refusal error
 }
 
-func (f *standPageFake) StandingHere() ([]standing.Item, []standing.Item) {
+func (f *standingPlaceFake) StandingHere() ([]standing.Item, []standing.Item) {
 	return f.stand, f.excepted
 }
 
-func (f *standPageFake) StandingExcept(id string) error {
+func (f *standingPlaceFake) StandingExcept(id string) error {
 	if f.refusal != nil {
 		return f.refusal
 	}
@@ -54,7 +54,7 @@ func (f *standPageFake) StandingExcept(id string) error {
 	return nil
 }
 
-func (f *standPageFake) StandingStandDown(id string) error {
+func (f *standingPlaceFake) StandingStandDown(id string) error {
 	if f.refusal != nil {
 		return f.refusal
 	}
@@ -63,7 +63,7 @@ func (f *standPageFake) StandingStandDown(id string) error {
 	return nil
 }
 
-func (f *standPageFake) StandingPause(id string) (standing.Status, error) {
+func (f *standingPlaceFake) StandingPause(id string) (standing.Status, error) {
 	if f.refusal != nil {
 		return "", f.refusal
 	}
@@ -78,7 +78,7 @@ func (f *standPageFake) StandingPause(id string) (standing.Status, error) {
 }
 
 // take removes one order from the shelves and answers it.
-func (f *standPageFake) take(id string) (standing.Item, bool) {
+func (f *standingPlaceFake) take(id string) (standing.Item, bool) {
 	for i, item := range f.stand {
 		if item.ID != id {
 			continue
@@ -104,11 +104,11 @@ func standOrder(id, title string, level standing.Altitude) standing.Item {
 	}
 }
 
-// standPageApp is a surface with an ambient side under it, on a pinned clock —
+// standingPlaceApp is a surface with an ambient side under it, on a pinned clock —
 // a status clause counted in minutes cannot be tested by waiting.
-func standPageApp(t *testing.T, stand, excepted []standing.Item) (*app, *standPageFake) {
+func standingPlaceApp(t *testing.T, stand, excepted []standing.Item) (*app, *standingPlaceFake) {
 	t.Helper()
-	agent := &standPageFake{
+	agent := &standingPlaceFake{
 		fakeAgent: &fakeAgent{model: "m"},
 		stand:     stand, excepted: excepted,
 		status: standing.StatusPaused,
@@ -120,12 +120,19 @@ func standPageApp(t *testing.T, stand, excepted []standing.Item) (*app, *standPa
 	return a, agent
 }
 
-// standPageScreen is the open page as a reader sees it, blank lines dropped —
+// standingPlaceScreen is the open page as a reader sees it, blank lines dropped —
 // the block is padded to the height the frame reserved, and the padding is not
 // something a person reads.
-func standPageScreen(a *app) string {
+// standingPlaceScreen is what a person sees on the standing PLACE. It reads the
+// frame rather than the overlay rows: the list was an overlay under the draft
+// until the router promoted it, and it takes the whole terminal now
+// (placebodies.go).
+func standingPlaceScreen(a *app) string {
 	out := make([]string, 0, standRowsMax)
-	for _, line := range plainOverlay(a) {
+	width, height := a.size()
+	lines, _, _, _ := a.standingPlaceFrame(width, height)
+	for _, line := range lines {
+		line = plain(line)
 		if strings.TrimSpace(line) != "" {
 			out = append(out, strings.TrimRight(line, " "))
 		}
@@ -145,7 +152,7 @@ func TestStandingIsOnTheCommandListAndInHelp(t *testing.T) {
 	if !found {
 		t.Fatal("/standing is not on the command list")
 	}
-	help := helpText("")
+	help := helpText("", chordSpelling{})
 	for _, want := range []string{"/standing", "also /orders", "in /standing"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help is missing %q:\n%s", want, help)
@@ -175,16 +182,16 @@ func TestStandingIsOnTheCommandListAndInHelp(t *testing.T) {
 // THREE SHELVES, IN THE ORDER A PERSON READS OUTWARD FROM WHERE THEY STAND, and
 // every row is a mark, what the order is called, and where it stands.
 func TestTheStandingPageDrawsThreeShelvesOutward(t *testing.T) {
-	a, _ := standPageApp(t, []standing.Item{
+	a, _ := standingPlaceApp(t, []standing.Item{
 		standOrder("m1", "never touch the public API", standing.AltitudeMachine),
 		standOrder("c1", "keep the tests green", standing.AltitudeConversation),
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("/standing opened nothing")
 	}
-	screen := standPageScreen(a)
+	screen := standingPlaceScreen(a)
 	for _, want := range []string{
 		standHeading,
 		standInHereWord,
@@ -218,11 +225,11 @@ func TestTheStandingPageDrawsThreeShelvesOutward(t *testing.T) {
 // empty. It is the emptiness law at its most literal, and it is what keeps this
 // page one line long on the ordinary conversation.
 func TestAnEmptyShelfDrawsNothing(t *testing.T) {
-	a, _ := standPageApp(t, []standing.Item{
+	a, _ := standingPlaceApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
-	screen := standPageScreen(a)
+	screen := standingPlaceScreen(a)
 	if !strings.Contains(screen, standProjectWord) {
 		t.Fatalf("the one shelf with something on it is missing:\n%s", screen)
 	}
@@ -237,11 +244,11 @@ func TestAnEmptyShelfDrawsNothing(t *testing.T) {
 // BEEN ON, and it is not a row: no mark about what it is doing, no clause about
 // where it stands, and no cursor.
 func TestAnExceptedOrderIsOneLineUnderItsShelf(t *testing.T) {
-	a, _ := standPageApp(t,
+	a, _ := standingPlaceApp(t,
 		[]standing.Item{standOrder("p1", "draft the weekly update", standing.AltitudeProject)},
 		[]standing.Item{standOrder("m1", "never touch the public API", standing.AltitudeMachine)})
 	typeLine(t, a, "/standing")
-	screen := standPageScreen(a)
+	screen := standingPlaceScreen(a)
 	want := standNotHereGlyph + " " + standNotHereWord + ": never touch the public API"
 	if !strings.Contains(screen, want) {
 		t.Fatalf("the page does not say %q:\n%s", want, screen)
@@ -253,63 +260,64 @@ func TestAnExceptedOrderIsOneLineUnderItsShelf(t *testing.T) {
 	}
 	// AND THE CURSOR CANNOT REST ON IT. There is one order on this page and the
 	// cursor is on it, whatever else is drawn.
-	item, ok := a.standPage.current()
+	item, ok := a.orders.current()
 	if !ok || item.ID != "p1" {
 		t.Fatalf("the cursor is on %v (%v), not on the one order there is", item.ID, ok)
 	}
-	a.standPage.move(1)
-	if item, _ := a.standPage.current(); item.ID != "p1" {
+	a.orders.move(1)
+	if item, _ := a.orders.current(); item.ID != "p1" {
 		t.Fatalf("the cursor walked onto something that is not an order: %v", item.ID)
 	}
 }
 
-// NOTHING STANDS, SO NO PAGE OPENS — one sentence in the conversation, and no
-// overlay to dismiss before it can be told it was useless (deliverables.go's
-// law, restated).
-func TestStandingOnNothingSaysOneLineAndOpensNothing(t *testing.T) {
-	a, _ := standPageApp(t, nil, nil)
+// NOTHING STANDS, SO THE PAGE OPENS AND SAYS WHAT STANDING ORDERS ARE.
+//
+// THIS TEST USED TO PIN THE OPPOSITE — one sentence in the conversation and no
+// overlay to dismiss before it could be told it was useless. The sentence stayed
+// ([standNothingWord]) and moved into the place's own body, because a machine
+// nothing stands on is every machine for its first week, and refusing there made
+// `alt+3` a key that did nothing at all.
+func TestStandingOnNothingOpensThePageAndTeachesIt(t *testing.T) {
+	a, _ := standingPlaceApp(t, nil, nil)
 	typeLine(t, a, "/standing")
-	if a.standPage.open {
-		t.Fatal("a conversation nothing stands over opened a page anyway")
+	if !a.at(pageStanding) {
+		t.Fatal("a conversation nothing stands over opened no page")
 	}
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said:\n%s", text)
+	if text := standingPlaceScreen(a); !strings.Contains(text, standNothingWord) {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
 
-// AND IT SAYS IT ONCE, HOWEVER OFTEN IT IS ASKED. This is the command a person
-// presses again when the first press looked like it did nothing — the page does
-// not open, so there is nothing on screen to say the command was taken except
-// the line itself — and four presses left four identical lines stacked in the
-// transcript. The emptiness law reaches repetition: a screen counting how many
-// times it had nothing to report is the same fault as a screen printing `0`.
-func TestStandingOnNothingSaysItOnceHoweverOftenItIsAsked(t *testing.T) {
-	a, _ := standPageApp(t, nil, nil)
+// AND ASKING FOUR TIMES IS FOUR OPENINGS OF ONE PAGE, with nothing stacked in
+// the transcript behind it. The repetition this used to guard against was a
+// repetition of the REFUSAL; there is no refusal, so there is nothing to repeat.
+func TestStandingOnNothingWritesNothingIntoTheTranscript(t *testing.T) {
+	a, _ := standingPlaceApp(t, nil, nil)
 	for range 4 {
 		typeLine(t, a, "/standing")
 	}
-	if n := notesSaying(a, standNothingWord); n != 1 {
-		t.Fatalf("asking four times said it %d times:\n%s", n, strings.Join(plainRows(a), "\n"))
+	if n := notesSaying(a, standNothingWord); n != 0 {
+		t.Fatalf("the place's own body was written into the transcript %d times:\n%s",
+			n, strings.Join(plainRows(a), "\n"))
 	}
-	// The line is still THERE — the fix is that the repeat is not written again,
-	// not that the repeat goes unanswered.
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said at all:\n%s", text)
+	if !a.at(pageStanding) {
+		t.Fatal("asking four times left no page open")
 	}
 }
 
-// A SURFACE WHOSE SESSION HAS NO AMBIENT SIDE SAYS THE SAME THING. The seam is
-// absent rather than broken, which is what the whole codebase does with a
-// capability that cannot work.
-func TestASessionWithNoAmbientSideOpensNoPage(t *testing.T) {
+// A SURFACE WHOSE SESSION HAS NO AMBIENT SIDE OPENS THE SAME PAGE. The seam is
+// absent rather than broken — which is what the whole codebase does with a
+// capability that cannot work — and what a place does with an absent seam is
+// spend the frame saying what would be here if it were not.
+func TestASessionWithNoAmbientSideStillOpensThePlace(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	typeLine(t, a, "/standing")
-	if a.standPage.open {
-		t.Fatal("a session with no ambient side opened a page")
+	if !a.at(pageStanding) {
+		t.Fatal("a session with no ambient side opened no page")
 	}
-	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
-		t.Fatalf("nothing was said:\n%s", text)
+	if text := standingPlaceScreen(a); !strings.Contains(text, standNothingWord) {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
 
@@ -319,12 +327,16 @@ func TestASessionWithNoAmbientSideOpensNoPage(t *testing.T) {
 // person sees after a keystroke is what the store says, never what the surface
 // wished ([app.homeItemWrite] states the law).
 func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
-	a, agent := standPageApp(t, []standing.Item{
+	a, agent := standingPlaceApp(t, []standing.Item{
 		standOrder("c1", "keep the tests green", standing.AltitudeConversation),
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
 
+	// THE VERBS ARE ON THE ROW'S STRIP NOW. `p` was a bare letter while this was
+	// a modal overlay with no box under it; it is a place with a composer, so `→`
+	// draws the verbs and only then is a letter a verb (verbstrip.go).
+	drive(t, a, key("right"))
 	drive(t, a, key("p"))
 	if len(agent.paused) != 1 || agent.paused[0] != "c1" {
 		t.Fatalf("p paused %v", agent.paused)
@@ -334,22 +346,24 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 	}
 	// The row is redrawn from what the engine now says, so a paused order wears
 	// the paused mark and the paused clause.
-	screen := standPageScreen(a)
+	screen := standingPlaceScreen(a)
 	if !strings.Contains(screen, standOffGlyph+" keep the tests green") {
 		t.Fatalf("the paused order kept its old mark:\n%s", screen)
 	}
 
+	drive(t, a, key("right"))
 	drive(t, a, key("n"))
 	if len(agent.excepts) != 1 || agent.excepts[0] != "c1" {
 		t.Fatalf("n excepted %v", agent.excepts)
 	}
-	screen = standPageScreen(a)
+	screen = standingPlaceScreen(a)
 	if !strings.Contains(screen, standNotHereWord+": keep the tests green") {
 		t.Fatalf("the excepted order is still a row:\n%s", screen)
 	}
 
 	// The cursor held its PLACE, so the next verb lands on whatever moved up
 	// into it rather than on nothing.
+	drive(t, a, key("right"))
 	drive(t, a, key("s"))
 	if len(agent.downed) != 1 || agent.downed[0] != "p1" {
 		t.Fatalf("s stopped %v", agent.downed)
@@ -358,7 +372,7 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 		t.Fatalf("no receipt for the stop:\n%s", text)
 	}
 	// AND AN EMPTIED PAGE STAYS OPEN, with its heading and nothing under it.
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("the page closed itself out from under the person")
 	}
 }
@@ -367,12 +381,12 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 // FOR THAT EVENT — one event read by a person in two places may not be two
 // different words.
 func TestStartingAPausedOrderAgainSaysGoingAgain(t *testing.T) {
-	a, agent := standPageApp(t, []standing.Item{
+	a, agent := standingPlaceApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	agent.status = standing.StatusActive
 	typeLine(t, a, "/standing")
-	drive(t, a, key("p"))
+	drive(t, a, key("right"), key("p"))
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standResumedWord+" · draft the weekly update") {
 		t.Fatalf("a resumed order did not say %q:\n%s", standResumedWord, text)
 	}
@@ -382,18 +396,18 @@ func TestStartingAPausedOrderAgainSaysGoingAgain(t *testing.T) {
 // sentence written for a person; wrapping it in a second sentence about a key
 // that did not work would be the surface talking over the engine.
 func TestARefusedWriteSaysTheEnginesOwnSentence(t *testing.T) {
-	a, agent := standPageApp(t, []standing.Item{
+	a, agent := standingPlaceApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	agent.refusal = errors.New("standing orders are not built yet")
 	typeLine(t, a, "/standing")
-	drive(t, a, key("s"))
+	drive(t, a, key("right"), key("s"))
 	text := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(text, "standing orders are not built yet") {
 		t.Fatalf("the refusal was not said:\n%s", text)
 	}
 	// AND NOTHING WAS REDRAWN AS THOUGH IT HAD WORKED.
-	if screen := standPageScreen(a); !strings.Contains(screen, "draft the weekly update") {
+	if screen := standingPlaceScreen(a); !strings.Contains(screen, "draft the weekly update") {
 		t.Fatalf("a refused stop took the row off the page anyway:\n%s", screen)
 	}
 }
@@ -401,12 +415,12 @@ func TestARefusedWriteSaysTheEnginesOwnSentence(t *testing.T) {
 // ESC LEAVES THE CONVERSATION EXACTLY AS IT WAS, which is what esc means over
 // every modal list on this surface.
 func TestEscLeavesTheStandingPage(t *testing.T) {
-	a, _ := standPageApp(t, []standing.Item{
+	a, _ := standingPlaceApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
 	drive(t, a, key("esc"))
-	if a.standPage.open {
+	if a.at(pageStanding) {
 		t.Fatal("esc left the page open")
 	}
 	if a.overlayHeight() != 0 {
@@ -414,18 +428,43 @@ func TestEscLeavesTheStandingPage(t *testing.T) {
 	}
 }
 
-// THE VERBS ARE NAMED WHERE A PERSON LOOKS FOR THEM, because three of the four
-// are bare letters and one of them stops a thing for good.
+// THE VERBS ARE NAMED WHERE A PERSON LOOKS FOR THEM, and NOTHING IS NAMED THAT
+// IS NOT BOUND.
+//
+// The line used to promise four bare letters. Three of them moved onto the row's
+// `→` strip when this became a place with a composer under it, so the hint names
+// the key that reaches them and the strip names the letters — which is the whole
+// of "no key does anything that isn't drawn on screen right now" (verbstrip.go).
 func TestTheStandingPageNamesItsVerbs(t *testing.T) {
-	a, _ := standPageApp(t, []standing.Item{
+	a, _ := standingPlaceApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
-	hint := a.hintWord()
-	for _, want := range []string{"enter", "p pause", "s stop", "n " + standNotHereWord, "esc"} {
+	hint := a.placeHint()
+	for _, want := range []string{"enter", "→", homeItemPauseWord, homeItemStopWord, standNotHereWord, "esc"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the hint does not name %q: %q", want, hint)
 		}
+	}
+	// AND THE STRIP NAMES THE LETTERS, once `→` has drawn it — ON THE ROW, under
+	// the order they act on (SCREEN 3c). The frame is read rather than the strip's
+	// own rows, because where it lands is half of what makes a bare letter safe.
+	drive(t, a, key("right"))
+	rows := strings.Split(placeFrameText(a), "\n")
+	at := -1
+	for i, row := range rows {
+		if strings.Contains(row, "p "+homeItemPauseWord) && strings.Contains(row, "s "+homeItemStopWord) {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the strip does not offer its letters:\n%s", strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[at], "n "+standNotHereWord) {
+		t.Fatalf("the strip is missing a verb: %q", rows[at])
+	}
+	if at < 1 || !strings.Contains(rows[at-1], "draft the weekly update") {
+		t.Fatalf("the strip is not drawn under the order it acts on:\n%s", strings.Join(rows, "\n"))
 	}
 }
 
@@ -435,13 +474,13 @@ func TestTheStandingPageNamesItsVerbs(t *testing.T) {
 func TestEnterOnAnOrderWithNoConversationSaysSo(t *testing.T) {
 	item := standOrder("p1", "draft the weekly update", standing.AltitudeProject)
 	item.Origin = standing.Origin{Exchange: "made-at-home"}
-	a, _ := standPageApp(t, []standing.Item{item}, nil)
+	a, _ := standingPlaceApp(t, []standing.Item{item}, nil)
 	typeLine(t, a, "/standing")
 	drive(t, a, key("enter"))
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, homeItemNoDoor) {
 		t.Fatalf("enter on an order with no door said nothing:\n%s", text)
 	}
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("a door that led nowhere closed the page")
 	}
 }
@@ -451,14 +490,14 @@ func TestEnterOnAnOrderWithNoConversationSaysSo(t *testing.T) {
 func TestEnterOnThisConversationsOwnOrderSaysYouAreInIt(t *testing.T) {
 	item := standOrder("c1", "keep the tests green", standing.AltitudeConversation)
 	item.Origin = standing.Origin{Transcript: "/tmp/lab/transcript.jsonl"}
-	a, _ := standPageApp(t, []standing.Item{item}, nil)
+	a, _ := standingPlaceApp(t, []standing.Item{item}, nil)
 	a.file = "/tmp/lab/transcript.jsonl"
 	typeLine(t, a, "/standing")
 	drive(t, a, key("enter"))
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standHereWord) {
 		t.Fatalf("enter on this conversation's own order said nothing:\n%s", text)
 	}
-	if a.standPage.open {
+	if a.at(pageStanding) {
 		t.Fatal("the page stayed up over the conversation it pointed at")
 	}
 }
@@ -469,18 +508,25 @@ func TestEnterOnThisConversationsOwnOrderSaysYouAreInIt(t *testing.T) {
 // and the heading and the shelves still readable.
 func TestTheStandingPageHoldsAtEveryWidth(t *testing.T) {
 	for _, width := range []int{44, 60, 80, 120, 200} {
-		a, _ := standPageApp(t, []standing.Item{
+		a, _ := standingPlaceApp(t, []standing.Item{
 			standOrder("c1", "keep the tests green", standing.AltitudeConversation),
 			standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 		}, []standing.Item{standOrder("m1", "never touch the public API", standing.AltitudeMachine)})
 		a.width, a.height = width, 30
 		typeLine(t, a, "/standing")
-		if !a.standPage.open {
+		if !a.at(pageStanding) {
 			t.Fatalf("at %d the page did not open", width)
 		}
-		lines := plainOverlay(a)
-		if len(lines) != a.overlayHeight() {
-			t.Fatalf("at %d the page drew %d lines into %d rows", width, len(lines), a.overlayHeight())
+		// IT IS A PLACE NOW, SO IT IS EXACTLY THE WHOLE TERMINAL — the law every
+		// page on this surface holds, and one this list could not hold while it
+		// was a twelve-row overlay under the draft (pages.go's [placeFrame]).
+		frame, _, _, _ := a.standingPlaceFrame(width, a.height)
+		if len(frame) != a.height {
+			t.Fatalf("at %d the place drew %d lines into %d rows", width, len(frame), a.height)
+		}
+		lines := make([]string, 0, len(frame))
+		for _, line := range frame {
+			lines = append(lines, plain(line))
 		}
 		for _, line := range lines {
 			if ansi.StringWidth(line) > width {
@@ -541,12 +587,12 @@ func TestTheStandingPageSaysARuleHolds(t *testing.T) {
 	rule := standOrder("h1", "never touch the public API", standing.AltitudeProject)
 	rule.When = standing.When{Kind: standing.WhenHold}
 	rule.Does, rule.Rails = standing.Action{}, standing.Rails{}
-	a, _ := standPageApp(t, []standing.Item{rule}, nil)
+	a, _ := standingPlaceApp(t, []standing.Item{rule}, nil)
 	typeLine(t, a, "/standing")
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatal("/standing opened nothing")
 	}
-	screen := standPageScreen(a)
+	screen := standingPlaceScreen(a)
 	if !strings.Contains(screen, standWaitGlyph+" never touch the public API") {
 		t.Fatalf("the rule is not drawn as an ordinary waiting row:\n%s", screen)
 	}

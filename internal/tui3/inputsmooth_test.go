@@ -4,22 +4,25 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE INPUT PATH, AND WHAT IT IS ALLOWED TO COST.
 //
-// Three things arrive in BURSTS on this surface and only one of them carries
-// three bursts' worth of meaning: a pointer sends a message per cell it crosses,
-// a terminal being dragged sends a size per step of the drag, and a paste
-// arrives as one message holding what a person spent an afternoon producing.
-// Every one of them used to pay for the whole transcript, or for the whole
-// draft, per message — which is why a session that felt instant on a laptop felt
-// like syrup over a link with a hundred milliseconds in it.
+// Four things arrive in BURSTS on this surface and only one of them carries four
+// bursts' worth of meaning: a pointer sends a message per cell it crosses, a
+// terminal being dragged sends a size per step of the drag, a paste arrives as
+// one message holding what a person spent an afternoon producing, and a provider
+// streaming a reply sends a hundred to two hundred text deltas a second. Every
+// one of them used to pay for the whole transcript, or for the whole draft, per
+// message — which is why a session that felt instant on a laptop felt like syrup
+// over a link with a hundred milliseconds in it.
 //
 // These tests state the ceilings rather than the timings. A ceiling holds on a
 // loaded CI box and a stopwatch does not.
@@ -59,7 +62,15 @@ func stales(a *app) []int {
 // A POINTER THAT MOVED WITHOUT CHANGING WHAT IT IS OVER HAS NOT MOVED, as far
 // as this surface is concerned. Two cells of the same tool row are the same
 // answer, and the second one must leave nothing behind: no stale entry, no
-// dirty flag, no command, and so no frame.
+// dirty flag, and so no frame.
+//
+// THE SECOND MOTION IS THE ONE THAT ASKS FOR THE POINTER'S OWN CLOCK, and that
+// is the whole of what the fold added here (coalesce.go): a motion arriving
+// after another motion is a SWEEP, so it is kept rather than answered, and one
+// [pointerMsg] is asked for to answer it with. That wakeup is not a frame — it
+// spends the fold and stops — which is why the claim this test exists to make
+// survives it: a pointer crossing a row it is already on still costs no layout,
+// no stale row, and nothing on screen.
 func TestPointerMotionOverTheSameRowLeavesNothingBehind(t *testing.T) {
 	a := hoverApp(t)
 	toolY := screenRowOf(t, a, func(r row) bool { return r.hit == hitTool })
@@ -70,9 +81,11 @@ func TestPointerMotionOverTheSameRowLeavesNothingBehind(t *testing.T) {
 	}
 	settle(a)
 
-	_, cmd := a.Update(tea.MouseMotionMsg{X: 4, Y: toolY})
-	if cmd != nil {
-		t.Fatal("a motion that changed nothing scheduled a command")
+	// The fold takes it and answers it at the frame, which is where the claim is
+	// checked: the whole round trip must leave the surface exactly as it was.
+	drive(t, a, tea.MouseMotionMsg{X: 4, Y: toolY})
+	if a.ptr.have {
+		t.Fatal("the pointer's fold is still holding a position after it settled")
 	}
 	if a.dirty {
 		t.Fatal("a motion that changed nothing asked for a frame")
@@ -208,26 +221,35 @@ func bigPaste(lines int) string {
 	return strings.Repeat("goroutine 42 [running]: main.step(0x1400, 0x2)\n", lines)
 }
 
-// A PASTE IS ONE MESSAGE, ONE EDIT AND ONE FRAME, however long it is. The
-// bracket coalesces it (app.go), the box shows the six rows it can, and nothing
-// about its length reaches the transcript.
-func TestALargePasteIsOneEditAndOneFrame(t *testing.T) {
+// A PASTE IS ONE MESSAGE, ONE CHIP AND NO LAYOUT AT ALL, however long it is. The
+// bracket coalesces it (app.go), the box shows its compact token, and nothing
+// about the held document's length reaches the transcript.
+//
+// NO LAYOUT AT ALL is the stronger ceiling this wave earned. Filling the box
+// changes the CHROME and the chrome is rebuilt every frame anyway; the laid-out
+// transcript underneath it cannot have changed, so [app.edited] no longer throws
+// it away (draft.go states the law). The frame after the paste therefore draws
+// the rows it already had.
+func TestALargePasteIsOneEditAndNoLayout(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.frame()
 	a.builds = 0
 	paste := bigPaste(4000)
 
 	drive(t, a, tea.PasteMsg{Content: paste})
-	if got, want := len(a.input.value), len([]rune(paste)); got != want {
-		t.Fatalf("the draft holds %d runes of a %d-rune paste", got, want)
+	if got, want := a.input.String(), pasteToken(1, pasteLineCount(paste))+" "; got != want {
+		t.Fatalf("the draft holds %q, want the one compact token %q", got, want)
+	}
+	if len(a.pastes) != 1 || a.pastes[0].text != paste {
+		t.Fatal("the compact token did not hold the complete paste")
 	}
 	if a.builds != 0 {
 		t.Fatalf("the paste laid the transcript out %d times before it was drawn", a.builds)
 	}
 
 	a.frame()
-	if a.builds != 1 {
-		t.Fatalf("the frame after the paste built %d layouts, want one", a.builds)
+	if a.builds != 0 {
+		t.Fatalf("the frame after the paste built %d layouts, want none", a.builds)
 	}
 	block, _, _ := a.inputBlock(a.width - len(inputPad))
 	if len(block) > draftRows {
@@ -282,17 +304,32 @@ func framePerPaste(t *testing.T, paste string) float64 {
 // — the whole draft wrapped, the caret found by scanning it — kept here as the
 // ORACLE for the windowed version. A faster answer to a question about what a
 // person sees is worth nothing unless it is the same answer.
+//
+// It fits by CELLS, as the box does: the oracle's claim is that windowing the
+// wrap changes nothing about it, and an oracle measuring a different unit would
+// be asserting the opposite.
 func refWrap(value []rune, room int) []segment {
 	var out []segment
 	line := 0
 	flush := func(end int) {
 		for line < end {
-			if end-line <= room {
+			cut, width := line, 0
+			for cut < end {
+				w := ansi.StringWidth(string(value[cut]))
+				if width+w > room {
+					break
+				}
+				width += w
+				cut++
+			}
+			if cut >= end {
 				out = append(out, segment{from: line, to: end})
 				line = end
 				return
 			}
-			cut := line + room
+			if cut == line {
+				cut = line + 1
+			}
 			for at := cut; at > line; at-- {
 				if value[at-1] == ' ' {
 					cut = at
@@ -322,7 +359,8 @@ func refCaret(e *editor, segments []segment, room int) int {
 	for i, s := range segments {
 		if e.cursor >= s.from && e.cursor <= s.to {
 			row = i
-			if e.cursor == s.to && e.cursor-s.from >= room && i+1 < len(segments) {
+			full := ansi.StringWidth(string(e.value[s.from:e.cursor])) >= room
+			if e.cursor == s.to && full && i+1 < len(segments) {
 				continue
 			}
 			break
@@ -438,5 +476,160 @@ func BenchmarkResizeStep(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		a.Update(tea.WindowSizeMsg{Width: 90 + i%20, Height: 40})
+	}
+}
+
+// ── the stream ──────────────────────────────────────────────────────────────
+//
+// The fourth burst, and the loudest: a provider sends a hundred to two hundred
+// text deltas a second and bubbletea builds a frame per message. [waitEvent]
+// folds a run that is ALREADY QUEUED into one message, by internal/session's own
+// rule about which kinds are exactly their texts joined.
+
+// A RUN OF DELTAS ALREADY QUEUED IS ONE MESSAGE.
+func TestAQueuedRunOfDeltasArrivesAsOneMessage(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	for _, part := range []string{"the answer ", "is a sentence ", "in three parts."} {
+		ch <- text(session.EventTextDelta, part)
+	}
+	msg, ok := waitEvent(ch, 7)().(streamEventMsg)
+	if !ok {
+		t.Fatalf("the wait answered %T, want a stream event", msg)
+	}
+	if msg.gen != 7 {
+		t.Fatalf("the fold came back on generation %d, want 7", msg.gen)
+	}
+	if msg.then != nil {
+		t.Fatalf("a run with nothing behind it carried a stopper: %+v", *msg.then)
+	}
+	if want := "the answer is a sentence in three parts."; msg.ev.Text != want {
+		t.Fatalf("the fold reads %q, want %q", msg.ev.Text, want)
+	}
+	if len(ch) != 0 {
+		t.Fatalf("the drain left %d events on the channel", len(ch))
+	}
+}
+
+// AND THE EVENT THAT ENDED IT COMES WITH IT. The drain has to take an event off
+// the channel to find out whether it folds, and a channel cannot be put back —
+// so the one that stopped the run rides beside the run.
+func TestTheEventThatEndsAFoldTravelsWithIt(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventTextDelta, "reading it ")
+	ch <- text(session.EventTextDelta, "now")
+	ch <- toolBegin("read", "internal/tui3/app.go")
+	msg := waitEvent(ch, 1)().(streamEventMsg)
+	if msg.ev.Text != "reading it now" {
+		t.Fatalf("the fold reads %q", msg.ev.Text)
+	}
+	if msg.then == nil {
+		t.Fatal("the call that ended the fold was dropped")
+	}
+	if msg.then.Kind != session.EventToolBegin || msg.then.Tool != "read" {
+		t.Fatalf("the stopper is %+v, want the read that ended the run", *msg.then)
+	}
+}
+
+// AND TWO KINDS THAT ARE BOTH FOLDABLE STILL DO NOT FOLD INTO EACH OTHER:
+// reasoning and a reply are two blocks, and joining them would put the model's
+// thinking inside its answer.
+func TestReasoningDoesNotFoldIntoAReply(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventReasoning, "checking the loop")
+	ch <- text(session.EventTextDelta, "it parses.")
+	msg := waitEvent(ch, 1)().(streamEventMsg)
+	if msg.ev.Kind != session.EventReasoning || msg.ev.Text != "checking the loop" {
+		t.Fatalf("the reasoning event was folded into something else: %+v", msg.ev)
+	}
+	if msg.then == nil || msg.then.Kind != session.EventTextDelta {
+		t.Fatalf("the reply that ended the run is %+v", msg.then)
+	}
+}
+
+// AND A FOLDED RUN DRAWS WHAT THE DELTAS WOULD HAVE DRAWN. This is the whole
+// claim the fold rests on: [app.appendText] concatenates, so a joined text and
+// the texts joined are the same transcript.
+func TestAFoldedRunDrawsWhatTheDeltasWouldHave(t *testing.T) {
+	parts := []string{"## the answer\n\n", "it parses, ", "and the loop ", "is where it lands.\n"}
+
+	apart := newTestApp(&fakeAgent{model: "m"})
+	for _, part := range parts {
+		apart.apply(text(session.EventTextDelta, part))
+	}
+	apart.frame()
+
+	folded := newTestApp(&fakeAgent{model: "m"})
+	folded.apply(text(session.EventTextDelta, strings.Join(parts, "")))
+	folded.frame()
+
+	if got, want := strings.Join(plainRows(folded), "\n"), strings.Join(plainRows(apart), "\n"); got != want {
+		t.Fatalf("the folded run drew a different transcript:\nfolded:\n%s\n\napart:\n%s", got, want)
+	}
+}
+
+// AND A QUIET STREAM IS NOT MADE TO WAIT. The drain takes what is queued and
+// stops the instant it would block, so one event on its own is delivered as
+// promptly as it always was.
+func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventTextDelta, "one word")
+	done := make(chan tea.Msg, 1)
+	go func() { done <- waitEvent(ch, 1)() }()
+	select {
+	case msg := <-done:
+		if msg.(streamEventMsg).ev.Text != "one word" {
+			t.Fatalf("the lone delta came back as %+v", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the wait held a lone delta back looking for more")
+	}
+}
+
+const scrollAllocationCeiling = 220
+
+// THE CACHE KEY INCLUDES THE INK THAT PAINTED IT. Width and content can stay
+// unchanged while a terminal reports a different ground; a row keyed only by
+// wrap would keep yesterday's escape sequences forever in old scrollback.
+func TestSettledEntryCacheIsKeyedByInkState(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = []entry{{kind: entryAssistant, text: "settled", settled: true}}
+	a.entryRows(a.conversation(), 0, 60)
+	before := a.renders
+	a.inkState++
+	a.entryRows(a.conversation(), 0, 60)
+	if a.renders != before+1 {
+		t.Fatalf("a new ink state caused %d renders, want one", a.renders-before)
+	}
+}
+
+func TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 42
+	a.entries = a.entries[:0]
+	for i := 0; i < 4000; i++ {
+		a.entries = append(a.entries, entry{kind: entryUser, text: fmt.Sprintf("line %04d", i), turn: i})
+	}
+	a.touch()
+	a.frame()
+	a.stick = false
+	a.offset = len(a.visible(a.bodyWidth())) - a.viewHeight()
+	page := a.scrollPage()
+	renders := a.renders
+	up := true
+	allocs := testing.AllocsPerRun(100, func() {
+		if up {
+			a.scroll(-page)
+		} else {
+			a.scroll(page)
+		}
+		up = !up
+		a.frame()
+	})
+	t.Logf("one-screen scroll: %.0f allocations, %d unchanged-entry renders", allocs, a.renders-renders)
+	if allocs > scrollAllocationCeiling {
+		t.Fatalf("one-screen scroll allocated %.0f times, ceiling %d", allocs, scrollAllocationCeiling)
+	}
+	if got := a.renders - renders; got != 0 {
+		t.Fatalf("one-screen scrolling re-rendered %d unchanged entries, want zero", got)
 	}
 }

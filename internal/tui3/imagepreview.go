@@ -190,7 +190,26 @@ func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
 // look inside it are two renderings of one file, and one must never be served
 // from the other's slot.
 func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
-	info, err := os.Stat(path)
+	readPath := path
+	if a.rfiles != nil {
+		target := a.remoteTarget(path)
+		if target == "" {
+			return imagePreview{}, false
+		}
+		blob, known := a.rfiles.ref(target)
+		if !known {
+			return imagePreview{}, false
+		}
+		store, err := a.rfiles.blobStore()
+		if err != nil {
+			return imagePreview{}, false
+		}
+		readPath, err = store.Path(blob.ref)
+		if err != nil {
+			return imagePreview{}, false
+		}
+	}
+	info, err := os.Stat(readPath)
 	if err != nil || info.IsDir() {
 		return imagePreview{}, false
 	}
@@ -200,7 +219,7 @@ func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
 	if hit, known := a.previews[key]; known {
 		return hit, hit.ok
 	}
-	preview := renderPicture(a.pal, path, int(info.Size()), cols, maxRows)
+	preview := renderPicture(a.pal, readPath, int(info.Size()), cols, maxRows)
 	if len(a.previews) >= pictureCacheMax {
 		a.previews = nil
 	}
@@ -590,7 +609,7 @@ var pictureSuffixes = map[string]bool{
 // The relative pass still runs, second, because it is right for every ordinary
 // conversation row and is all a `view_image` call has.
 func (a *app) picturePath(e *entry) (string, bool) {
-	if e == nil || (e.tool != "generate_image" && e.tool != "view_image") {
+	if e == nil || !picturesAFile(e.tool) {
 		return "", false
 	}
 	candidates := []string{argString(argsOf(e.detail.Args), "path")}
@@ -614,6 +633,17 @@ func (a *app) picturePath(e *entry) (string, bool) {
 		return "", false
 	}
 	return filepath.Clean(filepath.Join(a.workspace, relative)), true
+}
+
+// picturesAFile names the two tools whose expansion may draw a picture — the one
+// that makes a file and the one that looks at one.
+//
+// It is a predicate rather than two comparisons repeated because it is asked from
+// two directions: this file asks it to find the path, and toolview.go's
+// [toolBlock] asks it to keep its hands off a block whose freshness is a fact
+// about a FILE rather than about the call's arguments.
+func picturesAFile(tool string) bool {
+	return tool == "generate_image" || tool == "view_image"
 }
 
 // generatedPicturePath reads the file out of `generate_image`'s result, whose

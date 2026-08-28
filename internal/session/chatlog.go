@@ -86,7 +86,11 @@ type chatJournal struct {
 	store     *store.Store
 	thread    string
 	workspace string
-	place     Place
+	// place is the DROPPINGS home ([Config.droppingsPlace]) and not necessarily
+	// this agent's own folder, because the only thing done with it is spilling an
+	// over-long message's bytes through [writeStub] — a dropping, which belongs
+	// with the family rather than in a borrowed workspace (landing.go).
+	place Place
 
 	mu      sync.Mutex
 	cond    *sync.Cond

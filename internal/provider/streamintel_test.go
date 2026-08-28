@@ -36,14 +36,13 @@ func streamClientForTest(t *testing.T, handler http.Handler) *Client {
 
 // ── reasoning text on the wire ──────────────────────────────────────────────
 
-// The two names reasoning travels under are one vocabulary by the time it
-// leaves here: OpenRouter spells it "reasoning", the DeepSeek family spells it
-// "reasoning_content", and both arrive as StreamReasoning deltas in order.
+// The names reasoning travels under share an event kind by the time they leave
+// here, while each event retains the field spelling needed for replay.
 //
 // StreamThinking is unchanged — still exactly one per run — because a surface
 // that only draws "thinking…" must keep working without knowing this exists.
 func TestStreamedReasoningArrivesAsTextInOrderUnderBothNames(t *testing.T) {
-	for _, field := range []string{"reasoning", "reasoning_content"} {
+	for _, field := range []string{"reasoning", "reasoning_content", "reasoning_text"} {
 		t.Run(field, func(t *testing.T) {
 			client := streamClientForTest(t, sseHandler(
 				`{"id":"one","choices":[{"index":0,"delta":{"role":"assistant","`+field+`":"the file "}}]}`,
@@ -66,6 +65,9 @@ func TestStreamedReasoningArrivesAsTextInOrderUnderBothNames(t *testing.T) {
 				switch event.Kind {
 				case StreamReasoning:
 					reasoning = append(reasoning, event.Delta)
+					if event.ReasoningField != field {
+						t.Fatalf("reasoning field = %q, want %q", event.ReasoningField, field)
+					}
 				case StreamThinking:
 					thinking++
 				}
@@ -112,6 +114,26 @@ func TestStreamWithoutReasoningAnnouncesNone(t *testing.T) {
 		if event.Kind == StreamReasoning || event.Kind == StreamThinking {
 			t.Fatalf("a plain text answer produced %v", event.Kind)
 		}
+	}
+}
+
+func TestStreamedReasoningDetailsLeaveTheDecoderByteIdentical(t *testing.T) {
+	want := json.RawMessage(`[{"type":"reasoning.text","data":{"scale":1e3}}]`)
+	client := streamClientForTest(t, sseHandler(
+		`{"choices":[{"index":0,"delta":{"reasoning_content":"thinking","reasoning_details":`+string(want)+`}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}`,
+	))
+	var got json.RawMessage
+	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
+		if event.Kind == StreamReasoning {
+			got = append(got[:0], event.ReasoningDetails...)
+		}
+	})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("think")); err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("reasoning_details = %s, want byte-identical %s", got, want)
 	}
 }
 

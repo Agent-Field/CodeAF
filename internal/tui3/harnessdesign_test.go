@@ -290,6 +290,64 @@ func TestAskingToChangeADesignNeverDropsIt(t *testing.T) {
 	}
 }
 
+// AND IT ANSWERS NOTHING WHILE SOMEBODY IS TYPING, which is the guard it was
+// missing.
+//
+// `enter`, `e` and `esc` are the three keys a design card reads, and two of them
+// are keys a person writes with. The card was dispatched with no guard at all
+// (input.go's key order claimed it had every guard `x` has, and it had none), so
+// a bare `e` in the middle of "even the tests pass" walked into the design's
+// room with the sentence still in the box, and on home — where every printable
+// key belongs to the box a conversation starts in — the same three keys never
+// reached it.
+func TestADesignCardAnswersNothingWhileTheKeyIsAimedSomewhereElse(t *testing.T) {
+	// A sentence in the box: the key types, and the card is left standing.
+	agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(agent)
+	p := designedPage()
+	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+	a.sel = len(a.entries) - 1
+	a.input.setText("even th")
+	drive(t, a, key("e"))
+	if got := a.entries[a.sel].harness.state; got != "" {
+		t.Fatalf("a letter typed mid-sentence answered the card: %q", got)
+	}
+	if got := a.input.String(); got != "even the" {
+		t.Fatalf("the letter did not reach the draft: %q", got)
+	}
+	if a.room != nil {
+		t.Fatalf("a letter typed mid-sentence opened a room: %+v", a.room)
+	}
+
+	// And on home the three keys are home's, whichever of them it is.
+	for _, name := range []string{"e", "enter", "esc"} {
+		agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+		a := newTestApp(agent)
+		p := designedPage()
+		a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+		a.sel = len(a.entries) - 1
+		a.openHome()
+		drive(t, a, key(name))
+		if got := a.entries[a.sel].harness.state; got != "" {
+			t.Fatalf("%s on home answered the card underneath it: %q", name, got)
+		}
+		if len(agent.answers) != 0 {
+			t.Fatalf("%s on home resolved the design: %+v", name, agent.answers)
+		}
+	}
+	// The letter is the one that proves home GOT it, rather than that nobody did.
+	agent = &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a = newTestApp(agent)
+	p = designedPage()
+	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+	a.sel = len(a.entries) - 1
+	a.openHome()
+	drive(t, a, key("e"))
+	if got := a.home.box.String(); got != "e" {
+		t.Fatalf("the letter reached home's box as %q, want %q", got, "e")
+	}
+}
+
 // designingRoomAgent is a designer that also has rooms, which is the shape a
 // real session has: `e` walks into the design's room, and a surface whose agent
 // had never heard of one could not be asked to.

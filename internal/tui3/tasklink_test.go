@@ -209,20 +209,22 @@ func TestClickingATaskLinkOpensThatNodesRoom(t *testing.T) {
 		t.Fatalf("the links point at %d and %d", r.links[0].id, r.links[1].id)
 	}
 
+	// A press in the PROSE beside a link is not a link press: it falls through
+	// to the row's own answer. It is asked first, against the frame the columns
+	// were measured on — a room opening below would redraw the page and make
+	// the recorded geometry a claim about somebody else's rows.
+	drive(t, a, tea.MouseClickMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
+	if a.roomOpen() {
+		t.Fatal("a click on the sentence between two links was swallowed by one of them")
+	}
+
 	// The SECOND link opens the second node — the columns are what routes it, so
 	// pressing the wrong ones would open the wrong room.
 	drive(t, a, tea.MouseClickMsg{X: r.links[1].span.from + 1, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: r.links[1].span.from + 1, Y: y, Button: tea.MouseLeft})
 	if !a.roomOpen() || a.room.id != 8 {
 		t.Fatalf("the second link did not open node 8: open=%v", a.roomOpen())
-	}
-
-	// A press in the PROSE beside a link is not a link press: it falls through to
-	// the row's own answer, which for a paragraph on a page is the way out.
-	drive(t, a, tea.MouseClickMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
-	if a.roomOpen() {
-		t.Fatal("a click on the sentence between two links was swallowed by one of them")
 	}
 }
 

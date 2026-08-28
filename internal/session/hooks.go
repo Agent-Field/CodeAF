@@ -3,14 +3,12 @@ package session
 // The control plane: the four moments in a turn where the harness — rather than
 // the model — gets a say, each one named.
 //
-// Nothing here is new behavior. The stub pass, the approval gate, the guardian
-// and the loop detector already existed and already ran at exactly these four
-// moments; what they did not have was a NAME for the moment, so each one was
-// wired into loop.go as a line of its own. That is fine for four. It is not fine
-// for the fifth, and every guardrail, recovery move and context trick this
-// harness grows next is a fifth: without a seam they land as more lines in the
-// turn, each with its own ordering argument, none of them testable apart from a
-// whole turn.
+// The seam began as names around existing behavior. The turn-output fold is the
+// first new context citizen to use it: its end-of-turn pass shares this chain,
+// while its per-step pass is called alone because the older cross-turn stub must
+// remain an end-of-turn operation (loop.go). Every guardrail, recovery move and
+// context trick this harness grows next otherwise lands as another line in the
+// turn with its own ordering argument, testable only through a whole turn.
 //
 // ── THE FOUR, IN HARNESS-R1'S OWN WORDS ──
 //
@@ -30,7 +28,7 @@ package session
 // to adopt the naming rather than invent one:
 //
 //	episode-init   the turn's loop window (looped.go) and change ledger (recovery.go)
-//	pre-decision   the tool-output stub pass (stub.go)
+//	pre-decision   the tool-output stub passes (stub.go, turnfold.go)
 //	pre-action     the approval gate, and the guardian inside it (consent.go, guardian.go)
 //	post-feedback  the loop detector's nudge and its recovery escalation (looped.go, recovery.go)
 //
@@ -56,9 +54,10 @@ package session
 // A hook is an ASIDE, with one exception. episode-init, pre-decision and
 // post-feedback may not fail a turn and have no way to say so: they return
 // nothing, and a panic in one is a bug in this package, not a turn the person
-// loses. pre-action is the exception and the reason the seam is worth having —
-// it is the one hook that may STOP something, and it says so in its signature by
-// handing back the refusal the model will read.
+// loses. pre-action is the exception inside the plane and may STOP one call.
+// Post-feedback may leave a terminal observation on the episode, but loop.go is
+// the only owner allowed to spend it and end the turn because it owns the usage,
+// request and checkpoint meter that a governed hand-off requires.
 
 import (
 	"context"
@@ -85,11 +84,13 @@ type episodeInitHook interface {
 // guidance/constraints before the model decides".
 //
 // It runs at the boundary where the next request's context is settled and the
-// model has not yet been asked anything — which for this session is the end of a
-// completed turn, where the stub pass rewrites old heavy results into pointers
-// before the compaction check weighs what remains (stub.go's own ordering
-// argument). Anything that shapes WHAT THE MODEL WILL SEE belongs here: retrieved
-// lessons, injected constraints, a memory read.
+// model has not yet been asked anything. The whole chain runs at the end of a
+// completed turn, where old heavy results and old current-turn results become
+// pointers before the compaction check weighs what remains. The current-turn
+// fold also runs alone at tool-step boundaries because its bound applies inside
+// a turn while the cross-turn stub's cache bargain does not. Anything that
+// shapes WHAT THE MODEL WILL SEE belongs here: retrieved lessons, injected
+// constraints, a memory read.
 type preDecisionHook interface {
 	Name() string
 	PreDecision(ctx context.Context, ep *episode)
@@ -126,14 +127,15 @@ type preActionHook interface {
 // before the next request is assembled — the one moment a note can ride into the
 // next request the way a person's steering does (looped.go).
 //
-// It sees the calls and their results in call order, paired by index. It sees
-// nothing else on purpose: a detector that read the whole transcript would be a
-// second model's worth of judgement about a turn, and the deterministic stuck
-// signals are the cheap half of recovery that works without one
-// (PMCoder, https://arxiv.org/abs/2608.06811).
+// It sees the calls and their results in call order, paired by index, plus the
+// one batch-level fact of whether the assistant message carried visible text.
+// It sees nothing else on purpose: a detector that read the whole transcript
+// would be a second model's worth of judgement about a turn, and the
+// deterministic stuck signals are the cheap half of recovery that works
+// without one (PMCoder, https://arxiv.org/abs/2608.06811).
 type postFeedbackHook interface {
 	Name() string
-	PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult)
+	PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool)
 }
 
 // ── the registry ────────────────────────────────────────────────────────────
@@ -171,8 +173,8 @@ func (p *controlPlane) register(hook any) {
 	}
 }
 
-// controlPlaneFor builds the session's plane: the four mechanisms that existed
-// before this file, each now the first citizen of its own hook.
+// controlPlaneFor builds the session's plane: the original four mechanisms and
+// the current-turn fold, each placed at the seam whose timing it needs.
 //
 // THE REGISTRATION ORDER IS THE LAW, and one order satisfies both lists that
 // care about it:
@@ -198,6 +200,7 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	plane.register(&changeLedger{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
+	plane.register(turnFoldPass{agent: a})
 	// The error→fix sidecar hangs one more piece of turn state (fixrecall.go).
 	// It is registered LAST and its position carries no argument, because
 	// episode-init is the one hook whose order cannot matter: every citizen there
@@ -208,6 +211,29 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// run) is one slice length away from being where it was before this
 	// citizen existed (orchestrate.go).
 	plane.register(writeGuard{agent: a})
+	// AND WHOSE TREE THIS IS, which is the same shape again and a different
+	// question: not which files this agent may touch, but whether somebody else
+	// is working in the directory they are in (treehold.go). It is registered
+	// AFTER the scope because the scope is about the writer and this is about
+	// everybody else — a call the writer was never allowed to make has nothing
+	// left to say about who is holding the tree — and it is a no-op in every
+	// session that has never groomed a task, which is most of them.
+	plane.register(treeClaimGuard{agent: a})
+	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
+	// and about a different kind of reach: not which files this agent may touch,
+	// but whose work it may pull into its own copy (taskgit.go). It is registered
+	// after the scope because it is the narrower question — a call the scope
+	// already refused is a call there is nothing left to say about — and it is a
+	// no-op on every agent that is not inside a task, which is every conversation.
+	plane.register(taskGitGuard{agent: a})
+	// AND A HAND'S ROUND BUDGET, which is a citizen only on a hand (fork.go). It
+	// is registered conditionally rather than made a no-op on every agent because
+	// post-feedback is on the step boundary of every turn this program runs, and
+	// a citizen that did nothing there would still be a lock taken and a slice
+	// walked on each of them.
+	if a.config.handLeash != nil {
+		plane.register(a.config.handLeash)
+	}
 	return plane
 }
 
@@ -224,9 +250,19 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 type episode struct {
 	agent *Agent
 	plane *controlPlane
+	// hub is where a context-shaping pass says what changed to the person who is
+	// watching this turn. It is nil in the small hook tests that have no surface.
+	hub *eventHub
+	// seenThrough is the exclusive end of the transcript the last decision
+	// request carried. A result at or beyond it has not been seen by the model and
+	// may not be folded, however full the turn has become (turnfold.go).
+	seenThrough int
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
+	// loopHandoff is the post-feedback detector's terminal observation. The hook
+	// cannot end a turn; loop.go reads this immediately after the chain returns.
+	loopHandoff bool
 	// changes is what this turn's successful edits and writes touched
 	// (recovery.go), and what a revert would restore.
 	changes *fileLedger
@@ -255,6 +291,19 @@ func (ep *episode) preDecision(ctx context.Context) {
 	}
 }
 
+// decisionBegins stamps the byte-stable horizon immediately before a request is
+// sent. The response and its tool results land after this index, so the next
+// pre-decision pass can distinguish results the model has used from results it
+// has not seen yet without inferring that fact from roles.
+func (ep *episode) decisionBegins() {
+	if ep == nil || ep.agent == nil {
+		return
+	}
+	ep.agent.mu.Lock()
+	ep.seenThrough = len(ep.agent.messages)
+	ep.agent.mu.Unlock()
+}
+
 // preAction runs the pre-action chain and reports the call to run, or the
 // refusal to hand the model. The first veto ends the chain.
 func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
@@ -272,16 +321,16 @@ func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCal
 }
 
 // postFeedback runs the post-feedback chain.
-func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.ToolCall, results []toolResult) {
+func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	if ep == nil {
 		return
 	}
 	for _, hook := range ep.plane.postFeedback {
-		hook.PostFeedback(ctx, ep, hub, calls, results)
+		hook.PostFeedback(ctx, ep, hub, calls, results, visibleText)
 	}
 }
 
-// ── the four legacy citizens ────────────────────────────────────────────────
+// ── the original citizens, and the first new one ────────────────────────────
 
 // stubPass is the tool-output stub (stub.go) as a pre-decision citizen. It is a
 // pure adapter: the pass itself, its guards and its silence are unchanged.
@@ -290,6 +339,18 @@ type stubPass struct{ agent *Agent }
 func (stubPass) Name() string { return "stub" }
 
 func (s stubPass) PreDecision(context.Context, *episode) { s.agent.stubOldOutputs() }
+
+// turnFoldPass bounds one long turn's live tool-output working set. It follows
+// the cross-turn stub pass because old-turn output is always the cheaper prefix
+// to reclaim first; both run before the ordinary compaction check weighs what is
+// left.
+type turnFoldPass struct{ agent *Agent }
+
+func (turnFoldPass) Name() string { return "turn-fold" }
+
+func (f turnFoldPass) PreDecision(_ context.Context, ep *episode) {
+	f.agent.foldTurnOutputs(ep.seenThrough, ep.hub)
+}
 
 // approvalGate is the consent gate (consent.go), with the guardian inside it
 // (guardian.go), as the pre-action citizen. It rewrites nothing — the gate's
@@ -312,6 +373,6 @@ func (loopDetector) Name() string { return "loop" }
 
 func (loopDetector) EpisodeInit(ep *episode) { ep.watch = newLoopWatch() }
 
-func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult) {
-	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results)
+func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
+	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results, visibleText)
 }
