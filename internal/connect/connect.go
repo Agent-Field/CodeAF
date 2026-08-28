@@ -39,13 +39,18 @@ import (
 type ClientCredential struct {
 	ID     string
 	Secret string
+	// Public says the application proves itself with a proof key made for
+	// each connection instead of a secret. For one of these, the id alone is
+	// the whole credential.
+	Public bool
 }
 
-// ok reports whether the pair is complete enough to attempt a connection. A
-// half-filled credential is treated exactly as a missing one, because the only
-// thing it can produce is a failure at the far end of a browser trip.
+// ok reports whether the credential is complete enough to attempt a
+// connection. A half-filled private pair is treated exactly as a missing one,
+// because the only thing it can produce is a failure at the far end of a
+// browser trip.
 func (c ClientCredential) ok() bool {
-	return strings.TrimSpace(c.ID) != "" && strings.TrimSpace(c.Secret) != ""
+	return strings.TrimSpace(c.ID) != "" && (c.Public || strings.TrimSpace(c.Secret) != "")
 }
 
 // The two ways an account is connected, and there are only two.
@@ -84,10 +89,18 @@ type Service struct {
 	// A service connected through the browser leaves it empty: it has no one
 	// address, and THE EMPTINESS LAW says an unknown is empty.
 	Address string
+	// Blank is the plain label for the one fact a browser-connected service
+	// needs before its address is known — "Site", for example. EMPTY IS THE
+	// ORDINARY CASE and means the browser can open without asking anything.
+	Blank string
+	// Answers is the closed list of values Blank may take. EMPTY IS THE
+	// ORDINARY CASE and means there is no address question to answer.
+	Answers []string
 	// KeyAsk is the one instruction a person needs before they can answer the
-	// box, for the handful of services whose answer is not just a key: the
-	// ones whose address carries the person's own workspace, which want the
-	// workspace, a space, and then the key (key.go's [keyPlug.read]).
+	// box, either for the handful of key services whose answer is not just a
+	// key, or for a browser service asking for the one thing its address is
+	// missing. The keyed ones want the workspace, a space, and then the key
+	// (key.go's [keyPlug.read]).
 	//
 	// EMPTY IS THE ORDINARY CASE and it means "a key, and nothing else" — the
 	// box's own placeholder says that much already, and a second line
@@ -362,6 +375,7 @@ func (m *Manager) Disconnect(id string) error {
 	if err := m.store.remove(plug.Service().ID); err != nil {
 		return fmt.Errorf("disconnect %s: %w", plug.Service().Name, err)
 	}
+	forgetTools(plug.Service().ID)
 	return nil
 }
 

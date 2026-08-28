@@ -260,6 +260,7 @@ var settingReaders = map[string]string{
 	// reads one of them alone.
 	KeyGoogleOAuthClient: "GoogleOAuthClientAt",
 	KeyGoogleOAuthSecret: "GoogleOAuthClientAt",
+	KeySlackOAuthClient:  "SlackOAuthClientAt",
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the
 	// persisted half through ctxbudget.Configure.

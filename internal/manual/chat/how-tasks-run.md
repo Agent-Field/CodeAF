@@ -523,9 +523,10 @@ under everything else aforge may leave in a checkout.
 
 **It learned something.** A read-only call — `read`, `read_document`, `ls`, `grep`, `find`,
 `web_search`, `web_fetch`, `jobs`, `recall`, `view_image`, `manual`, `tasks`, `settings`,
-`list_harnesses`, `services`, `gmail_read`, `gmail_search`, `calendar_list` — or a `bash`,
-**whose answer was more new than old**. A failed one still counts as learning: finding out
-that something does not work is finding something out.
+`list_harnesses`, `services`, `gmail_read`, `gmail_search`, `calendar_list`, `slack_search`,
+`slack_read_thread`, `slack_list_channels` — or a `bash`, **whose answer was more new than
+old**. A failed one still counts as learning: finding out that something does not work is
+finding something out.
 
 "Whose answer was more new than old" is measured **line by line, not result by result**.
 aforge remembers the lines a task has already been shown, and counts how many of a

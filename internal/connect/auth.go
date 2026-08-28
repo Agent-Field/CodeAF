@@ -3,8 +3,12 @@ package connect
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/int128/oauth2cli"
 	"golang.org/x/oauth2"
@@ -20,6 +24,21 @@ import (
 // package working for services that allow any loopback port — and keeps a test
 // off a fixed port that another process on the machine may already hold.
 var localServerAddresses = []string{"127.0.0.1:8765", "127.0.0.1:18765", "127.0.0.1:0"}
+
+// doored is a plug whose vendor cannot send a browser back to a loopback
+// address directly. Door names the vendor-registered HTTPS address for one
+// of the fixed loopback ports; that address answers by sending the browser
+// on to http://localhost:<port>/ with the query untouched, so the trip
+// still ends on this machine and nothing about it is stored anywhere else.
+type doored interface{ Door(port int) string }
+
+// refusing is a plug whose vendor answers a refused exchange with a success
+// status and a sentence inside the body. The transport it returns turns that
+// into the refusal the exchange machinery understands, so the person reads
+// the vendor's own word rather than "missing access_token".
+type refusing interface {
+	Transport(base http.RoundTripper) http.RoundTripper
+}
 
 // successPage is what the person sees in the tab they were sent to. It says the
 // one thing they need — that they are done and can go back to the terminal —
@@ -95,7 +114,10 @@ type flowResult struct {
 //
 // The browser is NOT opened here. Whoever owns the screen decides how the
 // address reaches the person.
-func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
+//
+// answer is the one thing a tool server's address is missing. It is empty for
+// every ordinary browser service and ignored by a tool server with no blank.
+func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, error) {
 	plug, err := m.plug(id)
 	if err != nil {
 		return nil, err
@@ -105,7 +127,7 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 	// it where its sign-in is, rather than from addresses written down here.
 	// The trip that follows is the same trip. See mcp_auth.go.
 	if server, ok := plug.(*toolServer); ok {
-		return m.beginToolServer(ctx, server)
+		return m.beginToolServer(ctx, server, answer)
 	}
 	if service.Auth == AuthKey {
 		// There is nothing to open. Saying so here rather than starting a
@@ -132,6 +154,31 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 		LocalServerSuccessHTML: successPage,
 		LocalServerReadyChan:   nil,
 	}
+	var doorURL string
+	if door, doored := plug.(doored); doored {
+		// A DOORED PLUG MAY USE ONLY THE TWO ADDRESSES ITS VENDOR KNOWS.
+		// Probing first chooses one before the listener starts, and the free-port
+		// rung is never handed to a vendor that cannot return to it.
+		for _, address := range localServerAddresses[:2] {
+			listener, listenErr := net.Listen("tcp", address)
+			if listenErr != nil {
+				continue
+			}
+			_ = listener.Close()
+			_, rawPort, splitErr := net.SplitHostPort(address)
+			port, portErr := strconv.Atoi(rawPort)
+			if splitErr != nil || portErr != nil {
+				continue
+			}
+			config.OAuth2Config.RedirectURL = door.Door(port)
+			config.LocalServerBindAddress = []string{address}
+			doorURL = fmt.Sprintf("http://localhost:%d/", port)
+			break
+		}
+		if doorURL == "" {
+			return nil, fmt.Errorf("connect %s: both of the addresses %s can send you back to are busy on this machine — finish or cancel the other sign-in and try again", service.Name, service.Name)
+		}
+	}
 	ready := make(chan string, 1)
 	config.LocalServerReadyChan = ready
 
@@ -139,8 +186,15 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 	flow := &Flow{
 		manager: m,
 		plug:    plug,
+		url:     doorURL,
 		cancel:  cancel,
 		done:    make(chan flowResult, 1),
+	}
+	if refusal, refuses := plug.(refusing); refuses {
+		runContext = context.WithValue(runContext, oauth2.HTTPClient, &http.Client{
+			Transport: refusal.Transport(http.DefaultTransport),
+			Timeout:   clientTimeout,
+		})
 	}
 	go func() {
 		keys, err := oauth2cli.GetToken(runContext, config)
@@ -151,7 +205,10 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 	}()
 
 	select {
-	case flow.url = <-ready:
+	case address := <-ready:
+		if flow.url == "" {
+			flow.url = address
+		}
 		return flow, nil
 	case result := <-flow.done:
 		// The listener never came up, so there is nothing to wait on and
@@ -243,12 +300,16 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 // The service says so itself in the answer to the exchange, and its answer wins:
 // a person may untick a box on the permissions screen, and a connection recorded
 // as carrying something it does not carry is worse than no record at all.
+// RFC-shaped answers separate permissions with spaces; Slack separates them
+// with commas, so both spellings are read here and empty fields are dropped.
 // A service that says nothing leaves the ASK as the record, which is the closest
 // true statement available — it is what the sign-in that just succeeded was for.
 func granted(keys *oauth2.Token, asked []string) []string {
 	if keys != nil {
 		if raw, ok := keys.Extra("scope").(string); ok {
-			if given := strings.Fields(raw); len(given) > 0 {
+			if given := strings.FieldsFunc(raw, func(r rune) bool {
+				return r == ',' || unicode.IsSpace(r)
+			}); len(given) > 0 {
 				return given
 			}
 		}

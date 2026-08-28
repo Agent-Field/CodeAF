@@ -1796,6 +1796,9 @@ func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
 		{"gmail_search", `{"query":"invoice"}`, "3 threads"},
 		{"gmail_read", `{"id":"abc"}`, "Dear customer"},
 		{"calendar_list", `{}`, "standup 09:30"},
+		{"slack_search", `{"query":"launch"}`, "#launch · alice · 2026-08-01 09:00\nwe ship Friday"},
+		{"slack_read_thread", `{"channel":"C123","ts":"1710000000.100"}`, "alice · 2026-03-09 16:26\nlaunch is go"},
+		{"slack_list_channels", `{"filter":"launch"}`, "#launch · C123 · 4 members"},
 		{"bash", `{"command":"go test ./..."}`, "ok  github.com/x  0.4s"},
 		{"bash", `{"command":"git log -1"}`, "commit 36e058e9"},
 	} {

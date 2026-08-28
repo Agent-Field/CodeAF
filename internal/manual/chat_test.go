@@ -3,6 +3,8 @@ package manual
 import (
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -96,6 +98,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it ask permission before running that", "permissions"},
 		{"what does always mean when I press a", "permissions"},
 		{"how do I connect my google account", "accounts"},
+		{"how do I connect my Slack workspace", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
@@ -1134,6 +1137,26 @@ func TestTheTwoCorporaShareNoPageName(t *testing.T) {
 	for _, name := range Chat().Pages() {
 		if resident[name] {
 			t.Errorf("page %q exists in both the resident and chat manuals", name)
+		}
+	}
+}
+
+// THE FLOOR AND THE PAGE ABOUT IT AGREE. internal/approval names the tools a
+// blanket allow cannot switch off, and the permissions page tells the person
+// the same names. A fourth entry in that table without its sentence here would
+// leave the page telling somebody a message will go out silently when it will
+// not — the one mistake a page about permissions must never make.
+func TestThePermissionsPageNamesEveryToolOnTheFloor(t *testing.T) {
+	page, ok := Chat().Page("permissions")
+	if !ok {
+		t.Fatal("the chat manual has no permissions page")
+	}
+	for _, tool := range []string{"gmail_send", "calendar_create", "slack_send"} {
+		if !approval.AlwaysAsks(tool, nil) {
+			t.Errorf("%s is not on the floor internal/approval keeps", tool)
+		}
+		if !strings.Contains(page, "`"+tool+"`") {
+			t.Errorf("the permissions page does not name %s", tool)
 		}
 	}
 }

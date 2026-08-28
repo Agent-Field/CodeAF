@@ -2095,9 +2095,12 @@ var glossField = map[string]string{
 	// the mailbox search, the message opened (tools_connect.go). calendar_list
 	// has no single argument that says what it is doing — a span is two — so it
 	// is left off and reads as its bare name.
-	"use_service":  "service",
-	"gmail_search": "query",
-	"gmail_read":   "id",
+	"use_service":         "service",
+	"gmail_search":        "query",
+	"gmail_read":          "id",
+	"slack_search":        "query",
+	"slack_read_thread":   "channel",
+	"slack_list_channels": "filter",
 	// The settings read is the row it went to look at, and a call with no key
 	// at all is the whole sheet, which reads honestly as its bare name.
 	"settings": "key",
@@ -2106,7 +2109,7 @@ var glossField = map[string]string{
 // glossFields is [glossField] for the calls where ONE argument is not enough to
 // say what is about to happen.
 //
-// It exists for the two hands that act outside this machine, and it is the
+// It exists for the three hands that act outside this machine, and it is the
 // person's whole view of the question they are being asked: a message is who it
 // is going to and what it says it is about, and an event is what it is called
 // and when. "gmail_send alice@example.com" would be a question about a
@@ -2114,6 +2117,7 @@ var glossField = map[string]string{
 var glossFields = map[string][]string{
 	"gmail_send":      {"to", "subject"},
 	"calendar_create": {"title", "start"},
+	"slack_send":      {"channel", "text"},
 	// A settings change needs BOTH, and this is the one entry here where the
 	// second field is not a nicety. change_setting goes to the person through
 	// the approval gate, and this line is the headline of the card they answer

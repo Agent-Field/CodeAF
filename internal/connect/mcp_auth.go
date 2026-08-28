@@ -286,7 +286,11 @@ func tokenStyle(methods []string) oauth2.AuthStyle {
 // have to think about: THE ASKING HAPPENS BEFORE THE ADDRESS EXISTS. There is no
 // sign-in page to name until the service has been asked where its sign-in is, so
 // this call is on the network for as long as that takes, and ctx bounds it.
-func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer) (*Flow, error) {
+func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer string) (*Flow, error) {
+	answer = strings.TrimSpace(answer)
+	if _, err := plug.at(answer); err != nil {
+		return nil, err
+	}
 	service := plug.service
 	local, err := listener.New(localServerAddresses)
 	if err != nil {
@@ -320,7 +324,7 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer) (*Flow,
 
 	ready := make(chan string, 1)
 	go func() {
-		status, err := m.connectToolServer(runContext, plug, redirect, loopback, ready)
+		status, err := m.connectToolServer(runContext, plug, answer, redirect, loopback, ready)
 		if err != nil {
 			flow.finish(Status{Service: service}, fmt.Errorf("connect %s: %w", service.Name, err))
 			return
@@ -345,11 +349,15 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer) (*Flow,
 
 // connectToolServer is the whole trip, from the first question to the keys on
 // disk. It runs on its own goroutine and reports through [Flow.finish].
-func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, redirect string, loopback *mcpLoopback, ready chan<- string) (Status, error) {
+func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given, redirect string, loopback *mcpLoopback, ready chan<- string) (Status, error) {
+	filled, err := plug.at(given)
+	if err != nil {
+		return Status{}, err
+	}
 	service := plug.service
 	client := &http.Client{Timeout: mcpAskTimeout}
 
-	found, err := discoverSignIn(ctx, client, plug.address)
+	found, err := discoverSignIn(ctx, client, filled)
 	if err != nil {
 		return Status{}, err
 	}
@@ -358,8 +366,8 @@ func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, redir
 	// that reconnecting costs the service nothing and leaves no trail of
 	// abandoned registrations in somebody's console.
 	record, held := m.registrations().get(service.ID)
-	if !held || !record.fits(plug.address, found.issuer, found.resource, redirect) {
-		record, err = introduce(ctx, client, plug, found, redirect)
+	if !held || !record.fits(filled, found.issuer, found.resource, redirect) {
+		record, err = introduce(ctx, client, plug, filled, found, redirect)
 		if err != nil {
 			return Status{}, err
 		}
@@ -413,10 +421,12 @@ func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, redir
 		Auth:   authMCP,
 		Keys:   keys,
 		Scopes: granted(keys, found.scopes),
+		Blank:  given,
 	}
 	if err := m.store.put(service.ID, entry); err != nil {
 		return Status{}, err
 	}
+	forgetTools(service.ID)
 	return Status{Service: service, Connected: true}, nil
 }
 
@@ -442,7 +452,7 @@ func checkIssuer(named string, found signIn) error {
 
 // introduce registers aforge with one sign-in and returns the identity it was
 // issued.
-func introduce(ctx context.Context, client *http.Client, plug *toolServer, found signIn, redirect string) (mcpRegistration, error) {
+func introduce(ctx context.Context, client *http.Client, plug *toolServer, filled string, found signIn, redirect string) (mcpRegistration, error) {
 	if strings.TrimSpace(found.register) == "" {
 		// THE HONEST SENTENCE. This is a fact about the service, it is not
 		// going to change today, and there is nothing here for a person to try
@@ -466,7 +476,7 @@ func introduce(ctx context.Context, client *http.Client, plug *toolServer, found
 		style = tokenStyle([]string{method})
 	}
 	return mcpRegistration{
-		Server:       plug.address,
+		Server:       filled,
 		Issuer:       found.issuer,
 		Resource:     found.resource,
 		ClientID:     answer.ClientID,
