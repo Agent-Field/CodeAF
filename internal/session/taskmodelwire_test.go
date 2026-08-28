@@ -118,8 +118,13 @@ func TestTaskProposalWithoutAModelTakesTheConfiguredOne(t *testing.T) {
 	}
 	// Nothing was asked for, so nothing is said back: a receipt reciting the
 	// default every time is a line nobody reads.
-	if output := toolOutput(t, collected, "propose_task"); strings.Contains(output, " on ") {
-		t.Fatalf("tool result = %q, want no model named for a task that asked for none", output)
+	//
+	// THE FIRST LINE IS WHERE THE MODEL WOULD BE NAMED (`task 1 started on
+	// <model>: <title>`), and the check is bounded to it: the lines under it are
+	// prose about what happens next, and they are free to contain the word "on".
+	output := toolOutput(t, collected, "propose_task")
+	if headline, _, _ := strings.Cut(output, "\n"); strings.Contains(headline, " on ") {
+		t.Fatalf("tool result headline = %q, want no model named for a task that asked for none", headline)
 	}
 }
 

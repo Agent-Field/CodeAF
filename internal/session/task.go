@@ -104,7 +104,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation. Its `where` decides the place. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once, the report later: keep working, never wait. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
+var taskDescription = "Hand self-contained work to a task outside this conversation. Its `where` decides the place. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -505,10 +505,25 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		on = " on " + spec.model
 	}
 	if state == TaskQueued {
-		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, on, spec.title), elsewhere), false, nil
+		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 	}
-	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, on, spec.title), elsewhere), false, nil
+	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 }
+
+// taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
+// sentence because it answers one question: what does the model do now?
+//
+// IT IS HERE BECAUSE A MODEL POLLED FOR WORK IT WAS GOING TO BE TOLD ABOUT. The
+// landing already wakes this session with the node's report (task_run.go's
+// [Agent.reportTaskNode] and [Agent.deliverTaskNote]) — a turn starts for it,
+// with nobody having typed — and a model that does not know this reads "its
+// report arrives here" as something it might have to go and collect. One did:
+// eleven `tasks` calls in a single turn, waiting. So the receipt now says the
+// news comes to it and there is nothing to check, and `tasks` says the same in
+// its own description (tools_tasks.go), and the answer says it a third time when
+// it has not moved (tasklook.go). The three are one fact stated where a model
+// mid-poll will actually meet it.
+const taskHandoffWakeSentence = "You are told the moment it lands — its report starts a turn here on its own — so there is nothing to check and nothing to poll: carry on with other work, or end your turn."
 
 // dependencyRefusal is the sentence a doomed depends_on gets back: which ids
 // are wrong, what they probably were instead, and what to do — in the model's

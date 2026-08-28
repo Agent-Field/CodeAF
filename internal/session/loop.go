@@ -1852,6 +1852,14 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub
 // look at a picture by viewLookWindow (tools_view.go). A new tool that blocks
 // without a bound of its own is the one way left to break this.
 func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+	// THE TURN RIDES INTO EVERY TOOL FROM HERE (tasklook.go). A hand that wants
+	// to know what THIS turn has already been told — `tasks`, which answers the
+	// same list to a model polling for work it will be woken about — has nowhere
+	// else to read it: the episode is a fact about one turn and is deliberately
+	// not held on the Agent, and the context is the one thing already threaded
+	// from the turn down into every Execute.
+	ctx = withEpisode(ctx, ep)
+
 	// THE ARGUMENTS ARE RENDERED ONCE PER CALL, HERE, and the string is carried
 	// to every event this batch sends about that call — the begin it sends here,
 	// the end or the failure below, and the finished event the execution sends

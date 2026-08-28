@@ -40,13 +40,21 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
+// AND THE POLLING SENTENCE IS PAID FOR RATHER THAN ADDED. `Never to WAIT for
+// handed-off work` is here because a model polled this tool eleven times in one
+// turn for a report that was going to be delivered to it (tasklook.go). Its
+// bytes come out of the URI gloss this string used to carry — what an artifact
+// URI and a transcript URI ARE is said in full by prompts/system.md, in the same
+// fixed prefix, three lines from where it says to call this tool. One fact, one
+// place.
+//
 // WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST OF EVERY
 // TURN. The tool-schema block rides in front of each request the model makes —
 // dozens per task — so a paragraph here is paid for dozens of times while a Go
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers or settles one. Use it when the person means earlier work without pointing at it, or to check handed-off work. A search also lists other aforge windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered or resolved. Rows carry artifact and transcript URIs (the task's worktree or branch; its own journal) that read takes verbatim."
+const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work: its report starts a turn here on its own. A search also lists other aforge windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered or resolved. Rows carry artifact and transcript URIs that read takes verbatim."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -163,9 +171,18 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
-				return a.taskSearchText(parsed.Query, parsed.Limit, scope), false, nil
+				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
 			}
-			return a.oneTask(token, parsed)
+			// THE SAME ANSWER TWICE IN ONE TURN SAYS SO (tasklook.go). It is the
+			// half of the polling fix that reaches a model already mid-poll: the
+			// receipt and the description say the report comes to it, and this
+			// says the same thing again on the answer it is staring at. A refusal
+			// is left alone — it is not a look at anything.
+			answer, failed, err := a.oneTask(token, parsed)
+			if failed || err != nil {
+				return answer, failed, err
+			}
+			return markTaskLook(ctx, answer), false, nil
 		},
 	}
 }
