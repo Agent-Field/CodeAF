@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -129,7 +130,25 @@ func (a *Agent) callRole(
 		// from the model name.
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
-		callCtx, cancel := context.WithTimeout(callCtx, patience)
+		// A CALLER'S DEADLINE IS SHARED ACROSS THE LADDER, never handed whole to
+		// the first rung. A caller that bounds its errand tighter than the
+		// tier's patience used to bound only the CONTEXT — each rung still got
+		// the full patience — so one wedged endpoint on rung one ate the whole
+		// budget, `ctx.Err()` below ended the errand, and the fall-through rung
+		// (whose floor is the session's own model, alive by construction) was
+		// never asked. That is how a division review died on 2026-08-28: the
+		// mastermind's endpoint sat silent for the review's entire three
+		// minutes, and the one model that answers every other request in the
+		// session was never tried. Each rung now gets an equal share of what
+		// remains, capped by the tier's patience, so the last rung always has
+		// time on the clock as long as the caller gave the errand any at all.
+		perRung := patience
+		if deadline, ok := ctx.Deadline(); ok {
+			if share := time.Until(deadline) / time.Duration(len(rungs)-attempt); share < perRung {
+				perRung = share
+			}
+		}
+		callCtx, cancel := context.WithTimeout(callCtx, perRung)
 		response, callErr := client.CompleteWithMessages(callCtx, messages,
 			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
 		cancel()
