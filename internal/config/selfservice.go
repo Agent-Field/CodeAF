@@ -54,8 +54,8 @@ const (
 	// model taking its own name off work that leaves the machine is the one
 	// change nobody downstream can see was made.
 	guardSignature = "decides how work that leaves this machine is signed"
-	// guardCredential is every [Setting.Secret] row and the one plain-text field
-	// that is half of a credential pair. These are refused for a different reason
+	// guardCredential is every [Setting.Secret] row and the plain-text fields
+	// that name sign-in applications. These are refused for a different reason
 	// from the rest — they restrain nothing — but the outcome of getting one
 	// wrong is the same shape: a key overwritten with something a model invented
 	// is a working account broken silently, and nothing on screen can tell the
@@ -104,10 +104,13 @@ var selfServiceGuards = map[string]string{
 	KeyTaskAudit:   guardProof,
 	KeyAttribution: guardSignature,
 
-	// The one credential field that is not a [Setting.Secret]: an application id
-	// is not itself a secret, and it is useless without the secret beside it, so
-	// a model that could write one half could break the pair.
+	// The credential fields that are not [Setting.Secret] rows. Google's id is
+	// useless without the secret beside it; Slack's public application needs
+	// only its id. A model that could rewrite either could silently break the
+	// person's connection or send their next sign-in somewhere they did not
+	// choose.
 	KeyGoogleOAuthClient: guardCredential,
+	KeySlackOAuthClient:  guardCredential,
 }
 
 // SelfService reports whether a model changing settings on the person's behalf

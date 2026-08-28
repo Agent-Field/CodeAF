@@ -207,6 +207,22 @@ func TestAKeySignInStillWorksOverHost(t *testing.T) {
 	}
 }
 
+func TestABrowserSignInWithAnAddressAnswerIsStillRefusedOverHost(t *testing.T) {
+	a, _ := hostLab(t)
+	a.askConnect(askDatadogEvent("1"))
+	block := plain(strings.Join(a.connectAskRows(a.width), "\n"))
+	if !strings.Contains(block, connectAskRemoteWord) {
+		t.Fatalf("the browser sign-in was offered over --host: %s", block)
+	}
+	if strings.Contains(block, "[enter]") {
+		t.Fatalf("the refused trip still offers enter: %s", block)
+	}
+	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if a.entering() {
+		t.Fatal("enter opened the site box for a browser trip over --host")
+	}
+}
+
 func TestSettingsSaysWhoseRowsTheseAre(t *testing.T) {
 	a, _ := hostLab(t)
 	a.openSettings()

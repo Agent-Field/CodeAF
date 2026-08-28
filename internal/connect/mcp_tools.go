@@ -153,8 +153,12 @@ func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSessio
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
 	}
+	address, err := plug.at(entry.Blank)
+	if err != nil {
+		return nil, err
+	}
 	record, held := m.registrations().get(service.ID)
-	if !held || !record.fitsServer(plug.address) {
+	if !held || !record.fitsServer(address) {
 		// The keys are there and what they were issued to is not, so there is
 		// no way to renew them and no honest way to use them. Signing in again
 		// writes both.
@@ -174,7 +178,7 @@ func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSessio
 	client.Timeout = mcpCallTimeout
 
 	session, err := mcpClient().Connect(ctx, &mcp.StreamableClientTransport{
-		Endpoint:   plug.address,
+		Endpoint:   address,
 		HTTPClient: client,
 		// Nothing here listens for a service's own announcements: every call
 		// is a question with an answer, and a stream held open for messages
@@ -342,10 +346,9 @@ func holdTools(id string, tools []MCPTool) {
 	mcpToolsHeld[id] = append([]MCPTool(nil), tools...)
 }
 
-// forgetTools drops what was remembered, for a test that wants a fresh process's
-// behaviour without being one.
-func forgetTools() {
+// forgetTools drops what was remembered for one freshly changed connection.
+func forgetTools(id string) {
 	mcpToolsMu.Lock()
 	defer mcpToolsMu.Unlock()
-	clear(mcpToolsHeld)
+	delete(mcpToolsHeld, id)
 }

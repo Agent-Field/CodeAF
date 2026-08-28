@@ -82,17 +82,26 @@ type connectStatus struct {
 	// description of the tool that calls it, so the model knows what its
 	// paths are relative to.
 	Address string
+	// Blank is the label for the one thing a browser service has to ask before
+	// it knows where to open. Empty is the ordinary browser trip.
+	Blank string
 }
 
 // keyed reports whether this account is one the person connects with a key.
 func (c connectStatus) keyed() bool { return c.Auth == connect.AuthKey }
 
+// asks reports whether this browser-connected account needs one typed answer
+// before its page can open.
+func (c connectStatus) asks() bool { return c.Blank != "" }
+
 // connectHub is the narrow slice of [connect.Manager] the belt calls through.
 //
-// BeginAuth hands back the page to open and the wait for the person to finish
-// with it, as two values rather than as an object, because those two are the
-// whole of what this package does with a connection in progress — and a
-// function is the one shape a test can supply without owning the type.
+// BeginAuth takes the one thing the service's address is missing, empty for an
+// ordinary browser trip, then hands back the page to open and the wait for the
+// person to finish with it. Those come as two values rather than as an object,
+// because they are the whole of what this package does with a connection in
+// progress — and a function is the one shape a test can supply without owning
+// the type.
 // ConnectKey is the other way in and needs no such pair: the person hands over
 // a key they already hold and the account is connected or it is not, in one
 // call, with nothing in the middle to report on.
@@ -115,7 +124,7 @@ func (c connectStatus) keyed() bool { return c.Auth == connect.AuthKey }
 type connectHub interface {
 	Services() []connectStatus
 	Connected(id string) bool
-	BeginAuth(ctx context.Context, id string) (url string, wait func(context.Context) (connectStatus, error), err error)
+	BeginAuth(ctx context.Context, id, answer string) (url string, wait func(context.Context) (connectStatus, error), err error)
 	ConnectKey(ctx context.Context, id string, key string) (connectStatus, error)
 	Client(ctx context.Context, id string) (*http.Client, error)
 	Request(ctx context.Context, id, method, path, query, body string) (string, error)
@@ -172,6 +181,7 @@ func asConnectStatus(status connect.Status) connectStatus {
 		Account:   status.Account,
 		Auth:      status.Auth,
 		Address:   status.Address,
+		Blank:     status.Blank,
 	}
 }
 
@@ -221,8 +231,8 @@ func (h managerHub) MCPCall(ctx context.Context, service, tool string, args json
 	return h.manager.MCPCall(ctx, service, tool, args)
 }
 
-func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
-	flow, err := h.manager.BeginAuth(ctx, id)
+func (h managerHub) BeginAuth(ctx context.Context, id, answer string) (string, func(context.Context) (connectStatus, error), error) {
+	flow, err := h.manager.BeginAuth(ctx, id, answer)
 	if err != nil {
 		return "", nil, err
 	}
@@ -252,15 +262,17 @@ func (a *Agent) service(id string) (connectStatus, bool) {
 // ── the ask ─────────────────────────────────────────────────────────────────
 
 // connectAsk is one unanswered question: the channel the answer arrives on, and
-// whether it is the kind of question a key answers.
+// whether it needs a typed answer — a key, or the one thing the service's
+// address is missing.
 type connectAsk struct {
 	answers  chan connectAnswer
 	needsKey bool
 }
 
-// connectAnswer is what a person said. Approved with no key is a yes to a
-// browser trip; approved with a key is the key itself; not approved is a no,
-// however it was said.
+// connectAnswer is what a person said. Approved with no key is a yes to an
+// ordinary browser trip; approved with a typed answer is a key, or the one
+// thing the service's address is missing; not approved is a no, however it was
+// said.
 type connectAnswer struct {
 	approved bool
 	key      string
@@ -269,11 +281,11 @@ type connectAnswer struct {
 // ResolveConnect answers one EventConnectAsk. A surface hands back the id the
 // event carried and what the person said.
 //
-// A YES TO A QUESTION THAT WANTED A KEY IS NOT AN ANSWER. The account is
-// connected by the key and by nothing else, so there is nothing a bare yes could
-// start; it is read as a decline rather than as a connection that then fails for
-// a reason nobody said out loud. A surface that means yes to one of those sends
-// the key through [Agent.ResolveConnectKey].
+// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER. The account
+// needs a key, or the one thing its address is missing, so there is nothing a
+// bare yes could start; it is read as a decline rather than as a connection
+// that then fails for a reason nobody said out loud. A surface that means yes
+// to one of those sends the answer through [Agent.ResolveConnectKey].
 //
 // An id nobody is waiting on — a question the clock already answered, a second
 // click, a turn that was interrupted — is IGNORED rather than reported, exactly
@@ -293,16 +305,16 @@ func (a *Agent) ResolveConnect(id string, approve bool) {
 }
 
 // ResolveConnectKey answers one EventConnectAsk that carried NeedsKey with the
-// key the person gave.
+// key, or the one thing the service's address is missing, that the person gave.
 //
-// AN EMPTY KEY IS A DECLINE. A surface whose question was dismissed, or whose
-// field was left blank, has one thing to send and no separate word for "not
-// now" — and a blank key would be refused by the service anyway, an ugly
-// sentence later for a plain no now.
+// AN EMPTY ANSWER IS A DECLINE. A surface whose question was dismissed, or
+// whose field was left blank, has one thing to send and no separate word for
+// "not now" — and a blank answer would be refused by the service anyway, an
+// ugly sentence later for a plain no now.
 //
-// A key sent for a question that wanted a browser trip is ignored: there is
-// nothing to do with it, and connecting on the strength of it would connect an
-// account by a route nobody asked about.
+// A typed answer sent for a question that wanted an ordinary browser trip is
+// ignored: there is nothing to do with it, and connecting on the strength of it
+// would connect an account by a route nobody asked about.
 func (a *Agent) ResolveConnectKey(id string, key string) {
 	ask, waiting := a.claimConnect(id)
 	if !waiting {
@@ -331,7 +343,7 @@ func (a *Agent) claimConnect(id string) (connectAsk, bool) {
 // askConnect emits one question and waits for the person, the clock, or the end
 // of the turn. Not approved is a no in all three cases, and the error is set
 // only when there is nobody to ask at all. The key is empty except when the
-// question wanted one and the person gave it.
+// question wanted a typed answer and the person gave it.
 func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
@@ -340,7 +352,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	}
 	a.connectSeq++
 	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
-	ask := connectAsk{answers: make(chan connectAnswer, 1), needsKey: service.keyed()}
+	ask := connectAsk{answers: make(chan connectAnswer, 1), needsKey: service.keyed() || service.asks()}
 	if a.connectAsks == nil {
 		a.connectAsks = make(map[string]connectAsk, 1)
 	}

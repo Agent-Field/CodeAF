@@ -33,6 +33,9 @@ import (
 // fakeShape is what one test wants its stand-in to be, in the few ways they
 // differ from each other.
 type fakeShape struct {
+	// blank makes the stand-in ask for one closed-list address answer. "here"
+	// and "elsewhere" are both live paths so a test may move between them.
+	blank bool
 	// refuseIntroductions is a sign-in that will not let a program register
 	// itself, which is the one thing that cannot be worked around.
 	refuseIntroductions bool
@@ -56,6 +59,7 @@ type fakeToolServer struct {
 	askedResource []string
 	askedProof    bool
 	askedScope    string
+	requests      []string
 	// what it has issued
 	clientID     string
 	clientSecret string
@@ -78,29 +82,38 @@ func startFakeToolServer(t *testing.T, shape fakeShape) *fakeToolServer {
 	// The handlers go on before the server does, so that nothing is registered
 	// on a mux that is already serving.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", fake.describe)
+	mux.HandleFunc("/.well-known/oauth-protected-resource/here", fake.describe)
+	mux.HandleFunc("/.well-known/oauth-protected-resource/elsewhere", fake.describe)
 	mux.HandleFunc("/.well-known/oauth-authorization-server", fake.describeSignIn)
 	mux.HandleFunc("/register", fake.introduce)
 	mux.HandleFunc("/authorize", fake.authorize)
 	mux.HandleFunc("/token", fake.issue)
-	mux.Handle("/mcp", fake.guard(mcp.NewStreamableHTTPHandler(
+	toolHandler := fake.guard(mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return fake.tools(t) },
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
-	)))
+	))
+	mux.Handle("/here", toolHandler)
+	mux.Handle("/elsewhere", toolHandler)
 
-	fake.Server = httptest.NewServer(mux)
+	fake.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fake.mu.Lock()
+		fake.requests = append(fake.requests, r.URL.Path)
+		fake.mu.Unlock()
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(fake.Server.Close)
 	return fake
 }
 
 // address is where the service answers, which is the one fact a plug for it
 // carries.
-func (f *fakeToolServer) address() string { return f.URL + "/mcp" }
+func (f *fakeToolServer) address() string { return f.URL + "/here" }
 
 // describe is the service's own description of itself (RFC 9728).
 func (f *fakeToolServer) describe(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/.well-known/oauth-protected-resource")
 	writeFakeJSON(w, map[string]any{
-		"resource":              f.address(),
+		"resource":              f.URL + path,
 		"authorization_servers": []string{f.URL},
 		"scopes_supported":      []string{"read", "write"},
 	})
@@ -241,7 +254,7 @@ func (f *fakeToolServer) guard(next http.Handler) http.Handler {
 		f.count(r)
 		if key == "" || !known {
 			w.Header().Set("WWW-Authenticate",
-				fmt.Sprintf(`Bearer resource_metadata="%s/.well-known/oauth-protected-resource/mcp"`, f.URL))
+				fmt.Sprintf(`Bearer resource_metadata="%s/.well-known/oauth-protected-resource%s"`, f.URL, r.URL.Path))
 			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}
@@ -325,6 +338,13 @@ func (f *fakeToolServer) resources() []string {
 	return append([]string(nil), f.askedResource...)
 }
 
+// paths is every address the stand-in was asked, in order.
+func (f *fakeToolServer) paths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.requests...)
+}
+
 // said is one plain answer from a tool.
 func said(text string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
@@ -353,14 +373,13 @@ func writeFakeJSON(w http.ResponseWriter, value any) {
 func withToolServer(t *testing.T, fake *fakeToolServer) (*Manager, *toolServer) {
 	t.Helper()
 	plug := &toolServer{
-		service: Service{
-			ID:       "example",
-			Name:     "Example",
-			Category: categoryProductivity,
-			Blurb:    "Example's own tools, signed in in your browser.",
-			Auth:     AuthBrowser,
-		},
+		service: fakeToolService(fake.blank),
 		address: fake.address(),
+	}
+	if fake.blank {
+		plug.address = fake.URL + "/{{.site}}"
+		plug.blank = blank{name: "site", label: "Site"}
+		plug.answers = []string{"here", "elsewhere"}
 	}
 	withPlugs(t, plug)
 
@@ -372,14 +391,32 @@ func withToolServer(t *testing.T, fake *fakeToolServer) (*Manager, *toolServer) 
 		delete(toolServerIDs, plug.service.ID)
 		toolServerMu.Unlock()
 	})
-	t.Cleanup(forgetTools)
-	forgetTools()
+	t.Cleanup(func() { forgetTools(plug.service.ID) })
+	forgetTools(plug.service.ID)
 
 	manager, err := NewManager(t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
 	return manager, plug
+}
+
+// fakeToolService is the menu line the stand-in uses. Keeping it whole lets the
+// catalog's vocabulary law read the same words these tests register.
+func fakeToolService(asks bool) Service {
+	service := Service{
+		ID:       "example",
+		Name:     "Example",
+		Category: categoryProductivity,
+		Blurb:    "Example's own tools, signed in in your browser.",
+		Auth:     AuthBrowser,
+	}
+	if asks {
+		service.Blank = "Site"
+		service.Answers = []string{"here", "elsewhere"}
+		service.KeyAsk = "Which Example site is your account on? Choose here or elsewhere."
+	}
+	return service
 }
 
 // openInBrowser does what a person does: opens the address they were given, and

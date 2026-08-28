@@ -77,6 +77,60 @@ func TestAToolListIsFetchedOnceAndRemembered(t *testing.T) {
 	}
 }
 
+// The transport is opened at the template filled from the stored answer, not
+// at the template itself and not at an address remembered during sign-in.
+func TestTheToolTransportUsesTheFilledAddress(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, _ := withToolServer(t, fake)
+	connectFakeAt(t, manager, "here")
+	before := len(fake.paths())
+
+	if _, err := manager.MCPTools(context.Background(), "example"); err != nil {
+		t.Fatalf("MCPTools: %v", err)
+	}
+	paths := fake.paths()[before:]
+	if len(paths) == 0 {
+		t.Fatal("the service was never asked for its tools")
+	}
+	for _, path := range paths {
+		if path != "/here" {
+			t.Errorf("the filled address is /here, request went to %q", path)
+		}
+	}
+}
+
+// A fresh connection owns a fresh list, even when it replaces the same service
+// in one run; disconnecting drops that list with the connection.
+func TestAChangedConnectionFetchesItsToolListAgain(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, _ := withToolServer(t, fake)
+	ctx := context.Background()
+	connectFakeAt(t, manager, "here")
+	if _, err := manager.MCPTools(ctx, "example"); err != nil {
+		t.Fatalf("MCPTools here: %v", err)
+	}
+	if _, lists, _ := fake.counted(); lists != 1 {
+		t.Fatalf("the first connection fetched %d lists, want one", lists)
+	}
+
+	connectFakeAt(t, manager, "elsewhere")
+	if _, err := manager.MCPTools(ctx, "example"); err != nil {
+		t.Fatalf("MCPTools elsewhere: %v", err)
+	}
+	if _, lists, _ := fake.counted(); lists != 2 {
+		t.Errorf("the changed connection left the request count at %d, want two", lists)
+	}
+	if _, held := heldTools("example"); !held {
+		t.Fatal("the fresh list was not remembered")
+	}
+	if err := manager.Disconnect("example"); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if _, held := heldTools("example"); held {
+		t.Fatal("the disconnected service kept its tool list")
+	}
+}
+
 func TestCallingATool(t *testing.T) {
 	fake := startFakeToolServer(t, fakeShape{})
 	manager, _ := withToolServer(t, fake)

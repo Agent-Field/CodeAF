@@ -1,6 +1,6 @@
 package connect
 
-// The 26 tool servers this build ships, and where each one answers.
+// The 28 tool servers this build ships, and where each one answers.
 //
 // ── THIS FILE IS DATA ──
 //
@@ -28,18 +28,20 @@ package connect
 // GitHub's sign-in server. GitHub therefore comes back only with an application
 // registered by hand in a console, in a later wave.
 //
-// Slack is absent for the same concrete reason. https://docs.slack.dev/ai/
-// slack-mcp-server/, read 2026-08-24, says "We do not support SSE-based
-// connections or Dynamic Client Registration at this time", and its live
-// sign-in description had no place to introduce a program on that date. It
-// comes back when Slack allows that introduction again, or with an application
-// registered by hand in a later wave.
+// Slack is not a tool server because its hosted tools refuse applications
+// outside its Marketplace and it offers no self-registration. It arrives as a
+// browser plug instead (slack.go), with an application registered by hand.
 
-// mcpEntry is one line of the list: what goes on a menu, and where the service
-// answers.
+// mcpEntry is one line of the list: what goes on a menu, where the service
+// answers, and the one fact about that address a person may have to supply.
 type mcpEntry struct {
 	service Service
 	address string
+	// blank is the one named piece left open in address. Empty is ordinary.
+	blank blank
+	// answers is the vendor's closed list of values for blank. It is empty
+	// when the address has no blank.
+	answers []string
 }
 
 // mcpCatalog is the list, in no particular order — [sortPlugs] puts them in the
@@ -60,6 +62,27 @@ func mcpCatalog() []mcpEntry {
 				Blurb:    "Notion's own tools — your pages, databases and search — signed in in your browser.",
 			},
 			address: "https://mcp.notion.com/mcp",
+		},
+		{
+			// https://docs.datadoghq.com/getting_started/software_delivery_mcp_tools/ and
+			// https://docs.datadoghq.com/mcp_server/setup/, read 2026-08-27: the address is
+			// "https://mcp.<YOUR_DATADOG_SITE>/v1/mcp", and which site a person is on is a
+			// fact about their account that Datadog gives no way to look up — so it is the
+			// one thing asked before the browser opens. The sites are the commercial ones
+			// on https://docs.datadoghq.com/getting_started/site/ (read the same day); the
+			// government sites are left out because the same page says this address is
+			// "not GovCloud compatible".
+			service: Service{
+				ID:       "datadog",
+				Name:     "Datadog",
+				Category: categoryDeveloper,
+				Blurb:    "Datadog's own tools — your metrics, logs and monitors — signed in in your browser. Say which Datadog site your account is on first.",
+				Blank:    "Site",
+				KeyAsk:   "Which Datadog site is your account on? The domain in your Datadog address.",
+			},
+			address: "https://mcp.{{.site}}/v1/mcp",
+			blank:   blank{name: "site", label: "Site"},
+			answers: []string{"datadoghq.com", "us3.datadoghq.com", "us5.datadoghq.com", "datadoghq.eu", "ap1.datadoghq.com", "ap2.datadoghq.com", "uk1.datadoghq.com"},
 		},
 		{
 			// https://linear.app/docs/mcp, read 2026-08-17: "Read-write access
@@ -284,6 +307,24 @@ func mcpCatalog() []mcpEntry {
 			address: "https://mcp.posthog.com/mcp",
 		},
 		{
+			// https://learning.postman.com/docs/reference/postman-api/
+			// postman-mcp-server/postman-mcp-remote-server, read 2026-08-27:
+			// "Minimal (default)" answers at "https://mcp.postman.com/minimal",
+			// and the hosted address "supports OAuth … including Dynamic Client
+			// Registration (DCR), OAuth metadata, and PKCE". The same page says
+			// "OAuth isn't supported for the EU Postman MCP server", so the EU
+			// address (https://mcp.eu.postman.com/…) is deliberately not shipped:
+			// it takes a key and nothing else, and a row that connected and then
+			// failed at the first call would be worse than one that says so.
+			service: Service{
+				ID:       "postman",
+				Name:     "Postman",
+				Category: categoryDeveloper,
+				Blurb:    "Postman's own tools — your collections, specs and environments — signed in in your browser. Postman's EU workspaces cannot be reached this way.",
+			},
+			address: "https://mcp.postman.com/minimal",
+		},
+		{
 			// https://developer.clickup.com/docs/connect-an-ai-assistant-to-
 			// clickups-mcp-server, read 2026-08-24:
 			// "https://mcp.clickup.com/mcp". The page says browser sign-in is
@@ -394,6 +435,6 @@ func mcpCatalog() []mcpEntry {
 // catalog.go put theirs there.
 func init() {
 	for _, entry := range mcpCatalog() {
-		registerToolServer(entry.service, entry.address)
+		registerToolServer(entry)
 	}
 }

@@ -158,6 +158,24 @@ func TestServicesReportsAccountAndConnection(t *testing.T) {
 	}
 }
 
+func TestServicesFillsAToolServersAddressFromItsStoredBlank(t *testing.T) {
+	fake := startFakeToolServer(t, fakeShape{blank: true})
+	manager, _ := withToolServer(t, fake)
+	if err := manager.store.put("example", stored{
+		Auth: authMCP, Blank: "here", Keys: &oauth2.Token{AccessToken: "a"},
+	}); err != nil {
+		t.Fatalf("store.put: %v", err)
+	}
+
+	rows := manager.Services()
+	if len(rows) != 1 || !rows[0].Connected {
+		t.Fatalf("Services() = %+v", rows)
+	}
+	if rows[0].Address != fake.address() {
+		t.Errorf("Address = %q, want %q", rows[0].Address, fake.address())
+	}
+}
+
 func TestDisconnectForgetsOnlyTheKeys(t *testing.T) {
 	manager, _ := testManager(t)
 	if err := manager.store.put("google", stored{Account: "me@example.com", Scopes: wholeGrant(), Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
@@ -189,7 +207,7 @@ func TestClientRefusesWhatIsNotConnected(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "Google is not connected") {
 		t.Errorf("the message must be in the person's words, got %q", err)
 	}
-	if _, err := manager.BeginAuth(context.Background(), "nothing-like-this"); err == nil {
+	if _, err := manager.BeginAuth(context.Background(), "nothing-like-this", ""); err == nil {
 		t.Errorf("BeginAuth on an unknown service must fail")
 	}
 }
