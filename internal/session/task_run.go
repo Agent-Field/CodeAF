@@ -3292,6 +3292,11 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// [Agent.childrenOutstanding] at this instant then mislabels the old
 				// step as a new idle one. The monotone report count gives the landing
 				// one exact place in the ledger, whether the part finished or failed.
+				//
+				// AND THAT RACE IS ALL IT IS FOR. A report the node was parked on has
+				// already been paid for by the tail loop's own reset, and the mark is
+				// squared up against every request made there, so a landing can buy
+				// the counter one reset and never two.
 				case partLanded:
 					idle = 0
 				// ── A STEP THE HARNESS FAILED IS THE HARNESS'S STEP ──
@@ -3555,6 +3560,24 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 			idle = 0
 			continue
 		}
+		// ── AND A LANDING IS SPENT EXACTLY ONCE ──
+		//
+		// The reset above is this node's whole payment for every report that came
+		// in while it was parked. So the mark those reports are counted against is
+		// squared up HERE, at the instant a request is made: everything reported by
+		// now is news this request is carrying, and it has been paid for. Left at
+		// its old value, the first step of the fold read the same landings a second
+		// time through `partLanded` and was handed a free step off news the node had
+		// already been paid for — one more step than a threshold of two can afford,
+		// and the spin the fold is judged on went uncounted.
+		//
+		// THE MARK IS TAKEN HERE AND NOT AT THE UNPARK, because a report and the
+		// question "is anything still outstanding" are two reads at two instants:
+		// the last of three parts can land between them, park the node one more
+		// time and leave a mark one short. Taken against the request, there is no
+		// gap — a report that lands after this line is a report this request could
+		// not have carried, which is exactly the race `partLanded` is for.
+		reportedParts = child.reportedChildren()
 		next := child.resumeTurn(runCtx)
 		if next == nil {
 			break
