@@ -471,11 +471,22 @@ func (m *Model) overlaySettings(frame string) string {
 	// the end of the sheet.
 	if m.settingsIndex < len(rowLines) {
 		selectedLine := rowLines[m.settingsIndex]
+		selectedBottom := selectedLine
+		if next := m.settingsIndex + 1; next < len(rowLines) {
+			// Everything up to the line before the next row: the hint, an
+			// editor refusal, every wrapped line — and, for the last row of a
+			// group, the blank line and heading that precede the next one. A
+			// line or two of slack there is harmless; keeping only the row's
+			// first line visible would put the very sentence somebody needs
+			// just below the frame. The clamp below keeps the row itself as
+			// the floor, so a hint taller than the frame is cut, never the row.
+			selectedBottom = rowLines[next] - 1
+		}
 		if selectedLine < m.settingsOffset {
 			// One line of context above keeps the group's name on screen.
 			m.settingsOffset = max(0, selectedLine-1)
-		} else if selectedLine >= m.settingsOffset+limit {
-			m.settingsOffset = selectedLine - limit + 1
+		} else if selectedBottom >= m.settingsOffset+limit {
+			m.settingsOffset = max(0, min(selectedLine, selectedBottom-limit+1))
 		}
 	}
 	m.settingsOffset = max(0, min(max(0, len(all)-limit), m.settingsOffset))
