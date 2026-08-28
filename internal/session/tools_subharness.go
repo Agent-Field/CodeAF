@@ -141,7 +141,7 @@ func (a *Agent) proposeSubharnessTool() bare.Tool {
 				Reason string `json:"reason"`
 			}
 			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}

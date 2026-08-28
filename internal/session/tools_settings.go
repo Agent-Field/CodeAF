@@ -149,7 +149,7 @@ func (a *Agent) settingsTool(registry *config.Settings) bare.Tool {
 				Key    string `json:"key"`
 				Search string `json:"search"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			if key := strings.TrimSpace(parsed.Key); key != "" {
@@ -175,7 +175,7 @@ func (a *Agent) changeSettingTool(registry *config.Settings) bare.Tool {
 				Key   string `json:"key"`
 				Value string `json:"value"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			key := strings.TrimSpace(parsed.Key)

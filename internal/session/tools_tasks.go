@@ -61,14 +61,14 @@ const tasksDescription = "Every task this project ever ran, and what runs now. N
 // from the wrong figure.
 var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"query":{"type":"string","description":"Matched against titles, ids and outcomes; omit for the newest."},` +
-	`"limit":{"type":"number","description":"Rows to return (default: ` + strconv.Itoa(taskSearchLimit) + `, maximum: ` + strconv.Itoa(taskSearchCeiling) + `)"},` +
+	`"limit":{"type":"integer","description":"Rows to return (default: ` + strconv.Itoa(taskSearchLimit) + `, maximum: ` + strconv.Itoa(taskSearchCeiling) + `)"},` +
 	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\"). Running, it answers with its LIVE state."},` +
 	// The live answer is read off the running work itself (task_live.go) and
 	// names what it is doing this second, how long it has been at it, its steps,
 	// its spend and its last lines. That list is not spelled in the schema
 	// because the answer itself carries it, and this string is paid for on every
 	// request of every turn while this comment is free.
-	`"lines":{"type":"number","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
+	`"lines":{"type":"integer","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
 	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
 	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks, arriving in its loop as the person's own words. Brief and acceptance never change; propose the work again if the objective was wrong. With resolve, it is the REASON."},` +
 	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."}` +
@@ -147,7 +147,7 @@ func (a *Agent) tasksTool() bare.Tool {
 			// An absent argument object is a valid call — "what has been going
 			// on" takes no arguments — so only malformed bytes are an error.
 			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}

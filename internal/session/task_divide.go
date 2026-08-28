@@ -786,7 +786,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 // with it.
 func parseDivideArguments(args json.RawMessage) (divideArguments, string) {
 	var parsed divideArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return parsed, "Invalid arguments: " + err.Error()
 	}
 	parsed.Evidence = strings.TrimSpace(parsed.Evidence)

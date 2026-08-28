@@ -224,7 +224,7 @@ func (a *Agent) senseRead(inner bare.Tool) bare.Tool {
 			// Arguments that do not parse belong to bare: it owns the wording of
 			// every other read error, and a second parser reporting the same
 			// fault in different words helps nobody.
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return inner.Execute(ctx, args)
 			}
 			absolute := resolveInWorkspace(parsed.Path, a.config.Workspace)

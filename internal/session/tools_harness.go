@@ -158,7 +158,7 @@ func (a *Agent) designThreadTools() []bare.Tool {
 				Change string `json:"change"`
 			}
 			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}
@@ -201,7 +201,7 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 				Goal string `json:"goal"`
 			}
 			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}

@@ -110,7 +110,7 @@ func (a *Agent) searchConversationsTool(_ context.Context, args json.RawMessage)
 		Limit int    `json:"limit"`
 	}
 	if len(args) > 0 {
-		if err := json.Unmarshal(args, &parsed); err != nil {
+		if err := decodeToolArguments(args, &parsed); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
 	}

@@ -77,7 +77,7 @@ func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool 
 		Schema:      a.mediaSchema(speakSchemaJSON, "speech"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed speakArguments
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			text := strings.TrimSpace(parsed.Text)

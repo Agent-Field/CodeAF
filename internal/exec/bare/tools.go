@@ -66,7 +66,15 @@ func Tools(cwd string) []Tool {
 // rather than constructed maps so the wire bytes are byte-for-byte identical
 // and a test can pin them without ordering ambiguity.
 
-const readSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"],"additionalProperties":false}`
+// THE WHOLE-NUMBER ARGUMENTS BELOW ARE DECLARED "integer", NOT "number", AND
+// THAT IS THE ONE THING THIS FILE DOES NOT TAKE VERBATIM. JSON has no integers,
+// so `"type":"number"` on an argument decoded into a Go int invites the form
+// encoding/json refuses — several providers render every whole number as a
+// float, and one of them sent `{"limit":10.0}` to a tool eleven times in a
+// single turn. `timeout` stays `"number"`: it is a float64 and seconds really
+// can be fractional. (internal/session/toolargs.go carries the other half of
+// that fix, for the tools aforge adds itself.)
+const readSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"integer","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"integer","description":"Maximum number of lines to read"}},"required":["path"],"additionalProperties":false}`
 
 const bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional; 600 when unset)"}},"required":["command"],"additionalProperties":false}`
 
@@ -95,11 +103,11 @@ const editSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","
 
 const writeSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to write (relative or absolute)"},"content":{"type":"string","description":"Content to write to the file"}},"required":["path","content"],"additionalProperties":false}`
 
-const grepSchemaJSON = `{"type":"object","properties":{"pattern":{"type":"string","description":"Search pattern (regex or literal string)"},"path":{"type":"string","description":"Directory or file to search (default: current directory)"},"glob":{"type":"string","description":"Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"},"ignoreCase":{"type":"boolean","description":"Case-insensitive search (default: false)"},"literal":{"type":"boolean","description":"Treat pattern as literal string instead of regex (default: false)"},"context":{"type":"number","description":"Number of lines to show before and after each match (default: 0)"},"limit":{"type":"number","description":"Maximum number of matches to return (default: 100)"}},"required":["pattern"],"additionalProperties":false}`
+const grepSchemaJSON = `{"type":"object","properties":{"pattern":{"type":"string","description":"Search pattern (regex or literal string)"},"path":{"type":"string","description":"Directory or file to search (default: current directory)"},"glob":{"type":"string","description":"Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"},"ignoreCase":{"type":"boolean","description":"Case-insensitive search (default: false)"},"literal":{"type":"boolean","description":"Treat pattern as literal string instead of regex (default: false)"},"context":{"type":"integer","description":"Number of lines to show before and after each match (default: 0)"},"limit":{"type":"integer","description":"Maximum number of matches to return (default: 100)"}},"required":["pattern"],"additionalProperties":false}`
 
-const findSchemaJSON = `{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"},"path":{"type":"string","description":"Directory to search in (default: current directory)"},"limit":{"type":"number","description":"Maximum number of results (default: 1000)"}},"required":["pattern"],"additionalProperties":false}`
+const findSchemaJSON = `{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"},"path":{"type":"string","description":"Directory to search in (default: current directory)"},"limit":{"type":"integer","description":"Maximum number of results (default: 1000)"}},"required":["pattern"],"additionalProperties":false}`
 
-const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Directory to list (default: current directory)"},"limit":{"type":"number","description":"Maximum number of entries to return (default: 500)"}},"required":[],"additionalProperties":false}`
+const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Directory to list (default: current directory)"},"limit":{"type":"integer","description":"Maximum number of entries to return (default: 500)"}},"required":[],"additionalProperties":false}`
 
 const readDescription = "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete."
 

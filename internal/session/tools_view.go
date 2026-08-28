@@ -105,7 +105,7 @@ func (a *Agent) viewImageTool(known string) bare.Tool {
 				Path     string `json:"path"`
 				Question string `json:"question"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			path := strings.TrimSpace(parsed.Path)

@@ -63,7 +63,7 @@ func (a *Agent) manualTool() bare.Tool {
 				Query string `json:"query"`
 				Page  string `json:"page"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			pages := manual.Chat().Pages()

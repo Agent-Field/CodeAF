@@ -33,7 +33,7 @@ const (
 
 const webSearchDescription = "Search the web and get back a numbered list of results: title, URL, and a snippet of each page. Use it for anything outside this machine and outside your training data — current events, release notes, error messages you do not recognise, library documentation. Follow it with web_fetch on the URLs worth reading in full: the snippets are extracts, not the page."
 
-const webSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to search for, as you would type it into a search engine"},"count":{"type":"number","description":"How many results to return (default: 5, maximum: 8)"}},"required":["query"],"additionalProperties":false}`
+const webSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to search for, as you would type it into a search engine"},"count":{"type":"integer","description":"How many results to return (default: 5, maximum: 8)"}},"required":["query"],"additionalProperties":false}`
 
 const webFetchDescription = "Fetch one web page and return its text, with the markup stripped. Use it on a URL from web_search, or on any URL the user gives you. Long pages are truncated and say how much was left behind; the read tool, not this one, is what opens a file on this machine."
 
@@ -74,7 +74,7 @@ func (a *Agent) webSearchTool(provider search.Provider) bare.Tool {
 				Query string `json:"query"`
 				Count *int   `json:"count"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
@@ -107,7 +107,7 @@ func (a *Agent) webFetchTool(fetcher search.Fetcher) bare.Tool {
 			var parsed struct {
 				URL string `json:"url"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			url := strings.TrimSpace(parsed.URL)

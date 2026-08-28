@@ -66,7 +66,7 @@ const generateVideoDescription = "Generate a video from a text prompt. This tool
 
 const generateVideoSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What happens in the shot: subject, action, camera movement, style, lighting. The whole prompt reaches the video model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI footage looks like. Decide the medium, the light, the lens and the mood yourself and write them down; specificity is the difference between the shot you meant and a generic one. A prompt assembled from the genre's usual clichés lands on that same average by choice — escape a genre by naming a real filmmaking tradition (a film stock, a documentary setup, an animation technique), not by recoloring it. And specify positively: video models barely read negation, so describe what IS in the frame until the default has no room."},` +
-	`"duration":{"type":"number","description":"How many seconds long, if the model takes a length. Leave it out for the model's own default."},` +
+	`"duration":{"type":"integer","description":"How many seconds long, if the model takes a length. Leave it out for the model's own default."},` +
 	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the video model spells it (for example 16:9 or 9:16). Passed through untouched; leave it out for the model's own default."},` +
 	`"resolution":{"type":"string","description":"How sharp the render is, as the video model spells it (for example 720p or 1080p). Passed through untouched; leave it out for the model's own default, and name one when sharpness is part of the brief — a higher resolution is a slower, costlier render."},` +
 	`"seed":{"type":"integer","description":"Fixed number that makes the render's randomness repeatable, if the video model takes one. The same seed with the same prompt and pictures re-renders close to the same shot, so hold it steady to change one thing about a shot you mostly liked. Passed through untouched; leave it out for a fresh roll."},` +
@@ -110,7 +110,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 		Schema:      a.mediaSchema(generateVideoSchemaJSON, "video"),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateVideoArguments
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)

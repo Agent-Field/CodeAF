@@ -39,7 +39,7 @@ const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"
 
 const gmailSearchDescription = "Search the person's mail and get back a numbered list of matching messages: who each one is from, when it arrived, and its subject. Uses Gmail's own search syntax (from:, subject:, has:attachment, newer_than:7d). Follow it with gmail_read on the ids worth opening."
 
-const gmailSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for, in Gmail's search syntax"},"max":{"type":"number","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
+const gmailSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for, in Gmail's search syntax"},"max":{"type":"integer","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
 
 const gmailReadDescription = "Read one message whole: the sender, the date, the subject, and the body with the markup stripped. The id is one gmail_search returned. Long messages are truncated and say so."
 
@@ -102,7 +102,7 @@ func (a *Agent) servicesTool() bare.Tool {
 				Filter string `json:"filter"`
 			}
 			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}
@@ -228,7 +228,7 @@ func (a *Agent) useServiceTool() bare.Tool {
 				Service string `json:"service"`
 				Tools   string `json:"tools"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			id := strings.TrimSpace(parsed.Service)
@@ -527,7 +527,7 @@ func (a *Agent) serviceRequestTool(service connectStatus) bare.Tool {
 				Query  string `json:"query"`
 				Body   string `json:"body"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
@@ -555,7 +555,7 @@ func (a *Agent) gmailSearchTool() bare.Tool {
 				Query string `json:"query"`
 				Max   *int   `json:"max"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
@@ -588,7 +588,7 @@ func (a *Agent) gmailReadTool() bare.Tool {
 			var parsed struct {
 				ID string `json:"id"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			id := strings.TrimSpace(parsed.ID)
@@ -729,7 +729,7 @@ func (a *Agent) gmailSendTool() bare.Tool {
 				Subject string `json:"subject"`
 				Body    string `json:"body"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			if strings.TrimSpace(parsed.To) == "" {
@@ -798,7 +798,7 @@ func (a *Agent) calendarCreateTool() bare.Tool {
 				Location    string `json:"location"`
 				Description string `json:"description"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			if strings.TrimSpace(parsed.Title) == "" {
@@ -831,7 +831,7 @@ func (a *Agent) calendarListTool() bare.Tool {
 				From string `json:"from"`
 				To   string `json:"to"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			from, to := strings.TrimSpace(parsed.From), strings.TrimSpace(parsed.To)
