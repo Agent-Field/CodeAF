@@ -59,7 +59,7 @@ func TestCheckIgnoresGarbageToolAction(t *testing.T) {
 // and a rule that names one of them is still obeyed.
 func TestCheckToolsThatActInThePersonsName(t *testing.T) {
 	allowAll := Policy{Default: ActionAllow}
-	for _, tool := range []string{"gmail_send", "calendar_create"} {
+	for _, tool := range []string{"gmail_send", "calendar_create", "slack_send"} {
 		decision := allowAll.Check(tool, json.RawMessage(`{"to":"alice@example.com"}`))
 		if decision.Action != ActionPrompt {
 			t.Errorf("Check(%q) under allow-all = %+v, want prompt", tool, decision)
