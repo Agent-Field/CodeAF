@@ -22,6 +22,34 @@ func registry(t *testing.T, dir string) *Settings {
 	})
 }
 
+func TestSlackApplicationRowShowsOnlyThePersonsAnswer(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SLACK_OAUTH_CLIENT", "")
+	row, found := registry(t, dir).Row(KeySlackOAuthClient)
+	if !found {
+		t.Fatal("the Slack application row is not registered")
+	}
+	if row.Label != "slack app id" || row.Env != "SLACK_OAUTH_CLIENT" || row.EmptyLabel != "not set" {
+		t.Errorf("Slack row = %+v", row)
+	}
+	if got := row.Value(); got != "not set" {
+		t.Errorf("an unanswered row shows %q, want not set", got)
+	}
+	if got := SlackOAuthClientAt(dir); got != defaultSlackOAuthClient {
+		t.Errorf("shipped application = %q", got)
+	}
+	if err := row.Apply("an-internal-application"); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := SlackOAuthClientAt(dir); got != "an-internal-application" {
+		t.Errorf("persisted application = %q", got)
+	}
+	t.Setenv("SLACK_OAUTH_CLIENT", "an-environment-application")
+	if got := SlackOAuthClientAt(dir); got != "an-environment-application" {
+		t.Errorf("environment application = %q", got)
+	}
+}
+
 // The registry is the completeness gate: a user-tunable environment pin added
 // anywhere in the tree has to arrive as a row here, or land on the explicit
 // operator-plumbing allowlist. Until then this test fails the build.
