@@ -736,7 +736,7 @@ func (a *Agent) stateTools() []bare.Tool {
 					Evidence string `json:"evidence"`
 					Status   string `json:"status"`
 				}
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 				kind := stateKind(strings.ToLower(strings.TrimSpace(parsed.Kind)))
@@ -764,7 +764,7 @@ func (a *Agent) stateTools() []bare.Tool {
 				var parsed struct {
 					ID string `json:"id"`
 				}
-				if err := json.Unmarshal(args, &parsed); err != nil {
+				if err := decodeToolArguments(args, &parsed); err != nil {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 				record, changed, err := a.state().commit(parsed.ID)

@@ -216,9 +216,9 @@ var watchDescription = "Run a command on a timer and hear only when there is new
 // that goes stale the day the constant moves.
 var watchSchemaJSON = `{"type":"object","properties":{` +
 	`"command":{"type":"string","description":"Command run each tick in the workspace."},` +
-	`"every_seconds":{"type":"number","description":"Seconds per tick (default: ` + strconv.Itoa(watchDefaultEvery) + `, min: ` + strconv.Itoa(watchMinEvery) + `, max: ` + strconv.Itoa(watchMaxEvery) + `)"},` +
+	`"every_seconds":{"type":"integer","description":"Seconds per tick (default: ` + strconv.Itoa(watchDefaultEvery) + `, min: ` + strconv.Itoa(watchMinEvery) + `, max: ` + strconv.Itoa(watchMaxEvery) + `)"},` +
 	`"on":{"type":"string","description":"News, one mode only. change: new lines when output differs. match: new lines matching pattern. always: the last ` + strconv.Itoa(watchTailLines) + ` lines each tick. quiet: unchanged for quiet_ticks ticks running, which catches a silent finish and ends the watch. Tick one is a silent baseline, except always.","enum":["change","match","always","quiet"]},` +
-	`"quiet_ticks":{"type":"number","description":"Ticks for on=quiet (default: ` + strconv.Itoa(watchDefaultQuietTicks) + `, min: ` + strconv.Itoa(watchMinQuietTicks) + `, max: ` + strconv.Itoa(watchMaxQuietTicks) + `); refused in other modes."},` +
+	`"quiet_ticks":{"type":"integer","description":"Ticks for on=quiet (default: ` + strconv.Itoa(watchDefaultQuietTicks) + `, min: ` + strconv.Itoa(watchMinQuietTicks) + `, max: ` + strconv.Itoa(watchMaxQuietTicks) + `); refused in other modes."},` +
 	`"pattern":{"type":"string","description":"Lines to report, as a regex; required when on is match."},` +
 	`"until":{"type":"string","description":"Regex ending the watch; its first match is the last note."},` +
 	`"name":{"type":"string","description":"Label for notes and the jobs row (default: from the command)."}` +
@@ -266,7 +266,7 @@ func (a *Agent) watchTool() bare.Tool {
 
 func parseWatchArguments(args json.RawMessage) (watchSpec, string) {
 	var parsed watchArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return watchSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := watchSpec{command: strings.TrimSpace(parsed.Command)}

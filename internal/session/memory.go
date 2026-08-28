@@ -955,7 +955,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 				Text  string `json:"text"`
 				Scope string `json:"scope"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			title, err := a.RememberScoped(parsed.Text, parsed.Scope)

@@ -224,7 +224,7 @@ var documentMediaTypes = map[string]struct {
 // this pass). That is what makes this a var rather than a const.
 var readDocumentDescription = fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page); use read for plain text, source and PDFs that have a text layer. Truncates to %d lines or %dKB; offset continues.", pdfMaxLines, pdfMaxBytes/1024)
 
-const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file, workspace-relative or absolute"},"question":{"type":"string","description":"What you need from it; default all of it. Shapes the native rung only"},"offset":{"type":"number","description":"Line to start from (1-based). Paging is free"},"limit":{"type":"number","description":"How many lines to return"}},"required":["path"],"additionalProperties":false}`
+const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file, workspace-relative or absolute"},"question":{"type":"string","description":"What you need from it; default all of it. Shapes the native rung only"},"offset":{"type":"integer","description":"Line to start from (1-based). Paging is free"},"limit":{"type":"integer","description":"How many lines to return"}},"required":["path"],"additionalProperties":false}`
 
 // documentTool is the OCR rung on the belt. See this file's opening for why it
 // is unconditional where tools_search.go and tools_image.go are not.
@@ -240,7 +240,7 @@ func (a *Agent) documentTool() bare.Tool {
 				Offset   *int   `json:"offset"`
 				Limit    *int   `json:"limit"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			path := strings.TrimSpace(parsed.Path)

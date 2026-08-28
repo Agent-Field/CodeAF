@@ -100,7 +100,7 @@ func BashTimeoutSeconds(args json.RawMessage) float64 {
 	var fields struct {
 		Timeout *float64 `json:"timeout"`
 	}
-	if err := json.Unmarshal(args, &fields); err != nil || fields.Timeout == nil {
+	if err := decodeToolArguments(args, &fields); err != nil || fields.Timeout == nil {
 		return BashCeilingSeconds
 	}
 	seconds := *fields.Timeout
@@ -121,7 +121,7 @@ func BashTimeoutSeconds(args json.RawMessage) float64 {
 // wrapper's.
 func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(args, &fields); err != nil {
+	if err := decodeToolArguments(args, &fields); err != nil {
 		return args
 	}
 	seconds := BashTimeoutSeconds(args)
@@ -168,7 +168,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			// A call whose arguments do not parse belongs to bare: it owns the
 			// wording of every other bash error, and a second parser reporting
 			// the same fault in different words helps nobody.
-			if err := json.Unmarshal(args, &parsed); err != nil || !parsed.Background {
+			if err := decodeToolArguments(args, &parsed); err != nil || !parsed.Background {
 				// THE PROMOTION DOOR IS FITTED HERE AND ONLY HERE (promote.go).
 				// This is the foreground branch, so a call that asked for
 				// background:true can never carry it — it left this function on
@@ -253,7 +253,7 @@ var jobsDescription = "Background work: bash background:true commands and watche
 	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks), for an intermediate look and not for waiting. kill: SIGTERM the process group, SIGKILL " +
 	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
 
-var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"number","description":"Job id (output and kill need one)"},"tail":{"type":"number","description":"Lines returned (default: ` +
+var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"integer","description":"Job id (output and kill need one)"},"tail":{"type":"integer","description":"Lines returned (default: ` +
 	strconv.Itoa(jobsDefaultTail) + `, max: ` + strconv.Itoa(jobsMaxTail) + `)"}},"required":["action"],"additionalProperties":false}`
 
 // jobsTool is the window onto the registry. It is a belt tool like any other —

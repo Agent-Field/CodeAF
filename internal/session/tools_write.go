@@ -66,7 +66,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 			// A call whose arguments do not parse belongs to bare: it owns
 			// the wording of every other write error, and a second parser
 			// reporting the same fault in different words helps nobody.
-			if err := json.Unmarshal(args, &parsed); err != nil || !parsed.Append {
+			if err := decodeToolArguments(args, &parsed); err != nil || !parsed.Append {
 				return inner.Execute(ctx, args)
 			}
 			if strings.TrimSpace(parsed.Path) == "" {

@@ -113,7 +113,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 		Schema:      a.mediaSchema(generateImageSchemaJSON, "image"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateImageArguments
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)

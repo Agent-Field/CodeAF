@@ -2260,7 +2260,7 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 		var fields struct {
 			Command string `json:"command"`
 		}
-		if err := json.Unmarshal(args, &fields); err != nil {
+		if err := decodeToolArguments(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
 		if refusal, ok := refuseOutsideDoor(fields.Command, door, voice); !ok {

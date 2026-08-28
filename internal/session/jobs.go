@@ -1101,7 +1101,7 @@ type jobsArguments struct {
 
 func parseJobsArguments(args json.RawMessage) (jobsArguments, error) {
 	var parsed jobsArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return parsed, err
 	}
 	return parsed, nil

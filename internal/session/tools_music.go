@@ -136,7 +136,7 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 		Schema:      a.mediaSchema(generateMusicSchemaJSON, "music"),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateMusicArguments
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)

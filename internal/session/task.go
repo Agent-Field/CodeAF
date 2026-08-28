@@ -156,11 +156,11 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'. Empty uses a task-folder worktree; never guess"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
-	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
+	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
 	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. The worker may hand parts out under itself once the material shows the width is real, then fold their reports into one deliverable. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items. Leave it out for a linear job"},` +
 	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"). Otherwise the configured model is used. A word fitting several is shown to the person to settle"},` +
-	`"max_steps":{"type":"number","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops. Raise it for a wide sweep, lower it for something small"},` +
-	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). It fires only on repeats. Raise it when the work needs much reading before its first edit"}` +
+	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops. Raise it for a wide sweep, lower it for something small"},` +
+	`"no_progress":{"type":"integer","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). It fires only on repeats. Raise it when the work needs much reading before its first edit"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.
@@ -556,7 +556,7 @@ func numberedTasks(ids []uint64) string {
 // fill is a field the model will one day fill with its own words.
 func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	var parsed taskArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{

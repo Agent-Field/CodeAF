@@ -239,11 +239,11 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
-	`"max_steps":{"type":"number","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
+	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
 	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
-	`"max_per_day":{"type":"number","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
+	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
@@ -360,7 +360,7 @@ func standingPassed(field string, moment, now time.Time, tail string) string {
 func (a *Agent) standDispatch(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed standArguments
 	if len(args) > 0 {
-		if err := json.Unmarshal(args, &parsed); err != nil {
+		if err := decodeToolArguments(args, &parsed); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
 	}

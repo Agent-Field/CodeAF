@@ -443,7 +443,7 @@ func (a *Agent) forkSeed() ([]ai.Message, string) {
 // over a scope it could have redrawn in one sentence.
 func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, string) {
 	var parsed forkArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return parsed, "Invalid arguments: " + err.Error()
 	}
 	if len(parsed.Parts) < forkHandFloor {
