@@ -383,8 +383,8 @@ shell can ruin a machine.
 Calls that leave this machine in your own name are asked about even under a
 blanket allow.
 
-The named table is exactly two tools: **`gmail_send`** and
-**`calendar_create`**.
+The named table is exactly three tools: **`gmail_send`**, **`calendar_create`**
+and **`slack_send`**.
 
 Beyond those, any tool whose name ends in **`_request`** — the raw call a
 key-connected account brings, such as `stripe_request` — is judged by its verb.

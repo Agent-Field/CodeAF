@@ -68,9 +68,10 @@ type Connections interface {
 	// Services is every service this build knows about, each with whether this
 	// profile has it and the account it is held as.
 	Services() []connect.Status
-	// BeginAuth starts one sign-in. It may reach the network, so it is called
-	// from a command and never from the model loop.
-	BeginAuth(ctx context.Context, id string) (*connect.Flow, error)
+	// BeginAuth starts one sign-in, with the one address answer the service may
+	// have asked for. It may reach the network, so it is called from a command
+	// and never from the model loop.
+	BeginAuth(ctx context.Context, id, answer string) (*connect.Flow, error)
 	// ConnectKey connects one service from a key the person pasted, and hands
 	// back where that service stands afterwards. It is the whole of the flow for
 	// a [connect.Service] whose Auth is "key": there is no browser, no waiting
@@ -121,17 +122,19 @@ type connAsk struct {
 	// the transcript are keyed by.
 	service string
 	name    string
-	// needsKey says this account is connected by pasting a key rather than by a
-	// browser trip (session.Event's NeedsKey). It changes what "yes" DOES and
-	// nothing about what the block asks: the question a person is answering is
-	// still "may aforge connect this", and how the connecting happens is
-	// machinery.
+	// needsKey says this account needs a typed answer: a key, or the one thing
+	// its address is missing (session.Event's NeedsKey).
 	needsKey bool
-	// key is the box the key is being typed into, and nil until the offer has
-	// been accepted. It hangs off the ask rather than off the surface so that
-	// everything which drops an offer — the turn settling, /new, a resumed
-	// session — drops the half-typed key with it, in the one assignment it
-	// already makes.
+	// blank distinguishes the non-secret address answer from a pasted key, and
+	// secret decides whether the answer may be drawn. ask is the service's own
+	// sentence over that box.
+	blank  string
+	secret bool
+	ask    string
+	// key is the typed-answer box, and nil until the offer has been accepted. It
+	// hangs off the ask rather than off the surface so that everything which drops
+	// an offer — the turn settling, /new, a resumed session — drops the half-typed
+	// answer with it, in the one assignment it already makes.
 	key *editor
 }
 
@@ -185,11 +188,41 @@ func (a *app) askConnect(ev session.Event) {
 	// answers to one question.
 	a.connPanel.close()
 	a.rememberService(ev.Service, name)
+	var blank, ask string
+	secret := ev.NeedsKey
+	if ev.NeedsKey {
+		if service, found := a.connectServiceForAsk(ev.Service); found {
+			blank = strings.TrimSpace(service.Blank)
+			secret = keyService(service)
+			ask = strings.TrimSpace(service.KeyAsk)
+		}
+	}
 	a.connAsks = append(a.connAsks, connAsk{
 		id: ev.ConnectID, service: ev.Service, name: name, needsKey: ev.NeedsKey,
+		blank: blank, secret: secret, ask: ask,
 	})
 	a.follow()
 	a.touch()
+}
+
+// connectServiceForAsk finds the catalog words that belong over one typed
+// answer. The event road stays unchanged: both ends of --host already compile
+// against the same catalog, and the local manager is preferred when a test or
+// another door supplies its own rows.
+func (a *app) connectServiceForAsk(id string) (connect.Service, bool) {
+	if a.conns != nil {
+		for _, status := range a.conns.Services() {
+			if strings.EqualFold(status.ID, id) {
+				return status.Service, true
+			}
+		}
+	}
+	for _, plug := range connect.Registered() {
+		if strings.EqualFold(plug.Service().ID, id) {
+			return plug.Service(), true
+		}
+	}
+	return connect.Service{}, false
 }
 
 // asksConnect reports whether an offer owns the keyboard.
@@ -197,11 +230,11 @@ func (a *app) asksConnect() bool { return len(a.connAsks) > 0 }
 
 // answerConnect resolves the offer at the head of the queue.
 //
-// A YES ON A KEY SERVICE IS NOT AN ANSWER YET, it is the start of one: there is
-// no browser to hand off to, so the block opens a box in place and waits for the
-// key ([app.connectKeyRow]). The session hears nothing until that box is
-// submitted or backed out of, which is the same bargain the browser path makes —
-// exactly one answer per offer, sent when the person has actually given one.
+// A YES WHEN THE SERVICE NEEDS A TYPED ANSWER IS NOT AN ANSWER YET, it is the
+// start of one: the block opens a box in place and waits for the key, or the one
+// thing the browser address is missing ([app.connectKeyRow]). The session hears
+// nothing until that box is submitted or backed out of — exactly one answer per
+// offer, sent when the person has actually given one.
 func (a *app) answerConnect(approve bool) {
 	if len(a.connAsks) == 0 {
 		return
@@ -248,7 +281,7 @@ func (a *app) submitConnectKey() {
 	if a.agent != nil {
 		a.agent.ResolveConnectKey(head.id, key)
 	}
-	if key != "" {
+	if key != "" && head.blank == "" {
 		// The key is on its way to the far end, which takes a network trip and
 		// can take a while. That is a thing that HAPPENED, so it lands in the
 		// conversation the way the browser handoff does, and the outcome settles
@@ -380,6 +413,8 @@ func (a *app) connectAskRows(width int) []string {
 	sentence := connectPurpose(head.name)
 	if a.hostedBrowserSignIn() {
 		sentence = connectAskRemoteWord
+	} else if head.key != nil && head.blank != "" {
+		sentence = head.ask
 	}
 	out = append(out, a.pal.dim(fit("  "+sentence, width)))
 	// THE BOX TAKES THE OFFER'S OWN ROW, so the block does not grow, shift or
@@ -484,7 +519,12 @@ func (a *app) connectOffer(width int) string {
 
 // connectKeyHint is what an empty box says: the one instruction, in the word the
 // person owns the account by.
-func connectKeyHint(name string) string { return "paste your " + name + " key" }
+func connectKeyHint(name, blank string) string {
+	if blank = strings.TrimSpace(blank); blank != "" {
+		return "your " + strings.ToLower(blank)
+	}
+	return "paste your " + name + " key"
+}
 
 // ── the box itself, wherever it is opened ───────────────────────────────────
 //
@@ -498,8 +538,8 @@ func connectKeyHint(name string) string { return "paste your " + name + " key" }
 // inside a block whose height the session's question owns, and the two lines
 // this box can grow are two lines that block cannot spare.
 
-// keyEntry is one key being given: which service it is for, the word a person
-// knows it by, the two things the service says about answering, and the box.
+// keyEntry is one typed answer being given: which service it is for, the word a
+// person knows it by, what the service says about answering, and the box.
 //
 // ask and link are copied off the [connect.Service] at the moment the box opens
 // rather than looked up while it is drawn: a paint runs many times a second, and
@@ -507,9 +547,17 @@ func connectKeyHint(name string) string { return "paste your " + name + " key" }
 type keyEntry struct {
 	id   string
 	name string
+	// blank is the plain name of a visible answer. Empty means this is a key.
+	blank string
+	// answers is the service's closed list for blank. It is copied when the box
+	// opens so the question and the accepted values cannot drift apart.
+	answers []string
+	// secret says the typed answer is a key and must never be drawn. A browser
+	// address's one missing fact is false so a typo stays visible.
+	secret bool
 	// ask is the instruction for a service that wants more than a key — the
-	// workspace, a space, then the key ([connect.Service.KeyAsk]). Empty for
-	// nearly all of them.
+	// workspace, a space, then the key — or one visible address answer
+	// ([connect.Service.KeyAsk]). Empty for nearly all of them.
 	ask string
 	// link is where the key is to be found ([connect.Service.KeyHint]). Empty
 	// where nobody could say, and then nothing is drawn.
@@ -520,10 +568,13 @@ type keyEntry struct {
 // newKeyEntry opens the box for one service.
 func newKeyEntry(service connect.Service, name string) *keyEntry {
 	return &keyEntry{
-		id:   service.ID,
-		name: name,
-		ask:  strings.TrimSpace(service.KeyAsk),
-		link: strings.TrimSpace(service.KeyHint),
+		id:      service.ID,
+		name:    name,
+		blank:   strings.TrimSpace(service.Blank),
+		answers: append([]string(nil), service.Answers...),
+		secret:  keyService(service),
+		ask:     strings.TrimSpace(service.KeyAsk),
+		link:    strings.TrimSpace(service.KeyHint),
 	}
 }
 
@@ -566,8 +617,8 @@ func keyHintLine(link string, pal palette, width int) string {
 }
 
 // keyBoxLines is the box as the lines it takes, and where the caret sits inside
-// them: the instruction where the service has one, the masked box, and the
-// address where the key lives.
+// them: the instruction where the service has one, the answer box, and either
+// the accepted values or the address where a key lives.
 //
 // It answers a caret ROW as well as a column because the instruction can stand
 // above the box, and a caller that assumed the box was the first line would put
@@ -577,23 +628,48 @@ func keyHintLine(link string, pal palette, width int) string {
 // surfaces disagree about: the panel's box takes the draft's own position at the
 // left edge, and the sheet's is drawn INSIDE the row it was opened from and has
 // to hang under it (connectcaps.go). Everything else about the block — what it
-// says, what it masks, what it links — is the same in both places.
-func keyBoxLines(entry *keyEntry, pal palette, width, indent int) ([]string, int, int) {
+// says, what it shows, what it links — is the same in both places.
+func keyBoxLines(entry *keyEntry, pal palette, width, indent, maxRows int) ([]string, int, int) {
 	if indent < 0 {
 		indent = 0
 	}
+	if maxRows < 1 {
+		maxRows = 1
+	}
 	lead := strings.Repeat(" ", indent)
 	width -= indent
-	out := make([]string, 0, 3)
+	askRows := make([]string, 0, 3)
 	if entry.ask != "" {
-		out = append(out, lead+pal.dim(fit("  "+entry.ask, width)))
+		for _, line := range wrap(entry.ask, width-2) {
+			askRows = append(askRows, lead+pal.dim(fit("  "+line, width)))
+		}
 	}
-	line, caretX := keyLine(&entry.box, connectKeyHint(entry.name), pal, width)
-	caretRow := len(out)
-	out = append(out, lead+line)
-	if hint := keyHintLine(entry.link, pal, width); hint != "" {
-		out = append(out, lead+hint)
+	line, caretX := keyLine(&entry.box, connectKeyHint(entry.name, entry.blank), entry.secret, pal, width)
+	tailRows := make([]string, 0, 3)
+	if !entry.secret && len(entry.answers) != 0 {
+		for _, line := range wrap(strings.Join(entry.answers, ", "), width-2) {
+			tailRows = append(tailRows, lead+pal.dim(fit("  "+line, width)))
+		}
+	} else if hint := keyHintLine(entry.link, pal, width); hint != "" {
+		tailRows = append(tailRows, lead+hint)
 	}
+	// THE ANSWER LIST GIVES WAY FIRST. The question and its box are what a
+	// person is answering; the closed list is help beside them, and a refusal
+	// names it again if the answer is not accepted. If those two still outgrow
+	// the box, the question keeps its beginning and drops its tail.
+	over := len(askRows) + 1 + len(tailRows) - maxRows
+	if over > 0 {
+		drop := min(over, len(tailRows))
+		tailRows = tailRows[:len(tailRows)-drop]
+		over -= drop
+	}
+	if over > 0 {
+		drop := min(over, len(askRows))
+		askRows = askRows[:len(askRows)-drop]
+	}
+	caretRow := len(askRows)
+	out := append(askRows, lead+line)
+	out = append(out, tailRows...)
 	return out, caretX + indent, caretRow
 }
 
@@ -631,7 +707,7 @@ func envExampleFor(name string) string {
 
 // connectKeyRow is the offer's row while a key is being typed into it.
 func (a *app) connectKeyRow(head connAsk, width int) string {
-	line, _ := keyLine(head.key, connectKeyHint(head.name), a.pal, width-2)
+	line, _ := keyLine(head.key, connectKeyHint(head.name, head.blank), head.secret, a.pal, width-2)
 	return "  " + line
 }
 
@@ -640,11 +716,17 @@ func (a *app) connectKeyRow(head connAsk, width int) string {
 // the panel's own box (connectpanel.go), because there is ONE way of entering a
 // key on this surface and a second one that looked almost like it would be a
 // second thing to trust.
-func keyLine(box *editor, hint string, pal palette, width int) (string, int) {
+func keyLine(box *editor, hint string, secret bool, pal palette, width int) (string, int) {
 	lead := ansi.StringWidth(prompt)
 	mark := pal.dim(prompt)
 	if len(box.value) == 0 {
 		return mark + pal.dim(fit(hint, width-lead)), lead
+	}
+	if !secret {
+		answer := box.String()
+		shown := fit(answer, max(0, width-lead))
+		before := fit(string(box.value[:box.cursor]), max(0, width-lead))
+		return mark + pal.ink(shown), lead + ansi.StringWidth(before)
 	}
 	bullet := "•"
 	if pal.ascii {

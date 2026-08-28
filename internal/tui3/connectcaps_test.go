@@ -842,6 +842,154 @@ func TestAKeyServiceOpensItsBoxOnTheTab(t *testing.T) {
 	}
 }
 
+func TestABrowserAddressAnswerUsesTheSameBoxOnTheTab(t *testing.T) {
+	row := connect.Status{Service: connect.Service{
+		ID: "datadog", Name: "Datadog", Auth: connect.AuthBrowser,
+		Blank: "Site", Answers: datadogAnswers, KeyAsk: datadogAsk,
+		Blurb: "your metrics, logs and monitors",
+	}}
+	rows := append(append([]connect.Status(nil), keyCatalog...), row)
+	a, conns := capsApp(t, rows)
+	a.width, a.height = 80, 60
+	a.sheet.build()
+	onRow(t, a, "datadog")
+	at := serviceRowAt(a, "datadog")
+	before := plain(strings.Join(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal), "\n"))
+	if !strings.Contains(before, "Datadog") || !strings.Contains(before, signInTag) {
+		t.Fatalf("the rendered Datadog row does not carry the sign-in tag: %q", before)
+	}
+	drive(t, a, key("enter"))
+
+	if a.sheet.conn.entry == nil || a.sheet.conn.entry.secret {
+		t.Fatalf("the tab opened %+v, want an unmasked site box", a.sheet.conn.entry)
+	}
+	if len(conns.began) != 0 {
+		t.Fatalf("the browser started before the answer: %v", conns.began)
+	}
+	screen := strings.Join(sheetLabels(a), "\n")
+	if strings.Count(screen, datadogAsk) != 1 {
+		t.Fatalf("the site question appears %d times, want once:\n%s", strings.Count(screen, datadogAsk), screen)
+	}
+	if !strings.Contains(screen, "your site") {
+		t.Fatalf("the box does not say what to put in it:\n%s", screen)
+	}
+	drive(t, a, tea.PasteMsg{Content: "datadoghq.eu"})
+	if !sheetHas(a, "datadoghq.eu") {
+		t.Fatalf("the site is masked:\n%s", strings.Join(sheetLabels(a), "\n"))
+	}
+	drive(t, a, key("enter"))
+	if len(conns.answers) != 1 || conns.answers[0].id != "datadog" || conns.answers[0].key != "datadoghq.eu" {
+		t.Fatalf("BeginAuth received %+v", conns.answers)
+	}
+	if len(conns.keyed) != 0 {
+		t.Fatalf("the address answer took the key path: %+v", conns.keyed)
+	}
+}
+
+// A refused site keeps the question and its whole closed list beside the
+// refusal, so the next answer can be chosen without reconstructing the list.
+func TestARefusedBrowserAddressKeepsEveryChoiceOnTheTab(t *testing.T) {
+	row := connect.Status{Service: connect.Service{
+		ID: "datadog", Name: "Datadog", Auth: connect.AuthBrowser,
+		Blank: "Site", Answers: datadogAnswers, KeyAsk: datadogAsk,
+		Blurb: "your metrics, logs and monitors",
+	}}
+	rows := append(append([]connect.Status(nil), keyCatalog...), row)
+	a, conns := capsApp(t, rows)
+	a.width, a.height = 50, 60
+	a.sheet.build()
+	onRow(t, a, "datadog")
+	drive(t, a, key("enter"), tea.PasteMsg{Content: "us4.datadoghq.com"})
+	conns.err = errConnect("Datadog needs one of these for its site: " + strings.Join(datadogAnswers, ", "))
+	drive(t, a, key("enter"))
+
+	screen := strings.Join(sheetLabels(a), "\n")
+	if !strings.Contains(screen, "Datadog needs one of these for its site") {
+		t.Fatalf("the refusal is not visible:\n%s", screen)
+	}
+	for _, answer := range datadogAnswers {
+		if !strings.Contains(screen, answer) {
+			t.Errorf("the refused box no longer names %q:\n%s", answer, screen)
+		}
+	}
+}
+
+// A refusal belongs beside the answer it refused, but a box opened since then
+// belongs to the person typing in it and keeps both its row and its value.
+func TestARefusedBrowserAddressDoesNotReplaceAnotherOpenBox(t *testing.T) {
+	row := connect.Status{Service: connect.Service{
+		ID: "datadog", Name: "Datadog", Auth: connect.AuthBrowser,
+		Blank: "Site", Answers: datadogAnswers, KeyAsk: datadogAsk,
+		Blurb: "your metrics, logs and monitors",
+	}}
+	rows := append(append([]connect.Status(nil), keyCatalog...), row)
+	a, _ := capsApp(t, rows)
+	onRow(t, a, "datadog")
+	drive(t, a, key("enter"), tea.PasteMsg{Content: "datadoghq.eu"})
+	_ = a.connEntryKey(key("enter"))
+
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"), tea.PasteMsg{Content: theKey})
+	a.connTabStopped("datadog", "Datadog did not accept that site")
+
+	if a.sheet.conn.entry == nil || a.sheet.conn.entry.id != "recurly" {
+		t.Fatalf("the refusal replaced the open box with %+v", a.sheet.conn.entry)
+	}
+	if got := a.sheet.conn.entry.value(); got != theKey {
+		t.Fatalf("the open box kept %q, want the pasted value", got)
+	}
+	if a.sheet.msg != "Datadog did not accept that site" {
+		t.Fatalf("the refusal was not kept beside the box: %q", a.sheet.msg)
+	}
+}
+
+// A filtered-out row cannot own the keyboard: when its refusal arrives the
+// filter stays in charge, and another character still narrows the visible list.
+func TestARefusedBrowserAddressDoesNotOpenOnAFilteredOutRow(t *testing.T) {
+	row := connect.Status{Service: connect.Service{
+		ID: "datadog", Name: "Datadog", Auth: connect.AuthBrowser,
+		Blank: "Site", Answers: datadogAnswers, KeyAsk: datadogAsk,
+		Blurb: "your metrics, logs and monitors",
+	}}
+	rows := append(append([]connect.Status(nil), keyCatalog...), row)
+	a, _ := capsApp(t, rows)
+	onRow(t, a, "datadog")
+	drive(t, a, key("enter"), tea.PasteMsg{Content: "datadoghq.eu"})
+	_ = a.connEntryKey(key("enter"))
+	for _, r := range "recurly" {
+		drive(t, a, key(string(r)))
+	}
+	if serviceRowAt(a, "datadog") >= 0 {
+		t.Fatal("the filter still draws Datadog")
+	}
+
+	a.connTabStopped("datadog", "Datadog did not accept that site")
+	if a.sheet.conn.entry != nil {
+		t.Fatalf("the filtered-out row opened %+v", a.sheet.conn.entry)
+	}
+	drive(t, a, key("x"))
+	if got := a.sheet.query.String(); got != "recurlyx" {
+		t.Fatalf("the next key reached %q, want the filter to hold recurlyx", got)
+	}
+}
+
+// A key service with an extra instruction still asks it once and keeps the
+// ordinary key hint in the box.
+func TestAKeyServiceWithAnExtraInstructionKeepsOneAskOnTheTab(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "chargebee")
+	drive(t, a, key("enter"))
+
+	screen := strings.Join(sheetLabels(a), "\n")
+	ask := "Give the domain and then the key, one space between them."
+	if strings.Count(screen, ask) != 1 {
+		t.Fatalf("the instruction appears %d times, want once:\n%s", strings.Count(screen, ask), screen)
+	}
+	if !strings.Contains(screen, "paste your Chargebee key") {
+		t.Fatalf("the box lost its paste hint:\n%s", screen)
+	}
+}
+
 // THE KEY IS NEVER ON THE SCREEN, on this surface as on the other two: a bullet
 // each and how many there are.
 func TestTheTabsKeyBoxNeverDrawsTheKey(t *testing.T) {
@@ -1093,7 +1241,7 @@ func TestAClosedAccountSummarisesItsAnswers(t *testing.T) {
 // no row, so nothing can be pressed on it.
 func TestEachHeldAccountGetsALineOfAir(t *testing.T) {
 	a, _ := keyApp(t)
-	lines, owner := a.sheet.listLines(a.width, a.pal, -1)
+	lines, owner := a.sheet.listLines(a.width, a.height, a.pal, -1)
 	held := 0
 	for i, line := range lines {
 		if !strings.Contains(plain(line), glyphConnected+" ") {

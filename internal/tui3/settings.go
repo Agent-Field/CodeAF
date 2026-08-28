@@ -457,15 +457,15 @@ var settingUI = map[string]settingMeta{
 		about: "signs the commits and PRs aforge writes for you — one trailer, " +
 			"one footer line.",
 	},
-	// The two rows a Google connection is signed with. They belong on this tab
+	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
 	// what: they are about what aforge may REACH on your behalf, which is the
 	// question this tab already holds.
 	//
 	// Neither of them is where a person connects an account — /connect is, and it
 	// asks nothing but a keypress. These are for somebody signing in through
-	// their own Google project rather than the one aforge ships with, which is a
-	// setting and not a step.
+	// their own Google or Slack application rather than the ones aforge ships
+	// with, which is a setting and not a step.
 	config.KeyGoogleOAuthClient: {
 		tab: tabWorkspace, label: "google sign-in id", widget: widgetText,
 		about: "identifies aforge to Google when you connect an account. Blank " +
@@ -474,6 +474,11 @@ var settingUI = map[string]settingMeta{
 	config.KeyGoogleOAuthSecret: {
 		tab: tabWorkspace, label: "google sign-in secret", widget: widgetText,
 		about: "the secret that goes with the id above. It is kept masked once saved.",
+	},
+	config.KeySlackOAuthClient: {
+		tab: tabWorkspace, label: "slack sign-in id", widget: widgetText,
+		about: "identifies aforge to Slack when you connect a workspace. Blank uses " +
+			"the one aforge ships with.",
 	},
 
 	// ── Display ─────────────────────────────────────────────────────────────
@@ -1917,7 +1922,7 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 				}
 				return rows
 			}
-			body, owner := s.listLines(width, pal, a.hoveredSheetRow())
+			body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
 			at := s.cursorLine(owner)
 			// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two
 			// lines — the name and the value under it — and a window that pinned
@@ -2035,7 +2040,7 @@ func sheetTabBar(width, active int, pal palette) string {
 //
 // It returns the item each line belongs to (-1 for a heading or a gap), which
 // is what the pointer resolves against.
-func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
+func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []int) {
 	lines := make([]string, 0, len(s.items)+8)
 	owner := make([]int, 0, len(s.items)+8)
 	put := func(text string, at int) {
@@ -2067,7 +2072,7 @@ func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
 		if item.conn != nil && item.conn.air && len(lines) > 0 {
 			put("", -1)
 		}
-		for _, line := range s.rowLines(item, i == s.cursor, i == hover, width, pal) {
+		for _, line := range s.rowLinesWithin(item, i == s.cursor, i == hover, width, connBoxRows(room), pal) {
 			put(line, i)
 		}
 		if i != s.cursor {
@@ -2131,8 +2136,15 @@ const changedMark = "•"
 // [overlayLines]). The pair stays ONE item to the pointer and to the cursor —
 // [sheet.listLines] hands both lines the same owner.
 func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal palette) []string {
+	return s.rowLinesWithin(item, selected, hovered, width, draftRows, pal)
+}
+
+// rowLinesWithin draws a row with the space this sheet can give an open
+// connection box. Ordinary rows do not spend it; the one tall row may use it
+// before dropping the end of a wrapped answer list.
+func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, boxRows int, pal palette) []string {
 	if item.conn != nil {
-		return s.connRowLines(item.conn, selected, hovered, width, pal)
+		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)
@@ -2152,6 +2164,13 @@ func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal 
 		value += "  set by " + name
 	}
 	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
+}
+
+// connBoxRows is the most an open box may take from the list window. Its row
+// heading and the line of air below it are spoken for first; a short window
+// keeps the six-row ceiling that preserves the beginning of the question.
+func connBoxRows(room int) int {
+	return max(draftRows, room-2)
 }
 
 // selectLines draws the model picker in the list's place — LITERALLY the picker's

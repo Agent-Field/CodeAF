@@ -71,7 +71,7 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 		}
 		return rows
 	}
-	body, owner := s.listLines(width, pal, a.hoveredSheetRow())
+	body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
 	at := s.cursorLine(owner)
 	// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two lines —
 	// the name and the value under it — and a window that pinned only the first

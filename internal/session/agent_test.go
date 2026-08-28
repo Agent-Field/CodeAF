@@ -1118,6 +1118,16 @@ func TestFindGlossIsThePattern(t *testing.T) {
 	}
 }
 
+func TestSlackSendGlossSaysWhereAndWhatWillLeave(t *testing.T) {
+	got := gloss(ai.ToolCall{Function: ai.ToolCallFunction{
+		Name:      "slack_send",
+		Arguments: `{"channel":"#general","text":"we ship Friday"}`,
+	}})
+	if !strings.Contains(got, "#general") || !strings.Contains(got, "we ship Friday") {
+		t.Fatalf("gloss = %q, want the channel and message", got)
+	}
+}
+
 // A malformed schema must fail at construction rather than ride the wire as
 // Parameters:nil — a tool the model is told takes no arguments.
 func TestToolDefinitionsRejectAMalformedSchema(t *testing.T) {

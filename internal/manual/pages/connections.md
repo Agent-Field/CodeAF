@@ -2,7 +2,7 @@
 
 ## What a connection is
 
-Aforge can reach accounts you hold somewhere else — Google first — so that
+Aforge can reach accounts you hold somewhere else — Google and Slack first — so that
 "what did Priya say about the invoice" and "am I free Thursday afternoon" are
 questions it answers by looking, instead of questions it asks you to go and
 answer yourself.
@@ -12,10 +12,16 @@ lets aforge search and open your mail and look at your calendar, and it lets it
 send a message from your address and put an event on your calendar. It cannot
 empty your mailbox, and it cannot make or delete a calendar.
 
+Connecting Slack lets aforge search messages, read one thread, list the channels
+you can see, and — after asking you — post a message as you.
+
 ## Two kinds, and you can tell them apart by what they ask you for
 
 - **Google opens a browser.** You sign in on Google's own page, Google shows you
   exactly what is being asked for, and aforge keeps the sign-in fresh for you.
+- **Slack opens a browser too.** You sign in on Slack's own page as yourself,
+  choose the workspace, and Slack shows the twelve permissions aforge needs to
+  search, read, list channels and send messages as you.
 - **A few hundred others want a key.** Stripe, Freshdesk, Brevo, Mailgun,
   Airtable's neighbours — the systems you already pay for and already hold a key
   for. There is no page to open: you paste the key once and that is the whole of
@@ -220,13 +226,54 @@ what it is about to call.
 
 ## Some accounts bring their own tools
 
-Notion, Linear, Sentry, Atlassian and Slack sign in through a browser the way
-Google does, and then they do one thing the others do not: **they say for
-themselves what they can do**. Aforge asks the account what it brings the moment
-it picks it up, and what comes back — search this, open that, file the other —
-is what it holds for the rest of the conversation. None of that list is written
-into aforge, so an account that gains a tool next month is an account aforge
-picks that tool up from, with nothing to change here.
+Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
+Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
+Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
+Supabase and Todoist sign in through a browser the way Google and Slack do, and then they do one
+thing the others do not: **they say for themselves what they can do**. Aforge
+asks the account what it brings the moment it picks it up, and what comes back —
+search this, open that, file the other — is what it holds for the rest of the
+conversation. None of that list is written into aforge, so an account that
+gains a tool next month is an account aforge picks that tool up from, with
+nothing to change here.
+
+| Service | Address | What it brings |
+| --- | --- | --- |
+| Airtable | `https://mcp.airtable.com/mcp` | your bases, tables and records |
+| Atlassian | `https://mcp.atlassian.com/v1/mcp/authv2` | Jira issues and Confluence pages |
+| Buildkite | `https://mcp.buildkite.com/mcp` | your pipelines, builds and logs |
+| Calendly | `https://mcp.calendly.com` | your event types, availability and scheduled meetings |
+| Canva | `https://mcp.canva.com/mcp` | your designs, folders and brand kits |
+| CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
+| ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
+| Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| Datadog | `https://mcp.<site>/v1/mcp` | your metrics, logs and monitors |
+| GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
+| Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
+| Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
+| Hugging Face | `https://huggingface.co/mcp` | your models, datasets and Spaces |
+| Klaviyo | `https://mcp.klaviyo.com/mcp` | your campaigns, flows and audiences |
+| LaunchDarkly | `https://mcp.launchdarkly.com/mcp/launchdarkly` | your feature flags, segments and environments |
+| Linear | `https://mcp.linear.app/mcp` | your issues, projects and cycles |
+| Miro | `https://mcp.miro.com` | your boards, frames and notes |
+| Neon | `https://mcp.neon.tech/mcp` | your projects, branches and queries |
+| Netlify | `https://netlify-mcp.netlify.app/mcp` | your sites, deploys and domains |
+| Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
+| PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
+| PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
+| Railway | `https://mcp.railway.com/` | your projects, services and deployments |
+| Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
+| Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
+| Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
+| Todoist | `https://ai.todoist.net/mcp` | your tasks, projects and labels |
+
+**All 28 work with zero setup here.** GitLab may need its admin to turn its AI
+features on first, and an Airtable enterprise account may need its admin to
+allow the connection first. Datadog asks which site the account is on before it
+opens, and a Datadog admin may restrict who may connect this way. Postman's EU
+workspaces cannot be reached this way: Postman signs those in with a key and
+nothing else, and its row says so.
 
 Two things follow from a list nobody here wrote:
 
@@ -244,13 +291,10 @@ can be turned off. Off means the tools that do it never arrive at all.
 
 ## What it takes to have this at all
 
-The **Google** connection needs one thing from you first, in `⚙` settings: a
-**google app id** and its **google app secret**, from your own Google account.
-Aforge does not ship one, deliberately — an application id baked into the binary
-would be an id every copy shares, so one person's mistake would be everybody's.
-Without those two rows Google is simply not offered, which is the same rule
-aforge follows everywhere: a capability it cannot deliver is one it never
-mentions.
+Google and Slack both ship with what their browser sign-in needs, so both are on
+the list from the first run. The **google app id**, **google app secret** and
+**slack app id** rows in `⚙` settings replace the shipped application for people
+and organisations that want their own; leaving them blank uses aforge's.
 
 The key accounts need nothing set up. Your key is the whole of what it takes, so
 they are on the list from the first run.
