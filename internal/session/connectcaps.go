@@ -62,6 +62,15 @@ var googleFamily = map[string]bool{
 	"calendar_create": true,
 }
 
+// slackFamily is the inverse of [Agent.familyTools]'s Slack case, held by the
+// same test that keeps Google's inverse exact.
+var slackFamily = map[string]bool{
+	"slack_search":        true,
+	"slack_read_thread":   true,
+	"slack_list_channels": true,
+	"slack_send":          true,
+}
+
 // toolService names the account one tool belongs to, and "" for a tool that
 // belongs to no account — which is most of the belt.
 //
@@ -74,6 +83,9 @@ func toolService(tool string) string {
 	tool = strings.TrimSpace(tool)
 	if googleFamily[tool] {
 		return "google"
+	}
+	if slackFamily[tool] {
+		return "slack"
 	}
 	// A key account's tool is named after the account: stripe_request. The
 	// suffix comes from the package that matches on it, for

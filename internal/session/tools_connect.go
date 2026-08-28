@@ -45,6 +45,22 @@ const gmailReadDescription = "Read one message whole: the sender, the date, the 
 
 const gmailReadSchemaJSON = `{"type":"object","properties":{"id":{"type":"string","description":"The id of the message, as gmail_search returned it"}},"required":["id"],"additionalProperties":false}`
 
+const slackSearchDescription = "Search the person's Slack and get back matching messages newest first: the channel, who wrote each one, when, and its text. Every result ends with the channel id and Slack timestamp that slack_read_thread takes."
+
+const slackSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for in Slack"},"max":{"type":"number","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
+
+const slackReadThreadDescription = "Read one Slack thread in order, up to 15 messages. The channel id and ts are the final line of a slack_search result; ts is Slack's timestamp for the message the thread starts at."
+
+const slackReadThreadSchemaJSON = `{"type":"object","properties":{"channel":{"type":"string","description":"The channel id, as slack_search returned it"},"ts":{"type":"string","description":"The Slack timestamp, as slack_search returned it"}},"required":["channel","ts"],"additionalProperties":false}`
+
+const slackListChannelsDescription = "List the Slack channels the person can see: each channel's name, id, member count and purpose. Filter narrows the names when you already know part of one."
+
+const slackListChannelsSchemaJSON = `{"type":"object","properties":{"filter":{"type":"string","description":"Part of a channel name to keep (optional)"},"max":{"type":"number","description":"How many channels to inspect (default: 50)"}},"additionalProperties":false}`
+
+const slackSendDescription = "Send one Slack message as the person, to a channel id or #name. It leaves as them and somebody in that channel can read it, so write what they would have written and expect them to be asked before it goes. thread_ts replies under the message whose ts came from slack_search."
+
+const slackSendSchemaJSON = `{"type":"object","properties":{"channel":{"type":"string","description":"Where it goes: a channel id or #name"},"text":{"type":"string","description":"The message itself, as plain text"},"thread_ts":{"type":"string","description":"The ts to reply under, as slack_search returned it (optional)"}},"required":["channel","text"],"additionalProperties":false}`
+
 const calendarListDescription = "List the person's calendar events between two days, inclusive, one line each: when, how long, and what it is called. Use it before answering anything about their availability, and never guess at a schedule you have not read."
 
 const calendarListSchemaJSON = `{"type":"object","properties":{"from":{"type":"string","description":"The first day, as YYYY-MM-DD"},"to":{"type":"string","description":"The last day, inclusive, as YYYY-MM-DD"}},"required":["from","to"],"additionalProperties":false}`
@@ -60,6 +76,11 @@ const calendarCreateSchemaJSON = `{"type":"object","properties":{"title":{"type"
 // gmailSearchDefaultMax is what a model that asks for no number gets. The helper
 // bounds the ask itself — this is the sensible default, not the ceiling.
 const gmailSearchDefaultMax = 10
+
+const (
+	slackSearchDefaultMax  = 10
+	slackChannelDefaultMax = 50
+)
 
 // connectTools is the accounts half of the belt, and it is CONDITIONAL for the
 // reason searchTools is: a hub that is not there contributes no tool at all
@@ -417,6 +438,11 @@ func (a *Agent) familyTools(service connectStatus) []bare.Tool {
 			a.gmailSearchTool(), a.gmailReadTool(), a.gmailSendTool(),
 			a.calendarListTool(), a.calendarCreateTool(),
 		}
+	case "slack":
+		return []bare.Tool{
+			a.slackSearchTool(), a.slackReadThreadTool(),
+			a.slackListChannelsTool(), a.slackSendTool(),
+		}
 	}
 	if service.keyed() {
 		return []bare.Tool{a.serviceRequestTool(service)}
@@ -582,10 +608,107 @@ func (a *Agent) gmailReadTool() bare.Tool {
 	}
 }
 
-// ── the two hands that act ──────────────────────────────────────────────────
+func (a *Agent) slackSearchTool() bare.Tool {
+	return bare.Tool{
+		Name:        "slack_search",
+		Description: slackSearchDescription,
+		Schema:      json.RawMessage(slackSearchSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Query string `json:"query"`
+				Max   *int   `json:"max"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			query := strings.TrimSpace(parsed.Query)
+			if query == "" {
+				return "Invalid arguments: query is required", true, nil
+			}
+			limit := slackSearchDefaultMax
+			if parsed.Max != nil && *parsed.Max > 0 {
+				limit = *parsed.Max
+			}
+			client, failed := a.serviceClient(ctx, "slack", "Slack")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.SlackSearch(ctx, client, query, limit)
+			if err != nil {
+				return "Searching your Slack failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
+func (a *Agent) slackReadThreadTool() bare.Tool {
+	return bare.Tool{
+		Name:        "slack_read_thread",
+		Description: slackReadThreadDescription,
+		Schema:      json.RawMessage(slackReadThreadSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Channel string `json:"channel"`
+				TS      string `json:"ts"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			channel, ts := strings.TrimSpace(parsed.Channel), strings.TrimSpace(parsed.TS)
+			if channel == "" {
+				return "Invalid arguments: channel is required", true, nil
+			}
+			if ts == "" {
+				return "Invalid arguments: ts is required", true, nil
+			}
+			client, failed := a.serviceClient(ctx, "slack", "Slack")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.SlackReadThread(ctx, client, channel, ts)
+			if err != nil {
+				return "Reading that thread failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
+func (a *Agent) slackListChannelsTool() bare.Tool {
+	return bare.Tool{
+		Name:        "slack_list_channels",
+		Description: slackListChannelsDescription,
+		Schema:      json.RawMessage(slackListChannelsSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Filter string `json:"filter"`
+				Max    *int   `json:"max"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			limit := slackChannelDefaultMax
+			if parsed.Max != nil && *parsed.Max > 0 {
+				limit = *parsed.Max
+			}
+			client, failed := a.serviceClient(ctx, "slack", "Slack")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.SlackListChannels(ctx, client, parsed.Filter, limit)
+			if err != nil {
+				return "Listing channels failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
+// ── the three hands that act ────────────────────────────────────────────────
 //
-// THESE TWO LEAVE THE MACHINE IN THE PERSON'S NAME, and that is the whole
-// difference between them and the three above. A search that was not wanted
+// THESE THREE LEAVE THE MACHINE IN THE PERSON'S NAME, and that is the whole
+// difference between them and the reading hands above. A search that was not wanted
 // costs a moment; a message that was not wanted has been read by somebody else
 // by the time anyone notices. So they are ASKED ABOUT BY DEFAULT, and not by a
 // check written here: the names are in internal/approval's table of tools a
@@ -620,6 +743,39 @@ func (a *Agent) gmailSendTool() bare.Tool {
 				return failed, true, nil
 			}
 			text, err := connect.GmailSend(ctx, client, parsed.To, parsed.Cc, parsed.Subject, parsed.Body)
+			if err != nil {
+				return "Sending that message failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
+func (a *Agent) slackSendTool() bare.Tool {
+	return bare.Tool{
+		Name:        "slack_send",
+		Description: slackSendDescription,
+		Schema:      json.RawMessage(slackSendSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Channel  string `json:"channel"`
+				Text     string `json:"text"`
+				ThreadTS string `json:"thread_ts"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if strings.TrimSpace(parsed.Channel) == "" {
+				return "Invalid arguments: channel is required", true, nil
+			}
+			if strings.TrimSpace(parsed.Text) == "" {
+				return "Invalid arguments: text is required", true, nil
+			}
+			client, failed := a.serviceClient(ctx, "slack", "Slack")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.SlackSend(ctx, client, parsed.Channel, parsed.Text, parsed.ThreadTS)
 			if err != nil {
 				return "Sending that message failed: " + err.Error(), true, nil
 			}

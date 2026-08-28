@@ -16,6 +16,10 @@ func googleStatus() connectStatus {
 	return connectStatus{ID: "google", Name: "Google", Auth: "browser", Connected: true}
 }
 
+func slackStatus() connectStatus {
+	return connectStatus{ID: "slack", Name: "Slack", Auth: "browser", Connected: true}
+}
+
 // armKeyed puts a key account's one tool on the belt, the way a conversation
 // that picked it up is already holding it.
 func armKeyed(t *testing.T, agent *Agent) {
@@ -486,6 +490,7 @@ func TestAlwaysOnAnOrdinaryToolStillUsesTheMemo(t *testing.T) {
 func TestTheActsFloorAndTheCapabilitiesAgree(t *testing.T) {
 	manager, err := connect.NewManager(t.TempDir(), map[string]connect.ClientCredential{
 		"google": {ID: "client-id", Secret: "client-secret"},
+		"slack":  {ID: "slack-client", Public: true},
 	})
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -508,6 +513,21 @@ func TestTheActsFloorAndTheCapabilitiesAgree(t *testing.T) {
 		declared, found := acts("google", capability)
 		if !found {
 			t.Errorf("%s points at %q, which Google does not declare", tool, capability)
+			continue
+		}
+		if want := approval.ActsInThePersonsName(tool, nil); declared != want {
+			t.Errorf("%s: the capability says acts = %v, the consent floor says %v", tool, declared, want)
+		}
+	}
+	for tool := range slackFamily {
+		capability := manager.ToolCapability("slack", tool)
+		if capability == "" {
+			t.Errorf("%s is armed for Slack and no capability owns it", tool)
+			continue
+		}
+		declared, found := acts("slack", capability)
+		if !found {
+			t.Errorf("%s points at %q, which Slack does not declare", tool, capability)
 			continue
 		}
 		if want := approval.ActsInThePersonsName(tool, nil); declared != want {
@@ -565,6 +585,29 @@ func TestToolServiceIsTheInverseOfTheFamily(t *testing.T) {
 	for _, absent := range []string{"bash", "services", "use_service", "_request", ""} {
 		if got := toolService(absent); got != "" {
 			t.Errorf("toolService(%q): got %q, want empty", absent, got)
+		}
+	}
+}
+
+// toolService is the inverse of the Slack family too: all four names point
+// back to Slack, and every name the inverse knows is really armed.
+func TestToolServiceIsTheInverseOfTheSlackFamily(t *testing.T) {
+	hub := &fakeHub{connected: true}
+	agent := connectAgent(t, &scriptedCompleter{}, hub, true)
+
+	armed := map[string]bool{}
+	for _, tool := range agent.familyTools(slackStatus()) {
+		armed[tool.Name] = true
+		if got := toolService(tool.Name); got != "slack" {
+			t.Errorf("toolService(%s): got %q, want slack", tool.Name, got)
+		}
+	}
+	if len(armed) != len(slackFamily) {
+		t.Errorf("the family arms %d tools, the inverse knows %d", len(armed), len(slackFamily))
+	}
+	for tool := range slackFamily {
+		if !armed[tool] {
+			t.Errorf("%s is in the inverse and the family does not arm it", tool)
 		}
 	}
 }
