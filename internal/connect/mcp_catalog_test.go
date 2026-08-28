@@ -86,7 +86,7 @@ func TestTheToolServersAreUsableAsTheyStand(t *testing.T) {
 }
 
 func TestTheToolServerLinesUseNoMachineryVocabulary(t *testing.T) {
-	services := []Service{fakeToolService(true)}
+	services := []Service{fakeToolService(true), (slack{}).Service()}
 	for _, plug := range Registered() {
 		if _, ok := plug.(*toolServer); ok {
 			services = append(services, plug.Service())
