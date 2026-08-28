@@ -772,10 +772,10 @@ func TestConnectIsOnTheCommandList(t *testing.T) {
 	}
 }
 
-// THE TWO SIGN-IN ROWS HAVE A HOME, a label and a line — the same three things
+// THE THREE SIGN-IN ROWS HAVE A HOME, a label and a line — the same three things
 // the completeness gate asks of every registry row (chrome_test.go).
-func TestTheGoogleSignInRowsAreInThePanel(t *testing.T) {
-	for _, key := range []string{config.KeyGoogleOAuthClient, config.KeyGoogleOAuthSecret} {
+func TestTheSignInRowsAreInThePanel(t *testing.T) {
+	for _, key := range []string{config.KeyGoogleOAuthClient, config.KeyGoogleOAuthSecret, config.KeySlackOAuthClient} {
 		meta, ok := settingUI[key]
 		if !ok {
 			t.Fatalf("row %q has no place in the settings panel", key)
@@ -792,7 +792,7 @@ func TestTheGoogleSignInRowsAreInThePanel(t *testing.T) {
 		}
 		// No machinery in the words a person reads.
 		words := meta.label + " " + meta.about
-		for _, banned := range []string{"OAuth", "oauth", "token", "client id"} {
+		for _, banned := range []string{"OAuth", "oauth", "token", "client id", "PKCE", "pkce"} {
 			if strings.Contains(words, banned) {
 				t.Fatalf("row %q says %q: %s", key, banned, words)
 			}

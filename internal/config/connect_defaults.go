@@ -32,3 +32,7 @@ const (
 	defaultGoogleOAuthClient = "921834031867-u1th3o1s80meaht5lecqsdgrelk2rq0g.apps.googleusercontent.com"
 	defaultGoogleOAuthSecret = "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"
 )
+
+// Slack's PKCE registration is a public client: it has no secret, so none is
+// shipped here and none exists to rotate.
+const defaultSlackOAuthClient = "8687493790227.11921924012693"
