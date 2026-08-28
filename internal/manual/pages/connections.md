@@ -2,7 +2,7 @@
 
 ## What a connection is
 
-Aforge can reach accounts you hold somewhere else — Google first — so that
+Aforge can reach accounts you hold somewhere else — Google and Slack first — so that
 "what did Priya say about the invoice" and "am I free Thursday afternoon" are
 questions it answers by looking, instead of questions it asks you to go and
 answer yourself.
@@ -12,10 +12,16 @@ lets aforge search and open your mail and look at your calendar, and it lets it
 send a message from your address and put an event on your calendar. It cannot
 empty your mailbox, and it cannot make or delete a calendar.
 
+Connecting Slack lets aforge search messages, read one thread, list the channels
+you can see, and — after asking you — post a message as you.
+
 ## Two kinds, and you can tell them apart by what they ask you for
 
 - **Google opens a browser.** You sign in on Google's own page, Google shows you
   exactly what is being asked for, and aforge keeps the sign-in fresh for you.
+- **Slack opens a browser too.** You sign in on Slack's own page as yourself,
+  choose the workspace, and Slack shows the twelve permissions aforge needs to
+  search, read, list channels and send messages as you.
 - **A few hundred others want a key.** Stripe, Freshdesk, Brevo, Mailgun,
   Airtable's neighbours — the systems you already pay for and already hold a key
   for. There is no page to open: you paste the key once and that is the whole of
@@ -223,7 +229,7 @@ what it is about to call.
 Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
 Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
-Supabase and Todoist sign in through a browser the way Google does, and then they do one
+Supabase and Todoist sign in through a browser the way Google and Slack do, and then they do one
 thing the others do not: **they say for themselves what they can do**. Aforge
 asks the account what it brings the moment it picks it up, and what comes back —
 search this, open that, file the other — is what it holds for the rest of the
@@ -285,13 +291,10 @@ can be turned off. Off means the tools that do it never arrive at all.
 
 ## What it takes to have this at all
 
-The **Google** connection needs one thing from you first, in `⚙` settings: a
-**google app id** and its **google app secret**, from your own Google account.
-Aforge does not ship one, deliberately — an application id baked into the binary
-would be an id every copy shares, so one person's mistake would be everybody's.
-Without those two rows Google is simply not offered, which is the same rule
-aforge follows everywhere: a capability it cannot deliver is one it never
-mentions.
+Google and Slack both ship with what their browser sign-in needs, so both are on
+the list from the first run. The **google app id**, **google app secret** and
+**slack app id** rows in `⚙` settings replace the shipped application for people
+and organisations that want their own; leaving them blank uses aforge's.
 
 The key accounts need nothing set up. Your key is the whole of what it takes, so
 they are on the list from the first run.
