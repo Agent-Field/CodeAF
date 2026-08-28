@@ -2250,8 +2250,11 @@ does not do them again. *An answer that runs long is read and moved* is where th
 - **There must be enough separate items.** Below six, one worker doing them in order beats
   paying for a copy of the repository, a check and a wait for each part. This was measured,
   not guessed: twelve image files won, four modules and three bugs lost. This count reads
-  what the worker says it saw, and it only counts a number standing beside a thing —
-  "11 adapter files", "nine sections" — so evidence that names no items at all counts zero.
+  what the worker says it saw, and it counts a number standing beside a pile of things —
+  "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.
+  What never counts is a number that measures or budgets one thing: "250 words",
+  "90 seconds", "3 retries" and "status 500" are parameters, not piles, and evidence that
+  names no pile at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -2292,8 +2295,11 @@ cannot be had is not a reason to throw work away.
 **Except on the one division it is deciding rather than sharpening** — the exception above,
 where the count said too few items and a model's reading of your request said broad. There
 the mastermind is the only thing that has said yes to those parts, so if it cannot be
-reached the count's answer stands and the work carries on as one worker. Nothing is lost
-either way: an unreachable mastermind cannot admit a split, and it cannot cancel any work.
+reached nothing is admitted — and the worker is told exactly that: nothing was decided, ask
+once more. The unanswered ask costs nothing and is not held against the work; only a
+mastermind that actually answers settles the question, and its no is then final for that
+task. Nothing is lost either way: an unreachable mastermind cannot admit a split, and it
+cannot cancel any work.
 
 **Some parts are done with more thinking than others.** Each part carries a grade the worker
 sets. Most parts are ordinary work — the failure mode is simply not being done yet, and you

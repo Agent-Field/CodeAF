@@ -20,13 +20,19 @@ func TestTheGateStillDecidesTheCorpusTheWayItWasMeasured(t *testing.T) {
 		items  int
 		divide bool
 	}{
+		// The DECISION column is the measurement and may not drift. The items
+		// column is the counter's own reading and moved once, when the noun
+		// allowlist became the measures denylist: list markers beside a
+		// plural-shaped word now register ("1. `textstats.py`", "(4) ends
+		// with") and "note-1 … note-5" no longer does — small counts either
+		// way, every decision identical.
 		"api refactor.txt":       {8, true},
 		"bugfix repo.txt":        {3, false},
-		"codegen modules.txt":    {0, false},
+		"codegen modules.txt":    {1, false},
 		"doc coverage.txt":       {0, false},
 		"image captions.txt":     {12, true},
 		"prose report.txt":       {0, false},
-		"research synthesis.txt": {5, false},
+		"research synthesis.txt": {4, false},
 		"review diff.txt":        {0, false},
 	}
 	paths, err := filepath.Glob(filepath.Join("..", "..", "bench", "swarm", "tasks", "*.txt"))
@@ -73,6 +79,42 @@ func TestOnlyNumbersBesideAnItemNounAreCounted(t *testing.T) {
 		{"eight", 0},
 		{"", 0},
 		{"9 endpoints, 4 tables", 9},
+	} {
+		if got := Items(probe.text); got != probe.want {
+			t.Errorf("Items(%q) = %d, want %d", probe.text, got, probe.want)
+		}
+	}
+}
+
+// AND AN ITEM IS ANYTHING SOMEBODY HAS A PILE OF, in whatever domain they work
+// in. The first counter knew eighteen nouns and read a live OSINT task's "34
+// person-rows" as zero items twice — on honest evidence — because contact
+// hunters do not write "files". The pile is open-ended, so the gate counts any
+// plural word that is not a measure, and this table pins the domains the old
+// list refused alongside the parameters that must stay refused.
+func TestAnyEnumeratedPileCountsAndMeasuresNeverDo(t *testing.T) {
+	for _, probe := range []struct {
+		text string
+		want int
+	}{
+		// the incident, verbatim shapes
+		{"ranked-real-users.md holds 34 person-rows across 6 tiers", 34},
+		{"34 independent research targets", 34},
+		{"34 people missing a verified email", 34},
+		// piles from domains no noun list anticipated
+		{"the sweep found 11 contacts", 11},
+		{"eight repos have never been triaged", 8},
+		{"there are 7 spreadsheets to reconcile", 7},
+		// measures, budgets and parameters stay refused
+		{"keep each section under 250 words", 0},
+		{"the run took 90 seconds", 0},
+		{"give it 3 retries and 200 steps", 0},
+		{"the server returned status 500", 0},
+		{"port 8080 is taken", 0},
+		{"order id 458812 was refunded twice", 0},
+		// a verb before a number is not a pile
+		{"the ledger holds 34", 0},
+		{"it covers 250", 0},
 	} {
 		if got := Items(probe.text); got != probe.want {
 			t.Errorf("Items(%q) = %d, want %d", probe.text, got, probe.want)

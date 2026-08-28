@@ -47,15 +47,15 @@ package session
 //
 // ── AND ONE PLACE THE EVIDENCE GATE IS NOT THE LAST WORD ──
 //
-// The floor was measured on items a counter can see: files, modules, images —
-// a number standing beside one of eighteen item-nouns. Some work is wide in a
-// shape that counter is blind to. Four whole ISSUES in one request are four
+// The floor was measured on items a counter can see: a number standing beside
+// a plural that is not a measure (internal/splitgate). Some work is wide in a
+// shape any counter is blind to. Four whole ISSUES in one request are four
 // ownable jobs with four done-conditions, and they enumerate NOTHING; so do four
 // modules, which the bench measured losing. No amount of teaching a free counter
 // over free text tells those two apart, and a floor tuned until it did would be
 // a floor tuned to a benchmark's phrasing.
 //
-// So the floor does not move and the counter learns no new words. What the road
+// So the floor does not move. What the road
 // has instead is a TIEBREAK, and it fires on a disagreement rather than on a
 // phrase: the evidence gate refuses on the count AND a model that read this
 // request already said the work was broad ([taskSpec.armed] holds which reader
@@ -340,10 +340,19 @@ func (n *TaskNode) armedByJudgement() bool {
 // of this road settles on for the same reason: the review is one call and there
 // is no repair turn behind it.
 //
-// IT IS SPENT BY THE ASKING AND NOT BY THE ANSWER. A reviewer that could not be
-// reached leaves the floor's refusal standing ([Agent.reviewDivision]) and the
-// worker carries on as one worker, which is the outcome an unreachable second
-// opinion is entitled to produce — not an unbounded run of attempts at it.
+// IT IS SPENT BY AN ANSWER AND GIVEN BACK ON SILENCE. The bound exists to stop
+// a worker paying to argue with a reader that has already read this work — and
+// a reviewer that never answered has read nothing, so treating its timeout as
+// the answer turned one slow endpoint into a permanent refusal (a live cell
+// did exactly that on 2026-08-28: three minutes of provider silence spent the
+// task's one adjudication, and the retry with better evidence met the counter
+// alone). So the right is taken here, before the call, and refunded by
+// [Agent.divideOnce] when no answer of any kind came back. What keeps the
+// refund from becoming an unbounded run of attempts is the ladder itself: an
+// adjudication's fall-through rung is the session's own model
+// ([Agent.callRole]), which is alive by construction, so a review that cannot
+// be had twice running means the session itself has lost its model — and that
+// worker has larger problems than its division.
 func (n *TaskNode) takeTiebreak() bool {
 	if n == nil {
 		return false
@@ -355,6 +364,18 @@ func (n *TaskNode) takeTiebreak() bool {
 	}
 	n.adjudicated = true
 	return true
+}
+
+// refundTiebreak gives back the adjudication [TaskNode.takeTiebreak] took,
+// because the reviewer it was taken for never answered — see that function for
+// why silence must not spend it.
+func (n *TaskNode) refundTiebreak() {
+	if n == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.adjudicated = false
 }
 
 // The three words [Agent.armDivision] can answer with, one per signal. They are
@@ -411,12 +432,15 @@ const (
 //     plan: a brief that already names eleven adapter FILES is a brief that may
 //     divide. It is what arms the road for work nobody ran the judge over — a
 //     proposal the chat model groomed, `/task solo`, a person whose standing
-//     answer is `single`. THE NOUN IS LOAD-BEARING AND A COUNT ALONE IS NOT
-//     ENOUGH: internal/splitgate reads a number only where it stands beside one
-//     of the eighteen item-nouns it knows, so "eleven adapters" counts ZERO and
-//     "eleven adapter files" counts eleven. This signal therefore arms far less
-//     work than its wording suggests, which is why it is the last of the three
-//     and never the one a door should lean on by itself.
+//     answer is `single`. THE PILE IS LOAD-BEARING AND A COUNT ALONE IS NOT
+//     ENOUGH: internal/splitgate reads a number only where a plural that is
+//     not a measure stands with it, so "eleven adapters" counts eleven and
+//     "keep it under 250 words" counts zero — the gate knows the closed class
+//     of measures rather than an open list of things people have piles of,
+//     precisely so a domain nobody anticipated ("34 person-rows") still
+//     counts. The counting is free text over free prose all the same, which is
+//     why this signal is the last of the three and never the one a door should
+//     lean on by itself.
 //
 // Anything else is not armed, and a task that is not armed is byte-identical to
 // a task from before this wave.
@@ -575,15 +599,15 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// items for the parts to beat one worker doing them in order
 	// (internal/splitgate carries the floor and the measurement behind it).
 	//
-	// AND ITS NO IS FINAL EXCEPT WHERE TWO READERS DISAGREE. The floor was
-	// measured on file-sized and module-sized items, which is what the counter
-	// can see: a number standing beside one of eighteen item-nouns. Four whole
-	// ISSUES — each a complete ask with its own done-condition — are four
-	// ownable jobs and count as nothing at all, and there is no honest way for a
-	// free counter over free text to tell that case from the four modules the
-	// bench measured losing. So the counter is not taught anything new and the
-	// floor does not move. What changes is only WHOSE ANSWER IS LAST when the
-	// two readings of this work contradict each other:
+	// AND ITS NO IS FINAL EXCEPT WHERE TWO READERS DISAGREE. The counter sees a
+	// number standing beside a plural that is not a measure (internal/splitgate
+	// says exactly what that means and why it fails open on domains it has
+	// never met). Four whole ISSUES — each a complete ask with its own
+	// done-condition, none of them counted — are still four ownable jobs, and
+	// there is no honest way for a free counter over free text to tell that
+	// case from the four modules the bench measured losing. So the floor does
+	// not move. What changes is only WHOSE ANSWER IS LAST when the two readings
+	// of this work contradict each other:
 	//
 	//   - ON UNARMED WORK, AND ON WORK THE COUNTER ITSELF ARMED, NOTHING MOVES.
 	//     The refusal is free, final, and exactly what it always was — which is
@@ -601,7 +625,9 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// else the review may only improve a division two measured gates already
 	// passed, so an answer nobody could get admits the parts unchanged. Here it
 	// is the only thing standing between a below-floor division and the graph,
-	// so an answer nobody could get is the floor's refusal standing.
+	// so an answer nobody could get refuses — saying honestly that nothing was
+	// decided, and handing back the adjudication it never used
+	// ([divisionUnadjudicated]).
 	node := graph.node(parent)
 	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
 	if thin && !node.armedByJudgement() {
@@ -650,28 +676,36 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// AND THE TIEBREAK IS TAKEN HERE, ON THE LINE THAT SPENDS IT. It stands below
 	// the free-hand test on purpose: a division nobody could run is refused for
 	// free and must not cost this task its one adjudication, and a worker that
-	// asks again once a lane frees finds it still there. A second below-floor ask
-	// after this one gets the counter's answer, final, for nothing.
+	// asks again once a lane frees finds it still there. A second below-floor
+	// ask after an ANSWERED one gets the counter's answer, final, for nothing —
+	// while an ask the reviewer never answered is refunded below, because
+	// silence is not the answer the bound was bought for
+	// ([TaskNode.takeTiebreak]).
 	if thin && !node.takeTiebreak() {
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), false
 	}
 	parts, refusal, why := a.reviewDivision(ctx, node, parsed, thin)
 	if refusal != "" {
-		// A REVIEWER THAT COULD NOT BE REACHED ON THE ADJUDICATING PATH LEAVES THE
-		// FLOOR'S REFUSAL STANDING — the person reads the floor's words, because
-		// that is whose answer it is ([Agent.reviewDivision]) — but the RECORD
-		// says the review never happened and why. A live cell once read as
-		// "the counter refused" when the truth was "nobody could ask the
-		// reviewer", and a journal that cannot tell those apart is a journal
-		// that hides the road's own faults.
+		// A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
+		// THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
+		// ([divisionUnadjudicated]) — and the adjudication it never used is
+		// given back ([TaskNode.refundTiebreak]). Both halves were learned
+		// from the same live cell: the worker was twice told "0 separate
+		// items" when the truth was "nobody could ask the reviewer", believed
+		// the words, invented a reason they might be true, and routed around
+		// the whole road — while the timeout had already spent the one
+		// adjudication its honest retry would have needed. A worker acts on
+		// what the refusal SAYS, so the refusal must say what happened.
+		//
+		// An answered refusal is the other case and is final: the reviewer's
+		// own reason reaches the worker, and the tiebreak stays spent —
+		// `why` carries the "refused: " prefix that tells the two apart.
 		line.Decision = divisionRefusedReview
 		line.Error = why
-		if thin && refusal == divisionTooNarrow(parsed.Evidence) {
-			line.Decision = divisionRefusedFloor
-			if why != "" {
-				line.Decision = divisionRefusedUnreviewed
-			}
+		if thin && !strings.HasPrefix(why, "refused") {
+			line.Decision = divisionRefusedUnreviewed
+			node.refundTiebreak()
 		}
 		return refusal, false
 	}
@@ -817,6 +851,9 @@ const (
 	// against the alternative — a division that never happened is worse than a
 	// division that started three minutes late — and it is bounded rather than
 	// absent because failing open means waiting longer buys nothing at all.
+	// The errand shares this budget across its whole ladder rather than handing
+	// it to the first rung ([Agent.callRole]), so a wedged mastermind endpoint
+	// still leaves the fall-through rung time to answer inside these minutes.
 	divideReviewPatience = 3 * time.Minute
 	// divideReviewBriefBytes and divideReviewEvidenceBytes bound the two things
 	// the reviewer is shown that it cannot amend. THE PARTS THEMSELVES ARE NEVER
@@ -885,8 +922,8 @@ Yes to all three: answer with the parts, as usual. Any of them no: refuse, and t
 
 // divideReview is the reviewer's whole vocabulary: the parts as it wants them,
 // or a refusal. An empty one is neither, and is read as "no answer" — which
-// admits the original parts, or leaves the floor's refusal standing where this
-// call is the one adjudicating (see [Agent.reviewDivision]).
+// admits the original parts, or refuses as undecided where this call is the
+// one adjudicating (see [Agent.reviewDivision]).
 type divideReview struct {
 	Refuse bool         `json:"refuse"`
 	Why    string       `json:"why"`
@@ -908,20 +945,23 @@ type divideReview struct {
 // refused this division on the floor and a model's reading of breadth is what
 // put it here anyway ([Agent.divideWork]). On that path this call is not a
 // second opinion at all — it is the FIRST and only reader that has said yes to
-// these parts, so an answer nobody could get is not "the division stands", it is
-// the floor's own refusal standing. Failing open there would let an unreachable
-// mastermind admit every below-floor division the road ever armed, which is the
-// floor switched off by an outage.
+// these parts, so an answer nobody could get is not "the division stands" — it
+// is a refusal that says nothing was decided ([divisionUnadjudicated]), with
+// the unused adjudication handed back. Failing open there would let an
+// unreachable mastermind admit every below-floor division the road ever armed,
+// which is the floor switched off by an outage.
 func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed divideArguments, thin bool) ([]dividePart, string, string) {
 	// unanswered is what a review that could not be had comes to, and it is the
 	// whole of the two postures in one place so they cannot drift apart. The
 	// third value says WHY there was no answer — a reviewer that could not be
-	// reached and a reviewer that answered nonsense both leave the floor's
-	// refusal standing, and the journal must be able to tell them apart from a
-	// counter that simply said no (bench autopsy of a live cell could not).
+	// reached and a reviewer that answered nonsense both refuse as undecided,
+	// and the journal must be able to tell them apart from a counter that
+	// simply said no (bench autopsy of a live cell could not). The prefix
+	// matters: [Agent.divideOnce] reads a `why` that does not begin with
+	// "refused" as no-answer and refunds the tiebreak on it.
 	unanswered := func(why string) ([]dividePart, string, string) {
 		if thin {
-			return nil, divisionTooNarrow(parsed.Evidence), why
+			return nil, divisionUnadjudicated(), why
 		}
 		return parsed.Parts, "", why
 	}
@@ -1037,6 +1077,18 @@ func divisionTooNarrow(evidence string) string {
 	return fmt.Sprintf(
 		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a copy of the repository, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",
 		splitgate.Items(evidence), splitgate.Floor)
+}
+
+// divisionUnadjudicated is the answer when a below-floor division was owed a
+// reading and the reader never answered — reached nobody, or answered nothing
+// usable. IT REFUSES WITHOUT PRETENDING TO BE A DECISION: the one time this
+// path lied and spoke the counter's words instead, the worker believed them,
+// invented a reason its thirty-four items might count as zero, and abandoned
+// the road. The invitation to ask again is safe because the unanswered ask was
+// refunded ([TaskNode.refundTiebreak]) and the retry costs nothing until a
+// reviewer actually answers.
+func divisionUnadjudicated() string {
+	return "not split: this needed a second reader to weigh it and none could be reached in time, so nothing was decided — your parts were neither taken nor turned down. Ask once more; if there is still no answer, carry on with the work in your own hands."
 }
 
 // divisionNoLane is the answer to a division there is no LANE for: this

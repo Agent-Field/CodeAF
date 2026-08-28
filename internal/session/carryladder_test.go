@@ -4,7 +4,9 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -229,6 +231,61 @@ func TestAnErrandCutByItsCallersDeadlineIsStillWrittenDown(t *testing.T) {
 	if strings.TrimSpace(rows[0].Message) == "" {
 		t.Error("the row says a call failed and not one word about why")
 	}
+}
+
+// AND A WEDGED FIRST RUNG LEAVES THE FALL-THROUGH TIME TO ANSWER.
+//
+// The caller's deadline used to bound only the context while every rung was
+// still given the tier's whole patience, so one silent endpoint on rung one ate
+// the caller's entire budget and the ladder's floor — the session's own model,
+// alive by construction — was never asked. That is how a division review died
+// on 2026-08-28: three minutes of provider silence, and the one model
+// answering every other request in the session never heard the question. The
+// budget is now shared across the rungs that remain, so the errand survives
+// exactly one wedged endpoint, which is the failure the ladder exists for.
+func TestAWedgedFirstRungLeavesTheFallThroughTimeToAnswer(t *testing.T) {
+	agent := checkpointAgent(t, &wedgedFirstRung{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	response, model, err := agent.callRole(ctx, roles.RoleHandoff, "the-session-model",
+		[]ai.Message{textMessage("user", "write the brief")})
+
+	if err != nil {
+		t.Fatalf("the errand died on one wedged rung: %v", err)
+	}
+	if model != "the-session-model" {
+		t.Fatalf("the answer came from %q, want the fall-through rung", model)
+	}
+	if response == nil || response.Text() != "answered" {
+		t.Fatalf("the fall-through's answer did not come back: %+v", response)
+	}
+}
+
+// wedgedFirstRung sits silent for the whole of its context on the first model
+// it is ever asked, and answers instantly on any other — one wedged endpoint
+// and one live one, which is the shape of the measured failure.
+type wedgedFirstRung struct {
+	mu    sync.Mutex
+	first string
+}
+
+func (w *wedgedFirstRung) CompleteWithMessages(ctx context.Context, _ []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	w.mu.Lock()
+	if w.first == "" {
+		w.first = request.Model
+	}
+	first := w.first
+	w.mu.Unlock()
+	if request.Model == first {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return textResponse("answered"), nil
 }
 
 // ── the fixtures ────────────────────────────────────────────────────────────

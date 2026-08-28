@@ -714,6 +714,50 @@ func TestTheTiebreakIsOfferedOncePerTask(t *testing.T) {
 	}
 }
 
+// AND AN ASK THE REVIEWER NEVER ANSWERED IS NOT SPENT. The bound above exists
+// so a worker cannot pay to argue with a reader that has already read this
+// work — but a reader that timed out has read nothing, and a live cell showed
+// what treating its silence as the answer does: three minutes of provider
+// silence spent the task's one adjudication, the retry with better evidence
+// met the counter alone, and the worker — told "0 separate items" about
+// thirty-four people it could see — invented a reason the words might be true
+// and abandoned the road. So silence refunds the ask, and the refusal says
+// what actually happened instead of speaking the counter's words.
+func TestAnAdjudicationNobodyAnsweredIsRefundedAndSaysSo(t *testing.T) {
+	reviewer := &divideReviewer{fails: true}
+	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want a refusal", answer)
+	}
+	if !strings.Contains(answer, "nothing was decided") {
+		t.Fatalf("the worker was told %q, want the truth that no answer was had — not the counter's words", answer)
+	}
+	if strings.Contains(answer, "separate items") {
+		t.Fatalf("the worker was told the counter's answer %q about a review that never happened", answer)
+	}
+
+	// The reviewer comes back, and the worker's second ask must reach it: the
+	// unanswered ask was refunded rather than spent.
+	reviewer.mu.Lock()
+	reviewer.fails = false
+	reviewer.answer = `{"parts":[` +
+		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"two","summary":"s","brief":"b","acceptance":"a"}]}`
+	reviewer.mu.Unlock()
+
+	answer = nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the second ask was told %q, want the division the recovered reviewer admitted", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 2 {
+		t.Fatalf("the admitted division bore %d parts, want 2", len(kids))
+	}
+}
+
 // THE CAPACITY GATE IS UNTOUCHED BY THE TIEBREAK. It is the other measured gate
 // and it binds on this path exactly as on every other: nothing divides work
 // nobody is free to pick up, and a division nobody could run is refused for free
