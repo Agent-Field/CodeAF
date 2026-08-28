@@ -39,13 +39,18 @@ import (
 type ClientCredential struct {
 	ID     string
 	Secret string
+	// Public says the application proves itself with a proof key made for
+	// each connection instead of a secret. For one of these, the id alone is
+	// the whole credential.
+	Public bool
 }
 
-// ok reports whether the pair is complete enough to attempt a connection. A
-// half-filled credential is treated exactly as a missing one, because the only
-// thing it can produce is a failure at the far end of a browser trip.
+// ok reports whether the credential is complete enough to attempt a
+// connection. A half-filled private pair is treated exactly as a missing one,
+// because the only thing it can produce is a failure at the far end of a
+// browser trip.
 func (c ClientCredential) ok() bool {
-	return strings.TrimSpace(c.ID) != "" && strings.TrimSpace(c.Secret) != ""
+	return strings.TrimSpace(c.ID) != "" && (c.Public || strings.TrimSpace(c.Secret) != "")
 }
 
 // The two ways an account is connected, and there are only two.

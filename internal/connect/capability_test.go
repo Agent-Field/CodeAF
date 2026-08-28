@@ -297,6 +297,30 @@ func TestToolCapabilityCoversTheWholeFamily(t *testing.T) {
 	}
 }
 
+// EVERY TOOL THE SLACK FAMILY ARMS IS OWNED BY ONE OF ITS TWO SENTENCES.
+func TestSlackToolCapabilityCoversTheWholeFamily(t *testing.T) {
+	manager, err := NewManager(t.TempDir(), map[string]ClientCredential{
+		"slack": {ID: "slack-client", Public: true},
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	family := map[string]string{
+		"slack_search":        "messages-read",
+		"slack_read_thread":   "messages-read",
+		"slack_list_channels": "messages-read",
+		"slack_send":          "messages-send",
+	}
+	for tool, want := range family {
+		if got := manager.ToolCapability("slack", tool); got != want {
+			t.Errorf("ToolCapability(slack, %s): got %q, want %q", tool, got, want)
+		}
+	}
+	if len(slackTools) != len(family) {
+		t.Errorf("the map declares %d tools, the family arms %d", len(slackTools), len(family))
+	}
+}
+
 func TestSetRefusesWhatNobodyDeclared(t *testing.T) {
 	manager, directory := testManager(t)
 

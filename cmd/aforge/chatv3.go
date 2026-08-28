@@ -963,8 +963,8 @@ func v3SearchOptions(profileDir string) search.Options {
 }
 
 // v3Connect resolves the person's connected accounts (internal/connect): the
-// Google registration in, a manager out — or NIL, which is the whole feature
-// absent.
+// Google and Slack applications in, a manager out — or NIL, which is the whole
+// feature absent.
 //
 // The nil is still the law v3Search's nil half states — a belt must never carry
 // a tool whose one answer is "not configured", and [session.Config] says why
@@ -973,13 +973,13 @@ func v3SearchOptions(profileDir string) search.Options {
 // person already holds, so there is something to connect on every machine, and
 // only a store this process cannot open at all leaves nothing.
 //
-// IN PRACTICE THE PAIR IS ALWAYS THERE now, because a build ships a
-// registration of its own as the last rung under the environment and the sheet
-// (internal/config's connect_defaults.go), so the guard below stands for the
-// case where somebody has emptied it rather than the ordinary one. Having the
-// pair is not having an account: connecting still opens Google in the person's
-// browser and waits for them to approve it, and the tools say "not connected"
-// until they do.
+// IN PRACTICE BOTH ARE ALWAYS THERE now, because a build ships applications of
+// its own as the last rung under the environment and the sheet (internal/config's
+// connect_defaults.go), so the guards below stand for the case where somebody
+// has emptied one rather than the ordinary one. Having an application is not
+// having an account: connecting still opens the service in the person's browser
+// and waits for them to approve it, and the tools say "not connected" until they
+// do.
 //
 // IT RETURNS NO ERROR for the reason v3Search does not. Accounts are an
 // accessory; a garbled row, a half-filled pair, a manager that cannot open its
@@ -991,14 +991,17 @@ func v3SearchOptions(profileDir string) search.Options {
 // could ask a visitor to connect their mail to an application the repository
 // chose, by being cloned. Whose application asks for a person's account is the
 // person's row in exactly the sense internal/config's allowlist means it.
-// THE GOOGLE ROW GATES GOOGLE AND NOTHING ELSE. Most of what can be connected
-// is opened by a key the person already holds and needs nothing registered
-// anywhere, so a machine with no Google application on it still has a manager
-// and still has the accounts list — it simply has no Google on it.
+// EACH APPLICATION ROW GATES ITS OWN SERVICE AND NOTHING ELSE. Most of what can
+// be connected is opened by a key the person already holds and needs nothing
+// registered anywhere, so a machine with neither browser application still has
+// a manager and still has the accounts list — it simply has neither service.
 func v3Connect(profileDir string) *connect.Manager {
 	credentials := map[string]connect.ClientCredential{}
 	if id, secret := config.GoogleOAuthClientAt(profileDir); strings.TrimSpace(id) != "" && strings.TrimSpace(secret) != "" {
 		credentials["google"] = connect.ClientCredential{ID: id, Secret: secret}
+	}
+	if id := config.SlackOAuthClientAt(profileDir); strings.TrimSpace(id) != "" {
+		credentials["slack"] = connect.ClientCredential{ID: id, Public: true}
 	}
 	manager, err := connect.NewManager(profileDir, credentials)
 	if err != nil {

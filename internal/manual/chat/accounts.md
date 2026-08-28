@@ -15,6 +15,8 @@ What arrives depends on the account:
 
 - **Google** brings five tools: `gmail_search`, `gmail_read`, `gmail_send`,
   `calendar_list`, `calendar_create`.
+- **Slack** brings four tools: `slack_search`, `slack_read_thread`,
+  `slack_list_channels`, `slack_send`.
 - **A key account** brings exactly one tool, `<id>_request` — `stripe_request`, for
   example — taking `method` (get, post, put, patch, delete; default get), `path`,
   `query` and `body`. The path is always relative to the service's own address. An
@@ -32,10 +34,10 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many services can be connected
 
-**128 services register in this build: 99 are connected with a pasted key, and 29 are
+**129 services register in this build: 99 are connected with a pasted key, and 30 are
 connected in a browser.**
 
-The 29 browser ones are **Google** (Gmail and Calendar) and the 28 tool servers
+The 30 browser ones are **Google** (Gmail and Calendar), **Slack**, and the 28 tool servers
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
 Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
@@ -47,12 +49,14 @@ eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 
 Every menu is ordered by name, case-insensitive — never registration order.
 
-A browser service with no client credential configured is not listed at all: no
-greyed row, no explanation. Google is therefore absent on a machine with no
-`google_oauth_client` configured. Key services and tool servers need nothing
-configured and are always listed.
+Google and Slack both ship with the application their browser sign-in needs, so both
+are listed on a fresh install. The `google_oauth_client` and `slack_oauth_client`
+settings replace those shipped applications for somebody who wants their own. A
+browser service with no application configured is not listed at all: no greyed row,
+no explanation. Key services and tool servers need nothing configured and are always
+listed.
 
-## The two ways to sign in: browser or a pasted key
+## The two ways to sign in: Google and Slack in a browser, or a pasted key
 
 **In a browser.** aforge starts a loopback listener and gives you an address to
 visit; it never opens a browser for you and never logs a key. The loopback addresses
@@ -67,6 +71,23 @@ permanent deletion, and read and write calendar events, not the calendars themse
 Google's consent screen is forced every time, because Google only issues a refresh
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
+
+Slack asks for twelve user permissions: `search:read`; `channels:read`, `groups:read`,
+`im:read`, `mpim:read`; `channels:history`, `groups:history`, `im:history`,
+`mpim:history`; `users:read`, `users:read.email`; and `chat:write`. It signs you in as
+**you**, never as a bot. Slack sends the browser back through
+`https://agentfield.ai/connect/slack/8765` or
+`https://agentfield.ai/connect/slack/18765`; each address only forwards the answer to
+the matching listener on this machine, so Slack tries only those two fixed addresses
+and never a free port. A workspace that requires admin approval shows Slack's own
+request screen and sends the request to the admin, and the browser does not come back
+until the admin says yes. When the model asked (`use_service`), aforge gives up after
+five minutes and says the sign-in did not complete. From `/connect` there is no clock:
+the card keeps waiting until Slack sends the browser back, until the conversation is
+replaced, or until aforge is closed. Either way nothing is connected until the browser
+comes back. Slack limits channel-history reads for applications
+outside its Marketplace to one thread read a minute, with at most 15 messages in that
+read; searching, listing channels and posting are not under that limit.
 
 **The 28 tool servers listed below need nothing registered first.** aforge introduces
 itself to the service at connect time and is issued an identity on the spot, then
@@ -141,9 +162,9 @@ says `nothing matches`.
 
 Each connected account has capabilities written in plain sentences rather than tool
 names — Google's four are `read your mail`, `send mail as you`, `read your calendar`,
-and `put things on your calendar and invite people`. Every key account and every tool
-server has the same pair: `read what is in this account` and `act in this account in
-your name`.
+and `put things on your calendar and invite people`; Slack's two are `read your Slack`
+and `send Slack messages as you`. Every key account and every tool server has the same
+pair: `read what is in this account` and `act in this account in your name`.
 
 Reach them with `/settings` → the **Connections** tab → `enter` on a connected account
 → `enter` on a capability row, which cycles **yes → ask first → off → yes**. A change
@@ -294,11 +315,10 @@ minted for one service cannot be spent at another.
 
 **GitHub is deliberately not shipped** — its sign-in does not let a program introduce
 itself, and its maintainers say that will not change, so it can return only with an
-application registered by hand in a later wave. **Slack is deliberately not shipped
-either** — Slack says its sign-in does not yet let a program introduce itself. It can
-return if Slack allows that introduction, or with an application registered by hand in
-a later wave. Any service whose sign-in refuses that introduction cannot be connected
-this way at all, and aforge says so in one sentence the moment you ask.
+application registered by hand in a later wave. Slack now signs in through a browser
+with the application aforge ships; the Slack paragraph above describes that trip. Any
+service whose sign-in refuses an introduction cannot be connected this way at all, and
+aforge says so in one sentence the moment you ask.
 
 An identity is reused only when the service address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
@@ -336,7 +356,7 @@ rather than as bytes.
 Calls that leave this machine in your own name are asked about even under a blanket
 allow. That covers:
 
-- **`gmail_send`** and **`calendar_create`**;
+- **`gmail_send`**, **`calendar_create`** and **`slack_send`**;
 - any key account's raw call — a tool whose name ends in `_request` — judged by its
   verb: a `GET`, or no arguments at all, is a read; every other method acts. **An
   argument payload that cannot be read counts as one that acts**, because the safe

@@ -385,6 +385,13 @@ const (
 	KeyGoogleOAuthClient = "google_oauth_client"
 	KeyGoogleOAuthSecret = "google_oauth_secret"
 
+	// The one row that lets a person replace the Slack application this build
+	// ships with (connect_defaults.go). It is ONE ROW AND NOT A PAIR because
+	// Slack's PKCE registration has no secret. An organisation that registers
+	// its own internal application to escape the outside-Marketplace throttle
+	// pastes that application's id here.
+	KeySlackOAuthClient = "slack_oauth_client"
+
 	// The four context-law knobs. Fill is how much of a model's window any
 	// agent may use before compaction fires; the reserve is the room every
 	// call keeps for its answer and its reasoning; the working set caps what
@@ -1294,13 +1301,13 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
 		},
 
-		// And the pair that names WHICH APPLICATION asks for the accounts a
+		// And the rows that name WHICH APPLICATION asks for the accounts a
 		// person already has (internal/connect). They sit beside the search keys
 		// because they are the same kind of row — optional, and never a
-		// prerequisite for anything else, since a blank pair uses the
-		// registration this build ships with (connect_defaults.go) — and they
-		// are two rows rather than one because they are two values a person
-		// copies from two different boxes on the same page.
+		// prerequisite for anything else, since a blank answer uses the
+		// applications this build ships with (connect_defaults.go). Google's
+		// are two rows because they are two values copied from two boxes;
+		// Slack's public application has only its id.
 		Setting{
 			Key: KeyGoogleOAuthClient, Category: CategoryModels, Kind: SettingText,
 			Label: "google app id", Env: "GOOGLE_OAUTH_CLIENT", EmptyLabel: "not set",
@@ -1321,6 +1328,16 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error {
 				return writeCredential(dir, KeyGoogleOAuthSecret, raw, googleOAuthSecretAt(dir))
 			},
+		},
+		Setting{
+			Key: KeySlackOAuthClient, Category: CategoryModels, Kind: SettingText,
+			Label: "slack app id", Env: "SLACK_OAUTH_CLIENT", EmptyLabel: "not set",
+			Hint: "the application id Slack sees when aforge asks to use your workspace. " +
+				"Blank uses the one aforge ships with, which is what most people want — " +
+				"fill this in only to have your own application ask instead, with proof-key " +
+				"sign-in turned on. A change lands on the next session.",
+			read:  func() string { return slackOAuthClientAt(dir) },
+			write: func(raw string) error { return writeProfileValue(dir, KeySlackOAuthClient, raw) },
 		},
 
 		Setting{
@@ -2543,6 +2560,25 @@ func googleOAuthClientAt(profileDir string) string {
 
 func googleOAuthSecretAt(profileDir string) string {
 	return credentialAt(profileDir, "GOOGLE_OAUTH_SECRET", KeyGoogleOAuthSecret)
+}
+
+// SlackOAuthClientAt resolves the Slack registration: the environment first,
+// then the sheet, then the public application this build ships with. The
+// answer is never empty, so every build can offer Slack without asking a
+// person to register an application first.
+func SlackOAuthClientAt(profileDir string) string {
+	id := slackOAuthClientAt(profileDir)
+	if id == "" {
+		id = defaultSlackOAuthClient
+	}
+	return id
+}
+
+// slackOAuthClientAt is the bare rung walk for the registry row. The row shows
+// only what the person answered, so an unanswered row still reads "not set"
+// while [SlackOAuthClientAt] uses the application this build ships with.
+func slackOAuthClientAt(profileDir string) string {
+	return credentialAt(profileDir, "SLACK_OAUTH_CLIENT", KeySlackOAuthClient)
 }
 
 func credentialAt(profileDir, env, key string) string {

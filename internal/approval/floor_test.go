@@ -56,6 +56,9 @@ func TestAlwaysAsksCoversTheCallsThatActInThePersonsName(t *testing.T) {
 	if !AlwaysAsks("gmail_send", nil) {
 		t.Fatal("sending mail is not on the floor")
 	}
+	if !AlwaysAsks("slack_send", nil) {
+		t.Fatal("sending Slack is not on the floor")
+	}
 	if !AlwaysAsks("stripe"+ServiceRequestSuffix, json.RawMessage(`{"method":"POST"}`)) {
 		t.Fatal("a write against somebody's own account is not on the floor")
 	}
