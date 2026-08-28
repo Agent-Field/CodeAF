@@ -28,6 +28,24 @@ package session
 //     question with slightly different words, so the ledger rather than the
 //     signature decides whether the answers added anything. Five consecutive
 //     rounds whose every result has no fresh line name that fact directly.
+//   - AND, FASTER THAN EITHER: THE SAME CALL REFUSED FOR ITS ARGUMENTS TWICE.
+//
+// ── THE ARGUMENT-REFUSAL RULE, AND WHY IT IS TWO AND NOT THREE ──
+//
+// An argument refusal is the one failure that arrives with its own cure. A tool
+// that answers "Invalid arguments: limit takes a whole number: send
+// {"limit":10}, not 10.0" has already told the model the corrected call, so a
+// SECOND identical call proves the model did not read it — no further evidence
+// is going to arrive, and every repeat after that is spend. So an identical call
+// whose result is an argument refusal is named at TWO, and the note carries the
+// tool's own repair sentence rather than the harness's advice to think again:
+// there is nothing to rethink, there is a call to correct.
+//
+// The measurement that set this: a model sent `tasks {"limit":10.0}` eleven
+// times in one turn, and the counts that reached the person were nine and
+// eleven — the ordinary ladder, arriving eight calls after the answer was known.
+// Everything that is NOT an argument refusal keeps the old counts, because
+// nothing about those is known in advance.
 //
 // AND NOTHING THE HARNESS ITSELF ANSWERED IS WATCHED AT ALL. A hand that was
 // withdrawn (withdrawn.go) and a door that refused the call never reached the
@@ -98,6 +116,12 @@ const (
 	// Three is a habit.
 	loopRepeats = 3
 
+	// loopInvalidRepeats is how many identical calls REFUSED FOR THEIR ARGUMENTS
+	// make a loop. Two, where an ordinary repetition takes three: the refusal
+	// named the corrected call, so the second identical one is not a retry that
+	// might work, it is evidence the correction went unread.
+	loopInvalidRepeats = 2
+
 	// silentStreakLimit is how many consecutive tool-using steps may carry no
 	// visible assistant text before the model is asked to externalize its plan.
 	// Six leaves room for a short inspect-decide sequence; beyond that, silence
@@ -148,12 +172,24 @@ type nudge struct {
 	// stale distinguishes the ledger rule from identity and silence. Its count
 	// is rounds rather than calls because a parallel batch is one attempt.
 	stale bool
+	// invalid says the repeat was a call the TOOL refused over its arguments,
+	// which is the third rule and the one that fires at two. It changes both
+	// sentences — the model is told what to send instead, and the person is told
+	// the same argument went out twice — because a call nobody can execute is
+	// not the same news as work that keeps failing out in the world.
+	invalid bool
 	// nth is which nudge of this turn it is, 1-based. It is what the escalation
 	// law reads.
 	nth int
 	// fact is the structural sentence the turn's [workClock] can say about
 	// itself — when the work last changed, and how much the results since
 	// brought back (novelty.go). It is empty when there is nothing to say.
+	//
+	// ON AN ARGUMENT REFUSAL IT IS THE TOOL'S OWN REPAIR SENTENCE instead, and
+	// the clock's note is not taken: `limit takes a whole number: send
+	// {"limit":10}, not 10.0` is the whole of what that model needs, and a
+	// paragraph about when the work last changed would be the harness talking
+	// over the top of the answer.
 	fact string
 }
 
@@ -292,7 +328,37 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 		if len(w.recent) > loopWindow {
 			w.recent = w.recent[len(w.recent)-loopWindow:]
 		}
-		if run := w.trailingRun(signature); run >= loopRepeats && !ok && w.speakAbout(signature) {
+		run := w.trailingRun(signature)
+
+		// ── THE ARGUMENT REFUSAL, WHICH ARRIVES WITH ITS OWN CURE ──
+		//
+		// The tool wrote the corrected call into its own refusal (toolargs.go),
+		// so a second identical call is the END of the evidence rather than the
+		// start of it, and the repair rides out as the nudge's fact.
+		//
+		// IT OWNS THE SIGNATURE WHERE IT APPLIES. The general call rule below is
+		// the same signature counted to a different number, so testing both
+		// would ask [loopWatch.speakAbout] about one repetition twice — which
+		// climbs the hysteresis ladder at double speed and names one loop twice
+		// in two vocabularies.
+		repair, refused := "", false
+		if index < len(results) && results[index].isError {
+			repair, refused = argumentRepair(results[index].text)
+		}
+		switch {
+		case refused:
+			if run >= loopInvalidRepeats && !ok && w.speakAbout(signature) {
+				found, ok = nudge{
+					call: call, tool: call.Function.Name, count: run,
+					failing: true, invalid: true, fact: repair,
+				}, true
+				// AND THE ERROR RULE IS TOLD IT HAS BEEN SAID. Left unmarked, the
+				// same refusal would tip the general rule one call later and the
+				// turn would be nudged twice about one loop. Marking it books the
+				// hysteresis exactly as a nudge of its own would have.
+				w.named[errorSignature(results[index].text)] = true
+			}
+		case run >= loopRepeats && !ok && w.speakAbout(signature):
 			found, ok = nudge{call: call, tool: call.Function.Name, count: run}, true
 		}
 
@@ -349,7 +415,11 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	}
 	w.nudges++
 	found.nth = w.nudges
-	found.fact = w.clock.note()
+	// The clock's note is the fallback and never an override: an argument
+	// refusal already put the sentence that matters here.
+	if found.fact == "" {
+		found.fact = w.clock.note()
+	}
 	return found, true
 }
 
@@ -500,6 +570,17 @@ func errorSignature(text string) string {
 // nudgeNote is what the model reads. It states the fact, then asks the two
 // questions a stuck model has stopped asking itself.
 func nudgeNote(n nudge) string {
+	// AN ARGUMENT REFUSAL IS ANSWERED WITH THE CORRECTION AND NOTHING ELSE. The
+	// two questions below — which assumption is wrong, what is a different way —
+	// are the right questions about work that keeps failing in the world and the
+	// wrong ones about a call the tool has already spelled out for you.
+	if n.invalid {
+		note := fmt.Sprintf("[stuck] You have sent the same %s call %d times and it was refused the same way each time.", n.tool, n.count)
+		if n.fact != "" {
+			note += " " + n.fact
+		}
+		return note + " Send the corrected call, or say what you needed and stop — sending this one again cannot work."
+	}
 	if n.silent {
 		note := fmt.Sprintf("[silent] You have made %d tool calls without writing anything down. "+
 			"Before your next tool call, write a short visible note: what you've learned so far, "+
@@ -540,6 +621,9 @@ func nudgeNote(n nudge) string {
 // loopRule is the compact event hint naming the signal to the person. The
 // retained explicit recovery helper also uses it as its question's rule.
 func loopRule(n nudge) string {
+	if n.invalid {
+		return fmt.Sprintf("stuck: %s was sent the same wrong argument %d times", n.tool, n.count)
+	}
 	if n.silent {
 		return fmt.Sprintf("silent: %d tool calls without visible assistant text", n.count)
 	}
