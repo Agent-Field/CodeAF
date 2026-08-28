@@ -219,7 +219,7 @@ func (a *app) hostedPath(path string) string {
 // this is the narrowest true statement of what is off, and the card, the offer
 // row and the enter key all read it rather than each deciding for themselves.
 func (a *app) hostedBrowserSignIn() bool {
-	return a.hosted() && a.asksConnect() && !a.connAsks[0].needsKey
+	return a.hosted() && a.asksConnect() && (!a.connAsks[0].needsKey || a.connAsks[0].blank != "")
 }
 
 // pathRoot is where a relative path the person typed is anchored.

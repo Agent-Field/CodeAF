@@ -609,14 +609,14 @@ type Event struct {
 	AuthURL     string
 	Account     string
 	Failed      bool
-	// NeedsKey rides on EventConnectAsk alone and says that this account is
-	// not connected in a browser but with a key the person already holds. A
-	// surface that sees it asks for the key and hands it back through
-	// [Agent.ResolveConnectKey]; a plain yes means nothing here, because
-	// there is nothing to open and no page to say yes on.
+	// NeedsKey rides on EventConnectAsk alone and says that this account needs
+	// a typed answer: a key the person already holds, or the one thing the
+	// service's address is missing. A surface hands it back through
+	// [Agent.ResolveConnectKey]; a plain yes means nothing here, because the
+	// answer has not been given yet.
 	//
-	// No EventConnectAuth follows a NeedsKey ask, ever: the next thing is
-	// the EventConnectDone that says whether the key was good.
+	// A key is followed by EventConnectDone. An address answer is followed by
+	// the ordinary EventConnectAuth browser trip.
 	NeedsKey bool
 
 	// Model is which model a harness offer would run on, and the one it did run

@@ -143,6 +143,22 @@ func TestSettingsSheetIsOneCalmColumnAtEveryWidth(t *testing.T) {
 	}
 }
 
+func TestSettingsKeepsTheSelectedSlackRowOnAShortScreen(t *testing.T) {
+	model, _, _ := newSettingsModel(t)
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	_ = model.openSettings()
+	model.settingsIndex = settingsRowIndex(t, model, config.KeySlackOAuthClient)
+	plain := ansi.Strip(model.View())
+	if !strings.Contains(plain, "slack app id") {
+		t.Fatalf("the selected row is not on screen:\n%s", plain)
+	}
+	// The row's hint is the reason the sheet scrolls at all: its first line
+	// must be on screen with the row, not just below the frame.
+	if !strings.Contains(plain, "the application id") {
+		t.Fatalf("the selected row's hint is cut off:\n%s", plain)
+	}
+}
+
 func TestSettingsNavigatesAndEditsEveryKindAndPersists(t *testing.T) {
 	model, commander, dir := newSettingsModel(t)
 	_ = model.openSettings()

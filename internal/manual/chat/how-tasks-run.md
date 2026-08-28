@@ -203,7 +203,8 @@ the task's work.
 **It learned something.** A read-only call aimed at a target the task has not aimed at
 before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,
 `recall`, `view_image`, `manual`, `tasks`, `settings`, `list_harnesses`, `services`,
-`gmail_read`, `gmail_search`, `calendar_list` — or a `bash` running a command not run
+`gmail_read`, `gmail_search`, `calendar_list`, `slack_search`, `slack_read_thread`,
+`slack_list_channels` — or a `bash` running a command not run
 before. A failed one still counts as learning: finding out that something does not work is
 finding something out.
 

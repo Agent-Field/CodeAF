@@ -15,6 +15,8 @@ What arrives depends on the account:
 
 - **Google** brings five tools: `gmail_search`, `gmail_read`, `gmail_send`,
   `calendar_list`, `calendar_create`.
+- **Slack** brings four tools: `slack_search`, `slack_read_thread`,
+  `slack_list_channels`, `slack_send`.
 - **A key account** brings exactly one tool, `<id>_request` — `stripe_request`, for
   example — taking `method` (get, post, put, patch, delete; default get), `path`,
   `query` and `body`. The path is always relative to the service's own address. An
@@ -32,13 +34,14 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many services can be connected
 
-**126 services register in this build: 99 are connected with a pasted key, and 27 are
+**129 services register in this build: 99 are connected with a pasted key, and 30 are
 connected in a browser.**
 
-The 27 browser ones are **Google** (Gmail and Calendar) and the 26 tool servers
+The 30 browser ones are **Google** (Gmail and Calendar), **Slack**, and the 28 tool servers
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
-GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro, Neon,
-Netlify, Notion, PayPal, PostHog, Railway, Sanity, Sentry, Supabase** and **Todoist**.
+Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
+Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
+Supabase** and **Todoist**.
 The 99 key services come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
@@ -46,12 +49,14 @@ eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 
 Every menu is ordered by name, case-insensitive — never registration order.
 
-A browser service with no client credential configured is not listed at all: no
-greyed row, no explanation. Google is therefore absent on a machine with no
-`google_oauth_client` configured. Key services and tool servers need nothing
-configured and are always listed.
+Google and Slack both ship with the application their browser sign-in needs, so both
+are listed on a fresh install. The `google_oauth_client` and `slack_oauth_client`
+settings replace those shipped applications for somebody who wants their own. A
+browser service with no application configured is not listed at all: no greyed row,
+no explanation. Key services and tool servers need nothing configured and are always
+listed.
 
-## The two ways to sign in: browser or a pasted key
+## The two ways to sign in: Google and Slack in a browser, or a pasted key
 
 **In a browser.** aforge starts a loopback listener and gives you an address to
 visit; it never opens a browser for you and never logs a key. The loopback addresses
@@ -67,9 +72,31 @@ Google's consent screen is forced every time, because Google only issues a refre
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
 
-**The 26 tool servers listed below need nothing registered first.** aforge introduces
+Slack asks for twelve user permissions: `search:read`; `channels:read`, `groups:read`,
+`im:read`, `mpim:read`; `channels:history`, `groups:history`, `im:history`,
+`mpim:history`; `users:read`, `users:read.email`; and `chat:write`. It signs you in as
+**you**, never as a bot. Slack sends the browser back through
+`https://agentfield.ai/connect/slack/8765` or
+`https://agentfield.ai/connect/slack/18765`; each address only forwards the answer to
+the matching listener on this machine, so Slack tries only those two fixed addresses
+and never a free port. A workspace that requires admin approval shows Slack's own
+request screen and sends the request to the admin, and the browser does not come back
+until the admin says yes. When the model asked (`use_service`), aforge gives up after
+five minutes and says the sign-in did not complete. From `/connect` there is no clock:
+the card keeps waiting until Slack sends the browser back, until the conversation is
+replaced, or until aforge is closed. Either way nothing is connected until the browser
+comes back. Slack limits channel-history reads for applications
+outside its Marketplace to one thread read a minute, with at most 15 messages in that
+read; searching, listing channels and posting are not under that limit.
+
+**The 28 tool servers listed below need nothing registered first.** aforge introduces
 itself to the service at connect time and is issued an identity on the spot, then
 makes the same browser trip.
+
+Some accounts ask one thing before they open. **Datadog asks which Datadog site your
+account is on**, shows the seven commercial sites it accepts, and refuses anything
+else before making a connection. That answer is kept beside the keys so later calls
+and renewals return to the same site.
 
 **With a key.** Nothing opens and nothing renews; the key is as good as the day it
 was made. Most services want one key and nothing else. A few whose address contains
@@ -135,9 +162,9 @@ says `nothing matches`.
 
 Each connected account has capabilities written in plain sentences rather than tool
 names — Google's four are `read your mail`, `send mail as you`, `read your calendar`,
-and `put things on your calendar and invite people`. Every key account and every tool
-server has the same pair: `read what is in this account` and `act in this account in
-your name`.
+and `put things on your calendar and invite people`; Slack's two are `read your Slack`
+and `send Slack messages as you`. Every key account and every tool server has the same
+pair: `read what is in this account` and `act in this account in your name`.
 
 Reach them with `/settings` → the **Connections** tab → `enter` on a connected account
 → `enter` on a capability row, which cycles **yes → ask first → off → yes**. A change
@@ -244,7 +271,7 @@ of you. A tool server appears in `/connect` as a browser connection like any oth
 connected with the same sign-in, forgotten with the same disconnect, and its keys live
 in the same store file.
 
-Twenty-six ship, each at the address on the vendor's own page:
+Twenty-eight ship, each at the address on the vendor's own page:
 
 | Service | Address | What it brings |
 | --- | --- | --- |
@@ -256,6 +283,7 @@ Twenty-six ship, each at the address on the vendor's own page:
 | CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
 | ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| Datadog | `https://mcp.<site>/v1/mcp` | your metrics, logs and monitors |
 | GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
 | Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
 | Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
@@ -269,6 +297,7 @@ Twenty-six ship, each at the address on the vendor's own page:
 | Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
 | PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
 | PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
 | Railway | `https://mcp.railway.com/` | your projects, services and deployments |
 | Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
 | Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
@@ -277,18 +306,19 @@ Twenty-six ship, each at the address on the vendor's own page:
 
 GitLab's own line adds: "Your GitLab admin may have to turn its AI features on first."
 Airtable's adds: "An enterprise admin may have to allow it first."
+Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
+address signs in with a key and nothing else, so it is deliberately not shipped.
 
-**All 26 work with zero registration.** aforge introduces itself to the service at
+**All 28 work with zero registration.** aforge introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one service cannot be spent at another.
 
 **GitHub is deliberately not shipped** — its sign-in does not let a program introduce
 itself, and its maintainers say that will not change, so it can return only with an
-application registered by hand in a later wave. **Slack is deliberately not shipped
-either** — Slack says its sign-in does not yet let a program introduce itself. It can
-return if Slack allows that introduction, or with an application registered by hand in
-a later wave. Any service whose sign-in refuses that introduction cannot be connected
-this way at all, and aforge says so in one sentence the moment you ask.
+application registered by hand in a later wave. Slack now signs in through a browser
+with the application aforge ships; the Slack paragraph above describes that trip. Any
+service whose sign-in refuses an introduction cannot be connected this way at all, and
+aforge says so in one sentence the moment you ask.
 
 An identity is reused only when the service address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
@@ -326,7 +356,7 @@ rather than as bytes.
 Calls that leave this machine in your own name are asked about even under a blanket
 allow. That covers:
 
-- **`gmail_send`** and **`calendar_create`**;
+- **`gmail_send`**, **`calendar_create`** and **`slack_send`**;
 - any key account's raw call — a tool whose name ends in `_request` — judged by its
   verb: a `GET`, or no arguments at all, is a read; every other method acts. **An
   argument payload that cannot be read counts as one that acts**, because the safe

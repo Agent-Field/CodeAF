@@ -297,6 +297,9 @@ func (m *Manager) keyClient(p keyService, name string, entry stored) (*http.Clie
 // located is where one plug answers for one stored connection, or the empty
 // string for a service that has no single address of its own.
 func located(p Plug, entry stored) (string, error) {
+	if holder, ok := p.(*toolServer); ok && holder.blank.name != "" {
+		return holder.at(entry.Blank)
+	}
 	holder, ok := p.(keyService)
 	if !ok {
 		return "", nil

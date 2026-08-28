@@ -31,8 +31,8 @@ package connect
 // vendor's developer console, which is why [Manager.Services] hides a service
 // this build holds no client credential for. A tool server needs none: aforge
 // introduces itself to the service at connect time, is issued an identity on the
-// spot, and keeps it (mcp_registration.go). That is the whole reason these five
-// services can be shipped as a list rather than as five console visits.
+// spot, and keeps it (mcp_registration.go). That is the whole reason these
+// services can be shipped as a list rather than as console visits.
 //
 // ── THE VOCABULARY ──
 //
@@ -45,6 +45,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -125,6 +126,12 @@ type toolServer struct {
 	// the identifier the sign-in is bound to, so that keys minted for one
 	// service cannot be spent at another.
 	address string
+	// blank is the one piece of address the service asks the person for.
+	// Empty is ordinary and means address is already complete.
+	blank blank
+	// answers is the vendor's closed list for blank. A value outside it is
+	// refused here rather than turned into a host nobody published.
+	answers []string
 }
 
 func (s *toolServer) Service() Service                         { return s.service }
@@ -137,6 +144,30 @@ func (s *toolServer) AuthCodeOptions() []oauth2.AuthCodeOption { return nil }
 // nothing further about whose it is. There is no address to show beside
 // "Connected", and inventing one would be worse than showing none.
 func (s *toolServer) Account(context.Context, *http.Client) (string, error) { return "", nil }
+
+// at fills the one fact this service may ask for into its address.
+//
+// A SERVICE WITH NO BLANK IGNORES THE ANSWER. Existing callers always pass an
+// empty one, but keeping this method's ordinary case about the catalog rather
+// than its caller makes the widened door harmless to every existing service.
+func (s *toolServer) at(answer string) (string, error) {
+	if s.blank.name == "" {
+		return s.address, nil
+	}
+	answer = strings.TrimSpace(answer)
+	if !slices.Contains(s.answers, answer) {
+		label := strings.ToLower(strings.TrimSpace(s.blank.label))
+		if label == "" {
+			label = s.blank.name
+		}
+		return "", fmt.Errorf("%s needs one of these for its %s: %s", s.service.Name, label, strings.Join(s.answers, ", "))
+	}
+	address := fill(s.address, s.blank.name, answer)
+	if !addressable(address) {
+		return "", fmt.Errorf("%s's %s does not make a usable address", s.service.Name, strings.ToLower(s.blank.label))
+	}
+	return address, nil
+}
 
 var (
 	toolServerMu sync.RWMutex
@@ -153,12 +184,46 @@ var (
 // The pair is registered with NO TOOL MAP, which is honest rather than lazy:
 // the tools are not known until somebody connects. [MCPToolCapability] is how a
 // caller gets from a fetched tool to one of the two sentences.
-func registerToolServer(service Service, address string) {
+func registerToolServer(entry mcpEntry) {
+	service := entry.service
 	service.Auth = AuthBrowser
-	if strings.TrimSpace(address) == "" {
+	service.Answers = append([]string(nil), entry.answers...)
+	address := strings.TrimSpace(entry.address)
+	if address == "" {
 		panic("connect: tool server " + service.ID + " has nowhere to answer")
 	}
-	Register(&toolServer{service: service, address: strings.TrimSpace(address)})
+	holes := blanksIn(address)
+	if entry.blank.name == "" && len(holes) != 0 {
+		panic("connect: tool server " + service.ID + " has an undeclared blank")
+	}
+	if entry.blank.name != "" && (len(holes) != 1 || holes[0] != entry.blank.name) {
+		panic("connect: tool server " + service.ID + " must declare its one address blank")
+	}
+	if entry.blank.name != "" && len(entry.answers) == 0 {
+		panic("connect: tool server " + service.ID + " has a blank with no answers")
+	}
+	if entry.blank.name == "" && len(entry.answers) != 0 {
+		panic("connect: tool server " + service.ID + " has answers with no blank")
+	}
+	checks := entry.answers
+	if len(checks) == 0 {
+		checks = []string{""}
+	}
+	for _, answer := range checks {
+		if entry.blank.name != "" && strings.TrimSpace(answer) == "" {
+			panic("connect: tool server " + service.ID + " has an empty allowed answer")
+		}
+		filled := fill(address, entry.blank.name, strings.TrimSpace(answer))
+		if !addressable(filled) || !strings.HasPrefix(filled, "https://") {
+			panic("connect: tool server " + service.ID + " does not fill to an addressable https address")
+		}
+	}
+	Register(&toolServer{
+		service: service,
+		address: address,
+		blank:   entry.blank,
+		answers: append([]string(nil), entry.answers...),
+	})
 	RegisterGenericCapabilities(service.ID, nil)
 
 	toolServerMu.Lock()

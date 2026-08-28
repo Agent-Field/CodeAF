@@ -173,6 +173,8 @@ type connRow struct {
 	tag string
 	// keyed says enter on this row opens a box rather than a browser.
 	keyed bool
+	// asks says a browser row needs one typed answer before it can open.
+	asks bool
 	// summary is what a CLOSED account may do, in one dim line ([connSummary]).
 	summary string
 	// air asks for a blank line above this row: an account is a block, and a
@@ -328,7 +330,7 @@ func (s *sheet) appendConnService(row connect.Status) {
 	s.items = append(s.items, sheetItem{conn: &connRow{
 		kind: connService, service: row.ID, name: name,
 		account: row.Account, blurb: row.Blurb, keyEnv: row.KeyEnv,
-		tag: tag, keyed: keyService(row.Service), summary: summary,
+		tag: tag, keyed: keyService(row.Service), asks: row.Service.Blank != "", summary: summary,
 		// AN ACCOUNT IS A BLOCK AND A BLOCK HAS AIR OVER IT — and so does a row
 		// with a box standing open on it, which is a block for as long as it is
 		// open. A blank line over every row of a two-hundred-row catalog would
@@ -629,7 +631,7 @@ func (s *sheet) connEmptyWord() string {
 
 // connRowLines is one row of the tab, drawn through the same [overlayLines]
 // every other row on this sheet is drawn through.
-func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width int, pal palette) []string {
+func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width, boxRows int, pal palette) []string {
 	switch row.kind {
 	case connCapability:
 		// The phrase is indented under the account it belongs to, and the answer
@@ -683,7 +685,7 @@ func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width int, pa
 		// The box hangs at the same indent an open account's capabilities do, so
 		// a row that has opened into a question occupies the same interior column
 		// as a row that has opened into a list of answers.
-		lines, _, _ := keyBoxLines(row.entry, pal, width, overlayIndent)
+		lines, _, _ := keyBoxLines(row.entry, pal, width, overlayIndent, boxRows)
 		// AND ONE LINE OF AIR UNDER IT. A row that has opened into a question is
 		// a block, and the row after it is the catalog resuming; without the
 		// blank the next service reads as the fourth line of somebody's key.
@@ -908,6 +910,9 @@ func (s *sheet) connFootNote() string {
 		return "the account stays yours — aforge forgets its keys"
 	}
 	if item.conn.entry != nil {
+		if !item.conn.entry.secret {
+			return connectKeyHint(item.conn.entry.name, item.conn.entry.blank)
+		}
 		// The one place this surface says the second thing a box will take. It
 		// is said HERE and not in the box, because the box's own line has to say
 		// the ordinary thing to the ordinary person, and this is the line that
@@ -921,6 +926,8 @@ func (s *sheet) connFootNote() string {
 			return "finish the sign-in in your browser"
 		case item.conn.keyed:
 			return "enter opens a box for the key you already hold"
+		case item.conn.asks:
+			return "enter opens a box for the site your account is on"
 		}
 		return "enter signs you in, in your browser"
 	}
@@ -971,6 +978,8 @@ func (s *sheet) connKeysLine() string {
 			act = "enter opens"
 		case item.conn.keyed:
 			act = "enter takes your key"
+		case item.conn.asks:
+			act = "enter asks one thing"
 		default:
 			act = "enter connects"
 		}
@@ -999,8 +1008,8 @@ func (a *app) connAct(row *connRow) tea.Cmd {
 	}
 
 	if !row.connected {
-		if row.keyed {
-			// THE BOX OPENS ON THE ROW, which is the whole of what a key service
+		if row.keyed || row.asks {
+			// THE BOX OPENS ON THE ROW, which is the whole of what this service
 			// needed from this tab and did not have. Nothing leaves the process
 			// yet: the person has not given an answer, and a browser trip's worth
 			// of machinery for a question nobody has answered would be this tab
@@ -1018,7 +1027,7 @@ func (a *app) connAct(row *connRow) tea.Cmd {
 		s.conn.pending, s.conn.pendingKey = row.service, false
 		s.msg = ""
 		s.rebuildConnAt(row)
-		return a.beginConnect(row.service, a.serviceName(row.service, row.name))
+		return a.beginConnect(row.service, a.serviceName(row.service, row.name), "")
 	}
 	if s.conn.expanded == row.service {
 		s.conn.expanded = ""
@@ -1065,18 +1074,21 @@ func (a *app) connEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		s.rebuildConnAt(back)
 
 	case "enter":
-		key, id, name := entry.value(), entry.id, entry.name
+		answer, id, name, secret := entry.value(), entry.id, entry.name, entry.secret
 		s.conn.entry = nil
-		if key == "" {
+		if answer == "" {
 			s.rebuildConnAt(back)
 			return nil
 		}
 		// The row says it is being checked from here until the answer lands on
 		// [app.connTabSettled], which is the same bargain the sign-in makes with
 		// the same two fields.
-		s.conn.pending, s.conn.pendingKey, s.msg = id, true, ""
+		s.conn.pending, s.conn.pendingKey, s.msg = id, secret, ""
 		s.rebuildConnAt(back)
-		return a.beginConnectKey(id, name, key)
+		if secret {
+			return a.beginConnectKey(id, name, answer)
+		}
+		return a.beginConnect(id, name, answer)
 
 	default:
 		entry.typeInto(msg)
@@ -1210,16 +1222,44 @@ func (a *app) connTabStopped(service, why string) {
 	// a foot line about a service nobody here pressed is a sheet talking to
 	// itself.
 	mine := s.conn.pending == service
+	keyed := s.conn.pendingKey
 	s.conn.pending, s.conn.pendingKey = "", false
 	if !mine || !s.open || !s.onConnections() {
 		return
 	}
+	s.reloadConnections()
+	s.build()
 	if why != "" {
 		s.msg = why
+		// A visible answer that was refused stays beside the sentence that says
+		// why, but only while its row is still on this page and nobody has opened
+		// another box since. The fresh box is empty, so the wrong site is not
+		// presented as an answer the person still has to erase before trying again.
+		if !keyed && (s.conn.entry == nil || s.conn.entry.id == service) && s.hasConnService(service) {
+			entry := a.newConnEntry(&connRow{kind: connService, service: service})
+			if entry.blank != "" {
+				s.conn.entry = entry
+			}
+		}
 	}
-	s.reloadConnections()
-	s.rebuildConnAt(&connRow{kind: connService, service: service})
+	back := service
+	if s.conn.entry != nil {
+		back = s.conn.entry.id
+	}
+	s.rebuildConnAt(&connRow{kind: connService, service: back})
 	a.touch()
+}
+
+// hasConnService reports whether this build draws one service's row. A catalog
+// row narrowed away by the filter cannot own a box or the keys that would type
+// into it.
+func (s *sheet) hasConnService(service string) bool {
+	for _, item := range s.items {
+		if item.conn != nil && item.conn.kind == connService && item.conn.service == service {
+			return true
+		}
+	}
+	return false
 }
 
 // connTabSettled is the outcome landing on the tab: a connected account gains

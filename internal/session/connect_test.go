@@ -34,7 +34,10 @@ type fakeHub struct {
 	// open and watch the ceiling end it.
 	waitFor chan struct{}
 	begins  int
-	clients int
+	// beginAnswer is the typed answer carried to the browser door. It is empty
+	// for every ordinary browser service.
+	beginAnswer string
+	clients     int
 	// transport answers the requests an armed tool makes, so that a test can
 	// watch a whole call — the question, the account, the service — without a
 	// network. Nil means nothing is expected to reach a service.
@@ -49,6 +52,9 @@ type fakeHub struct {
 	// service refusing it.
 	key    string
 	keyErr error
+	// blankService is a browser account whose address needs one typed answer.
+	blankService   bool
+	blankConnected bool
 	// calls is every raw call an armed tool made, as "METHOD path".
 	calls []string
 
@@ -193,6 +199,16 @@ func notionStatus(connected bool) connectStatus {
 	}
 }
 
+// datadogStatus is the browser account that asks for one address answer first.
+func datadogStatus(connected bool) connectStatus {
+	return connectStatus{
+		ID: "datadog", Name: "Datadog", Auth: "browser",
+		Blurb:     "read metrics, logs and monitors",
+		Blank:     "Site",
+		Connected: connected,
+	}
+}
+
 // servedList is what that account answers when it is asked what it brings. The
 // two names are chosen for what they cost the belt: one with a space and
 // capitals in it that only looks, and one with a hyphen that acts.
@@ -298,6 +314,9 @@ func (h *fakeHub) Services() []connectStatus {
 	if h.keyService {
 		services = append(services, keyStatus(h.keyConnected))
 	}
+	if h.blankService {
+		services = append(services, datadogStatus(h.blankConnected))
+	}
 	if h.servedService {
 		services = append(services, notionStatus(h.servedConnected))
 	}
@@ -312,6 +331,8 @@ func (h *fakeHub) Connected(id string) bool {
 		return h.connected
 	case "stripe":
 		return h.keyService && h.keyConnected
+	case "datadog":
+		return h.blankService && h.blankConnected
 	case "notion":
 		return h.servedService && h.servedConnected
 	}
@@ -349,9 +370,10 @@ func (h *fakeHub) rawCalls() []string {
 	return append([]string(nil), h.calls...)
 }
 
-func (h *fakeHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
+func (h *fakeHub) BeginAuth(ctx context.Context, id, answer string) (string, func(context.Context) (connectStatus, error), error) {
 	h.mu.Lock()
 	h.begins++
+	h.beginAnswer = answer
 	begin, wait, hold := h.beginErr, h.waitErr, h.waitFor
 	h.mu.Unlock()
 	if begin != nil {
@@ -374,12 +396,24 @@ func (h *fakeHub) BeginAuth(ctx context.Context, id string) (string, func(contex
 			h.mu.Unlock()
 			return notionStatus(true), nil
 		}
+		if id == "datadog" {
+			h.mu.Lock()
+			h.blankConnected = true
+			h.mu.Unlock()
+			return datadogStatus(true), nil
+		}
 		h.mu.Lock()
 		h.connected = true
 		h.account = "you@example.test"
 		h.mu.Unlock()
 		return connectStatus{ID: "google", Name: "Google", Connected: true, Account: "you@example.test"}, nil
 	}, nil
+}
+
+func (h *fakeHub) addressAnswer() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.beginAnswer
 }
 
 func (h *fakeHub) Client(ctx context.Context, id string) (*http.Client, error) {
@@ -589,11 +623,40 @@ func TestConnectingAnAccountAsksThenArmsTheFamily(t *testing.T) {
 	if countKind(collected, EventConnectDone) != 1 {
 		t.Fatalf("an attempt reported its outcome %d times", countKind(collected, EventConnectDone))
 	}
+	if answer := hub.addressAnswer(); answer != "" {
+		t.Errorf("an ordinary browser service carried answer %q", answer)
+	}
 	if !hasTool(agent, "gmail_search") {
 		t.Fatalf("the family did not arrive: %v", beltNames(agent))
 	}
 	if output := lastToolOutput(t, collected); !strings.Contains(output, "you@example.test") {
 		t.Fatalf("the model was not told who it is connected as: %q", output)
+	}
+}
+
+// A browser account with one missing address piece takes the same typed-answer
+// road as a key, then carries that answer into the ordinary browser trip.
+func TestAnAddressBlankAsksAndReachesBeginAuth(t *testing.T) {
+	hub := &fakeHub{blankService: true}
+	completer := &scriptedCompleter{steps: useServiceTurn("datadog")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "read the monitors")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		if !event.NeedsKey {
+			t.Errorf("the address answer did not ask for the typed-answer road: %+v", event)
+		}
+		agent.ResolveConnectKey(event.ConnectID, "datadoghq.eu")
+	})
+
+	if answer := hub.addressAnswer(); answer != "datadoghq.eu" {
+		t.Errorf("BeginAuth received %q", answer)
+	}
+	if auth, found := firstOfKind(collected, EventConnectAuth); !found || auth.Service != "datadog" {
+		t.Errorf("the browser trip did not follow the answer: %+v", auth)
 	}
 }
 

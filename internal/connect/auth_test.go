@@ -73,7 +73,7 @@ func TestBeginAuthAndWait(t *testing.T) {
 	manager, _ := testManager(t)
 	ctx := context.Background()
 
-	flow, err := manager.BeginAuth(ctx, "google")
+	flow, err := manager.BeginAuth(ctx, "google", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestWaitToleratesAnUnknownAccount(t *testing.T) {
 	fakeService(t, mux)
 
 	manager, _ := testManager(t)
-	flow, err := manager.BeginAuth(context.Background(), "google")
+	flow, err := manager.BeginAuth(context.Background(), "google", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestWaitReportsARefusal(t *testing.T) {
 	fakeService(t, http.NewServeMux())
 
 	manager, _ := testManager(t)
-	flow, err := manager.BeginAuth(context.Background(), "google")
+	flow, err := manager.BeginAuth(context.Background(), "google", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestWaitEndsWithTheContext(t *testing.T) {
 	fakeService(t, http.NewServeMux())
 
 	manager, _ := testManager(t)
-	flow, err := manager.BeginAuth(context.Background(), "google")
+	flow, err := manager.BeginAuth(context.Background(), "google", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestBeginAuthOutlivesItsContext(t *testing.T) {
 
 	manager, _ := testManager(t)
 	starting, stop := context.WithCancel(context.Background())
-	flow, err := manager.BeginAuth(starting, "google")
+	flow, err := manager.BeginAuth(starting, "google", "")
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestWaitRecordsWhatWasGranted(t *testing.T) {
 			fakeService(t, mux)
 
 			manager, _ := testManager(t)
-			flow, err := manager.BeginAuth(context.Background(), "google")
+			flow, err := manager.BeginAuth(context.Background(), "google", "")
 			if err != nil {
 				t.Fatalf("BeginAuth: %v", err)
 			}
