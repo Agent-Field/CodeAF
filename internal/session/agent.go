@@ -3,10 +3,13 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -56,6 +59,7 @@ func New(config Config) (*Agent, error) {
 		// behaviour exactly — knobs travel only when explicit, and a refusal
 		// ends in the diagnosis rather than on another model.
 		SupportsParameter: config.SupportsParameter,
+		ModelPrice:        config.ModelPrice,
 		Fallbacks:         config.ModelFallbacks,
 		NearestModels:     config.NearestModels,
 	})
@@ -77,6 +81,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if config.newerBuild == nil {
+		config.newerBuild = buildinfo.StaleNotice
+	}
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -89,6 +96,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// file deciding what another door's worker is told.
 		systemAt:  time.Now(),
 		systemOwn: own,
+		// THIS LAUNCH'S WALL CLOCK, and the only one this package keeps
+		// ([Agent.startedAt] says why the summed turn durations are not it).
+		startedAt: time.Now(),
 		model:     config.Model,
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
@@ -96,6 +106,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		id: NewSessionID(),
 	}
 	agent.cacheKey = sessionCacheKey(agent.id)
+	// AND WHO THIS SESSION IS WORKING FOR, before anything else is built
+	// (principal.go). It is written once here and never again, which is what
+	// lets every road that consults it read the field without the lock; the
+	// posture that picks it — attended or not, with a ceiling or without — is
+	// entirely the door's, and a config that says nothing gets the [Person] this
+	// package has always answered to.
+	agent.principal = newPrincipalFor(agent)
 	// Memory is built before the belt for the same reason the registry is: the
 	// belt carries `remember` only when there is a brain to write into, so the
 	// store has to exist before the tools are assembled (memory.go). The
@@ -112,11 +129,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	// The registry gets the WAKING lane, the same one a task node's completion
-	// rides (see [Agent.enqueueSteering]): a job that exits and a watch with news
-	// are both work the person asked the harness to do FOR THEM, and the answer
-	// they are owed is a sentence, not a line in a transcript nobody is reading.
-	agent.jobs = newJobRegistry(config.Workspace, config.Place, agent.enqueueSteering)
+	// The registry gets both note lanes. A job's exit is work the model started
+	// and is waiting to hear finish, so it remains owed at the next step
+	// boundary. A watch's deltas are ambient telemetry: they stay live in the
+	// job row and log, but wait for a turn boundary before entering the model's
+	// context (see [Agent.enqueueJobNote] and [Agent.enqueueWatchNote]).
+	// The registry is handed the DROPPINGS home rather than the Place, and the
+	// two differ for every agent that is not a session: a worker's job log
+	// belongs beside the transcript of the conversation that commissioned it, not
+	// in the repository it borrowed to work in (landing.go).
+	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -134,6 +156,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent.definitions = definitions
 	agent.messages = []ai.Message{textMessage("system", system)}
+	agent.messageReasoning = make([]provider.MessageReasoning, 1)
 	agent.refreshSystemLocked()
 
 	if strings.TrimSpace(config.SessionFile) != "" {
@@ -148,6 +171,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
+		// in the journal that cannot be re-derived from the transcript — whether
+		// a file was there before the session touched it is a measurement, taken
+		// once, at the moment of the call — so a resumed session carries it
+		// forward rather than starting the sweep's list empty (principal_audit.go).
+		agent.createdFiles = replayed.created
 		// A resumed session keeps the name it was given: the title is a fact
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
@@ -164,6 +193,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// and AGENTS.md in the footer are facts about now, not about the
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
+		agent.messageReasoning = append(agent.messageReasoning, replayed.reasoning...)
 		// AND THE CONVERSATION ABOVE THE LATEST COMPACTION IS SHAPED HERE, ONCE,
 		// while the replayed messages are still in hand. It is shaped rather than
 		// kept as messages so the pictures a compacted region held are let go of
@@ -216,13 +246,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// by the same string, and a memory-only session has the one this constructor
 	// minted for its cache lineage. Deriving a second identity here would give
 	// one conversation two threads the day somebody resumed it (chatlog.go).
-	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.Place)
-	// And the state card is rendered into the first request before any turn has
-	// run: a resumed conversation's card is what it knew yesterday, and a model
-	// that had to wait for the first post-turn pass to be told would answer one
-	// question in the dark (card.go).
+	// And it takes the DROPPINGS home for the registry's reason: the only thing
+	// the journal does with a Place is spill an over-long message's bytes through
+	// [writeStub], which is a dropping like any other (landing.go).
+	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.droppingsPlace())
+	// And the state card is held before any turn has run, so that the note the
+	// first request carries already has it: a resumed conversation's card is what
+	// it knew yesterday, and a model that had to wait for the first post-turn
+	// pass to be told would answer one question in the dark (card.go).
 	agent.cardText = agent.stateCardText()
-	agent.refreshSystemLocked()
 	// The client is wrapped LAST, once the lineage is known: the wrapper is the
 	// one place every request this agent makes passes through, so it is where
 	// the prompt-cache key is stamped. Wrapping earlier would have to read the
@@ -347,10 +379,17 @@ func (a *Agent) Model() string {
 	return a.model
 }
 
-// SetModel swaps the model for subsequent turns. A turn in flight finishes on
-// the model it started on: runTurn latches the model once at the start and
-// every step and retry of that turn rides the latched value, so a swap made
-// while the agent is working lands at the next Submit.
+// SetModel swaps the model for subsequent turns. A swap made while the agent is
+// working lands at the next Submit: runTurn latches the model once at the start
+// and every step and retry of that turn rides the latched value, so nothing a
+// person types mid-turn changes the model the turn in flight is talking to.
+//
+// THE TURN ITSELF MAY STILL MOVE, and this is the one thing that moves it. A
+// step whose stream is cut over and over spends a budget and then hops to the
+// next model in the chain, announced, and the rest of that turn finishes there
+// (loop.go's completeWithRetry). It is a rescue and not a preference: what a
+// person set here is untouched, so the NEXT turn starts on the model they
+// picked, and the only way this field changes is somebody calling this.
 //
 // AND IT IS WHERE THE PICTURES ARE MADE SAFE. A conversation carrying attached
 // images carries them as base64 in the live transcript, re-sent on every step
@@ -366,8 +405,39 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	if a.config.ContextWindowFor != nil {
+		if window := a.config.ContextWindowFor(model); window > 0 {
+			a.contextWindow.Store(int64(window))
+		}
+	}
 	a.scrubBlindImagePartsLocked(model)
 	a.mu.Unlock()
+}
+
+// SetAPIKey hands the conversation the key it talks with, after the fact.
+//
+// It exists for one moment: the surface opened on a profile with no key, asked
+// for one on its first screen (internal/tui3's firstrun.go), and the person
+// pasted it — into a session that already exists, holding a client built
+// without one (internal/provider's NewClient states that a keyless client
+// refuses every request until this lands). The config copy is updated too,
+// because every worker this agent spawns — a task node, an audit, a standing
+// firing — is built from `a.config` and would otherwise inherit the empty key
+// the boot had.
+//
+// A client that cannot take a key — a test double — is left alone rather than
+// refused: the config still records the key, which is what the doubles read.
+func (a *Agent) SetAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if keyed, ok := a.client.(interface{ SetAPIKey(string) error }); ok {
+		if err := keyed.SetAPIKey(key); err != nil {
+			return err
+		}
+	}
+	a.config.APIKey = key
+	return nil
 }
 
 // ── reasoning strength ──────────────────────────────────────────────────────
@@ -378,21 +448,26 @@ func (a *Agent) SetModel(model string) {
 // switches back finds the high still there: the second model never had a level,
 // and setting one on it would have been a decision nobody made.
 //
-// The levels are provider.Effort's, minus one. "off" here means SEND NOTHING —
-// no reasoning field on the wire, the model's own default — and NOT
-// provider.EffortOff, which sends {"reasoning":{"enabled":false}} to suppress
-// the thinking pass outright. The distinction matters at exactly this seam: a
-// person turning a knob back to off is saying "stop asking for extra thinking",
-// which is the model's default, while EffortOff is a harness economy that some
-// endpoints refuse with a 400 (provider's quirks.go). The harness may spend a
-// round-trip discovering that; a person changing their mind must not.
+// The levels are the effort ladder's rungs (internal/effort). "off" here means
+// SEND NOTHING — no reasoning field on the wire, the model's own default — and
+// NOT provider.EffortOff, which sends {"reasoning":{"enabled":false}} to
+// suppress the thinking pass outright. The distinction matters at exactly this
+// seam: a person turning a knob back to off is saying "stop asking for extra
+// thinking", which is the model's default, while EffortOff is a harness economy
+// that some endpoints refuse with a 400 (provider's quirks.go). The harness may
+// spend a round-trip discovering that; a person changing their mind must not.
+//
+// OFF HERE IS NOT SILENCE ON THE LADDER. It clears this scope, and the rung
+// below — the conversation, the work, the install's default — is what the next
+// turn then asks for (effort.go). A person who wants nothing asked for at all
+// turns the ladder itself off, which is a choice they make once.
 
 // Reasoning is the level the model now in use will be asked for, "" when none
 // is set.
 func (a *Agent) Reasoning() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return string(a.reasoningLocked(a.model))
+	return a.reasoningLocked(a.model).String()
 }
 
 // ReasoningFor is the level held for one model id, whichever model is in use.
@@ -401,13 +476,17 @@ func (a *Agent) Reasoning() string {
 func (a *Agent) ReasoningFor(model string) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return string(a.reasoningLocked(model))
+	return a.reasoningLocked(model).String()
 }
 
 // SetReasoning sets the level for the model now in use, for subsequent turns.
-// A turn in flight finishes on the level it started with, exactly as it
-// finishes on the model it started on: runTurn latches both once (loop.go), so
-// a change made while the agent is working lands at the next Submit.
+// A turn in flight keeps the level it started with, exactly as it keeps the
+// model it started on: runTurn latches both once (loop.go), so a change made
+// while the agent is working lands at the next Submit. The one thing that moves
+// either mid-turn moves BOTH — a step that hops to a fallback model re-reads the
+// level held for that model, because a level is a choice about a model and
+// carrying one across would be asking the new model for something nobody set on
+// it (see [Agent.SetModel]).
 //
 // An unrecognized level is ignored rather than cleared. The two callers are a
 // picker that can only produce the four it draws and a flag the door has
@@ -432,27 +511,26 @@ func (a *Agent) setReasoningLocked(model, level string) {
 	if key == "" {
 		return
 	}
-	effort, ok := parseReasoning(level)
+	rung, ok := parseReasoning(level)
 	if !ok {
 		return
 	}
-	// None is absence and is stored as absence: a map that held EffortNone
-	// entries would answer "this model has a level" for every model anybody
-	// ever cycled back to off.
-	if effort == provider.EffortNone {
+	// Absence is stored as absence: a map that held empty entries would answer
+	// "this model has a level" for every model anybody ever cycled back to off.
+	if rung == effort.None {
 		delete(a.reasoning, key)
 		return
 	}
 	if a.reasoning == nil {
-		a.reasoning = make(map[string]provider.Effort, 2)
+		a.reasoning = make(map[string]effort.Rung, 2)
 	}
-	a.reasoning[key] = effort
+	a.reasoning[key] = rung
 }
 
-func (a *Agent) reasoningLocked(model string) provider.Effort {
+func (a *Agent) reasoningLocked(model string) effort.Rung {
 	key := reasoningKey(model)
 	if key == "" {
-		return provider.EffortNone
+		return effort.None
 	}
 	return a.reasoning[key]
 }
@@ -465,29 +543,20 @@ func reasoningKey(model string) string {
 }
 
 // ParseReasoning normalizes one operator-supplied level and reports whether it
-// is one. It answers in the surface's own words rather than provider.Effort's
-// so a door can validate `--reasoning` without importing the adapter, and "off"
-// and "" both normalize to "" — see the block comment above for why off is
-// silence and not provider.EffortOff.
+// is one. It answers in the surface's own words so a door can validate
+// `--reasoning` without importing the adapter, and "off" and "" both normalize
+// to "" — see the block comment above for why off is silence and not
+// provider.EffortOff.
+//
+// It is [effort.Parse] under a name the doors already call, so the five rungs a
+// person may type here are the same five the ladder holds and there is no
+// second list to keep true.
 func ParseReasoning(level string) (string, bool) {
-	effort, ok := parseReasoning(level)
-	return string(effort), ok
+	rung, ok := parseReasoning(level)
+	return rung.String(), ok
 }
 
-func parseReasoning(level string) (provider.Effort, bool) {
-	switch strings.ToLower(strings.TrimSpace(level)) {
-	case "", "off":
-		return provider.EffortNone, true
-	case string(provider.EffortLow):
-		return provider.EffortLow, true
-	case string(provider.EffortMedium):
-		return provider.EffortMedium, true
-	case string(provider.EffortHigh):
-		return provider.EffortHigh, true
-	default:
-		return provider.EffortNone, false
-	}
-}
+func parseReasoning(level string) (effort.Rung, bool) { return effort.Parse(level) }
 
 // SetContextWindow tells the agent how many tokens the model it is now running
 // actually accepts, and the compaction threshold follows it from the next check
@@ -626,6 +695,61 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 	return stream.out, true, func() { hub.drop(stream) }
 }
 
+// AttachReplay is [Agent.Attach] and [Agent.Transcript] AS ONE READING, for the
+// surface that is about to draw both: the entries to replay, and — when a turn
+// is in flight — that turn's live stream, whose backlog replays the turn's work
+// from its first event.
+//
+// IT EXISTS BECAUSE THE TWO CALLS MADE SEPARATELY DREW THE RUNNING TURN TWICE.
+// Every completed step of a turn is journaled the moment it completes
+// ([Agent.recordLocked]), so mid-turn the transcript already holds the turn's
+// first half — and the backlog replays that same half again, in its live form,
+// under the copy the replay just drew. Taken under one hold of the lock, the
+// split is exact instead of raced: the entries stop at the turn's floor
+// ([Agent.turnFloor]) and the stream carries the turn whole, so the
+// conversation reads once, with no gap and no repeat.
+//
+// WHAT STAYS BELOW THE FLOOR IS EVERY WORD A PERSON TYPED. The backlog carries
+// the model's work and nothing else — no event kind re-delivers a user message
+// — so the turn's opening message, and any steer typed into it since, come from
+// the entries or from nowhere. The turn's own asides (a task's landing note
+// drained mid-turn) ride the stream's task events instead and are left out with
+// the rest of the work.
+//
+// events is nil when no turn is in flight — the entries are the whole record
+// and there is nothing to watch — and stop is never nil, on [Agent.Attach]'s
+// terms: calling it without checking events, or twice, is fine.
+func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, stop func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || !a.running || a.hub == nil {
+		return shapeEntries(a.messages, a.file), nil, func() {}
+	}
+	// The hub cannot already be closed here: the turn's goroutine clears
+	// running under a.mu before it closes the hub, and we hold a.mu. The
+	// defensive arm keeps the honest answer anyway — a dead stream would hang
+	// the caller where the full record answers them.
+	stream, live := a.hub.attach()
+	if !live {
+		return shapeEntries(a.messages, a.file), nil, func() {}
+	}
+	floor := a.turnFloor
+	if floor > len(a.messages) {
+		floor = len(a.messages)
+	}
+	kept := append([]ai.Message(nil), a.messages[:floor]...)
+	for _, msg := range a.messages[floor:] {
+		// A steer is the person's own sentence and no event will ever redraw
+		// it; a note the session authored rides the user role too and is the
+		// one user-role line left out — its own event lane is its live record.
+		if msg.Role == "user" && !a.file.isNote(msg) {
+			kept = append(kept, msg)
+		}
+	}
+	hub := a.hub
+	return shapeEntries(kept, a.file), stream.out, func() { hub.drop(stream) }
+}
+
 // userMessage is a person's message on its way into the transcript: the message
 // the model reads, and the durable references the JOURNAL writes in place of
 // the parts it must not hold.
@@ -644,11 +768,15 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 type userMessage struct {
 	message ai.Message
 	refs    []journalPart
+	// replyTags names finished tasks whose reports this message carries. It is
+	// empty on every person's message and every other authored note.
+	replyTags []TaskReplyTag
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
-	// (task_run.go's reportTaskNode), a background job's exit or a watch's delta
-	// (jobs.go's reap and tools_watch.go). It is the difference between the two kinds
-	// of news this queue carries — see [Agent.enqueueSteering] — and it is read
+	// (task_run.go's reportTaskNode) or a background job's exit (jobs.go's
+	// reap). A watch's delta is deliberately ambient. It is the difference
+	// between the two kinds of news these queues carry — see
+	// [Agent.enqueueSteering] — and it is read
 	// at exactly two moments: when the note is queued, and when the turn that
 	// was running drains what is left of the queue at its end. Both are places
 	// where "does anybody have to say something about this" is the question.
@@ -667,16 +795,58 @@ type userMessage struct {
 	said string
 
 	// authored marks a line the SESSION wrote rather than the person: every note
-	// that goes through [Agent.enqueueNote], whether or not anybody owes it an
-	// answer. It is WHO SAID IT, where wake is WHAT IS OWED, and the two are
-	// separate because an ambient note nobody must answer is still not the
-	// person's words.
+	// that goes through [Agent.enqueueNote] or the watch-only
+	// [Agent.enqueueAmbient]. It is WHO SAID IT, where wake is WHAT IS OWED, and
+	// the two are separate because an ambient note nobody must answer is still
+	// not the person's words.
 	//
 	// It is read at exactly one place — the journal write in
 	// [Agent.recordUserLocked] — and what it buys is a replay that draws the
 	// harness's own line in the harness's own lane (sessionfile.go's
 	// [sessionEntry.Note]).
 	authored bool
+
+	// steered marks THE PERSON'S WORDS TYPED INTO A RUNNING NODE (task_room.go's
+	// [Agent.SteerTask]). They ride this queue because a node's turns are its
+	// runner's to start and this is the only lane into one — and this is how they
+	// are told apart again where it matters: a node's runner must not close the
+	// agent with a line on the queue that no request has carried (task_run.go's
+	// [runTaskChild]). It is also why such a line is NOT `authored`: the session
+	// wrote every other note on here, and it did not write this one.
+	steered bool
+
+	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
+	// [Agent.Steer]): a correction to the question already being worked on,
+	// riding this queue for the reason everything else on it does — a step
+	// boundary is the only legal place for a user message mid-turn.
+	//
+	// IT IS NOT `steered`, AND THE TWO MUST NOT BE READ FOR EACH OTHER. `steered`
+	// is a line aimed at a RUNNING NODE, delivered onto that node's own agent by
+	// task_room.go, and it promises nothing beyond arrival. This is a splice into
+	// THIS conversation's turn, and it carries an identity, three outcomes and a
+	// record that says which of them happened. steer.go states the distinction in
+	// full; the two marks stay separate so that neither has to lie about what it
+	// promises.
+	//
+	// Nil on every message that is not one, which is every message this queue
+	// carried before it existed.
+	steer *turnSteer
+
+	// batchKey names repeated ambient updates that collapse to their count and
+	// newest fact at a boundary. Today only watches set it: their complete tick
+	// history already lives behind `jobs output`, and copying every delta into
+	// the model's context is the interruption this field exists to prevent.
+	//
+	// batchLabel is the person-readable name rendered beside that count. Both
+	// are empty for owed task reports and every person's message, whose complete
+	// words must survive the batching pass.
+	batchKey   string
+	batchLabel string
+	// batch marks external news that belongs under the boundary's "while you
+	// worked" opening. Session control notes deliberately leave it false: a
+	// loop-recovery instruction must keep its recognizable first word and is
+	// not an account of background work.
+	batch bool
 }
 
 // userText is the ordinary case: a message that is only words.
@@ -688,7 +858,68 @@ func userText(text string) userMessage {
 // answer for. It is userText with the mark on it, and it is what makes a
 // finished task produce a sentence instead of a card nobody replies to.
 func wakeNote(text string) userMessage {
-	return userMessage{message: textMessage("user", text), wake: true}
+	return userMessage{message: textMessage("user", text), wake: true, batch: true}
+}
+
+// jobNote is a background job's owed ending in the compact form a boundary
+// needs. The complete output remains in the job's ring and log, addressable
+// through `jobs output`; repeating that tail in every later request would turn
+// a notification into a second copy of the log.
+func jobNote(text string) userMessage {
+	return wakeNote(firstLine(strings.TrimSpace(text)))
+}
+
+// watchNoteMessage is one ambient watch update reduced to the newest fact. The
+// batch key is stable across ticks from the same named watch, which is what lets
+// three deltas become "3 updates" rather than three mid-turn user-role rows.
+func watchNoteMessage(name, text string) userMessage {
+	return userMessage{
+		message:    textMessage("user", watchUpdateSummary(name, text)),
+		batchKey:   "watch:" + name,
+		batchLabel: name + " watch",
+		batch:      true,
+	}
+}
+
+// watchUpdateSummary keeps what changed and the newest evidence line. Every
+// omitted line remains available through the watch's job output.
+func watchUpdateSummary(name, text string) string {
+	lines := splitLines(strings.TrimSpace(text))
+	if len(lines) == 0 {
+		return "updated"
+	}
+	summary := strings.TrimSpace(strings.TrimPrefix(lines[0], "watch "+name))
+	summary = strings.TrimSpace(strings.TrimLeft(summary, "·:"))
+	if summary == "" {
+		summary = "updated"
+	}
+	for index := len(lines) - 1; index > 0; index-- {
+		latest := strings.TrimSpace(lines[index])
+		if latest == "" || strings.HasPrefix(latest, "… ") || latest == "(no output)" {
+			continue
+		}
+		return summary + " — " + latest
+	}
+	return summary
+}
+
+// briefNote is A NODE'S OWN BRIEF, HELD RATHER THAN ASKED. It exists for one
+// caller: a worker whose work was handed out in parts before it started, whose
+// runner queues the brief here and parks until every part has reported
+// (task_run.go's [runTaskChild]).
+//
+// It owes NO answer — `wake` is false — because nothing here starts a turn. A
+// node's turns are its runner's to start ([Agent.wakeLocked] declines inside a
+// task), and the turn this line is read in is the one the last report begins.
+func briefNote(text string) userMessage {
+	return userMessage{message: textMessage("user", text)}
+}
+
+// steerNote is a line the PERSON said into a running node. It owes an answer
+// like every wake note does, and it is not the session's own words, which is the
+// whole of the difference (see [userMessage.steered]).
+func steerNote(text string) userMessage {
+	return userMessage{message: textMessage("user", text), wake: true, steered: true}
 }
 
 // empty reports whether there is nothing here to record. It is the shape a
@@ -760,6 +991,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// THE TURN'S WORK BEGINS HERE, and the floor says so for [Agent.AttachReplay]:
+	// everything recorded at or past this index while the turn runs is work the
+	// hub's backlog can replay, so a replay-then-attach surface must not be
+	// handed it twice. It sits after the user record on purpose — the person's
+	// message is below the floor, because no event ever re-carries their words.
+	a.turnFloor = len(a.messages)
 	// AND THE PERSON'S OWN WORDS ARE KEPT, so that work this turn hands off can
 	// carry the sentence that asked for it rather than a paraphrase of it
 	// (task_brief.go). A woken turn opens with nothing and changes nothing here.
@@ -796,7 +1033,16 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// out, so the model never saw it. It is in the transcript now and
 			// nothing is going to speak about it, which is exactly the silence
 			// the wake below exists to end.
-			_, unanswered := a.drainSteeringLocked()
+			//
+			// A SPLICED SENTENCE IS NOT PART OF THAT DRAIN. It was aimed at a step
+			// of this turn that never came, so writing it into this turn's
+			// transcript would be the record claiming the model had read it. It is
+			// lifted off the queue first and becomes a message waiting for a turn
+			// of its own (steer.go's [Agent.liftSteersLocked]) — which the
+			// follow-up drain below then starts, on the follow-up queue's own
+			// terms. Everything else on the queue drains exactly as it always has.
+			a.liftSteersLocked(hub)
+			_, unanswered := a.drainSteeringLocked(hub)
 			a.running = false
 			// And the presence stops claiming a turn is in flight, for the
 			// reason it started claiming one (taskpresence.go).
@@ -965,11 +1211,18 @@ func (a *Agent) dropFollowUpsLocked() {
 func (a *Agent) Interrupt() {
 	a.mu.Lock()
 	cancel := a.cancel
+	jobs := a.jobs
 	a.dropFollowUpsLocked()
 	a.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
+	// deliberately survives this — it is a command the person asked to be left
+	// running — but a forked hand is THIS MIND, copied, finishing a reply nobody
+	// is waiting for any more (fork.go), and it runs on its own context now
+	// rather than the turn's, so the cancel above does not reach it.
+	jobs.stopHands()
 }
 
 // Title is the session's name, empty until it has one (title.go).
@@ -1062,6 +1315,22 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// FallbackModels passes the adapter's chain through, and answers nil for an
+// inner completer that has none ([modelChain]).
+//
+// The wrapper is the one thing every request this agent makes goes through,
+// which makes it the one thing standing between the turn loop and the models the
+// adapter would move to. A wrapper that quietly swallowed the chain would leave
+// a person who wrote a `models.fallbacks` row watching a turn die on a model
+// that could not answer it.
+func (f sessionCompleter) FallbackModels(model string) []string {
+	chain, ok := f.inner.(modelChain)
+	if !ok {
+		return nil
+	}
+	return chain.FallbackModels(model)
 }
 
 // Close ends the session: an in-flight turn is cancelled and waited for,
@@ -1165,7 +1434,9 @@ func (a *Agent) Close() error {
 // order is the transcript order by construction; it is one buffered append to
 // an already-open file, not a place a turn waits.
 func (a *Agent) recordLocked(message ai.Message) {
+	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	if a.file != nil {
 		a.file.appendMessage(message)
 	}
@@ -1184,7 +1455,9 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
+	a.alignReasoningLocked()
 	a.messages = append(a.messages, user.message)
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	// AND WHAT IS KEPT IS WHAT THEY SAID. A marked draft's message carries an
 	// instruction the person never typed and never sees (standing_mark.go); the
 	// turn reasons from it and nothing outlives it, because a replay is a
@@ -1206,7 +1479,18 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// the one bit that says nobody typed it, so a resume can draw it where the
 		// live surface drew it (sessionfile.go's [sessionEntry.Note]). A note
 		// carries no pictures, which is why this door takes none.
-		a.file.appendNote(user.message)
+		a.file.appendNote(user.message, user.replyTags)
+		return
+	}
+	if user.steer != nil {
+		// A SPLICED SENTENCE IS MARKED AS ONE. The transcript keeps it an ordinary
+		// user message, which is what the model has to read it as; the journal
+		// keeps the one bit that says it did not open the turn it sits in, plus
+		// the instant and landing account, so a resume can draw it as the person's
+		// own line with the same muted clause rather than as a new question
+		// (steer.go, sessionfile.go's [sessionEntry.Steer]).
+		a.file.appendSteer(kept, user.steer.note)
+		a.stampUserLocked(messageContentText(kept))
 		return
 	}
 	a.file.appendMessage(kept, user.refs...)
@@ -1282,11 +1566,141 @@ func (a *Agent) snapshot() []ai.Message {
 	return messages
 }
 
-// drainSteering moves queued steering messages into the transcript at a step
-// boundary and reports how many landed.
-func (a *Agent) drainSteering() int {
+// volatileNoteOpening is the first line of the note the two moving blocks ride
+// in, and it does two jobs at once.
+//
+// It tells the MODEL what it is reading. The note arrives in the user role
+// because that is the only role a transcript may grow in between an answer and
+// the next request, and a block of state in the user role with no opening reads
+// as the person having typed it. It is context, not somebody speaking.
+//
+// And it is what [Agent.landVolatileLocked] MATCHES ON to find the last note it
+// landed. That is deliberately read out of the transcript rather than held in a
+// field beside it: a compaction fold and a rewind both rebuild the transcript
+// without asking this file, and a remembered "what I last said" would go on
+// believing a note was still in front of the model long after the fold ate it.
+const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
+
+// volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
+// card, rewritten by the post-turn pass whenever a delta lands (card.go), and
+// what the other windows on this project have landed and have running, re-read
+// at the start of every turn (taskdelta.go).
+//
+// Both used to be rendered into message[0] beside the base prompt, and that is
+// the bug this exists to have fixed: message[0] is in front of every message
+// there is, so a card that moved re-priced the WHOLE conversation as a cold
+// prefix on the next request. Invisible on a one-turn benchmark and brutal in
+// the long interactive session that is this program's normal life.
+//
+// Empty is empty: a conversation with no card and no other window produces no
+// note at all, which is the emptiness law and not an optimisation.
+func (a *Agent) volatileBlockLocked() string {
+	return strings.TrimSpace(a.cardText + a.elsewhereText)
+}
+
+// landVolatileLocked appends the volatile note to the transcript when what it
+// says has moved since the last one landed, and does nothing whatsoever
+// otherwise.
+//
+// IT IS AN APPEND AND NEVER A REWRITE, which is the whole of why this is cheap.
+// Every request of a turn re-sends the transcript, and the provider bills the
+// leading bytes at the cached rate only for as long as they are the SAME
+// leading bytes: the transcript may grow at the back and may not change in the
+// middle. So a note that moved is a new note at the tail, the one before it is
+// left exactly where it was said, and the only thing anybody pays for twice is
+// the note itself.
+//
+// It is also why the note is a real message rather than something stitched onto
+// the request on its way out. A block appended after the transcript on every
+// request would sit at a different index each time — request N's copy where
+// request N+1 has a tool result — and the endpoints that cache behind explicit
+// markers write their entry AT the last user or tool message
+// (internal/provider's caching.go). Put the marker on something that moves and
+// every request writes a cache entry no later request can ever read.
+//
+// A NOTE THAT WENT EMPTY IS NOT WITHDRAWN. The card never empties once it has
+// something to say — a merge replaces the goal and appends to the lists — and
+// the other windows' block does empty, as landings age out of the short memory
+// behind it. Neither is worth a message: what an old note says was true when it
+// was said, and a retraction would cost a message to tell the model nothing.
+func (a *Agent) landVolatileLocked() {
+	a.alignReasoningLocked()
+	// A transcript with no system message is one nothing has opened yet, and a
+	// note that landed there would BE message[0].
+	if len(a.messages) == 0 {
+		return
+	}
+	block := a.volatileBlockLocked()
+	if block == "" {
+		return
+	}
+	note := volatileNoteOpening + "\n\n" + block
+	if a.lastVolatileNoteLocked() == note {
+		return
+	}
+	// Not [Agent.recordLocked]: the note is not the conversation. Journaling it
+	// would draw a block of state on the screen of anybody replaying the session,
+	// on the row that is supposed to be theirs, and posting it to the store would
+	// make it answer searches of what was said. It is context assembled for one
+	// request, and a resume rebuilds it from the card and the index on the first
+	// turn that needs it.
+	a.messages = append(a.messages, textMessage("user", note))
+	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
+}
+
+// lastVolatileNoteLocked is the newest volatile note in the transcript, or ""
+// when none has landed since the last fold. See [volatileNoteOpening] for why
+// the transcript is the only place this is read from.
+func (a *Agent) lastVolatileNoteLocked() string {
+	for index := len(a.messages) - 1; index >= 0; index-- {
+		text := messageContentText(a.messages[index])
+		if isVolatileNote(text) {
+			return text
+		}
+	}
+	return ""
+}
+
+// isVolatileNote reports whether a user-role message is the session's own note
+// rather than something anybody said.
+//
+// EVERY READER OF THE USER ROLE HAS TO ASK. The note is user-role because that
+// is the only role the model can be told something in, and it is the second line
+// in this package that has to be told apart from the person's own by a marker —
+// the compaction note ([isCompactionNote]) is the first. Without this one the
+// note would be drawn on the screen as a paragraph the person typed, offered as
+// a rewind point in their own words, and quoted by `/why` as the instruction the
+// turn is working on. It is recognized by the opening it is built with and never
+// by guessing at wording.
+func isVolatileNote(text string) bool {
+	return strings.HasPrefix(text, volatileNoteOpening)
+}
+
+// drainSteering moves queued messages into the transcript at a step boundary
+// and reports how many source notes landed.
+//
+// The hub is here for one reason: THIS DRAIN IS WHERE A STEER BECOMES TRUE
+// (steer.go). A sentence the person spliced into this turn is consumed at the
+// instant it is recorded here — not when they typed it — and the surface holding
+// its stream is told so on the same beat. A nil hub is a batch run with no turn
+// around it and says nothing, exactly as every other send on this path does.
+//
+// AMBIENT NEWS JOINS ONLY AT A TURN BOUNDARY OR BESIDE OWED NEWS. The opening
+// request is a turn boundary; later calls in the same tool loop are only step
+// boundaries and leave a watch's updates held. An owed task or job note is the
+// exception because the next request must carry it, and splitting the same
+// interval into an owed note now and an ambient note later would be two accounts
+// where one batch is the honest shape.
+func (a *Agent) drainSteering(hub *eventHub) int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	opening := !a.running || len(a.messages) == a.turnFloor
+	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
+	// drain itself is here: this seam runs immediately before the next request
+	// (loop.go) with the transcript tail on a tool result or an assistant answer,
+	// which is the one shape a user message may legally follow. Ahead rather than
+	// behind because the note is the ground the person's line is said against.
+	a.landVolatileLocked()
 	// THIS DRAIN IS THE ONE THAT ANSWERS. It runs immediately before the next
 	// request (loop.go), so anything on the queue is in front of the model from
 	// here — which is precisely what a task node's runner is waiting to be true
@@ -1294,24 +1708,47 @@ func (a *Agent) drainSteering() int {
 	// deliberately does not clear it: those notes reached the transcript and no
 	// request.
 	a.taskNotes = 0
-	landed, _ := a.drainSteeringLocked()
+	includeAmbient := opening || boundaryNoteHeld(a.steering)
+	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
 	return landed
 }
 
-// drainSteeringLocked is the drain itself, for callers already holding a.mu —
-// the turn's end, which must drain and clear running without a gap.
+// drainSteeringLocked is the TURN-boundary drain for callers already holding
+// a.mu. The turn's end must take both queues and clear running without a gap;
+// tests and batch runners call the same complete drain directly.
 //
 // It reports how many messages landed AND whether any of them was a wake note
 // (see [Agent.enqueueSteering]). The second answer only means anything to the
 // turn's end: a note drained at a step boundary is one the next request carries,
 // so the model answers it as part of the turn it is already in, while a note
 // drained after the last request is one nobody has said a word about.
-func (a *Agent) drainSteeringLocked() (int, bool) {
+func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
+	return a.drainQueuedLocked(hub, true)
+}
+
+// drainQueuedLocked drains steering and, when includeAmbient says this is a
+// legal boundary for it, the ambient queue. External background-news lines
+// become one authored user-role message; control guidance and a person's steer
+// remain their own messages.
+func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
 	queued := a.steering
 	a.steering = nil
+	if includeAmbient {
+		queued = append(queued, a.ambient...)
+		a.ambient = nil
+	}
+	sourceCount := len(queued)
+	queued = coalesceSessionNotes(queued)
 	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
+		// AND A SPLICED SENTENCE IS NOW A SENTENCE THE MODEL HAS (steer.go). It
+		// is said here rather than at the queueing because this is the drain that
+		// answers — see the caller — so the event and the record become true in
+		// the same breath. The turn's END drain reaches no steer at all: they are
+		// lifted off the queue before it ([Agent.liftSteersLocked]).
+		a.consumedSteerLocked(hub, message)
+		a.replyTags = append(a.replyTags, message.replyTags...)
 		// A STEERING MESSAGE IS STILL THE PERSON ASKING. It arrives mid-turn and
 		// is often the correction the work about to be handed off must carry, so
 		// the newest thing they typed is what a proposal made after this drain
@@ -1330,20 +1767,143 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 		// from landing in the transcript with nobody ever asked about it.
 		owed = owed || message.wake || !message.authored
 	}
-	return len(queued), owed
+	return sourceCount, owed
 }
 
-// enqueueSteering puts one line the SESSION authored — a task node landing
-// (task_run.go), a background job exiting (jobs.go), a watch with news
-// (tools_watch.go) — onto the same queue the person's steering rides, AND WAKES
-// THE SESSION IF NOBODY IS WORKING.
+// boundaryNoteHeld reports whether the next step is already owed external news.
+// A person's steer does not open the ambient gate: it must arrive in their own
+// words, without unrelated watch output attached to their correction.
+func boundaryNoteHeld(queued []userMessage) bool {
+	for _, message := range queued {
+		if message.authored && message.batch {
+			return true
+		}
+	}
+	return false
+}
+
+// coalesceSessionNotes replaces every batch-marked background-news line in one
+// drain with one authored batch at the first such line's position. This
+// preserves the ordering and identity of person-authored steers and internal
+// control notes while ensuring a provider sees one "while you worked" message
+// rather than a run of synthetic user rows.
+func coalesceSessionNotes(queued []userMessage) []userMessage {
+	var notes []userMessage
+	first := -1
+	for index, message := range queued {
+		if !message.authored || !message.batch {
+			continue
+		}
+		if first < 0 {
+			first = index
+		}
+		notes = append(notes, message)
+	}
+	if len(notes) == 0 {
+		return queued
+	}
+
+	batched := batchSessionNotes(notes)
+	out := make([]userMessage, 0, len(queued)-len(notes)+1)
+	for index, message := range queued {
+		if index == first {
+			out = append(out, batched)
+		}
+		if !message.authored || !message.batch {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+// batchSessionNotes renders one boundary note. Repeated watches collapse by
+// stable key to a count and their newest summary; every other note keeps its
+// complete text because task and hand reports have no other source the model
+// can safely infer from.
+func batchSessionNotes(notes []userMessage) userMessage {
+	type repeated struct {
+		label  string
+		count  int
+		latest string
+	}
+	repeats := make(map[string]*repeated)
+	order := make([]string, 0, len(notes))
+	parts := make([]string, 0, len(notes))
+	var (
+		wake bool
+		tags []TaskReplyTag
+	)
+	for _, note := range notes {
+		wake = wake || note.wake
+		tags = append(tags, note.replyTags...)
+		if note.batchKey == "" {
+			parts = append(parts, strings.TrimSpace(note.text()))
+			order = append(order, "")
+			continue
+		}
+		group := repeats[note.batchKey]
+		if group == nil {
+			group = &repeated{label: note.batchLabel}
+			repeats[note.batchKey] = group
+			order = append(order, note.batchKey)
+		}
+		group.count++
+		group.latest = strings.TrimSpace(note.text())
+	}
+
+	rendered := make([]string, 0, len(order))
+	part := 0
+	for _, key := range order {
+		if key == "" {
+			rendered = append(rendered, parts[part])
+			part++
+			continue
+		}
+		group := repeats[key]
+		if group == nil {
+			continue
+		}
+		rendered = append(rendered, fmt.Sprintf("%s: %s — latest: %s",
+			group.label, countedUpdates(group.count), group.latest))
+		delete(repeats, key)
+	}
+	text := "while you worked: " + strings.Join(rendered, "; ")
+	if strings.Contains(text, "\n") {
+		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
+	}
+	return userMessage{
+		message:   textMessage("user", text),
+		replyTags: tags,
+		wake:      wake,
+		authored:  true,
+	}
+}
+
+func countedUpdates(count int) string {
+	if count == 1 {
+		return "1 update"
+	}
+	return fmt.Sprintf("%d updates", count)
+}
+
+// takeReplyTags hands the surface each finished-task identity exactly once.
+func (a *Agent) takeReplyTags() []TaskReplyTag {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	tags := append([]TaskReplyTag(nil), a.replyTags...)
+	a.replyTags = nil
+	return tags
+}
+
+// enqueueSteering puts one OWED line the session authored — principally a task
+// node landing — onto the queue the person's steering rides, and wakes the
+// session if nobody is working.
 //
 // The lane is shared on purpose. Both are news that arrives while the model is
 // busy, both must land at a step boundary rather than inside a tool batch, and
-// both belong in the transcript as plain user-role text. Giving completions
-// their own channel would mean a second drain, a second ordering rule, and a
-// second way for a message to arrive at a moment the provider rejects — for a
-// message that is, from the model's side, exactly a line somebody typed.
+// both belong in the transcript as plain user-role text. The authored mark lets
+// the drain batch session news without changing a person's steering into
+// somebody else's words.
 //
 // ── WHY IT WAKES, AND WHY THE OTHER LANE DOES NOT ──
 //
@@ -1354,27 +1914,23 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 // comparison is at ~/oauth.md; the short version is…"), and a model that is never
 // asked never writes one. So a note that lands on an idle session starts a turn.
 //
-// THAT IS TRUE OF EVERY BACKGROUND ERRAND, NOT ONLY OF TASKS. The wake was
-// scoped to settles first and the same silence was left standing beside it: a
-// person says "run the build in the background", the build fails four minutes
-// later, and the exit note sat on this queue until they happened to type. A
-// watch is worse — its whole reason to exist is that the model stopped polling,
-// so nothing is ever going to come and look. Both are work the person ASKED THE
-// HARNESS FOR and both are owed the same sentence, so both wake.
+// THAT IS TRUE OF A BACKGROUND JOB'S ENDING, through [Agent.enqueueJobNote].
+// The model started the job and was explicitly told not to poll because the
+// ending would come back, so the exit remains owed. A watch is different:
+// repeated deltas are telemetry with a complete log behind them, and
+// [Agent.enqueueWatchNote] holds them for a turn boundary instead.
 //
 // It is not a turn per event. Everything below coalesces: the notes queue, the
-// FIRST one starts a turn, and every note that lands while that turn runs is
-// drained into it at a step boundary. A dev server that flaps six times in one
-// window is six lines in front of one model, not six paid turns — and the rail,
-// InTask, Close and the not-yet-open session all still decline
-// ([Agent.wakeLocked]).
+// FIRST owed one starts a turn, and one authored batch lands at the next legal
+// boundary. The rail, InTask, Close and the not-yet-open session all still
+// decline ([Agent.wakeLocked]).
 //
-// [Agent.enqueueAmbientNote] is the same queue with that one difference removed,
-// and what is left on it is news NOBODY ASKED FOR: an account of what an
-// interrupt left behind that a resume found on disk (task_store.go), an account
-// the harness gives of itself (looped.go, recovery.go), an OAuth connection
-// completing in a browser tab (connect.go). Context for whatever is said next —
-// real, worth carrying, nobody standing there for it.
+// [Agent.enqueueAmbientNote] is the same step queue with the wake removed. It
+// carries guidance for the turn that is already running — recovery, loop
+// control, an OAuth connection — while [Agent.enqueueWatchNote] is the separate
+// turn-boundary queue for periodic telemetry. Both are real context nobody is
+// standing there waiting for, but only the former is an instruction to the
+// current turn.
 //
 // A closed agent drops the note rather than queueing it: after Close nothing
 // drains, and the journal it would be written to is already shut.
@@ -1382,33 +1938,116 @@ func (a *Agent) enqueueSteering(text string) {
 	a.enqueueNote(wakeNote(text))
 }
 
-// enqueueAmbientNote is enqueueSteering for news nobody is waiting on: it
-// queues and never starts a turn. See the block above for which news is which.
+// enqueueJobNote is the registry's owed lane. The headline enters the boundary
+// batch; the complete output remains available through `jobs output`.
+func (a *Agent) enqueueJobNote(text string) {
+	a.enqueueNote(jobNote(text))
+}
+
+// enqueueWatchNote is the registry's ambient lane. Repeated ticks from one
+// watch remain separate until a boundary can truthfully count and collapse
+// them, and never wake a session by themselves.
+func (a *Agent) enqueueWatchNote(name, text string) {
+	a.enqueueAmbient(watchNoteMessage(name, text))
+}
+
+// enqueueAmbientNote queues step-scoped session guidance nobody is waiting on
+// and never starts a turn. Unlike periodic watch telemetry, recovery and loop
+// guidance is an instruction for the next model step and stays on steering.
 func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
 }
 
-func (a *Agent) enqueueNote(note userMessage) {
+// enqueueAmbient is the periodic-watch queue's one door. It mirrors
+// enqueueNote's authorship and closed-session laws without putting telemetry
+// where a mid-turn step drain can take it by accident.
+func (a *Agent) enqueueAmbient(note userMessage) bool {
 	text := strings.TrimSpace(note.text())
 	if text == "" {
-		return
+		return false
 	}
 	note.message = textMessage("user", text)
-	// Both kinds of note are the SESSION's words. It is set here, at the one door
-	// both of them come through, rather than at the two constructors above.
 	note.authored = true
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
-		return
+		return false
+	}
+	a.ambient = append(a.ambient, note)
+	return true
+}
+
+// enqueueSteeredLine is THE PERSON'S OWN WORDS into a running node, and it is
+// the one thing on this queue that somebody is standing there waiting for
+// ([Agent.SteerTask]).
+//
+// It answers whether the line was TAKEN, because the alternative is the defect:
+// a closed agent drops every note silently, and a node that finished a
+// half-second before the person pressed enter would swallow their sentence and
+// leave the room saying it had arrived. The caller turns a false into a refusal
+// they can read.
+//
+// AND IT RELEASES WHOEVER IS WAITING ON THE NODE. A parent that handed part of
+// its work out is parked on its pieces' reports (task_run.go's [runTaskChild]),
+// and nothing else on this queue can move it: [Agent.wakeLocked] declines inside
+// a task, so a line queued here would sit until a piece happened to report, and
+// be dropped outright if none ever did. This is the same release a report makes
+// ([Agent.postTaskNews]) without the report — the runner wakes, finds a line on
+// the queue and re-enters the model with it.
+func (a *Agent) enqueueSteeredLine(text string) bool {
+	return a.enqueueNote(steerNote(text))
+}
+
+// steeringHeld reports whether a line the PERSON typed is on this agent's queue
+// with no request having carried it yet. It is what stops a node's runner
+// closing the agent on top of somebody's words (task_run.go's [runTaskChild]);
+// every drain empties the queue, so it answers false again the moment the line
+// is in front of the model.
+func (a *Agent) steeringHeld() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, message := range a.steering {
+		if message.steered {
+			return true
+		}
+	}
+	return false
+}
+
+// enqueueNote is the queue itself, and it reports whether the note was taken:
+// false is a closed agent, whose queue nothing will ever drain again.
+func (a *Agent) enqueueNote(note userMessage) bool {
+	text := strings.TrimSpace(note.text())
+	if text == "" {
+		return false
+	}
+	note.message = textMessage("user", text)
+	// Every OWED session note is the session's words. It is set here, at the one
+	// door they come through, rather than at each constructor — and a line the
+	// person steered in is neither, which is what [steerNote] says.
+	if !note.steered {
+		note.authored = true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
 	}
 	a.steering = append(a.steering, note)
+	if note.steered {
+		// A NODE'S RUNNER IS WAITING TO BE TOLD, and this is the same release a
+		// report makes without being a report ([Agent.postTaskNews]). It is done
+		// under the lock the append is done under so there is no instant in
+		// which the line is queued and the waiter has not been woken for it.
+		a.releaseTaskWaitLocked()
+	}
 	if note.wake {
 		// A turn already running is the coalescing case and needs nothing done:
 		// wakeLocked declines, and the note lands in that turn at its next step
 		// boundary exactly as a person's steering does.
 		a.wakeLocked()
 	}
+	return true
 }
 
 // takesNotes reports whether this agent can still read anything it is handed. A
@@ -1435,11 +2074,20 @@ func (a *Agent) takesNotes() bool {
 func (a *Agent) postTaskNews() {
 	a.mu.Lock()
 	a.taskNotes++
+	a.releaseTaskWaitLocked()
+	a.mu.Unlock()
+}
+
+// releaseTaskWaitLocked ends the wait a node's runner is holding, for callers
+// already holding a.mu. It is separate from the count above because a report is
+// not the only thing a parked parent has to wake for: the person's own steered
+// line is the other, and it is news without being a report
+// ([Agent.enqueueSteeredLine]).
+func (a *Agent) releaseTaskWaitLocked() {
 	if a.taskNews != nil {
 		close(a.taskNews)
 		a.taskNews = nil
 	}
-	a.mu.Unlock()
 }
 
 // taskNewsWait is the generation a runner takes BEFORE it asks whether anything
@@ -1553,7 +2201,18 @@ func (a *Agent) wakeLocked() bool {
 		for range sink.out { //nolint:revive // draining is the point
 		}
 	}()
-	a.startTurnLocked(context.Background(), userMessage{}, sink, watchers...)
+	// THE OPENING MESSAGE IS EMPTY BUT MARKED A WAKE, and the two facts are not in
+	// tension: empty is still empty — [userMessage.empty] reads the content, which
+	// there is none of, so nothing is recorded and the loop's first drain still
+	// writes the note off the queue exactly as before. The `wake` bit rides beside
+	// that emptiness so the metered loop can tell WHOSE turn this is: nobody typed
+	// it and nobody is holding a channel to answer it, which is what
+	// [Agent.checkpointReopen] needs to know before it decides whether a turn that
+	// stopped short is worth reading. Every gate that reads `user.wake` on an
+	// opening message already treats empty as the same class (route_judge.go,
+	// harness.go, task_brief.go), so the bit changes nothing but the one reading
+	// that was missing.
+	a.startTurnLocked(context.Background(), userMessage{wake: true}, sink, watchers...)
 	return true
 }
 
@@ -1671,6 +2330,19 @@ type eventHub struct {
 	// every event that is not text — so a tool call in the middle of an answer
 	// still lands between the two halves it landed between live.
 	backlog []Event
+	// folding is the text of the run currently folding into the LAST backlog
+	// entry, accumulated instead of concatenated.
+	//
+	// `backlog[last].Text += delta` is the obvious way to fold and it is
+	// quadratic: every delta copies the whole answer so far, so a reply of a
+	// megabyte moves half a terabyte of bytes through this lock while the
+	// provider is still writing. The builder holds the same characters in the
+	// same order and hands them over in one allocation at [eventHub.foldedLocked],
+	// which is called at every point the folded entry can actually be READ — an
+	// attach, and the append that ends the run. Between those points
+	// backlog[last].Text is STALE BY DESIGN and nothing but [foldsInto] may look
+	// at that entry, which is safe because [foldsInto] reads Kind and never Text.
+	folding strings.Builder
 }
 
 func newEventHub() *eventHub { return &eventHub{} }
@@ -1719,6 +2391,7 @@ func (h *eventHub) attach() (*eventStream, bool) {
 		stream.close()
 		return stream, false
 	}
+	h.foldedLocked()
 	for _, event := range h.backlog {
 		stream.send(event)
 	}
@@ -1752,6 +2425,33 @@ func (h *eventHub) drop(stream *eventStream) {
 	}
 	h.mu.Unlock()
 	stream.leave()
+}
+
+// release takes one subscriber off the hub AND LEAVES ITS CHANNEL OPEN. It is
+// [eventHub.drop] for a stream that is not finished with — the reader has not
+// gone anywhere, this turn is simply no longer the turn it is watching.
+//
+// It has one caller, and the whole of the reason is there: a steer that fell
+// through is re-homed onto the follow-up queue, and the person holding its
+// stream is owed the turn their words then start on the channel they are already
+// reading (steer.go's [Agent.liftSteersLocked]). [eventHub.drop] cannot serve
+// that — it ends the reader — and leaving the stream subscribed cannot either,
+// because [eventHub.close] would close it a moment later.
+//
+// A stream this hub does not hold is left alone, on drop's terms: a caller
+// asking for a state this already is has asked for nothing.
+func (h *eventHub) release(stream *eventStream) {
+	if h == nil || stream == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for at, held := range h.subscribers {
+		if held == stream {
+			h.subscribers = append(h.subscribers[:at], h.subscribers[at+1:]...)
+			return
+		}
+	}
 }
 
 // adopt hands an ALREADY-BUILT stream to this hub. It is subscribe for a
@@ -1797,13 +2497,33 @@ func (h *eventHub) send(event Event) {
 	// one funnel, one order, two readers. It is the rule [taskRoom.publish]
 	// already keeps for the same reason one file over.
 	if last := len(h.backlog) - 1; last >= 0 && foldsInto(h.backlog[last], event) {
-		h.backlog[last].Text += event.Text
+		if h.folding.Len() == 0 {
+			h.folding.WriteString(h.backlog[last].Text)
+		}
+		h.folding.WriteString(event.Text)
 	} else {
+		h.foldedLocked()
 		h.backlog = append(h.backlog, event)
 	}
 	for _, stream := range h.subscribers {
 		stream.send(event)
 	}
+}
+
+// foldedLocked settles the accumulated run back into the backlog entry it
+// belongs to, and is a no-op whenever no run is open. It runs at every point the
+// entry can be read — before a new entry is appended over the top of the run,
+// and before [eventHub.attach] copies the backlog out — so what a reader is
+// handed is always the whole folded text, in one string, exactly as the
+// concatenation would have spelled it.
+func (h *eventHub) foldedLocked() {
+	if h.folding.Len() == 0 {
+		return
+	}
+	if last := len(h.backlog) - 1; last >= 0 {
+		h.backlog[last].Text = h.folding.String()
+	}
+	h.folding.Reset()
 }
 
 // foldsInto reports whether a new event may be folded into the one before it in
@@ -1840,6 +2560,10 @@ func (h *eventHub) close() {
 	subscribers := h.subscribers
 	h.subscribers = nil
 	h.backlog = nil
+	// The half-folded run goes with the backlog it belonged to, for the same
+	// reason: nothing can attach to a finished turn, so the characters it holds
+	// are a copy of the reply nobody could ever ask for.
+	h.folding.Reset()
 	h.mu.Unlock()
 	for _, stream := range subscribers {
 		stream.close()
@@ -1976,8 +2700,9 @@ func (s *eventStream) pump() {
 
 // DisplayEntry is one journaled message shaped for surface replay: who spoke
 // and what they said, with tool calls flattened to their gloss and carrying the
-// payload the journal kept for them. No reasoning — that is never recorded — and
-// nothing about the wire itself.
+// payload the journal kept for them. Reasoning metadata is deliberately absent
+// from this display shape even though the journal keeps it for model continuity;
+// nothing about the wire itself is shown to the person.
 type DisplayEntry struct {
 	// Role is "user" | "assistant" | "tool" | "note" | "aside".
 	//
@@ -2030,6 +2755,44 @@ type DisplayEntry struct {
 	// the paths are the JOURNAL's record, and a conversation that lives only in
 	// memory never wrote one.
 	ImageRefs []string
+	// ReplyTags label the assistant entry that answers finished task notes. They
+	// are nil on every ordinary reply.
+	ReplyTags []TaskReplyTag
+
+	// Steer marks a user entry that was typed INTO the turn it sits inside
+	// rather than starting one of its own (steer.go), and carries the instant it
+	// was sent.
+	//
+	// IT IS WHAT MAKES A TURN A TRUNK WITH ELBOWS. The entry that opened the turn
+	// is the question; every entry after it that carries this, up to the next
+	// question, is a correction the person made while the work was running — so a
+	// surface can draw the turn as one thing with the steers hanging off it
+	// instead of as a run of unrelated messages from somebody who kept
+	// interrupting themselves.
+	//
+	// It is answered from the JOURNAL's own mark, exactly as "aside" is: a
+	// message replayed out of a file written before steering existed carries nil
+	// and draws as the plain user line it always was. A steer that FELL THROUGH
+	// never appears here at all — it was never part of the turn, and what replays
+	// is the ordinary question it became (the record of the fall-through is its
+	// own line in the session file).
+	//
+	// Nil on every other entry, and on every session with no file to have kept a
+	// mark.
+	Steer *SteerMark
+}
+
+// SteerMark is what the record keeps about one steer that LANDED: when the
+// person sent it, and — always true here — that the turn it was typed into
+// carried it to the model.
+//
+// Consumed is a field rather than an assumption because the record has to be
+// able to say both things, and because a reader of a session file finds the
+// other answer written next to these same words ([journalSteer]).
+type SteerMark struct {
+	At       time.Time
+	Consumed bool
+	Landing  string
 }
 
 // Transcript returns the conversation so far as display entries, oldest
@@ -2113,9 +2876,22 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // one walk rather than ten.
 func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	results := toolResults(messages)
-	entries := make([]DisplayEntry, 0, len(messages))
+	// Sized by [entryRows], which is the rule this loop appends by, so a
+	// transcript full of tool batches is not grown a power of two at a time.
+	entries := make([]DisplayEntry, 0, countEntries(messages))
+	var replyTags []TaskReplyTag
 	for _, msg := range messages {
 		if msg.Role == "system" {
+			continue
+		}
+		// AND THE SESSION'S OWN VOLATILE NOTE IS DRAWN NOWHERE, which is stricter
+		// than the aside below and is the promise the manual already makes about
+		// the block inside it: it goes into the chat's context, never on your
+		// screen. It was assembled for one request out of the state card and the
+		// project index, nobody saw it happen, and a replay that drew it would put
+		// a paragraph of machinery in the conversation on the strength of the role
+		// it had to travel in.
+		if msg.Role == "user" && isVolatileNote(messageContentText(msg)) {
 			continue
 		}
 		role := msg.Role
@@ -2129,11 +2905,23 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// It is NOT "note": that role is the compaction marker a surface draws
 			// as a rule of its own, and these two are not one shape.
 			role = "aside"
+			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
+		}
+		var tags []TaskReplyTag
+		if role == "assistant" && len(replyTags) > 0 {
+			tags = append([]TaskReplyTag(nil), replyTags...)
+			replyTags = nil
 		}
 		entries = append(entries, DisplayEntry{
 			Role:      role,
 			Text:      messageContentText(msg),
 			ImageRefs: journal.imageRefs(msg),
+			ReplyTags: tags,
+			// The journal is the only thing that remembers a user line was typed
+			// INTO the turn above it rather than opening one of its own: the
+			// message itself is an ordinary user message, because that is what the
+			// model has to read it as (steer.go).
+			Steer: journal.steerMark(msg),
 		})
 		for _, call := range msg.ToolCalls {
 			entries = append(entries, DisplayEntry{
@@ -2150,6 +2938,41 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 		}
 	}
 	return entries
+}
+
+// entryRows is how many rows the shaping above makes of ONE message: none at
+// all for the system message it drops, and otherwise the message's own row plus
+// one for every tool call riding it. It is the rule the loop appends by, written
+// down so it can be read without being run.
+//
+// IT MUST MOVE WHENEVER THAT LOOP DOES. A second rule for how many rows a
+// message makes is a rule that can disagree with the shaping, and the thing that
+// would disagree is a floor — the count [EarlierHistory] hands a surface to
+// splice its scrollback at. TestTheEntryCountAgreesWithTheShaping is what keeps
+// the two honest: a row added or dropped above and not here fails that test
+// rather than moving somebody's history under them.
+func entryRows(msg ai.Message) int {
+	if msg.Role == "system" {
+		return 0
+	}
+	return 1 + len(msg.ToolCalls)
+}
+
+// countEntries is len(shapeEntries(messages, …)) without the shaping.
+//
+// A compaction pass needs exactly that number while it holds the session lock,
+// and building the rows to keep nothing but their count walks the whole
+// transcript's content a second time — every argument compacted and capped,
+// every tool result measured, every picture looked up — to measure a list
+// (loop.go's [Agent.compact]). The journal is not a parameter because it cannot
+// change the answer: it renames one role and finds the paths of pictures, and
+// neither adds nor removes a row.
+func countEntries(messages []ai.Message) int {
+	rows := 0
+	for _, msg := range messages {
+		rows += entryRows(msg)
+	}
+	return rows
 }
 
 // toolResults indexes a run of messages by the call each one answered. A result

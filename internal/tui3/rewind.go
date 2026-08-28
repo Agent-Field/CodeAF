@@ -163,7 +163,7 @@ func (a *app) enterRewind() tea.Cmd {
 	// The frame stack decides where this can be opened from: a room, a frozen
 	// viewport and the fullscreen panels all draw over the place the mode bar
 	// stands in, and a bar nobody can see is a mode nobody can leave (view.go).
-	if a.rew.on || a.rewSheet.open || a.copy.on || a.roomOpen() || a.sheet.open || a.railFull() {
+	if a.rew.on || a.rewSheet.open || a.copy.on || a.roomOpen() || a.at(pageSettings) || a.railFull() {
 		return nil
 	}
 	agent, ok := a.rewinder()
@@ -257,7 +257,7 @@ func (a *app) rewindReady() bool {
 	}
 	switch {
 	case a.rewSheet.open,
-		a.sheet.open, a.taskSheet.open, a.deck.open, a.expand.open, a.pick.open, a.roster.open,
+		a.at(pageSettings), a.at(pageTasks), a.deck.open, a.expand.open, a.pick.open, a.roster.open,
 		a.connPanel.open, a.menu.open, a.comp.open, a.welcome.open,
 		a.copy.on, a.recalling(), a.roomOpen(), a.railHold, a.railFull(),
 		a.asking(), a.awaitingTask(), a.guard != nil, len(a.connAsks) > 0,
@@ -480,6 +480,7 @@ func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, c
 	leave()
 	a.dropHover()
 	a.rebuildTranscript()
+	a.noticeEvent(eventRewound)
 	// The note is the compaction mark's voice: one dim line, said once, about
 	// something the surface did to the conversation rather than about anything
 	// anybody said. A conversation that silently lost its tail is a conversation
@@ -517,6 +518,7 @@ func (a *app) rebuildTranscript() {
 	a.entries = nil
 	a.turn = 0
 	a.live = -1
+	a.echoAt = -1
 	a.think = -1
 	a.sel = -1
 	a.unfolded = map[int]bool{}
@@ -703,7 +705,7 @@ func (a *app) rewindAnchors(points []session.RewindPoint) []int {
 			drawn[i] = at
 			continue
 		}
-		for at > 0 && !fromTranscript(a.entries[at-1].kind) {
+		for at > 0 && !fromTranscript(&a.entries[at-1]) {
 			at--
 		}
 		if at == 0 {
@@ -745,9 +747,17 @@ func replayDraws(e session.DisplayEntry) bool {
 // reasoning block the journal never held, the seam a scrolled-back conversation
 // draws, the cards the tasker draws — and they are stepped over rather than
 // matched, because nothing in the transcript corresponds to them.
-func fromTranscript(kind entryKind) bool {
-	switch kind {
-	case entryUser, entryAssistant, entryTool, entryDivider:
+// A CORRECTION IS ONE OF THEM. It is an ordinary user message in the journal —
+// that is what the model had to read it as — and since it draws as a block of
+// its own it consumes one, exactly as the question above it does (steerelbow.go).
+// A WITHDRAWN one does not: it draws nothing, and a block that draws nothing
+// cannot be the place a cut line lands.
+func fromTranscript(e *entry) bool {
+	if entryWithdrawn(e) {
+		return false
+	}
+	switch e.kind {
+	case entryUser, entryAssistant, entryTool, entryDivider, entrySteer:
 		return true
 	}
 	return false

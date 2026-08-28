@@ -220,7 +220,7 @@ func TestTheHintIsAbsentWhereTheChordWouldRefuse(t *testing.T) {
 func standDoorLab(t *testing.T) (*app, *standBand) {
 	t.Helper()
 	item := bandItem("one", "remind me on Fridays", "/tmp/lab", standing.WhenEvery, "Fridays")
-	agent := &standPageFake{fakeAgent: &fakeAgent{model: "m"}, stand: []standing.Item{item}}
+	agent := &standingPlaceFake{fakeAgent: &fakeAgent{model: "m"}, stand: []standing.Item{item}}
 	a := newTestApp(agent)
 	a.width = 120
 	a.workspace = "/tmp/lab"
@@ -237,7 +237,7 @@ func TestPressingTheKeepingSegmentOpensTheStandingPage(t *testing.T) {
 	a, _ := standDoorLab(t)
 	x, y := standDoorAt(t, a)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-	if !a.standPage.open {
+	if !a.at(pageStanding) {
 		t.Fatalf("the door did not open the page:\n%s", plain(frame(a)))
 	}
 }
@@ -248,7 +248,7 @@ func TestPressingBesideTheKeepingSegmentOpensNothing(t *testing.T) {
 	a, _ := standDoorLab(t)
 	_, y := standDoorAt(t, a)
 	drive(t, a, tea.MouseClickMsg{X: 0, Y: y, Button: tea.MouseLeft})
-	if a.standPage.open {
+	if a.at(pageStanding) {
 		t.Fatal("the whole status row acted as the door")
 	}
 }

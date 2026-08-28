@@ -767,7 +767,7 @@ func TestConnectIsOnTheCommandList(t *testing.T) {
 	if !found {
 		t.Fatal("/connect is not on the command list")
 	}
-	if !strings.Contains(helpText(""), "/connect") {
+	if !strings.Contains(helpText("", chordSpelling{}), "/connect") {
 		t.Fatal("/connect is not in /help")
 	}
 }

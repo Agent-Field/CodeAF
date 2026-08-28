@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 )
 
 // The settings registry is the one place a user-tunable knob is written down.
@@ -173,11 +174,19 @@ const (
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
 	KeyCrew = "models.crew"
-	// KeyMouse is whether the surface reports the mouse at all. Off is the
-	// default because an alt-screen app that reports the mouse OWNS every
-	// drag: the terminal's native text selection dies the moment reporting
-	// starts, and selecting text to copy is the more fundamental act. On
-	// buys hover and click; off buys selection.
+	// KeyMouse is whether the surface reports the mouse at all. ON is the
+	// default ([DefaultMouse]), because hover, click and the wheel are v3's own
+	// language and the thing they cost is bought back by a key: an alt-screen
+	// app that reports the mouse OWNS every drag, so the terminal's native text
+	// selection dies the moment reporting starts — and `ctrl+s` hands the
+	// pointer back for as long as somebody is dragging with it.
+	//
+	// THIS COMMENT SAID "OFF IS THE DEFAULT" while [DefaultMouse] said on, and a
+	// stale sentence here is the expensive kind: it is the first thing anybody
+	// reads when the answer to "does aforge ask for the mouse at all" decides
+	// whether a pointer bug is in this program or in the terminal. One source of
+	// truth — [MouseModes] states the choice and [DefaultMouse] states the
+	// answer, and this row's doc may not contradict either.
 	KeyMouse = "ui.mouse"
 	// KeyTimestamps is how much of the clock the v3 conversation carries: a
 	// footer under every finished turn, only the coarse marks where the
@@ -198,6 +207,13 @@ const (
 	// surfaces with two shapes, and a person who put v3's column away has said
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
+	// KeyHints is whether the v3 chat shows its earned hints — the one-line tips
+	// in the slot above the message box that each retire once the key or command
+	// they name has been used (internal/tui3's notice.go) — and, with them, the
+	// one-line what's-new notes a new build may say. It is one row and not two
+	// because a person who has silenced the tips has said they know the surface,
+	// and being told about features is the same conversation.
+	KeyHints = "ui.hints"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
@@ -214,24 +230,25 @@ const (
 	// The silence watchdog beside it has no row: a request that produced nothing
 	// at all has failed by any reading.
 	KeyReplyGuard = "reply.guard"
-	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
-	// or a planner cutting the work into pieces that run at once (internal/tui3's
-	// taskcommand.go). Shipped, it starts ONE WORKER — a small sizing call reads
-	// the brief first, and a yes from it arms that worker to hand the work out
-	// mid-run once it has opened the material and found the width is real
-	// (internal/session's task_divide.go).
+	// KeyTaskStart is what a bare `/task <brief>` COSTS TO SHAPE, and it is no
+	// longer a question about shape at all (internal/tui3's taskcommand.go).
+	// Every answer starts ONE WORKER. What the answers differ in is whether a
+	// small sizing call reads the brief first, because a yes from that call is
+	// what arms the worker to hand the work out mid-run once it has opened the
+	// material and found the width is real (internal/session's task_divide.go).
 	//
 	// It is a row because the question is not really about one task. Somebody who
-	// wants the work planned into pieces before anybody starts wants that every
-	// time; somebody who does not want the sizing call on their bill is refusing
-	// it every time. Both are a preference stated once, and the row is where you
-	// state it.
+	// does not want the sizing call on their bill is refusing it every time, and
+	// that is a preference stated once rather than on every `/task`.
 	//
-	// NOBODY IS ASKED ANY MORE, whichever answer is set. The row used to decide
-	// who chose the shape, because a two-row card opened on a yes; the card is
-	// gone and a wide task divides itself as it runs, so what is left here is
-	// which shape starts and what it costs to find out — `single` skips the
-	// sizing call outright and takes one worker on the brief's own words.
+	// THE PLANNED-GRAPH ANSWER IS GONE, and with it the last way a preference
+	// could open an adaptive run behind somebody's back. A `/task` takes one road
+	// now — one worker that divides itself from the material — and there is no
+	// second road left to prefer: no chat door reaches the planner at all, not a
+	// setting, not a hand on the belt, and not a form of words somebody types
+	// (internal/session's loop.go). A profile still holding the retired word reads
+	// as the default, silently, the way any word this build does not know reads
+	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router
@@ -508,33 +525,40 @@ var TaskSettleModes = []string{TaskSettleAsk, TaskSettleAuto}
 // DefaultTaskSettle is ask.
 const DefaultTaskSettle = TaskSettleAsk
 
-// The three answers to [KeyTaskStart], and they are not three settings but one
-// question asked once instead of on every `/task`: what a bare `/task` starts,
-// and what it pays to find out.
+// The two answers to [KeyTaskStart], and they are not two settings but one
+// question asked once instead of on every `/task`: what a bare `/task` pays to
+// find out before its one worker starts.
 //
 //	sized      one worker, with the sizing call read over the brief first. A yes
 //	           from it arms that worker to hand the work out as it goes, once it
 //	           has opened the material and found the width is real — so wide work
 //	           runs wide without a planner ever being asked to guess at it.
-//	adaptive   a planner, without asking: parts found, the adaptive run starts;
-//	           none found, one worker starts, because a planner over work that
-//	           cannot be split is a whole extra model deciding nothing.
 //	single     one worker, and the sizing call is not made at all. The work can
 //	           still divide itself, but only off what its own brief already says
 //	           (internal/splitgate), because nothing was read over it.
 //
-// THE OLD FOURTH ANSWER WAS `ask`, and it is gone with the card it named: a yes
-// from the sizing call used to raise a two-row chooser, and now it starts the
-// one worker armed. A profile still holding the word reads as the default, which
-// is the same one worker it would have got by dismissing that card.
+// THERE WERE FOUR, AND BOTH THE RETIRED ONES NAMED A CARD OR A ROAD THAT IS
+// GONE. `ask` went with the two-row chooser a yes from the sizing call used to
+// raise; `adaptive` went with the planned-graph road itself, which a chat turn
+// may no longer open at all. Neither retirement is allowed to be felt: a profile
+// still holding either word reads as the default, silently, because [TaskStartAt]
+// treats a word this build does not know as no answer at all — and being told
+// that a preference set months ago is now an error is the one thing a retirement
+// must never do.
+// NEITHER RETIRED WORD IS SPELLED HERE, and `ask` set that precedent: a constant
+// for a word nothing may write, nothing may offer and nothing may resolve to is a
+// name the next reader has to be told is not a mode. The retirement needs no
+// constant to work — it is [TaskStartModes] not containing the word, which is
+// what the sheet, [writeChoice] and [TaskStartAt] all read.
 const (
-	TaskStartSized    = "sized"
-	TaskStartAdaptive = "adaptive"
-	TaskStartSingle   = "single"
+	TaskStartSized  = "sized"
+	TaskStartSingle = "single"
 )
 
-// TaskStartModes lists them, the default first.
-var TaskStartModes = []string{TaskStartSized, TaskStartAdaptive, TaskStartSingle}
+// TaskStartModes lists what may be chosen, the default first. The retired word
+// is not in it, and that absence is the whole mechanism — the sheet's choices,
+// the writer's validation and the resolver all read this one list.
+var TaskStartModes = []string{TaskStartSized, TaskStartSingle}
 
 // DefaultTaskStart is sized: one worker that knows whether it is allowed to
 // divide, which is the shape the measured road is built around.
@@ -701,6 +725,13 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"AFORGE_HOME",
+	// AFORGE_RELAY points a headless peer at the relay this host pairs through
+	// (internal/pair). It is an address, so it is plumbing for the same reason
+	// AFORGE_BASE_URL is.
+	"AFORGE_RELAY",
+	// AFORGE_FURROW names the furrow binary on a machine where PATH would not
+	// find it (internal/furrow). A path to a program is plumbing.
+	"AFORGE_FURROW",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is a constant in internal/provider that nothing
@@ -720,6 +751,15 @@ var OperatorEnvPins = []string{
 	"AFORGE_EXEC_TURNS",
 	"AFORGE_EXEC_BUDGET",
 	"AFORGE_EXEC_TIMEOUT",
+	// The two walls an UNATTENDED conversation carries its own work on under
+	// (--max-hours / --max-cost, internal/session's principal.go). They are
+	// plumbing for exactly the reason the three above are: they are the ceilings
+	// ONE launch runs under, named by whoever started it, and a sheet row
+	// offering to persist them would be offering to make every future
+	// conversation an unattended one. The preference the product has an opinion
+	// about is the daily rail, and it is a row already.
+	"AFORGE_MAX_HOURS",
+	"AFORGE_MAX_COST",
 	"AFORGE_SPINE_SAMPLES",
 	"AFORGE_MAX_DEPTH",
 	"AFORGE_NODE_BUDGET",
@@ -806,6 +846,15 @@ var OperatorEnvPins = []string{
 	// verified by two cheap validators before it commits; off, the judge's
 	// pass is the final word. Same lifetime as AFORGE_SWARM.
 	"AFORGE_QUORUM",
+	// The three numbers the response boundary reads (internal/taxonomy, and
+	// [ResponseAttemptsAt] below). They are plumbing rather than rows for the
+	// reason the context-budget pins are: nobody sets them to express a
+	// preference, they are turned when a specific provider is behaving badly or
+	// when a run is being held to a price, and the sheet already has the two
+	// rows a person actually budgets with — the daily rail and the repair count.
+	"AFORGE_RESPONSE_ATTEMPTS",
+	"AFORGE_RESPONSE_LIFT_AFTER",
+	"AFORGE_RESPONSE_LIFT_CAP",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -962,6 +1011,11 @@ const (
 	// their behalf — the strip is what keeps running work reachable from a frame
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
+
+	// DefaultHints shows the v3 chat's tips to a profile that has never said
+	// otherwise. The tips retire themselves the moment each is acted on, so the
+	// default costs a veteran one line per gesture they already know, once.
+	DefaultHints = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -1260,6 +1314,19 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
 		},
+		// How hard the models think, when nothing nearer to the work has said.
+		// It sits with the models rather than with spending because that is the
+		// question a person is answering when they touch it — the money is a
+		// consequence and not the subject.
+		Setting{
+			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
+			Label: "thinking", Choices: EffortChoices,
+			Hint: "how hard the model thinks about your turns and the work you hand out. " +
+				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
+				"Standing items and their checks stay low whatever this says.",
+			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
+			write: func(raw string) error { return writeChoice(dir, KeyEffort, raw, EffortChoices) },
+		},
 		Setting{
 			Key: KeyDocumentEngine, Category: CategoryModels, Kind: SettingChoice,
 			Label: "reading", Env: "AFORGE_DOC_ENGINE", Choices: DocumentEngines,
@@ -1282,6 +1349,22 @@ func (s *Settings) build() []Setting {
 				"A change lands on the next session.",
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
+		},
+		// THE KEY EVERY MODEL CALL RIDES. It is a row for the reason the first-run
+		// setup exists: a person with no key in their shell has to be able to
+		// hand one over somewhere, and "export it and start again" is not a
+		// somewhere. It masks like every credential, the environment outranks
+		// it as it always has (apikey.go's resolution order), and a write lands
+		// on the RUNNING session through the surface's Applied hook rather than
+		// waiting for the next launch — the row this was modelled on says "on the
+		// next session" because search is an accessory; this is the conversation.
+		Setting{
+			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
+			Hint: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+				"Set in the shell it outranks this row. A change lands on this conversation at once.",
+			read:  func() string { return maskCredential(APIKeyAt(dir)) },
+			write: func(raw string) error { return writeCredential(dir, KeyAPIKey, raw, APIKeyAt(dir)) },
 		},
 		Setting{
 			Key: KeyExaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
@@ -1423,10 +1506,14 @@ func (s *Settings) build() []Setting {
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +
-				"different speeds for the same price. latency asks for the fastest one and " +
-				"times every answer, demoting an endpoint that keeps being slow; price asks " +
-				"for the cheapest; off asks for nothing and measures nothing. " +
-				"A change lands on the next session.",
+				"different speeds AND very different prices. Left alone, aforge asks for the " +
+				"fastest endpoint for your own turns — capped at a quarter over the model's " +
+				"list price, because no endpoint is worth four times that — and asks for the " +
+				"cheapest for work you are not waiting on: task workers, judges, titles, the " +
+				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
+				"fastest one for everything and times every answer, demoting an endpoint that " +
+				"keeps being slow; price asks for the cheapest for everything; off asks for " +
+				"nothing and measures nothing. A change lands on the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
@@ -1463,13 +1550,11 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
 			Label: "starting a task", Choices: TaskStartModes,
-			Hint: "what /task <brief> starts. sized is the default: the brief is read for " +
-				"width first and one worker starts either way, and a brief with parts in it " +
-				"starts a worker that can hand them out once it has opened the material. " +
-				"adaptive plans the pieces up front instead, and starts one worker when there " +
-				"is nothing to split. single starts one worker and skips the reading " +
-				"altogether. /task solo and /task adaptive still say so outright whatever " +
-				"this is set to.",
+			Hint: "what /task <brief> pays to find out. sized is the default: the brief " +
+				"is read for width first and one worker starts either way, and a brief with " +
+				"parts in it starts a worker that can hand them out once it has opened the " +
+				"material. single starts that one worker and skips the reading altogether. " +
+				"/task solo still says so outright whatever this is set to.",
 			read:  func() string { return TaskStartAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},
@@ -1685,10 +1770,12 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
 			Label: "fallback models", EmptyLabel: "nearest in the catalog",
-			Hint: "where a conversation goes when no endpoint serving your model will take " +
-				"the request at all — one or more slugs, comma-separated, first tried first: " +
-				"`openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank and the nearest " +
-				"same-class model in the catalog is used. The turn says which one it moved to.",
+			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
+				"it will take the request, it keeps going quiet mid-reply, or it is being " +
+				"rate limited and will not stop. One or more slugs, comma-separated, first " +
+				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
+				"and the nearest same-class model in the catalog is used. The turn says which " +
+				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
 		},
@@ -1846,12 +1933,59 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
 		Setting{
+			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
+			Label: "hints",
+			Hint: "one-line tips above the message box, each shown until the key or command " +
+				"it names has been used once. Off silences them, and the what's-new line a " +
+				"new build may say with them. A change lands at the end of the next turn.",
+			read:  func() string { return formatBool(HintsAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyHints, raw) },
+		},
+		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
 			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
 				"A change lands on the next job.",
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
+		// The ssh carrier is local surface policy, so its overrides live beside
+		// the other interface choices. Keeping them in the registry matters more
+		// than their rarity: a network that drops idle TCP or rewrites DSCP is a
+		// place where hard-coded command-line options cannot be repaired in
+		// ~/.ssh/config, because command-line options win.
+		Setting{
+			Key: KeySSHControlPersist, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh reuse",
+			Hint: "seconds an ssh connection stays reusable after its channel closes. 300 makes a " +
+				"quick reconnect avoid a new handshake; 0 turns persistence off. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ControlPersistSeconds) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHControlPersist, raw) },
+		},
+		Setting{
+			Key: KeySSHServerAlive, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh heartbeat",
+			Hint: "seconds of silence before ssh asks whether the far machine is still there. 3 detects " +
+				"a dead link promptly; 0 turns heartbeats off. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveSeconds) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHServerAlive, raw) },
+		},
+		Setting{
+			Key: KeySSHServerMisses, Category: CategoryInterface, Kind: SettingCount,
+			Label: "ssh missed heartbeats",
+			Hint: "how many unanswered ssh heartbeats end a dead connection. 3 with the default heartbeat " +
+				"notices an unresponsive link in about 9 seconds. A change lands next launch.",
+			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveMisses) },
+			write: func(raw string) error { return writeProfileCount(dir, KeySSHServerMisses, raw) },
+		},
+		Setting{
+			Key: KeySSHIPQoS, Category: CategoryInterface, Kind: SettingChoice,
+			Label:   "ssh traffic",
+			Choices: SSHIPQoSChoices,
+			Hint: "how ssh marks interactive traffic: lowdelay by default, af21 on networks that honor it, " +
+				"or none where traffic marking is filtered. A change lands next launch.",
+			read:  func() string { return SSHTransportAt(dir).IPQoS },
+			write: func(raw string) error { return writeChoice(dir, KeySSHIPQoS, raw, SSHIPQoSChoices) },
 		},
 	)
 	return rows
@@ -2382,6 +2516,16 @@ func SaveTaskColumn(profileDir string, open bool) error {
 	return writeBool(profileDir, KeyTaskColumn, formatBool(open))
 }
 
+// HintsAt resolves whether the v3 chat shows its tips, default on. A row that
+// will not parse reads as the default rather than as off, for [TaskColumnAt]'s
+// reason: a garbled row must not quietly take a newcomer's only pointers away.
+func HintsAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyHints); ok {
+		return value
+	}
+	return DefaultHints
+}
+
 func knownRailState(state string) bool {
 	for _, known := range RailStates {
 		if known == state {
@@ -2756,6 +2900,28 @@ func RoutingAt(profileDir string) string {
 	return DefaultRouting
 }
 
+// RoutingChoiceAt is the routing row A PERSON ACTUALLY WROTE, empty when they
+// have written nothing readable.
+//
+// It is the same read as [RoutingAt] without the fallback, and the two are both
+// needed because they answer different questions. A settings sheet asks "what
+// is in force?" and must be told latency, which is what an unset row does. The
+// adapter asks "did somebody CHOOSE?", and it must be able to hear no — that is
+// the whole of what lets it route a person's own turn by speed and an errand
+// nobody is waiting on by price, while an explicit word still wins over both
+// (internal/provider's velocity.go).
+func RoutingChoiceAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyRouting); ok {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, mode := range RoutingModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
 // TaskAuditAt resolves the audit row to its word, default on.
 func TaskAuditAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyTaskAudit); ok {
@@ -2805,6 +2971,12 @@ func TaskSettleAt(profileDir string) string {
 // value this build does not recognise reads as the default rather than as an
 // error, because the row decides what a command does and a typo in a config file
 // must not be a command that refuses.
+//
+// THAT RULE IS ALSO HOW A RETIREMENT IS PAID FOR. `adaptive` and `ask` were both
+// answers here once; taking a word out of [TaskStartModes] is the whole of
+// retiring it, because a profile that still holds one falls through this loop
+// and reads as [DefaultTaskStart] — no migration, no error, and nothing said to
+// somebody about a preference they set months ago.
 func TaskStartAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyTaskStart); ok {
 		value = strings.ToLower(strings.TrimSpace(value))
@@ -2993,6 +3165,90 @@ func ParseModelFallbacks(raw string) []string {
 		models = append(models, model)
 	}
 	return models
+}
+
+// ── the response boundary's three numbers ───────────────────────────────────
+
+// The keys the boundary's numbers persist under. They are named `response.`
+// because that is what the boundary reads — one response, and what kind of
+// failure it was — rather than `task.` or `model.`, either of which would put
+// the row beside the wrong question (internal/taxonomy).
+const (
+	// KeyResponseAttempts is N: how many times ONE request is tried on its own
+	// tier before the wire is given up on. The first try is included.
+	KeyResponseAttempts = "response.attempts"
+	// KeyResponseLiftAfter is K: how many checks must read finished work and
+	// find gaps in it, on the same tier and with the wire ruled out, before a
+	// stronger model is bought.
+	KeyResponseLiftAfter = "response.lift_after"
+	// KeyResponseLiftCap is what that stronger model may cost ONE piece of
+	// work, in dollars. 0 is no cap.
+	KeyResponseLiftCap = "response.lift_cap_usd"
+)
+
+// ResponseLimitsAt resolves the whole of [taxonomy.Limits] for a profile:
+// environment pin, then the persisted row, then the package default, which is
+// the order every other number in this file resolves in.
+//
+// IT IS ONE READER AND NOT THREE, because the three numbers are one policy and
+// a caller that resolved two of them would be running a boundary nobody
+// configured. The backoff is not among them: it is derived from the attempt
+// count's own schedule and there has never been a reason to turn it apart from
+// the count.
+func ResponseLimitsAt(profileDir string) taxonomy.Limits {
+	return taxonomy.Limits{
+		TransportAttempts: ResponseAttemptsAt(profileDir),
+		TransportBackoff:  taxonomy.DefaultTransportBackoff,
+		SemanticFailures:  ResponseLiftAfterAt(profileDir),
+		TierCapUSD:        ResponseLiftCapAt(profileDir),
+	}
+}
+
+// ResponseAttemptsAt resolves N. A pin below one is nonsense — a request that is
+// never sent — and reads as the default rather than as an instruction.
+func ResponseAttemptsAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_ATTEMPTS")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			return value
+		}
+		return taxonomy.DefaultTransportAttempts
+	}
+	if value, ok := persistedInt(profileDir, KeyResponseAttempts); ok && value >= 1 {
+		return value
+	}
+	return taxonomy.DefaultTransportAttempts
+}
+
+// ResponseLiftAfterAt resolves K, the same way.
+func ResponseLiftAfterAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_AFTER")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			return value
+		}
+		return taxonomy.DefaultSemanticFailures
+	}
+	if value, ok := persistedInt(profileDir, KeyResponseLiftAfter); ok && value >= 1 {
+		return value
+	}
+	return taxonomy.DefaultSemanticFailures
+}
+
+// ResponseLiftCapAt resolves the cap, in dollars.
+//
+// A PERSISTED 0 IS A VALUE AND NOT AN ABSENCE, for [TaskAutoApproveAt]'s reason:
+// 0 means no cap, and somebody who wrote it must not find one back in the
+// morning.
+func ResponseLiftCapAt(profileDir string) float64 {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_CAP")); raw != "" {
+		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 0 {
+			return value
+		}
+		return taxonomy.DefaultTierCapUSD
+	}
+	if value, ok := persistedFloat(profileDir, KeyResponseLiftCap); ok && value >= 0 {
+		return value
+	}
+	return taxonomy.DefaultTierCapUSD
 }
 
 // TaskAutoApproveAt resolves the task countdown, in seconds. 0 is a clock that

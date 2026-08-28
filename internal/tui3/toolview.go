@@ -45,6 +45,9 @@ import (
 // says how many, and ctrl+o (or a click on that line) unfolds them. One call
 // opens inline — click it, or select it with ↑/↓ and press enter — and shows a
 // tool-shaped expansion under the rail rather than in a pane somewhere else.
+// A TASK'S PAGE KEEPS AS MANY AS ITS VIEW IS TALL instead of three, and there a
+// scroll up at the top of the page opens the fold too (render.go's
+// [deck.toolTail], room.go's [app.roomScroll]).
 
 // toolDetail is a call's payload as the surface holds it: the two display
 // fields internal/session sends (session.go's Event.Args and Event.Output),
@@ -110,14 +113,20 @@ type toolDetail struct {
 // The deck is carried in rather than read off the app because a task's page is
 // drawn by this function too, from its own list and its own fold state
 // (render.go's [deck], room.go): one cluster renderer, two lists.
+//
+// THE WINDOW IS THE DECK'S AND NOT A CONSTANT'S. The conversation keeps
+// [toolWindow]; a room keeps a tail sized to its view ([deck.window]), so that a
+// fold never starves the screen — only the overflow folds. One renderer, two
+// lists, and the fold's sentence names the gesture each list answers.
 func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
 	turn := d.entries[from].turn
 	start := from
-	if to-from > toolWindow && !d.unfolded[turn] {
-		start = to - toolWindow
-		fold := a.pal.dim(a.pal.toolGlyph() + foldWord(start-from))
+	if window := d.window(); to-from > window && !d.unfolded[turn] {
+		start = to - window
+		word := foldWord(start-from, d.toolTail > 0)
+		fold := a.pal.dim(a.pal.toolGlyph() + word)
 		if a.hoveringFold(turn) {
-			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(foldWord(start-from))
+			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(word)
 		}
 		out = append(out, row{text: fold, entry: -1, hit: hitFold, turn: turn})
 	}
@@ -128,13 +137,27 @@ func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
 }
 
 // foldWord is the fold line's sentence. It names the key that opens it, because
-// a surface that hides something without saying how to see it has hidden it.
-func foldWord(n int) string {
-	if n == 1 {
-		return "1 earlier tool call · ctrl+o"
+// a surface that hides something without saying how to see it has hidden it —
+// and on a task's page, where scrolling up at the top opens it too, it names
+// the scroll first, because that is the gesture a person reading history is
+// already making (room.go's [app.roomScroll]).
+func foldWord(n int, scrolls bool) string {
+	opens := foldKeyWord
+	if scrolls {
+		opens = foldScrollWord
 	}
-	return strconv.Itoa(n) + " earlier tool calls · ctrl+o"
+	if n == 1 {
+		return "1 earlier tool call" + opens
+	}
+	return strconv.Itoa(n) + " earlier tool calls" + opens
 }
+
+// The two endings of the fold's sentence: the conversation's, and the room's.
+// They are constants because the manual quotes them and a test pins each.
+const (
+	foldKeyWord    = " · ctrl+o"
+	foldScrollWord = " · scroll up or ctrl+o"
+)
 
 // toolRows is one call: its line, plus its expansion when it is open.
 //
@@ -161,19 +184,66 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// claim about what the call will do: it is the last lines of a file that is
 	// visibly being typed, which is the whole of what a person watching a long
 	// write wants and none of what a preview promises.
-	if e.status == toolForming {
-		out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitNone}}
-		stem := a.pal.railCont()
-		phone := layoutTier(width) == tierPhone
-		for _, line := range a.formingRows(e, width-ansi.StringWidth(stem), previewCap(phone)) {
-			out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitNone})
-		}
-		return out
+	forming := e.status == toolForming
+	if forming {
+		hit = hitNone
 	}
+	// THE LINE IS DRAWN EVERY FRAME AND THE BLOCK IS NOT, and that division is
+	// the whole of [toolBlock]. Everything that moves is on this row — the
+	// spinner, the count-up, the pointer's own brightness — so it is built fresh
+	// here; what hangs under it is evidence about a payload that arrived once.
 	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hit}}
 	stem := a.pal.railCont()
 	room := width - ansi.StringWidth(stem)
+	// The BLOCK's rows answer the pointer even where the line does not: a
+	// replayed row's line is inert because there is nothing behind it to open,
+	// and a row with a block hanging under it has by definition got something.
+	// The forming row is the one place both are silent.
+	bodyHit := hitTool
+	if forming {
+		bodyHit = hitNone
+	}
+	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
+	for _, line := range body {
+		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: bodyHit})
+	}
+	if more > 0 {
+		out = append(out, a.moreRow(i, stem, more))
+	}
+	return out
+}
 
+// toolBlock is what hangs under one tool row, off the memo on the entry or
+// worked out and put there. It answers the rows WITHOUT the stem — the caller
+// hangs that on — and how many the cap dropped.
+//
+// See [toolBlock] for why the memo exists and what its key is. The shapes that
+// are NOT remembered say so where they are drawn.
+func (a *app) toolBlock(e *entry, room int, phone bool) ([]string, int) {
+	if e.hung.holds(e, room, phone) {
+		return e.hung.rows, e.hung.more
+	}
+	rows, more, keep := a.toolBlockRows(e, room, phone)
+	if !keep {
+		// A shape that must be redrawn every frame leaves nothing behind, so the
+		// next frame cannot find yesterday's answer under it.
+		e.hung = nil
+		return rows, more
+	}
+	e.hung = &toolBlock{
+		rows: rows, more: more,
+		room: room, phone: phone,
+		status: e.status, open: e.open, full: e.full, tool: e.tool,
+		args: e.detail.Args, output: e.detail.Output, formed: e.formed, hint: e.text,
+	}
+	return rows, more
+}
+
+// toolBlockRows draws that block, and says whether what it drew may be kept.
+func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more int, keep bool) {
+	if e.status == toolForming {
+		return a.formingRows(e, room, previewCap(phone)), 0, true
+	}
 	// THE LIVE PREVIEW. A call that has not finished shows what it is about to
 	// do — the diff an edit will apply, the content a write will lay down — with
 	// no click and no waiting, because the moment that answer is worth anything
@@ -188,7 +258,6 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// change shown BEFORE it lands — the one block nobody asked for and
 	// everybody wants — but at tierPhone it is bounded HARDER, because twelve
 	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
-	phone := layoutTier(width) == tierPhone
 	if !e.open || phone {
 		// THE PICTURE IS THE OTHER BLOCK NOBODY ASKS FOR, and it hangs at the
 		// far end of the same argument. The live preview shows a change BEFORE
@@ -198,33 +267,94 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 		// takes the tier's cap for the tier's reason (imagepreview.go's
 		// [app.pictureThumb]).
 		if picture, drawn := a.pictureThumb(e, room, previewCap(phone)); drawn {
-			for _, line := range picture {
-				out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
-			}
-			return out
+			return picture, 0, false
 		}
 		head, body, more := a.previewBody(e, room, previewCap(phone))
 		if head == "" {
-			return out
+			return nil, 0, true
 		}
-		out = append(out, row{text: a.pal.dim(stem) + head, entry: i, hit: hitTool})
-		for _, line := range body {
-			out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
-		}
-		if more > 0 {
-			out = append(out, a.moreRow(i, stem, more))
-		}
-		return out
+		return append([]string{head}, body...), more, true
 	}
-
+	// AN OPEN CALL THAT HAS NOT FINISHED KEEPS ITS LAST LINE MOVING, so what it
+	// draws is remembered only when that line is not in it ([app.liveDetail]).
+	if e.status.live() {
+		rows, more, moving := a.liveDetail(e, room)
+		return rows, more, !moving
+	}
 	body, more := a.detailBody(e, room)
-	for _, line := range body {
-		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
-	}
-	if more > 0 {
-		out = append(out, a.moreRow(i, stem, more))
-	}
-	return out
+	// AND A PICTURE IS NEVER REMEMBERED HERE. It is already cached where it
+	// belongs — by the file's own modification time and size (imagepreview.go's
+	// [app.picture]) — and a memo in front of that one would answer from a call's
+	// unchanged arguments about a file that had changed underneath them.
+	return body, more, !picturesAFile(e.tool)
+}
+
+// toolBlock is the memo of what hangs under one tool row: the rows, how many the
+// cap dropped, and every fact that decided them.
+//
+// ── WHY A TOOL ROW NEEDS ONE ────────────────────────────────────────────────
+//
+// Tool rows are drawn on every frame and cached nowhere (render.go's
+// [app.entryRows] states the rule and says why: one of them is always animating,
+// and a cache with an animation in it is a still photograph). What that reasoning
+// left out is that the animation is on the LINE and never in the BLOCK. The line
+// carries the spinner, the count-up and the pointer's brightness; the block under
+// it is a diff, a file, a command's output — evidence about a payload that
+// arrived once and does not change again.
+//
+// So the line is redrawn thirty times a second, as it must be, and the block is
+// redrawn when something about it has actually changed. What the old rule cost,
+// per frame and per call on screen: an [argsOf] re-unmarshal of the whole
+// argument object, a unified diff recomputed over every replacement before the
+// cap threw most of it away, a chroma pass per line, and the whole of a tool's
+// output rendered so that thirty rows of it could be kept. The paint clock
+// invalidates the transcript every 33ms for as long as a turn runs, so that bill
+// was paid for every FINISHED call in the conversation as well as for the live one.
+//
+// ── THE KEY ─────────────────────────────────────────────────────────────────
+//
+// Everything the block is derived from and nothing that is not: the width it was
+// laid out to and the tier that width chose, the call's state, whether the person
+// opened it, whether they lifted its cap, and the four strings the rows are made
+// of.
+//
+// The strings are COMPARED RATHER THAN MEASURED. A length is the cheap key and
+// the wrong one — two payloads of the same size are one silent stale block — and
+// it buys nothing, because Go's string comparison answers on the data pointer
+// when both sides hold the same bytes, which is what a memo that kept the very
+// string it rendered always holds.
+//
+// THE PALETTE IS THE ONE THING THE KEY CANNOT SEE, for codeview.go's reason:
+// these are finished strings with the escape sequences already inside them, and a
+// re-measured ground changes neither a payload nor a width. [app.repaintPalette]
+// drops the lot by hand.
+// It hangs off the entry as a POINTER, which is also what distinguishes "this
+// row hangs nothing" from "nothing has been worked out for this row yet" —
+// something an empty slice cannot say — and what keeps [entry] small enough that
+// the three passes walking a whole deck per frame do not pay for it.
+type toolBlock struct {
+	rows []string
+	more int
+
+	room   int
+	phone  bool
+	status toolState
+	open   bool
+	full   bool
+	tool   string
+	args   string
+	output string
+	formed string
+	hint   string
+}
+
+// holds reports whether this memo still answers for the row it was taken from.
+// A row that has never been drawn holds nothing, which is the nil receiver.
+func (b *toolBlock) holds(e *entry, room int, phone bool) bool {
+	return b != nil && b.room == room && b.phone == phone &&
+		b.status == e.status && b.open == e.open && b.full == e.full &&
+		b.tool == e.tool && b.args == e.detail.Args && b.output == e.detail.Output &&
+		b.formed == e.formed && b.hint == e.text
 }
 
 // moreRow is the clickable foot of anything this file capped.
@@ -1152,17 +1282,17 @@ func leftWord(left time.Duration) string {
 // Only bash is bounded on the wire, and only a FOREGROUND bash: the session's
 // wrapper starts a background call as a job and returns, and a job runs until
 // it is done (internal/session's backgroundBash). The number is the model's own
-// when it set one, the session's default when it did not, the session's cap
-// above that — the same law internal/session's wrapper applies to the wire
-// args, restated here from the call's original args so the row agrees with the
-// clock the command actually dies on.
+// when it set one, and the session's ceiling when it did not or when it asked
+// for more — the same law internal/session's wrapper applies to the wire args,
+// restated here from the call's original args so the row agrees with the clock
+// the command is actually bounded by.
 func toolLimit(e *entry) time.Duration {
 	if e.tool != "bash" {
 		return 0
 	}
 	raw := strings.TrimSpace(e.detail.Args)
 	if raw == "" {
-		return session.DefaultBashTimeoutSeconds * time.Second
+		return session.BashCeilingSeconds * time.Second
 	}
 	var args struct {
 		Background bool `json:"background"`
@@ -1440,26 +1570,8 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		width = 8
 	}
 	if e.status.live() {
-		// An unfinished call shows what it CAN: the change it is about to make,
-		// where the arguments carry one, and otherwise the one animated line
-		// that says the obvious in the same breath the spinner is drawing.
-		// THE SHEET IS NOT CAPPED BY THE TIER. This branch answers a call somebody
-		// OPENED, and at tierPhone the answer is the whole frame (expand.go), so
-		// the phone's tighter ceiling — which exists to stop an unasked-for block
-		// from taking that frame — has nothing to protect here.
-		if head, body, more := a.previewBody(e, width, previewWindow); head != "" {
-			return append([]string{head}, body...), more
-		}
-		// A COMMAND IS READABLE BEFORE IT FINISHES, and a running one is when a
-		// person most wants to read it — that is what they opened the row for. It
-		// is drawn here rather than in [app.previewBody] on purpose: this branch
-		// answers a row somebody CLICKED, and the preview answers a row nobody
-		// did, where a command that unfolded itself under every bash call would
-		// be the surface taking the screen.
-		if command := a.commandRows(e, width); len(command) > 0 {
-			return append(command, a.livePhrase(e)), 0
-		}
-		return []string{a.livePhrase(e)}, 0
+		rows, more, _ := a.liveDetail(e, width)
+		return rows, more
 	}
 
 	switch e.tool {
@@ -1543,6 +1655,37 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}
 	return a.cap(e, a.genericRows(e, width), listWindow)
+}
+
+// liveDetail is [app.detailBody]'s answer for a call that has NOT finished: what
+// it CAN show — the change it is about to make, where the arguments carry one —
+// and otherwise the one animated line that says the obvious in the same breath
+// the spinner is drawing.
+//
+// THE SHEET IS NOT CAPPED BY THE TIER. This branch answers a call somebody
+// OPENED, and at tierPhone the answer is the whole frame (expand.go), so the
+// phone's tighter ceiling — which exists to stop an unasked-for block from taking
+// that frame — has nothing to protect here.
+//
+// The third result says THE BLOCK MOVES: its last row is [app.livePhrase], whose
+// count-up and pulse are functions of the frame. It is the one thing [toolBlock]
+// needs to know and cannot work out for itself, and it is answered here rather
+// than asked again outside because the condition IS this function's own branch —
+// a second copy of it is a second copy that goes wrong.
+func (a *app) liveDetail(e *entry, width int) ([]string, int, bool) {
+	if head, body, more := a.previewBody(e, width, previewWindow); head != "" {
+		return append([]string{head}, body...), more, false
+	}
+	// A COMMAND IS READABLE BEFORE IT FINISHES, and a running one is when a
+	// person most wants to read it — that is what they opened the row for. It
+	// is drawn here rather than in [app.previewBody] on purpose: this branch
+	// answers a row somebody CLICKED, and the preview answers a row nobody
+	// did, where a command that unfolded itself under every bash call would
+	// be the surface taking the screen.
+	if command := a.commandRows(e, width); len(command) > 0 {
+		return append(command, a.livePhrase(e)), 0, true
+	}
+	return []string{a.livePhrase(e)}, 0, true
 }
 
 // livePhrase is the line an open, unfinished call carries: what it is doing,

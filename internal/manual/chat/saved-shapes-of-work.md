@@ -255,6 +255,13 @@ what to change, and `esc` to drop it — drawn as `[enter] save   [e] change it 
 The same three actions are clickable. The card remains in the feed after an answer as
 `saved as <name> v1` or `dropped`.
 
+**The three keys are read only while the message box is empty and nothing is over the
+conversation** — not with home, the settings panel or the model picker up, not inside a
+task room, and not in copy mode or rewind. They are letters, and a letter typed into a
+sentence is a letter: a bare `e` in the middle of "even the tests pass" types an `e`. The
+card's three columns stay clickable at every one of those moments, so nothing is
+unreachable — click the one you want, or clear the box and press the key.
+
 **`e` no longer throws the design away.** It used to be labelled "improve", and what it
 actually did was discard the page and put `Improve harness <name>: ` in your message box —
 so asking for a change destroyed the thing you were asking about and started a second
@@ -993,10 +1000,10 @@ question in an empty room. Build the harness while working on that machine direc
 is available to run from anywhere afterwards.
 
 **`/harness` is unavailable over a connection.** The registry belongs to the far machine
-and this build has no door onto it from here, so the command says exactly:
+and this build has no door onto it from here, so the command names that machine:
 
 ```
-harnesses are unavailable here
+<machine> owns harnesses · change it on that machine
 ```
 
 rather than listing this machine's harnesses and offering to run them over there.

@@ -494,19 +494,17 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 		defer r.nudge()
 	}
 	dispatched := 0
-	// The open-children map is a decode of every live node in the graph, and
-	// claimNext asked for one on every claim attempt — so a pass that filled
-	// four slots read the whole graph four times. Nothing a claim does gives a
-	// node children, so one reading serves the whole pass. It is derived lazily
-	// because the overwhelmingly common pass claims nothing at all.
-	var open map[string]bool
+	// Both readings a claim attempt needs, derived at most once for the whole
+	// pass and lazily, because the overwhelmingly common pass claims nothing at
+	// all and must pay for neither.
+	var pass passReads
 	for {
 		select {
 		case r.slots <- struct{}{}:
 		default:
 			return dispatched, nil
 		}
-		spawned, err := r.dispatchOne(ctx, &open)
+		spawned, err := r.dispatchOne(ctx, &pass)
 		if err != nil {
 			return dispatched, err
 		}
@@ -517,11 +515,27 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 	}
 }
 
+// passReads holds what one dispatch pass derives once and every claim attempt
+// in it re-reads. Both entries are whole-journal or whole-graph questions whose
+// answers a claim cannot move, and both used to be asked again for every slot
+// the pass filled — so a pass that handed out eight leaves asked them eight
+// times and got the same answer eight times.
+//
+// Nil means "not asked yet", which is how the reading stays lazy: a pass that
+// claims nothing performs neither.
+type passReads struct {
+	// open is the set of nodes that still have unfinished children.
+	open map[string]bool
+	// railRaised is whether a durable repair is waiting to be admitted, which
+	// stops the pass claiming anything at all.
+	railRaised *bool
+}
+
 // dispatchOne owns the slot the caller just took: every path that does not
 // hand it to a worker gives it back, including the fault path. A panic between
 // taking a slot and spawning would otherwise starve the runner one worker at a
 // time, which is exactly the kind of slow death a crash at least announces.
-func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawned bool, err error) {
+func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool, err error) {
 	held := true
 	release := func() {
 		if held {
@@ -560,7 +574,7 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 		release()
 		return false, nil
 	}
-	node, ok, claimErr := r.claimNext(open)
+	node, ok, claimErr := r.claimNext(pass)
 	if claimErr != nil {
 		release()
 		return false, claimErr
@@ -644,14 +658,24 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 // Tick deterministic.
 func (r *Runner) Wait() { r.wg.Wait() }
 
-func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
+func (r *Runner) claimNext(pass *passReads) (store.Node, bool, error) {
 	// A raised rail must let the reconciler admit every durable repair before a
 	// former consumer can race ahead using only the partial result.
-	deferred, err := r.graph.PendingOverruns(1)
-	if err != nil {
-		return store.Node{}, false, fmt.Errorf("list deferred overruns: %w", err)
+	//
+	// The question is asked of the whole journal — every deferral that no resume
+	// event answers, which is a correlated json_extract of one events scan
+	// against another — and it was asked again for every slot the pass filled.
+	// Nothing a claim does defers an overrun, for the same reason nothing a
+	// claim does gives a node children, so one reading serves the pass.
+	if pass.railRaised == nil {
+		deferred, err := r.graph.PendingOverruns(1)
+		if err != nil {
+			return store.Node{}, false, fmt.Errorf("list deferred overruns: %w", err)
+		}
+		raised := len(deferred) > 0
+		pass.railRaised = &raised
 	}
-	if len(deferred) > 0 {
+	if *pass.railRaised {
 		return store.Node{}, false, nil
 	}
 	ready, err := r.graph.Ready(0)
@@ -669,12 +693,12 @@ func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 	sort.SliceStable(ready, func(i, j int) bool {
 		return runnerPriority(ready[i]) < runnerPriority(ready[j])
 	})
-	if *open == nil {
+	if pass.open == nil {
 		derived, err := openChildren(r.graph)
 		if err != nil {
 			return store.Node{}, false, err
 		}
-		*open = derived
+		pass.open = derived
 	}
 	for _, node := range ready {
 		// Yield to user work only for BACKGROUND self work (practice, or
@@ -690,7 +714,7 @@ func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 		// A goal node lands after its children: it may be ready by its edges
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
-		if (*open)[node.ID] {
+		if pass.open[node.ID] {
 			continue
 		}
 		// The last gate that still asks the machine anything, asked only of

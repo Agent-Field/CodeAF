@@ -171,6 +171,7 @@ func (a *app) enterCopy() {
 	top := a.offsetFor(len(rows), height)
 	at := min(top+height-1, len(rows)-1)
 	a.copy = copyMode{on: true, rows: snapshot, text: plain, owner: owner, at: at, top: top, mark: -1}
+	a.noticeEvent(eventCopyEntered)
 	a.touch()
 }
 
@@ -211,9 +212,9 @@ func (a *app) copyKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "down", "j":
 		a.copyScroll(1)
 	case "pgup":
-		a.copyScroll(-a.page())
+		a.copyScroll(-a.scrollPage())
 	case "pgdown":
-		a.copyScroll(a.page())
+		a.copyScroll(a.scrollPage())
 	case "home":
 		a.copyScroll(-len(a.copy.rows))
 	case "end":

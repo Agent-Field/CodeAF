@@ -1,0 +1,22 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/tui3
+                                   │ perf-report/tui2wave-before.txt │   perf-report/tui2wave-after.txt    │
+                                   │             sec/op              │    sec/op     vs base               │
+PointerMotion/draft=1-20                                 4.493µ ± 7%   4.329µ ±  7%   -3.66% (p=0.038 n=8)
+PointerMotion/draft=4000-20                              9.425µ ± 7%   9.800µ ±  6%   +3.98% (p=0.038 n=8)
+ResizeStep-20                                            26.59n ± 8%   26.98n ±  7%        ~ (p=0.878 n=8)
+FrameIdle/turns=4-20                                     83.56µ ± 6%   84.57µ ±  6%        ~ (p=0.382 n=8)
+FrameIdle/turns=20-20                                    225.8µ ± 2%   235.8µ ±  5%        ~ (p=0.065 n=8)
+FrameIdle/turns=60-20                                    590.2µ ± 6%   596.6µ ±  5%        ~ (p=0.505 n=8)
+FrameStreaming/turns=4-20                                183.1µ ± 5%   191.8µ ±  5%        ~ (p=0.105 n=8)
+FrameStreaming/turns=20-20                               320.5µ ± 4%   333.6µ ±  6%        ~ (p=0.161 n=8)
+Layout/turns=4-20                                        36.17µ ± 4%   35.28µ ± 11%        ~ (p=0.161 n=8)
+Layout/turns=20-20                                       179.4µ ± 6%   178.7µ ±  3%        ~ (p=0.645 n=8)
+Layout/turns=60-20                                       533.0µ ± 3%   534.0µ ±  5%        ~ (p=1.000 n=8)
+FrameStreamingPromoted/turns=4-20                        626.9µ ± 7%   150.7µ ±  4%  -75.96% (p=0.000 n=8)
+FrameStreamingPromoted/turns=20-20                       793.2µ ± 5%   294.1µ ±  4%  -62.92% (p=0.000 n=8)
+FrameLiveTools/turns=4-20                                277.9µ ± 2%   147.3µ ±  7%  -47.01% (p=0.000 n=8)
+FrameLiveTools/turns=20-20                               416.3µ ± 3%   294.7µ ±  6%  -29.21% (p=0.000 n=8)
+geomean                                                  87.98µ        70.81µ        -19.51%
+

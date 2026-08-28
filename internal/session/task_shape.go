@@ -68,7 +68,7 @@ import (
 func init() { roles.Register(roles.RoleShaper, roles.TierHigh) }
 
 const (
-	// taskShapeWindow is how long /task will wait for the shaper before the
+	// TaskShapeWindow is how long /task will wait for the shaper before the
 	// person's words go through untouched.
 	//
 	// The sizing judge next door gets three seconds because it answers one bit
@@ -78,7 +78,7 @@ const (
 	// sit through for a command they just typed; past it the note on screen has
 	// stopped meaning anything, and what they get instead — their own sentence,
 	// started immediately — is precisely what they asked for.
-	taskShapeWindow = 25 * time.Second
+	TaskShapeWindow = 25 * time.Second
 
 	// taskShapeTokens is the ceiling. The prompt asks for under 300 words and
 	// forbids more than 600, so ~1200 tokens is that bound with room for the
@@ -110,13 +110,14 @@ const taskPersonAcceptance = "Complete the brief and report the result and check
 // with something other than the object. It is [Agent.judgeDecomposable]'s move,
 // and it restates the schema rather than only complaining, so a model that
 // forgot the shape is told the shape.
-const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"..."}`
+const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"...","where":"..."}`
 
 // shapedBrief is the wire form of the answer.
 type shapedBrief struct {
 	Title      string `json:"title"`
 	Brief      string `json:"brief"`
 	Acceptance string `json:"acceptance"`
+	Where      string `json:"where"`
 }
 
 // unshaped is what a caller is handed when no shaper ran: the person's own
@@ -158,7 +159,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 	// IT CARRIES ITS OWN DEADLINE, for [Agent.guardianAllows]'s reason: the
 	// provider's client is built with no timeout, so a stalled shaper would hold
 	// a command the person just typed until somebody interrupted the session.
-	ctx, cancel := context.WithTimeout(ctx, taskShapeWindow)
+	ctx, cancel := context.WithTimeout(ctx, TaskShapeWindow)
 	defer cancel()
 
 	// THE SHAPER IS ALLOWED TO THINK, and that is the deliberate exception to
@@ -239,5 +240,6 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 		shaped.Acceptance = taskPersonAcceptance
 	}
 	shaped.Title = cleanTitle(shaped.Title)
+	shaped.Where = strings.TrimSpace(shaped.Where)
 	return shaped, true
 }

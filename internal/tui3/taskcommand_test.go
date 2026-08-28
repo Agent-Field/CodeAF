@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -16,12 +17,12 @@ import (
 
 type taskCommandFake struct {
 	Agent
-	judgeCalls, singleCalls, adaptiveCalls int
-	yes                                    bool
-	parts                                  []string
-	why                                    string
-	brief, hint                            string
-	err                                    error
+	judgeCalls, singleCalls int
+	yes                     bool
+	parts                   []string
+	why                     string
+	brief                   string
+	err                     error
 }
 
 func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, string, error) {
@@ -29,33 +30,104 @@ func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, st
 	f.brief = brief
 	return 7, "named work", f.err
 }
-func (f *taskCommandFake) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
-	f.adaptiveCalls++
-	f.brief, f.hint = brief, hint
-	return "3", "named work", f.err
-}
 func (f *taskCommandFake) JudgeDecomposable(context.Context, string) (bool, []string, string) {
 	f.judgeCalls++
 	return f.yes, f.parts, f.why
 }
 
-func TestTaskExplicitFormsSkipSizing(t *testing.T) {
-	base := &fakeAgent{model: "m"}
-	f := &taskCommandFake{Agent: base}
+// THE ONE EXPLICIT FORM LEFT IS `solo`, and it skips the sizing call outright.
+func TestTaskSoloSkipsSizing(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := newTestApp(f)
-	for _, tc := range []struct {
-		line     string
-		adaptive bool
-	}{{"/task solo fix it", false}, {"/task adaptive map it", true}} {
-		cmd := a.slash(tc.line)
-		msg := cmd()
-		_, _ = a.Update(msg)
-		if f.judgeCalls != 0 {
-			t.Fatal("an explicit form called the judge")
+	_, _ = a.Update(taskMsg(a.slash("/task solo fix it")))
+	if f.judgeCalls != 0 {
+		t.Fatal("an explicit form called the judge")
+	}
+	if f.singleCalls != 1 || f.brief != "fix it" {
+		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
+	}
+}
+
+// THE OLD SECOND WORD OPENS NOTHING OF ITS OWN. `/task adaptive <brief>` is a
+// brief that happens to start with the word "adaptive": it takes the one road
+// every other brief takes, the words are handed over exactly as they were typed,
+// and one line says the word no longer means anything so that a person who meant
+// the old shape is not left thinking they got it.
+func TestTheRetiredAdaptiveWordIsJustAWordAndSaysSo(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	_, cmd := a.Update(taskMsg(a.slash("/task adaptive map the api")))
+	if cmd == nil {
+		t.Fatal("the retired word started nothing at all")
+	}
+	_, _ = a.Update(taskMsg(cmd))
+	if f.judgeCalls != 1 {
+		t.Fatalf("%d sizing calls, want the ordinary one", f.judgeCalls)
+	}
+	if f.singleCalls != 1 || f.brief != "adaptive map the api" {
+		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
+	}
+	if !holdsNote(a, taskAdaptiveRetiredNote) {
+		t.Fatalf("nothing said the word retired: %q", noteTexts(a))
+	}
+}
+
+// AND THE WORD ON ITS OWN IS NOT WORK. `/task adaptive` with nothing under it is
+// muscle memory, not a brief, so it buys no shaping call — it gets the line about
+// the retirement and the usage line, which between them name the whole vocabulary.
+func TestTheUsageLineNamesOnlyTheTwoForms(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	if cmd := a.slash("/task adaptive"); cmd != nil {
+		if msg := cmd(); msg != nil {
+			_, _ = a.Update(msg)
 		}
 	}
-	if f.singleCalls != 1 || f.adaptiveCalls != 1 {
-		t.Fatalf("single=%d adaptive=%d", f.singleCalls, f.adaptiveCalls)
+	if f.judgeCalls != 0 || f.singleCalls != 0 {
+		t.Fatalf("the bare retired word spent something: judge=%d single=%d", f.judgeCalls, f.singleCalls)
+	}
+	usage := ""
+	for _, text := range noteTexts(a) {
+		if strings.HasPrefix(text, "usage:") {
+			usage = text
+		}
+	}
+	if usage == "" {
+		t.Fatalf("no usage line at all: %q", noteTexts(a))
+	}
+	if !strings.Contains(usage, "/task <brief>") || !strings.Contains(usage, "/task solo <brief>") {
+		t.Fatalf("the usage line does not name the two forms: %q", usage)
+	}
+	if strings.Contains(usage, "adaptive") {
+		t.Fatalf("the usage line still offers a form that is gone: %q", usage)
+	}
+	// AND `/task solo` WITH NOTHING UNDER IT IS THE SAME EMPTY HAND, rather than a
+	// task briefed "solo".
+	b := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	if cmd := b.slash("/task solo"); cmd != nil {
+		if msg := cmd(); msg != nil {
+			_, _ = b.Update(msg)
+		}
+	}
+	if got := lastNote(t, b); !strings.HasPrefix(got, "usage:") {
+		t.Fatalf("a bare /task solo started something: %q", got)
+	}
+}
+
+func TestHostedTaskUsesTheAgentDoor(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	a.host = "spark"
+	cmd := a.runTaskCommand("solo fix the far parser")
+	if cmd == nil {
+		t.Fatal("the hosted command opened no task door")
+	}
+	_, _ = a.Update(cmd())
+	if f.singleCalls != 1 || f.brief != "fix the far parser" {
+		t.Fatalf("far starts=%d brief=%q", f.singleCalls, f.brief)
+	}
+	if got := lastNote(t, a); got != "single task 7 started · named work" {
+		t.Fatalf("started note = %q", got)
 	}
 }
 
@@ -68,14 +140,11 @@ func TestTaskExplicitFormsSkipSizing(t *testing.T) {
 func TestAWideBriefStartsOneWorkerAndSaysSoWithoutAsking(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api scan", "ui scan"}, why: "independent"}
 	a := newTestApp(f)
-	_, cmd := a.Update(a.slash("/task inspect both")())
+	_, cmd := a.Update(taskMsg(a.slash("/task inspect both")))
 	if cmd == nil {
 		t.Fatal("a yes started nothing at all")
 	}
-	_, _ = a.Update(cmd())
-	if f.adaptiveCalls != 0 {
-		t.Fatalf("a yes opened a planner nobody asked for: %d planner runs", f.adaptiveCalls)
-	}
+	_, _ = a.Update(taskMsg(cmd))
 	if f.singleCalls != 1 || f.brief != "inspect both" {
 		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
 	}
@@ -94,11 +163,11 @@ func TestAWideBriefStartsOneWorkerAndSaysSoWithoutAsking(t *testing.T) {
 func TestNarrowWorkStartsWithNoLineAboutWidth(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := newTestApp(f)
-	_, cmd := a.Update(a.slash("/task write the release notes")())
+	_, cmd := a.Update(taskMsg(a.slash("/task write the release notes")))
 	if cmd == nil {
 		t.Fatal("a no started nothing at all")
 	}
-	_, _ = a.Update(cmd())
+	_, _ = a.Update(taskMsg(cmd))
 	if holdsNote(a, taskWideNote) {
 		t.Fatalf("narrow work was announced as wide: %q", noteTexts(a))
 	}
@@ -133,7 +202,7 @@ func TestTaskNoStartsSingleAndErrorsBecomeNotes(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("a no did not return the single start command")
 	}
-	_, _ = a.Update(cmd())
+	_, _ = a.Update(taskMsg(cmd))
 	if f.singleCalls != 1 {
 		t.Fatal("a no did not start single")
 	}
@@ -185,48 +254,40 @@ func TestTaskStartDefaultsToOneWorkerThatCanSplit(t *testing.T) {
 	if got := config.TaskStartAt(taskStartProfile(t, "ask")); got != config.TaskStartSized {
 		t.Fatalf("a profile left on the retired word reads %q", got)
 	}
-	_, cmd := a.Update(a.slash("/task inspect both")())
+	_, cmd := a.Update(taskMsg(a.slash("/task inspect both")))
 	if cmd == nil {
 		t.Fatal("the default started nothing")
 	}
-	_, _ = a.Update(cmd())
-	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
-		t.Fatalf("the default ran adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
+	_, _ = a.Update(taskMsg(cmd))
+	if f.singleCalls != 1 {
+		t.Fatalf("the default started %d workers", f.singleCalls)
 	}
 }
 
-// SET TO ADAPTIVE, THE PLANNER IS THE ROAD — the row is the person saying, once
-// instead of on every command, that they want the pieces planned before anybody
-// starts. What starts still follows what the sizing call found: parts to split
-// means a planner, nothing to split means one worker, because a planner over
-// work with no independent parts in it is a whole extra model deciding nothing.
-func TestTaskStartAdaptiveGoesStraightToThePlanner(t *testing.T) {
-	for _, tc := range []struct {
-		name              string
-		parallel          bool
-		adaptive, singles int
-	}{
-		{"parts to split", true, 1, 0},
-		{"nothing to split", false, 0, 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: tc.parallel, parts: []string{"api", "ui"}, why: "independent"}
-			a := taskStartApp(t, f, config.TaskStartAdaptive)
-			_, cmd := a.Update(a.slash("/task inspect both")())
-			if cmd == nil {
-				t.Fatal("nothing was started")
-			}
-			_, _ = a.Update(cmd())
-			if f.judgeCalls != 1 {
-				t.Fatalf("%d sizing calls, want one", f.judgeCalls)
-			}
-			if f.adaptiveCalls != tc.adaptive || f.singleCalls != tc.singles {
-				t.Fatalf("adaptive=%d single=%d, want %d/%d", f.adaptiveCalls, f.singleCalls, tc.adaptive, tc.singles)
-			}
-			if tc.adaptive == 1 && !strings.Contains(f.hint, "api") {
-				t.Fatalf("the planner was given no sketch: %q", f.hint)
-			}
-		})
+// A PROFILE LEFT ON THE OLD ROW STARTS ONE WORKER LIKE EVERY OTHER ROW. Somebody
+// who set `starting a task` to `adaptive` before this build is not sent down a
+// road that no longer exists, and the word is not refused either: it reads as the
+// default, which is the same thing every other answer to that row now means for
+// wide work. The literal is deliberate — the setting's own constant may go, and
+// what has to keep working is the string already sitting in people's profiles.
+func TestAProfileLeftOnTheAdaptiveRowStartsOneWorker(t *testing.T) {
+	for _, parallel := range []bool{true, false} {
+		f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: parallel, parts: []string{"api", "ui"}, why: "independent"}
+		a := taskStartApp(t, f, "adaptive")
+		_, cmd := a.Update(taskMsg(a.slash("/task inspect both")))
+		if cmd == nil {
+			t.Fatal("nothing was started")
+		}
+		_, _ = a.Update(taskMsg(cmd))
+		if f.judgeCalls != 1 {
+			t.Fatalf("%d sizing calls, want one", f.judgeCalls)
+		}
+		if f.singleCalls != 1 {
+			t.Fatalf("wide=%v started %d workers", parallel, f.singleCalls)
+		}
+		if holdsNote(a, taskWideNote) != parallel {
+			t.Fatalf("wide=%v said %q", parallel, noteTexts(a))
+		}
 	}
 }
 
@@ -241,64 +302,64 @@ func TestTaskStartSingleSkipsTheSizingCall(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("nothing was started")
 	}
-	_, _ = a.Update(cmd())
+	_, _ = a.Update(taskMsg(cmd))
 	if f.judgeCalls != 0 {
 		t.Fatal("single paid for a sizing call it had already answered")
 	}
-	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
-		t.Fatalf("adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
+	if f.singleCalls != 1 {
+		t.Fatalf("single=%d", f.singleCalls)
 	}
 	if holdsNote(a, taskWideNote) {
 		t.Fatal("a road that never read the brief still claimed the work was wide")
 	}
 }
 
-// AN EXPLICIT WORD IS THE LAST WORD, in both directions and against both silent
-// rows: `/task solo` under `adaptive` is one worker, `/task adaptive` under
-// `single` is a planner.
-func TestExplicitFormsOverrideTheRow(t *testing.T) {
-	for _, tc := range []struct {
-		row, line         string
-		adaptive, singles int
-	}{
-		{config.TaskStartAdaptive, "/task solo fix it", 0, 1},
-		{config.TaskStartSingle, "/task adaptive map it", 1, 0},
-	} {
+// AN EXPLICIT SOLO IS THE LAST WORD against a silent row: whatever `starting a
+// task` says, `solo` skips the sizing call and starts one worker.
+func TestSoloOverridesTheRow(t *testing.T) {
+	for _, row := range []string{"adaptive", config.TaskStartSized, config.TaskStartSingle} {
 		f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api"}}
-		a := taskStartApp(t, f, tc.row)
-		_, _ = a.Update(a.slash(tc.line)())
+		a := taskStartApp(t, f, row)
+		_, _ = a.Update(taskMsg(a.slash("/task solo fix it")))
 		if f.judgeCalls != 0 {
-			t.Fatalf("%q under %q called the sizing judge", tc.line, tc.row)
+			t.Fatalf("solo under %q called the sizing judge", row)
 		}
-		if f.adaptiveCalls != tc.adaptive || f.singleCalls != tc.singles {
-			t.Fatalf("%q under %q: adaptive=%d single=%d", tc.line, tc.row, f.adaptiveCalls, f.singleCalls)
+		if f.singleCalls != 1 || f.brief != "fix it" {
+			t.Fatalf("solo under %q: single=%d brief=%q", row, f.singleCalls, f.brief)
 		}
 	}
 }
 
-// THE WAIT IS NAMED AND THEN IT LEAVES. Shaping the brief is a model call of its
-// own, so a command that looked like it had done nothing for several seconds
-// would read as a command that never registered — and a note still standing
-// after the task started would be the transcript saying something untrue.
-func TestTheShapingWaitIsShownAndThenTakenAway(t *testing.T) {
+// THE FORMING BLOCK IS REPLACED WHEN THE TASK LANDS. The same update that writes
+// the settled row clears the scaffold, so there is no intermediate frame where
+// finished work still claims to be shaping.
+func TestTheShapingBlockCollapsesIntoTheSettledRow(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := taskStartApp(t, f, config.TaskStartSingle)
 	cmd := a.slash("/task write the release notes")
-	if got := lastNote(t, a); got != taskShapingNote {
-		t.Fatalf("the wait note reads %q, want %q", got, taskShapingNote)
+	before := plainRowsText(a.preflightRows(60))
+	if !strings.Contains(before, "▏ task") || !strings.Contains(before, `▏ "write the release notes"`) {
+		t.Fatalf("the forming block lost the command:\n%s", before)
 	}
-	_, _ = a.Update(cmd())
-	for _, entry := range a.entries {
-		if entry.kind == entryNote && entry.text == taskShapingNote {
-			t.Fatal("the shaping note outlived the task it was about")
-		}
-	}
+	_, _ = a.Update(taskMsg(cmd))
 	if got := lastNote(t, a); !strings.Contains(got, "task 7 started") {
 		t.Fatalf("last note = %q", got)
+	}
+	frame := plainRowsText(a.preflightRows(60))
+	if frame != "" {
+		t.Fatalf("the scaffold survived in the settled frame: %q", frame)
 	}
 	if a.wait.live() {
 		t.Fatal("the wait's clock outlived the wait")
 	}
+}
+
+func plainRowsText(rows []string) string {
+	var out []string
+	for _, row := range rows {
+		out = append(out, plain(row))
+	}
+	return strings.Join(out, "\n")
 }
 
 // THE WAIT IS ALIVE WHILE IT IS RUNNING, and that is the whole defect: shaping a
@@ -314,15 +375,13 @@ func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
 	a.clock = func() time.Time { return base }
 	_ = a.slash("/task write the release notes")
 
-	// SIX SECONDS IN, WITHOUT ANYTHING MARKING THE ROW STALE. The row is kept out
-	// of the cache exactly as a running compaction is, because a cached row is a
-	// still photograph of an animation.
+	// SIX SECONDS IN, the tail is rebuilt with the shared animation grid.
 	a.clock = func() time.Time { return base.Add(6 * time.Second) }
-	line := findRow(t, a, taskShapingNote)
+	line := plainRowsText(a.preflightRows(60))
 	if !strings.Contains(line, "· 6s") {
 		t.Fatalf("the wait has no clock: %q", line)
 	}
-	painted := rowHolding(t, a, taskShapingNote)
+	painted := strings.Join(a.preflightRows(60), "\n")
 	if !strings.ContainsAny(painted, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
 		t.Fatalf("the wait has no spinner: %q", plain(painted))
 	}
@@ -336,17 +395,14 @@ func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
 	// spelling every other live clock on this surface uses.
 	a.clock = func() time.Time { return base }
 	a.touch()
-	if got := findRow(t, a, taskShapingNote); strings.Contains(got, "0s") {
+	if got := plainRowsText(a.preflightRows(60)); strings.Contains(got, "0s") {
 		t.Fatalf("a wait that has just started is timing itself: %q", got)
 	}
 }
 
-// AND IT IS ONE BLOCK AT EVERY WIDTH. The complaint that produced this was a
-// ragged clump of half-sentences with nothing lined up, so the wait keeps the
-// note lane's hanging indent: the spinner stands where the `· ` would, two
-// cells, and every continuation lines up under the words rather than falling
-// back to column zero.
-func TestTheShapingWaitHangsItsIndentAtNarrowWidths(t *testing.T) {
+// EVERY ROW CARRIES THE ONE HAIRLINE, and the quoted brief never takes more
+// than two rows even when the terminal is narrow.
+func TestTheShapingBlockKeepsItsHairlineAtNarrowWidths(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := taskStartApp(t, f, config.TaskStartSingle)
 	base := time.Now()
@@ -354,33 +410,193 @@ func TestTheShapingWaitHangsItsIndentAtNarrowWidths(t *testing.T) {
 	_ = a.slash("/task write the release notes")
 	a.clock = func() time.Time { return base.Add(3 * time.Minute) }
 
-	var wrapped bool
 	for _, width := range []int{24, 30, 40, 60} {
-		body := a.preflightRows(&entry{kind: entryNote, text: taskShapingNote}, width)
+		body := a.preflightRows(width)
 		if len(body) == 0 {
 			t.Fatalf("width %d drew no wait at all", width)
 		}
-		wrapped = wrapped || len(body) > 1
+		if len(body) > 4 {
+			t.Fatalf("width %d drew %d rows, want at most four", width, len(body))
+		}
 		for i, row := range body {
 			line := plain(row)
 			if got := ansi.StringWidth(line); got > width {
 				t.Fatalf("width %d row %d is %d cells wide: %q", width, i, got, line)
 			}
-			if i == 0 {
-				if !strings.ContainsAny(line[:3], "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
-					t.Fatalf("width %d: the first row does not open with the spinner: %q", width, line)
-				}
-				continue
-			}
-			// EVERY CONTINUATION IS INDENTED UNDER THE WORDS, never flush left.
-			if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "   ") {
-				t.Fatalf("width %d row %d lost the hanging indent: %q", width, i, line)
+			if !strings.HasPrefix(line, "▏ ") {
+				t.Fatalf("width %d row %d lost the hairline: %q", width, i, line)
 			}
 		}
 	}
-	// AND THE INDENT ASSERTION ABOVE IS NOT VACUOUS: at least one of those widths
-	// has to have wrapped, or the loop pinned nothing at all.
-	if !wrapped {
-		t.Fatal("no width wrapped the wait, so nothing above tested a continuation")
+}
+
+func TestTaskPhasesAdvanceInsideOneBlockAndNeverEnterNotes(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	cmd := a.slash("/task fix the flaky auth test")
+	if got := plainRowsText(a.preflightRows(60)); !strings.Contains(got, taskSizingNote) {
+		t.Fatalf("sizing block = %q", got)
+	}
+	if holdsNote(a, taskSizingNote) || holdsNote(a, taskShapingNote) {
+		t.Fatalf("a live phase entered the notes lane: %q", noteTexts(a))
+	}
+	_, _ = a.Update(taskMsg(cmd))
+	if got := plainRowsText(a.preflightRows(60)); !strings.Contains(got, taskShapingNote) || strings.Contains(got, taskSizingNote) {
+		t.Fatalf("shaping did not replace sizing in place: %q", got)
+	}
+}
+
+func TestTaskErrorCollapsesTheBlockToTheErrorLine(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, err: errors.New("unknown brief")}
+	a := taskStartApp(t, f, config.TaskStartSingle)
+	_, _ = a.Update(taskMsg(a.slash("/task impossible work")))
+	if a.wait.live() || len(a.preflightRows(60)) != 0 {
+		t.Fatal("the forming block outlived an error")
+	}
+	if got := lastNote(t, a); got != "could not start the task · unknown brief" {
+		t.Fatalf("error line = %q", got)
+	}
+}
+
+// AND A SPINNER NOBODY IS PAINTING IS A PHOTOGRAPH OF A SPINNER. This is the
+// other half of the test above, and the half that was missing: [preflight.live]
+// was on the paint clock's list of reasons to KEEP turning, and on nothing's
+// list of reasons to START. Both doors onto the forming block open while the
+// surface is still — nobody types `/task` mid-turn, and a yes on a proposal card
+// is answered after the turn that raised it has ended — so `a.painting` was
+// false, no frame was ever asked for, and the block sat with a motionless `⠙`
+// and a count-up frozen at nothing for the whole shaping call. From in front of
+// it: static and stuck, which is exactly what the block was built to end.
+func TestTheFormingBlockArmsTheFrameClockFromAStillSurface(t *testing.T) {
+	for _, road := range []struct {
+		name  string
+		raise func(*app)
+	}{
+		{"typed", func(a *app) { _ = a.slash("/task write the release notes") }},
+		{"approved", func(a *app) {
+			a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
+			a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
+			a.answerTask(true, "")
+		}},
+	} {
+		t.Run(road.name, func(t *testing.T) {
+			f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+			a := taskStartApp(t, f, config.TaskStartSingle)
+			// Stood down first, because that is the state the defect lived in: a
+			// wake that finds the clock already up answers nil for a good reason,
+			// and what is under test is the wake that has real work to do.
+			a.painting = false
+			road.raise(a)
+			if !a.wait.live() {
+				t.Fatal("the door raised no forming block")
+			}
+			_, cmd := a.Update(tea.WindowSizeMsg{Width: a.width, Height: a.height})
+			framed := false
+			for _, msg := range runCmd(cmd) {
+				if _, ok := msg.(frameMsg); ok {
+					framed = true
+				}
+			}
+			if !framed {
+				t.Fatal("the forming block is up with no frame on the way")
+			}
+			if !a.painting {
+				t.Fatal("the clock was never claimed")
+			}
+		})
+	}
+}
+
+// AND THE SPINNER ACTUALLY MOVES BETWEEN THOSE FRAMES, which is the fact the
+// person reports on: two paints apart, the block is not the same picture.
+func TestTheFormingBlockSpinnerAdvancesBetweenPaints(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := taskStartApp(t, f, config.TaskStartSingle)
+	base := time.Now()
+	a.clock = func() time.Time { return base }
+	_ = a.slash("/task write the release notes")
+
+	a.paints = 0
+	first := plainRowsText(a.preflightRows(60))
+	a.paints = spinnerStep
+	a.clock = func() time.Time { return base.Add(2 * time.Second) }
+	second := plainRowsText(a.preflightRows(60))
+	if first == second {
+		t.Fatalf("the forming block is the same picture two frames apart: %q", first)
+	}
+	// The linear tier keeps its still mark on purpose — a claim repeated thirty
+	// times a second is heard thirty times a second by a surface being read
+	// aloud — so only the count-up moves there.
+	a.linear = true
+	a.paints = 0
+	still := plainRowsText(a.preflightRows(60))
+	a.paints = spinnerStep
+	if got := plainRowsText(a.preflightRows(60)); got != still {
+		t.Fatalf("the linear tier animated its mark: %q then %q", still, got)
+	}
+}
+
+// taskMsg is what a task command handed back, with the paint clock's own tick
+// looked past. A forming block on screen ARMS that clock ([app.Update]), so what
+// these doors return is a batch — the door's work, and one frame — and a test
+// asking what the door did is not asking about the frame.
+func taskMsg(cmd tea.Cmd) tea.Msg {
+	for _, msg := range runCmd(cmd) {
+		if _, tick := msg.(frameMsg); !tick {
+			return msg
+		}
+	}
+	return nil
+}
+
+func TestNoTaskCommandDrawsNoFormingBlock(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	if got := a.preflightRows(60); len(got) != 0 {
+		t.Fatalf("idle surface drew a forming block: %q", plainRowsText(got))
+	}
+}
+
+// THE OTHER DOOR WEARS THE SAME BLOCK. A proposal the person approves stands in
+// the identical shaping pause the typed command does, so the yes raises the one
+// forming block — the card's own name on the identity line, unquoted, because
+// nobody typed it — and the first update for that task's id collapses it.
+func TestAnApprovedProposalRaisesTheFormingBlockUntilItsTaskExists(t *testing.T) {
+	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
+	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
+	a.answerTask(true, "")
+	frame := plainRowsText(a.preflightRows(60))
+	if !strings.Contains(frame, "▏ task") || !strings.Contains(frame, "▏ adapter index") {
+		t.Fatalf("the approved proposal raised no forming block:\n%s", frame)
+	}
+	if strings.Contains(frame, `"adapter index"`) {
+		t.Fatalf("the card's name wears quotes nobody typed:\n%s", frame)
+	}
+	if !strings.Contains(frame, taskShapingNote) {
+		t.Fatalf("the block does not say what it is waiting on:\n%s", frame)
+	}
+	// An update for a DIFFERENT task settles nothing; the first breath of this
+	// one collapses the scaffold in the same frame its row lands.
+	a.settleProposalWait(7)
+	if !a.wait.live() {
+		t.Fatal("another task's update stole the block")
+	}
+	a.settleProposalWait(41)
+	if a.wait.live() {
+		t.Fatal("the block outlived its task's first update")
+	}
+	if got := plainRowsText(a.preflightRows(60)); got != "" {
+		t.Fatalf("the scaffold survived the collapse: %q", got)
+	}
+}
+
+// A no is not a pause: nothing is coming, so nothing forms.
+func TestADeclinedProposalRaisesNoFormingBlock(t *testing.T) {
+	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	a.task = &taskCard{id: 42, title: "index the adapters", name: "adapter index"}
+	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
+	a.answerTask(false, "")
+	if a.wait.live() {
+		t.Fatal("a declined proposal left a forming block on screen")
 	}
 }

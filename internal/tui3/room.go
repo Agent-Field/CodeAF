@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -89,7 +90,13 @@ type taskRoomAgent interface {
 	// SteerTask puts the person's words into a running node's loop. It errors
 	// when the node is unknown, not running, or has no worker up yet — all three
 	// are "there is nobody in there to talk to", and all three are worth saying.
-	SteerTask(id uint64, text string) error
+	//
+	// The bool is whether the node was WAITING ON ITS OWN PIECES when the line
+	// was taken. It arrives either way; what changes is that a parked node has no
+	// step coming to read it at, so the line is what wakes it, and a room that
+	// said nothing would leave the person watching a page that does not move
+	// (internal/session's task_room.go).
+	SteerTask(id uint64, text string) (bool, error)
 	// WatchTask subscribes to the node's live events, FROM NOW: no history is
 	// replayed, and the channel closes at the node's final state. A finished node
 	// answers with an already-closed channel rather than an error.
@@ -110,6 +117,17 @@ type taskRoomAgent interface {
 func (a *app) roomDoors() (taskRoomAgent, bool) {
 	doors, ok := a.agent.(taskRoomAgent)
 	return doors, ok
+}
+
+// taskSteerDoor is separate from the live-watch door because a hosted room is
+// refreshed by bounded journal reads while its one write still crosses.
+type taskSteerDoor interface {
+	SteerTask(id uint64, text string) (bool, error)
+}
+
+func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
+	door, ok := a.agent.(taskSteerDoor)
+	return door, ok
 }
 
 // taskModelDoor is the fourth door onto a node (internal/session's
@@ -268,11 +286,25 @@ type taskRoom struct {
 
 	// The row cache, on the same terms every other cached block on this surface
 	// has one (render.go): rebuilt when the content or the width changes and at
-	// no other time.
-	rows  []row
-	width int
-	dirty bool
+	// no other time — and, unlike the conversation's, on the HEIGHT too, because
+	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
+	// and a taller view is a different row list.
+	rows    []row
+	width   int
+	height  int
+	dirty   bool
+	loading bool
 }
+
+type roomRecordMsg struct {
+	gen    int
+	record session.TaskRecord
+	err    error
+}
+
+// farRoomTickMsg is the room's own beat. It schedules a bounded read as a
+// command; the update loop itself never waits on the other machine.
+type farRoomTickMsg struct{ gen int }
 
 // deck is the page as the renderers take it (render.go). It is a view over the
 // live fields rather than a copy: the row cache each entry carries is written
@@ -312,12 +344,42 @@ const (
 	roomStopHint   = "x stop"
 	// roomFinishedWord is the foot under a node that has landed.
 	roomFinishedWord = "task finished — esc to return"
+	// roomGoneWord is the one line a landed node's room draws when there is
+	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
+	// transcript's path across restarts and finds it by id when it was not
+	// kept (session's task_room.go), so this is the page for a file that is
+	// actually gone — a session folder somebody deleted — and it says so as a
+	// fact rather than leaving a foot under a blank.
+	roomGoneWord = "this task's transcript is not here any more"
+	// roomJobLogWord stands in that line's place for a BACKGROUND JOB, which never
+	// had a transcript to lose. A job is a roster row and not a node in the graph
+	// (session's jobrow.go), so nothing was ever journaled for it and the whole
+	// record of what it did is the log its report names — drawn on the row above
+	// this line, the same string the roster draws ([app.railJobLog]). Saying the
+	// transcript was gone would be the wrong half of the truth: there is no file
+	// missing, there is a different kind of work.
+	roomJobLogWord = "a background job keeps a log, not a transcript"
+	// roomYetWord stands in that line's place for a node that HAS NOT LANDED, and
+	// it is the honest half of the same sentence: nothing has arrived on this page
+	// is not the same fact as nothing is left of it. A node that is queued has
+	// journaled nothing because it has not started, and one that has just started
+	// has journaled nothing because its first message is still being written
+	// ([readRoomJournal] reads a file the node is filling in), so BOTH of the
+	// landed words above would be a lie — one saying a file was lost that was
+	// never written, the other saying work finished that has not begun.
+	//
+	// It comes off the moment the page has any block at all, which for a running
+	// node is the first thing that arrives on its lane: this line answers exactly
+	// one question — why is there nothing here — and a page with something on it
+	// is not asking it.
+	roomYetWord = "nothing on this page yet — it fills in as the task works"
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
 	// roomUnavailableWord is the degraded case: an agent under this surface with
 	// no room doors on it at all.
 	roomUnavailableWord = "room unavailable — this session has no task rooms"
+	roomLoadingWord     = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -388,6 +450,13 @@ const roomTail = 120
 func (a *app) openRoom(id uint64, title string) {
 	doors, ok := a.roomDoors()
 	if !ok {
+		if a.hosted() && (a.farRoomRecord != nil || a.farRecord != nil) {
+			node := a.tasks[id]
+			if node != nil && (a.farRoomRecord != nil || node.transcript != "") {
+				a.openFarRoom(node, title)
+				return
+			}
+		}
 		// THE BUILD GUARD. The doors are an assertion and not a compile-time
 		// requirement, so a surface driven by an agent that has never heard of a
 		// room says so and stays in the conversation.
@@ -436,14 +505,103 @@ func (a *app) openRoom(id uint64, title string) {
 		// and it opens finished, because there is nothing to listen to. A call the
 		// file left running is resolved on the way in for that same reason:
 		// nothing is coming for it here either.
+		//
+		// THE REFUSAL ITSELF IS NOT DRAWN, and that is a law and not a taste. What
+		// the door says here is `no task 4 in this session` — the engine telling a
+		// caller that an id is not in its graph — which is machinery vocabulary
+		// about a row the person is looking at RIGHT NOW, and it reads as the
+		// surface having lost the work rather than as an answer to anything they
+		// did. The roster's row-space is deliberately wider than the graph's: a
+		// background job is published as a row and never admitted as a node
+		// (session's jobrow.go, "it registers and it does not admit"), so a person
+		// walking into one reaches this branch on a perfectly healthy session.
+		//
+		// AND IT IS NOT APPENDED AS A BLOCK, which is the second half of the bug it
+		// caused. The "there is nothing here" line below is drawn only for a room
+		// whose block list is EMPTY, so one machinery note was enough to make the
+		// page count itself as having a transcript — leaving a correct header over
+		// a body holding the refusal and the foot, and nothing else. What the room
+		// knows is drawn by [app.roomRecordRows] instead.
 		room.done = true
 		a.roomResolveUnfinished()
-		a.roomNote(err.Error())
 		a.roomPump = a.wake()
 		return
 	}
 	room.lane, room.stop = lane, stop
 	a.roomPump = tea.Batch(waitRoom(lane, room.gen), a.wake())
+}
+
+// openFarRoom opens a hosted node immediately and asks the engine for its
+// bounded journal tail off the program loop. The id names running work before
+// its record has a transcript URI, which is the gap the record-only door could
+// never cross.
+func (a *app) openFarRoom(node *taskNode, title string) {
+	if title == "" {
+		title = taskIDWord(node.id)
+	}
+	a.roomGen++
+	room := &taskRoom{
+		id: node.id, title: title, gen: a.roomGen, unfolded: map[int]bool{},
+		live: -1, think: -1, mdAt: a.now(), stick: true, dirty: true,
+		done:    node.state != session.TaskQueued && node.state != session.TaskRunning,
+		loading: true,
+	}
+	a.room = room
+	a.sel = -1
+	a.dropHover()
+	a.touch()
+	read, id, uri, gen := a.farRoomRecord, node.id, node.transcript, room.gen
+	a.roomPump = func() tea.Msg {
+		var record session.TaskRecord
+		var err error
+		if read != nil {
+			record, err = read(id, session.TaskJournalTail)
+		} else {
+			record, err = a.farRecord(uri, session.TaskJournalTail)
+		}
+		return roomRecordMsg{gen: gen, record: record, err: err}
+	}
+}
+
+func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
+	if a.room == nil || a.room.gen != msg.gen {
+		return nil
+	}
+	a.room.loading = false
+	if msg.err == nil {
+		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail)
+	}
+	a.roomResolveUnfinished()
+	a.roomTouched()
+	node := a.tasks[a.room.id]
+	if node != nil && node.kind == session.TaskKindJob {
+		return nil
+	}
+	if node == nil || (node.state != session.TaskQueued && node.state != session.TaskRunning) {
+		a.room.done = true
+		return nil
+	}
+	return farRoomTick(a.room.gen)
+}
+
+// farRoomEvery is deliberately slower than the paint clock: a journal tail is
+// a disk-and-wire reading, not animation. Four reads a second keeps prose live
+// without turning thirty frames a second into thirty calls.
+const farRoomEvery = 250 * time.Millisecond
+
+func farRoomTick(gen int) tea.Cmd {
+	return tea.Tick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
+}
+
+func (a *app) farRoomPoll(gen int) tea.Cmd {
+	if a.room == nil || a.room.gen != gen || a.room.done || a.farRoomRecord == nil {
+		return nil
+	}
+	read, id := a.farRoomRecord, a.room.id
+	return func() tea.Msg {
+		record, err := read(id, session.TaskJournalTail)
+		return roomRecordMsg{gen: gen, record: record, err: err}
+	}
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -673,6 +831,14 @@ func readRoomJournal(path string, pal palette) ([]entry, int) {
 // its final line cap after wrapping.
 func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
 	lines := readJournalLines(path)
+	return shapeRoomJournal(lines, pal, limit)
+}
+
+func readRoomJournalBytes(data []byte, pal palette, limit int) ([]entry, int) {
+	return shapeRoomJournal(scanJournalLines(bytes.NewReader(data)), pal, limit)
+}
+
+func shapeRoomJournal(lines []journalLine, pal palette, limit int) ([]entry, int) {
 	// The results, indexed by the call each one answered. A result with no id is
 	// skipped rather than kept under "", for the reason session's own index skips
 	// it: it is a message no call can claim.
@@ -701,7 +867,12 @@ func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
 			// A node's first "message" is the instruction it was given, so a page
 			// opens on turn one the way a conversation does.
 			turn++
-			out = append(out, entry{kind: entryUser, text: said, turn: turn})
+			// AND THE FIRST OF THEM IS THE INSTRUCTION THIS NODE WAS GIVEN, marked
+			// here because here is where it is knowable: it is the message that
+			// opened turn one, and everything after it is somebody steering work that
+			// was already running. It is the one message on this surface that folds,
+			// and brieffold.go states why.
+			out = append(out, entry{kind: entryUser, text: said, turn: turn, brief: turn == 1})
 
 		case "assistant":
 			if text != "" {
@@ -773,8 +944,12 @@ func readJournalLines(path string) []journalLine {
 	}
 	defer file.Close()
 
+	return scanJournalLines(file)
+}
+
+func scanJournalLines(reader io.Reader) []journalLine {
 	var out []journalLine
-	scan := bufio.NewScanner(file)
+	scan := bufio.NewScanner(reader)
 	// A journaled message can be a whole file's content, and the default token
 	// is 64k. The cap is what one line may weigh, not what the file may.
 	scan.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -892,8 +1067,14 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.event],
 	// thinking.go): the first thing a turn says that is not reasoning ends the
 	// reasoning block, and EventThinking is exempt because it is the marker that
-	// opened the run.
-	if ev.Kind != session.EventReasoning && ev.Kind != session.EventThinking {
+	// opened the run. A text delta settles the block and keeps it
+	// ([app.roomSettleThought]) so an interleaved stream grows one block instead
+	// of sawing the answer apart; everything else seals it.
+	switch ev.Kind {
+	case session.EventReasoning, session.EventThinking:
+	case session.EventTextDelta:
+		a.roomSettleThought()
+	default:
 		a.roomCollapseThought()
 	}
 	switch ev.Kind {
@@ -995,6 +1176,26 @@ func (a *app) roomThink(text string) {
 	e.ended = a.now()
 	e.stale = true
 	a.roomTouched()
+}
+
+// roomSettleThought folds the streaming block without letting go of it — the
+// text-delta half of the collapse rule, [app.settleThought] over the room's
+// list: the next reasoning delta grows this block rather than opening another
+// and closing the answer mid-word.
+func (a *app) roomSettleThought() {
+	room := a.room
+	if room == nil || room.think < 0 || room.think >= len(room.entries) ||
+		room.entries[room.think].kind != entryThinking {
+		return
+	}
+	e := &room.entries[room.think]
+	if !e.settled {
+		e.settled, e.stale = true, true
+		if !e.latched {
+			e.open = false
+		}
+		a.roomTouched()
+	}
 }
 
 // roomCollapseThought settles the streaming reasoning block ([app.collapseThought]).
@@ -1361,12 +1562,13 @@ func (a *app) steer() tea.Cmd {
 		a.raiseGuard(line, "")
 		return nil
 	}
-	doors, ok := a.roomDoors()
+	doors, ok := a.taskSteerDoors()
 	if !ok {
 		a.roomNote(roomUnavailableWord)
 		return nil
 	}
-	if err := doors.SteerTask(room.id, line); err != nil {
+	waiting, err := doors.SteerTask(room.id, line)
+	if err != nil {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
 		// surface that flattened them to "could not steer" would be throwing
@@ -1399,8 +1601,24 @@ func (a *app) steer() tea.Cmd {
 	// rather than work being watched (turncontext.go). It is taken here, at the
 	// instant the engine took the words, because that is when it is true.
 	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn, context: a.turnContext()})
+	// AND WHEN THE NODE WAS WAITING ON ITS OWN PIECES, THE ROOM SAYS SO. Such a
+	// node has said everything it had to say and parked on the work it handed out
+	// (internal/session's task_room.go): the line wakes it rather than landing in
+	// a step it was about to take, so the page goes quiet for a moment first. A
+	// room that drew the person's line and nothing else here is the same page
+	// they would see if the words had gone nowhere.
+	if waiting {
+		a.roomNote(steerWokeWord)
+	}
 	return a.edited()
 }
+
+// steerWokeWord is what the room says when the line it just took is the thing
+// that woke the node. It is the surface's own dim line and not the engine's
+// sentence, because it is about this page: what the person is looking at is a
+// task with nothing running in it, and the next thing they see will be their own
+// words being read.
+const steerWokeWord = "it was waiting on its pieces — your line wakes it"
 
 // ── the steer guard ─────────────────────────────────────────────────────────
 //
@@ -1630,10 +1848,17 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// was reading instead of closing home, enter STEERED THE NODE with the
 	// sentence they had typed into home's box, and ↑↓ scrolled a page nobody
 	// could see rather than walking the column.
+	//
+	// AND THE THINKING CHOOSER IS ON IT for the reason the roster puts it on its
+	// own list (task.go's [app.railKey]): while five rungs are drawn over the box,
+	// the thing a person is standing on is the CONVERSATION'S ladder, so
+	// [effortKey] belongs to it and not to the node behind it. One chord, one
+	// scope, and the nearest surface is the one on top.
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.taskSheet.open, a.home.open, a.deckShowing(), a.pick.open,
-		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open:
+		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
+		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
+		a.effPick.open:
 		return nil, false
 	}
 	// THE GUARD IS READ BEFORE THE ROOM, and it is the same rung: it is a
@@ -1649,6 +1874,14 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
 	// keys would make the box it points at unusable (roomapproval.go).
 	if a.roomApprovalKey(msg) {
+		return nil, true
+	}
+	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
+	// guard for the same reason, and only ever over an EMPTY box: the box in here
+	// steers the worker, and a letter that decided somebody's work was finished
+	// on the first keystroke of a sentence would be unforgivable
+	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
+	if a.roomSettleKey(msg) {
 		return nil, true
 	}
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
@@ -1694,6 +1927,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		return a.steer(), true
 
+	case "ctrl+v":
+		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
+		// moves the install's rung on home at rest and a standing item's on its
+		// own card, bound here to the node whose page this is (taskeffort.go).
+		// Everything that outranks the room outranks it, because it is read from
+		// inside the room's own switch and never above it.
+		a.cycleTaskEffort()
+		return nil, true
+
 	case "ctrl+b":
 		// FREEZE THE ROOM, not the conversation. copymode.go snapshots the
 		// transcript's rows, which while a room is open are not the rows on
@@ -1702,10 +1944,10 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "pgup":
-		a.roomScroll(-a.page())
+		a.roomScroll(-a.scrollPage())
 		return nil, true
 	case "pgdown":
-		a.roomScroll(a.page())
+		a.roomScroll(a.scrollPage())
 		return nil, true
 
 	case "up":
@@ -1771,6 +2013,13 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
+	case a.roomSettleAsking():
+		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
+		// landed, so nothing above this is live, and the three answers are
+		// printed on the foot as well — but the foot is at the far end of a page
+		// somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke (tasksettle.go).
+		return roomSettleHint
 	}
 	return ""
 }
@@ -2030,8 +2279,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// the page is a place you go and come back from, not a state the column
 	// enters.
 	if line.more {
-		a.openTaskSheet()
-		return nil, true
+		return a.showPage(pageTasks), true
 	}
 	if line.hint {
 		a.railWiden(!a.railWide)
@@ -2055,7 +2303,12 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	switch {
 	case e.root && line.badge.holds(at):
 		a.railSetOpen(e.node, true)
-	case e.root && line.glyph.holds(at):
+	case (e.root || a.railTucks(e)) && line.glyph.holds(at):
+		// THE GLYPH CELL IS THE DISCLOSURE ON BOTH KINDS OF ROW: a family root
+		// folds its subtree, and a row that has landed folds its own block back
+		// under itself (task.go's [app.railSaysMore]). The set that LIGHTS under
+		// the pointer is the set that acts, which is hover.go's own law — both
+		// halves ask [app.railTucks].
 		a.railToggle(e.node)
 	default:
 		if e.node.run != "" {
@@ -2247,11 +2500,12 @@ func (a *app) roomBackAt(y int) bool {
 	return a.roomOpen() && a.headHeight() != 0 && y == 0
 }
 
-// roomHeadWord is the header's left: the node's mark, the trail, and the three
-// facts about the work. Every one of the three is DROPPED when nobody has
-// published it — a queued node has no clock, an unpriced one has no cost — for
-// the reason the turn footer drops its own fields (timestamps.go): a figure that
-// is zero is a figure nobody measured.
+// roomHeadWord is the header's left: the node's mark, the trail, the three
+// facts about the work, and — where somebody has set one — the rung it thinks
+// at. Every one of them is DROPPED when nobody has published it: a queued node
+// has no clock, an unpriced one has no cost, and a node nobody has dialled has
+// no rung. That is the reason the turn footer drops its own fields
+// (timestamps.go): a figure that is zero is a figure nobody measured.
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
@@ -2276,7 +2530,16 @@ func (a *app) roomHeadWord(width int) string {
 	// same rule when nobody published one. It goes last: the state and the clock
 	// change while you watch, and whose hands the work is in was settled before
 	// it started.
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node), strings.TrimSpace(node.model)} {
+	//
+	// AND THE RUNG GOES AFTER THE MODEL, for the reason the model goes after the
+	// clock, one step further along the same argument: how hard this node is
+	// asked to think is a setting somebody made about it rather than news, it
+	// belongs beside the model because the two together are what a call is made
+	// of, and it is dropped by the same rule — a node nobody has set a rung on
+	// says nothing at all (taskeffort.go's [app.taskEffortClause]). It is
+	// `ctrl+v` on this page that moves it.
+	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node),
+		strings.TrimSpace(node.model), a.taskEffortClause(node)} {
 		if part != "" {
 			word += " · " + part
 		}
@@ -2468,6 +2731,26 @@ func (a *app) roomPath() []string {
 func (a *app) roomStateWord(node *taskNode) string {
 	switch node.state {
 	case session.TaskRunning:
+		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
+		// BELOW. This is the room's copy of the conversation's own law (app.go's
+		// [stoppingWord]): between the card's "stop it" and the engine moving the
+		// node there is a real window — the child's context is cut and the child
+		// is winding up — and for the whole of it this line read "working" about
+		// work the person had just ended, which is the one word on the page they
+		// know to be wrong. The word is the same word for the same reason the
+		// working word is shared: a person who has learned what it means out in
+		// the conversation has learned it here too.
+		//
+		// The SPINNER beside it deliberately keeps turning, which is not a
+		// contradiction but the other half of the honesty ([app.stoppedGlyph]
+		// makes the argument in full, stop.go): out in the conversation the person
+		// is sitting in front of the turn and nothing should move once they have
+		// stopped it, while a node is work going on somewhere else that really is
+		// still going on — and the mark that says "landed" is owed to the landing
+		// and to nothing earlier.
+		if node.stopped {
+			return stoppingWord
+		}
 		// A NODE IN A NAMED PHASE SAYS THE PHASE, and it outranks both of the
 		// clauses below. "designing" and "awaiting your look" are what this work
 		// IS at this moment (session's TaskNotice.Doing) — a header that said
@@ -2663,7 +2946,13 @@ func (a *app) roomRows(width int) []row {
 	if room == nil || width < 4 {
 		return nil
 	}
-	if room.rows != nil && room.width == width && !room.dirty {
+	// THE HEIGHT IS PART OF THE KEY. It is read here rather than passed in so
+	// that every caller — the frame, the wheel, the click, the freeze — lays the
+	// page out against the one view the frame is drawing, and a resize, a rail
+	// tier change or a draft growing a line all re-derive the fold's tail
+	// without any of them having to remember to.
+	height := a.viewHeight()
+	if room.rows != nil && room.width == width && room.height == height && !room.dirty {
 		return room.rows
 	}
 	// A RUN'S PAGE IS A GRAPH AND NOT A TRANSCRIPT (roomorch.go). It is branched
@@ -2674,13 +2963,32 @@ func (a *app) roomRows(width int) []row {
 	if room.orch != nil {
 		out := a.orchRows(width)
 		a.hoverPass(out, width)
-		room.rows, room.width, room.dirty = out, width, false
+		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	out, closed := a.deckRows(room.deck(), width)
+	d := room.deck()
+	d.toolTail = a.roomToolTail()
+	out, closed := a.deckRows(d, width)
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
 		closed = false
+	}
+	// AN EMPTY ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above whatever
+	// foot it is owed. It is drawn only when the page has no blocks at all: a room
+	// with even one of them is a room with a transcript, and the foot alone is the
+	// whole of what it adds.
+	//
+	// IT IS ASKED OF EVERY ROOM AND NOT ONLY OF A LANDED ONE, which is the whole
+	// of [app.roomRecordRows]'s law rather than half of it. The branch used to sit
+	// inside the `done` block below, so a node that was QUEUED or STILL WORKING
+	// with nothing journaled yet drew a correct header — its name, its state, its
+	// elapsed, all of it true — over a body with NOTHING in it. That is the page
+	// that reads as the program having lost the work, and it is reachable on a
+	// perfectly healthy session: a task opened the moment it is started has
+	// journaled nothing yet, and one that is queued has not begun. The words
+	// differ by what is true (roomYetWord above), the rule does not.
+	if len(out) == 0 && room.harnessProgress == "" {
+		out = a.roomRecordRows(out, width)
 	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
@@ -2691,17 +2999,119 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
+		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
+		// said "finished": the same two rows its landed card draws, answering to
+		// the same keys and the same pointer, and the same receipt once answered
+		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
+		// foot it has.
+		var asked bool
+		if out, asked = a.roomSettleRows(out, width); !asked {
+			out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
+		}
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
-	room.rows, room.width, room.dirty = out, width, false
+	room.rows, room.width, room.height, room.dirty = out, width, height, false
 	return out
 }
 
-// roomWindow is the room's visible slice and the padding above it. It is
+// roomRecordRows is what a landed room draws when it has NO TRANSCRIPT TO DRAW:
+// the facts this surface already holds about the row, and then one honest line
+// about why there is nothing else on the page.
+//
+// A ROOM IS NEVER AN EMPTY BODY UNDER A CORRECT HEADER. That combination is the
+// worst page this surface can draw, because everything about it says the program
+// has lost the work: the header names the task, gives its state and its elapsed —
+// all of it read off the row the roster is still showing ([app.roomNode]) — and
+// then the space where the work should be is blank. A person cannot tell that
+// from a task whose output vanished, and there is nothing on the page to act on.
+// So whatever else is true, the room spends these rows on what it can stand
+// behind.
+//
+// THE ROW IS THE SOURCE, NOT THE ENGINE, and that is the point: this branch is
+// reached precisely when a door refused the id or the journal was not found, so
+// asking the engine again would answer nothing twice. The roster's record was
+// published by the engine on a [session.TaskNotice] and is as true as the header
+// drawn from it.
+//
+// A BACKGROUND JOB IS THE ORDINARY CASE HERE AND NOT AN EDGE. A job is a row and
+// never a node (session's jobrow.go), so it has no room in the engine's sense at
+// all — but the roster is a flat list and its enter key opens whatever is under
+// it ([app.railEnter]), so people walk in. What a job has is a LOG, its report
+// carries the path ([app.railJobLog] draws the same string on the row), and that
+// path is the entire record of what the work did. Saying the transcript is "not
+// here any more" about one would be a lie in the other direction — a job never
+// wrote a transcript to lose.
+//
+// AND A NODE THAT HAS NOT LANDED IS THE THIRD CASE, reached by opening a task
+// that is queued or that has only just started: the file it will fill in exists
+// and is empty, so there is nothing to replay and nothing has been lost either.
+// It takes [roomYetWord], which is the same shape of answer said about a page
+// that is not finished being written.
+func (a *app) roomRecordRows(out []row, width int) []row {
+	if a.room != nil && a.room.loading {
+		return append(out, row{text: a.pal.dim(fit(roomLoadingWord, width)), entry: -1})
+	}
+	node := a.roomNode()
+	// WHY THERE IS NOTHING UNDER THE HEADER, in the vocabulary that is true of
+	// this kind of work in this state. The job's answer outranks the unlanded one
+	// because it is the more specific fact: a job never journals a transcript, so
+	// "not yet" would promise a page that is never coming.
+	word := roomGoneWord
+	switch {
+	case node != nil && node.kind == session.TaskKindJob:
+		word = roomJobLogWord
+	case a.room != nil && !a.room.done:
+		word = roomYetWord
+	}
+	if node == nil {
+		// A page this surface never had a row for. There is nothing to add to the
+		// blank except the reason it is blank.
+		return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+	}
+	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
+	// a person came for. It CUTS rather than wrapping for a job, exactly as the
+	// roster's own row does and for that row's reason — the handle is the number
+	// and the leading directory is one the person already knows — and it wraps for
+	// anything else, where the report is prose somebody wrote.
+	if report := strings.TrimSpace(node.report); report != "" {
+		if node.kind == session.TaskKindJob {
+			out = append(out, row{text: a.pal.dim(fit(a.hostedJobLog(report), width)), entry: -1})
+		} else {
+			for _, line := range wrap(report, width) {
+				out = append(out, row{text: a.pal.dim(line), entry: -1})
+			}
+		}
+	}
+	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, chosen above.
+	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+}
+
+// roomToolTail is how many of a folded turn's calls a room keeps on screen:
+// as many as the view is tall, and never fewer than the conversation keeps.
+//
+// It is DERIVED FROM THE VIEW AT RENDER TIME and is not a second constant,
+// because a constant is a number that drifts from the frame it was chosen for.
+// The rule is "fold only the overflow": a call is at least one row, so a tail
+// this long cannot leave the frame short by itself — the fold line and the
+// oldest calls behind it are the only rows that start above the view, and
+// scrolling up reaches them ([app.roomScroll]). The conversation is untouched:
+// [deck.window] falls back to [toolWindow] wherever no tail is set.
+func (a *app) roomToolTail() int {
+	return max(toolWindow, a.viewHeight())
+}
+
+// roomWindow is the room's visible slice and the padding under it. It is
 // [app.window]'s shape over the room's own rows and the room's own offset —
 // which is the whole mechanism behind "esc restores the scroll exactly".
+//
+// THE PADDING FALLS BELOW A SHORT PAGE, EXACTLY AS IT DOES UNDER A SHORT
+// CONVERSATION (view.go's frame states the law). Do not bottom-anchor a room:
+// a young room growing from the top is the conversation's own behaviour, and
+// the void that once sat between four folded rows and the box was never a
+// gravity problem — it was the fold starving the page, which [app.roomToolTail]
+// ended. A room with material now fills its frame, and a room without it reads
+// from the top like everything else on this surface.
 func (a *app) roomWindow(width, height int) ([]row, int) {
 	if height <= 0 {
 		return nil, 0
@@ -2735,6 +3145,18 @@ func (a *app) roomOffsetFor(total, height int) int {
 
 // roomScroll moves the room's window and re-decides whether the reader is
 // following the node.
+//
+// SCROLLING UP AT THE TOP OPENS THE FOLD. Scroll is the universal read-history
+// gesture, and a fold is exactly the history a person came into a room to
+// read; a wheel that stopped dead against a line saying "N earlier tool calls"
+// was the gesture unwired from the one thing it is for. So a scroll up that
+// arrives with the view already at the top, and a fold line on screen, unfolds
+// that turn instead of going nowhere — and it is ANCHORED: the rows the person
+// was looking at stay on the same screen lines, the offset advanced by exactly
+// the rows the unfold put above them. Nothing jumps, and the next tick walks up
+// into the calls that just appeared. The gesture is spent on the unfold; it does
+// not also move. ctrl+o and a click on the line still toggle it either way, and
+// scrolling back down to the live edge re-sticks without folding anything.
 func (a *app) roomScroll(delta int) {
 	room := a.room
 	if room == nil {
@@ -2746,7 +3168,11 @@ func (a *app) roomScroll(delta int) {
 	if bottom < 0 {
 		bottom = 0
 	}
-	at := a.roomOffsetFor(total, height) + delta
+	at := a.roomOffsetFor(total, height)
+	if delta < 0 && at == 0 && a.roomUnfoldAtTop(total, height) {
+		return
+	}
+	at += delta
 	switch {
 	case at >= bottom:
 		room.offset, room.stick = bottom, true
@@ -2756,6 +3182,48 @@ func (a *app) roomScroll(delta int) {
 		room.offset, room.stick = at, false
 	}
 	a.touch()
+}
+
+// roomUnfoldAtTop is the anchored unfold [app.roomScroll] describes: the topmost
+// fold line inside the view is opened, and the offset advances by exactly the
+// rows the unfold added. It reports false, having done nothing, when no fold is
+// on screen — which hands the gesture back to the ordinary clamp.
+//
+// THE ANCHOR IS THE CALLS UNDER THE FOLD, not whatever sat above it. Every row
+// after the fold line moves down the list by the growth and nothing else, so an
+// offset moved by the same growth keeps each of them on the screen line it was
+// on; the calls that just opened take the lines the fold and anything above it
+// held, and the next tick up walks into them. The instruction at the top of a
+// young page scrolls off upward in that motion, which is right: the person is
+// reading history upward, and it is the first thing they reach when they run
+// out of calls.
+//
+// The offset is set directly rather than through the clamp because the clamp
+// reads the OLD row count: the rows have just grown by the unfold, and the
+// anchor is an index into the new list. `stick` goes false in the same motion,
+// since a person opening history has left the live edge on purpose — a sticky
+// reader would be dragged straight back down by the next event
+// ([app.roomTouched]).
+func (a *app) roomUnfoldAtTop(total, height int) bool {
+	room := a.room
+	rows := a.roomRows(a.bodyWidth())
+	end := min(height, total)
+	fold := -1
+	for i := 0; i < end; i++ {
+		if rows[i].hit == hitFold {
+			fold = i
+			break
+		}
+	}
+	if fold < 0 {
+		return false
+	}
+	a.unfold(rows[fold].turn)
+	grown := len(a.roomRows(a.bodyWidth())) - total
+	room.offset = max(grown, 0)
+	room.stick = false
+	a.touch()
+	return true
 }
 
 // roomSteerLaneRows is the box's placeholder while a room is open: who the

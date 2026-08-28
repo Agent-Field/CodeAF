@@ -3,6 +3,7 @@ package tui3
 import (
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -49,21 +50,34 @@ import (
 // `\x1b]8;;https://evil.example` gets no hyperlink, and that is deliberate, not
 // incidental. This pass runs AFTER the laundering, on rows the surface itself
 // produced, so the only URIs on screen are ones aforge resolved and checked.
-// The target is always file:// and always a path that exists.
+// The target is always a path something confirmed exists — file:// at home, and
+// the file door's own URL over a connection (see the far side's section below).
 //
 // A COMMAND'S OUTPUT IS NOT LINKED. Tool stdout is somebody else's program
 // talking — a test runner, a compiler, `ls` — and the surface draws it verbatim
 // on purpose. See [linker.rows] for the whole of that decision.
 //
-// ── ON THE FAR SIDE OF A CONNECTION THERE ARE NO LINKS ───────────────────────
+// ── ON THE FAR SIDE OF A CONNECTION THE ENGINE ANSWERS ──────────────────────
 //
 // A hosted session's workspace is on ANOTHER MACHINE, and `file:///app/main.go`
-// handed to the terminal in front of you means this machine's /app/main.go.
-// The two outcomes are a click that does nothing and a click that opens a
-// stranger's file, and the second is the reason this is off rather than
-// best-effort. It is the same judgement the branch probe makes in [newApp] and
-// for the same reason: a fact about the other machine is not a fact this
-// surface may guess at.
+// handed to the terminal in front of you means this machine's /app/main.go. The
+// two outcomes are a click that does nothing and a click that opens a stranger's
+// file, and for one wave that was the reason this pass was switched off entirely
+// over a connection — the same judgement the branch probe makes in [newApp].
+//
+// IT IS NOT OFF ANY MORE, AND NOTHING ABOUT THE LAW CHANGED — only who performs
+// the stat and what the anchor points at. The stat is [remote.Client.StatPaths],
+// asked in batches off the render path, answered under the same two-roots rule
+// as everything else that crosses (remotefiles.go states the whole of it). The
+// target is the file door's own capability URL rather than `file://`, because
+// the whole objection to `file://` here was that it names the wrong machine's
+// disk. A word the engine has not confirmed is plain text, exactly as a word
+// this machine could not stat is plain text at home — the honesty rule is one
+// rule and it now has two people who can answer it.
+//
+// A CONFIRMED DIRECTORY IS STILL NOT LINKED over a connection, and a hosted
+// session resolves no `~`: that tilde is THIS machine's home and the file is on
+// the other one, which is the one substitution this pass may never make.
 
 // sgrUnderOn and sgrUnderOff are the underline attribute, spelled once. SGR 4
 // is in the original ECMA-48 set, so every terminal above the one that draws no
@@ -130,6 +144,13 @@ type linker struct {
 	// empty string for "looked, and it is not a file" — the negative answer is
 	// the one worth keeping, because it is the one almost every word gets.
 	seen map[string]string
+	// far is the OTHER machine's answer to the same question, and its presence
+	// is what makes this a remote pass: the stat stops being a syscall and
+	// becomes a batched wire question, the memo stops being [linker.seen] and
+	// becomes that table, and the target stops being a file URI and becomes the
+	// door's (remotefiles.go). Nil is an ordinary local session and every branch
+	// below that mentions it is dead code.
+	far *remoteFiles
 }
 
 // linker builds this surface's [linker]: the palette it paints with, the
@@ -146,13 +167,24 @@ func (a *app) linker() linker {
 	// contents, which is the connection's failure mode arrived at from the
 	// inside: not a click that does nothing, but a click that opens the wrong
 	// file. The paths on a room's page are still shown in full.
-	return linker{
+	l := linker{
 		pal:  a.pal,
 		on:   a.pathLinks && !a.roomOpen(),
 		root: a.workspace,
 		home: a.tilde,
 		seen: a.pathSeen,
 	}
+	if a.rfiles != nil {
+		// A HOSTED SESSION KEEPS NEITHER THE MEMO NOR THE TILDE. The memo is
+		// emptied at every turn boundary ([app.settle]) so that a file created
+		// during a turn becomes clickable, and emptying the FAR table would put
+		// every word in the transcript back on the wire once a turn — so the
+		// table is the memo and it is asked once per session (remotefiles.go
+		// says what replaces the turn-boundary clear). The tilde is this
+		// machine's home directory, which is not where that machine's files are.
+		l.seen, l.home, l.far = nil, "", a.rfiles
+	}
+	return l
 }
 
 // linkPaths is the pass every block of rows a person reads goes through.
@@ -243,7 +275,21 @@ func (l linker) anchor(label, target string) string {
 	if label == "" || target == "" || !l.on {
 		return label
 	}
-	return linkify(l.pal.underline(label), fileURI(target))
+	return linkify(l.pal.underline(label), l.uri(target))
+}
+
+// uri is what a confirmed path is a link TO, and it is the one place the two
+// kinds of session part company. At home it is the file itself; over a
+// connection it is the door's capability URL for that file, which is what makes
+// cmd+click on a remote path do the same thing cmd+click on a local one does
+// (remotefiles.go's header states the whole bargain). An empty answer — no door,
+// or a path the door has not minted — reads as "draw no link", which is what
+// [linkOpen] already does with anything it will not write.
+func (l linker) uri(target string) string {
+	if l.far != nil {
+		return l.far.url(target)
+	}
+	return fileURI(target)
 }
 
 // path is the whole detection rule for one word: what part of it names a file,
@@ -324,6 +370,9 @@ func (l linker) locate(name string) string {
 	if len(name) < 2 || !looksPath(name) {
 		return ""
 	}
+	if l.far != nil {
+		return l.locateFar(name)
+	}
 	for i := 0; i < len(name); i++ {
 		// A control byte in a word is not a name; it is a row this pass has been
 		// handed in a state it did not expect.
@@ -379,6 +428,57 @@ func (l linker) locate(name string) string {
 		return ""
 	}
 	return name
+}
+
+// locateFar is [linker.locate] for a workspace on somebody else's disk: the same
+// cheap rejects, and then the ENGINE's answer instead of a syscall.
+//
+// THE JOINING IS DONE IN `path` AND NOT IN `filepath`, which is the one thing
+// that differs mechanically rather than by policy. A relative name in a hosted
+// conversation means "in the workspace on the OTHER machine", and that machine's
+// separator is '/' — `--host` is an ssh connection — so a surface running where
+// the separator is something else must not put its own idea of one into a name
+// the far end has to recognize. internal/remote makes the same decision about
+// every path on the wire.
+//
+// IT ANSWERS "" FOR EVERYTHING IT HAS NOT BEEN TOLD ABOUT, and remembers that it
+// was asked. That is the honesty rule and the batch in one move: the frame a
+// word first appears on draws no link and puts the word in the next question
+// (remotefiles.go's [remoteFiles.confirm]).
+func (l linker) locateFar(name string) string {
+	for i := 0; i < len(name); i++ {
+		if name[i] < 0x20 || name[i] == 0x7f {
+			return ""
+		}
+	}
+	// A URI is not a path on the far machine either, and a file URI is a claim
+	// about THIS one — which is the whole reason this pass had to change. Neither
+	// is asked about.
+	if strings.Contains(name, "://") {
+		return ""
+	}
+	// A tilde is this machine's home directory and the file is on the other one.
+	// There is no substitution to make, so there is no name here.
+	if strings.HasPrefix(name, "~") {
+		return ""
+	}
+	if !strings.HasPrefix(name, "/") {
+		if l.root == "" {
+			return ""
+		}
+		root := strings.TrimSuffix(l.root, "/")
+		joined := path.Join(root, name)
+		// CONTAINMENT, and it is [linker.locate]'s reason: a relative name in a
+		// reply MEANS "in the workspace", and one that climbs out of it with
+		// `../..` has stopped meaning that. The engine refuses what leaves its
+		// two roots regardless — this is about what the word meant, not about
+		// what the far machine will allow.
+		if joined != root && !strings.HasPrefix(joined, root+"/") {
+			return ""
+		}
+		name = joined
+	}
+	return l.far.confirm(path.Clean(name))
 }
 
 // ── the pass over rendered rows ─────────────────────────────────────────────
@@ -477,7 +577,7 @@ func (l linker) rows(rows []string) []string {
 			if !ok {
 				continue
 			}
-			open := linkOpen(fileURI(target))
+			open := linkOpen(l.uri(target))
 			if open == "" {
 				continue
 			}
@@ -531,7 +631,7 @@ func (l linker) join(flats []string, words [][]wordSpan, taken []int, spans [][]
 		rows = append(rows, next)
 		parts = append(parts, tail)
 		if from, to, target, ok := l.path(text); ok {
-			if open := linkOpen(fileURI(target)); open != "" {
+			if open := linkOpen(l.uri(target)); open != "" {
 				best, bestFrom, bestTo, bestOpen = len(parts), from, to, open
 			}
 		}

@@ -119,7 +119,16 @@ ordinary conversation. This is deliberate: *"a rewound turn really did run, and 
 calls really did touch the workspace."* The journal stays *"a record of what happened rather
 than of what is currently believed"*.
 
-If you need work on disk undone, undo it yourself. Rewind will not do it for you.
+Rewind will not undo work on disk for you. **On a machine with furrow installed and watching
+this folder, `workspace_restore` is the separate verb that does** — ask for the files to be
+put back and aforge uses the workspace's own restore points, which cover things git never
+sees: `.env`, a dev database, an untracked file, a dependency that changed. It is a
+different thing from a rewind and they are never the same gesture: a rewind edits the
+conversation and touches no file; `workspace_restore` moves bytes and leaves the
+conversation alone. See *Forking and syncing a workspace*.
+
+Without furrow there is no such verb, and then the sentence above is the whole truth: undo
+it yourself.
 
 ## What a rewind point is
 
@@ -245,7 +254,7 @@ session: 12 is not a rewind point; the nearest is 10
 - The "not a rewind point" sentence names the nearest legal point. The index is never
   rounded to it for you.
 
-## Where your conversations are saved, kept, and stored
+## Where is my conversation saved — where conversations are kept and stored
 
 Every conversation is one folder on disk, and the transcript inside it is one JSONL file.
 The path shape is:
@@ -272,12 +281,16 @@ the file that was written to most recently: work finishing in the background doe
 change which conversation you were having. A conversation you opened and never said
 anything in is reused rather than piled up, and the leftovers are cleaned away.
 
+## What is saved in a conversation transcript — file contents and line types
+
 **What is in the file:** JSONL, append-only, one header line and then one line per
-**completed** message, per compaction pass, and per piece of spending. The line types are
-`session` (the header: version, id, working directory, model, timestamp), `message`,
-`compaction`, `rewind`, `title` and `usage`. Message content is written as text. A `usage`
-line records what one piece of work cost, and on a resume those lines are added back up —
-which is why the bill survives a restart.
+**completed** message, per compaction pass, per piece of spending, and per request. The
+line types are `session` (the header: version, id, working directory, model, timestamp),
+`message`, `compaction`, `rewind`, `title`, `usage` and `call`. Message content is written
+as text. A `usage` line records what one piece of work cost, and on a resume those lines
+are added back up — which is why the bill survives a restart. A `call` line records one
+request's own shape and is **never** added up: the money on it is already counted in the
+`usage` line that closed its turn.
 
 The session id is 16 random hex characters, minted when the file is created and replayed
 unchanged on every resume — that is what keeps one conversation one identity across days.
@@ -311,6 +324,24 @@ The file version is still `1`. A file written before `usage` lines existed opens
 it always did, and a file that has them opens in an older build too, which skips the lines
 it does not recognise.
 
+## What one request cost — the call lines in the file
+
+A turn is not one request. It is the answer, then a tool result, then the next answer, over
+and over — sixty or more requests on a long one — and the `usage` line above is the sum of
+all of them. A sum cannot say what the twentieth request cost, or how much of its prompt
+was served warm, or which endpoint answered it.
+
+So aforge also writes one `call` line **per answered request**, carrying the model that
+answered, the endpoint that served it when the provider names one, tokens in, cache read,
+cache write, tokens out, and the provider's own figure for the money. A request the
+provider reported no usage for writes no line — a row of zeros would read as a fact.
+
+These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
+them, and a resume ignores them entirely, because every dollar on them is already in the
+`usage` line that sealed the turn. They are there so a question about *shape* — what does a
+mostly-cached request actually cost here — can be read out of the file instead of guessed
+at.
+
 ## Picking up where you left off
 
 Launching with no arguments resumes **this directory's most recently written conversation**,
@@ -318,9 +349,17 @@ chosen by file modification time. A directory that has never held one gets a fre
 
 It opens showing the last **40** blocks of that conversation rather than all of it, which is
 what keeps the first frame quick. Everything older is still there and still reachable:
-scroll up and aforge reads the previous 40 out of the file and puts them above what you are
-reading, over and over, until you are at the first message. While there is more above you
-the top row says `· earlier · keep scrolling`. The screen page has the keys.
+aforge keeps a local copy of the transcript and prepares the previous 40 blocks before you
+reach the top — when the first visible line is within one screen of the oldest part already
+drawn. The page arrives between frames and is put above what you are reading without moving
+that line. Keep scrolling and this repeats until you are at the first message. While there is
+more above you the top row says `· earlier · keep scrolling`. The screen page has the keys.
+
+**This is local even with `aforge chat --host <machine>`.** The conversation and its files
+stay on the other machine, but the transcript shown by this window is mirrored on the machine
+holding your terminal. A scroll key or wheel movement never waits for ssh; several trackpad
+reports arriving inside one frame are applied together. New conversation work still crosses
+the connection in the ordinary way.
 
 **A compaction in the middle of it does not shorten what you can read.** A pass rewrites the
 conversation for the model and writes the rewritten version back into the file below its
@@ -380,25 +419,30 @@ One thing is refused loudly: a file written by a newer aforge.
 session file: <path> was written by a newer aforge (format version 3; this build reads 2)
 ```
 
-**The welcome box.** On the first frame of an empty session, aforge offers the four most
-recent conversations under the heading `recent sessions` (`no recent sessions` on a fresh
-machine). With the draft empty, `↑`/`↓` walk the list and `enter` opens the highlighted one;
-a click on a row opens it too. The hint slot says `↑↓ recent · enter open`. Each row is a
-name and a coarse age (`now`, `12m`, `3h`, `5d`, then a date like `16 Aug`). The box shows
+**The empty screen's greeting.** On the first frame of an empty session, aforge draws one
+centred group — the wordmark, the model line, the message box itself and a line of things
+to try — and, when this folder has earlier conversations, up to four of them under the
+heading `recent sessions` beneath it. On a fresh machine that list is simply absent: no
+heading, no `no recent sessions` line. With the draft empty, `↑`/`↓` walk the list and
+`enter` opens the highlighted one; a click on a row opens it too. Each row is a name and a
+coarse age (`now`, `12m`, `3h`, `5d`, then a date like `16 Aug`). The greeting shows
 **once** — the first submit, key or click retires it for the life of the surface, and
 nothing brings it back. It never shows over a resumed conversation, and it draws nothing at
-all on a frame under 12 rows or under 40 columns.
+all on a frame under 12 rows or under 40 columns. *The empty screen* page has the whole
+of it.
 
 **When home greets you instead, there is no welcome box at all.** On a machine that holds
 a conversation other than the one your launch opened, the first frame is the home screen
-(see the home page), and the box is retired before it ever draws — home's left column is
-every conversation in every project, which is the box's four recent rows and more. Two
+(see the home page), and the box is retired before it ever draws — home's list is every
+conversation in every project, which is the box's four recent rows and more. Two
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 
-So the box is what a **first run** sees — the launch where home has nothing to say, because
-the only conversation on the machine is the one already on screen. That is the one case
-where the wordmark and `recent sessions` still greet you.
+So the greeting is what a **first run** sees — the launch where home has nothing to say,
+because the only conversation on the machine is the one already on screen. That is the one
+case where the wordmark and the centred message box greet you; home itself is still a
+`space space` away. On a profile with nothing configured yet, the once-only setup screen
+comes first (the getting-started page), and the greeting arrives the moment it closes.
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 
@@ -522,6 +566,11 @@ the section on two terminals in the same folder.
 **Yes, you can run more than one aforge at once in the same workspace.** Each gets its own
 conversation file. What they cannot do is share one.
 
+That is true of conversations on **this** machine, and it is the opposite of what happens
+over `--host`: a conversation on another machine is held by a process over there and your
+terminals attach to it, so two windows really can share one. The keyboard follows the
+newest of them and the rest keep watching — *Staying on that machine* is the page for it.
+
 Opening a journal takes a non-blocking exclusive lock on the file before anything is
 replayed, so the second window fails at the door rather than paying for a replay it cannot
 use. But it does not fail *you*. The second launch quietly names a new session file, opens
@@ -644,7 +693,8 @@ not several terminals. These come back with it:
 - the transcript, the task column, the meters, the model, the title, and any approval
   question, task proposal or sign-in offer the session is still holding;
 - a turn that is still running, from its **first token** rather than from wherever it had
-  got to;
+  got to — and exactly once: the replayed history stops where that turn's work begins, so
+  the steps it had already finished are not drawn a second time above the live copy;
 - the unsent sentence in the box and the pictures on it — including any message you typed
   while it was busy, folded back into the box rather than dropped;
 - where you were reading, the room you had open, and how much of an approval countdown was

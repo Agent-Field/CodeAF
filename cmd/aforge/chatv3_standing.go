@@ -172,6 +172,15 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		CompactEnabled: true,
 		ProfileDir:     settings.ProfileDir,
 		ArtifactsIndex: artifactsIndexPath(),
+		// THE DIVISION ROAD, from the same row a conversation reads it off
+		// (chatv3.go). A firing is the one piece of work nobody is watching, so
+		// it is the one place where "this brief holds eleven jobs" has to be
+		// answerable by the work itself rather than by a person noticing at
+		// breakfast — and it is free where it does not apply, because a firing
+		// whose brief enumerates nothing is never armed and carries no verb
+		// (internal/session's standingWideWork). `AFORGE_SWARM=0` takes it away
+		// here exactly as it does everywhere else.
+		Divide: settings.Swarm,
 	}
 	// NOT yolo, ever, whatever a window was started with: --yolo is a posture
 	// somebody took for a session they were sitting in front of, and carrying it
@@ -196,6 +205,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 	cfg.Media = v3MediaClient(settings)
 	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
 	cfg.SupportsParameter = models.SupportsParameter
+	cfg.ModelPrice = models.PriceNow
 	cfg.NearestModels = v3NearestModels(models)
 	// AskConsent stays false and Standing stays nil: nobody is watching a
 	// firing, and nothing that fires may arm anything else.
@@ -303,7 +313,24 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			}
 			return items
 		},
+		// AND EVERY ORDER ON THE MACHINE IN ONE READ, which is the store's own
+		// List and is what Items is a filtered copy of. A page wanting the whole
+		// set asks this once rather than asking Items once per project, which
+		// walked the standing root once per project to build one map.
+		All: func() []standing.Item {
+			items, err := store.List()
+			if err != nil {
+				return nil
+			}
+			return items
+		},
 		Save: store.Save,
+		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
+		// through Save above: the rung is a read-modify-write under the item's
+		// lock, so a card that had been on screen for a beat cannot write back the
+		// check results and the next-due the ticker has moved since
+		// (internal/standing's SetStandingEffort says the whole of why).
+		SetEffort: store.SetStandingEffort,
 		// WHETHER THIS PROCESS IS KEEPING TIME, asked at the moment the line is
 		// drawn rather than latched when the seam was built: the ticking starts
 		// during the launch (startStandingTicks) and a boolean captured here

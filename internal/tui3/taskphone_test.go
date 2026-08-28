@@ -70,7 +70,7 @@ func TestThePhoneStripIsOneTasksDoorThatOpensTheRoster(t *testing.T) {
 	// in one gesture.
 	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
-	if !a.taskSheet.open {
+	if !a.at(pageTasks) {
 		t.Fatal("a tap on the phone door did not open the roster page")
 	}
 	if a.railFull() {
@@ -106,7 +106,7 @@ func TestThePhoneRosterRowsAreTwoLineCards(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open with work to show")
 	}
 
@@ -151,26 +151,36 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 		pastTask("44", "cut-the-goldens", "Cut the goldens", 5*time.Hour),
 		pastTask("45", "read-the-law", "Read the law twice", 6*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
-	// The last earlier card is below the fold to begin with.
-	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), "Read the law twice") {
-		t.Fatal("the last card was already on screen; widen the fixture so scrolling is tested")
-	}
-
-	// Walk the cursor to the bottom of the list.
+	// Walk the cursor to the bottom of the list, and find out what is down there:
+	// the fixture is grouped by what you do next, so which card is last is the
+	// place's business rather than the test's.
 	for i := 0; i < 40; i++ {
 		a.taskSheetMove(1)
 	}
+	last, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("the walk left the cursor on nothing")
+	}
 	lines := taskSheetLines(a)
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "Read the law twice") {
-		t.Fatalf("scrolling did not bring the last card into view:\n%s", joined)
+	head := -1
+	for i, line := range lines {
+		if strings.Contains(line, last.entry.Title) {
+			head = i
+		}
 	}
-	if !strings.Contains(joined, "it came home clean · 6h") {
-		t.Fatalf("the last card's whole tail is not on screen:\n%s", joined)
+	if head < 0 {
+		t.Fatalf("scrolling did not bring the cursor's card into view:\n%s", joined)
+	}
+	// AND IT IS DRAWN WHOLE. A card is two lines, so a window that counted rows
+	// rather than lines would leave the tail of the one a thumb scrolled to
+	// clipped at the fold.
+	if head+1 >= len(lines) || !strings.Contains(lines[head+1], "it came home clean") {
+		t.Fatalf("the cursor's card is clipped at the fold:\n%s", joined)
 	}
 	for i, line := range lines {
 		if w := ansi.StringWidth(line); w > a.width {
@@ -180,7 +190,7 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 
 	// A wheel walks the cursor the same way a key does, so it reaches the fold too.
 	a.taskSheetScroll(-40)
-	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), "Read the law twice") {
+	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), last.entry.Title) {
 		t.Fatal("the wheel did not scroll the list back up")
 	}
 }
@@ -191,7 +201,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.width, a.height = 50, 28
 	railRun(a)
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -211,7 +221,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if a.taskSheet.open {
+	if a.at(pageTasks) {
 		t.Fatal("tapping `‹ back` did not return to the conversation")
 	}
 }
@@ -225,7 +235,7 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
 	}
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 
@@ -237,8 +247,8 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if !a.taskSheet.open || !a.taskSheet.detailOn {
-		t.Fatalf("the card did not open the record: open=%v detail=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || !a.taskSheet.detailOn {
+		t.Fatalf("the card did not open the record: open=%v detail=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 
 	// The record card's foot is its own two-band bar, and its `‹ back` backs out
@@ -249,8 +259,8 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: yBack, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: yBack, Button: tea.MouseLeft})
-	if !a.taskSheet.open || a.taskSheet.detailOn {
-		t.Fatalf("`‹ back` on the record did not return to the list: open=%v detail=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	if !a.at(pageTasks) || a.taskSheet.detailOn {
+		t.Fatalf("`‹ back` on the record did not return to the list: open=%v detail=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 }
 
@@ -286,7 +296,7 @@ func TestThePhoneTaskFlowChangesNothingAtEightyColumns(t *testing.T) {
 		t.Fatalf("the wide strip lost its chips:\n%q", door)
 	}
 
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
 	lines := taskSheetLines(a)

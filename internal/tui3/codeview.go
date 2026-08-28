@@ -58,7 +58,7 @@ const codeTier = tokens.TextTertiary
 // the same bargain internal/tui2's record rows make, and it is the only one
 // available to a preview whose first line has not arrived yet.
 func (a *app) codeRows(text, path string, width int) []string {
-	return a.codeRowsWith(markdownStyler(), text, path, width)
+	return a.codeRowsWith(a.styler(), text, path, width)
 }
 
 // codeRowsWith is [app.codeRows] against a stated Styler, split off for
@@ -74,13 +74,19 @@ func (a *app) codeRowsWith(st *tokens.Styler, text, path string, width int) []st
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	// THE ONE CACHE ON THIS PATH, and it is not optional. Tool rows are
-	// deliberately never cached (render.go's [app.entryRows] says why: one of them
-	// is always animating), so this runs on every frame the block is on screen —
-	// and lexing costs about sixty microseconds a row, which is nothing for the
-	// twenty rows of a write and forty milliseconds for the eight hundred a person
-	// gets after clicking "… N more lines" on a large read. Forty milliseconds is
-	// past the whole frame budget.
+	// THE ONE CACHE ON THIS PATH, and it is not optional. Lexing costs about
+	// sixty microseconds a row, which is nothing for the twenty rows of a write
+	// and forty milliseconds for the eight hundred a person gets after clicking
+	// "… N more lines" on a large read. Forty milliseconds is past the whole
+	// frame budget.
+	//
+	// The inline block a tool row hangs has a memo in front of this one now
+	// (toolview.go's [toolBlock]), so the ordinary transcript asks for a given
+	// block once rather than thirty times a second. This still runs per frame for
+	// everything that reaches the renderer another way — the phone's full-frame
+	// sheet redraws from [app.detailBody] on every tick (expand.go), a forming
+	// write is re-lexed as its own body arrives — and it is what keeps the memo's
+	// misses cheap.
 	//
 	// THE KEY IS EVERYTHING THAT DECIDES A ROW. The text, the width and the
 	// language are the obvious three; the Styler and the palette's own dim hue are
@@ -159,6 +165,22 @@ func (c *codeBlockCache) put(key string, rows []string) {
 		delete(c.rows, c.order[0])
 		c.order = c.order[1:]
 	}
+}
+
+// drop forgets every block this cache is holding.
+//
+// The key is the language, the width and the text, which is everything that
+// decides the ROWS — and, until this wave, everything that could change. A
+// palette that changed under a cached block is the one thing the key cannot see:
+// the rows are finished strings with escape sequences already inside them, so a
+// hit after a re-coloured ladder would hand back yesterday's paint. The measured
+// background is the only thing that does this and it does it once, so the answer
+// is to drop the lot rather than to widen a key that is hashed on every read
+// (adaptive.go's [app.repaintPalette]).
+func (c *codeBlockCache) drop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rows, c.order = nil, nil
 }
 
 // codeLang is the lexer a path's contents should be read as, or "" for a block

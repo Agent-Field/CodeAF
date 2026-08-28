@@ -13,19 +13,52 @@ package main
 // frame the surface cannot parse, which is the end of the session rather than a
 // cosmetic fault, so everything this door has to say to a human goes to stderr
 // and only when it is fatal.
+//
+// ── IT IS ALSO, NOW, A DOOR ONTO SOMETHING ALREADY RUNNING ───────────────────
+//
+// Version 2 of the wire separated a conversation's life from a connection's, so
+// this door has two shapes and tries them in one order:
+//
+//  1. ATTACH. Dial this workspace's session host (internal/enginehost) and
+//     splice the ssh pipes to its socket. The conversation is already there,
+//     possibly mid-turn, and closing the lid does not end it. If no host is
+//     running, one is started and this connection waits a moment for it.
+//  1a. AND THE HOST IS ASKED WHICH BUILD IT IS FIRST. A host outlives the
+//     binary that started it, so `rm bin/aforge && make build` on this machine
+//     leaves the NEW aforge answering `aforge version` while the OLD one is
+//     still holding the socket — and a splice that copied bytes handed the new
+//     surface straight to it. What came back was the old host's own refusal
+//     about protocol versions, telling the person to update a machine they had
+//     just updated. So the socket is asked (internal/remote's whois.go) and a
+//     host of another build is retired and replaced rather than attached to.
+//  2. THE PIPE. If a host cannot be reached or started for ANY reason — no
+//     socket directory, a path too long for a unix socket, a spawn that failed,
+//     a machine that refuses all of it — this process serves the conversation
+//     itself, exactly as version 1 did, and the welcome says
+//     [remote.Welcome.Persistent] is false so no surface promises a lifetime
+//     this shape does not have.
+//
+// THE SECOND IS NOT A DEGRADED MODE, IT IS THE FLOOR. A machine where the host
+// cannot work must still take a remote session.
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -42,18 +75,237 @@ func runRemoteEngine(args []string) error {
 	flags := flag.NewFlagSet("engine", flag.ContinueOnError)
 	workspace := flags.String("workspace", "", "directory to work in; relative paths are relative to the home directory, empty is the home directory")
 	file := flags.String("session", "", "session transcript to open; empty opens this workspace's most recent")
+	// --daemon is this process BEING the host rather than talking to one. It is
+	// machinery of the machinery: nothing types it, [enginehost.Spawn] does.
+	daemon := flags.Bool("daemon", false, "hold this workspace's conversations and answer surfaces on a socket")
+	// --no-host is the escape hatch, and it exists because a fallback nobody can
+	// ask for is a fallback nobody can use when the host is the thing that is
+	// wrong. It serves the conversation on this pipe and never dials a socket.
+	alone := flags.Bool("no-host", false, "serve this conversation on the pipe instead of attaching to a session host")
+	// --stop is the one flag here a PERSON types, and it exists because the
+	// refusal below sends them to it: something older is holding this
+	// workspace and has to be let go of before a current build can hold it.
+	stop := flags.Bool("stop", false, "stop whatever is holding this workspace's conversations on this machine")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path]")
+		// --daemon is deliberately not named here. It is how a host is started
+		// and nothing a person accomplishes by typing it, so the usage line
+		// offers the two flags somebody might mean and stays quiet about the
+		// one they would only ever mean by accident.
+		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host] [--stop]")
 	}
 
-	return remote.Serve(os.Stdin, os.Stdout, remote.Options{
+	if *daemon {
+		return runEngineHost(*workspace, *file)
+	}
+	if *stop {
+		return runEngineStop(*workspace)
+	}
+	if !*alone {
+		conn, err := attachEngineHost(*workspace)
+		if err == nil {
+			// From here this process reads and writes nothing but bytes: the
+			// handshake, the frames and every decision in them are between the
+			// surface and the engine on the other side of that socket.
+			return enginehost.Splice(os.Stdin, os.Stdout, conn)
+		}
+		var stale *staleHost
+		if errors.As(err, &stale) {
+			// THE ONE FAILURE ON THIS ROAD THAT IS NOT ANSWERED WITH THE PIPE,
+			// and the reason is the session file. Something older is holding
+			// this workspace's conversation, which means it is holding the
+			// journal's lock; an engine that fell back to the pipe here would
+			// try to open the same file, fail on that lock, and say so in a
+			// sentence about a path — burying the one fact the person needs.
+			// So the truth goes down the wire instead.
+			return quietRefusal(remote.Refuse(os.Stdout, stale.reason))
+		}
+	}
+	return quietRefusal(remote.Serve(os.Stdin, os.Stdout, remote.Options{
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
+	}))
+}
+
+// quietRefusal is the door's half of [remote.Refusal]: a handshake this engine
+// turned away has already had its reason written down the wire, and OVER SSH
+// THIS PROCESS'S STDERR IS THE PERSON'S TERMINAL — the same terminal the
+// surface is about to draw that reason on. Printing it here as well is how one
+// refusal became two identical `error:` lines on `aforge chat --host
+// devbox:/nowhere`. The exit code stays 1, because the engine did fail.
+func quietRefusal(err error) error {
+	var refusal *remote.Refusal
+	if errors.As(err, &refusal) {
+		return exitStatus(1)
+	}
+	return err
+}
+
+// staleHost is an older aforge still holding this workspace, and it is the ONE
+// reason `aforge engine` refuses instead of falling back to the pipe. The
+// sentence has already been written for a person to read; the caller's whole
+// job is to put it on the wire.
+type staleHost struct{ reason string }
+
+func (s *staleHost) Error() string { return s.reason }
+
+// attachEngineHost is step one: a connection to this workspace's host, starting
+// one if nothing answers — and, before any of that, a question about which
+// build is already there.
+//
+// THE WORKSPACE IS RESOLVED BEFORE THE HELLO IS READ, and it can be, because
+// the surface puts it on the ssh command line as well as in the frame
+// (chatv3_host.go's dialEngine) — which was already true and is what makes
+// routing to a per-workspace socket possible at all without parsing a single
+// frame here. A hand-run `aforge engine` with no --workspace resolves to the
+// home directory, which is exactly what its hello would have meant.
+//
+// ── THE THREE THINGS THE QUESTION CAN FIND ──────────────────────────────────
+//
+// A host of THIS build is spliced onto, which is the ordinary answer and the
+// only one that costs anything at all — one extra connection, on a unix socket,
+// asking one question.
+//
+// A host of ANOTHER build is asked to go, and goes if it is holding nothing.
+// The conversation it was holding is closed properly on the way out, its
+// journal flushed, and the next line of this function starts a fresh host from
+// the binary that is on disk now — so a rebuild simply works on the next
+// connection instead of trapping somebody.
+//
+// A host that will not go, or one so old it cannot be asked, is REFUSED with a
+// sentence naming the machine and the way out. Nothing here signals a process
+// it could not ask, and nothing here decides on somebody else's behalf that
+// their turn is over.
+//
+// EVERY OTHER FAILURE ON THIS PATH IS ANSWERED BY THE CALLER WITH THE PIPE, and
+// none of them is worth a sentence: a machine with no host is not a machine
+// with a problem.
+func attachEngineHost(workspaceFlag string) (net.Conn, error) {
+	workspace, err := engineWorkspace(workspaceFlag)
+	if err != nil {
+		return nil, err
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	if err := clearStaleEngineHost(workspace); err != nil {
+		return nil, err
+	}
+	return enginehost.Attach(workspace, func() error {
+		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", workspace)
 	})
+}
+
+// clearStaleEngineHost is the question and what is done with the answer. Nil
+// means "go ahead and attach": either nothing is holding this workspace, or
+// what is holding it is this build, or what was holding it has gone.
+func clearStaleEngineHost(workspace string) error {
+	host, err := enginehost.Ask(workspace, remote.WhoIs{})
+	switch {
+	case errors.Is(err, remote.ErrNoHostThere):
+		// The socket answered with a refusal, which is what EVERY BUILD FROM
+		// BEFORE THE EXCHANGE says to a question it has never heard of. It
+		// cannot be asked whether it is busy either, so it is never ended from
+		// here — a person is told, in words, what is true and what to type.
+		return &staleHost{reason: staleEngineHostSentence(false)}
+	case err != nil:
+		// Nothing answered at all: no host, or one that has stopped reading.
+		// Both are the ordinary road — Attach starts one.
+		return nil
+	case host.Version == remote.Version:
+		return nil
+	}
+	// Another build, and it is answering, so it can be asked to go.
+	if err := enginehost.Retire(workspace, false); err != nil {
+		if errors.Is(err, enginehost.ErrHostBusy) {
+			return &staleHost{reason: staleEngineHostSentence(true)}
+		}
+		return &staleHost{reason: staleEngineHostSentence(false)}
+	}
+	return nil
+}
+
+// staleEngineHostSentence is what the person reads, and it is written on the
+// far machine because the far machine is the one with the problem.
+//
+// IT NAMES THE MACHINE AND NOT "THE OTHER END". This sentence is printed on a
+// laptop by a surface that has three windows open onto three machines, and the
+// old version of this refusal — "update the older one" — failed precisely by
+// being unable to say WHICH half was old. The name is this machine's own
+// hostname, the same one every window in a shared conversation is labelled with
+// ([remote.MachineName]).
+func staleEngineHostSentence(busy bool) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "that machine"
+	}
+	if busy {
+		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on %s", name, name)
+	}
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run aforge engine --stop on %s", name, name)
+}
+
+// runEngineStop is `aforge engine --stop`: whatever is holding this workspace
+// on this machine, let go of.
+//
+// IT TALKS TO A PERSON, WHICH IS WHY IT IS THE ONE DOOR IN THIS FILE THAT
+// PRINTS. Every other shape of `aforge engine` owns stdout as the protocol and
+// a stray line there is a frame the surface cannot parse; this one is nobody's
+// engine, it is somebody typing on the machine itself and waiting to be told
+// what happened.
+func runEngineStop(workspaceFlag string) error {
+	workspace, err := engineWorkspace(workspaceFlag)
+	if err != nil {
+		return err
+	}
+	stopped, err := enginehost.Stop(workspace)
+	if err != nil {
+		return err
+	}
+	if !stopped {
+		fmt.Printf("nothing is holding %s here\n", workspace)
+		return nil
+	}
+	fmt.Printf("stopped holding %s — the next connection starts fresh from this build\n", workspace)
+	return nil
+}
+
+// runEngineHost is this process being the host: it moves into the workspace
+// once, the way every engine does, and then holds that workspace's
+// conversations until the idle policy retires it.
+//
+// A HOST THAT FINDS ANOTHER HOST EXITS WITHOUT A WORD. That is not a failure —
+// the machine is in exactly the state that was asked for — and this process was
+// started by another one that is about to dial the socket either way.
+func runEngineHost(workspaceFlag, sessionFlag string) error {
+	workspace, err := engineWorkspace(workspaceFlag)
+	if err != nil {
+		return err
+	}
+	if err := os.Chdir(workspace); err != nil {
+		return fmt.Errorf("open %s: %w", workspace, err)
+	}
+	err = enginehost.Run(workspace, enginehost.Options{
+		Boot: func(hello remote.Hello) (*remote.Engine, error) {
+			return bootEngine(hello, workspace, sessionFlag)
+		},
+		// WHICH CONVERSATION A HELLO WANTS is the session file it named, and
+		// naming none is this workspace's latest-or-new — the same meaning
+		// --session has everywhere else. So two surfaces that both say nothing
+		// are asking for the same conversation, which is the whole of "sit down
+		// somewhere else and be in it".
+		Key: func(hello remote.Hello) string {
+			return firstEngineWord(hello.Session, sessionFlag)
+		},
+	})
+	if errors.Is(err, enginehost.ErrHostRunning) {
+		return nil
+	}
+	return err
 }
 
 // bootEngine opens the conversation the hello asked for.
@@ -77,16 +329,28 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
 
-	// ONE PROCESS, ONE WORKSPACE, ONE CONVERSATION — which is what makes the
-	// engine the simplest reader of the split. It builds the process resources
-	// and immediately spends them on the single launch it will ever make, and
-	// the chdir above is still the only chdir in the tree (chatv3_process.go).
-	proc, err := openV3Process("engine")
+	// ONE PROCESS, ONE WORKSPACE — and, when this process is a host, SEVERAL
+	// CONVERSATIONS IN IT. The process half of a launch is opened once and
+	// shared ([openEngineProcess]): the profile, the model catalog, the harness
+	// registry and the recall store are properties of the machine and the
+	// directory, not of the conversation, and opening a second set of them
+	// would be the second assembly this tree keeps refusing. The chdir above is
+	// still the only chdir in the tree (chatv3_process.go), which is exactly
+	// why a host holds one workspace and not two.
+	proc, err := openEngineProcess()
 	if err != nil {
 		return nil, err
 	}
+	// THE MODEL IS BUILT INTO THE SESSION AND NOT SET ON IT A MOMENT LATER,
+	// which is the whole of what carrying it in the hello bought. The surface
+	// used to open the conversation and then switch it (chatv3_host.go's old
+	// applyHostChoices), and every turn a person could type rode the model they
+	// asked for — but the session file's first line named the model the session
+	// was BORN on, which was the wrong one. Nobody on the screen could see the
+	// difference. The journal could, and the journal is the record.
 	launch, err := openV3Launch(proc, v3Options{
 		Workspace: workspace,
+		Model:     strings.TrimSpace(hello.Model),
 		Session:   firstEngineWord(hello.Session, sessionFlag),
 	})
 	if err != nil {
@@ -98,14 +362,21 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	cfg := launch.Config
 	cfg.AskConsent = true
 
-	// BUILDING A HARNESS IS OFF OVER A CONNECTION, because the card that asks
-	// whether to keep the page cannot reach anybody. The design lane is a
-	// standing subscription the surface opens on the agent itself
-	// (internal/session's HarnessDesigns, asserted by internal/tui3's
-	// designAgent), and the surface on the other end of this wire holds a
-	// remote handle that has no such method — so it never subscribes, and a
-	// design started here would run two model calls, raise a card into an empty
-	// room, and expire unseen half an hour later.
+	// BUILDING A HARNESS IS STILL OFF OVER A CONNECTION, AND THE REASON HAS
+	// CHANGED. It used to be "the card would arrive in an empty room", and a
+	// persistent engine retired that sentence: a question raised with nobody
+	// attached now WAITS and is handed to the next surface that arrives
+	// (internal/remote's held.go). That is a real change and it is not enough
+	// here, because the design card never reaches this wire at all.
+	//
+	// THE DESIGN LANE IS A SUBSCRIPTION AND THIS PROTOCOL HAS NO DOOR FOR ONE.
+	// A design outlives the turn that asked for it, so its card is not emitted
+	// on any turn's stream — internal/session's emitHarness sends only to the
+	// watchers of [session.Agent.HarnessDesigns], which is a method
+	// [remote.WrappedAgent] does not carry and a remote handle does not have.
+	// Nothing crosses, so there is nothing to hold; the waiting room can only
+	// keep a question that arrived. A design started here would still run two
+	// model calls and end with a page nobody is ever shown.
 	//
 	// Nil is the honest way to say so rather than a special case: session.Config
 	// already states that A NIL STORE IS BUILDING OFF, on the same terms a nil
@@ -113,7 +384,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// things this conversation can do and the model says as much instead of
 	// starting work nobody will ever be shown. RUNNING a harness that already
 	// exists is untouched — that rides Harnesses and RunHarness, which the
-	// shared assembly still fills, and it works over a connection today.
+	// shared assembly still fills, and it works over a connection today. What
+	// would light this up is a wire door for the standing lanes, which is a lane
+	// of its own and not a line in this file.
 	cfg.HarnessStore = nil
 
 	// AND FOR THE SAME REASON, cfg.HarnessCards IS LEFT FALSE — the one line on
@@ -121,7 +394,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// "a surface here holds the harness lane", and no surface here does; so chat
 	// is not given the verb that offers a saved program with an intake card
 	// (internal/session's canProposeSubharness), because that card travels the
-	// same lane the design card does and would reach the same empty room.
+	// same subscription the design card does and reaches this wire no more than
+	// it does. Its answer would not fit either: ResolveSubharness is not on
+	// [remote.WrappedAgent], so even a card that crossed would be a key that
+	// pressed nothing — which is why internal/remote's held.go deliberately
+	// holds four kinds of question and not five.
 	// RUNNING a saved program is untouched: `/subharness` is a surface door, and
 	// the surface on the far end of this wire has no registry to open either.
 
@@ -137,27 +414,43 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// THIS machine's AFORGE_HOME ([v3StandingRoot]), a firing runs under THIS
 	// machine's profile rules (chatv3_standing.go's header states that law), the
 	// OS timer a first yes offers to install is THIS machine's timer, and the
-	// work an item does happens where the workspace is. And the card is not
-	// raised into an empty room the way a harness design would be: the standing
-	// proposal crosses as an ordinary event (internal/remote's EventWire) and
-	// the answer crosses back as ResolveStanding, so the person sitting on the
-	// other end of this wire is the person who says yes. A session that could
-	// leave nothing behind over --host would have made the ambient side a
-	// property of which terminal somebody happened to open.
+	// work an item does happens where the workspace is. And the card travels a
+	// road the two above do not: the standing proposal crosses as an ordinary
+	// event on the turn's own stream (internal/remote's EventWire) and the
+	// answer crosses back as ResolveStanding, so the person sitting on the other
+	// end of this wire is the person who says yes. Nobody being there at that
+	// moment no longer loses it either — a proposal raised with no surface
+	// attached is held and handed to the next one (internal/remote's held.go).
+	// A session that could leave nothing behind over --host would have made the
+	// ambient side a property of which terminal somebody happened to open.
 
 	// AN ADAPTIVE RUN IS OFF OVER A CONNECTION, for the same reason and by the
-	// same road. A run's notes, its gauge and — the one that matters — its FUEL
-	// GATE all arrive on a standing subscription the surface opens on the agent
+	// same road, and its reason has been re-checked rather than inherited. A
+	// run's notes, its gauge and — the one that matters — its FUEL GATE all
+	// arrive on a standing subscription the surface opens on the agent
 	// (internal/session's Orchestrations, asserted by internal/tui3's runAgent),
-	// and a remote handle has no such method. A run started here would spend the
-	// person's money, stop at its cap, and raise a question in an empty room for
-	// four hours. So this session is built by session.New rather than by
+	// and a remote handle has no such method. The waiting room does not reach
+	// this one either: the gate's question is
+	// [session.EventOrchestratePause], answered through ResolveOrchestrate, and
+	// neither the event nor the answer has a door on this wire — so a question
+	// held for it would be one nobody could ever say yes to. A run started here
+	// would spend the person's money and stop at its cap in silence, four hours
+	// from now, with nothing on any screen. So this session is built by
+	// session.New rather than by
 	// [v3OpenSession]: nothing fills Config.OrchestrateRunner, which session
 	// already states is orchestration off, and the model is simply not handed the
 	// verb (its tools_harness.go).
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, session.New)
 	if err != nil {
 		return nil, err
+	}
+	// The boot override for how hard this session's model is asked to think,
+	// landed the same way every local door lands it (chatv3.go's SetReasoning)
+	// and on the same model — the one this session opened on. A level the
+	// person did not name leaves the session on whatever the profile says,
+	// which is what an empty string already means everywhere else.
+	if level := strings.TrimSpace(hello.Level); level != "" {
+		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
 	if notice != "" {
@@ -231,14 +524,64 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// the SAME store this session proposes into. What a surface does with
 		// them is the surface's business and is stated where it wires them
 		// (chatv3_host.go's [hostStanding]: over --host the live reader is the
-		// status line's `keeping an eye on` segment, because home does not open
-		// on a remote session at all). They are closures on the store rather
+		// status line and home's far project bands). They are closures on the store rather
 		// than the store itself for [tui3.StandingSeam]'s own reason — the door
 		// owns where it lives and how it is opened — and they are absent
 		// entirely when the ambient side could not be built, which the surface
 		// reads as nothing to show rather than as an empty list.
 		StandingItems: engineStandingItems(cfg.Standing),
 		StandingSave:  engineStandingSave(cfg.Standing),
+		StandingWatch: engineStandingWatch(cfg.Standing),
+		// ── THE PLACES, AS THIS MACHINE HOLDS THEM ──────────────────────
+		//
+		// The world under THIS machine's state root, and the root it was walked
+		// under. A surface over --host draws its seven places out of these two
+		// facts, and before they existed it drew them out of the LAPTOP's copy
+		// of the same directory — so the tasks place listed eight pieces of work
+		// and $22.54 that had happened on a machine nobody in the conversation
+		// had mentioned (internal/tui3's host.go).
+		//
+		// IT IS [session.ReadWorld] AND [session.PlacesRoot], WHICH IS WHAT THE
+		// LOCAL SURFACE CALLS. The far machine's disk is under the same layout
+		// decision as this one's, and a world assembled differently over a
+		// connection would be a second law about one layout — the same argument
+		// Recent's own comment makes two lines down.
+		World: func() session.World {
+			world := session.ReadWorld(session.PlacesRoot())
+			world.Artifacts = session.ReadArtifacts(artifactsIndexPath())
+			return world
+		},
+		Ledger: func(since time.Time) remote.LedgerReading {
+			lines, _ := session.ReadUsage(session.UsageLedgerPath(), since)
+			all, _ := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+			held := false
+			for _, line := range all {
+				if line.USD > 0 {
+					held = true
+					break
+				}
+			}
+			return remote.LedgerReading{Lines: lines, Held: held}
+		},
+		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
+			if proc.Memory == nil {
+				return nil, errors.New("memory is off")
+			}
+			return proc.Memory.SearchConversations(terms, limit)
+		},
+		Memory:     v3MemorySeam(proc.Memory),
+		Archive:    session.SetArchived,
+		PlacesRoot: session.PlacesRoot(),
+		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
+		// card behind a task row draws the last thing that piece of work said,
+		// which is in the node's own journal and not in the index — and a surface
+		// over --host has no way to open a journal on this disk. It reads it here
+		// instead, under this machine's own places root, which is the boundary
+		// [session.ReadTaskRecordUnder] applies rather than trusting the URI the
+		// other end handed back.
+		TaskRecord: func(uri string, tail int) (session.TaskRecord, error) {
+			return session.ReadTaskRecordUnder(session.RecordRoots(), uri, tail)
+		},
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them
 			// ([v3RecentSessions]): the far machine's disk is under the same
@@ -247,6 +590,29 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
+}
+
+// engineProcess is the once-per-process half of a v3 launch, opened on the
+// first conversation this process serves and shared by every one after it.
+//
+// IT IS A MEMO BECAUSE A HOST OPENS SEVERAL CONVERSATIONS AND A PIPE OPENS ONE.
+// [openV3Process] resolves the profile, the model catalog, the sub-harness
+// registry and the recall store — every one of them a fact about the MACHINE
+// and the directory rather than about a conversation — and a second copy would
+// be a second set of governance rows and a second handle on the same store.
+// For the pipe engine this changes nothing at all: one conversation calls it
+// once, exactly as before.
+var engineProcess struct {
+	once sync.Once
+	proc *v3Process
+	err  error
+}
+
+func openEngineProcess() (*v3Process, error) {
+	engineProcess.once.Do(func() {
+		engineProcess.proc, engineProcess.err = openV3Process("engine")
+	})
+	return engineProcess.proc, engineProcess.err
 }
 
 // engineStandingItems and engineStandingSave are the two standing doors, or nil.
@@ -268,6 +634,16 @@ func engineStandingSave(seam *session.Standing) func(standing.Item) error {
 		return nil
 	}
 	return seam.Store.Save
+}
+
+func engineStandingWatch(seam *session.Standing) func() (standing.WatchStatus, bool) {
+	if seam == nil || seam.Watch == nil {
+		return nil
+	}
+	return func() (standing.WatchStatus, bool) {
+		status, err := seam.Watch.Status()
+		return status, err == nil
+	}
 }
 
 // engineWorkspace resolves the directory the surface asked for.

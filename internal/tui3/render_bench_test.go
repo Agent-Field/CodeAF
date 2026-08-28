@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -110,6 +111,97 @@ func BenchmarkLayout(b *testing.B) {
 			}
 		})
 	}
+}
+
+// BenchmarkFrameStreamingPromoted is the frame [BenchmarkFrameStreaming] draws
+// once the reply has been going long enough to have been promoted — which, at
+// [markdownThrottle], is every reply older than a second and a half, and so
+// nearly every reply anybody watches.
+//
+// It is a second benchmark rather than a change to that one because the two
+// measure different halves of the same frame. Before a promotion the live block
+// is plain text and the frame's cost is the wrap; after one it is a MARKDOWN
+// RENDER of the settled prefix — sanitize, goldmark, chroma — and that render is
+// what a delta arriving between two promotions was making the frame redo.
+func BenchmarkFrameStreamingPromoted(b *testing.B) {
+	for _, turns := range []int{4, 20} {
+		b.Run(fmt.Sprintf("turns=%d", turns), func(b *testing.B) {
+			a := benchApp(turns)
+			a.state = stateWorking
+			// A prefix with the structure a real reply has — headings, a list, a
+			// fence — because the promoted half is rendered as markdown and flat
+			// prose would measure none of what markdown costs.
+			a.appendText(strings.Repeat("## a section of the reply\n\n"+
+				"a paragraph about what was found, long enough to wrap at a hundred columns and then a little more.\n\n"+
+				"- one finding\n- another finding\n\n"+
+				"```go\nfunc answer() int { return 42 }\n```\n\n", 6))
+			// Promoted the way the paint clock promotes it: the throttle's own
+			// clock is wound back, so the cut is the one the next frame would
+			// have taken anyway.
+			a.mdAt = a.mdAt.Add(-2 * markdownThrottle)
+			a.promoteMarkdown()
+			if a.entries[a.live].mdCut == 0 {
+				b.Fatal("the live block was not promoted, so this would measure the wrong frame")
+			}
+			live := a.entries[a.live].text
+			a.frame()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				a.entries[a.live].text = live
+				a.appendText("more tokens arriving ")
+				a.dirty = true
+				a.frame()
+			}
+		})
+	}
+}
+
+// BenchmarkFrameLiveTools is the frame drawn while a call is LIVE on screen —
+// an edit whose diff is previewed under its row, over a transcript of finished
+// calls that are laid out again on the same tick.
+//
+// Tool rows are the one block on this surface that is not cached per entry
+// (render.go's [app.entryRows] says why), so this is the frame that redoes the
+// JSON, the diff and the chroma of every call in the conversation thirty times
+// a second for as long as the turn lasts.
+func BenchmarkFrameLiveTools(b *testing.B) {
+	for _, turns := range []int{4, 20} {
+		b.Run(fmt.Sprintf("turns=%d", turns), func(b *testing.B) {
+			a := benchApp(turns)
+			a.state = stateWorking
+			a.turn++
+			args := benchEditArgs(40)
+			a.event(announced("edit", "edit internal/tui3/render.go", args))
+			a.event(beginWith("edit", "edit internal/tui3/render.go", args))
+			a.frame()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				a.dirty = true
+				a.frame()
+			}
+		})
+	}
+}
+
+// benchEditArgs is an edit call's payload with a replacement big enough to cost
+// what a real one costs: the diff between two n-line blocks is n² work before a
+// single row is painted.
+func benchEditArgs(lines int) string {
+	var old, want strings.Builder
+	for i := 0; i < lines; i++ {
+		fmt.Fprintf(&old, "\tif got := answer(%d); got != want {\n", i)
+		fmt.Fprintf(&want, "\tif got := answer(%d); got != wanted {\n", i)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"path":  "internal/tui3/render.go",
+		"edits": []map[string]string{{"oldText": old.String(), "newText": want.String()}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(payload)
 }
 
 // BenchmarkAppendText is the accumulator a streaming reply grows through, once

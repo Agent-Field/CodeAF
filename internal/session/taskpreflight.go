@@ -43,6 +43,7 @@ package session
 // an overlap worth a line ([hotFiles]).
 
 import (
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -109,6 +110,50 @@ var hotFiles = map[string]bool{
 // same text.
 func PreflightNote(root string, e Elsewhere, parts ...string) string {
 	return preflightLine(briefFiles(root, parts...), e)
+}
+
+// unsavedEditsWord is what a person is told about their own uncommitted work at
+// the moment a task is placed.
+//
+// IT IS THE SAME REGISTER AS THE LINE ABOVE IT — an observation, a middle dot,
+// the consequence — because both are facts said before the money and neither is
+// an instruction. It says `unsaved` rather than `uncommitted` since that is what
+// the edit IS to the person who made it, and `the last commit` because that is
+// the only part of the machinery they have to know: the task's copy is cut from
+// there (task_run.go's [prepareTaskTreeAt]) and their working tree never travels.
+const unsavedEditsWord = "your unsaved edits stay here · the task works from the last commit"
+
+// UnsavedEditsNote is the ONE LINE a task start carries about the person's own
+// uncommitted changes, or "" when there is nothing to say.
+//
+// THE EXPECTATION IT CORRECTS is "the task sees what I see". A task gets a
+// worktree branched from HEAD, so an edit sitting unsaved in the person's
+// checkout is invisible to it — and the way that failure presents is a worker
+// that reports the file as it was an hour ago, which reads as the worker being
+// wrong rather than as the placement being what it always was. Saying it costs
+// one line at the one moment it can still change what somebody does.
+//
+// IT IS A NOTE, NEVER A GATE. Nothing here blocks, waits or asks; the caller
+// hands the work over on the very next statement. And it is silent by default —
+// a clean tree, a directory that is no repository, a `git` that is not there all
+// answer "" rather than "no unsaved edits", because the emptiness law is that
+// nothing true and uninteresting gets a line of its own.
+//
+// ONE FORK, AT THE START. This shells out, so it belongs at a task's start and
+// nowhere on a frame's road. Untracked files are deliberately NOT counted
+// (`--untracked-files=no`): a new file is invisible to the task for the same
+// reason, but build output and scratch files make nearly every repository
+// permanently untracked-dirty, and a line that fired on every start is a line
+// nobody reads by Tuesday — the same reason [hotFiles] exists.
+func UnsavedEditsNote(root string) string {
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
+	out, err := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=no").Output()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return ""
+	}
+	return unsavedEditsWord
 }
 
 // preflightLine is the decision itself, over paths somebody has already pulled

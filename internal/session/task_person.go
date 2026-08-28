@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -112,58 +111,35 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	graph.admit(id, taskSpec{
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, brief: work,
-		acceptance: acceptance, model: a.resolveTaskModel("").model,
+		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
 	})
 	return id, title, nil
 }
 
-// StartPlannerRun starts an adaptive run from a person's brief. The hint is a
-// sketch from the sizing call, not a model override, and reaches the planner as
-// supporting context beneath the person's unchanged brief.
-func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) (string, string, error) {
-	brief = strings.TrimSpace(brief)
-	if brief == "" {
-		return "", "", errors.New("an adaptive task needs a brief")
-	}
-	// THE PERSON TYPED THIS, so it is what the run's planner and every one of its
-	// nodes will be shown as the request (task_brief.go). Without this line the
-	// run would carry whatever was last said in the CHAT, which on this path is
-	// some other conversation entirely — the brief came in through a command. It
-	// is recorded BEFORE the shaping call and from the raw sentence, because the
-	// request is the one thing on this path no model is allowed to have written.
-	a.rememberAsk(brief)
-	// The adaptive shape is shaped too — "this is true for all tasks". A run's
-	// nodes are workers with the same silence around them as a single task's, and
-	// a planner cutting up one unshaped sentence cuts up the same ambiguity into
-	// several pieces.
-	shaped := a.shapeBrief(ctx, brief)
-	// The adaptive run is named out of the same answer as the single task's, for
-	// the same reason: a run's row on the rail is three words too.
-	title := taskName(shaped.Title, brief)
-	goal, acceptance := shaped.Brief, shaped.Acceptance
-	// A RUN HAS NO ACCEPTANCE FIELD — it is a goal, a planner and a fleet
-	// (orchestrate.go) — so a shaped done-condition would be thrown away unless
-	// it rides in the goal. It goes under [briefDoneHeading], the same word every
-	// node brief already spells it with, and only when shaping actually happened:
-	// where it did not, the goal is the person's sentence and nothing else, which
-	// is what this path did before.
-	if acceptance != taskPersonAcceptance && strings.TrimSpace(acceptance) != "" {
-		goal += "\n\n" + briefDoneHeading + "\n" + acceptance
-	}
-	if plannerHint = strings.TrimSpace(plannerHint); plannerHint != "" {
-		goal += "\n\nPossible parallel parts: " + plannerHint
-	}
-	id, err := a.RunOrchestrate(ctx, goal, "", 0)
-	return id, title, err
-}
+// THE PLANNER DOOR A PERSON'S COMMAND USED TO OPEN IS GONE FROM THIS FILE.
+// `StartPlannerRun` stood here: it shaped a typed brief, named it, folded the
+// done-condition into the goal and handed the lot to [Agent.RunOrchestrate]. It
+// went with `/task adaptive`, which was its only caller, because ONE ROAD — a
+// planner has to guess the parts from a request it can only read, while one
+// worker that starts, opens the material and then hands out what it can actually
+// see is the shape the measured runs favour (internal/splitgate, task_divide.go).
+//
+// NOTHING WAS LOST WITH IT. The shaping and naming above are the same two calls
+// [Agent.StartTask] makes, on the road that survived; the planner ENGINE is
+// untouched and still shipped ([Agent.RunOrchestrate], orchestrate.go), reached
+// today by cmd/harness-design's own driver — no conversation reaches it at all
+// since the anchored cue went the same way this command's word did (loop.go).
+// What went here is one command's approach road, and a door with no caller is a
+// door the next reader assumes somebody walks through.
 
 // taskName settles what a person's task is called: the shaper's name where it
 // wrote one, and the mechanical cut of their own opening words where it did not.
 //
-// It is one function rather than the same two-line choice at both doors, because
-// the fallback is the thing that has to be identical — a single task and an
-// adaptive run started from the identical sentence must not end up on the rail
-// under two different names when the shaper is offline.
+// It is a function of its own rather than two lines inside [Agent.StartTask]
+// because the CHOICE is the thing worth naming and testing on its own: which of
+// two names a task ends up wearing, and the fact that the shaper being offline
+// costs a good name and nothing else. It had a second caller until the planner
+// door above went, and it is written to be called again.
 func taskName(shaped, brief string) string {
 	if shaped = strings.TrimSpace(shaped); shaped != "" {
 		return shaped
@@ -190,22 +166,16 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 	defer cancel()
 
 	a.mu.Lock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RolePlanner, a.model)
+	model := a.model
 	a.mu.Unlock()
-	if err != nil || strings.TrimSpace(call.Model) == "" {
-		return false, nil, ""
-	}
-	if effort, ok := provider.ParseEffort(call.Effort); ok && effort != provider.EffortNone {
-		ctx = provider.WithReasoningEffort(ctx, effort)
-	}
 	messages := []ai.Message{textMessage("system", taskJudgePrompt), textMessage("user", strings.TrimSpace(brief))}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, callErr := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
-			ai.WithModel(call.Model), ai.WithTemperature(taskJudgeTemp), ai.WithMaxTokens(taskJudgeTokens))
+		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages,
+			ai.WithTemperature(taskJudgeTemp), ai.WithMaxTokens(taskJudgeTokens))
 		if callErr != nil || response == nil {
 			return false, nil, ""
 		}
-		a.addAuxiliaryUsage(response, call.Model, 1)
+		a.addAuxiliaryUsage(response, judge, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
 			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT, AND IT IS WHAT THE
 			// WHOLE CALL IS FOR NOW. A yes used to raise a card offering a

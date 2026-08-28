@@ -13,37 +13,31 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
+// taskCommandAgent is the whole of what /task needs from the session, and it is
+// two calls now that ordinary work has ONE ROAD. The planner door it used to
+// carry is gone from the engine too, along with the `/task adaptive` that was its
+// only caller; the planner ENGINE is untouched and a person can still name a run
+// outright in the conversation, which the session reads for itself. Either way
+// the verb is not in this surface's vocabulary — a door listed here that no
+// command opens is an invitation to open it again.
 type taskCommandAgent interface {
 	StartTask(context.Context, string) (uint64, string, error)
-	StartPlannerRun(context.Context, string, string) (string, string, error)
 	JudgeDecomposable(context.Context, string) (bool, []string, string)
 }
 
+// taskSizedMsg is the sizing call's answer on its way back to the surface: the
+// brief that was read, and whether there was more than one job in it.
+//
+// IT CARRIES NEITHER A SKETCH NOR A ROW ANY MORE. The parts the judge named and
+// its reason for naming them were supporting context for a planner, and the
+// person's `starting a task` row decided which road the answer opened — and
+// there is one road, so both are questions with no reader. What survives of the
+// sketch is what it was always standing in for: a yes ARMS the worker to divide
+// off the material itself (internal/session's task_divide.go), from evidence
+// rather than from a guess made before anybody opened the files.
 type taskSizedMsg struct {
 	brief    string
 	parallel bool
-	parts    []string
-	why      string
-	// preset is what the person's `starting a task` row said when the command
-	// was typed ([config.TaskStartAt]), carried on the message rather than read
-	// again on the way back. It is one answer to one command: a row changed while
-	// the sizing call was in flight must not settle the command that was already
-	// running under the old one.
-	preset string
-}
-
-// hint is the sketch the sizing call produced, handed to the planner as
-// supporting context on the one road that still opens a planner without being
-// told to in so many words.
-func (m taskSizedMsg) hint() string {
-	hint := strings.Join(m.parts, " · ")
-	if m.why != "" {
-		if hint != "" {
-			hint += " · "
-		}
-		hint += m.why
-	}
-	return hint
 }
 
 type taskStartedMsg struct {
@@ -69,19 +63,43 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		a.note("could not start the task · this session has no task door")
 		return nil
 	}
-	mode, brief := "", arg
-	if word, rest, found := strings.Cut(arg, " "); found && (word == "solo" || word == "adaptive") {
-		mode, brief = word, strings.TrimSpace(rest)
+	// THE WHOLE VOCABULARY IS TWO FORMS: a brief, or `solo` and a brief. A first
+	// word that is neither of those is simply the beginning of the brief, so the
+	// split is taken once here and the brief defaults to everything typed.
+	word, rest, _ := strings.Cut(arg, " ")
+	rest = strings.TrimSpace(rest)
+	brief, solo := arg, false
+	switch word {
+	case "solo":
+		brief, solo = rest, true
+	case "adaptive":
+		// THE RETIRED WORD IS A WORD NOW AND NOT A ROAD. `/task adaptive` used to
+		// open a planned graph over the brief, and ordinary task work does not go
+		// that way any more. There are two things this surface must not do about
+		// that. It must not GUESS, because guessing means editing somebody's
+		// sentence — a brief that genuinely opens "adaptive rate limiting for the
+		// api" would lose its first word to a shape nobody asked for — so the words
+		// are kept whole and run the one road there is. And it must not stay QUIET,
+		// because the person who did mean the old shape would then get something
+		// other than what they typed with nothing on screen saying so, which is the
+		// one outcome a retirement owes a line about. So: the brief is untouched,
+		// and one line says the word steers nothing.
+		a.note(taskAdaptiveRetiredNote)
+		if rest == "" {
+			// Nothing but the retired word is no brief at all, and shaping a task
+			// called "adaptive" would spend a model call on somebody's muscle memory.
+			brief = ""
+		}
 	}
 	if brief == "" {
-		a.note("usage: /task <brief> · /task solo <brief> · /task adaptive <brief>")
+		a.note("usage: /task <brief> · /task solo <brief>")
 		return nil
 	}
-	// AN EXPLICIT WORD IS THE LAST WORD. `/task solo` and `/task adaptive` say
-	// the shape outright, so neither the sizing call nor the person's standing
-	// answer to it has anything left to decide.
-	if mode != "" {
-		return a.startTaskDoor(door, mode, brief, "")
+	// AN EXPLICIT SOLO IS THE LAST WORD. `/task solo` says outright that this is
+	// one worker and nothing is to be read for width first, so neither the sizing
+	// call nor the person's standing answer to it has anything left to decide.
+	if solo {
+		return a.startTaskDoor(door, brief)
 	}
 	// And where they have said in advance that one worker is what they want and
 	// that they do not want the brief read for width first, the sizing call is
@@ -91,26 +109,26 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// (internal/splitgate), which costs nothing at all.
 	preset := config.TaskStartAt(a.profileDir)
 	if preset == config.TaskStartSingle {
-		return a.startTaskDoor(door, "single", brief, "")
+		return a.startTaskDoor(door, brief)
 	}
-	a.beginPreflight(taskSizingNote)
+	a.beginPreflight(taskSizingNote, brief)
 	ctx := a.ctx
 	return func() tea.Msg {
-		parallel, parts, why := door.JudgeDecomposable(ctx, brief)
-		return taskSizedMsg{brief: brief, parallel: parallel, parts: parts, why: why, preset: preset}
+		parallel, _, _ := door.JudgeDecomposable(ctx, brief)
+		return taskSizedMsg{brief: brief, parallel: parallel}
 	}
 }
 
 // startTaskDoor hands the work through, and says so while it goes.
 //
-// THE WAIT IS NAMED BECAUSE IT IS NOT INSTANT ANY MORE. Both doors shape the
-// brief before they admit anything (internal/session's task_shape.go), which is
+// THE WAIT IS NAMED BECAUSE IT IS NOT INSTANT ANY MORE. The door shapes the
+// brief before it admits anything (internal/session's task_shape.go), which is
 // a model call of its own, and a command that appeared to do nothing for several
-// seconds would read as a command that had not registered. The note says the one
-// true thing about the pause in the same voice `sizing it up…` says its own, and
-// [app.settleShaping] takes it away the moment the task lands — including when
-// nothing shaped it, because the note was about the attempt.
-func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea.Cmd {
+// seconds would read as a command that had not registered. The forming block
+// says the one true thing about the pause in the same voice `sizing it up…` says
+// its own, and [app.settleShaping] collapses it the moment the task lands —
+// including when nothing shaped it, because the block was about the attempt.
+func (a *app) startTaskDoor(door taskCommandAgent, brief string) tea.Cmd {
 	ctx := a.ctx
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
@@ -120,26 +138,37 @@ func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea
 	// work over regardless, because a claim another window wrote is evidence and
 	// never an instruction (internal/session's taskpreflight.go).
 	//
-	// The reading is the cached one the roster already keeps, so this costs a
-	// readdir at most once every three seconds (taskview.go's [app.elsewhere]).
-	if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
+	// The local reading is cached, so this costs a readdir at most once every
+	// three seconds (taskview.go's [app.elsewhere]). A HOSTED SURFACE SAYS
+	// NOTHING: this seam cannot ask the far roster, and consulting the laptop
+	// would describe another machine's work.
+	if !a.hosted() {
+		if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
+			a.note(line)
+		}
+	}
+	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO NOT SEND. The task works in
+	// a copy cut from the last commit, so unsaved edits stay in front of the
+	// person who made them — and "the task sees what I see" is what everybody
+	// assumes until a worker reports the file as it was this morning. Said in the
+	// same breath as the line above and for the same reason: this is the last
+	// moment before the spend when knowing it can still change what somebody does.
+	//
+	// It costs one `git status` per start and nothing at all per frame, and it is
+	// silent on a clean tree (internal/session's taskpreflight.go).
+	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
 	}
-	a.beginPreflight(taskShapingNote)
+	a.beginPreflight(taskShapingNote, brief)
 	return func() tea.Msg {
-		if mode == "adaptive" {
-			id, title, err := door.StartPlannerRun(ctx, brief, hint)
-			return taskStartedMsg{mode, id, title, err}
-		}
 		id, title, err := door.StartTask(ctx, brief)
 		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err}
 	}
 }
 
-// The two waiting notes. They are named rather than typed at their two ends
-// because each is written once and REMOVED by matching the same text: a note
-// whose spelling drifted between the writer and the remover is a line that
-// stays on screen for the rest of the session.
+// The two phase words are named rather than typed at their two ends because the
+// state that begins a phase and the state that settles it must agree. A spelling
+// drift there would leave the wrong live phase on screen or fail to clear it.
 const (
 	taskSizingNote  = "sizing it up…"
 	taskShapingNote = "shaping the brief…"
@@ -161,41 +190,74 @@ const (
 // are what say it happened.
 const taskWideNote = "the work looks wide · one worker starts, and it can split as it goes"
 
-// preflight is the wait a task command is standing in: which of the two notes
-// above is on screen, and the moment it went up.
+// taskAdaptiveRetiredNote answers `/task adaptive`, and says both halves of what
+// happened: the word no longer picks anything, and it was left exactly where the
+// person typed it. It names the road that replaced it in the same words
+// [taskWideNote] uses, because they are the same road and a person who reads
+// both should not have to work out that they are.
+const taskAdaptiveRetiredNote = "/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes"
+
+// preflight is the one visible thing a task command is becoming: the person's
+// words, its present phase, and the moment that phase began.
 //
-// THE DEFECT THIS FIXES: both notes were plain notes, and a note is the lane
-// this surface says FINISHED things in — `exported · …`, `⟲ 135.7k cached ·
-// saved $0.0069`. Dim, static, and cached like every other note (render.go's
-// [app.entryRows]), so `shaping the brief…` was a still photograph for the
-// twenty-five seconds the shaping call is allowed (internal/session's
-// task_shape.go), sitting in a stack of post-hoc telemetry with nothing to
-// distinguish it from the lines above it that were about work already over.
-// Worse, no frame was even being ASKED for while it was up: the seven reasons
-// this surface keeps painting with the model idle ([app.paint]) did not include a
-// command's pre-flight, so the surface genuinely stopped. From where the person sat, a command they had just typed
-// had done nothing and then kept doing nothing.
-//
-// So the wait is drawn the way every other genuinely in-flight thing on this
-// surface is drawn — the braille spinner and the count-up the tool lines and a
-// running compaction already wear (render.go's [app.compactRow]) — and the frame
-// keeps turning while it is up. It borrows both rather than inventing an
-// animation, for [app.compactRow]'s stated reason: somebody who has learned that
-// a spinner means "this is happening right now" has learned it here too, and
-// both turn on the same [spinnerStep] grid so two moving rows never beat against
-// each other.
+// THE WAIT DOES NOT ENTER THE NOTES LANE. Notes report facts that have landed;
+// this scaffold exists only while a command is in flight and is drawn at the
+// transcript tail as a live region. Its left hairline gives every row one owner,
+// while the shared spinner and count-up say that owner is still changing. When
+// the door answers, the state is cleared before the ordinary settled task or
+// error row is written, so collapse is one replacement frame rather than a
+// second announcement.
 type preflight struct {
-	note string
-	at   time.Time
+	note  string
+	brief string
+	// name is the block's identity line where there are no person-words to
+	// quote: a PROPOSAL the person just approved. It is the card's own name, so
+	// the block and the card that raised it can never call the work two things.
+	name string
+	// taskID owns the wait on the proposal road, and zero is the typed command's
+	// wait. The two roads settle differently — a command's door answers with a
+	// message, a proposal's task simply starts existing on the update lane — and
+	// the id is how the second settle finds its own block and no other.
+	taskID uint64
+	at     time.Time
 }
 
 // live reports whether a wait is up. It is the frame's eighth reason to paint.
 func (p preflight) live() bool { return p.note != "" }
 
 // begin puts the wait on screen and starts its clock.
-func (a *app) beginPreflight(note string) {
-	a.wait = preflight{note: note, at: a.now()}
-	a.note(note)
+func (a *app) beginPreflight(note, brief string) {
+	a.wait = preflight{note: note, brief: brief, at: a.now()}
+	a.follow()
+	a.touch()
+}
+
+// beginProposalWait is the SAME forming block raised by the OTHER door: a
+// proposal card the person just answered yes. The engine shapes the brief
+// before the task exists (internal/session's task_shape.go), which is the same
+// pause the typed command stands in — and until this existed the yes was
+// followed by seconds of nothing, the exact dead air the block was built to
+// end. One forming vocabulary, two lawful entrances; the card itself stays,
+// because it is a spend gate and not a rendering.
+func (a *app) beginProposalWait(card *taskCard) {
+	name := card.name
+	if name == "" {
+		name = card.title
+	}
+	a.wait = preflight{note: taskShapingNote, name: name, taskID: card.id, at: a.now()}
+	a.follow()
+	a.touch()
+}
+
+// settleProposalWait collapses a proposal's forming block the moment its task
+// exists at all. Any update for the id is that moment: queued and running mean
+// admitted, and a failure is a fact the task's own machinery announces — the
+// block was only ever about the pause before there was anything to point at.
+func (a *app) settleProposalWait(id uint64) {
+	if id != 0 && a.wait.taskID == id {
+		a.wait = preflight{}
+		a.touch()
+	}
 }
 
 // endPreflight stops the clock and takes the line away. The two halves are one
@@ -206,29 +268,26 @@ func (a *app) endPreflight(note string) {
 	if a.wait.note == note {
 		a.wait = preflight{}
 	}
-	a.dropNote(note)
+	a.touch()
 }
 
 func (a *app) settleSizing()  { a.endPreflight(taskSizingNote) }
 func (a *app) settleShaping() { a.endPreflight(taskShapingNote) }
 
-// waiting reports whether this note is the wait that is in flight right now,
-// rather than one of the finished facts the same lane carries.
-func (a *app) waiting(e *entry) bool {
-	return a.wait.live() && e.kind == entryNote && e.text == a.wait.note
-}
-
-// preflightRows draws the wait: the spinner, the note's own words, and how long
-// it has been going.
+// preflightRows draws the forming block at the transcript tail.
 //
-//	⠙ shaping the brief… · 6s
+//	▏ task
+//	▏ "write the release notes"
+//	▏ ⠙ shaping the brief… · 6s
 //
-// It keeps the note lane's hanging indent — the spinner stands exactly where the
-// `· ` would, two cells, and every continuation lines up under the words — so a
-// wait that wraps at a narrow width is still one block rather than a ragged
-// clump. The count-up is [countUpWord], which floors under a second: a wait that
-// has only just started says nothing about its length, by the emptiness law.
-func (a *app) preflightRows(e *entry, width int) []string {
+// ONE HAIRLINE AND ONE SPACE IS THE WHOLE SCAFFOLD. The brief is quoted because
+// it is the person's verbatim input, and is capped at two fitted rows so a long
+// command cannot turn a transient wait into a transcript card. The count-up is
+// [countUpWord], which floors under a second by the emptiness law.
+func (a *app) preflightRows(width int) []string {
+	if !a.wait.live() || width < 3 {
+		return nil
+	}
 	// The linear tier's objection to a spinner is the one it makes on a tool
 	// line: a claim repeated thirty times a second is heard thirty times a second
 	// by a surface being read aloud. A still mark makes it once.
@@ -236,32 +295,34 @@ func (a *app) preflightRows(e *entry, width int) []string {
 	if a.linear {
 		mark = glyphRunASCII
 	}
-	line := e.text
+	line := a.wait.note
 	if word := countUpWord(a.now().Sub(a.wait.at)); word != "" {
 		line += " · " + word
 	}
-	body := wrap(line, width-2)
-	out := make([]string, 0, len(body))
-	for i, row := range body {
-		lead := mark + " "
-		if i > 0 {
-			lead = "  "
+	rail := "▏ "
+	room := width - 2
+	// The identity line is the person's words when there are person's words —
+	// quoted, because they are verbatim — and the task's own name when the block
+	// was raised by an approved proposal, plain, because the name is the
+	// surface's word and wearing quotes would claim somebody typed it.
+	var identity []string
+	switch {
+	case a.wait.brief != "":
+		identity = wrap(strconv.Quote(a.wait.brief), room)
+		if len(identity) > 2 {
+			identity = identity[:2]
+			identity[1] = fit(identity[1], room)
+			if !strings.HasSuffix(identity[1], "…") {
+				identity[1] = fit(identity[1]+"…", room)
+			}
 		}
-		out = append(out, a.pal.dim(lead+row))
+	case a.wait.name != "":
+		identity = []string{fit(a.wait.name, room)}
 	}
+	out := []string{a.pal.dim(rail + "task")}
+	for _, row := range identity {
+		out = append(out, a.pal.dim(rail+row))
+	}
+	out = append(out, a.pal.dim(rail+mark+" "+fit(line, room-2)))
 	return out
-}
-
-// dropNote takes the most recent note with this exact text back off the
-// transcript. It is how a line that said what was happening leaves when it has
-// stopped being true, rather than being rewritten in place — a note is a thing
-// the conversation said, and the honest end of "sizing it up…" is that it is no
-// longer sizing anything up.
-func (a *app) dropNote(text string) {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		if a.entries[i].kind == entryNote && a.entries[i].text == text {
-			a.entries = append(a.entries[:i], a.entries[i+1:]...)
-			return
-		}
-	}
 }

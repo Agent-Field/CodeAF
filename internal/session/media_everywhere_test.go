@@ -121,9 +121,18 @@ func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
 	landing := toolNameSet(landingBelt(agent.tools))
 
-	for _, verb := range append([]string{"write", "edit"}, theFourGenerationVerbs...) {
+	for _, verb := range []string{"write", "edit", "generate_image", "speak"} {
 		if !landing[verb] {
 			t.Errorf("the landing belt dropped %s — a node whose deliverable is made with it cannot produce one", verb)
+		}
+	}
+	// The verbs that answer with a job and land minutes later are OFF the
+	// landing belt: the node is closed the moment the turn ends and Close
+	// kills the render, so handing them out would promise a file that cannot
+	// arrive ([landsLater]).
+	for _, verb := range []string{"generate_video", "generate_music"} {
+		if landing[verb] {
+			t.Errorf("the landing belt kept %s, whose file lands after the node is already closed", verb)
 		}
 	}
 	// And it is a NARROWING and not the whole belt: landing is for finishing,
@@ -142,9 +151,14 @@ func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 func TestTheLandingInstructionNamesExactlyTheHandsItKept(t *testing.T) {
 	withMedia, _ := newMediaAgent(t, &scriptedMedia{}, nil)
 	said := landingInstruction(landingBelt(withMedia.tools))
-	for _, verb := range theFourGenerationVerbs {
+	for _, verb := range []string{"generate_image", "speak"} {
 		if !strings.Contains(said, verb) {
 			t.Errorf("the landing instruction never names %s, which the landing belt carries:\n%s", verb, said)
+		}
+	}
+	for _, verb := range []string{"generate_video", "generate_music"} {
+		if strings.Contains(said, verb) {
+			t.Errorf("the landing instruction names %s, which the landing belt does not carry:\n%s", verb, said)
 		}
 	}
 

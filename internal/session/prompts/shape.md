@@ -49,6 +49,12 @@ the ones this job is genuinely exposed to.
 which file, which format, how long, which of two plausible readings, what to do when the
 obvious route is blocked. Decide it and say so.
 
+**Where did the person ask it to happen?** Preserve a repository or folder path they
+named as `where`; do not replace it with the current directory and do not guess a path
+from a project name. Use `in place` for work that is deliberately not code work and
+belongs in this conversation's workspace. Otherwise leave `where` empty: the task runner
+will cut its own worktree from the conversation's repository into the task folder.
+
 **What does done look like, and how would somebody else confirm it?** Not "the page is
 written" but the thing a second party could check without taking the worker's word for it.
 
@@ -93,4 +99,4 @@ what the worker does.
 
 Exactly one JSON object. No markdown, no code fence, no commentary before or after it:
 
-{"brief":"...","acceptance":"..."}
+{"title":"...","brief":"...","acceptance":"...","where":"..."}

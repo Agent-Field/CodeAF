@@ -26,15 +26,14 @@ package session
 //     superseded and was never the point: the tool takes an absolute path, and
 //     the job card prints one.
 //
-//   - THE STEERING LANE, not a tool and not an event. When a job ends, the
-//     model learns about it the way it learns anything a person types
-//     mid-turn: a line appended to the steering queue (agent.go), drained into
-//     the transcript at the next step boundary. A completion is news, not an
-//     answer to a question, and the alternative — the model polling `jobs` on
-//     a hunch — costs a round trip per hunch and still misses the exit it did
-//     not think to check for.
+//   - THE OWED LANE, not a tool and not an event. When a job ends, its headline
+//     joins the session's boundary batch (agent.go), drained at the next step.
+//     The complete output remains here behind `jobs output` and on disk. A
+//     completion is news, not an answer to a question, and the alternative —
+//     the model polling `jobs` on a hunch — costs a round trip per hunch and
+//     still misses the exit it did not think to check for.
 //
-//   - NO PUSH MID-BATCH. The note lands at a step boundary and never inside
+//   - NO PUSH MID-BATCH. The headline lands at a step boundary and never inside
 //     one, for the same reason user steering does: the transcript's tail
 //     mid-batch sits between an assistant's tool_calls and their results, and
 //     a user message spliced in there is a shape every provider rejects. A job
@@ -48,6 +47,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -66,10 +66,21 @@ const (
 	// Two seconds is a server's shutdown hook, not a wait.
 	jobTermGrace = 2 * time.Second
 
-	// jobExitNoteLimit caps the log line quoted in the completion note. The
-	// note is a sentence in the transcript, not the output: the output is in
-	// the ring and on disk, and the model reads it if it cares.
+	// jobExitNoteLimit caps the log line quoted in the completion note's first
+	// line — the headline, which has to fit on one line beside the exit code.
 	jobExitNoteLimit = 120
+
+	// jobExitTailLines is how much of a finished job's output rides in the note
+	// itself.
+	//
+	// A COMPLETION IS DELIVERED WHOLE, OR IT IS NOT DELIVERED. The note used to
+	// be one line — `job 3 exited 0: BUILD OK` — and a model that read it still
+	// knew nothing about what the job had DONE, so its next move was a call to
+	// `jobs output`, which is a round trip to learn the thing the note was
+	// already about. Fifty lines is `jobs output`'s own default and the tail of
+	// a build log where the failure is; the whole log is still on disk and the
+	// note still names it.
+	jobExitTailLines = jobsDefaultTail
 )
 
 // jobState is what a job is doing now.
@@ -104,17 +115,33 @@ const (
 	// rather than a signal to a process group, which is the same stop function a
 	// watch already has.
 	jobKindTask
-	// jobKindVideo is one video render (tools_video.go).
+	// jobKindRender is one provider generation in a goroutine: a video render
+	// (tools_video.go) or a music compose (tools_music.go).
 	//
-	// A render is asynchronous on the wire — submit, then poll, for as long as
-	// ten minutes — and a turn that waited for one would be a conversation held
+	// A render is asynchronous on the wire or simply slow — a video is submit-
+	// then-poll for as long as ten minutes, a compose is one long streaming
+	// call — and a turn that waited for one would be a conversation held
 	// hostage by a file nobody can look at yet. So it is a job for the reason a
 	// watch is: everything AROUND it is what a job already is, and only the
 	// middle differs. Its middle is one provider call in a goroutine, its kill
 	// is that call's context being cancelled — the same stop function a watch
 	// has — and its ending is a note on the steering lane carrying the landed
 	// path or the failure.
-	jobKindVideo
+	jobKindRender
+	// jobKindHand is one hand of a fork (fork.go): a copy of the caller's own
+	// mind, working a declared slice of the same working copy.
+	//
+	// IT IS HERE FOR THE REASON A RENDER IS, and the reason is the law this
+	// file opens with: A HAND IS A STREAM, NOT A BARRIER. `fork` used to
+	// block its caller's tool call until the SLOWEST hand came home — measured
+	// at thirty-nine minutes on a fork whose first hand was finished in ninety
+	// seconds, with that finished work sitting unbuilt and unmeasured for
+	// thirty-seven of them. So a hand is registered like every other stream this
+	// session starts: one id space, one log file, one row in `jobs list`, one
+	// kill, one death at Close. Its middle is a child agent's turn, its kill is
+	// that turn's context being cancelled — the same stop function a watch has —
+	// and its ending is a note on the steering lane carrying its whole report.
+	jobKindHand
 )
 
 // job is one background command.
@@ -285,12 +312,16 @@ type jobRegistry struct {
 	// legacy layout and the only thing a caller that has not adopted a folder
 	// can mean.
 	place Place
-	// notify carries a completion note to the steering queue — the WAKING lane
-	// (agent.go's [Agent.enqueueSteering]), which queues while a turn runs and
-	// starts one when none does. It is a function rather than the Agent itself so
-	// the registry has no idea what a turn is — it reports, and the lane decides
-	// whether anybody has to answer.
+	// notify carries a completion note to the OWED lane (agent.go's
+	// [Agent.enqueueJobNote]), which queues while a turn runs and starts one when
+	// none does. It is a function rather than the Agent itself so the registry
+	// has no idea what a turn is — it reports, and the lane decides whether
+	// anybody has to answer.
 	notify func(string)
+	// notifyWatch carries watch updates to the AMBIENT lane. It is separate
+	// because a periodic tick must never interrupt a running model turn, while a
+	// job ending after the model was told to wait remains owed.
+	notifyWatch func(string, string)
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -306,10 +337,27 @@ type jobRegistry struct {
 	// limit check and the append in which two concurrent starts both pass, and
 	// tool calls in one batch run concurrently.
 	watches int
+	// hands is how many forked hands are OUT — started and not yet reported.
+	//
+	// IT IS COUNTED RATHER THAN READ OFF THE SLICE, and the reason is a race
+	// that would cost a hand's whole report. A hand's job settles a moment
+	// BEFORE its report reaches the steering queue, and the thing reading this
+	// count is a task node's runner deciding whether to land ([runTaskChild]'s
+	// tail loop, through [Agent.childrenOutstanding]). A count taken from the
+	// jobs' states would read zero inside that moment, and the runner would land
+	// the node on top of a report nobody had read — which is exactly the defect
+	// the wait on a sub-task's report was written to close. So the count is
+	// raised when the hand goes out and lowered only AFTER its report is on the
+	// queue.
+	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string)) *jobRegistry {
-	return &jobRegistry{workspace: workspace, place: place, notify: notify}
+func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string)) *jobRegistry {
+	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
+	if len(watch) > 0 {
+		registry.notifyWatch = watch[0]
+	}
+	return registry
 }
 
 // newJob makes the shell every job shares — an id, a log file on disk, a sink
@@ -427,10 +475,16 @@ func (r *jobRegistry) start(command string) (*job, error) {
 		return nil, err
 	}
 
-	shell, shellArgs := jobShell()
-	process := exec.Command(shell, append(shellArgs, command)...)
+	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
+	// streaming.go). A background job is the one place where block-buffered
+	// output does the most damage — nobody is watching the pipe, so a log that
+	// stays empty until exit is a job that looks dead for as long as it runs —
+	// and this used to be a hand-copied three-line shell choice with no
+	// buffering fix in it at all.
+	shell, shellArgs := bare.StreamingShell(command)
+	process := exec.Command(shell, shellArgs...)
 	process.Dir = r.workspace
-	process.Env = os.Environ()
+	process.Env = bare.StreamingEnv()
 	// Setpgid puts the job and everything it spawns in one process group, so a
 	// kill reaches the whole tree. A dev server that forks a compiler must not
 	// survive the kill of its parent.
@@ -472,8 +526,9 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 	return started, nil
 }
 
-// startVideo registers one video render as a job and hands back the job and the
-// context its provider call must run under.
+// startRender registers one provider generation — a video render, a music
+// compose — as a job and hands back the job and the context its provider call
+// must run under.
 //
 // The context is the BACKGROUND one and never the turn's, for [jobRegistry.start]'s
 // reason exactly: a turn's context is cancelled when the turn ends, and a render
@@ -481,10 +536,11 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 // answering the person. Its cancel is the job's stop function, so `jobs kill`
 // and Close both reach it through [job.signal].
 //
-// What runs in the middle is the caller's (tools_video.go), as a watch's loop is
-// tools_watch.go's: this registry owns the id, the log, the row and the kill.
-func (r *jobRegistry) startVideo(label, prompt string) (*job, context.Context, error) {
-	started, err := r.newJob(prompt, jobKindVideo)
+// What runs in the middle is the caller's (tools_video.go, tools_music.go), as
+// a watch's loop is tools_watch.go's: this registry owns the id, the log, the
+// row and the kill.
+func (r *jobRegistry) startRender(label, prompt string) (*job, context.Context, error) {
+	started, err := r.newJob(prompt, jobKindRender)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -495,6 +551,83 @@ func (r *jobRegistry) startVideo(label, prompt string) (*job, context.Context, e
 	started.stop = cancel
 	r.add(started)
 	return started, ctx, nil
+}
+
+// startHand registers one forked hand as a job and hands back the job and the
+// context its turn must run under.
+//
+// IT IS [jobRegistry.startVideo] WITH ONE MORE FACT KEPT, and everything else
+// about it is the same argument: the context is the BACKGROUND one and never
+// the turn's, because a hand whose whole purpose is to outlive the tool call
+// that opened it would be killed by the act of answering that call. Its cancel
+// is the job's stop function, so `jobs kill`, [Agent.Interrupt] and Close all
+// reach it through [job.signal].
+//
+// The one more fact is [jobRegistry.hands]: a hand is OUT from this instant
+// until its report is delivered, which is a longer life than the job's own and
+// is the life a node's landing has to wait on. See the field.
+func (r *jobRegistry) startHand(label, role string) (*job, context.Context, error) {
+	started, err := r.newJob(role, jobKindHand)
+	if err != nil {
+		return nil, nil, err
+	}
+	started.label = label
+	started.detail = role
+
+	ctx, cancel := context.WithCancel(context.Background())
+	started.stop = cancel
+	r.mu.Lock()
+	r.hands++
+	r.mu.Unlock()
+	r.add(started)
+	return started, ctx, nil
+}
+
+// handHome lowers the out-count, and it is called AFTER the hand's report is on
+// the steering queue rather than when its job settles. See [jobRegistry.hands].
+func (r *jobRegistry) handHome() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	if r.hands > 0 {
+		r.hands--
+	}
+	r.mu.Unlock()
+}
+
+// handsOutstanding reports whether any hand this session forked has yet to
+// deliver its report. It is what keeps a node's landing from closing on top of
+// one ([Agent.childrenOutstanding]).
+func (r *jobRegistry) handsOutstanding() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.hands > 0
+}
+
+// stopHands ends every hand still out, the way the person's interrupt means it.
+//
+// A BACKGROUND JOB SURVIVES AN INTERRUPT AND A HAND DOES NOT, and the difference
+// is whose work it is. A job is a command the person asked to be left running; a
+// hand is THIS MIND, copied, finishing the answer that was just interrupted —
+// and an answer nobody is waiting for any more has no hands to keep out. Every
+// kill here is a requested one, so no hand reports itself onto a queue whose
+// turn has just been cancelled.
+func (r *jobRegistry) stopHands() {
+	if r == nil {
+		return
+	}
+	for _, candidate := range r.all() {
+		if candidate.kind != jobKindHand {
+			continue
+		}
+		if candidate.requestKill() {
+			candidate.signal(syscall.SIGTERM)
+		}
+	}
 }
 
 // finish settles a job whose middle was a goroutine rather than a process, and
@@ -531,7 +664,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // and [jobRegistry.settleExit] does everything it would have done after a Wait
 // of its own. THIS IS STILL THE ONLY REAPER: nothing in bare decides a job is
 // over, notes an exit, or writes a status word.
-func (r *jobRegistry) adopt(taken *bare.BashCall) (*job, error) {
+func (r *jobRegistry) adopt(taken *bare.BashCall, quiet ...bool) (*job, error) {
 	started, err := r.newJob(taken.Command(), jobKindBash)
 	if err != nil {
 		return nil, err
@@ -541,7 +674,13 @@ func (r *jobRegistry) adopt(taken *bare.BashCall) (*job, error) {
 	// it does for a job this registry forked itself.
 	started.cmd = taken.Process()
 	taken.Attach(started.sink)
-	r.add(started)
+	if len(quiet) > 0 && quiet[0] {
+		r.mu.Lock()
+		r.jobs = append(r.jobs, started)
+		r.mu.Unlock()
+	} else {
+		r.add(started)
+	}
 
 	// The receive happens INSIDE the goroutine: written as an argument it would
 	// be evaluated here, and the adoption would block until the process exited.
@@ -567,6 +706,16 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	note := fmt.Sprintf("job %d exited %d", watched.id, code)
 	if last := watched.sink.lastNonEmptyLine(); last != "" {
 		note += ": " + clip(last, jobExitNoteLimit)
+	}
+	// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and needs
+	// none of this; a bash job's ending is the moment its output finally means
+	// something, and a note that withheld it would be an invitation to make one
+	// more call for what the note was already about.
+	if watched.kind == jobKindBash {
+		if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
+			note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
+				strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+		}
 	}
 	r.notify(note)
 }
@@ -622,10 +771,20 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 	if target.kind == jobKindTask {
 		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
 	}
+	// A hand is STOPPED and whatever it had already written is STILL THERE: the
+	// hands share the caller's working copy, so ending one throws nothing away
+	// and leaves a slice that may be half-made. The model is told both, because
+	// the second is the half it would otherwise assume away.
+	if target.kind == jobKindHand {
+		return fmt.Sprintf("%s (job %d) stopped; what it had already written is still in your working copy "+
+			"and may be half-made — no report is coming", target.label, id), false
+	}
 	// A render is STOPPED and nothing was saved, which is the whole of what the
-	// model needs to know: no file landed, and no note about this job is coming.
-	if target.kind == jobKindVideo {
-		return fmt.Sprintf("%s (job %d) stopped; no video was saved", target.label, id), false
+	// model needs to know: no file landed, and no note about this job is
+	// coming. The label is the noun — "video", "music" — so the sentence names
+	// what was lost without this switch growing a case per modality.
+	if target.kind == jobKindRender {
+		return fmt.Sprintf("%s (job %d) stopped; no %s was saved", target.label, id, target.label), false
 	}
 	return fmt.Sprintf("job %d killed", id), false
 }
@@ -686,7 +845,13 @@ func statusText(info jobInfo) string {
 		}
 		// Nor has a render: it either landed a file or failed, and both of
 		// those already reached the model as a note.
-		if info.kind == jobKindVideo {
+		if info.kind == jobKindRender {
+			return "finished"
+		}
+		// Nor has a hand: its outcome is a WORD (done, out of rounds, stopped)
+		// that reached the model in its own report, and an exit code here would
+		// be a second, dumber account of the same ending.
+		if info.kind == jobKindHand {
 			return "finished"
 		}
 		return fmt.Sprintf("exited(%d)", info.code)
@@ -727,7 +892,10 @@ func (r *jobRegistry) list() string {
 		// A render's row is a task's row for the same reason: the label says
 		// what kind of thing is running, and the detail is the prompt it was
 		// given, which is how a person picks one of three renders out of a list.
-		if info.kind == jobKindTask || info.kind == jobKindVideo {
+		// A hand's row is a task's row for the same reason again: the label says
+		// which hand it is and the detail is the one line it was told, which is
+		// how a model picks one of four hands out of a list.
+		if info.kind == jobKindTask || info.kind == jobKindRender || info.kind == jobKindHand {
 			fmt.Fprintf(&rendered, "job %d · %s · %s · %s · %s",
 				info.id, info.label, statusText(info), formatElapsed(info.elapsed),
 				clip(firstLine(info.detail), hintLimit))
@@ -835,6 +1003,16 @@ func (s *jobSink) tail(n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// text is everything the ring is holding, verbatim. It is what a caller bounds
+// for itself — the sentence a promoted call answers with (promote.go), the tail
+// on a completion note — rather than a second opinion about how much of a job's
+// output anybody may see.
+func (s *jobSink) text() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.ring)
+}
+
 // lastNonEmptyLine is the one line the completion note quotes. Blank lines are
 // skipped because a job whose last write was a newline still has something to
 // say about how it went.
@@ -856,6 +1034,12 @@ func (s *jobSink) lastNonEmptyLine() string {
 // a copy rather than a call because bare's is unexported and this slice wraps
 // that package rather than editing it; the order is three lines and it is the
 // same three lines.
+//
+// IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
+// goes through [bare.StreamingShell] instead, which is this choice plus the
+// line-buffering that keeps a long command's log from being empty until it
+// exits. What is left on this one is a watch's tick and a standing order's step
+// — commands that are short by construction and read only after they end.
 func jobShell() (string, []string) {
 	if _, err := os.Stat("/bin/bash"); err == nil {
 		return "/bin/bash", []string{"-c"}

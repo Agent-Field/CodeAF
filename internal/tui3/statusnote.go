@@ -41,28 +41,26 @@ import (
 // ([deckSheetTitle]). A row that appears on one and not the other would make
 // "what does this session say about itself" a question with two answers.
 //
-// It differs from the sheet in exactly two places, and both differences are
-// about the MEDIUM rather than about the facts:
+// Its differences from the sheet are about the MEDIUM rather than about the
+// facts:
 //
-//	the file      a path is not a status-line segment at any width — it is a
-//	              thing a person copies into another program — and a note is
-//	              selectable text while a sheet at forty-four columns is a path
-//	              with its middle cut out. /help prints it for the same reason.
+//	identity       the build and file path are not status-line segments at any
+//	              width — they are things a person copies into another program
+//	              — and a note is selectable text while a sheet at forty-four
+//	              columns would cut either. /help prints the file for the same
+//	              reason.
 //	a zero bill   the status line keeps "$0.00" because it is a LIVE row, and a
 //	              segment that came into existence on the first priced turn
 //	              would shove every segment beside it sideways. A note is
 //	              written once and read once, so design-law-v2 §16 applies to it
 //	              plainly — and /cost's answer to the same session is "nothing
 //	              spent yet", which this list has to agree with.
-//	the crew      `max · brain kimi-k3:high · hands deepseek-v4-pro · checks
-//	              kimi-k3` is sixty cells of one fact, which a forty-four column
-//	              row would cut in the middle of the third class — and the three
-//	              classes ARE the answer, because "which one of these did I
-//	              change" is why a person is reading it. A note wraps and keeps
-//	              all three. It is here at all because the crew is otherwise
-//	              invisible: /crew writes four models the session picks up on its
-//	              next call, and every row on the frame goes on saying exactly
-//	              what it said before (crew.go's [app.crewWord]).
+//
+// The crew used to be a third difference — a line this command added under the
+// model and the sheet did not have. It is on [app.deckItems] now, directly under
+// the model, so the two surfaces say it the same way and this function no longer
+// places it (statusdeck.go says why it is the full reading there and one word on
+// the live row).
 func (a *app) statusText() string {
 	// The totals are refreshed FIRST. A command typed between turns must answer
 	// from what the session holds now and not from whatever the last event left
@@ -70,8 +68,7 @@ func (a *app) statusText() string {
 	// move figures forward).
 	a.refreshUsage()
 	sheet := a.deckItems()
-	items := make([]deckItem, 0, len(sheet)+2)
-	var crew crewLine
+	items := make([]deckItem, 0, len(sheet)+1)
 	for _, item := range sheet {
 		if item.label == deckSegWords[segCost] && a.cost <= 0 {
 			continue
@@ -85,6 +82,13 @@ func (a *app) statusText() string {
 		if a.hosted() && item.label == "place" {
 			item.value = a.hostedPath(a.workspace)
 		}
+		// THE ROW IS COMPACT AND THE NOTE IS A SENTENCE. On a healthy hosted
+		// link the row says `devbox · 3ms`; /status has room to say what that
+		// number is. While redialling, the existing sentence is already whole
+		// and is kept verbatim instead.
+		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatency > 0 && a.linkNote() == "" {
+			item.value = "the round trip to " + a.host + " is about " + latencyWord(a.linkLatency)
+		}
 		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.
 		// The frame calls it "aforge" because the path is bookkeeping a person
 		// did not ask to read (host.go's [ownedWord]) — but this note is the one
@@ -94,29 +98,18 @@ func (a *app) statusText() string {
 			item.value = a.workspace
 		}
 		items = append(items, item)
-		// THE CREW GOES DIRECTLY UNDER THE MODEL, because the two are read
-		// together or not at all: the line above is the model this conversation
-		// talks to, and this one is the four classes aforge makes its own calls
-		// on. A person who has just changed one and is checking whether it took
-		// is looking at exactly this pair, and a crew line anywhere else on the
-		// page would be a fact they have to go and find.
-		if item.label == "model" {
-			crew = a.addCrew(items)
-			items = crew.items
-		}
-	}
-	if !crew.placed {
-		// A SESSION WHOSE MODEL HAS NO NAME STILL HAS A CREW. The model row is
-		// dropped when the id is empty ([app.deckItems] adds nothing blank), and
-		// the crew is not a fact about that id — so it is appended rather than
-		// lost, and it lands where it would have landed anyway: after the
-		// identity, before the file.
-		items = a.addCrew(items).items
 	}
 	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
 	// made it the one fact /status carried that the phone's own sheet did not —
 	// on the tier where every other fact had moved into that sheet. It is part of
 	// [app.deckItems] now, so both surfaces say it and neither says it twice.
+	// THE BUILD IS A LOOKUP FACT, NOT LIVE TELEMETRY. It stays off the bottom
+	// row and phone sheet, where an immutable revision would spend a row all
+	// session, and appears here whole when a person asks which aforge is
+	// holding this conversation.
+	if a.build != "" {
+		items = append(items, deckItem{label: "build", value: a.build})
+	}
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it
@@ -163,28 +156,6 @@ func (a *app) statusFacts(text string) []string {
 	return out
 }
 
-// crewLine is one call to [app.addCrew]: the list it returned, and whether it
-// actually put a row on the end of it. The flag is what keeps the crew from
-// being written twice — [app.statusText] tries the model row first and falls
-// back to the end of the list — and it is a struct rather than two returns so
-// the zero value reads as "not placed yet" at the top of the loop.
-type crewLine struct {
-	items  []deckItem
-	placed bool
-}
-
-// addCrew appends the crew row, or leaves the list exactly as it was. THE
-// EMPTINESS LAW: a door with no profile directory has no four tier rows to read
-// and therefore no crew to name, so it gets no line rather than a label with a
-// guess beside it ([app.crewWord] is the empty string there).
-func (a *app) addCrew(items []deckItem) crewLine {
-	word := a.crewWord()
-	if word == "" {
-		return crewLine{items: items}
-	}
-	return crewLine{items: append(items, deckItem{label: "crew", value: word}), placed: true}
-}
-
 // costText is /cost: what this conversation has spent, and on what.
 //
 //	spend        $0.42
@@ -214,7 +185,7 @@ func (a *app) costText() string {
 	}
 	a.take(u)
 
-	items := make([]deckItem, 0, 5)
+	items := make([]deckItem, 0, 6)
 	add := func(label, value string) {
 		if value != "" {
 			items = append(items, deckItem{label: label, value: value})
@@ -243,6 +214,9 @@ func (a *app) costText() string {
 	// than the money was spent over.
 	if u.Calls > 0 {
 		add("model calls", itoa(u.Calls))
+	}
+	if u.EmptyReflex > 0 {
+		add("empty reflex answers", itoa(u.EmptyReflex))
 	}
 	add("time", tookWord(u.Duration))
 

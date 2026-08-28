@@ -985,3 +985,105 @@ func TestBackgroundChecksAreProfileOnly(t *testing.T) {
 type quietRunner struct{}
 
 func (quietRunner) Run(context.Context, string, ...string) error { return nil }
+
+// ── the retired task-start word ─────────────────────────────────────────────
+
+// retiredTaskStartWord is the spelling a profile written before the ONE ROAD
+// wave may still be holding. It is a literal here, and deliberately: the whole
+// mechanism is that this word exists nowhere in internal/config's own code, so a
+// constant offered back to the package would be the thing these tests exist to
+// prove is gone.
+const retiredTaskStartWord = "adaptive"
+
+// ONE ROAD. `task.start` used to have an answer that opened a planned graph
+// before anybody started, and it is gone: a chat turn takes one road for
+// ordinary work now, and the two words left both start ONE worker — the
+// difference between them is only whether the brief is read for width first.
+func TestTaskStartOffersOnlyTheTwoSurvivingWords(t *testing.T) {
+	if got := strings.Join(TaskStartModes, ","); got != "sized,single" {
+		t.Fatalf("the modes are %q, want the two surviving words with the default first", got)
+	}
+	row, ok := registry(t, t.TempDir()).Row(KeyTaskStart)
+	if !ok {
+		t.Fatal("the sheet has no starting-a-task row")
+	}
+	if strings.Join(row.Choices, ",") != strings.Join(TaskStartModes, ",") {
+		t.Fatalf("the row offers %v, which is not the list every other reader takes", row.Choices)
+	}
+	// AND THE HINT DOES NOT DESCRIBE A ROAD NOBODY CAN TAKE. The hint is the
+	// whole of what a person reads before answering, so a sentence about
+	// planning the pieces up front would be the sheet advertising a word the
+	// row itself refuses.
+	if strings.Contains(row.Hint, retiredTaskStartWord) {
+		t.Errorf("the hint still describes the retired word: %s", row.Hint)
+	}
+	// A WRITE OF IT IS REFUSED, in the words the row accepts in, and the refusal
+	// does not name it either.
+	err := row.Apply(retiredTaskStartWord)
+	if err == nil {
+		t.Fatal("the row accepted the retired word")
+	}
+	if strings.Contains(err.Error(), retiredTaskStartWord) {
+		t.Errorf("the refusal offers the retired word back: %v", err)
+	}
+}
+
+// A PREFERENCE SET MONTHS AGO MAY NOT BECOME AN ERROR. Somebody who chose the
+// planned road once has a config.json still holding the word; the retirement is
+// paid for by the resolver, which reads a word this build does not know as no
+// answer at all — so the profile loads clean, the row reads `sized`, and nobody
+// is told anything about a decision they made and forgot.
+func TestAProfileStillHoldingTheRetiredWordReadsAsSized(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeProfileValue(dir, KeyTaskStart, retiredTaskStartWord); err != nil {
+		t.Fatalf("could not write the old profile: %v", err)
+	}
+	if got := TaskStartAt(dir); got != TaskStartSized {
+		t.Fatalf("the old profile resolves to %q, want %q", got, TaskStartSized)
+	}
+	row, ok := registry(t, dir).Row(KeyTaskStart)
+	if !ok {
+		t.Fatal("the sheet has no starting-a-task row")
+	}
+	// AND THE SHEET SAYS THE SAME THING THE RESOLVER DOES. A row that read back
+	// the retired word over a session that is running the default would be the
+	// settings sheet lying in the one place somebody went to check.
+	if got := row.Value(); got != TaskStartSized {
+		t.Fatalf("the row reads %q over a session running %q", got, TaskStartSized)
+	}
+}
+
+// THE ROW HAS TO BE ABLE TO SAY "NOBODY ANSWERED". The settings sheet asks what
+// is in force and is owed the default; the adapter asks whether a person CHOSE,
+// and the difference is the whole of what lets it route a person's own turn on
+// speed and a task node or an errand on price while a written word still wins
+// (internal/provider's velocity.go).
+func TestTheRoutingRowReadsAsAChoiceAndAsAnAnswer(t *testing.T) {
+	dir := t.TempDir()
+	if got := RoutingAt(dir); got != DefaultRouting {
+		t.Fatalf("an unwritten row is in force as %q, want %q", got, DefaultRouting)
+	}
+	if got := RoutingChoiceAt(dir); got != "" {
+		t.Fatalf("an unwritten row reads as the choice %q, want nobody having chosen", got)
+	}
+	if err := writeProfileValue(dir, KeyRouting, RoutingPrice); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := RoutingChoiceAt(dir); got != RoutingPrice {
+		t.Fatalf("the written row reads as %q, want %q", got, RoutingPrice)
+	}
+	if got := RoutingAt(dir); got != RoutingPrice {
+		t.Fatalf("the written row is in force as %q, want %q", got, RoutingPrice)
+	}
+	// A word this build does not know is nobody's choice either, and the sheet
+	// still reads the default rather than an error.
+	if err := writeProfileValue(dir, KeyRouting, "sideways"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := RoutingChoiceAt(dir); got != "" {
+		t.Fatalf("a word this build does not know read as the choice %q", got)
+	}
+	if got := RoutingAt(dir); got != DefaultRouting {
+		t.Fatalf("a word this build does not know is in force as %q, want %q", got, DefaultRouting)
+	}
+}

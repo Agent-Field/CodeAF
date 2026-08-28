@@ -86,19 +86,27 @@ type TasteStanding struct {
 // its own evidence, and a superseded standing's verdicts still count — they
 // belong to the shelf, not to the row that happened to hold it.
 func TasteStandingOf(graph *store.Store, rule store.Fact) (TasteStanding, error) {
-	standing := TasteStanding{Scope: rule.Scope, Confidence: TasteNeutralPrior}
 	if graph == nil {
-		return standing, nil
+		return TasteStanding{Scope: rule.Scope, Confidence: TasteNeutralPrior}, nil
 	}
+	answers, err := graph.TasteAnswers()
+	if err != nil {
+		return TasteStanding{Scope: rule.Scope, Confidence: TasteNeutralPrior}, err
+	}
+	return tasteStandingFrom(graph, rule, answers)
+}
+
+// tasteStandingFrom is TasteStandingOf with the verdict shelf already in hand.
+// The settle seam stands every open rule back up in one breath and each of them
+// used to re-read and re-decode every taste answer in the store to do it, which
+// on a dozen shelves is a dozen readings of one small unchanging table.
+func tasteStandingFrom(graph *store.Store, rule store.Fact, answers []store.TasteAnswer) (TasteStanding, error) {
+	standing := TasteStanding{Scope: rule.Scope, Confidence: TasteNeutralPrior}
 	corrections, err := similarCorrections(graph, rule.Body, rule.Seq)
 	if err != nil {
 		return standing, err
 	}
 	standing.For = len(corrections)
-	answers, err := graph.TasteAnswers()
-	if err != nil {
-		return standing, err
-	}
 	for _, answer := range answers {
 		if answer.Scope != rule.Scope {
 			continue
@@ -288,7 +296,7 @@ func relevantTasteCandidate(graph *store.Store, node store.Node, delivered strin
 }
 
 func shelvesBeingAsked(graph *store.Store) (map[string]bool, error) {
-	questions, err := graph.UnresolvedQuestions(200)
+	questions, err := graph.UnresolvedQuestions(unresolvedQuestionScan)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +336,7 @@ func (r *Reconciler) settleTasteLocked() {
 // rules, so answering in your own words feeds exactly the machinery that
 // answering with a button does.
 func (r *Reconciler) fileFreeTasteAnswers() {
-	answers, err := r.store.TasteAnswers()
+	answers, err := r.tasteAnswersLocked()
 	if err != nil {
 		return
 	}
@@ -406,8 +414,12 @@ func (r *Reconciler) restandTasteRules() {
 	if err != nil {
 		return
 	}
+	answers, err := r.tasteAnswersLocked()
+	if err != nil {
+		return
+	}
 	for _, rule := range rules {
-		standing, err := TasteStandingOf(r.store, rule)
+		standing, err := tasteStandingFrom(r.store, rule, answers)
 		if err != nil {
 			continue
 		}

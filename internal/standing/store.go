@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
 // Create validates, assigns an id when there is none, stamps Created, Updated
@@ -86,6 +88,36 @@ func (s *Store) Save(item Item) error {
 	if err := checkID(item.ID); err != nil {
 		return err
 	}
+	item.Schema = Schema
+	item.Updated = s.now()
+	return s.write(item)
+}
+
+// SetStandingEffort sets how hard one item's firings and its checks think, and
+// is the door a surface calls to move that rung.
+//
+// It is a read-modify-write under the item's own flock rather than a field on a
+// whole item somebody hands back, for the reason [Store.Save] takes a whole
+// document and this does not: a surface holding an item it read a minute ago
+// would write back the check results, the spend and the next-due that the ticker
+// has moved since, and quietly undo a firing.
+//
+// The rung is validated against the ladder here, so a word nothing can parse is
+// refused at the door instead of landing on disk and reading back as absence
+// forever. Absence itself IS settable — "off" and "" both clear the field — and
+// clearing it puts the item back on the standing role's own floor.
+func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
+	if !rung.Valid() && rung != effort.None {
+		return fmt.Errorf("%q is not a thinking level", rung)
+	}
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	item, err := s.read(s.ItemPath(id))
+	if err != nil {
+		return err
+	}
+	item.Does.Effort = rung.String()
 	item.Schema = Schema
 	item.Updated = s.now()
 	return s.write(item)

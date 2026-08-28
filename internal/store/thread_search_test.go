@@ -102,3 +102,77 @@ func TestTheConversationIndexBackfillsAnOlderDatabase(t *testing.T) {
 		t.Fatalf("backfilled hit lost its body: %+v", hits[0])
 	}
 }
+
+// A search PLACE ranks across every conversation, so a row has to be able to say
+// WHICH conversation it came out of — the one fact a bare message hit does not
+// carry, and the reason this variant exists at all.
+func TestASearchAcrossConversationsNamesTheThreadEachHitCameFrom(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "across.db"))
+	if _, err := graph.OpenSession("s1", "the pricing ladder", "chat"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.PostMessage(Message{SessionID: "s1", Role: RoleUser,
+		Body: "the enterprise ladder beats per-seat above forty users"}); err != nil {
+		t.Fatal(err)
+	}
+	// A thread nobody ever opened a row for: unknown name, and never a made-up one.
+	if _, err := graph.PostMessage(Message{SessionID: "s2", Role: RoleUser,
+		Body: "the per-seat ladder is what the enterprise customers asked about"}); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := graph.SearchConversations("enterprise ladder", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("found %d hits across two threads: %+v", len(hits), hits)
+	}
+	named := map[string]string{}
+	for _, hit := range hits {
+		if hit.SessionID == "" || hit.Body == "" || hit.Time.IsZero() || hit.Age == "" {
+			t.Fatalf("a hit could not say where, what or when: %+v", hit)
+		}
+		named[hit.SessionID] = hit.Title
+	}
+	if named["s1"] != "the pricing ladder" {
+		t.Fatalf("the named thread came back as %q", named["s1"])
+	}
+	if named["s2"] != "" {
+		t.Fatalf("an unnamed thread was given the name %q", named["s2"])
+	}
+}
+
+// A query nothing can be made of is a miss and not an error, exactly as it is
+// for the read this one is a variant of.
+func TestASearchAcrossConversationsAnswersNothingToNothing(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "nothing.db"))
+	if _, err := graph.PostMessage(Message{SessionID: "s1", Role: RoleUser, Body: "something real"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"", "   ", "!!!", `" OR 1=1 --`} {
+		hits, err := graph.SearchConversations(query, 5)
+		if err != nil {
+			t.Fatalf("query %q was an error rather than a miss: %v", query, err)
+		}
+		if len(hits) != 0 {
+			t.Fatalf("query %q found %d hits", query, len(hits))
+		}
+	}
+}
+
+// One body is a pointer back into a conversation and never a replay of it.
+func TestASearchAcrossConversationsBoundsWhatItQuotes(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "bounded.db"))
+	long := "beacon " + strings.Repeat("and then a great deal more was said about it ", 60)
+	if _, err := graph.PostMessage(Message{SessionID: "s1", Role: RoleUser, Body: long}); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := graph.SearchConversations("beacon", 5)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("found %d hits, %v", len(hits), err)
+	}
+	if len(hits[0].Body) > messageSearchBytes+8 {
+		t.Fatalf("a hit quoted %d bytes, past the bound of %d", len(hits[0].Body), messageSearchBytes)
+	}
+}

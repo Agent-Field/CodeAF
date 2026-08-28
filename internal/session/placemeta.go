@@ -156,7 +156,37 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if model := strings.TrimSpace(a.model); model != "" {
 		meta.Model = model
 	}
+	// The rung is written whatever it is, absence included, because absence is
+	// a value a person can choose their way back to: a session dialled to max
+	// and then turned off again has to come back off rather than back at max.
+	meta.Effort = a.effort.String()
 	return meta
+}
+
+// stampEffort writes the conversation's rung down the moment it changes, rather
+// than waiting for the next turn to seal.
+//
+// A DIAL IS NOT A COST. [Agent.stampSpend] rides the end of a turn because a
+// turn is when a cost exists; a rung exists the instant somebody sets it, and a
+// person who dials one and closes the terminal before saying anything else must
+// find it there. It is the same read-and-rename of a few hundred bytes, and it
+// happens once per deliberate act rather than once per turn.
+//
+// EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
+// convenience and the session is the record.
+func (a *Agent) stampEffort() {
+	dir := strings.TrimSpace(a.config.Place.Dir)
+	if dir == "" {
+		return
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	meta = a.fillMetaLocked(meta)
+	a.mu.Unlock()
+	_ = SaveMeta(dir, meta)
 }
 
 // stampSpend records the conversation's running total — what the talking has

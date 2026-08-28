@@ -143,12 +143,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // The auditor is a ROLE, registered from the file that makes the call, exactly
@@ -158,10 +164,14 @@ import (
 func init() { roles.Register(roles.RoleAuditor, roles.TierHigh) }
 
 const (
-	// auditDeadline bounds one verdict. Five minutes is a full `go test ./...`
-	// on a real repository plus the reading around it; past that the auditor is
-	// not judging, it is stuck, and a node that waits forever for a verdict is
-	// worse than a node that is told nobody could give it one.
+	// auditDeadline bounds one verdict. Five minutes is a full run of a real
+	// repository's own check plus the reading around it; past that the auditor
+	// is not judging, it is stuck, and a node that waits forever for a verdict
+	// is worse than a node that is told nobody could give it one.
+	//
+	// IT IS THE BOUND FOR AN AUDIT THAT HAS SOMETHING TO RUN. An audit holding
+	// no runnable check has no slow half and gets the much shorter window
+	// instead ([auditReadingDeadline], [auditDoor.window]).
 	auditDeadline = 5 * time.Minute
 
 	// auditEvidenceLines is how much evidence rides the report: what was run,
@@ -199,6 +209,30 @@ const (
 	// than believing it has seen everything.
 	auditResultLimit = 8000
 
+	// auditRestoreEntries bounds the CLEAN RESTORE a verdict is reached in when
+	// the workspace is not a repository and the restore has to be copied by hand
+	// ([restoreTaskWork]).
+	//
+	// Twenty thousand entries is a large source tree and nothing like a built
+	// one: a repository's own files are thousands, and the hundreds of thousands
+	// under a node_modules or a target/ are exactly what a restore must not be
+	// carrying anyway. Past it the copy stops and the audit falls back to the
+	// node's own working copy, which is where it has always run — a slower
+	// verdict is worth having, and a five-minute file copy inside a five-minute
+	// deadline is not.
+	auditRestoreEntries = 20000
+
+	// auditReceiptCount and auditReceiptLimit bound WHAT THE WORK ALREADY RAN as
+	// it rides the auditor's packet ([lastToolReceipts]).
+	//
+	// Six results, at twelve hundred bytes each, is a little over 7KB — the same
+	// order as one [auditResultLimit] answer, which is the figure this build has
+	// already settled on for "one screen of evidence an auditor can afford". The
+	// six are the LAST six, because a check is the last thing a worker does
+	// before it says it is finished, and the tail is where it lives.
+	auditReceiptCount = 6
+	auditReceiptLimit = 1200
+
 	// auditSaidLines is how much of a NON-ANSWER is kept as the outcome text.
 	// Two lines: enough for a person to see what the auditor actually said —
 	// which is the whole basis on which they are being asked to decide — and
@@ -220,47 +254,38 @@ const (
 	auditUnverified = "UNVERIFIED"
 )
 
-// auditCommands is the allowlist: the repository's own verification, and
-// git's read-only reporting. It is a variable rather than a constant because it
-// is the one part of the auditor's belt that is meant to be configurable — a
-// repository whose verification is `make check` or `npm test` says so by
-// changing this list, and nothing else about the auditor moves.
+// THE ALLOWLIST IS NOT WRITTEN IN THIS FILE ANY MORE, and that is the whole of
+// one fix. It used to be a constant naming three `go` verbs, which made the gate
+// a gate for exactly one language and a coincidence everywhere else — measured,
+// on a Rust deliverable, in task_checks.go's opening. What one audit may run is
+// now read off the WORK: the checks its own document declares, the checks its
+// worker ran, and the always-safe reading commands ([auditDoorFor]).
 //
-// Every entry is a COMMAND PREFIX matched at a word boundary, so "go test"
-// admits `go test ./... -run TestX` and does not admit `go testify`. What is
-// NOT here is everything else, including `go generate` and `go run`, which
-// execute code the node wrote — an auditor that runs the executor's own program
-// is an auditor holding the tested thing's hand.
-//
-// The four ORIENTATION commands at the end are not verification and they are
-// here anyway, because refusing them cost a verdict: an auditor that cannot ask
-// where it is standing spends its steps finding out the hard way, and the audit
-// that died in the wild burned two of them on a refused `pwd`. Every one of the
-// four READS — they print, they do not touch — and the safety argument the belt
-// rests on is about what can CHANGE the thing under judgement, not about which
-// program prints it.
-var auditCommands = []string{
-	"go test",
-	"go build",
-	"go vet",
-	"git diff",
-	"git log",
-	"git status",
-	"git show",
-	"pwd",
-	"wc",
-	"head",
-	"cat",
-}
+// Every entry is still a COMMAND PREFIX matched field by field, so a check
+// admits its own flags and does not admit a program that merely starts like it.
 
 // auditPrompt is the auditor's whole world. It never sees the conversation, it
 // never sees the node's trajectory, and it is told in the first line that its
 // answer is the only reason the work can be called finished.
+//
+// HOW HARD IT LOOKS FOLLOWS WHAT THE WORK CHANGED. The auditor gathers its own
+// evidence, and evidence is bought with the person's time and money, so the
+// depth is not a constant: work that rewrote something load-bearing is worth the
+// whole ladder, while a deliverable whose answer is that nothing needed doing is
+// answered by ONE thing that would have needed doing. Hunting for that one thing
+// is both the cheaper check and the only one that could have found the mistake —
+// re-deriving a claim that changed nothing spends the money and rules out
+// nothing, which is the same ceremony the working-style prompt is written
+// against (prompts/system.md's Verify law).
 const auditPrompt = `You are an AUDITOR. Somebody else did a piece of work and says it is finished. You decide whether that is true, and your verdict is the only reason it can be called finished at all.
 
 You are READ-ONLY. You have read, grep, find and ls, and a bash that runs the repository's own verification and nothing else. You cannot edit, write, install, or fix anything, and you must not try — the work is not yours to repair. Your job is to find out what is true.
 
 Judge the work against its ACCEPTANCE and nothing else: not what you would have written, not what else the code could use, not how the change was made. Run the verification yourself and read the diff. A claim you did not check is a claim you have not verified.
+
+A CHECK THAT PASSES ONLY BECAUSE OF SOMETHING THE WORK DID NOT WRITE HAS NOT PASSED. Installing, building and caching are expected — do them freely, they are what your time is for. What may not carry a verdict is state that does not ship: a file put somewhere by hand, a link made so a path would resolve, a directory created outside the change. If what makes the check pass is not in the files the work wrote, REFUTE and name what is missing.
+
+How deep you look follows the size of what the work CHANGED. Where it rewrote something load-bearing, take the whole ladder: run the verification, read the change through. Where the deliverable's answer is that NOTHING needed doing, do not re-derive the whole claim — go hunting for the one thing that WOULD have needed doing, because that is the only thing that can make the answer wrong, and coming back empty-handed is your evidence.
 
 Then answer in AT MOST four lines. The first word is the verdict:
 
@@ -286,6 +311,29 @@ const (
 	repairStands  = "The work so far stands and is already in this working copy. Do not start it again and do not undo any of it: close the gaps above, and nothing else."
 )
 
+// The third thing a repair round adds: WHERE THE NINETY PERCENT IS.
+//
+// A worker opening on a brief reads it as a job to start, and the first thing it
+// does is go and find out what is in the repository — which is the right instinct
+// on a fresh task and pure waste here, because the tree it is standing in was
+// filled by the last worker an hour ago. Worse, it is waste bought at the
+// escalated tier: the cascade puts this round on the careful model
+// (repair_role.go), and a careful model re-exploring a repository from scratch is
+// the most expensive way there is to learn something the harness already knew.
+//
+// So the round is handed the change instead of the world: the files the work has
+// written, the shape of the diff, and the one sentence that says where the whole
+// of it can be read in a single command.
+const (
+	repairSawHeading = "WHAT IS ALREADY IN THIS WORKING COPY:"
+	// repairDiffPointer is spelled to match the auditor's own orientation line
+	// ([auditQuestion]) on purpose: both readers are standing in the same staged
+	// tree, and two sentences describing it differently would be two accounts of
+	// one fact.
+	repairDiffPointer = "Its changes are staged, so `git diff --cached` shows all of them, new files included. Read that before you read anything else in the repository."
+	repairNoDiff      = "This workspace is not a repository, so there is no diff to read: the files named above are the change."
+)
+
 // ── the words a person actually reads ───────────────────────────────────────
 
 // The leads for the three landings. They are constants because three different
@@ -305,6 +353,16 @@ const (
 	// report carrying three sets of evidence reads as three attempts rather than
 	// as one auditor repeating itself.
 	repairedAgainLead = "still incomplete after another go — "
+	// taskCutMidCheck opens the node whose CHECK was cut off from outside — a
+	// settle-kill, a quit, a deadline on the session. It is the one landing in
+	// this file that is not a reading of the work at all, so it says only what is
+	// knowable: the work stopped mid-check, nothing finished looking at it, and
+	// what it left is on its branch. It borrows [incompleteLead] for
+	// [unverifiedEdits]'s reason — nothing new happened to the work, and inventing
+	// a state for it would be the machinery describing itself (task_run.go).
+	taskCutMidCheck = incompleteLead +
+		"it was stopped while its work was being checked, so nothing finished checking it — " +
+		"what it wrote is on its branch"
 )
 
 // machineryWords is the vocabulary that must never reach a person, and what to
@@ -442,6 +500,20 @@ func gapsOutcome(rounds [][]string) string {
 	return strings.Join(out, "\n")
 }
 
+// checkedSoFar is whatever the check had ALREADY SAID when something cut it off,
+// in plain words, and "" when it had said nothing.
+//
+// It is not an outcome and it leads nothing: a cancelled check produced no
+// finding, so this rides UNDER the node's own claim as evidence rather than over
+// it as a verdict (task_run.go's cancel arm). A verdict nobody reached answers
+// empty, which is the honest half of "nothing finished checking it".
+func (v auditVerdict) checkedSoFar() string {
+	if !v.answered {
+		return ""
+	}
+	return strings.Join(plainLines(v.evidence), "\n")
+}
+
 // lookOutcome is what the node nobody could judge says: it FINISHED, and it
 // needs eyes. The checker's own words follow, in plain form, because they are
 // the whole basis on which somebody is being asked to decide.
@@ -548,6 +620,13 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
+	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go). A
+	// node under check is running — nothing landed, nothing was undone — so an
+	// outside reader watching only the state sees an unbroken "running" across a
+	// worker, a check and three repair rounds; the phase is what tells those
+	// apart, and a check that ends in an error still puts the word back.
+	defer node.beatPhase(taskBeatChecking)()
+
 	// STAGED, NOT COMMITTED. `git diff` in a worktree shows changes to tracked
 	// files only, so an auditor looking at a node whose whole work was three NEW
 	// files would see an empty diff and refute perfectly good work for the wrong
@@ -558,11 +637,36 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// It is done ONCE, out here, so both attempts judge the same tree: a retry
 	// that re-staged would be a second evidence packet, and "the same question
 	// asked again" is the only thing a retry is allowed to be.
+	//
+	// AND IT STAGES WHAT THE NODE WROTE, not the whole directory: the auditor
+	// judges exactly the change that would merge, so a virtualenv a test run left
+	// behind is neither in the diff it reads nor on the branch it approves
+	// (task_run.go's [stageTaskWork]).
 	if tree.root != "" {
-		stageTaskWork(tree.dir)
+		stageTaskWork(tree.dir, changed)
 	}
 
-	verdict, again := a.auditOnce(ctx, node, tree, changed, claim, log)
+	// AND THE VERDICT IS REACHED SOMEWHERE ELSE. The staged tree above is what the
+	// node made AND everything the run left around it; what the auditor is put in
+	// front of is a clean restore of the first half alone, so a check that leans on
+	// the second half fails on its own (see the section on where a verdict is
+	// reached). It is built ONCE, out here, for the same reason the staging is:
+	// both attempts must judge one tree.
+	ground := auditGroundFor(node, tree, changed, log)
+	defer ground.drop()
+
+	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
+	// may run is the checks the node's own document declares and the ones its
+	// worker ran (task_checks.go); a retry that recomputed it could be judging
+	// the same tree through a different door, and "the same question asked again"
+	// is the only thing a retry is allowed to be.
+	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	if len(door.checks) == 0 {
+		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
+			door.window())
+	}
+
+	verdict, again := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
 	switch {
 	case verdict.answered, !again:
 		return verdict
@@ -572,7 +676,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		return verdict
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, changed, claim, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
 	if retried.answered {
 		return retried
 	}
@@ -586,10 +690,10 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // verdict in it and a provider that errored are both worth one more call — the
 // first is a model that wandered, the second is a network — while an audit that
 // burned its whole deadline is not: the auditor already had every minute it was
-// going to get, and a second five minutes buys a second timeout while the node
-// holds its worktree.
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
-	auditor, err := a.newAuditAgent(tree.dir, node)
+// going to get, and a second window buys a second timeout while the node holds
+// its worktree.
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
+	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
@@ -602,14 +706,20 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ch
 	}()
 
 	// The deadline hangs off the NODE's context, so `jobs kill` ends a pending
-	// audit on the same beat it ends everything else, and the five minutes is a
-	// bound on the verdict rather than a second life for a task that has already
-	// been stopped.
-	auditCtx, done := context.WithTimeout(ctx, auditDeadline)
+	// audit on the same beat it ends everything else, and the window is a bound
+	// on the verdict rather than a second life for a task that has already been
+	// stopped.
+	//
+	// AND THE WINDOW IS THE DOOR'S. An audit with a check to run gets the time a
+	// check takes; an audit whose only remaining move is a refused command gets
+	// the time reading takes, because it is never going to run anything and
+	// waiting out the rest is the measured failure ([auditDoor.window]).
+	window := door.window()
+	auditCtx, done := context.WithTimeout(ctx, window)
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, changed, claim))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, changed, claim))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -630,9 +740,9 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ch
 	said := lastSaid(auditor)
 	// A node killed mid-audit is the caller's story to tell, not the auditor's;
 	// it reads ctx itself. What is this function's story is the audit that ran
-	// out of its own five minutes with the node still perfectly alive.
+	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", auditDeadline), said), false
+		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", window), said), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
@@ -739,18 +849,38 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 		if !out.verdict.answered || out.verdict.verified {
 			// Nothing to repair: either the work holds, or nobody said anything
 			// about it — and a gap nobody named is not a gap a worker can close.
+			//
+			// A CHECK THAT PASSED IS ALSO WHERE A LIFT IS HANDED BACK. It is the
+			// one moment that says the stronger tier has stopped buying anything,
+			// and until the response boundary existed nothing looked for it — so
+			// every lift this build ever bought was permanent
+			// (taxonomy_boundary.go's [Agent.readPass]).
+			if out.verdict.verified {
+				a.readPass(node, log)
+			} else {
+				a.tallyFor(node).Round()
+			}
 			return out
 		}
 		// A finding is kept the moment it is made, whether or not there is a round
 		// left to spend on it: the report owes the person the evidence of every
 		// round, and the last one is the one that lands the node.
 		out.gaps = append(out.gaps, out.verdict.evidence)
+		// AND THE FINDING GOES TO THE BOUNDARY BEFORE ANYTHING IS BOUGHT WITH IT.
+		// A refutation of a round whose calls died on the wire is not evidence
+		// about the model; K of them with the wire ruled out is, and past the cap
+		// the answer is the work's own (internal/taxonomy). The verdict decides
+		// which model the round below runs on and whether there is a round at all.
+		lift := a.readFinding(node, log)
+		if lift.Class == taxonomy.Work {
+			return out
+		}
 		if round > rounds || ctx.Err() != nil {
 			return out
 		}
 		fmt.Fprintf(log, "repair %d of %d: sent back — %s\n",
 			round, rounds, strings.Join(out.verdict.evidence, " · "))
-		repaired, said := a.repairNode(ctx, node, tree, out.verdict, round, log)
+		repaired, said := a.repairNode(ctx, node, tree, out.verdict, out.changed, round, lift, log)
 		out.changed = alsoChanged(out.changed, repaired)
 		if said = strings.TrimSpace(said); said != "" {
 			// The newest account of the work replaces the old one, for the reason
@@ -778,19 +908,32 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 // seeing what it left out — the same argument that put an independent auditor on
 // the gate in the first place, one layer down.
 //
+// AND IT IS WHERE THE EXPENSIVE MODEL IS BOUGHT — WHEN THE BOUNDARY SAYS SO.
+// The worker below resolves its model through [roleRepair], which sits on the
+// high tier, and repair_role.go carries that argument. What decides whether the
+// tier is bought at all is the `lift` verdict this is handed: a finding with
+// four dead calls under it buys nothing, because nothing about who served a
+// request is evidence about who was asked (taxonomy_boundary.go). A HOLD still
+// runs the round — same worktree, same gaps, fresh worker — just not at the
+// careful tier's price.
+//
 // It never returns an error. A repair round that could not start, or that hit a
 // threshold, or that wrote nothing, is not a failure of the node: it is a round
 // that closed no gaps, and the auditor that follows will say so in evidence a
 // person can read.
-func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, round int, log io.Writer) ([]string, string) {
+func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, changed []string, round int, lift taxonomy.Verdict, log io.Writer) ([]string, string) {
 	// THE SURFACE HEARS "STILL WORKING", AND IT HEARS WHAT IS BEING CLOSED. The
 	// node never left TaskRunning — nothing landed, nothing was undone — so what
 	// goes out is an ordinary running update with the gap on it, and the machinery
 	// that sent the work back is not on the wire (task_contract.go's Mending).
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
+	// AND THE PULSE SAYS SO TOO, for the surface's reason one layer out: a repair
+	// round is the node still working, and a reader outside the process is owed
+	// the same distinction the card gets (task_beat.go).
+	defer node.beatPhase(taskBeatRepairing)()
 
-	child, err := a.newTaskAgent(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round))
+	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
@@ -798,7 +941,19 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	defer func() {
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
+		// AND WHAT A LIFTED ROUND COST GOES AGAINST THE CAP. It is ignored while
+		// nothing is lifted, so the ordinary price of the work never counts
+		// toward a ceiling on the lift (taxonomy_boundary.go's [Agent.billLift]).
+		a.billLift(node, child)
 	}()
+	// WHERE THE MONEY WENT, written off the worker that actually exists rather
+	// than off the id the cascade asked for, and only when the ladder really did
+	// move ([TaskNode.repairedOn]). The job log says it in words for whoever is
+	// reading a run happen; the project's index says it as a field, which is what
+	// a bench can add up afterwards.
+	if on := child.Model(); node.repairedOn(on) {
+		fmt.Fprintf(log, "repair %d: on %s\n", round, on)
+	}
 
 	// The room follows the work: somebody watching this node came to watch the
 	// node, and a repair round is the node still working (task_room.go). It is
@@ -810,22 +965,33 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	room.speaking(child)
 	defer room.speaking(spoke)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, verdict), tree.dir, a.taskLimits(node), room, log)
+	wrote, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, tree, verdict, changed), tree.dir, a.taskLimits(node), room, log)
+	// AND THE ROUND'S OWN CHECK REPLACES THE LAST ONE'S. The auditor that judges
+	// after this round is judging the tree this worker left, so the evidence it is
+	// shown has to be this worker's ([lastToolReceipts]). It is taken before the
+	// deferred Close above runs, which is the only moment the transcript exists.
+	node.keepReceipts(lastToolReceipts(child, auditReceiptCount))
 	switch {
 	case stopped != "":
 		fmt.Fprintf(log, "repair %d: %s\n", round, stopped)
 	case runErr != nil:
 		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
 	}
-	return changed, taskReport(child)
+	return wrote, taskReport(child)
 }
 
 // repairInstruction is what the repairing worker is asked.
 //
 // It is the node's OWN instruction — the same assembled brief, the same frozen
 // acceptance, read from the same fields the first run read (task_run.go's
-// [TaskNode.instruction]) — with two things added: the gaps, VERBATIM, and the
-// sentence that the work stands.
+// [TaskNode.instruction]) — with three things added: what is already in the
+// working copy, the gaps VERBATIM, and the sentence that the work stands.
+//
+// THE ORDER IS ORIENTATION, THEN FINDING, THEN RULE. A worker reads the job, then
+// where the job already got to, then what is wrong with it, then what it may
+// touch — which is the order somebody handing work back across a desk would say
+// it in. The gaps sit next to the rule that bounds them on purpose: they are the
+// only two sentences in this document about THIS round.
 //
 // THE EVIDENCE IS NOT PARAPHRASED. It goes in exactly as the auditor wrote it,
 // because it is the most precise description of what is missing that exists
@@ -834,15 +1000,44 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 // law is about what a PERSON reads; a worker being told what to fix is machinery
 // talking to machinery, and the heading calls it a review because that is what
 // it is.)
-func repairInstruction(node *TaskNode, verdict auditVerdict) string {
+func repairInstruction(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) string {
 	var out strings.Builder
 	out.WriteString(node.instruction())
+	if ground := repairGround(tree, changed); ground != "" {
+		out.WriteString("\n\n" + repairSawHeading + "\n" + ground)
+	}
 	out.WriteString("\n\n" + repairHeading + "\n")
 	for _, line := range verdict.evidence {
 		out.WriteString(line + "\n")
 	}
 	out.WriteString("\n" + repairStands)
 	return out.String()
+}
+
+// repairGround is the change as it stands: what the work has written, how much
+// of each file moved, and where the whole diff can be read in one command.
+//
+// IT IS BOUNDED BY THE BRIEF'S OWN LIMIT and not by a figure of its own. A worker
+// opens on one document, [briefAskLimit] is what that document already holds a
+// verbatim section to, and the reason is the same in both places: a paragraph is
+// the ordinary case and the bound is for the other one — a node that rewrote nine
+// hundred files, whose `--stat` would otherwise be the whole prompt. A second
+// constant here would be a second answer to one question, which is the drift
+// CLAUDE.md's one-source-of-truth law names.
+func repairGround(tree taskTree, changed []string) string {
+	var out strings.Builder
+	if len(changed) > 0 {
+		out.WriteString("Files the work has written so far: " + strings.Join(changed, ", ") + "\n\n")
+	}
+	if tree.root == "" {
+		out.WriteString(repairNoDiff)
+		return clip(strings.TrimSpace(out.String()), briefAskLimit)
+	}
+	out.WriteString(repairDiffPointer)
+	if stat := stagedDiffStat(tree.dir); stat != "" {
+		out.WriteString("\n\n" + stat)
+	}
+	return clip(strings.TrimSpace(out.String()), briefAskLimit)
 }
 
 // mendingLine is the gap as a surface may draw it: the first line of evidence,
@@ -892,7 +1087,13 @@ func alsoChanged(changed, more []string) []string {
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
-func auditQuestion(node *TaskNode, tree taskTree, changed []string, claim string) string {
+//
+// AND IT NAMES THE DOOR. The auditor's bash will run the checks this work
+// declares or ran and nothing else (task_checks.go), so the packet says which
+// those are — or says plainly that there are none and that reading is the whole
+// of the job. A model that has not been told where the door is spends its
+// window looking for one, which is exactly what was measured.
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -905,14 +1106,80 @@ func auditQuestion(node *TaskNode, tree taskTree, changed []string, claim string
 	if len(changed) > 0 {
 		out.WriteString("Files it wrote: " + strings.Join(changed, ", ") + "\n\n")
 	}
+	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
-	out.WriteString("You are in the working copy where the work was done.\n")
+	// WHERE IT IS STANDING IS TOLD TRUTHFULLY, WHICHEVER GROUND IT GOT. The
+	// restored sentence is a claim the auditor cannot check for itself — it cannot
+	// see the tree it is not in — so it may only be made when it is true
+	// ([auditGround]).
+	if ground.restored {
+		out.WriteString("WHERE YOU ARE: a CLEAN RESTORE of what would ship. It is the repository as it stood before " +
+			"this work began, with exactly the files listed above laid over it, and NOTHING else the work left in its " +
+			"own copy — no installs, no build output, no file it moved, linked or created by hand. Install and build " +
+			"whatever the verification needs here; that is expected and it is what your time is for. If a check needs " +
+			"something that is not in those files and you cannot make it yourself from them, that is the finding.\n")
+	} else {
+		out.WriteString("WHERE YOU ARE: the working copy where the work was done, so everything the run left around it " +
+			"is still here. A check that passes only because of something the work did not WRITE — a file it moved, a " +
+			"link it made, a path it created by hand — has not passed; look for that before you accept one.\n")
+	}
 	if tree.root != "" {
 		out.WriteString("Its changes are staged, so `git diff --cached` shows all of them, new files included.\n")
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
 	}
-	out.WriteString("\nRun the verification. Read the change. Then give your verdict.")
+	out.WriteString("\n" + door.line())
+	if len(door.checks) == 0 {
+		out.WriteString("\nRead the change. Then give your verdict.")
+	} else {
+		out.WriteString("\nRun the verification. Read the change. Then give your verdict.")
+	}
+	return out.String()
+}
+
+// auditReceiptBlock is WHAT THE WORK ALREADY RAN, as the auditor reads it.
+//
+// THE POINT OF IT IS THE RE-RUN THE AUDITOR DOES NOT HAVE TO DO. An auditor that
+// must rediscover the repository's check from scratch, and then run it twice
+// because the first attempt told it nothing, spends five minutes and lands the
+// node unchecked — which is what was measured. Seeing what the last worker ran
+// and what came back tells it which command the check even is, and answers the
+// cheap half of the question outright.
+//
+// AND THE FRAMING IS THE SAFETY. In a restore these results came from ANOTHER
+// tree — the work's own, the one carrying everything a verdict may not rest on —
+// so they may settle a refutation and never an acceptance. Standing in the work's
+// own copy they came from this tree, and the warning that matters is the opposite
+// one. Both sentences are written here rather than left to the auditor to work
+// out, because a judge reasoning about the provenance of its own evidence is a
+// judge that will get it wrong once.
+func auditReceiptBlock(receipts []toolReceipt, restored bool) string {
+	if len(receipts) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString("WHAT THE WORK ALREADY RAN — its last tool results, verbatim and cut. This is a record of what " +
+		"came back, not something the work said about itself.\n")
+	if restored {
+		out.WriteString("They were produced in the work's OWN copy, which is not the copy you are standing in. " +
+			"Read them to learn WHICH command the check is and what it said there. A result showing the check " +
+			"failing, or showing that no check was ever run, is enough on its own — you do not have to run it again " +
+			"to believe it. A result showing it PASSING is the work's account of its own copy: a long check whose " +
+			"result is here and is recent does not have to be repeated just to be seen again, but anything that " +
+			"could pass there and fail here has to be settled here before you accept it.\n")
+	} else {
+		out.WriteString("They came from this same copy. A long check whose result is here and is recent does not " +
+			"have to be run again just to be seen again; run it yourself when the result is stale, thin, or does not " +
+			"match what you can see in the files.\n")
+	}
+	for _, receipt := range receipts {
+		name := strings.TrimSpace(receipt.tool + " " + receipt.args)
+		if name == "" {
+			name = "a call"
+		}
+		out.WriteString("\n$ " + name + "\n" + receipt.result + "\n")
+	}
+	out.WriteString("\n")
 	return out.String()
 }
 
@@ -994,6 +1261,476 @@ func auditEvidence(evidence []string, text, verdictLine string) []string {
 		evidence = evidence[:auditEvidenceLines]
 	}
 	return evidence
+}
+
+// ── WHERE THE VERDICT IS REACHED, AND ON WHAT ───────────────────────────────
+//
+// A PASSING CHECK MAY NOT DEPEND ON STATE THE DELIVERABLE DOES NOT CARRY. That
+// is the law, and until this section existed nothing enforced it.
+//
+// What it cost was measured. A node was asked to make a language server pass a
+// scorer; the scorer addressed files as `file:///workspace/test-files/…` and the
+// repository kept them somewhere else. The node worked out exactly why the
+// scorer failed and then fixed the WORLD instead of the WORK — `ln -sf
+// /workspace/java /workspace/test-files` — re-ran the scorer against its own
+// symlink, watched it pass, and reported the job done. The auditor then ran in
+// the same directory, with the same symlink under it, and saw the same pass. The
+// deliverable was a repository that fails the moment it leaves that machine, and
+// every party that looked at it agreed it was finished.
+//
+// SO THE AUDIT DOES NOT JUDGE WHERE THE WORK HAPPENED. It judges a CLEAN
+// RESTORE: an untouched copy of the repository with exactly the files the node
+// wrote laid over it, and nothing else the run left behind. An environment-only
+// fix is absent there and the check fails on its own, with no rule anybody had
+// to remember and no prompt anybody had to obey.
+//
+// THE RESTORE IS BUILT FROM WHAT THE HARNESS ALREADY KNOWS THE NODE WROTE —
+// `changed`, the same list [stageTaskWork] stages, [commitTaskWork] commits and
+// the card names (task_run.go). There is no second record of the deliverable and
+// there must not be one: two lists would be two answers to "what ships".
+//
+// AND THE BUILD PRODUCTS ARE NOT COPIED. A restore carrying the node's `target/`
+// would be carrying the very thing it exists to leave behind. The auditor
+// installs and builds in the restore itself — that is what its allowlist is for,
+// and what its five minutes are spent on.
+
+// auditGround is the directory an auditor is put in, and whether that directory
+// is a restore or the node's own working copy.
+//
+// The fallback is not a failure: a workspace with no repository behind it and no
+// record of when the work started cannot be reconstructed, and a verdict reached
+// where the work happened is the verdict this build has always reached. What the
+// fallback must never do is claim to be a restore, because the sentence the
+// auditor is given about where it stands is the one thing it cannot check.
+type auditGround struct {
+	// dir is where the auditor stands.
+	dir string
+	// restored says dir really is a clean restore of what would ship.
+	restored bool
+	// why says, in the log's words, why it is not. Empty when it is.
+	why string
+	// drop takes the restore away again. It is never nil.
+	drop func()
+}
+
+// auditGroundFor builds the ground one audit is reached on, and says in the job
+// log which of the two it got. Both attempts of one audit share it, exactly as
+// they share the staged tree: a retry that rebuilt the restore would be a second
+// evidence packet, and "the same question asked again" is all a retry may be.
+func auditGroundFor(node *TaskNode, tree taskTree, changed []string, log io.Writer) auditGround {
+	ground, why := restoreTaskWork(node, tree, changed)
+	if !ground.restored {
+		fmt.Fprintf(log, "audit: judging in the node's own working copy — %s\n", why)
+		return auditGround{dir: tree.dir, why: why, drop: func() {}}
+	}
+	fmt.Fprintf(log, "audit: judging a clean restore of what the work wrote, in %s\n", ground.dir)
+	return ground
+}
+
+// restoreTaskWork makes the clean restore, by the one road that is available.
+//
+// A REPOSITORY IS RESTORED FROM ITSELF. The node's branch still points at the
+// commit its worktree was cut from — the node's work is staged in its own index
+// and not committed until it lands (task_run.go's [taskTree.comeHome]) — so a
+// detached checkout of that branch IS the untouched tree, and laying the written
+// files over it is the whole restore. That is exact, and it is cheap.
+//
+// A WORKSPACE WITH NO REPOSITORY HAS TO BE COPIED, and there is no record of
+// what it held before the run except the clock: everything that predates the
+// node's start is the original tree, everything younger that the node did not
+// write is what the run left behind. That is a reading of mtimes and it is
+// stated as one — it is the only ground truth a directory keeps about itself.
+func restoreTaskWork(node *TaskNode, tree taskTree, wrote []string) (auditGround, string) {
+	if strings.TrimSpace(tree.dir) == "" {
+		return auditGround{}, "there is no working copy to restore"
+	}
+	if tree.root != "" && strings.TrimSpace(tree.branch) != "" {
+		return restoreFromBranch(tree, wrote)
+	}
+	return restoreByCopy(node, tree, wrote)
+}
+
+// restoreFromBranch is the repository road: a detached checkout of the node's
+// own branch, with what the node wrote laid over it and staged.
+//
+// IT IS STAGED FOR THE REASON THE NODE'S OWN TREE IS ([stageTaskWork]): `git
+// diff` shows tracked files only, so a change made of new files reads as an
+// empty diff, and the sentence the auditor is given — "its changes are staged,
+// so `git diff --cached` shows all of them" — has to be true of the tree it is
+// actually standing in.
+func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
+	dir := tree.dir + "-check"
+	remove := func() {
+		unlock := lockGitRoot(tree.place, tree.root)
+		defer unlock()
+		_, _ = git(tree.root, "worktree", "remove", "--force", dir)
+		_, _ = git(tree.root, "worktree", "prune")
+		_ = os.RemoveAll(dir)
+	}
+	// A restore left behind by a process that died is cleared before this one is
+	// made, on the same argument [prepareTaskTree] clears its own: the path
+	// carries the node's own directory name, so the only thing that can be sitting
+	// at it is an earlier restore of this same node.
+	remove()
+
+	unlock := lockGitRoot(tree.place, tree.root)
+	out, err := git(tree.root, "worktree", "add", "--detach", dir, tree.branch)
+	unlock()
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+	}
+	if problem := layWork(tree.dir, dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	stageTaskWork(dir, wrote)
+	return auditGround{dir: dir, restored: true, drop: remove}, ""
+}
+
+// restoreByCopy is the road for a workspace that is not a repository: the
+// original tree copied out by its own timestamps, with what the node wrote laid
+// over it.
+//
+// IT IS BOUNDED, AND THE BOUND MATTERS MORE THAN THE COPY. A restore that spent
+// four of the audit's five minutes copying a built tree would have turned a gate
+// into a timeout, which is the other defect this wave is fixing — so past
+// [auditRestoreEntries] the copy stops and the audit falls back to where it has
+// always run, with the reason in the job log.
+func restoreByCopy(node *TaskNode, tree taskTree, wrote []string) (auditGround, string) {
+	started := node.startedAt()
+	if started.IsZero() {
+		return auditGround{}, "nothing records when the work began, so the tree it started from cannot be told from what it left behind"
+	}
+	dir, err := os.MkdirTemp("", "aforge-check-")
+	if err != nil {
+		return auditGround{}, "a clean copy could not be made: " + err.Error()
+	}
+	remove := func() { _ = os.RemoveAll(dir) }
+	if problem := copyOriginal(tree.dir, dir, wrote, started); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	if problem := layWork(tree.dir, dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	return auditGround{dir: dir, restored: true, drop: remove}, ""
+}
+
+// layWork puts the deliverable over the restored tree: every path the node
+// wrote, copied from the node's working copy, and every path it wrote and then
+// DELETED taken away again.
+//
+// The paths are read with [normalizeScopePath] — the same one reading of a path
+// against a tree that the write scope's door and guard use (fork.go) — so a
+// record that names a file absolutely and one that names it relatively land in
+// the same place.
+func layWork(from, to string, wrote []string) string {
+	for _, raw := range wrote {
+		relative, err := normalizeScopePath(from, raw)
+		if err != nil {
+			// A path outside the working copy is not part of what ships, exactly as
+			// it is not part of what is staged ([stageableWork] drops the same ones).
+			continue
+		}
+		source := filepath.Join(from, filepath.FromSlash(relative))
+		target := filepath.Join(to, filepath.FromSlash(relative))
+		if _, err := os.Lstat(source); err != nil {
+			// Written and then removed: the restore must not carry it either.
+			_ = os.RemoveAll(target)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return "the work could not be laid into a clean copy: " + err.Error()
+		}
+		_ = os.RemoveAll(target)
+		if err := copyPath(source, target); err != nil {
+			return "the work could not be laid into a clean copy: " + err.Error()
+		}
+	}
+	return ""
+}
+
+// copyOriginal copies out the tree AS IT WAS WHEN THE WORK BEGAN.
+//
+// The rule is one sentence: an entry older than the node's start is the original
+// and is copied; an entry younger than it appeared while the work ran and is
+// left out, because what the node actually wrote is laid over the top afterwards
+// ([layWork]) and everything else younger is the environment.
+//
+// AND A DIRECTORY IN WHICH NOTHING PREDATES THE WORK IS A DIRECTORY THE WORK
+// MADE. It is not descended into at all, which is what keeps a `target/` or a
+// `node_modules/` from costing the whole budget of a restore that was never
+// going to carry a byte of it. A directory that existed before — even one the
+// run added files to — has at least one entry older than the start, and is read
+// through.
+func copyOriginal(from, to string, wrote []string, started time.Time) string {
+	visited := 0
+	var walk func(relative string) string
+	walk = func(relative string) string {
+		entries, err := os.ReadDir(filepath.Join(from, filepath.FromSlash(relative)))
+		if err != nil {
+			// A directory that cannot be read is left out rather than fatal: the
+			// audit's own build will say so far more usefully than this could.
+			return ""
+		}
+		for _, entry := range entries {
+			child := entry.Name()
+			if relative != "" {
+				child = relative + "/" + entry.Name()
+			}
+			// The repository's own metadata and the harness's own corner are never
+			// part of anybody's deliverable (task_run.go's [stageTaskWork] keeps the
+			// second one off a branch for the same reason).
+			if entry.Name() == ".git" || child == aforgeDroppings {
+				continue
+			}
+			if visited++; visited > auditRestoreEntries {
+				return fmt.Sprintf("the working copy holds more than %d files, which is more than a clean copy is worth inside one check", auditRestoreEntries)
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			source := filepath.Join(from, filepath.FromSlash(child))
+			target := filepath.Join(to, filepath.FromSlash(child))
+			if entry.IsDir() {
+				if !coveredByWrites(wrote, child) && info.ModTime().After(started) && appearedDuringTheRun(source, started) {
+					continue
+				}
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					return "a clean copy could not be made: " + err.Error()
+				}
+				if problem := walk(child); problem != "" {
+					return problem
+				}
+				continue
+			}
+			if info.ModTime().After(started) {
+				continue
+			}
+			if err := copyPath(source, target); err != nil {
+				return "a clean copy could not be made: " + err.Error()
+			}
+		}
+		return ""
+	}
+	return walk("")
+}
+
+// appearedDuringTheRun reports whether a directory holds nothing that predates
+// the work. An unreadable or empty directory answers false — the safe direction
+// is to keep looking, because leaving out a directory that was already there
+// would fail an audit over a file the node never touched.
+func appearedDuringTheRun(dir string, started time.Time) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().After(started) {
+			return false
+		}
+	}
+	return true
+}
+
+// coveredByWrites reports whether one path is, holds, or sits under something
+// the node wrote. It is deliberately not [orchestrate.Covers]: the question here
+// runs BOTH ways — a directory is kept because the deliverable is somewhere
+// underneath it, and a file is kept because it is under a directory the node
+// declared.
+func coveredByWrites(wrote []string, relative string) bool {
+	for _, raw := range wrote {
+		path := strings.TrimSpace(filepath.ToSlash(raw))
+		if path == "" {
+			continue
+		}
+		if path == relative || strings.HasPrefix(path, relative+"/") || strings.HasPrefix(relative, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// copyPath copies one file, symlink or directory tree.
+//
+// A SYMLINK IS COPIED AS A SYMLINK and never followed. The link IS the thing
+// somebody wrote down, and a restore that turned one into the file it points at
+// would be quietly repairing the exact class of mistake it exists to expose.
+func copyPath(source, target string) error {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return err
+	}
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		where, err := os.Readlink(source)
+		if err != nil {
+			return err
+		}
+		_ = os.Remove(target)
+		return os.Symlink(where, target)
+	case info.IsDir():
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(source)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := copyPath(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())); err != nil {
+				return err
+			}
+		}
+		return nil
+	case !info.Mode().IsRegular():
+		// A socket, a device node or a fifo is not a deliverable and cannot be
+		// copied; skipping it is the honest answer and it is not an error.
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	from, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer from.Close()
+	to, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(to, from); err != nil {
+		_ = to.Close()
+		return err
+	}
+	return to.Close()
+}
+
+// ── what the work already ran ───────────────────────────────────────────────
+
+// toolReceipt is ONE of the node's own tool results, as the auditor is shown it:
+// what was called, with what, and what came back.
+//
+// IT IS THE WIRE RESULT AND NOT THE DISPLAY COPY. [Event.Output] and
+// [DisplayEntry.Output] are both capped copies carrying a contract that says
+// they are for showing a person and nothing else; this is read off the worker's
+// own transcript, which is the text the model actually read.
+type toolReceipt struct {
+	tool   string
+	args   string
+	result string
+	// command is the shell line a bash receipt ran, read out of the call's
+	// arguments BEFORE they were flattened and cut for the packet. It is kept
+	// apart from args because two different readers want two different things:
+	// the packet wants one readable line, and the door wants the command exactly
+	// as it was typed, since a check is only re-runnable verbatim
+	// (task_checks.go's [ranChecks]). It is empty for every other tool.
+	command string
+}
+
+// lastToolReceipts is the tail of what a worker RAN, read off its transcript.
+//
+// WHY THE AUDITOR IS GIVEN IT AT ALL: a check is often the most expensive thing
+// in the whole task, and an auditor that must re-run every one of them from
+// scratch inside [auditDeadline] is an auditor that times out. That was measured
+// — a node landed unchecked because its scorer was re-run twice by a judge that
+// then ran out of its five minutes — and the remedy is not a longer deadline, it
+// is letting the judge see what already happened before deciding what it needs
+// to repeat.
+//
+// IT IS NOT A SHORTCUT TO VERIFIED, and the contract in [auditQuestion] says so:
+// these results came out of the work's OWN copy, which is exactly the copy a
+// verdict may not rest on. What they are good for is the cheap direction — a
+// check that failed, or a check nobody ever ran, needs no second run to be
+// believed — and for telling the auditor WHICH command the check even is.
+func lastToolReceipts(child *Agent, most int) []toolReceipt {
+	if child == nil || most <= 0 {
+		return nil
+	}
+	messages := child.snapshot()
+	// The call is in an ASSISTANT message and the result is in the tool message
+	// that answers it, so the two are joined by the provider's own call id — the
+	// only thing that survives a batch of four calls answered out of order.
+	calls := make(map[string]ai.ToolCall)
+	for _, message := range messages {
+		for _, call := range message.ToolCalls {
+			calls[call.ID] = call
+		}
+	}
+	var out []toolReceipt
+	for index := len(messages) - 1; index >= 0 && len(out) < most; index-- {
+		message := messages[index]
+		if !strings.EqualFold(message.Role, "tool") {
+			continue
+		}
+		result := strings.TrimSpace(messageContentText(message))
+		if result == "" {
+			continue
+		}
+		receipt := toolReceipt{result: clip(result, auditReceiptLimit)}
+		if call, ok := calls[message.ToolCallID]; ok {
+			receipt.tool = call.Function.Name
+			// The arguments are JSON and a pretty-printed call would spend six lines
+			// of the packet saying what one says (tools_standing.go's [oneLine]).
+			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
+			// AND THE SHELL LINE IS KEPT WHOLE, uncut, for the door
+			// ([toolReceipt.command]). A command clipped to fit a packet is a
+			// command nobody can re-run.
+			if strings.EqualFold(call.Function.Name, approval.ToolBash) {
+				var fields struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(call.Function.Arguments), &fields) == nil {
+					receipt.command = fields.Command
+				}
+			}
+		}
+		out = append(out, receipt)
+	}
+	// Oldest first, because they are read as a sequence of what happened and the
+	// transcript is walked backwards to find them.
+	for left, right := 0, len(out)-1; left < right; left, right = left+1, right-1 {
+		out[left], out[right] = out[right], out[left]
+	}
+	return out
+}
+
+// keepReceipts and lastReceipts are how the node carries what its last worker
+// ran to the judge that never watched it. Whichever worker spoke last wins, for
+// the reason the claim works the same way ([TaskNode.keepClaim]): a repair
+// round's check is the one that describes the tree the auditor is about to read.
+func (n *TaskNode) keepReceipts(receipts []toolReceipt) {
+	if len(receipts) == 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.receipts = receipts
+	n.graph.mu.Unlock()
+}
+
+func (n *TaskNode) lastReceipts() []toolReceipt {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.receipts
+}
+
+// startedAt is when this node's run began, and it is read for one question: what
+// in its working copy predates the work ([copyOriginal]).
+func (n *TaskNode) startedAt() time.Time {
+	if n == nil || n.graph == nil {
+		return time.Time{}
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.started
 }
 
 // ── when nobody could decide ────────────────────────────────────────────────
@@ -1091,7 +1828,7 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	}
 	notice := node.notice()
 	a.enqueueSteering(handOverLead + "\n" +
-		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto))
+		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	return nil
 }
 
@@ -1129,12 +1866,23 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		return err
 	}
 	defer node.releaseSettle()
-	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
+	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
 	}
 	report, changed, _, _ := node.leavings()
-	merge, detail := tree.comeHome(node.title())
+	merge, detail := tree.comeHome(node.title(), changed)
+	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
+	// however sure the person was about the work. The node stays where it was —
+	// needing a look — with the conflicting files named, because what is being
+	// asked of them has changed: they said the work was good, and it is; what is
+	// left is two versions of the same file (task_run.go's [Agent.landConflicted]).
+	if merge == mergeConflicted {
+		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
+			changed, tree.branch, merge)
+		node.graph.resettle(node, TaskUnverified)
+		return nil
+	}
 	node.finish(withReport(acceptedLine(why), withReport(report, detail)), changed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 	return nil
@@ -1176,7 +1924,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if !a.config.TaskAudit {
 		return errors.New("task.audit is off, so there is no auditor to ask — accept it or refute it")
 	}
-	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
+	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
 	}
@@ -1254,7 +2002,18 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		merged, detail := tree.comeHome(node.title())
+		merged, detail := tree.comeHome(node.title(), changed)
+		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
+		// EITHER. The node keeps the one state that is true of it — somebody has
+		// to look — with the work committed on its branch and the clashing files
+		// named (task_run.go's [Agent.landConflicted] makes the same call on the
+		// gate's own road).
+		if merged == mergeConflicted {
+			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
+				changed, tree.branch, merged)
+			node.graph.resettle(node, TaskUnverified)
+			return
+		}
 		// THE CLAIM, NOT THE CARRIED REPORT — and the claim LEADS, exactly as it
 		// does on the gate's own landing (task_run.go's workTaskNode). The carried
 		// report opens with the line that said nobody could judge this work, and a
@@ -1308,7 +2067,12 @@ func refutedLine(why string) string {
 // nothing that reaches outside the machine: no search, no fetch, no image
 // model. An auditor that can browse is an auditor that can be told a story from
 // somewhere else.
-func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
+//
+// THE DOOR COMES IN RATHER THAN BEING DECIDED HERE. What one audit may run is a
+// fact about the WORK — the checks its document declares and its worker ran
+// (task_checks.go) — and it is read once by the caller so that both attempts at
+// one node judge it through the same door.
+func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
 	model := a.model
@@ -1322,13 +2086,24 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	// front of it, including its verdict. That is the one thing this gate must
 	// never be — an auditor that has already been told what to think.
 	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, "-audit-"+shortID())
+	// The audit reads and judges rather than works, but it judges THIS person's
+	// work, so it thinks as hard as the node it is checking (effort.go). It is
+	// the node's rung above the parent's own resolved answer, which is exactly
+	// the pair [Agent.newTaskAgent] hands a worker.
+	inherited := a.effortLocked(a.model)
 	a.mu.Unlock()
+	nodeRung := node.effortRung()
 
 	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
 	if err != nil {
 		return nil, err
 	}
 	auditor, err := newAgent(Config{
+		// The auditor reads rather than writes, but reading is what makes a
+		// dropping: a long file it looks at is stubbed on its way out of the live
+		// context (stub.go), and with nothing here those bytes landed in the
+		// worktree it was judging (landing.go).
+		droppings:     parent.droppingsPlace(),
 		Workspace:     dir,
 		Model:         judge,
 		APIKey:        parent.APIKey,
@@ -1340,6 +2115,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 		CompactEnabled: false,
 		SessionFile:    journal,
 		System:         auditPrompt,
+		Effort:         nodeRung,
+		EffortRole:     effort.RoleWorker,
+		DefaultEffort:  inherited,
 		// The floor is still the floor (approval's critical table), but the
 		// belt is what actually constrains this agent: there is no hand here
 		// that writes. AskConsent is off and InTask is on for the node's own
@@ -1364,7 +2142,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	// may touch, and every later hand added to the session would silently join
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
-	tools := auditBelt(dir, auditCommands)
+	tools := auditBelt(dir, door)
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()
@@ -1388,14 +2166,14 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 // bounds an investigation is what ONE ANSWER may weigh, whichever hand returned
 // it, so it is applied here — where the hands are chosen — and not five times
 // over in five wrappers.
-func auditBelt(dir string, allowed []string) []bare.Tool {
+func auditBelt(dir string, door auditDoor) []bare.Tool {
 	var belt []bare.Tool
 	for _, tool := range bare.AllTools(dir) {
 		switch tool.Name {
 		case "read", "grep", "find", "ls":
 			belt = append(belt, boundedResult(tool))
 		case "bash":
-			belt = append(belt, boundedResult(verifyOnlyBash(tool, allowed)))
+			belt = append(belt, boundedResult(verifyOnlyBash(tool, door)))
 		}
 	}
 	return belt
@@ -1427,19 +2205,57 @@ func boundedResult(tool bare.Tool) bare.Tool {
 	return tool
 }
 
-// verifyOnlyBash wraps pi's bash so it runs the repository's own verification
-// and nothing else.
+// shellLeash is WHO is holding a read-only bash, in the words its own refusals
+// are written in.
 //
-// The refusal is a RESULT, not an error: the auditor reads "I am not allowed to
-// run that, here is what I am allowed to run" and gets on with the job, exactly
-// as a node reads a refused consent (consent.go). A Go error would end its turn
-// and cost a verdict over one wrong reach.
-func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
-	inner := tool.Execute
-	tool.Description = "Run one of the repository's own verification commands and read its output: " +
-		strings.Join(allowed, ", ") + ". Every other command is refused, including anything that " +
+// The gate below is one mechanism with two citizens — the auditor, and a fork's
+// hand (fork.go) — and the two are doing different jobs, so a refusal that told
+// a hand it was an auditor would be a lie in the one sentence the model is
+// supposed to act on. What is shared is the DECISION, which is the part that has
+// to be right; what differs is three fragments of prose.
+type shellLeash struct {
+	// who names the agent as it is named to itself: "an auditor", "a hand".
+	who string
+	// forWhat is what its bash is FOR, as a noun: "verification", "orientation".
+	forWhat string
+	// hint is the last line of every refusal and says where to go instead. A no
+	// that does not say where to go costs another step.
+	hint string
+}
+
+// auditShell is the auditor's voice, and it is the wording every refusal in this
+// file has always carried.
+var auditShell = shellLeash{who: "an auditor", forWhat: "verification", hint: auditReaderHint}
+
+// verifyOnlyBash wraps pi's bash so it runs the work's own verification and
+// nothing else.
+//
+// THE DESCRIPTION NAMES THIS AUDIT'S OWN DOOR, not a list somebody wrote once.
+// The commands interpolated here are the checks the work declares and ran, so
+// the first thing the auditor reads about its shell is the exact command the
+// work is checked with (task_checks.go).
+func verifyOnlyBash(tool bare.Tool, door auditDoor) bare.Tool {
+	tool = readingOnlyBash(tool, door, auditShell)
+	tool.Description = "Run one of THIS WORK's own verification commands and read its output: " +
+		door.offer() + ". Every other command is refused, including anything that " +
 		"edits, installs, fetches, or chains a second command onto one of these. " +
 		auditReaderHint + " " + tool.Description
+	return tool
+}
+
+// readingOnlyBash is the gate itself: pi's bash, allowed to run one command off
+// a list and refusing everything else.
+//
+// The refusal is a RESULT, not an error: the agent reads "I am not allowed to
+// run that, here is what I am allowed to run" and gets on with the job, exactly
+// as a node reads a refused consent (consent.go). A Go error would end its turn
+// and cost a verdict — or a hand's whole errand — over one wrong reach.
+//
+// The DESCRIPTION is left to the caller, because what a bash is for is the one
+// thing the two citizens disagree about and it is the sentence the model reads
+// before it ever reaches a refusal.
+func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool {
+	inner := tool.Execute
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		var fields struct {
 			Command string `json:"command"`
@@ -1447,7 +2263,7 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 		if err := json.Unmarshal(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
-		if refusal, ok := auditRefusal(fields.Command, allowed); !ok {
+		if refusal, ok := refuseOutsideDoor(fields.Command, door, voice); !ok {
 			return refusal, true, nil
 		}
 		return inner(ctx, args)
@@ -1455,32 +2271,104 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 	return tool
 }
 
-// auditRefusal decides one command, and it decides it in two steps because a
-// prefix check on its own is not a gate: `go test ./... && rm -rf .` starts with
-// an allowed prefix and is not an allowed command.
+// auditRefusal is [refuseOutsideDoor] in the auditor's own voice, asked about a
+// door that is a bare list of commands. It is a door rather than a call site so
+// that everything already written against the auditor's gate — this package's
+// tests included — asks the same question with the same two arguments it always
+// did.
+func auditRefusal(command string, allowed []string) (string, bool) {
+	return refuseOutsideDoor(command, plainDoor(allowed), auditShell)
+}
+
+// refuseOutsideAllowlist is the same question asked about a list rather than a
+// whole door, for the citizens that have no tree behind them (fork.go's
+// read-only shell).
+func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) (string, bool) {
+	return refuseOutsideDoor(command, plainDoor(allowed), voice)
+}
+
+// refuseOutsideDoor decides one command, and it decides it in three steps
+// because a prefix check on its own is not a gate: `go test ./... && rm -rf .`
+// starts with an allowed prefix and is not an allowed command.
 //
 // So SHELL COMPOSITION IS REFUSED OUTRIGHT — every operator that can start a
 // second command, redirect output, or substitute one — and only then is what
-// remains matched against the allowlist. That order is the whole safety
-// argument: after the first check there is exactly one command in the string,
-// and the second check is about that command.
-func auditRefusal(command string, allowed []string) (string, bool) {
+// remains matched against the door. That order is the whole safety argument:
+// after the first check there is exactly one command in the string, and the
+// checks after it are about that command.
+//
+// THE DOOR IS MATCHED THE TWO WAYS IT IS WRITTEN. A check that named a file is
+// matched by WHICH FILE the command names, under any spelling of it
+// ([auditDoor.admitsFile]); everything else is matched field by field as the
+// prefix it is. A file check is skipped by the prefix walk on purpose: it speaks
+// for that file being run and not for arguments the work never declared.
+func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string, bool) {
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return "refused: an auditor runs verification, and that was an empty command.\n" + auditReaderHint, false
+		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
+			voice.who, voice.forWhat, voice.hint), false
 	}
-	if index := strings.IndexAny(command, ";|&<>`$(){}\n\r\\"); index >= 0 {
-		return fmt.Sprintf("refused: an auditor runs ONE verification command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
-			string(command[index]), clip(command, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
+	if index := strings.IndexAny(command, shellComposition); index >= 0 {
+		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
+			voice.who, voice.forWhat, string(command[index]), clip(command, auditCommandLimit),
+			door.offer(), voice.hint), false
 	}
-	// Whitespace is normalized so "go  test" is the same command as "go test":
-	// the allowlist is about which program runs, not about how it was typed.
+	// Whitespace is normalized so "make  check" is the same command as
+	// "make check": the door is about which program runs, not about how it
+	// was typed.
 	normalized := strings.Join(strings.Fields(command), " ")
-	for _, prefix := range allowed {
-		if normalized == prefix || strings.HasPrefix(normalized, prefix+" ") {
+	fields := strings.Fields(normalized)
+	if door.admitsFile(fields) {
+		return "", true
+	}
+	for _, prefix := range door.allowed {
+		if door.identified(prefix) {
+			continue
+		}
+		if matchesCommandPrefix(fields, strings.Fields(prefix)) {
 			return "", true
 		}
 	}
-	return fmt.Sprintf("refused: %s is not verification, and an auditor only runs verification.\nYou may run: %s\n%s",
-		clip(normalized, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
+	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
+		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
+		door.offer(), voice.hint), false
+}
+
+// shellComposition is every character that can start a second command, redirect
+// output, or substitute one. It is a CONSTANT rather than a literal at the gate
+// because two readers now ask the same question of a string — the gate itself,
+// and the reader that decides whether a fragment of the work's own text could
+// ever be a door (task_checks.go's [commandLike]) — and a composition set spelled
+// twice is a safety argument with two versions.
+const shellComposition = ";|&<>`$(){}\n\r\\"
+
+// matchesCommandPrefix decides whether one command starts with one allowed
+// prefix, FIELD BY FIELD.
+//
+// The field walk is what makes a prefix a command prefix rather than a string
+// prefix: "make check" admits `make check ./...` and does not admit
+// `make checkout`, which a byte-wise HasPrefix would wave straight through.
+//
+// AND A WILDCARD THE WORK WROTE IS HONOURED. A brief that names its check as
+// `run_tests.*` is naming one check whose extension it does not want to spell,
+// and a door that took the star literally would be a door onto nothing. The
+// match is per field, so a star never spans the space between two arguments, and
+// a prefix that is nothing but wildcards was refused before it ever reached this
+// list ([commandLike]).
+func matchesCommandPrefix(fields, prefix []string) bool {
+	if len(prefix) == 0 || len(fields) < len(prefix) {
+		return false
+	}
+	for index, want := range prefix {
+		if want == fields[index] {
+			continue
+		}
+		if !strings.ContainsAny(want, "*?[") {
+			return false
+		}
+		if ok, err := path.Match(want, fields[index]); err != nil || !ok {
+			return false
+		}
+	}
+	return true
 }

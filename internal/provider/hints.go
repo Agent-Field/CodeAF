@@ -80,12 +80,20 @@ func CacheKeyFrom(ctx context.Context) string {
 	return key
 }
 
-// effortRequest separates "the harness thinks this phase is cheap" from "the
-// operator asked for this". Only the second may be sent to a model whose
-// catalog entry does not confirm reasoning support, because a harness default
-// that 400s an unknown model would be a self-inflicted outage.
+// effortRequest separates "the harness thinks this phase is cheap" from an
+// effort the request cannot work without. Only the second may be sent to a model
+// whose catalog entry does not confirm reasoning support, because an optional
+// harness default that 400s an unknown model would be a self-inflicted outage.
 type effortRequest struct {
-	effort   Effort
+	effort Effort
+
+	// budget is the thinking allowance in tokens that the two ladder rungs
+	// above high carry, and zero on every other request. It lives beside the
+	// effort rather than in a context key of its own because it is one half of
+	// one decision: nothing can ask for a budget without asking for a level, and
+	// a second key would let the two be set apart and disagree.
+	budget int
+
 	explicit bool
 }
 
@@ -101,6 +109,14 @@ func WithReasoningEffort(ctx context.Context, effort Effort) context.Context {
 // WithConfiguredReasoningEffort carries an operator-configured effort, which is
 // sent even when the catalog cannot vouch for the model.
 func WithConfiguredReasoningEffort(ctx context.Context, effort Effort) context.Context {
+	return withEffort(ctx, effortRequest{effort: effort, explicit: true})
+}
+
+// WithRequiredReasoningEffort carries an effort that is part of the call's
+// correctness rather than an optional economy. A reflex with a tiny answer cap
+// is the measured case: silently dropping its disable leaves a reasoning model
+// no tokens in which to answer, so an unknown catalog row must not erase it.
+func WithRequiredReasoningEffort(ctx context.Context, effort Effort) context.Context {
 	return withEffort(ctx, effortRequest{effort: effort, explicit: true})
 }
 

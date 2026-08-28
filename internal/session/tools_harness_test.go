@@ -9,13 +9,17 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
 // THE MODEL'S HANDS ON THE BIG MACHINERY, from the three sides that matter: the
 // hands exist only where they can work, the goal is required and is passed
 // through whole, and each one STARTS something and comes straight back.
+//
+// AND ONE HAND THAT IS NOT HERE ANY MORE. `run_adaptive` was the third of them —
+// the model's own way to open a planned graph of nodes — and the tests that
+// pinned its behaviour are gone with it rather than inverted, because there is
+// nothing left to assert about a verb: what replaces them is the one test below
+// that says the belt does not carry it even where a runner is wired.
 
 // ── which hands a build has ─────────────────────────────────────────────────
 
@@ -31,7 +35,7 @@ func TestTheHarnessHandsAreOnTheBeltOnlyWhereTheyWork(t *testing.T) {
 		{
 			name:  "the whole thing wired",
 			setup: func(config *Config) { buildConfig(config, t.TempDir()); config.OrchestrateRunner = neverRuns },
-			want:  []string{"build_harness", "list_harnesses", "run_adaptive"},
+			want:  []string{"build_harness", "list_harnesses"},
 		},
 		{
 			name:  "a registry with no engine under it",
@@ -50,9 +54,10 @@ func TestTheHarnessHandsAreOnTheBeltOnlyWhereTheyWork(t *testing.T) {
 			},
 		},
 		{
+			// A RUNNER AND NOTHING ELSE USED TO BUY A VERB, and it buys none now:
+			// the adaptive runner is still wired here, and the belt is empty.
 			name:  "a runner and nothing else",
 			setup: func(config *Config) { config.AskConsent = true; config.OrchestrateRunner = neverRuns },
-			want:  []string{"run_adaptive"},
 		},
 		{
 			name:  "a plain session",
@@ -61,7 +66,7 @@ func TestTheHarnessHandsAreOnTheBeltOnlyWhereTheyWork(t *testing.T) {
 	} {
 		agent, _ := newTestAgent(t, &scriptedCompleter{}, c.setup)
 		var carried []string
-		for _, name := range []string{"build_harness", "list_harnesses", "run_adaptive"} {
+		for _, name := range []string{"build_harness", "list_harnesses"} {
 			if _, found := onBelt(agent, name); found {
 				carried = append(carried, name)
 			}
@@ -84,8 +89,6 @@ func TestTheHarnessHandsSayWhatTheyAreFor(t *testing.T) {
 		{"build_harness", "propose_task"},
 		{"build_harness", "list_harnesses"},
 		{"list_harnesses", "build_harness"},
-		{"run_adaptive", "propose_task"},
-		{"run_adaptive", "build_harness"},
 	} {
 		tool, found := onBelt(agent, c.name)
 		if !found {
@@ -98,25 +101,32 @@ func TestTheHarnessHandsSayWhatTheyAreFor(t *testing.T) {
 			t.Errorf("%s never mentions %s, so nothing tells the model when NOT to use it", c.name, c.says)
 		}
 	}
-	// ONE SOURCE OF TRUTH for the default tank: a schema that spelled its own
-	// figure would be a figure that drifts from the one the run applies — and
-	// so would this assertion, which once pinned the dollars as a literal and
-	// broke on the day the default moved.
-	tool, _ := onBelt(agent, "run_adaptive")
-	if !strings.Contains(string(tool.Schema), orchestrate.Dollars(orchestrateDefaultCap)) {
-		t.Errorf("run_adaptive's schema does not name the default tank: %s", tool.Schema)
+	// AND NEITHER OF THEM SENDS THE MODEL SOMEWHERE THAT NO LONGER EXISTS. A
+	// description is prompt text: naming a verb the belt does not carry is the
+	// same fault as carrying a verb that refuses, and it costs the model a call
+	// to find out.
+	for _, name := range []string{"build_harness", "list_harnesses"} {
+		tool, _ := onBelt(agent, name)
+		if strings.Contains(tool.Description, "run_adaptive") {
+			t.Errorf("%s still points the model at run_adaptive, which is not on the belt", name)
+		}
 	}
 }
 
-// WHAT THE MODEL IS TOLD IT HAS, AND WHAT THE PERSON CAN LOOK UP. These three
+// WHAT THE MODEL IS TOLD IT HAS, AND WHAT THE PERSON CAN LOOK UP. Both of these
 // hands are conditional, so the two completeness gates this repo runs — the belt
 // against the manual (manual_test.go), the prompt against the belt — cannot see
 // them on a bare test agent. They are checked here instead, because a tool the
 // prompt never mentions is one the model reaches for by luck, and a tool no page
 // describes is one the chat cannot answer a question about.
 func TestTheHarnessHandsAreInThePromptAndTheManual(t *testing.T) {
-	for _, name := range []string{"build_harness", "list_harnesses", "run_adaptive"} {
-		if !strings.Contains(systemPrompt, name) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		buildConfig(config, t.TempDir())
+		config.OrchestrateRunner = neverRuns
+	})
+	rendered := renderSystem(agent.config)
+	for _, name := range []string{"build_harness", "list_harnesses"} {
+		if !strings.Contains(rendered, name) {
 			t.Errorf("prompts/system.md never mentions %s", name)
 		}
 		if !manual.Chat().Mentions(name) {
@@ -214,88 +224,37 @@ func TestListHarnessesReadsTheRegistryThisConversationCanReach(t *testing.T) {
 	}
 }
 
-// ── run_adaptive ────────────────────────────────────────────────────────────
+// ── the hand that is gone ───────────────────────────────────────────────────
 
-// THE HAND REACHES THE RUNNER, with the goal whole and the tank the model
-// named. The id comes back because everything a surface can do with a run — draw
-// it, steer it, answer its gate — is keyed on it.
-func TestRunAdaptiveReachesTheRunnerAndAnnouncesTheRun(t *testing.T) {
-	var started startedRun
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, runConfig(&started))
-	lane := agent.Orchestrations()
-
-	text, isError := runTool(t, agent, "run_adaptive",
-		`{"goal":"audit the pricing code","fuel_dollars":5}`)
-	if isError {
-		t.Fatalf("the call was refused: %s", text)
-	}
-	if started.calls != 1 {
-		t.Fatalf("the runner ran %d times", started.calls)
-	}
-	if started.goal != "audit the pricing code" {
-		t.Fatalf("the run was asked for %q", started.goal)
-	}
-	if started.cap != 5 {
-		t.Fatalf("the tank is %v, want the $5 the call named", started.cap)
-	}
-	if started.model != "" {
-		t.Fatalf("the run picked the model %q; a run rides the conversation's own", started.model)
-	}
-	if !strings.Contains(text, "7") || !strings.Contains(text, "$5.00") {
-		t.Errorf("the answer names neither the run nor its tank: %q", text)
-	}
-
-	// AND THE SURFACE WAS TOLD. This event is the only thing that says a run
-	// exists at all — a run is not a node, so it is on no roster.
-	opening := nextRunEvent(t, lane)
-	if opening.Kind != EventOrchestrateNote || opening.ID != 7 {
-		t.Fatalf("the lane opened with %v / id %d", opening.Kind, opening.ID)
-	}
-	if !strings.Contains(opening.Text, "audit the pricing code") || !strings.Contains(opening.Text, "$5.00") {
-		t.Fatalf("the announcement says %q", opening.Text)
-	}
-}
-
-// A TANK NOBODY NAMED IS THE DEFAULT, and so is one named backwards: neither is
-// worth a refusal that costs the person the run.
-func TestRunAdaptiveFallsBackToTheDefaultTank(t *testing.T) {
-	for _, args := range []string{`{"goal":"audit the pricing code"}`, `{"goal":"audit the pricing code","fuel_dollars":-3}`} {
-		var started startedRun
-		agent, _ := newTestAgent(t, &scriptedCompleter{}, runConfig(&started))
-		if text, isError := runTool(t, agent, "run_adaptive", args); isError {
-			t.Fatalf("%s was refused: %s", args, text)
+// ABSENT, NOT REFUSING. The chat model may not open a planned run at all, and
+// the way this codebase says that is the verb simply not being there: the belt,
+// and so the schema and the prompt the model is handed, are byte-identical to a
+// build that never had the hand. A tool left in place to answer "no" would be
+// worse than useless — the model plans around a capability it has been told
+// about, for the rest of the conversation, long after the first refusal.
+//
+// THE RUNNER IS STILL WIRED IN EVERY CASE HERE, which is the whole point. The
+// engine is untouched and the seam is filled the way the shipping door fills it
+// (cmd/aforge's chatv3_orchestrate.go); what is gone is any way for a turn to
+// reach it.
+func TestNoConversationCarriesTheAdaptiveVerb(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(*Config)
+	}{
+		{
+			name:  "the whole thing wired, the way the v3 door wires it",
+			setup: func(config *Config) { buildConfig(config, t.TempDir()); config.OrchestrateRunner = neverRuns },
+		},
+		{
+			name:  "a runner and somebody watching, which used to be the entire gate",
+			setup: func(config *Config) { config.AskConsent = true; config.OrchestrateRunner = neverRuns },
+		},
+	} {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, c.setup)
+		if _, found := onBelt(agent, "run_adaptive"); found {
+			t.Errorf("%s: run_adaptive is on the belt, so the model still has the verb", c.name)
 		}
-		if started.cap != orchestrateDefaultCap {
-			t.Errorf("%s gave a tank of %v, want the default %v", args, started.cap, orchestrateDefaultCap)
-		}
-	}
-}
-
-// A GOAL IS REQUIRED HERE TOO, and for the same reason: the planner cannot see
-// this conversation either.
-func TestRunAdaptiveNeedsAGoal(t *testing.T) {
-	var started startedRun
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, runConfig(&started))
-	if text, isError := runTool(t, agent, "run_adaptive", `{"fuel_dollars":5}`); !isError {
-		t.Fatalf("a goalless run was accepted: %q", text)
-	}
-	if started.calls != 0 {
-		t.Fatalf("a run started anyway")
-	}
-}
-
-// A RUNNER THAT DECLINES SAYS SO. An empty id is a run that never started, and
-// answering with one would be the tool reporting work it did not do.
-func TestRunAdaptiveSaysSoWhenNothingStarted(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.AskConsent = true
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
-	})
-	text, isError := runTool(t, agent, "run_adaptive", `{"goal":"audit the pricing code"}`)
-	if !isError {
-		t.Fatalf("a run that never started answered %q", text)
 	}
 }
 

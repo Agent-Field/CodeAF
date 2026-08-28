@@ -41,10 +41,11 @@ in this order and stops at the first one that ends at a person:
 3. **The conversation's own inbox**, when nothing is open. The next time you open
    that conversation it is folded into one note beginning `while you were away`.
 4. **The project's inbox**, when nothing is open *and* it was an `ask here`
-   errand. An errand has no row on home to come back to, so the news is filed
-   under the project instead: it shows on home under that project as
-   `◆ N things since you left`, and the next ordinary conversation you open in
-   that project folds it into its own `while you were away`.
+   errand. An errand has no conversation to come back to, so the news is filed
+   under the project instead, and the next ordinary conversation you open in that
+   project folds it into its own `while you were away`. At phone width home shows
+   it under `since you left`; on a wider frame the conversation is where it
+   surfaces.
 
 So a reminder set from home while you are working in a chat in the same window
 arrives **in the chat you are working in**. Nothing is ever delivered only into
@@ -55,7 +56,7 @@ row of its own:
 
 ```
 ◦ remind me at 6 to leave · said: time to leave
-▲ keep main green · needs your look: the fix touches migrations
+? keep main green · needs your look: the fix touches migrations
 ```
 
 Live — roads 1 and 2, a chat that is open — the row is drawn **the moment the
@@ -307,6 +308,23 @@ One firing's work is bounded at **60 tool calls** unless the card said otherwise
 and by a quiet per-run backstop. Crossing either cuts the turn where it stands;
 whatever it already did stands with it.
 
+**And a firing that turns out to be wide can split itself.** If the brief you
+banked already names many separate items — "every night, bring the eleven
+adapters up to the new interface" — the firing starts as one worker that is
+allowed to hand the parts out under itself, exactly as a task you typed can (the
+tasks page, *a task that splits itself*). The same two tests apply and neither is
+skipped because nobody is watching: the parts must be genuinely many, and there
+has to be a lane free for them. A brief that names nothing to count never gets
+the option, and a run that is refused simply carries on as one worker. The firing
+does not finish until its parts are home, their work is folded into the one
+account you read in the morning, and everything they spent is on this run's cost
+row.
+
+What a firing gets is the read of its own words and nothing else. There is no
+sizing call before an unattended run: asking a model every night whether a
+sentence that has not changed since yesterday is wide would be a bill you never
+agreed to.
+
 ## Always, never, we do it this way — a rule with nothing to wake it
 
 The rules above all have a trigger in them: a PR opening, a push, main going red.
@@ -407,7 +425,8 @@ uses. An item that has done nothing in the last seven days shows **no weekly
 line at all**, and nothing anywhere reads `0 runs this week`.
 
 In a conversation, asking "what do you have standing?" lists what stands here
-with its rails; home's card is where the counts are.
+with its rails; the standing place, and an item's card on a frame wide enough to
+draw one, are where the counts are.
 
 ## Does it keep working when I close the terminal or shut the laptop?
 
@@ -509,18 +528,20 @@ everything you set up from it:
   connection installs the timer **on devbox**, and turning the `background
   checks` row turns devbox's. Neither ever touches this machine.
 
-Three things are missing over a connection, and each says nothing rather than
+**Home and the standing place both work over a connection**, and both are about the far
+machine: home lists that machine's projects with each one's `◦` band under it, and the
+standing place lists both what stands on this conversation and what stands anywhere else on
+that machine. `p` and `s` write to the far machine's store and the refusal, if the store
+refuses, is that store's own. The status line counts too — `◦ keeping an eye on 2` is about
+the workspace this window is on, which over `--host` is a path on the far machine.
+
+One live detail is still missing over a connection, and it says nothing rather than
 guessing:
 
-- **Home does not open at all** over `--host` — it says
-  `home shows this machine's projects, and this session is on another` — so there
-  is no `◦` band and no `p`/`s` keys on a remote session. The status line still
-  counts: `◦ keeping an eye on 2` is about the workspace this window is on, which
-  over `--host` is a path on the far machine, so the count is the right one.
-- **`/status` prints no `keeping watch` line.** The OS timer is devbox's and this
-  surface has no way to read its state; a line read off this laptop's timer would
-  be a status about the wrong machine.
-- **No row ever shows the firing mark `●`.** Nothing on disk says an item is
+- **`/status` reads devbox's background timer.** Its `keeping watch` line says
+  `installed` or `nothing is checking` from the far machine's own scheduler. If
+  that engine has no scheduler to ask, the whole line is absent.
+- **No row ever shows the firing mark `◐`.** Nothing on disk says an item is
   firing at this instant, so nothing claims it — the same silence a local window
   keeps.
 
@@ -552,7 +573,7 @@ has cost, when it last fired, what it last saw.
 
 To see what stands here, ask what you have set up, or type `/standing` for the page
 of it with `p` and `s` on its rows. Each row leads with the glyph every aforge
-screen uses — `▲` needs you, `●` being checked or fired right now, `◦` waiting
+screen uses — `?` needs you, `◐` being checked or fired right now, `◦` waiting
 for its time, `∙` paused or stopped — then your own words, then the cadence in
 words. A project with nothing set up answers
 `Nothing stands in this project yet.`
@@ -562,13 +583,13 @@ to except one place from it are on the standing-orders page.
 
 ## Why does my watch show a filled dot right now
 
-`●` on an item means a pass has that item in its hands **at this moment** — not
+`◐` on an item means a pass has that item in its hands **at this moment** — not
 that something is wrong, and not that it has news for you. It is one of two
 things, and the item's card says which:
 
 ```
-● checking now · since 4s
-● firing now
+◐ checking now · since 4s
+◐ firing now
 ```
 
 **Checking** is the look: a probe command running, the files you are watching
@@ -582,7 +603,7 @@ own folder — `~/.aforge/v3/standing/<id>/running` — naming the process, the
 moment it started and which of the two halves it is in, and removes it when that
 item's pass ends. Every aforge screen reads that file. So a firing started by
 the OS timer with no window open at all, or by a window in another terminal,
-still shows `●` on your home and in your status line.
+still shows `◐` on your home and in your status line.
 
 A marker is always doubted before it is believed. If the process that wrote it
 is gone, or the marker is older than the **2 minutes** one pass may last, it is
@@ -590,7 +611,7 @@ read as a leftover and no dot is drawn — a machine that lost power mid-firing
 never leaves a watch reading "checking now" for the rest of the week.
 
 Most passes are over in far less than a second, so the ordinary state of a
-healthy watch is `◦`. Seeing `●` means you caught one working. On the status
+healthy watch is `◦`. Seeing `◐` means you caught one working. On the status
 line the `keeping an eye on N` segment is still while nothing is running and
 turns while something is.
 
@@ -632,8 +653,16 @@ exactly two things, and only after **7 days** with nothing touching them:
 
 Nothing else is ever removed. Not your items, not the ledgers, not a run that
 said something, landed something, failed, or is waiting for you; not a run whose
-folder never said what it came to; not a folder something still holds open; and
-never a conversation under `~/.aforge/v3/projects/`, whatever its age.
+folder never said what it came to; and not a folder something still holds open.
+
+**Conversations are swept in exactly one case**, and it is the same week and the
+same judgement: one you started **in a temp directory**, seven days after you
+last said anything to it. Everything it holds goes with it — the transcript, and
+the `work/` workspace if it owned one. Every other conversation under
+`~/.aforge/v3/projects/` stays whatever its age. If you work in a temp directory
+and want to keep what a conversation makes, anchor it with `/workspace <path>`
+or copy the files out; the starting-aforge page has both under *I deleted my chat
+and lost the files the task made*.
 
 **Sweeping a run removes the folder and nothing else.** The money line stays: the
 day's ledger row for that firing is never reaped, and the item goes on

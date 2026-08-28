@@ -8,26 +8,41 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// THE WELCOME BOX: the first thing an empty session shows, and the last time it
+// THE WELCOME: the first thing an empty session shows, and the last time it
 // shows it.
 //
 // A terminal that opens on a bare prompt is a terminal that tells a first-time
-// reader nothing and a returning one less: which model is answering, which
-// directory this is, and — the fact a chat surface is worst at — WHAT WAS I
-// DOING YESTERDAY. So an empty conversation opens with one box above the input:
-// the wordmark and where you are on the left, the four sessions you were last
-// in on the right, and enter or a click on one of them opens it.
+// reader nothing and a returning one less: which model is answering, what it
+// will cost to talk to, and — the fact a chat surface is worst at — WHAT WAS I
+// DOING YESTERDAY. So an empty conversation opens as ONE CENTRED UNIT and
+// nothing else: the wordmark, the model and the crew under it, the message box
+// itself with the caret in it, one dim line of things to try, and — only where
+// there are any — the sessions this directory was last in, which enter or a
+// click opens.
+//
+// THE BOX IS IN THE MIDDLE OF THE SCREEN BECAUSE THAT IS WHERE THE EYE IS. It
+// used to be a bordered box at the top with the caret alone forty rows below it,
+// a full-height column of `+ /task` doors beside nothing, and a status line
+// billing `$0.00` for a conversation that had not happened. Every one of those
+// was furniture drawn to mark an absence. Now the first keystroke lands where
+// a person is already looking, and the frame's ordinary furniture — the input at
+// the foot, the legend, the column on the right, the telemetry — arrives with
+// the conversation rather than before it (view.go, task.go, render.go each gate
+// their piece on this state).
 //
 // Three rules, and the first two are the whole of why this is not chrome:
 //
 //   - IT SHOWS ONCE. The first submit, the first key, the first click — any of
-//     them and the box is gone for the life of the surface. Nothing brings it
-//     back, because a box that returns is a box a person has to dismiss twice.
+//     them and the unit is gone for the life of the surface, and the box is back
+//     at the foot of the frame with the keystroke in it. Nothing brings it back,
+//     because a greeting that returns is a greeting a person has to dismiss
+//     twice.
 //   - IT NEVER SHOWS OVER A CONVERSATION. A resumed session has a transcript,
-//     and the transcript is the answer to "where was I" — a welcome box above it
+//     and the transcript is the answer to "where was I" — a greeting above it
 //     would be the surface answering a question the screen already answered.
 //   - IT ANIMATES IN ONCE AND THEN IS STILL. A slow matte sweep across the
 //     letters, easing out to static over about a second and a quarter, and then
@@ -39,7 +54,7 @@ import (
 // clock (app.go's [frameInterval] is the only clock here), so what it looks
 // like does not depend on how busy the machine was — and so a test can assert
 // the settled state without sleeping through it. A slot is 33ms of wall time
-// whether or not a frame was drawn in it (link.go), so the box takes the same
+// whether or not a frame was drawn in it (link.go), so the unit takes the same
 // second and a quarter to arrive over a connection as it does here.
 
 // The animation's three lengths, in slots of the 33ms paint clock.
@@ -56,10 +71,10 @@ const (
 	welcomeFrames = welcomeSweep + 4
 )
 
-// welcomeSlots is how many recent sessions the right column holds. It is FIXED:
-// the box is the same height with four sessions, with one, and with none, so
-// the input line under it does not move while a person is reading the box above
-// it.
+// welcomeSlots is the most recent sessions the unit lists. It is a CAP and not
+// a reservation: four rows with four sessions, one with one, and nothing at all
+// with none — an empty list is the emptiness law's plainest case, and a heading
+// over four blank slots was a row spent announcing it.
 const welcomeSlots = 4
 
 // Session is one conversation this directory has had before: a row of the
@@ -132,12 +147,22 @@ func (a *app) openWelcome() {
 	}
 }
 
-// dismissWelcome puts the box away for good.
+// dismissWelcome puts the unit away for good, and says the two keys that leave.
+//
+// THE EXIT IS TAUGHT AFTER THE ENTRANCE. `esc interrupts · ctrl+c twice quits`
+// used to be the first line of every session, drawn above a greeting whose whole
+// job was to get somebody to type their first sentence — a way out, offered
+// before the way in. So while the unit is up the transcript carries nothing,
+// and the line lands here, at the moment the conversation begins, where it is
+// the first thing above the box a person has just started typing into. A
+// session that never had a unit — a resumed one — gets the line on its first
+// frame as it always did ([newApp]).
 func (a *app) dismissWelcome() {
 	if !a.welcome.open {
 		return
 	}
 	a.welcome = welcome{spent: true}
+	a.noteLandingKeys()
 	a.touch()
 }
 
@@ -333,9 +358,26 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	return cmd, ""
 }
 
-// welcomePress is a click inside the box: on a recent row it opens that
-// session, anywhere else it is the person reaching past the box, which
-// dismisses it.
+// welcomeRowPress is a click on one row of the unit: on a recent session it
+// opens that session, on the message box it does nothing — the keyboard is
+// already there, and a click that yanked the box to the foot of the frame would
+// be the surface moving the thing a person just aimed at — and anywhere else it
+// is the person reaching past the greeting, which dismisses it.
+func (a *app) welcomeRowPress(row int) tea.Cmd {
+	if !a.welcome.open {
+		return nil
+	}
+	if a.welcomeInputRow(row) {
+		return nil
+	}
+	return a.welcomePress(a.welcomeSlotAt(row))
+}
+
+// welcomePress opens the recent session in this slot, and dismisses the
+// greeting for a slot that names none. It is the door's own seam — every way a
+// person opens a session comes back through it with that conversation's lanes
+// (resumelanes_test.go) — which is why the row's press above resolves to a slot
+// before it gets here.
 func (a *app) welcomePress(slot int) tea.Cmd {
 	if !a.welcome.open {
 		return nil
@@ -346,7 +388,7 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
-	if chosen.File != "" && convKey(chosen.File) == convKey(a.file) {
+	if chosen.File != "" && a.convKey(chosen.File) == a.convKey(a.file) {
 		// The conversation this window is already in. It is the picker's rule
 		// (resume.go), and here it is also what keeps [app.openSession]'s
 		// open-before-close safe: asking the door for our own journal would meet
@@ -447,15 +489,108 @@ func (w *welcome) paintWordmark(row string, pal palette) string {
 	return out
 }
 
-// welcomeHeight is how many rows the box takes. It is a constant of the frame:
-// the border, the wordmark or its ascii stand-in, the place line, and the four
-// fixed slots beside them.
-func (a *app) welcomeHeight() int {
-	if !a.welcome.open {
-		return 0
+// welcomeUnitWidth is the widest the unit is drawn. It is exactly the starter
+// line's three clauses with a cell to spare, and no wider: a two-hundred-column
+// window centres a small object rather than stretching one across it, and the
+// message box inside the unit wraps where the eye already is.
+const welcomeUnitWidth = 76
+
+// The frame the unit will not draw into. Under these there is no room to be
+// greeted in — the unit would take the whole window with it and leave nowhere
+// to type — so a small window simply opens on the prompt, which is what it
+// would have done anyway.
+const (
+	welcomeMinRows = 12
+	welcomeMinCols = 40
+)
+
+// The starter line's three clauses, widest first. Each is true in ANY directory:
+// the example asks about the folder rather than "this repo", because a person
+// who opened aforge in ~/notes must not be promised a repository it cannot see.
+// The narrow ladder drops from the left — the example first, then the task door
+// — and the last thing standing is the slash, which is the one door onto
+// everything else.
+const (
+	starterTryWord   = `try "what is in this folder"`
+	starterTaskWord  = "/task <brief> starts work"
+	starterSlashWord = "/ shows commands"
+)
+
+// starterLine is the dim line under the message box, cut to the clauses that
+// fit in room cells, and "" where not even the slash fits.
+func starterLine(room int) string {
+	for _, line := range []string{
+		starterTryWord + legendJoin + starterTaskWord + legendJoin + starterSlashWord,
+		starterTaskWord + legendJoin + starterSlashWord,
+		starterSlashWord,
+	} {
+		if ansi.StringWidth(line) <= room {
+			return line
+		}
 	}
-	rows := a.welcomeRows(a.widthOr())
-	return len(rows)
+	return ""
+}
+
+// welcomeRowKind says what one drawn row of the unit is, for the pointer: most
+// rows are statements, the message box's rows are the keyboard's, and a recent
+// session's row is a door.
+type welcomeRowKind uint8
+
+const (
+	welcomeRowPlain welcomeRowKind = iota
+	welcomeRowInput
+	welcomeRowRecent
+)
+
+// welcomeMark is one row's kind and, for a recent session, which one.
+type welcomeMark struct {
+	kind welcomeRowKind
+	slot int
+}
+
+// welcomeFits reports whether the unit is on the frame at all: it is open, and
+// the window has the room stated above.
+func (a *app) welcomeFits() bool {
+	if !a.welcome.open {
+		return false
+	}
+	width, height := a.size()
+	return height >= welcomeMinRows && width >= welcomeMinCols
+}
+
+// welcomeHolds reports whether the message box is drawn INSIDE the unit this
+// frame rather than at the foot of the frame.
+//
+// It is the unit's whole reason and it is still conditional, because the box at
+// the foot is not always the draft: a picker's filter, the sessions roster's,
+// the rewind bar and the rest all stand in its position while they hold the
+// keyboard (input.go's [app.inputBlock]), and `aforge resume` opens the roster
+// over the greeting. A filter box drawn in the middle of the screen beside a
+// list at the bottom would be a box a person cannot find the list for — so
+// while anything else has the box, the unit draws without it and the foot of
+// the frame keeps whatever is standing there.
+func (a *app) welcomeHolds() bool {
+	if !a.welcomeFits() {
+		return false
+	}
+	if a.rew.on || a.pick.open || a.at(pageMemory) || a.roster.open || a.subPage.open ||
+		a.shelf.open || a.connPanel.open {
+		return false
+	}
+	// AND A WATCHER HAS NO BOX TO PUT INSIDE THE GREETING (watching.go): the
+	// line that stands in its place belongs at the foot of the frame with the
+	// rest of what has taken that position.
+	if a.watching() {
+		return false
+	}
+	return true
+}
+
+// welcomeHeight is how many rows the unit takes, which changes with the draft
+// inside it and the sessions under it. Nothing here is reserved: the frame
+// charges the conversation exactly what is drawn (view.go's [app.chromeHeight]).
+func (a *app) welcomeHeight() int {
+	return len(a.welcomeRows(a.widthOr()))
 }
 
 func (a *app) widthOr() int {
@@ -463,111 +598,204 @@ func (a *app) widthOr() int {
 	return width
 }
 
-// welcomeRows draws the box. The slot each row belongs to is answered by
-// [app.welcomeSlotAt], from the same geometry, so a click cannot land on a
-// session the frame drew somewhere else.
+// welcomeRows draws the unit. The pointer's half of the same geometry is
+// [app.welcomeUnit]'s marks, so a click cannot land on a session the frame drew
+// somewhere else.
 func (a *app) welcomeRows(width int) []string {
-	if !a.welcome.open {
-		return nil
-	}
-	// A frame this small has no room to be greeted in. The box would take the
-	// conversation, the rule and half the input line with it, and a welcome
-	// that leaves nowhere to type is not a welcome — so a small window simply
-	// opens on the prompt, which is what it would have done anyway.
-	if _, height := a.size(); height < 12 || width < 40 {
-		return nil
+	rows, _, _, _ := a.welcomeUnit(width)
+	return rows
+}
+
+// welcomeUnit is the unit as rows, one mark per row, and where the caret sits
+// in it — a column from the frame's left edge, and a row from the unit's top —
+// while the unit holds the message box.
+//
+// THE ROWS SHARE ONE LEFT EDGE and the edge is centred. Each row is as wide as
+// what it says; the block they make is [welcomeUnitWidth] or the window less
+// four, whichever is less, and it sits in the middle of the frame. A left edge is
+// what makes a stack of different things read as one object, which is the whole
+// difference between this and the four separate pieces of furniture it
+// replaced.
+func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
+	if !a.welcomeFits() {
+		return nil, nil, 0, 0
 	}
 	w := &a.welcome
 	pal := a.pal
-
-	left := wordmarkRows(pal.ascii)
-	body := make([]string, 0, len(left)+2)
-	for _, row := range left {
-		body = append(body, w.paintWordmark(row, pal))
-	}
-	body = append(body, "")
-	// The place line is capped: a long model slug is a fact about the model and
-	// not a reason for the wordmark's column to eat the sessions beside it.
-	body = append(body, pal.dim(fit(a.placeLine(), 34)))
-
-	right := w.recentRows(pal, a.hoveredSlot())
-	for len(body) < len(right) {
-		body = append(body, "")
-	}
-	for len(right) < len(body) {
-		right = append(right, "")
-	}
-
-	// The box is inset by one cell, and by one more while it is arriving: the
-	// whole slide is a single column, which is a movement a person notices
-	// without watching.
-	inset := 1
+	unit := min(width-4, welcomeUnitWidth)
+	lead := (width - unit) / 2
+	// One cell further in while the unit is arriving: the whole slide is a
+	// single column, which is a movement a person notices without watching.
 	if w.step < welcomeSlide {
-		inset = 2
+		lead++
 	}
-	// The left column is as wide as what it holds — the wordmark, or the place
-	// line under it, whichever is longer — plus a gutter. It is measured rather
-	// than chosen so that the right column starts where the left one ACTUALLY
-	// ends: a fixed split puts the sessions through the middle of the wordmark
-	// on the day somebody's model slug is long.
-	inner := width - inset - 2
-	leftWidth := 0
-	for _, line := range body {
-		if w := ansi.StringWidth(ansi.Strip(line)); w > leftWidth {
-			leftWidth = w
+	pad := strings.Repeat(" ", lead)
+
+	rows := make([]string, 0, 16)
+	marks := make([]welcomeMark, 0, 16)
+	add := func(text string, mark welcomeMark) {
+		rows = append(rows, pad+text)
+		marks = append(marks, mark)
+	}
+	for _, row := range wordmarkRows(pal.ascii) {
+		add(w.paintWordmark(row, pal), welcomeMark{})
+	}
+	add(pal.dim(fit(a.welcomeModelLine(), unit)), welcomeMark{})
+	add("", welcomeMark{})
+
+	caretX, caretRow := 0, 0
+	if a.welcomeHolds() {
+		// THE DRAFT IS THE REAL DRAFT, laid out by the same function the foot of
+		// the frame uses, at the unit's width. It may not take the window: a
+		// restored draft six rows tall in a twelve-row window would push the
+		// wordmark off the top, so the box gets what is left after the rest of
+		// the unit and the status row have taken theirs.
+		_, height := a.size()
+		box := max(1, min(draftRows, height-a.statusHeight(width)-8))
+		block, x, row := draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
+		caretX, caretRow = lead+x, len(rows)+row
+		for _, line := range block {
+			add(line, welcomeMark{kind: welcomeRowInput})
 		}
 	}
-	leftWidth += 2
-	rightWidth := inner - leftWidth - 2
-	if rightWidth < 22 {
-		// Too narrow for two columns. The sessions go rather than being wrapped
-		// into stubs nobody could choose between — the box still says what this
-		// is and what is answering, which is the half that fits.
-		right = make([]string, len(body))
-		rightWidth = 0
+	if line := starterLine(unit); line != "" {
+		add(pal.dim(line), welcomeMark{})
 	}
 
-	// THE BLOCK IS CENTRED IN THE BOX, not pushed against its left edge. The
-	// right column is given the room it ASKS for rather than everything that is
-	// left, because a sessions column stretched to the far wall is a column with
-	// its content at one end and a hand's width of nothing after it — which is
-	// what made a wide window look like a form somebody had abandoned halfway.
-	//
-	// Measured, never chosen: the wordmark decides the left column and the
-	// longest session name decides the right, so the pair sits in the middle of
-	// whatever window it is drawn in and nothing has to be re-tuned when either
-	// one changes.
-	used := 0
-	for _, line := range right {
-		if w := ansi.StringWidth(ansi.Strip(line)); w > used {
-			used = w
+	// THE SESSIONS TAKE ONLY THE ROOM THE WINDOW HAS LEFT. A twelve-row window
+	// with four sessions to list would draw the last of them over the status row;
+	// the list is cut to what fits with a row of slack to spare, and a list that
+	// would fit no row at all is not drawn — its heading is a label earned by a
+	// real row, never a row spent on absence.
+	_, height := a.size()
+	spare := height - a.statusHeight(width) - len(rows) - 1
+	shown := min(len(w.recent), spare-2)
+	if shown > 0 {
+		add("", welcomeMark{})
+		add(pal.dim("recent sessions"), welcomeMark{})
+		hover := a.hoveredSlot()
+		names := w.recentNameWidth(shown, unit)
+		for i := 0; i < shown; i++ {
+			add(w.recentRow(i, pal, names, i == hover), welcomeMark{kind: welcomeRowRecent, slot: i})
 		}
 	}
-	if used > rightWidth {
-		used = rightWidth
-	}
-	lead := (inner - 2 - leftWidth - used) / 2
-	if lead < 0 {
-		lead = 0
-	}
-	middle := strings.Repeat(" ", lead)
+	return rows, marks, caretX, caretRow
+}
 
-	pad := strings.Repeat(" ", inset)
-	out := make([]string, 0, len(body)+2)
-	out = append(out, pad+pal.dim(boxTop(inner, pal.ascii)))
-	for i, line := range body {
-		cell := line
-		if gap := leftWidth - ansi.StringWidth(ansi.Strip(line)); gap > 0 {
-			cell += strings.Repeat(" ", gap)
+// recentNameCap is the most cells a session's name may take on its row. Past
+// it the name is cut, because the age beside it is the half of the row a person
+// scans down, and a column of ages that wanders is a column that cannot be
+// scanned.
+const recentNameCap = 40
+
+// recentNameWidth is the name column's width for the rows that are shown: the
+// longest name among them, cut to [recentNameCap] and to what the unit has left
+// beside an age — measured rather than chosen, so a list of short names does
+// not hold its ages a hand's width off to the right.
+func (w *welcome) recentNameWidth(shown, unit int) int {
+	widest := 0
+	for i := 0; i < shown; i++ {
+		if n := ansi.StringWidth(w.recentName(i)); n > widest {
+			widest = n
 		}
-		row := middle + cell + fitPainted(right[i], used)
-		if gap := inner - 2 - ansi.StringWidth(ansi.Strip(row)); gap > 0 {
-			row += strings.Repeat(" ", gap)
-		}
-		out = append(out, pad+pal.dim(boxSide(pal.ascii))+" "+row+" "+pal.dim(boxSide(pal.ascii)))
 	}
-	out = append(out, pad+pal.dim(boxBottom(inner, pal.ascii)))
-	return out
+	return min(min(widest, recentNameCap), unit-10)
+}
+
+// recentName is what a session's row calls it.
+//
+// The name is read back as words when it arrived as ONE TOKEN, and left alone
+// otherwise (names.go's [readableName]). That is the whole difference between
+// this row and the resume picker's: the picker climbs a ladder and title-cases
+// what it finds, because it is a page a person went to on purpose and can
+// spend the width; this row's whole voice is this surface's lowercase — the
+// heading above these rows is "recent sessions" — so a sentence that already
+// reads as one is not touched, and the only name that changes here is the
+// machine token nobody could read either way.
+//
+// The row still OPENS the file it was read from — [app.welcomePress] resumes
+// Session.File — so nothing that identifies the session is touched here.
+func (w *welcome) recentName(i int) string {
+	session := w.recent[i]
+	if name := readableName(session.Title); name != "" {
+		return name
+	}
+	return sessionStem(session.File)
+}
+
+// welcomeModelLine is the line under the wordmark: what is answering, and which
+// crew stands behind it — `anthropic/claude-sonnet-4.5 · balanced crew`.
+//
+// The model is its whole routing address and not the basename the status row
+// keeps, because this line is where a person who is about to spend their own
+// money reads what they are paying for, and it has the width. The crew clause is
+// absent on a door with no profile ([app.crewWord]'s law), and the directory
+// that used to stand here is on the legend and the status sheet the moment the
+// conversation begins.
+func (a *app) welcomeModelLine() string {
+	model := a.model
+	if model == "" {
+		model = "no model"
+	}
+	crew := ""
+	if strings.TrimSpace(a.profileDir) != "" {
+		crew = config.CrewAt(a.profileDir) + " crew"
+	}
+	return dotted(model, crew)
+}
+
+// hoveredSlot is the recent session the pointer is over, or -1.
+func (a *app) hoveredSlot() int {
+	if a.hot.kind == hoverWelcome {
+		return a.hot.index
+	}
+	return -1
+}
+
+// recentRow is one session as a row of the unit: its name in a column names
+// cells wide, and a coarse age after it.
+func (w *welcome) recentRow(i int, pal palette, names int, hovered bool) string {
+	line := fit(w.recentName(i), names)
+	if gap := names - ansi.StringWidth(line); gap > 0 {
+		line += strings.Repeat(" ", gap)
+	}
+	if when := since(w.recent[i].At); when != "" {
+		line += "  " + when
+	}
+	switch {
+	case i == w.sel:
+		return pal.accent(glyphYou) + pal.bold(pal.ink(line))
+	case hovered:
+		// The pointer's own lead, the same one every list on this surface draws
+		// under a pointer (palette.go's overlayRow).
+		return pal.accent("· ") + pal.ink(line)
+	}
+	return "  " + pal.dim(line)
+}
+
+// welcomeMarkAt is the mark of one row of the unit, from the SAME layout the
+// frame drew, so the pointer and the paint cannot disagree.
+func (a *app) welcomeMarkAt(row int) (welcomeMark, bool) {
+	_, marks, _, _ := a.welcomeUnit(a.widthOr())
+	if row < 0 || row >= len(marks) {
+		return welcomeMark{}, false
+	}
+	return marks[row], true
+}
+
+// welcomeSlotAt resolves one row of the unit to the recent session drawn on it,
+// or -1.
+func (a *app) welcomeSlotAt(row int) int {
+	if mark, ok := a.welcomeMarkAt(row); ok && mark.kind == welcomeRowRecent {
+		return mark.slot
+	}
+	return -1
+}
+
+// welcomeInputRow reports whether one row of the unit is the message box.
+func (a *app) welcomeInputRow(row int) bool {
+	mark, ok := a.welcomeMarkAt(row)
+	return ok && mark.kind == welcomeRowInput
 }
 
 // fitPainted truncates a row that is already painted. It measures the plain
@@ -582,98 +810,6 @@ func fitPainted(text string, width int) string {
 	return ansi.Truncate(text, width, glyphMore)
 }
 
-// placeLine is the left column's second half: what is answering, and where.
-func (a *app) placeLine() string {
-	model := a.model
-	if model == "" {
-		model = "no model"
-	}
-	place := a.place
-	if place == "" {
-		place = "here"
-	}
-	return model + " · " + place
-}
-
-// hoveredSlot is the recent session the pointer is over, or -1.
-func (a *app) hoveredSlot() int {
-	if a.hot.kind == hoverWelcome {
-		return a.hot.index
-	}
-	return -1
-}
-
-// recentRows is the right column: the heading, then [welcomeSlots] rows whether
-// or not there is anything to put in them.
-func (w *welcome) recentRows(pal palette, hover int) []string {
-	out := make([]string, 0, welcomeSlots+2)
-	out = append(out, pal.dim("recent sessions"))
-	out = append(out, "")
-	if len(w.recent) == 0 {
-		out = append(out, pal.dim("no recent sessions"))
-		for len(out) < welcomeSlots+2 {
-			out = append(out, "")
-		}
-		return out
-	}
-	for i := 0; i < welcomeSlots; i++ {
-		if i >= len(w.recent) {
-			out = append(out, "")
-			continue
-		}
-		out = append(out, w.recentRow(i, pal, i == hover))
-	}
-	return out
-}
-
-func (w *welcome) recentRow(i int, pal palette, hovered bool) string {
-	session := w.recent[i]
-	// The name is read back as words when it arrived as ONE TOKEN, and left alone
-	// otherwise (names.go's [readableName]). That is the whole difference between
-	// this row and the resume picker's: the picker climbs a ladder and title-cases
-	// what it finds, because it is a page a person went to on purpose and can
-	// spend the width; this column is 24 cells wide and its whole voice is this
-	// surface's lowercase — the heading above these rows is "recent sessions" — so
-	// a sentence that already reads as one is not touched, and the only name that
-	// changes here is the machine token nobody could read either way.
-	//
-	// The row still OPENS the file it was read from — [app.welcomePress] resumes
-	// Session.File — so nothing that identifies the session is touched here.
-	name := readableName(session.Title)
-	if name == "" {
-		name = sessionStem(session.File)
-	}
-	when := since(session.At)
-	line := fit(name, 24)
-	if when != "" {
-		line += "  " + when
-	}
-	switch {
-	case i == w.sel:
-		return pal.accent(glyphYou) + pal.bold(pal.ink(line))
-	case hovered:
-		// The pointer's own lead, the same one every list on this surface draws
-		// under a pointer (palette.go's overlayRow).
-		return pal.accent("· ") + pal.ink(line)
-	}
-	return "  " + pal.dim(line)
-}
-
-// welcomeSlotAt resolves one row of the box to the recent session drawn on it,
-// or -1. It counts from the SAME layout [app.welcomeRows] draws: the border,
-// the heading, the blank, then one row per slot.
-func (a *app) welcomeSlotAt(row int) int {
-	if !a.welcome.open || len(a.welcome.recent) == 0 {
-		return -1
-	}
-	// border(1) + heading(1) + blank(1)
-	slot := row - 3
-	if slot < 0 || slot >= len(a.welcome.recent) {
-		return -1
-	}
-	return slot
-}
-
 func baseName(path string) string {
 	if at := strings.LastIndexByte(path, '/'); at >= 0 {
 		return path[at+1:]
@@ -684,9 +820,9 @@ func baseName(path string) string {
 	return path
 }
 
-// since is the relative time in the right column. It is coarse on purpose: the
-// question a person asks of this list is "which one was I in", and "3d" answers
-// it where a timestamp would have to be read.
+// since is the relative age beside a recent session. It is coarse on purpose:
+// the question a person asks of this list is "which one was I in", and "3d"
+// answers it where a timestamp would have to be read.
 func since(at time.Time) string {
 	if at.IsZero() {
 		return ""
@@ -704,29 +840,4 @@ func since(at time.Time) string {
 	default:
 		return at.Format("2 Jan")
 	}
-}
-
-// The box's own furniture. It is the only border this surface draws, and it is
-// drawn for exactly one reason: the welcome box is an OBJECT that goes away,
-// and the rule above the input — this surface's one line — is a seam that
-// stays. Two different things, two different marks.
-func boxTop(inner int, ascii bool) string {
-	if ascii {
-		return "+" + strings.Repeat("-", inner) + "+"
-	}
-	return "╭" + strings.Repeat("─", inner) + "╮"
-}
-
-func boxBottom(inner int, ascii bool) string {
-	if ascii {
-		return "+" + strings.Repeat("-", inner) + "+"
-	}
-	return "╰" + strings.Repeat("─", inner) + "╯"
-}
-
-func boxSide(ascii bool) string {
-	if ascii {
-		return "|"
-	}
-	return "│"
 }

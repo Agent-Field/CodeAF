@@ -262,7 +262,21 @@ func (a *app) harnessPageHead(name, head string, room int, selected bool) string
 	return paint(lead) + a.pal.dim(fit(rest, room-used))
 }
 
+// harnessCardKey routes the three keys on a SELECTED design card, and reports
+// whether it took one.
+//
+// EVERY GUARD HERE IS [app.settleCardKey]'S GUARD, and for the reason that file
+// states in full: `e` and `enter` and `esc` are the keys a person types with,
+// so a card that answered them while somebody was writing a sentence would have
+// resolved a design out from under a paragraph whose first word happened to be
+// "even". It went unguarded for a wave, and it cost exactly that — a bare `e`
+// mid-sentence walked into the design's room, and on home the same three keys
+// never reached the box a person was typing into.
 func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {
+	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
+		a.roomOpen() || !a.input.empty() {
+		return false
+	}
 	if a.sel < 0 || a.sel >= len(a.entries) {
 		return false
 	}

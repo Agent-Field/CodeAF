@@ -490,7 +490,7 @@ func (a *app) stripTitle(node *taskNode, title string) string {
 // reading them first would be reading where the chips were drawn on the frame
 // before this one.
 func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
-	if a.sheet.open || a.copy.on || a.welcome.open {
+	if a.at(pageSettings) || a.copy.on || a.welcome.open {
 		return nil, false
 	}
 	width, _ := a.size()
@@ -543,7 +543,7 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 // are not in disagreement: the row eats the miss so it cannot fall through to the
 // conversation, and a gap that brightened would be claiming to be a door.
 func (a *app) stripHoverAt(x, y int) (hoverAt, bool) {
-	if a.sheet.open || a.copy.on || a.welcome.open || y != a.headHeight() {
+	if a.at(pageSettings) || a.copy.on || a.welcome.open || y != a.headHeight() {
 		return hoverAt{}, false
 	}
 	width, _ := a.size()

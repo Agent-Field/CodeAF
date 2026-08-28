@@ -189,20 +189,22 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the three-preset crew chooser |
+| `/crew` | — | — | opens the five-seat reading: the model you talk to, then the three crew presets |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
-| `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
-| `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/cache` | — | — | how big the shared build cache is, and where |
+| `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
 | `/export` | `/save` | `<path>` | …and writes it there; tab completes the path |
-| `/files` | — | — | lists what has been made for you; opens, reveals or copies one |
+| `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
+| `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
@@ -399,7 +401,7 @@ is on the tray already.
 
 Tab completes the path as you type it.
 
-## /export — write this conversation to a file
+## Does export save to my laptop — /export writes this conversation here
 
 `/export` (or `/save`) writes the **whole** conversation to a markdown file somebody else
 can read. It is built from the full transcript, not from the tail on screen.
@@ -483,8 +485,68 @@ and says so; give it another name.
 
 If nothing has been made yet, `/files` opens no list and answers `nothing made yet.`
 
-Over `--host` the list is the files made on **this** machine; what the session on the
-other machine made is written down over there, and the command says so as it opens.
+On a session running on **this** machine that is the whole of `/files`. Over `--host` it
+means something else — see the next section.
+
+## /files over --host — browse, open and download files on the other machine
+
+On a `--host` session the files the conversation is about are on the **other** machine, so
+`/files` points at that machine instead of at this one's list.
+
+`/files` with nothing after it opens a **browse page** for the far workspace in this
+machine's own browser, and writes the address into the conversation as well, so you can
+paste it into a different browser or reach it when nothing opened. The page is served by a
+listener on `127.0.0.1` that this window owns: it starts the first time you need it, its
+addresses work only while the window is open, and it can only show what the session itself
+chose to show. What may be shown is the far session's own law and not this window's — the
+workspace it is working in and the session's own folder, and nothing outside those two.
+
+`/files <path>` brings **one file** back and opens it the way your desktop would. The path
+is a path on the other machine, relative to that workspace. The bytes are kept here by
+content, under `~/.aforge/v3/remote/`, and a copy under the file's own name is what your
+viewer is handed — so the window title says `report.pdf` and not a row of hex. A file the
+model wrote during the turn is usually already here before you ask, so it opens at once:
+aforge quietly fetches a file of 2MB or less as it sees it being written, and says nothing
+about having done it.
+
+The two open in different places, and that is the difference worth knowing: **a clicked
+path and the browse page open in your browser** — a terminal hands a web address to a
+browser and that is what the link is — while **`/files <path>` hands the file to your own
+program**, `open` on a Mac and `xdg-open` on Linux, so a `.csv` lands in your spreadsheet.
+
+A fetch that takes less than a third of a second says nothing at all. A longer one draws
+one line naming the file. If the other machine refuses — the path is outside those two
+places, or the file is over the 16MB one file may cross this connection — you get that
+machine's own sentence, unchanged.
+
+**Nothing here edits that machine's files.** The copy on this one is a copy: editing it
+changes nothing over there. The one thing you can put ON the other machine is a file
+dropped onto the browse page, and it lands in that session's `attachments/` folder — never
+anywhere else you could name, and never over anything already there. **A drop says
+nothing:** no message is sent, no turn starts, and nothing about it appears in the
+conversation, so the chat only knows about the file when you mention it. `/attach` is the
+same landing place *with* your own message saying what it is for. A file over the 16MB one
+file may cross is refused, and so is a name that is a path.
+
+On a local session `/files <path>` does nothing but say so: `that form of /files is for a
+session on another machine — this one is local, so the paths in it are already yours to
+open`.
+
+The browse page and the links are served by the same listener, which starts the first time
+one is needed and closes with the window; every address it minted stops working then, and
+a wrong one gets a plain `404` with nothing in it to tell one wrong guess from another.
+If it cannot start at all you get one line and no links: `the file door did not open on
+this machine`.
+
+**Paths in replies are links again over `--host`.** A path the reply names is checked with
+the other machine first, and only a real file there becomes clickable; cmd+click opens it
+through the same door the browse page uses. A word that machine did not confirm stays
+plain text, which is the same rule a local session has always followed. A confirmed
+**folder** is not a link over a connection.
+
+*Opening files from that machine* is the whole of this in a person's terms: what turns
+into a link and why one did not, where the copies live on this machine, what a drop on the
+browse page does, the 16MB ceiling, and who else can reach those addresses.
 
 ## /status — everything the status line knows
 
@@ -509,14 +571,17 @@ the three classes:
 crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 ```
 
-`/status` differs from the on-screen status sheet in three deliberate ways:
+On the live status line the same fact is one short segment — `crew max`, or
+`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
+the first segments a narrow row gives up. The `crew` line here and on the phone's status
+sheet is the full reading; there is no `crew` line at all when the session was opened
+without a profile directory.
+
+`/status` differs from the on-screen status sheet in two deliberate ways:
 
 - The session **file** is added. A path is a thing you copy into another program.
 - The `spend` line is **dropped** when nothing has been spent. The live status line keeps
   showing `$0.00`; a note in the transcript must not.
-- The `crew` line is added, because sixty cells of one fact would be cut in the middle of
-  the third class on a forty-four-column row, and the three classes are the answer. There
-  is no `crew` line at all when the session was opened without a profile directory.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
@@ -543,6 +608,50 @@ hits.
 ```
 nothing spent yet — this session has not sent a turn.
 ```
+
+## /cache — the build cache, disk space, and why aforge is using so much disk
+
+`/cache` prints one line: how big the shared build cache is and where it lives —
+`~/.aforge/cache`. That directory holds the toolchain caches task workers fill as they
+build — go modules and build outputs, npm, pip, cargo — shared across sessions so the same
+module is downloaded once instead of per task. It can quietly grow to hundreds of
+megabytes; that growth is this cache, not your conversations.
+
+With nothing in it, `/cache` answers `the cache is empty · ~/.aforge/cache`.
+
+**The cache is not your conversations.** Conversation history, tasks, settings and
+credentials live elsewhere under `~/.aforge` and no cache command can reach them.
+
+## /cache clean — clean the cache, clear the cache, free disk space
+
+`/cache clean` deletes the shared build cache. It is the one deliberately destructive
+command on this surface, so it never acts on the first ask:
+
+1. `/cache clean` **only asks**. It answers with the size, the path, what deleting costs
+   (`builds start cold afterwards`), what is out of reach (`conversations and settings are
+   not touched`), and the sentence that would proceed.
+2. `/cache clean now`, typed out in full, does the deletion and answers
+   `cache cleaned · <size> freed`.
+
+Deleting it is safe but not free: the next task that builds something re-downloads its
+modules cold. The cache refills itself as work runs; there is nothing to set up again.
+
+Over an empty cache both forms answer, exactly:
+
+```
+the cache is already empty — nothing to delete.
+```
+
+A word after `/cache` that is not `clean` changes nothing and answers
+`/cache takes clean, or nothing · /cache shows what it holds`.
+
+From the terminal the same pair is `aforge cache` and `aforge cache clean` — the latter
+prints the same size-and-path warning and asks you to type the word `clean` before it
+deletes anything; `aforge cache clean --yes` skips the question for scripts.
+
+**What `/cache clean` will not do:** it does not delete conversations, reset the
+dashboard, or forget memories. To start a fresh conversation the command is `/new`;
+memories are dropped with `/forget`.
 
 ## /model — pick a model
 
@@ -686,10 +795,14 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
 conversation — drops into it. Home stays out of the way when you named a conversation
 (`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
-conversation is the one already open. There is no welcome box when home greets you.
+conversation is the one already open. There is no welcome box when home greets you. Not
+greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
+box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
+refuses.
 
-There is no argument form and no key chord — `/home` is the only way in. Projects are dim
-headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
+There is no argument form. There are three other ways in: **`alt+1`**, home being the first
+of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
+headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
 right half shows the line it is stopped on. Quiet
@@ -718,7 +831,6 @@ it under *Open another project from home*.
 Refusals, exactly as written:
 
 ```
-home shows this machine's projects, and this session is on another
 nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
@@ -726,12 +838,17 @@ that folder is gone · <path>
 8 open is as many as aforge holds — /quit closes this one
 ```
 
-The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
-session is on the other end, so home refuses over a connection and there is one
-conversation. `/new is unavailable here` is what the typing-to-start box says where no
-fresh-session seam exists. The last two are `enter` on a project whose folder has been
-deleted or moved since its last conversation, and `enter` when this terminal is already
-holding eight — in both cases home stays up and nothing is opened.
+The first is not a refusal: it is what an empty home says where its rows will be, with the
+box and the keys at the foot still live — typing there offers
+`start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
+rows are the **far** machine's and that machine may simply not have been used yet. `/new is
+unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
+The last two are `enter` on a project whose folder has been deleted or moved since its last
+conversation, and `enter` when this terminal is already holding eight — in both cases home
+stays up and nothing is opened.
+
+`that folder is gone` is never said over `--host`: the folders are the far machine's and this
+one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
 
 ## /permissions — what runs without asking
 
@@ -773,6 +890,12 @@ empty list.
 **These rows are yours, not the policy in force.** Inside a repository that carries its
 own approval rules, that project's row replaces yours wholesale at launch — so dropping a
 line here changes what you carry everywhere and nothing inside that repository.
+
+**Over `--host`, this page still reads this machine's saved rows, not the other machine's.**
+The badge on the chat is the far session's actual approval posture, but `/permissions` has
+no way to list or remove the far profile's individual rules yet. The page does not print a
+host-specific warning in this build, so do not treat its rows as the rules governing the
+remote conversation.
 
 ## /harness — the shapes of work you have saved
 
@@ -864,10 +987,9 @@ through the marked door when its turn comes. On a build with no ambient side it 
 **Bare, it opens a page.** A short list under the message box of what stands over this
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens nothing and says
+opens all the same, on three dim lines beginning
 `nothing stands here yet — say what should always be true, and I'll hold it.`
-Pressing it again straight away says it once, not twice: a line aforge has just written is
-not written a second time under itself.
+Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,
 never a query, because the only way to name one is to read it off the page first.
@@ -881,7 +1003,7 @@ here`. Pressing the words row puts the command in your box rather than running i
 ## /task — start work you can walk away from
 
 `/task <brief>` starts work directly from the words after the command; the brief does not
-pass through the conversation model. aforge briefly shows `sizing it up…` while a small
+pass through the conversation model. aforge briefly shows a forming block while a small
 judge reads the words for width, and then **one worker starts, whatever the answer was —
 nothing is asked of you**. If the work is meaningfully parallel, one dim line says so
 (`the work looks wide · one worker starts, and it can split as it goes`) and that worker
@@ -893,30 +1015,68 @@ immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
-it starts nothing. On a project that has never run one it says
-`no tasks yet — /task <brief> starts one` and opens nothing. The `+ /task` row at the foot
-of the task column types `/task ` into your box, which is why the word on its own has an
-answer worth giving.
+it starts nothing. On a project that has never run one it opens the page anyway, and the
+page says what tasks are and ends `no tasks yet — /task <brief> starts one`. The `+ /task`
+row at the foot of the task column types `/task ` into your box, which is why the word on
+its own has an answer worth giving.
 
 Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
 into the fuller brief the worker is given — your sentence kept word for word, with the
 constraints and the done-condition written around it, **and the name the roster will call
-the work**. Both waiting lines carry a spinning mark and a climbing clock while they run
-(`⠙ shaping the brief… · 6s`), so you can see the wait is alive rather than stuck, and both
-disappear as the task starts. The *work that runs on its own* page has this in full, under
+the work**. The forming block carries a spinning mark and a climbing clock while it runs,
+so you can see the wait is alive rather than stuck. It collapses into the ordinary
+started-task row when the work starts, or into the honest error line if it cannot start.
+The *work that runs on its own* page has this in full, under
 *Why my task's brief is longer than what I typed* and *Why my task is called something I did
 not type*.
 
-`/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
-adaptive run with a planner immediately. Both explicit forms skip sizing altogether, and
-both still shape the brief.
+`/task solo <brief>` starts one worker immediately. It skips sizing altogether and still
+shapes the brief.
+
+**`/task adaptive <brief>` is retired**, and it is the only `/task` word that ever opened an
+adaptive run. Typing it now starts an ordinary task: your brief is kept exactly as typed —
+the word is left in it rather than cut out, because a brief that genuinely opens "adaptive
+rate limiting for the api" must not lose its first word — and one dim line says what
+happened:
+
+```
+/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes
+```
+
+`/task adaptive` on its own, with no brief after it, starts nothing and prints the usage
+line instead: `usage: /task <brief> · /task solo <brief>`.
 
 The `starting a task` row in `/settings` → Session decides what the plain form does:
-`sized` is the default and is the behaviour above, `adaptive` takes the adaptive shape
-without asking whenever there is anything to split, and `single` always starts one worker
-and does not size the work at all. `solo` and `adaptive` typed on the command line override
-the row either way. The row's old fourth answer `ask`, and the two-choice list it opened,
-are both gone; a profile still set to it reads as `sized`.
+`sized` is the default and is the behaviour above, and `single` always starts one worker
+and does not size the work at all. `solo` typed on the command line overrides the row
+either way. Two of the row's old answers are gone — `ask` with the two-choice list it
+opened, and `adaptive` with the planner road itself — and a profile still set to either
+reads as `sized`.
+
+## What happens when I type /task
+
+While `/task <brief>` is being sized and shaped, one dim block appears at the transcript
+tail. Every row has the same thin left line and one space of padding:
+
+```text
+▏ task
+▏ "fix the flaky auth test and add coverage for the retry path"
+▏ ⠙ sizing it up… · 3s
+```
+
+The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
+The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
+`/task solo <brief>` and a `single` starting setting begin at shaping because they skip
+sizing. When work starts, the thin line and scaffold disappear
+in the same frame and the normal started-task row takes their place. If starting fails,
+only the error sentence remains.
+
+## Why is there a line next to my task
+
+The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the live phase
+into one thing being formed. It is a single left hairline, not a box or a task-status
+border. It exists only while a `/task` command is in flight and disappears when that
+command becomes the ordinary started-task row or an error line.
 
 ## /history — the task history command: past tasks, every task this project has run
 
@@ -925,9 +1085,11 @@ this conversation's work **and every earlier conversation's**. It is the one pla
 answers "what did we do about this last week" — the roster's column beside the conversation
 is built from this session's own work, and carries only a short dulled note of the rest.
 
-**It is not `/tasks`, and there is no `/tasks`.** `/task <brief>` and its `solo` and
-`adaptive` forms mean *give aforge work*; this page starts none, so it does not share their
-word. Typing `/history` is the only slash form.
+**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
+mean *give aforge work*; this page starts none, so it does not share their word. Typing
+`/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
+bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
+command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
 current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
@@ -949,71 +1111,81 @@ this directory has out right now**, marked `another window` on the right. Those 
 no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
 a mention to point at. They are how you find out that the directory is busy somewhere else.
 
-On a project that has never run a task it says `no tasks yet — /task <brief> starts one`
-and opens nothing. The tasks pages describe the page in full.
+On a project that has never run a task the page opens on its own teaching prose, ending
+`no tasks yet — /task <brief> starts one`. The tasks pages describe the page in full.
 
-## /crew — the four models aforge works with
+## /crew — the four models aforge uses on its own behalf, read beside the one you talk to
 
-aforge makes calls you did not type, and they do not all want the same model. `/crew` is
-those four choices answered in one word.
+aforge runs **five model seats**. Seat one is the model you talk to, and `/model` is what
+moves it. The other four — reflex, small work, careful work, mastermind — are the models
+aforge uses on its own behalf, for the calls you did not type. `/crew` reads all five and
+sets the four in one word. **It never moves seat one.**
 
 ```
 /crew
 ```
 
-opens a three-row chooser. Yours is marked with a `·`; each row has its own line and a dim
-second line naming the four models it would set. ↑ / ctrl+p and ↓ / ctrl+n move, **enter**
-applies the row, and **esc** closes the chooser without changing anything:
+opens the five-seat reading, bottom-anchored like the model picker. From the top:
 
 ```
+the four models aforge uses on its own behalf — not the one you chat with
+  you talk to · deepseek-v4-flash
   frugal — qwen handles careful work · pennies a day
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-flash
-    careful work  qwen/qwen3.8-27b
-    mastermind    qwen/qwen3.8-27b
-· balanced — kimi-k3 thinks, qwen checks
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-flash
-    careful work  qwen/qwen3.8-27b
-    mastermind    moonshotai/kimi-k3:low
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
+› balanced — kimi-k3 thinks, qwen checks
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-pro
-    careful work  moonshotai/kimi-k3
-    mastermind    moonshotai/kimi-k3:high
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+each of the four can be pinned on its own in /settings → Providers
 ```
 
-`/crew frugal`, `/crew balanced` or `/crew max` sets it, and confirms in one line:
+The first line says what the presets change and what they do not. The second is **seat
+one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+no highlight, because nothing in this chooser can move it. Then the three presets: the one
+in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
+↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
+line points at the settings row where one seat can be pinned by itself; the chooser does not
+pick seats one at a time.
 
-```
-crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b · the model you talk to is /model
-```
-
-**The three model ids are drawn brighter than the words around them.** `crew →`, the
-preset word and `brain`/`hands`/`checks` stay at the grey every note is written in; the
-ids step up into the body ink, because they are what the command was typed to find out.
-`/model` at the end is plain because it is explanatory prose, not a command that will act.
-See "Why is one word in a line brighter than the rest" on the screen page.
-
-The last clause is there because nothing else on the frame moves: the model named on the
-status line is the **conversation's** model, and `/crew` never touches it. To read the crew
-back afterwards, use the `crew` line in `/status`, the crew row in `/settings` → Providers,
-or bare `/crew`, which marks yours.
-
-**The change is live.** The next call aforge makes on its own uses the new crew — no
-relaunch, and no waiting for the next session.
+If you have pinned one of the four yourself, no preset wears the ground and the chooser says
+`yours is none of the three — picking one puts all four back` above the closing line.
 
 A word that is not one of the three changes nothing and prints the three:
 `/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
 
-If you have answered one of the four rows yourself, no preset is marked and the chooser ends with
-
-```
-yours is none of the three — picking one puts all four back
-```
-
 What each of the four classes funds, and how to set one of them on its own, is on the models
 page.
+
+## /crew <preset> — the confirm line, and the model it leaves alone
+
+`/crew frugal`, `/crew balanced` or `/crew max` sets the four and confirms in one line:
+
+```
+crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+```
+
+**The model ids are drawn brighter than the words around them.** `crew →`, the preset
+word, `brain`/`hands`/`checks` and `you are still talking to` stay at the grey every note
+is written in; the three crew ids and the model you are talking to step up, because they
+are what the command was typed to find out. `/model` wears the command chip, because it is
+a command you can type. See "Why is one word in a line brighter than the rest" on the
+screen page.
+
+The last clause names, by id, the one seat the command did not touch: the model you are
+talking to, in the same spelling the status line's model segment uses, so you can check it
+against the foot of the frame. `/crew` never changes that model and never offers to; only
+`/model` does. When the session has no model yet the clause reads
+`the model you talk to is untouched — /model changes that`.
+
+**The change is live.** The next call aforge makes on its own uses the new crew — no
+relaunch, and no waiting for the next session. To read the crew back afterwards: the live
+status line says `crew max` beside the model, `/status` prints the `crew` line under
+`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+
+**That promise is local-session only.** Over `--host`, `/crew` reads and writes this
+machine's profile; the session resolves its crew from the other machine. There is no crew
+write across the connection and this build prints no host-specific warning, so `/crew max`
+does not change the four models the far session uses. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
@@ -1041,7 +1213,7 @@ third means the catalog came back empty.
 The settings panel has a `Connections` tab over the same accounts. It is a different
 surface from `/connect`, not a second copy of it.
 
-## The settings panel — /settings, /set, /config
+## Which machine's settings are these — /settings, /set, /config over --host
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 aforge settings, plus a tab of connected accounts. It was the first of the three fullscreen
@@ -1052,7 +1224,10 @@ Moving in it:
 
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
-- ← / shift+tab and → / tab switch tabs, clamping at the ends rather than wrapping.
+- ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
+  does**: it is the way to the next place — home, tasks, standing, memory, spend, search,
+  settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
+  bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
   grouping matches under faint tab headings and moving the tab bar to the first match's
   tab, so backing out leaves you where the thing lives. backspace, ctrl+w and ctrl+u edit
@@ -1149,7 +1324,8 @@ and nothing standing is lost — see *Keeping an eye on things* for the whole of
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
-"timestamps".
+"timestamps", "hints" — the one-line tips above the message box, and the what's-new lines
+with them (see *Hints and tips*).
 
 There is no "chat width" row here. The task roster is a fixed column whose width the
 frame decides — full, slim, or drawn over the conversation on a narrow terminal — so

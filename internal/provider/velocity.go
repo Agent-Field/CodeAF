@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -12,9 +14,16 @@ import (
 //
 // A router fans one model over many endpoints. Two of them are a datacentre
 // away with a warm replica; one is a machine somebody is also training on, and
-// it answers the same request at a fifth of the speed for the same price. The
-// model id says nothing about which one a request landed on, so a session that
-// only names its model is describing a decision it did not make.
+// it answers the same request at a fifth of the speed. The model id says
+// nothing about which one a request landed on, so a session that only names its
+// model is describing a decision it did not make.
+//
+// AND THEY DO NOT CHARGE THE SAME. That was assumed here for a long time and it
+// is simply false: an endpoint's tariff is its own, and the model id's published
+// list price is a figure none of them is obliged to match. Asking for the
+// fastest one and saying nothing about price is how a cost autopsy over 44
+// bench cells found this surface paying ~3.5× list at identical token counts —
+// see latencyPriceCeiling, which is the whole of the answer.
 //
 // This file is the half of the adapter that both ASKS for speed and CHECKS it.
 // Asking is one object on the wire — the routing preferences below. Checking is
@@ -35,8 +44,11 @@ import (
 type RoutingStrategy string
 
 const (
-	// RoutingLatency asks for the currently-fastest endpoint. It is the default
-	// because a chat session is a person waiting.
+	// RoutingLatency asks for the currently-fastest endpoint UNDER A PRICE
+	// CEILING (see latencyPriceCeiling). It is what a call with nobody's row
+	// written and a person waiting on it gets, because a chat session is a
+	// person waiting — and the ceiling is there because being served fastest was
+	// never worth being charged anything.
 	RoutingLatency RoutingStrategy = "latency"
 	// RoutingPrice asks for the cheapest endpoint that can serve the request.
 	RoutingPrice RoutingStrategy = "price"
@@ -57,6 +69,59 @@ func (s RoutingStrategy) sortWord() string {
 	default:
 		return "latency"
 	}
+}
+
+// ── WHO IS WAITING ──────────────────────────────────────────────────────────
+//
+// Sorting by latency is a decision about a PERSON, not about a model: it is
+// worth something only when somebody is sitting there watching the answer
+// arrive. A task worker, a divided part, an auditor, a judge, a title, a memory
+// pass — nobody is waiting on any of those, and pinning the fastest endpoint
+// for them buys nothing and pays whatever that endpoint charges.
+//
+// So the request carries who is waiting, and this file is the one place that
+// reads it.
+
+// RoutingIntent says whether a person is waiting on this call.
+type RoutingIntent int
+
+const (
+	// IntentInteractive is a call somebody is watching arrive. It is the zero
+	// value, because a call that has said nothing about itself is the
+	// conversation's own turn until something says otherwise.
+	IntentInteractive RoutingIntent = iota
+	// IntentBackground is a call nobody is waiting on. Speed is worth nothing
+	// to it and price is worth everything.
+	IntentBackground
+)
+
+type routingIntentContextKey struct{}
+
+// WithRoutingIntent states who is waiting on the calls made under ctx.
+//
+// IT IS SAID AND NEVER INFERRED. "Nobody is watching this stream" is close to
+// the answer but is not it: a tool that asks a model something takes the
+// observer off the context and the person is still sitting there waiting for
+// the turn it belongs to. Only the call site knows whether anybody is waiting,
+// so only the call site may say — and a call that says nothing keeps the
+// behaviour it has always had.
+func WithRoutingIntent(ctx context.Context, intent RoutingIntent) context.Context {
+	return context.WithValue(ctx, routingIntentContextKey{}, intent)
+}
+
+// RoutingIntentFrom answers who is waiting on the calls made under ctx,
+// interactive when nothing said. It is the read half of [WithRoutingIntent],
+// exported so a surface can assert what its own calls will ask for without
+// standing up a router.
+func RoutingIntentFrom(ctx context.Context) RoutingIntent {
+	return routingIntentFrom(ctx)
+}
+
+// routingIntentFrom answers who is waiting on this call, interactive when
+// nothing said.
+func routingIntentFrom(ctx context.Context) RoutingIntent {
+	intent, _ := ctx.Value(routingIntentContextKey{}).(RoutingIntent)
+	return intent
 }
 
 // ParseRoutingStrategy reads a settings word. An unrecognized word is NOT an
@@ -92,21 +157,48 @@ type staticRouting RoutingStrategy
 func (s staticRouting) RoutingStrategy() RoutingStrategy { return RoutingStrategy(s) }
 
 // StaticRouting is one already-resolved answer as a source. The empty strategy
-// is the default rather than a refusal, so a caller that has nothing to say
-// gets latency.
+// is NOBODY HAVING CHOSEN rather than a refusal, so a caller that has nothing
+// to say leaves the adapter to decide per request from who is waiting on it —
+// see [Client.routingFor].
 func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRouting(strategy) }
 
-// routing resolves the strategy for this client.
-func (c *Client) routing() RoutingStrategy {
+// routingChoice is the strategy A PERSON CHOSE, and whether one was chosen at
+// all. An empty source, an empty word, or no source is "nobody said" — which is
+// a different fact from "somebody said latency", and the whole of what lets the
+// default below depend on who is waiting while an explicit row still wins.
+func (c *Client) routingChoice() (RoutingStrategy, bool) {
 	if c.config.Routing == nil {
-		return RoutingLatency
+		return RoutingLatency, false
 	}
 	strategy := c.config.Routing.RoutingStrategy()
 	if strings.TrimSpace(string(strategy)) == "" {
-		return RoutingLatency
+		return RoutingLatency, false
 	}
 	parsed, _ := ParseRoutingStrategy(string(strategy))
-	return parsed
+	return parsed, true
+}
+
+// routing resolves the strategy for this client with nothing said about who is
+// waiting. It is what the ledger's own gates read — they only ever ask whether
+// routing is off — and it keeps the old answer: no row means latency.
+func (c *Client) routing() RoutingStrategy {
+	strategy, _ := c.routingChoice()
+	return strategy
+}
+
+// routingFor resolves the strategy one request will actually ask for.
+//
+// THE PERSON'S ROW WINS OUTRIGHT. Everything below it is the DEFAULT moving
+// with who is waiting: the conversation's own turn chases speed, and a call
+// nobody is sitting in front of chases price.
+func (c *Client) routingFor(intent RoutingIntent) RoutingStrategy {
+	if chosen, ok := c.routingChoice(); ok {
+		return chosen
+	}
+	if intent == IntentBackground {
+		return RoutingPrice
+	}
+	return RoutingLatency
 }
 
 // providerPrefs is the routing preference object.
@@ -123,11 +215,74 @@ func (c *Client) routing() RoutingStrategy {
 // silently drops it, because a planning call that was supposed to think and did
 // not is a wrong answer rather than a slow one.
 type providerPrefs struct {
-	Sort              string   `json:"sort,omitempty"`
-	Order             []string `json:"order,omitempty"`
-	Ignore            []string `json:"ignore,omitempty"`
-	AllowFallbacks    *bool    `json:"allow_fallbacks,omitempty"`
-	RequireParameters *bool    `json:"require_parameters,omitempty"`
+	Sort              string    `json:"sort,omitempty"`
+	Order             []string  `json:"order,omitempty"`
+	Ignore            []string  `json:"ignore,omitempty"`
+	AllowFallbacks    *bool     `json:"allow_fallbacks,omitempty"`
+	RequireParameters *bool     `json:"require_parameters,omitempty"`
+	MaxPrice          *maxPrice `json:"max_price,omitempty"`
+}
+
+// maxPrice is the ceiling an endpoint's own tariff must sit under to serve this
+// request. The router spells the numbers in US DOLLARS PER MILLION TOKENS,
+// which is a million times the unit the catalog publishes; the conversion is
+// [Client.priceCeiling]'s and is done in exactly one place.
+//
+// Neither field is omitempty. A model whose list price really is zero — the
+// free variants a router publishes — gets a ceiling of zero, and that is the
+// honest ask rather than a missing one; dropping it would quietly send `{}` and
+// mean the opposite.
+//
+// IT CANNOT EXPRESS A CACHE-READ CEILING. The router's field takes `prompt`,
+// `completion`, `request` and `image` and nothing else, so the 4.0× the cost
+// autopsy measured on CACHED tokens is bounded only indirectly, through the
+// prompt ceiling that the same endpoint's tariff is derived from. That is a
+// real limit of the mechanism and not an omission here.
+type maxPrice struct {
+	Prompt     float64 `json:"prompt"`
+	Completion float64 `json:"completion"`
+}
+
+// latencyPriceCeiling is how far above a model's own published list price an
+// endpoint may charge and still be worth choosing for speed.
+//
+// THE MEASUREMENT IT ANSWERS. A cost autopsy over 44 bench cells found this
+// surface paying ~3.5× what the model's list price says the same token counts
+// should cost: 1.4× list on uncached prompt tokens, 4.0× on cached ones (a
+// ~44% cache discount where list promises 80%), and 1.9× on output. Nothing
+// about the model or the answer differed. The whole gap was `sort: latency`
+// asking the router for the fastest endpoint and then accepting whatever that
+// endpoint charged, because the ask carried no ceiling at all.
+//
+// 1.25 IS THE HONEST BOUND, and the reasoning is about a person rather than
+// about a number. An endpoint 25% over list is buying a latency edge somebody
+// can actually feel on a turn. An endpoint 4× over list is buying nothing a
+// person notices on a five-minute task — the answer arrives while they are
+// still reading the last one either way — so there is no version of "a chat
+// session is a person waiting" that justifies paying it.
+const latencyPriceCeiling = 1.25
+
+// priceCeiling is the ceiling one request carries, nil when there is none to
+// carry.
+//
+// ABSENCE, NEVER A GUESS. A model the catalog has no published price for — a
+// row that never loaded, a slug the router calls "it depends", a catalog still
+// warming — sends no ceiling and routes exactly as it did before. A ceiling
+// invented from a neighbouring model's price would be this process quietly
+// refusing endpoints on a number nobody published.
+func (c *Client) priceCeiling(model string) *maxPrice {
+	if c.config.ModelPrice == nil {
+		return nil
+	}
+	prompt, completion, known := c.config.ModelPrice(normalizeModel(model))
+	if !known || prompt < 0 || completion < 0 {
+		return nil
+	}
+	const perMillion = 1_000_000
+	return &maxPrice{
+		Prompt:     prompt * perMillion * latencyPriceCeiling,
+		Completion: completion * perMillion * latencyPriceCeiling,
+	}
 }
 
 // providerPreferences builds the object one request will carry, nil when none
@@ -141,19 +296,49 @@ type providerPrefs struct {
 // It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
 // compatible endpoint that is not a router either ignores it or 400s on it —
 // neither of which is worth risking for a preference it could not honour.
-func (c *Client) providerPreferences(model string) *providerPrefs {
+func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPrefs {
 	if !c.isOpenRouter() {
 		return nil
 	}
-	strategy := c.routing()
+	strategy := c.routingFor(knobs.intent)
 	word := strategy.sortWord()
 	if word == "" {
 		return nil
 	}
 	yes := true
 	prefs := &providerPrefs{Sort: word, AllowFallbacks: &yes, RequireParameters: &yes}
+	if strategy == RoutingLatency {
+		// The ceiling rides the latency ask and only the latency ask. Sorting by
+		// price is already asking for the cheapest thing available, and a ceiling
+		// on top of it could only ever take endpoints away without changing which
+		// one is chosen.
+		prefs.MaxPrice = c.priceCeiling(model)
+	}
 	if c.velocity != nil {
-		prefs.Order, prefs.Ignore = c.velocity.preferences(model)
+		order, ignore := c.velocity.preferences(model)
+		prefs.Ignore = ignore
+		// THE LEDGER'S ORDER IS A SPEED RANKING, and `provider.order` names what
+		// to try FIRST — so sending it beside `sort: price` would put this
+		// process's own fastest lane ahead of the cheapest one and quietly undo
+		// the sort. A request that asked for price gets the refusals, which are
+		// about endpoints that will not answer at all, and nothing that ranks.
+		if strategy != RoutingPrice {
+			prefs.Order = order
+		}
+	}
+	// AND THE PIN GOES IN FRONT OF ALL OF IT (affinity.go). It is not a ranking
+	// and that is why it travels under BOTH sort words where the ledger's order
+	// may not: it names the one machine that already holds this lineage's prompt
+	// prefix, and a cold prefix cost 4.7× a warm one at identical token counts —
+	// more than any endpoint's tariff differs from another's, so the errand
+	// nobody is waiting on wants its cache back exactly as much as the person
+	// does. Its first request, having nothing pinned, still asks by price.
+	//
+	// It is a preference and never a demand: `allow_fallbacks` stays true above,
+	// so an endpoint that is busy, gone, or over the ceiling simply does not
+	// answer this one and the router picks by the sort word as before.
+	if held := c.heldEndpoint(knobs.cacheKey, model, prefs.Ignore); held != "" {
+		prefs.Order = append([]string{held}, withoutEndpoint(prefs.Order, held)...)
 	}
 	return prefs
 }
@@ -172,10 +357,132 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 	relaxed := *prefs
 	relaxed.RequireParameters = nil
 	relaxed.Ignore = nil
+	// The price ceiling is the third thing that can empty the endpoint set: a
+	// model whose every endpoint charges above its own list price has no lane
+	// left once the ceiling is applied, and "no endpoints found" is a worse
+	// answer than a dear one. It comes off with the rest of the filter, and the
+	// sort still asks for the fastest of whatever remains.
+	relaxed.MaxPrice = nil
 	if relaxed.Sort == "" && len(relaxed.Order) == 0 && relaxed.AllowFallbacks == nil {
 		return nil
 	}
 	return &relaxed
+}
+
+// ServedEndpoint is a slot one caller opens to be told WHICH endpoint answered
+// its calls.
+//
+// It exists because [LastServed] cannot answer that question honestly for a
+// caller: the ledger's latest sighting is process-wide, and two task nodes
+// running the same model concurrently would each read the other's endpoint. The
+// slot is scoped to the context the caller stamped, so what it holds is always
+// an answer to one of that caller's own requests.
+//
+// It holds the MOST RECENT answer and nothing else. A caller stamps it around a
+// turn and reads it beside each response, which is the grain the journal writes
+// at (internal/session's addUsage).
+//
+// AND IT COUNTS THE HOPS, because that is the fact a cost autopsy needs and the
+// one nobody could see: eleven moves across six endpoints in a single 41-request
+// turn, every one of them a cold prompt cache (affinity.go). A journal line that
+// records the endpoint alone shows where a request landed; [ServedEndpoint.Hops]
+// and [ServedEndpoint.Pinned] show whether it stayed.
+type ServedEndpoint struct {
+	mu   sync.Mutex
+	name string
+	// pinned is whether the last answer came from the endpoint its request had
+	// asked to come back to — a warm cache we kept, rather than one we found.
+	pinned bool
+	// hops counts how many times the answering endpoint CHANGED under this slot.
+	// It starts at zero for the first answer, which is an arrival and not a move.
+	hops int
+}
+
+// Name is the endpoint that answered most recently, empty when nothing has
+// answered yet or when no answer named its server — which is every endpoint
+// that is not a router.
+func (s *ServedEndpoint) Name() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.name
+}
+
+// Pinned reports whether the most recent answer came from the endpoint its own
+// request asked for by name — that is, whether this lineage kept the machine
+// holding its prompt cache. False is a first request, a lineage with no cache
+// key, a session with routing off, and every hop.
+func (s *ServedEndpoint) Pinned() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pinned
+}
+
+// Hops is how many times the answering endpoint changed while this slot was
+// open. Every hop is a prompt cache written from cold on the far side, so this
+// is the number a cost autopsy reads first.
+func (s *ServedEndpoint) Hops() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hops
+}
+
+// note records one answer: which endpoint served it, and which endpoint its
+// request had asked to come back to ("" when it asked for none).
+func (s *ServedEndpoint) note(name, asked string) {
+	if s == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		// THE ATTRIBUTION LAW, the same one the ledger keeps: an answer whose
+		// server did not identify itself replaces nothing. Blanking the slot
+		// would turn one unnamed reply into "we no longer know" about the named
+		// ones beside it.
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.name != "" && s.name != name {
+		s.hops++
+	}
+	s.name = name
+	s.pinned = asked != "" && asked == name
+}
+
+type servedEndpointContextKey struct{}
+
+// WithServedEndpoint asks the adapter to write down, in the caller's own slot,
+// which endpoint answered each call made under ctx.
+func WithServedEndpoint(ctx context.Context, slot *ServedEndpoint) context.Context {
+	if slot == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, servedEndpointContextKey{}, slot)
+}
+
+// ServedEndpointFrom returns the slot in force for ctx, nil when none was
+// opened — which every method here answers correctly, so a caller never tests.
+func ServedEndpointFrom(ctx context.Context) *ServedEndpoint {
+	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
+	return slot
+}
+
+// noteServed hands one answer's endpoint — and the endpoint its request asked
+// to come back to, "" when none — to whatever slot the caller opened. It runs
+// OUTSIDE the ledger's gates: a session with `routing off` has asked not to be
+// steered, which is not a request to be lied to about who answered.
+func noteServed(ctx context.Context, served, asked string) {
+	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
+	slot.note(served, asked)
 }
 
 // noteVelocity folds one timed answer into this client's ledger.
@@ -211,11 +518,76 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 // is stronger evidence than a merely slow completion, so it is refused at once
 // and the retry encoded by the turn loop can route around it. An unnamed stream
 // reaches pace too, where the attribution law leaves the ledger untouched.
-func (c *Client) noteCutProvider(model, served string) {
+//
+// It REPORTS WHETHER IT STRUCK, because a caller has one question this is the
+// only place that can answer: will the next attempt be routed away from the
+// endpoint that just went quiet? False is `routing off`, a client that is not
+// talking to a router at all, or a stream that died before any chunk named its
+// provider — and in every one of those the next attempt goes back to the same
+// lane. See [StreamCut.Rerouted] for what is decided from it.
+func (c *Client) noteCutProvider(model, served string) bool {
 	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+		return false
+	}
+	return c.velocity.pace(model, served, 0)
+}
+
+// noteRun and streamWall are the two halves of the stream wall's evidence, and
+// they are the ONLY pair on this file that is not gated on routing.
+//
+// The gate above exists because a demotion nobody can act on is overhead. A
+// wall is acted on by every session — the cut happens, the ladder re-asks — so
+// gating its history would leave `routing off` running on the bare floor with
+// no way to earn anything better. See [velocityLedger.runs].
+func (c *Client) noteRun(model, served string, ran time.Duration) {
+	if c.velocity == nil {
 		return
 	}
-	c.velocity.pace(model, served, 0)
+	c.velocity.noteRun(model, served, ran)
+}
+
+// streamWall is how long the stream about to be opened, or the one now known to
+// be served by `served`, may run before it is cut. See streamguard.go's THE
+// WALL for the law and the constants.
+func (c *Client) streamWall(model, served string) time.Duration {
+	if c.velocity == nil {
+		return wallFor(0)
+	}
+	return c.velocity.wall(model, served)
+}
+
+// refuseUpstream takes the lane away from an endpoint that REFUSED this request,
+// so the next encode routes around it, and reports whether it struck.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s2 died on `after 3 retries: API error (400): Provider
+// returned error`. Three retries, and nothing between them moved: releasing the
+// pin (affinity.go) only stops this process ASKING for that endpoint — it does
+// not stop the router choosing it again, and a router with a warm pool chooses
+// the same member every time. The three attempts were three deliveries of the
+// same request to the same upstream, and the turn ended with five hours of the
+// ask unspent.
+//
+// THE LAW: AN UPSTREAM THAT REFUSED IS ROUTED AROUND, NOT ASKED AGAIN. It is
+// the same verdict a 429 that names its pool earns and the same one a cut stream
+// earns — a lane this process has decided not to send to — and it travels the
+// same way, in `provider.ignore` on every request encoded after it.
+//
+// IT ONLY EVER FIRES ON AN UPSTREAM'S REFUSAL. A 4xx the router answered for
+// itself names no provider ([APIError.OurRequest]) and strikes nothing: there is
+// no lane to blame for a request that is malformed, and refusing endpoints over
+// our own bytes would empty the ledger one attempt at a time. A 429 is left to
+// [Client.notePacedProvider], which knows the wait the provider named.
+func (c *Client) refuseUpstream(model string, err error) bool {
+	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+		return false
+	}
+	refusal, ok := RefusalFrom(err)
+	if !ok || !refusal.FromUpstream() || refusal.Status == http.StatusTooManyRequests {
+		return false
+	}
+	return c.velocity.pace(model, refusal.Provider, 0)
 }
 
 // pacedProviderName reads which endpoint a 429 came from, "" when the body
@@ -328,8 +700,14 @@ type lane struct {
 	strikes int
 	// ignoredUntil is when a refusal expires. Zero is not refused.
 	ignoredUntil time.Time
-	seen         int
-	last         Sighting
+	// refused says the lane was taken away because IT DID NOT SERVE — a 429 that
+	// named its pool, a stream that went quiet, an upstream that answered 4xx —
+	// rather than because it served SLOWLY. The two are different claims and the
+	// "never condemn everything" rule in [velocityLedger.preferences] treats them
+	// differently; see the law stated there.
+	refused bool
+	seen    int
+	last    Sighting
 }
 
 // velocityLedger is what this process has measured, in memory, per model.
@@ -344,6 +722,26 @@ type velocityLedger struct {
 	now   func() time.Time
 	lanes map[string]map[string]*lane
 	last  map[string]Sighting
+	// runs is model → endpoint → the LONGEST REPLY THAT ENDPOINT HAS FINISHED
+	// for this process. It is what the stream wall is derived from
+	// (streamguard.go's [wallFor]), and it is kept apart from `lanes` for two
+	// reasons.
+	//
+	// FIRST, IT IS NOT A STRIKE. A lane's entry above is a standing — demoted,
+	// refused, on probation — and every write to it is a steering decision.
+	// This is a measurement of duration and nothing else; folding it into a
+	// lane would make "how long does this endpoint take" and "should we send
+	// there" one field, and the two are asked at different moments by different
+	// code.
+	//
+	// SECOND, IT IS RECORDED EVEN WITH `routing off`. The ledger above is not:
+	// an operator who asked for no steering asked for no demotions either, and
+	// the file says so. But a WALL is acted on whatever routing says — the cut
+	// happens, the request is re-asked — so the history it is derived from has
+	// to exist under routing off too, or every such session would run on the
+	// bare floor forever. Nothing here can move a request to another endpoint,
+	// so recording it steers nothing.
+	runs map[string]map[string]time.Duration
 }
 
 func newVelocityLedger() *velocityLedger {
@@ -351,7 +749,84 @@ func newVelocityLedger() *velocityLedger {
 		now:   time.Now,
 		lanes: map[string]map[string]*lane{},
 		last:  map[string]Sighting{},
+		runs:  map[string]map[string]time.Duration{},
 	}
+}
+
+// noteRun remembers how long one COMPLETED reply took, under the endpoint that
+// served it.
+//
+// COMPLETED IS THE WHOLE TEST OF HEALTH HERE, and it is a deliberately weaker
+// word than the one the lag law uses. A lane demoted for slowness still
+// answered; its answers took as long as they took, and a wall that excluded
+// them would cut the next one and turn a speed verdict into an outage. The
+// question this is evidence for is not "was that fast" but "has this lane ever
+// legitimately taken this long", and only a reply that arrived can answer it.
+//
+// It keeps the maximum rather than the last or a mean. A wall wants the widest
+// legitimate reply, because that is the one it must not cut; the average would
+// cut half of them.
+//
+// A reply from an endpoint that never named itself is recorded under the empty
+// name, where it still counts towards the lineage's widest wall and belongs to
+// no lane — the same attribution law observe follows, for the same reason.
+func (l *velocityLedger) noteRun(model, served string, ran time.Duration) {
+	if l == nil || ran <= 0 {
+		return
+	}
+	key := normalizeModel(model)
+	if key == "" {
+		return
+	}
+	served = strings.TrimSpace(served)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byLane := l.runs[key]
+	if byLane == nil {
+		byLane = map[string]time.Duration{}
+		l.runs[key] = byLane
+	}
+	if ran > byLane[served] {
+		byLane[served] = ran
+	}
+}
+
+// wall is how long the next reply on this (model, endpoint) may run.
+//
+// A NAMED LANE IS ASKED ABOUT ITSELF FIRST, and falls back to the lineage's
+// widest when this process has never seen it finish anything. That fallback is
+// the difference between a wall that works and one that fights the router: an
+// endpoint the ledger has just steered a long session onto is new by
+// construction, and giving its first reply the bare floor would cut exactly the
+// work the steering was for.
+//
+// An unnamed ask — a request that has not yet learned who is serving it — gets
+// the lineage's widest, which is the most generous honest answer available
+// before the first chunk arrives.
+func (l *velocityLedger) wall(model, served string) time.Duration {
+	if l == nil {
+		return wallFor(0)
+	}
+	key := normalizeModel(model)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byLane := l.runs[key]
+	if len(byLane) == 0 {
+		return wallFor(0)
+	}
+	served = strings.TrimSpace(served)
+	if served != "" {
+		if longest, seen := byLane[served]; seen {
+			return wallFor(longest)
+		}
+	}
+	widest := time.Duration(0)
+	for _, longest := range byLane {
+		if longest > widest {
+			widest = longest
+		}
+	}
+	return wallFor(widest)
 }
 
 // sharedVelocity is the ledger every client built by [NewClient] folds into.
@@ -426,6 +901,10 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 		entry.strikes++
 		if entry.strikes >= ignoreAfter {
 			entry.ignoredUntil = sighting.At.Add(ignoreCooldown)
+			// A SLOWNESS VERDICT, and it says so: this lane answered, three times,
+			// too slowly. That is a different claim from a lane that refused, and
+			// [velocityLedger.preferences] is allowed to weigh it differently.
+			entry.refused = false
 		}
 	case entry.strikes > 0:
 		// A fast answer pays a strike back. It also lifts a refusal, which can
@@ -433,6 +912,7 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 		// that retry succeeding is exactly the evidence the refusal was for.
 		entry.strikes--
 		entry.ignoredUntil = time.Time{}
+		entry.refused = false
 	}
 	return sighting
 }
@@ -472,14 +952,20 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].seen < ranked[j].seen })
 
 	var healthy, demoted []string
+	// refusedSomething says at least one of the names going into `ignore` is
+	// there because it DID NOT SERVE rather than because it served slowly. The
+	// rule below turns on it.
+	refusedSomething := false
 	for _, entry := range ranked {
 		if !entry.ignoredUntil.IsZero() {
 			if now.Before(entry.ignoredUntil) {
 				ignore = append(ignore, entry.provider)
+				refusedSomething = refusedSomething || entry.refused
 				continue
 			}
 			entry.ignoredUntil = time.Time{}
 			entry.strikes = ignoreAfter - 1
+			entry.refused = false
 		}
 		if entry.strikes >= demoteAfter {
 			demoted = append(demoted, entry.provider)
@@ -487,14 +973,27 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 		}
 		healthy = append(healthy, entry.provider)
 	}
-	// THE LEDGER MAY NEVER REFUSE EVERYTHING IT KNOWS. On a model with one
-	// provider — and single-provider models are common — three slow answers
-	// used to put that one name in `ignore` and turn every request for five
-	// minutes into an instant "All providers have been ignored" 404. A verdict
-	// that condemns the whole set is not a preference, it is an outage this
-	// process built for itself; when nothing is left to prefer, the honest
-	// answer is no verdict at all, and the sort word chooses among slow lanes.
-	if len(healthy) == 0 && len(demoted) == 0 {
+	// THE LEDGER MAY NEVER CONDEMN EVERYTHING IT KNOWS OVER SPEED. On a model
+	// with one provider — and single-provider models are common — three slow
+	// answers used to put that one name in `ignore` and turn every request for
+	// five minutes into an instant "All providers have been ignored" 404. A
+	// SLOWNESS verdict that condemns the whole set is not a preference, it is an
+	// outage this process built for itself; when nothing is left to prefer, the
+	// honest answer is no verdict at all, and the sort word chooses among slow
+	// lanes.
+	//
+	// BUT A LANE THAT REFUSED IS NOT A SLOW LANE, and this is where the measured
+	// failure of SWE-Marathon run s2 lived. One endpoint answered 400 "Provider
+	// returned error"; it was the only lane the ledger held for that model; the
+	// rule above then dropped the verdict entirely, so the next request went
+	// straight back to the endpoint that had just refused, three times, fifteen
+	// seconds apart, and the turn died with five hours of the ask unspent.
+	// Sending to a lane already known to refuse is not a fallback, it is the same
+	// failure again — and the case this rule was written for is answered a rung
+	// higher anyway: a request that ignored everybody comes back "no endpoints
+	// found", and the refusal ladder re-sends it with the ignores taken off
+	// ([relaxedPreferences], endpoints.go).
+	if len(healthy) == 0 && len(demoted) == 0 && !refusedSomething {
 		return nil, nil
 	}
 	if len(healthy) == 0 {
@@ -514,14 +1013,18 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 // first fast answer walks it out (observe). A wait the provider did not name,
 // or named absurdly, is clamped to the same cooldown a laggy lane serves —
 // pacing is a claim about the next minutes, never about the day.
-func (l *velocityLedger) pace(model, served string, wait time.Duration) {
+//
+// It reports whether a lane was actually refused. The attribution law leaves an
+// unnamed endpoint alone, and "nothing was struck" is a fact a caller acts on
+// (noteCutProvider), not a silence to infer from.
+func (l *velocityLedger) pace(model, served string, wait time.Duration) bool {
 	if l == nil {
-		return
+		return false
 	}
 	key := normalizeModel(model)
 	served = strings.TrimSpace(served)
 	if key == "" || served == "" {
-		return
+		return false
 	}
 	if wait <= 0 || wait > ignoreCooldown {
 		wait = ignoreCooldown
@@ -540,4 +1043,9 @@ func (l *velocityLedger) pace(model, served string, wait time.Duration) {
 	}
 	entry.strikes = ignoreAfter
 	entry.ignoredUntil = l.now().Add(wait)
+	// AND IT IS MARKED AS A LANE THAT DID NOT SERVE, which is what every caller
+	// of pace has in common: a 429 naming its pool, a stream that went quiet, an
+	// upstream that answered 4xx. The distinction is read in [preferences].
+	entry.refused = true
+	return true
 }

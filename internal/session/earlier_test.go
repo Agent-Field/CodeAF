@@ -21,6 +21,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -383,6 +384,130 @@ func TestAResumedSessionRecoversTheHistoryTheLiveOneHad(t *testing.T) {
 	// AND THE SPLICE TELLS THE CONVERSATION ONCE, at the same length it did live.
 	if told := len(got.Entries) + len(resumed.Transcript()) - got.Floor; told != liveTold {
 		t.Fatalf("the resumed conversation is %d entries long, want %d", told, liveTold)
+	}
+}
+
+// ── the floor is counted, and the count is the shaping's own ────────────────
+
+// THE FLOOR IS A COUNT OF ENTRIES, and a pass takes it with [countEntries]
+// rather than by shaping the rewritten transcript and measuring the list. That
+// is only allowed while the two answer identically, so this asks them both about
+// every shape a transcript is made of: the system message the shaping drops, a
+// person's words, an assistant message carrying no calls, one carrying several,
+// the results that answer them, and a fold marker.
+func TestTheEntryCountAgreesWithTheShaping(t *testing.T) {
+	call := func(ids ...string) ai.Message {
+		message := ai.Message{
+			Role:    "assistant",
+			Content: []ai.ContentPart{{Type: "text", Text: "reading"}},
+		}
+		for _, id := range ids {
+			message.ToolCalls = append(message.ToolCalls, ai.ToolCall{
+				ID: id, Type: "function",
+				Function: ai.ToolCallFunction{
+					Name: "read",
+					// Long enough to go through [capArgsValues], which is the
+					// expensive half of the shaping this count exists to skip.
+					Arguments: `{"path":"` + strings.Repeat("a", argsLimit) + `.go"}`,
+				},
+			})
+		}
+		return message
+	}
+	result := func(id string) ai.Message {
+		return ai.Message{Role: "tool", ToolCallID: id,
+			Content: []ai.ContentPart{{Type: "text", Text: strings.Repeat("output. ", 400)}}}
+	}
+
+	for name, messages := range map[string][]ai.Message{
+		"nothing at all":   nil,
+		"the system alone": {textMessage("system", "you are aforge")},
+		"one exchange": {
+			textMessage("system", "you are aforge"),
+			textMessage("user", "a question"),
+			textMessage("assistant", "an answer"),
+		},
+		"a batch of three calls": {
+			textMessage("system", "you are aforge"),
+			textMessage("user", "a question"),
+			call("c1", "c2", "c3"),
+			result("c1"), result("c2"), result("c3"),
+			textMessage("assistant", "an answer"),
+		},
+		"a folded transcript": {
+			textMessage("system", "you are aforge"),
+			textMessage("user", "the first question"),
+			textMessage("user", foldMarker(9, "", "", false)),
+			call("c1"), result("c1"),
+			textMessage("user", "the newest question"),
+		},
+		"six exchanges": append(
+			[]ai.Message{textMessage("system", "you are aforge")},
+			exchanges(6, nil)...),
+	} {
+		if got, want := countEntries(messages), len(shapeEntries(messages, nil)); got != want {
+			t.Fatalf("%s: countEntries = %d, the shaping made %d rows", name, got, want)
+		}
+	}
+}
+
+// AND A PASS THAT FOLDS PUTS THE FLOOR AT THE WHOLE REWRITTEN TRANSCRIPT, which
+// is the case the counted floor could get wrong that the stubbed one cannot: a
+// fold takes messages OUT and puts a marker in, so the number the pass records
+// is not the number it shaped a moment earlier.
+func TestAFoldingPassFloorsTheWholeRewrittenTranscript(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		// Threshold 1000 tokens (4000 bytes), verbatim tail 500 — the fold
+		// fixture next door in compaction_test.go.
+		config.ContextWindow = 2000
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	long := strings.Repeat("thinking about the parser. ", 100)
+
+	var fixture []ai.Message
+	for round := 1; round <= 6; round++ {
+		fixture = append(fixture,
+			textMessage("user", fmt.Sprintf("question %d", round)),
+			textMessage("assistant", long))
+	}
+	fixture = append(fixture, textMessage("assistant", "the short last word"))
+
+	agent.mu.Lock()
+	for _, message := range fixture {
+		// The journal is the floor a no-store marker points at, so the fixture
+		// writes the way the turn does.
+		agent.messages = append(agent.messages, message)
+		if agent.file != nil {
+			agent.file.append(message, false, nil)
+		}
+	}
+	agent.mu.Unlock()
+
+	before := agent.Transcript()
+	if _, err := agent.compact(context.Background(), nil); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	after := agent.Transcript()
+	if len(after) >= len(before) {
+		t.Fatalf("nothing was folded — %d entries before, %d after", len(before), len(after))
+	}
+	folded := false
+	for _, entry := range after {
+		if strings.HasPrefix(entry.Text, foldMarkerPrefix) {
+			folded = true
+		}
+	}
+	if !folded {
+		t.Fatal("no fold marker in the rewritten transcript, so this proves nothing about a fold")
+	}
+	history := agent.EarlierHistory()
+	if history.Floor != len(after) {
+		t.Fatalf("floor = %d, want the whole %d-entry transcript the pass rewrote",
+			history.Floor, len(after))
+	}
+	if len(history.Entries) != len(before) {
+		t.Fatalf("the region holds %d entries, want the %d the transcript held",
+			len(history.Entries), len(before))
 	}
 }
 

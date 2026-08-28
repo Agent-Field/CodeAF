@@ -40,6 +40,28 @@ package session
 // therefore handed that one step on joining and nothing else — see
 // [taskCatchup], which states exactly where the line is drawn.
 //
+// ── AND THIS STEER IS NOT THE CONVERSATION'S OWN ──
+//
+// There are two things in this package called steering and they are two acts,
+// so read the one you meant. THIS file's steer is aimed at A NODE: another
+// agent, in another worktree, with a transcript of its own, and the person's
+// line arrives on that agent's steering queue and is drained at ITS next step
+// boundary. What it promises is delivery — "it arrived", or "it arrived and the
+// node is parked on its own pieces" — and there is no third outcome, because a
+// node that has finished is a refusal ([Agent.enqueueSteeredLine] answers false)
+// and never a queue.
+//
+// [Agent.Steer] (steer.go) is the other one: a sentence SPLICED INTO THIS
+// CONVERSATION'S RUNNING TURN, part of the question already being worked on. It
+// carries an identity, three events, and a record that says whether the model
+// actually read it or whether the turn ended first.
+//
+// They share the mechanism deliberately — one steering lane, drained at a step
+// boundary, because that is the only legal place for a user message mid-turn —
+// and they keep separate marks on [userMessage] (`steered` here, `steer` there)
+// so that neither has to promise the other's outcome. steer.go states the split
+// in full; nothing in this file reads that mark and nothing there reads this one.
+//
 // ── AND STEERING IS NOT A REDIRECT ──
 //
 // [TaskNode]'s goal contract is untouched by this file. `spec.brief` and
@@ -84,17 +106,40 @@ import (
 // needs no frame, because from the child's side it is what it looks like — the
 // person talking. Wrapping it would teach the node to read the person's words
 // as a system event, which is the one thing they are not.
-func (a *Agent) SteerTask(id uint64, text string) error {
+//
+// ── AND A NODE THAT IS WAITING ON ITS OWN PIECES STILL HEARS IT ──
+//
+// The first answer is whether the node was WAITING when the line was taken: it
+// has handed part of its work out, said everything it had to say, and parked on
+// the reports (task_run.go's [TaskGraph.park]). Nothing about it looks different
+// from outside — a parked node is a RUNNING node — but for the person it is the
+// difference between an answer in a few seconds and one that reads as silence,
+// so the surfaces say which it was in their own words rather than promising the
+// same thing about two different waits.
+//
+// It is a fact and not a refusal, because the line does arrive: the parked
+// runner is released by the enqueue below, wakes with the sentence on its queue
+// and re-enters the model with it ([Agent.enqueueSteeredLine], [runTaskChild]).
+// Before that it went onto a queue with nothing to drain it — held for as long
+// as the slowest piece ran and dropped outright if the last report arrived
+// first, while the room said it had arrived.
+//
+// A LINE NOBODY CAN READ ANY MORE IS A REFUSAL AND NEVER A DROP. A node whose
+// worker closed in the instant between the state check and the enqueue — the
+// last piece reported, the parent folded, the agent shut — cannot be talked to,
+// and the person is told so in the same breath as every other "there is nobody
+// in there".
+func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return errors.New("nothing to say")
+		return false, errors.New("nothing to say")
 	}
 	node := a.taskNode(id)
 	if node == nil {
-		return fmt.Errorf("no task %d in this session", id)
+		return false, fmt.Errorf("no task %d in this session", id)
 	}
 	if state := node.stateNow(); state != TaskRunning {
-		return fmt.Errorf("task %d is %s, not running", id, state)
+		return false, fmt.Errorf("task %d is %s, not running", id, state)
 	}
 	child := node.openRoom().speaker()
 	if child == nil {
@@ -102,10 +147,16 @@ func (a *Agent) SteerTask(id uint64, text string) error {
 		// prepared) or is already shutting down. Both are "there is nobody in
 		// there to talk to", and both are worth saying rather than silently
 		// dropping the person's line into a queue nothing will drain.
-		return fmt.Errorf("task %d has no worker to talk to yet", id)
+		return false, fmt.Errorf("task %d has no worker to talk to yet", id)
 	}
-	child.enqueueSteering(text)
-	return nil
+	// Read BEFORE the line is handed over, because handing it over is what ends
+	// the wait: after the enqueue the honest answer to "was it waiting" has
+	// already changed.
+	waiting := node.waitingOnItsPieces()
+	if !child.enqueueSteeredLine(text) {
+		return false, fmt.Errorf("task %d has just finished, so there is nobody left to say it to", id)
+	}
+	return waiting, nil
 }
 
 // RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
@@ -228,20 +279,38 @@ func (a *Agent) WatchTaskRoom(id uint64) (<-chan Event, func(), error) {
 }
 
 // TaskJournal is the node's journal path — its whole transcript on disk — or ""
-// for an unknown id.
+// for an unknown id, and for a node whose transcript cannot be found.
 //
 // The path is recorded when the node's child agent is built, because that is
 // where it is minted: [taskJournalPath] stamps the current time into the name,
-// so recomputing it later would name a file nobody ever wrote. A node from a
-// checkpoint of an earlier life answers "" — its journal is on disk under the
-// same session directory, but this process never learned which file it is, and
-// a guessed path is worse than none.
+// so recomputing it later would name a file nobody ever wrote. It survives the
+// process on the checkpoint (task_store.go's taskRecord.Journal), which is what
+// lets a finished task's room replay after a restart.
+//
+// A NODE FROM A CHECKPOINT THAT NEVER CARRIED THE PATH IS LOOKED UP BY ITS ID.
+// The file is named with the node's id in the session's own journal directory
+// — the same directory [taskJournalPath] mints into — so it is found rather
+// than guessed ([findTaskJournal]); a name that is not on disk answers "" as it
+// always did. What is found is written onto the node and checkpointed, so the
+// lookup happens once per node per life rather than on every open.
 func (a *Agent) TaskJournal(id uint64) string {
 	node := a.taskNode(id)
 	if node == nil {
 		return ""
 	}
-	return node.journalPath()
+	if path := node.journalPath(); path != "" {
+		return path
+	}
+	a.mu.Lock()
+	dir := taskJournalDir(a.familyPlace(node), a.sessionID())
+	a.mu.Unlock()
+	path := findTaskJournal(dir, node.id)
+	if path == "" {
+		return ""
+	}
+	node.setJournal(path)
+	node.graph.checkpoint()
+	return path
 }
 
 // taskNode finds one admitted node, without BUILDING a graph that a question

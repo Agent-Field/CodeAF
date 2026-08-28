@@ -128,6 +128,15 @@ const (
 	// pulls that one back into the box to be edited. The dim line under the block
 	// belongs to no message and is marked with nothing.
 	chromeParked
+	// chromeParkedHint is the dim line UNDER that block — the one that says what
+	// the waiting message is doing and which keys change it (park.go's
+	// [parkedWord]). It belongs to no message, which is why it is not a
+	// [chromeParked], and it is marked at all because one clause on it is a door:
+	// `→ steers it in` puts the message into the running answer, by pointer as
+	// well as by key (steer.go's [app.steerDoorPress]). The press is a question
+	// about the column as well as the row, since the other clauses on the line are
+	// statements.
+	chromeParkedHint
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
@@ -136,6 +145,13 @@ const (
 	// end carries the hint slot, and the one thing in that slot a person can
 	// press is the door home (home.go's [app.homeDoorPress]).
 	chromeLegend
+	// chromeDraft is one row of the input block; index is its position within
+	// the block as [app.inputBlock] built it, tray row included. It exists so a
+	// click on the box can put the caret under the pointer (draftclick.go) —
+	// before it, a press on the draft fell through to the body's drag parking
+	// and moved nothing, which made the one place a person types the one place
+	// their pointer did not work.
+	chromeDraft
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -149,6 +165,15 @@ type chromeRow struct {
 // line is a thing you click and now a thing you hover — cell motion would
 // deliver the wheel and the press and nothing in between.
 func (a *app) View() tea.View {
+	// A MESSAGE THAT CHANGED NOTHING DRAWS THE FRAME BEFORE IT. Bubble Tea builds
+	// a frame per message and writes one per sixtieth of a second, so the frames
+	// it builds for a burst are mostly frames nobody is ever shown — and a sweep
+	// is six hundred messages that touched two integers and a stored position
+	// between them. [app.still] is the fold saying so, and it says so only about
+	// the paths that mutate nothing this function reads (coalesce.go).
+	if a.drawn && a.ptr.still {
+		return a.shown
+	}
 	frame, caretX, caretY := a.frame()
 	v := tea.NewView(frame)
 	v.AltScreen = true
@@ -181,6 +206,11 @@ func (a *app) View() tea.View {
 	// each of which would submit. v2 enables it unless this says otherwise, and
 	// it says so out loud because the default is the thing being relied on.
 	v.DisableBracketedPasteMode = false
+	// The tab's one line (windowtitle.go). Declared rather than written: the
+	// renderer compares it with the last frame's and emits OSC 2 only when it
+	// moved, so declaring it on every frame costs nothing on the frames where
+	// nothing changed.
+	v.WindowTitle = a.windowTitle()
 	// The caret is hidden on surfaces with nothing to type into (home at rest),
 	// where a blinking bar over the heading would be a cursor with no box to
 	// live in. [app.frame] sets [app.caret] on every render.
@@ -191,41 +221,52 @@ func (a *app) View() tea.View {
 			Blink:    true,
 		}
 	}
+	a.shown, a.drawn = v, true
 	return v
 }
 
 // frame is the whole screen and where the caret sits in it.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
+	if a.pasteEdit.open {
+		return a.pasteEditorFrame(width, height)
+	}
 	// The caret is shown by default and hidden only by the surfaces that have
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.
 	a.caret = true
-	// The settings panel is the first thing on this surface that takes the whole
-	// frame, and it takes it WHOLE: no conversation above it, no input line
-	// under it, nothing of the frame below showing through at the edges
-	// (settings.go). A sheet drawn into a viewport is a sheet you read past.
-	if a.sheet.open {
-		lines, _, caretX, caretY := a.sheetFrame(width, height)
+	// AND THERE IS NO TAB BAR UNTIL A FRAME DRAWS ONE. Every place goes through
+	// [placeFrame], which records the row it put the bar on; the frames that do
+	// not — home's phone inbox and sheet, the task record card — draw something
+	// else in those cells entirely, and a press resolved against the last bar
+	// this window happened to paint would open a place for a click on a rule
+	// (placemouse.go's [app.placeTabPress]).
+	a.tabRow = -1
+	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
+	// because it is the one that may be open before any of them exists and it
+	// goes away to reveal whichever of them was decided underneath (firstrun.go).
+	// One block, centred, no chrome.
+	if a.setup.open {
+		lines, caretX, caretY := a.setupFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND THE TASK PAGE TAKES IT THE SAME WAY, at every width, and for the same
-	// reason: it is the project's whole record of its own work — the running tree
-	// and the flat list of everything before it — and a record read past a
-	// conversation is a record nobody finishes reading (taskview.go).
-	if a.taskSheet.open {
-		lines, _, caretX, caretY := a.taskSheetFrame(width, height)
+	// AND THEN WHATEVER PLACE IS STANDING, in ONE call and never seven
+	// (pages.go's [app.placeFrameNow]). Each of the seven takes the frame WHOLE:
+	// no conversation above it, no input line under it, nothing of the frame
+	// below showing through at the edges — a sheet drawn into a viewport is a
+	// sheet you read past. Which one is up is [app.page]; what rows it has is the
+	// registry's answer, so this file never knows a place by name.
+	//
+	// THEY CANNOT BE UP TOGETHER, and that is one field rather than an invariant
+	// now: [app.showPage] closes what was standing before it opens what is asked
+	// for, so the frame that used to ask seven `open` flags in a fixed order —
+	// with a written-down note that an order only true while nobody makes a
+	// mistake is an order that draws a blank frame the day somebody does — asks
+	// one.
+	if lines, _, caretX, caretY, up := a.placeFrameNow(width, height); up {
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND HOME TAKES IT ON THE SAME TERMS (home.go). It is the whole machine's
-	// work rather than this conversation's, so there is nothing of this window
-	// worth showing around the edges of it — and the conversation is exactly
-	// where esc puts you back.
-	if a.home.open {
-		lines, _, caretX, caretY := a.homeFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
-	// AND THE REWIND TIMELINE IS THE FOURTH, on the same terms again
+	// AND THE REWIND TIMELINE, on the same terms and outside the bar
 	// (rewindsheet.go). It is the whole conversation, laid out as the list a
 	// person picks a point out of, and a picker read past the very conversation it
 	// is picking from would be the page arguing with itself — which is also why
@@ -234,15 +275,6 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.rewindSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// THE ORDER OF THOSE FOUR IS SETTINGS, THEN THE TASK PAGE, THEN HOME, THEN
-	// THE REWIND TIMELINE — oldest surface first, which is also the order
-	// settings.go tells the story in. No two of them can actually be open at once:
-	// opening any one closes the other three ([app.openSettings],
-	// [app.openTaskSheet], [app.openHome], [app.openRewindSheet], all through
-	// [app.standDownFullscreen]). The order is written down anyway, because an
-	// invariant that is only true while nobody makes a mistake is an invariant
-	// that draws a blank frame the day somebody does.
-	//
 	// AND THE STATUS SHEET IS THE FIFTH, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame
@@ -326,8 +358,9 @@ func (a *app) frame() (string, int, int) {
 		// the roster has taken the body: dropping them would draw a window short
 		// of the terminal by exactly the box. [app.chromeAt] does not resolve
 		// them while the roster is up, which is right — the roster is over them.
+		liftedAt := len(rows)
 		rows = append(rows, lifted...)
-		return a.frameOut(rows, chrome, height, caretX, caretRow)
+		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
 	body, pad := a.bodyRows(a.bodyWidth(), view)
 	rail := a.railRows(view)
@@ -373,28 +406,61 @@ func (a *app) frame() (string, int, int) {
 		}
 		rows = append(rows, a.railJoin(text, railAt(i)))
 	}
-	// The welcome box, directly under the conversation and above the slack.
-	rows = append(rows, lifted...)
-	for i := 0; i < pad; i++ {
+	// THE GREETING SITS IN THE SLACK, a shade above its middle, with whatever
+	// the conversation already holds — a notice, an order standing here — above
+	// it where it was. The split is [welcomeAbove]'s and the pointer reads the
+	// same split back ([app.chromeAt]).
+	above := welcomeAbove(lift, pad)
+	for i := 0; i < above; i++ {
 		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
-	return a.frameOut(rows, chrome, height, caretX, caretRow)
+	liftedAt := len(rows)
+	rows = append(rows, lifted...)
+	for i := above; i < pad; i++ {
+		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
+	}
+	return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+}
+
+// welcomeAbove is how much of the body's slack goes ABOVE the lifted greeting:
+// nothing when nothing is lifted, and two fifths of it otherwise. Two fifths
+// rather than a half because an object at the exact middle of a tall window
+// reads as sitting low — the eye's centre is above the frame's — and a shade
+// above is where a centred thing looks centred.
+func welcomeAbove(lift, pad int) int {
+	if lift == 0 || pad <= 0 {
+		return 0
+	}
+	return pad * 2 / 5
 }
 
 // frameOut closes a frame: the chrome under whatever the body drew, cut to the
-// terminal, and the caret counted back through the chrome's own height.
+// terminal, and the caret turned into a screen row.
 //
 // It is one function because the two body layouts — the conversation beside its
 // rail, and the roster over the whole of it — must end the same way. A second
 // copy of this arithmetic is a caret that lands on the right row in one of them.
-func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow int) (string, int, int) {
+//
+// THE CARET IS COUNTED FROM WHICHEVER HALF OF THE CHROME IT IS IN. caretRow is
+// a row of the chrome block as [app.chrome] built it — the lifted greeting
+// first, then the tail. A caret inside the greeting is liftedAt rows down plus
+// its row; a caret in the tail is counted back from the foot of the frame
+// through the tail alone. Counting it back through the tail with the lift still
+// in it is the arithmetic this replaced, and it put the terminal's cursor on the
+// status row for as long as the greeting was up.
+func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) (string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
+	cut := 0
 	if len(rows) > height {
-		rows = rows[len(rows)-height:]
+		cut = len(rows) - height
+		rows = rows[cut:]
 	}
-	caretY := height - len(chrome) + caretRow
+	caretY := height - len(chrome) + caretRow - lift
+	if caretRow < lift {
+		caretY = liftedAt + caretRow - cut
+	}
 	if caretY < 0 {
 		caretY = 0
 	}
@@ -444,19 +510,25 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		}
 		add("", chromeRow{})
 	}
-	// The rows above the rule are the SECOND helping of breathing room, so there
-	// is one of them or none (see [app.breathingRows]).
-	for i := 1; i < gap; i++ {
-		addGap()
-	}
-	// The welcome box sits ABOVE the rule, which is where it belongs: the rule
-	// is the seam between what happened and what you are about to say, and the
-	// box is about neither — it is what there is instead of a conversation
-	// (welcome.go).
-	for i, line := range a.welcomeRows(width) {
+	// THE GREETING IS THE HEAD OF THIS BLOCK AND, WHILE IT IS UP, IT IS MOST OF
+	// IT. The unit's rows are built here and marked here so that they are
+	// hit-tested with the rest of the chrome, and then lifted to the middle of
+	// the frame ([welcomeLift]). While it is drawn, the rule, the breathing rows
+	// and the box at the foot are not: the unit is centred in the slack, and a
+	// legend under nothing is a seam between two things that are not there.
+	// The status row still closes the frame, and any question the session
+	// raises before the first sentence still stacks above it.
+	unit, _, unitX, unitRow := a.welcomeUnit(width)
+	greeted := len(unit) > 0
+	for i, line := range unit {
 		add(line, chromeRow{kind: chromeWelcome, index: i})
 	}
-	if roomy {
+	// The rows above the rule are the SECOND helping of breathing room, so there
+	// is one of them or none (see [app.breathingRows]).
+	for i := 1; i < gap && !greeted; i++ {
+		addGap()
+	}
+	if roomy && !greeted {
 		// THE RULE IS A LEGEND NOW: the same one line, with where you are written
 		// into it (render.go). It degrades back to the plain rule on a frame with
 		// no room for a label.
@@ -515,25 +587,37 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.parkedRows(width) {
 		add(line, a.parkedMark(i, width))
 	}
-	if roomy {
+	if roomy && !greeted {
 		addGap()
 	}
 
-	input, caretX, caretRow := a.inputBlock(width - len(inputPad))
-	// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder is
-	// applied to the block the input already rendered, because the hint slot
-	// inside it belongs to the picker's filter and the two are never up together
-	// (task.go).
-	input = a.redirectLane(input, width-len(inputPad))
-	// AND THE BOX TALKS TO THE NODE while a room is open: same box, same rules,
-	// a placeholder that says who is listening (room.go). The two lanes cannot be
-	// up together — a proposal is a question about work that has not started, a
-	// room is a page for work that has — and [app.roomSteerLaneRows] defers to
-	// the one above it rather than assuming so.
-	input = a.roomSteerLaneRows(input, width-len(inputPad))
-	caretRow += len(rows)
-	for _, line := range input {
-		add(inputPad+line, chromeRow{})
+	// THE CARET IS IN THE UNIT WHILE THE UNIT HOLDS THE BOX, and at the foot
+	// otherwise. Both are a row counted from the head of this block — the unit's
+	// rows are its first rows — and the frame turns each into a screen row from
+	// where it drew that half ([app.frameOut]).
+	caretX, caretRow := unitX, unitRow
+	if !a.welcomeHolds() {
+		input, x, row := a.inputBlock(width - len(inputPad))
+		// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder
+		// is applied to the block the input already rendered, because the hint
+		// slot inside it belongs to the picker's filter and the two are never up
+		// together (task.go).
+		input = a.redirectLane(input, width-len(inputPad))
+		// AND THE BOX TALKS TO THE NODE while a room is open: same box, same
+		// rules, a placeholder that says who is listening (room.go). The two lanes
+		// cannot be up together — a proposal is a question about work that has not
+		// started, a room is a page for work that has — and [app.roomSteerLaneRows]
+		// defers to the one above it rather than assuming so.
+		input = a.roomSteerLaneRows(input, width-len(inputPad))
+		caretX, caretRow = x+len(inputPad), row+len(rows)
+		for i, line := range input {
+			// Marked so the pointer can answer for the box: which row of the
+			// block a press landed on is the y half of putting the caret under it
+			// (draftclick.go). While the welcome unit holds the box its rows are
+			// the unit's and carry no draft mark — a press there is the
+			// greeting's own business.
+			add(inputPad+line, chromeRow{kind: chromeDraft, index: i})
+		}
 	}
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence
@@ -549,7 +633,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		add(line, chromeRow{kind: chromeStatus, index: i})
 	}
 
-	return rows, marks, caretX + len(inputPad), caretRow
+	return rows, marks, caretX, caretRow
 }
 
 // statusRow is the HUD's status row — one row, or two on a narrow frame where
@@ -605,16 +689,17 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 	if at := y - (height - tail); at >= 0 && at < tail {
 		return marks[lift+at], true
 	}
-	// The lifted rows sit directly under the conversation, which is where the
-	// frame drew them. Asking [app.bodyRows] again is what keeps this answer and
-	// the drawn one the same answer.
+	// The lifted rows sit under the conversation and its share of the slack,
+	// which is where the frame drew them. Asking [app.bodyRows] again, and
+	// [welcomeAbove] again, is what keeps this answer and the drawn one the same
+	// answer.
 	if lift > 0 && !a.railFull() {
 		top := a.bodyTop()
 		if top < 0 {
 			return chromeRow{}, false
 		}
-		body, _ := a.bodyRows(a.bodyWidth(), a.viewHeight())
-		start := top + len(body)
+		body, pad := a.bodyRows(a.bodyWidth(), a.viewHeight())
+		start := top + len(body) + welcomeAbove(lift, pad)
 		if at := y - start; at >= 0 && at < lift {
 			return marks[at], true
 		}
@@ -658,10 +743,17 @@ func (a *app) chromeHeight() int {
 	// layout to learn how tall the bottom of the frame is), the input block, and
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
-	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
+	n := a.statusHeight(width) + a.overlayHeight() + a.consentHeight() +
 		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
 		a.followHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
-	if gap := a.breathingRows(); gap > 0 {
+	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
+	// rule and its breathing room are not drawn under a greeting at all — both
+	// are [app.chrome]'s own decisions, read back here so the conversation is
+	// charged exactly what the frame draws.
+	if !a.welcomeHolds() {
+		n += a.inputHeight()
+	}
+	if gap := a.breathingRows(); gap > 0 && a.welcomeHeight() == 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}
 	return n
@@ -871,7 +963,12 @@ func (a *app) headHeight() int {
 	return 1 + len(a.roomKinRows(width))
 }
 
-func (a *app) page() int {
+// scrollPage is how many rows one pgup or pgdown moves: a screenful less a line
+// of overlap, so a person reading a long thing keeps one row of context across
+// the jump. It was called `page` until the router took that word for a PLACE
+// (pages.go); the two meanings had nothing to do with each other and one of them
+// had to move.
+func (a *app) scrollPage() int {
 	if p := a.viewHeight() - 1; p > 1 {
 		return p
 	}
@@ -900,27 +997,15 @@ func (a *app) offsetFor(total, height int) int {
 // following the live edge. Reaching the bottom re-arms sticking: leaving it
 // off would mean a reader who scrolled up once never sees a new reply again.
 //
-// AND A SCROLL THAT RUNS OFF THE TOP ASKS THE JOURNAL FOR MORE CONVERSATION
-// (replay.go's [app.backfill]) rather than stopping there. A resumed session
-// draws its last tailful and nothing else, so without this the top of that
-// tailful was where an hour-old conversation ended for the reader — which is
-// the defect this is here for. It is asked HERE, in the one function every
-// upward gesture goes through — the wheel, pgup, ↑ past the end of the draft —
-// so no route into the history can be the route that does not work.
-func (a *app) scroll(delta int) {
+// AND AN UPWARD SCROLL PREFETCHES BEFORE IT RUNS OFF THE TOP. A resumed session
+// draws its last tailful and nothing else, so [app.prefetchHistory] begins the
+// next local page while a whole screen still remains. The gesture only changes
+// an offset in already-rendered memory; the command that materializes history
+// lands later on the update loop.
+func (a *app) scroll(delta int) tea.Cmd {
 	height := a.viewHeight()
 	total := len(a.visible(a.bodyWidth()))
 	at := a.offsetFor(total, height) + delta
-	if at <= 0 && a.backfill() {
-		// THE READER STAYS ON THE LINE THEY WERE READING. The helping went in
-		// ABOVE everything already drawn and nothing else moved, so every row is
-		// exactly as many rows further down as arrived in front of it — and the
-		// gesture that asked for the history carries on into it as though it had
-		// been there all along.
-		grown := len(a.visible(a.bodyWidth()))
-		at += grown - total
-		total = grown
-	}
 	bottom := total - height
 	if bottom < 0 {
 		bottom = 0
@@ -933,6 +1018,10 @@ func (a *app) scroll(delta int) {
 	default:
 		a.offset, a.stick = at, false
 	}
+	if delta < 0 {
+		return a.prefetchHistory()
+	}
+	return nil
 }
 
 // reveal scrolls just enough to put an entry's first row on screen. It is what

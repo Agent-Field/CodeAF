@@ -32,16 +32,29 @@ func main() {
 	if sweproSentinel(os.Getenv) {
 		os.Exit(dispatchSwepro(os.Args[1:]))
 	}
-	// The default heap target collects several times before the surface is even
-	// drawn, and none of those collections free anything worth the pause: the
-	// launch path allocates a graph snapshot, a catalog, and a thread, and then
-	// keeps them. Trading a few megabytes of resident memory for those cycles
-	// is the right side of that bargain for an interactive tool. An explicit
-	// GOGC still decides — this is a default, not a policy.
+	os.Exit(execute())
+}
+
+// tuneForTheSurface raises the heap target for a command that is about to draw
+// one, and IT IS CALLED FROM THE DISPATCH BELOW rather than from main.
+//
+// The default heap target collects several times before the surface is even
+// drawn, and none of those collections free anything worth the pause: the launch
+// path allocates a graph snapshot, a catalog, and a thread, and then keeps them.
+// Trading a few megabytes of resident memory for those cycles is the right side
+// of that bargain for a tool somebody is sitting in front of.
+//
+// IT IS THE WRONG SIDE FOR EVERY OTHER COMMAND, which is why this is not in
+// main. `do`, `run`, `exec`, `engine` and a subharness run headless, often many
+// at once on one machine and often for a long time, and nobody is waiting on a
+// pause there — a resident set four times larger, multiplied by a fan-out, is a
+// cost paid to shorten a pause no one can see. Those commands keep the Go
+// default. An explicit GOGC still decides for both — this is a default, not a
+// policy.
+func tuneForTheSurface() {
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
 	}
-	os.Exit(execute())
 }
 
 // execute is the last line of defense. Everything below it absorbs its own
@@ -84,6 +97,7 @@ func run() error {
 		// No arguments opens the resident surface. On branch chat-v3 that
 		// surface IS v3 (docs/CHAT-V3.md, "Entry and cutover"); v2 stays
 		// reachable behind its flag until the V3-3 deletion.
+		tuneForTheSurface()
 		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
 			return runChatV2(rest)
 		}
@@ -91,6 +105,7 @@ func run() error {
 	}
 	switch os.Args[1] {
 	case "chat":
+		tuneForTheSurface()
 		// The v2 surface is chosen before the old one reads a flag, so the old
 		// path runs the same bytes it ran yesterday (11.1: disconnect, don't
 		// delete). Without --v2 or AFORGE_CHAT_V2 nothing here changes.
@@ -105,6 +120,7 @@ func run() error {
 		// The chat surface, opened on the list of conversations this directory
 		// has already had (internal/tui3's resume.go). It is a v3 door only:
 		// the older surfaces have no session files to pick from.
+		tuneForTheSurface()
 		return runResumeV3(os.Args[2:])
 	case "engine":
 		// The far half of `aforge chat --host <host>`: the process ssh starts
@@ -114,6 +130,20 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "serve":
+		// The other half of reaching this machine, for the machines ssh cannot
+		// reach: it dials OUT to a relay and holds the connection open, so a
+		// router or a firewall in front of this machine stops mattering. It
+		// prints the name this machine answers to and a pairing code, and it
+		// is a command a person runs and watches — which is why it is in the
+		// usage text and `engine` is not (chatv3_at.go).
+		return runServe(os.Args[2:])
+	case "devices":
+		// Who is allowed to open a conversation here, and the door for taking
+		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
+		// MACHINE'S, which is why it is a command here rather than something a
+		// surface can do down the wire (chatv3_at.go).
+		return runDevices(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -145,6 +175,8 @@ func run() error {
 		return runTick(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
+	case "cache":
+		return runCache(os.Args[2:])
 	case "rebuild":
 		return runRebuild(os.Args[2:])
 	case "why":
@@ -165,9 +197,19 @@ func run() error {
 const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
-  aforge chat [--db path] [--session id|new]
+  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
+              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
+                         --session names a transcript FILE to resume, not an id and not
+                         the word "new": a path that does not exist yet is a new
+                         conversation written there, and no --session at all resumes
+                         this directory's most recent
   aforge resume          pick an earlier conversation by name and open it
                          the same list is /resume inside the chat
+  aforge serve [--workspace path] [--relay url]
+                         be reachable from your other devices without ssh: this machine dials out,
+                         prints the name it answers to, and shows a pairing code for a new device
+  aforge devices [revoke [--all] <name>]
+                         list the devices paired with this machine, and stop one
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                        [--subharness name] [--context-fill 60] [--completion-reserve 65536]
                          do one task and exit — the same living brain the chat runs, with nobody watching
@@ -197,6 +239,10 @@ const usageText = `aforge — build and revise task graphs
   aforge services stop <name> [--db path]
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
+  aforge cache                  what the shared build cache holds, and how big it is
+  aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
+                                path, then asks you to type "clean" — --yes skips the
+                                question for scripts. Conversations are never touched.
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
   aforge version                print the build this binary was cut from
@@ -246,6 +292,12 @@ Environment:
   AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
+  AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
+                       carry its own work on (default none: it stops when the
+                       model stops). --max-hours wins.
+  AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
+                       alone is a budget; without one, --yolo is only the
+                       approval posture it has always been.
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
                        coding pipeline. A backstop, not a budget — the daily

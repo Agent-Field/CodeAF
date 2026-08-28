@@ -83,6 +83,48 @@ const TaskKindSubharness TaskKind = "subharness"
 // `jobs kill`, and its row is a row.
 const TaskKindJob TaskKind = "job"
 
+// TaskKindAdaptive is a run that PLANS ITSELF as it goes (orchestrate.go): a
+// family whose root is a goal and whose children crystallize while the run is
+// turning, so the denominator a row could quote is "planned so far" and not a
+// number anybody fixed at the start.
+//
+// IT IS NOT ONE OF [taskSpec.kind]'S ANSWERS, and it cannot be: an adaptive run
+// has no [TaskNode] and no spec at all — its three index rows are written
+// straight from the family seam ([orchestrateFamily]). It is a TaskKind rather
+// than a fourth vocabulary because the one question every surface asks of a
+// landed row is "what sort of work was this", and an answer that lived in two
+// enums would be two answers.
+const TaskKindAdaptive TaskKind = "adaptive"
+
+// TaskKindWord is what a person reads where the code holds a [TaskKind], and it
+// is the ONE place that translation is made — [taskStateWord]'s law applied to
+// the other half of a row.
+//
+// Ordinary work has NO WORD, and that is the emptiness law rather than an
+// oversight: "plain" on a row would be a machine telling somebody that the task
+// they asked for was a task. The word only ever earns its place by naming a
+// kind of work that behaves differently — a run that plans itself, a saved
+// shape being run or being made, a command running in the background.
+//
+// The vocabulary is the surface's own, taken from where a person already meets
+// each thing: `adaptive` is what `/task adaptive` and the manual's
+// adaptive-runs.md call it, and `saved shape` is what saved-shapes-of-work.md
+// calls a subharness. No machinery word — "subharness", "harness", "node" —
+// reaches a screen through here.
+func TaskKindWord(kind TaskKind) string {
+	switch kind {
+	case TaskKindAdaptive:
+		return "adaptive"
+	case TaskKindSubharness:
+		return "saved shape"
+	case TaskKindHarness:
+		return "making a saved shape"
+	case TaskKindJob:
+		return "background job"
+	}
+	return ""
+}
+
 // TaskState is where one node is in its life.
 type TaskState string
 
@@ -226,6 +268,9 @@ type TaskNotice struct {
 	Brief string
 	// Acceptance is the observable done-condition, in the model's own words.
 	Acceptance string
+	// Where says where the task will work. A proposal carries the resolved task
+	// folder or explicit path; later notices carry the worker's actual directory.
+	Where string
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Role is one named auxiliary LLM call.
@@ -107,11 +108,74 @@ const (
 	// the reflex model on the high tier.
 	RoleReflex Role = "reflex"
 	// RoleRouter is the sidecar judge that reviews a tool-less answer and asks
-	// whether it should have been work (an adaptive run, a task). It sits LOW:
-	// it reads one turn and answers one cheap question, and a wrong "no" costs
-	// an offer card that was never shown, never money. Registered from
-	// internal/session/route_judge.go, which owns the call.
+	// whether it should have been work. It sits LOW because it SCREENS: it is
+	// asked after every substantial turn that answered in words alone, which is
+	// volume, and volume belongs on the cheap model.
+	//
+	// ITS OLD ECONOMICS ARE GONE AND THE LINE THAT STATED THEM WAS STALE. "A
+	// wrong no costs an offer card that was never shown, never money" was true
+	// while a yes raised a card somebody had to press; a yes now STARTS the work
+	// (internal/session/route_judge.go), so a wrong yes spends a whole task's
+	// money. What holds that shut is NOT a dearer model here — moving the screen
+	// off the cheap tier would pay for thinking on every turn to correct the rare
+	// one — it is [RoleRouterConfirm], asked once on the yes. A wrong no still
+	// costs nothing but work that was never started.
 	RoleRouter Role = "router"
+	// RoleRouterConfirm is the SECOND question, asked only where RoleRouter has
+	// already answered yes: the same brief, the same one-object contract, a
+	// fresh context, on the tier that thinks. Only both-yes starts anything, and
+	// the confirm's no is silence — no note, no retry.
+	//
+	// IT SITS ON THE MASTERMIND TIER AND ITS EXPECTED COST IS STILL NEARLY ZERO,
+	// which is the whole shape of a cascade. It is never asked about the turns
+	// the cheap screen already threw out — the trivial ones, the ones that called
+	// tools, the plain nos — so what it costs is one mastermind call per yes, and
+	// a yes is rare. What it prevents each time is a task's worth of spend, in a
+	// worktree, on work nobody asked for. Registered from
+	// internal/session/route_judge.go, which owns the call.
+	RoleRouterConfirm Role = "routerconfirm"
+	// RoleMarkReader reads ONE MARK of an answer that is still running: the
+	// transcript the turn has built so far, and one question asking it to sketch
+	// what is left as parts and arrows (internal/session/checkpoint.go, which owns
+	// the call). The harness parses the shape it draws and hands the turn over
+	// where the shape has independent parts in it.
+	//
+	// IT IS ITS OWN ROLE BECAUSE IT ASKS ITS OWN QUESTION. RoleRouterConfirm is
+	// the second reader of a work-or-words judgement about a REQUEST nobody has
+	// worked on yet; this reads a turn's own findings and answers what remains.
+	// Sharing a name would mean one pin could only ever point both calls at one
+	// model, and the two are billed on completely different rhythms.
+	//
+	// IT SITS ON THE MASTERMIND TIER BECAUSE THE CHEAP ANSWER WAS MEASURED AND IT
+	// WAS NOT AN ANSWER. Asked mid-turn, the running chat model emitted a tool call
+	// instead of answering between 17% and 53% of the time, depending on the
+	// phrasing; the mastermind left 0% to 7% unanswered on the same transcripts
+	// (bench/oneroad/replay/RESULTS.md). A reader that goes silent under tool
+	// momentum is silent on exactly the turns this is for. What it costs is bounded
+	// hard: at most three calls, and only on a turn that has already run ten rounds
+	// of tools, which most turns never do.
+	RoleMarkReader Role = "markreader"
+	// RoleHandoff WRITES THE BRIEF a handed-over turn gives the worker that takes
+	// it: the person's ask, the state card, an account of what the turn did and
+	// what came back, and the draft the running model wrote — in, and one
+	// instruction somebody who saw none of it can work from, out
+	// (internal/session/checkpoint.go, which owns the call).
+	//
+	// IT IS ITS OWN ROLE BECAUSE THE DRAFT AND THE DOCUMENT ARE DIFFERENT JOBS.
+	// The model that spent the turn is the only one holding the findings, so it
+	// still drafts; it is also, by then, a tired model at the end of forty rounds,
+	// and asking it to be its own editor was measured producing 5,882 characters
+	// in which 39 of 85 clauses were distinct and 62% was one six-sentence loop —
+	// which a cold worker was then started on as its whole world.
+	//
+	// IT SITS ON THE MASTERMIND TIER FOR THE MARK READER'S REASON, arrived at from
+	// the other side: this document is the ENTIRE context of everything that
+	// happens after the handover — the worker's instruction, what the division
+	// reviewer reads, what the checker is eventually held against — so a cheap
+	// answer here is not a cheap answer, it is a whole task's spend on the wrong
+	// work. What it costs is bounded hard: at most two calls, and only on a turn
+	// that is being handed over at all, which most turns never are.
+	RoleHandoff Role = "handoff"
 	// RoleTaskName is the two or three words a piece of work is CALLED on the
 	// rail, the home card and the task list — made from the node's own gloss and
 	// brief when whoever started it left a raw sentence there instead of a name.
@@ -137,6 +201,34 @@ const (
 	// somebody fills in by hand. Registered from
 	// internal/session/subharness_intake.go, which owns the call.
 	RoleIntake Role = "intake"
+
+	// RoleDivision reviews a DIVISION as a plan. A worker halfway through its
+	// own work has named the parts it wants to hand out, and this is the one
+	// call that reads them TOGETHER — the evidence, the parent's own brief, and
+	// every part's title, brief and done-condition — and answers with those
+	// parts approved, amended, merged, or refused as not a division at all.
+	//
+	// IT IS ON THE MASTERMIND TIER FOR THAT TIER'S OWN STATED REASON: one answer
+	// shapes all the other calls. A part's brief is that part's WHOLE WORLD — it
+	// never sees the conversation and cannot ask anybody anything — and the
+	// briefs arrive written by whichever model the parent task happens to be
+	// running on, which on a cheap crew is the cheap one. Every turn every part
+	// ever takes is downstream of those paragraphs. Registered from
+	// internal/session/task_divide.go, which owns the call.
+	RoleDivision Role = "division"
+	// RoleCareful is the model a part graded `careful` runs on. It is not an
+	// auxiliary call at all — it is a whole worker's model — and it is a role so
+	// that the answer comes out of this registry rather than out of a model id
+	// written into a source file somewhere.
+	//
+	// IT SITS HIGH AND NOT ON THE MASTERMIND TIER, and the difference is the
+	// call rhythm the tiers are cut along. A mastermind call is one answer that
+	// decides what the others do; a careful part is MANY turns of ordinary work,
+	// done by a model that can be trusted with something subtle. It is
+	// [RoleWorker]'s twin: the cheap tier for parts whose failure is "not done
+	// yet", this one for parts whose failure is quiet wrongness. Registered from
+	// internal/session/task_divide.go, which owns the field that reaches it.
+	RoleCareful Role = "careful"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -162,13 +254,17 @@ const (
 	TierLow Tier = "low"
 	// TierHigh is the capable, expensive one.
 	TierHigh Tier = "high"
-	// TierMastermind is the one tier that is not an economy at all. Two roles
-	// sit on it — the planner that decides what an adaptive run does next, and
-	// the designer that writes a harness page everybody afterwards runs — and
-	// what they have in common is that ONE ANSWER SHAPES ALL THE OTHER CALLS.
-	// A planner that cuts badly spends a whole tank on work nobody wanted; a
+	// TierMastermind is the one tier that is not an economy at all. What every
+	// role on it has in common is that ONE ANSWER SHAPES ALL THE OTHER CALLS:
+	// the planner that decides what an adaptive run does next, the designer that
+	// writes a harness page everybody afterwards runs, the confirm standing
+	// between a cheap judge's yes and a task that starts itself, and the review
+	// that reads a division's parts before a single one of them is minted. A
+	// planner that cuts badly spends a whole tank on work nobody wanted; a
 	// designer that writes badly puts a wrong answer on the menu with a name on
-	// it. Both were on the high tier, beside the compaction summary and the
+	// it; a division reviewed badly hands four workers four briefs that nobody
+	// inside them can correct. The first two were on the high tier, beside the
+	// compaction summary and the
 	// auditor, which made a person choosing "the capable model" choose one
 	// figure for two very different bills: the careful calls are many and short,
 	// the mastermind's are few and worth thinking about. Separating them is what
@@ -268,11 +364,17 @@ var roleDescriptions = map[Role]string{
 	RoleTitle:      "the name a session gives itself",
 	RoleIntake:     "filling in a program's form from what was already said",
 	RoleGuardian:   "is this one tool call plainly safe",
-	RoleRouter:     "which surface a request belongs to",
-	RoleReflex:     "reads every turn for memory — routing and keeping",
-	RoleVision:     "reads images for a model that cannot see them",
-	RoleShaper:     "the brief a task you started yourself is given",
-	RoleTaskName:   "the two or three words a task is called",
+	RoleRouter:     "whether a turn should have been work",
+	// The cascade's second half, and the two calls a division makes.
+	RoleRouterConfirm: "a second look before work starts itself",
+	RoleMarkReader:    "what is left of a long answer, and whether it has parts",
+	RoleHandoff:       "the instruction a handed-over turn gives whoever finishes it",
+	RoleDivision:      "the parts a worker hands its own work out in",
+	RoleCareful:       "a part of a task that needs judgement",
+	RoleReflex:        "reads every turn for memory — routing and keeping",
+	RoleVision:        "reads images for a model that cannot see them",
+	RoleShaper:        "the brief a task you started yourself is given",
+	RoleTaskName:      "the two or three words a task is called",
 }
 
 var (
@@ -396,23 +498,113 @@ func Resolve(src Source, role Role, sessionDefault string) (string, error) {
 // of the ladder, and [Resolve] is this function with the level dropped — which
 // is the correct behaviour for every caller that has no way to send one.
 func ResolveCall(src Source, role Role, sessionDefault string) (Call, error) {
+	rungs, err := Ladder(src, role, sessionDefault)
+	if err != nil {
+		return Call{}, err
+	}
+	return rungs[0], nil
+}
+
+// Ladder is the WHOLE of [ResolveCall]'s ladder — every rung that resolves,
+// most specific first — rather than only the rung that wins.
+//
+// It exists because the ladder answers two questions, not one. "Which model
+// answers this call" is the first rung and is what almost every caller wants.
+// "AND WHAT IF THAT MODEL CANNOT ANSWER AT ALL" is the rest of the list, and it
+// is a real question: a role pinned to a small model that is down, or a tier
+// pointing at a slug an account has lost access to, used to fail the errand
+// outright while the model the person is talking to sat there able to do it.
+//
+// Repeats are removed, so a rung naming the model a higher rung already named
+// is not a rung — falling through to the same id is one more identical request
+// and a second identical failure. That is also why this is the fall-through and
+// not a list of every configured model: what follows a rung is what the person
+// configured to follow it, not a guess.
+//
+// The first rung is exactly what [ResolveCall] used to compute, so a caller that
+// only wants that is byte-for-byte where it was. A non-empty slice or an error:
+// never both, never neither.
+func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 	tier, ok := TierOf(role)
 	if !ok {
-		return Call{}, fmt.Errorf("%w: %q", ErrUnknownRole, role)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownRole, role)
+	}
+	var rungs []Call
+	seen := map[string]bool{}
+	add := func(candidate Call) {
+		model := strings.TrimSpace(candidate.Model)
+		if model == "" || seen[model] {
+			return
+		}
+		seen[model] = true
+		rungs = append(rungs, candidate)
 	}
 	if value, ok := read(src, PinKey(role)); ok {
-		return call(value), nil
+		add(call(value))
 	}
 	if value, ok := read(src, TierKey(tier)); ok {
-		return call(value), nil
+		add(call(value))
 	}
 	// THE SESSION MODEL IS NOT SPLIT. It is the id a running conversation is on,
 	// and whatever effort that conversation was dialled to belongs to the person
 	// who typed into it, not to an errand this package is routing.
-	if model := strings.TrimSpace(sessionDefault); model != "" {
-		return Call{Model: model}, nil
+	add(Call{Model: strings.TrimSpace(sessionDefault)})
+	if len(rungs) == 0 {
+		return nil, fmt.Errorf("%w for role %q", ErrNoModel, role)
 	}
-	return Call{}, fmt.Errorf("%w for role %q", ErrNoModel, role)
+	return rungs, nil
+}
+
+// ── how long one call on a tier is worth waiting for ────────────────────────
+
+// Patience is the OUTER BOUND on one call of a role's tier, and it exists
+// because the adapter's own bound cannot be one: a completion is bounded by a
+// figure scaled off its output cap, between five and fifteen minutes
+// (internal/provider's adaptiveCompletionTimeout), which is the right answer for
+// a person's turn and an absurd one for the eight words a session names itself.
+// A title that has not arrived in two minutes is not a title that is coming.
+//
+// IT IS DERIVED FROM THE TIER AND NEVER FROM THE ROLE. A tier is already the
+// statement of what a class of call is worth — cheap and constant, or few and
+// worth thinking about — and a table of per-role seconds would be a second
+// place saying the same thing, drifting the first time somebody adds a role.
+//
+// It is an OUTER bound, not a budget. A caller that knows its own call is
+// tighter still says so and wins, because two deadlines on one context leave the
+// nearer one in force: the guardian's ten seconds and the task namer's twenty
+// are facts about those calls that no tier can know.
+func Patience(tier Tier) time.Duration {
+	switch tier {
+	case TierReflex:
+		// Twice per exchange, forever, in front of a person who is waiting for
+		// their own turn behind it. A reflex call that takes a minute has
+		// already cost more than the answer is worth.
+		return 45 * time.Second
+	case TierHigh:
+		// Long enough for a compaction summary over a full window — the one
+		// call on this tier that legitimately reads a great deal before it
+		// writes anything.
+		return 5 * time.Minute
+	case TierMastermind:
+		// A planner reading a whole run, or a designer writing a page everybody
+		// afterwards runs. These are the calls worth waiting for, and this is
+		// still a bound.
+		return 10 * time.Minute
+	default:
+		return 2 * time.Minute
+	}
+}
+
+// PatienceFor is [Patience] for a role, and the ordinary way to ask. An
+// unregistered role gets the cheap tier's answer rather than no bound at all:
+// the caller is already about to fail on [Ladder]'s ErrUnknownRole, and a
+// missing bound is the one outcome worse than a short one.
+func PatienceFor(role Role) time.Duration {
+	tier, ok := TierOf(role)
+	if !ok {
+		return Patience(TierLow)
+	}
+	return Patience(tier)
 }
 
 // Pinned reports a role's explicit pin — rung 1 of the ladder on its own, for

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -548,11 +549,16 @@ func yank(t *testing.T, a *app) string {
 func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.pal = newPalette(tokens.TrueColor, false)
+	// THE CALL COMES BEFORE THE ANSWER, which is the order a turn actually runs
+	// in and the order THE ANSWER HIERARCHY reads (hierarchy.go): prose with more
+	// work under it in the same turn is narration and is drawn at the working
+	// tier, so an answer written above its own tool call would be demoted here —
+	// and this test is about copying the ANSWER's fence.
 	a.entries = append(a.entries,
 		entry{kind: entryUser, text: "how do I print?"},
-		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 		entry{kind: entryTool, tool: "read", text: "main.go", status: toolOK, open: true,
 			detail: toolDetail{Output: "line one\nline two"}},
+		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 	)
 	a.touch()
 	drive(t, a, ctrlKey('b'))
@@ -571,7 +577,9 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	drive(t, a, key("a"))
 	drive(t, a, key("a"))
 	got := yank(t, a)
-	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "  That is all.") {
+	// Flush at both ends: this is the turn's ANSWER, so it carries no work
+	// gutter for the yank to have to strip (hierarchy.go).
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
 		t.Fatalf("the second press did not widen to the answer: %q", got)
 	}
 	if strings.Contains(got, tokens.GlyphCodeGutter) {
@@ -764,6 +772,10 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
 		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
 		"warn": lightWarn, "data": lightData, "hover": lightCursor, "violet": hueViolet,
+		// The streaming step is a role on this ladder like any other, and it owes
+		// the same rounding check — see [lightLive], and settle_test.go for what it
+		// is for.
+		"live": lightLive,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d", name, other, h.idx)
@@ -1303,15 +1315,19 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 
 // THE BOUND ON THE ROW IS THE BOUND THE COMMAND DIES ON. A weak model that
 // spells its optional arguments out — `"timeout": null` — is asking for nothing,
-// and the session writes its 120-second default over it (internal/session's
-// withTimeoutLaw). The row has to count down against that same figure: a bound
-// drawn here that nothing was going to enforce is the one number on this line a
-// person cannot check for themselves.
+// and the session writes its ceiling over it (internal/session's withTimeoutLaw
+// and [session.BashCeilingSeconds]). The row has to count down against that
+// same figure: a bound drawn here that nothing was going to enforce is the one
+// number on this line a person cannot check for themselves. The figure is READ
+// from the constant rather than typed here, because a test that spelled it out
+// was the second place the number lived, and it drifted the day the ceiling
+// moved.
 func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.state = stateWorking
 	base := time.Now()
 	a.clock = func() time.Time { return base.Add(20 * time.Second) }
+	ceiling := "20s / " + countUpWord(session.BashCeilingSeconds*time.Second)
 	for _, args := range []string{
 		`{"command":"cd work"}`,
 		`{"command":"cd work","timeout":null}`,
@@ -1322,18 +1338,18 @@ func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 			kind: entryTool, tool: "bash", status: toolRunning, began: base,
 			detail: toolDetail{Args: args},
 		}
-		if got, _ := a.countClock(&row); got != "20s / 2m 0s" {
-			t.Fatalf("%s draws %q, want the default bound stated beside the age", args, got)
+		if got, _ := a.countClock(&row); got != ceiling {
+			t.Fatalf("%s draws %q, want the session's ceiling %q beside the age", args, got, ceiling)
 		}
 	}
 	// And a figure the model really did ask for is still its own, clamped at the
 	// session's cap.
 	clamped := entry{
 		kind: entryTool, tool: "bash", status: toolRunning, began: base,
-		detail: toolDetail{Args: `{"command":"go test ./...","timeout":900}`},
+		detail: toolDetail{Args: `{"command":"go test ./...","timeout":` + itoa(session.BashCeilingSeconds+300) + `}`},
 	}
-	if got, _ := a.countClock(&clamped); got != "20s / 10m 0s" {
-		t.Fatalf("a 900-second ask draws %q, want the 600-second cap", got)
+	if got, _ := a.countClock(&clamped); got != ceiling {
+		t.Fatalf("an ask above the ceiling draws %q, want the ceiling %q", got, ceiling)
 	}
 }
 
@@ -1374,8 +1390,9 @@ func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
 		t.Fatalf("the finished call says %q, want its own tenth of a second", got)
 	}
 	// Its sibling is genuinely still going, and says so.
-	if got, _ := a.countClock(running); got != "51s / 2m 0s" {
-		t.Fatalf("the call still running says %q", got)
+	want := "51s / " + countUpWord(session.BashCeilingSeconds*time.Second)
+	if got, _ := a.countClock(running); got != want {
+		t.Fatalf("the call still running says %q, want %q", got, want)
 	}
 }
 
@@ -1393,7 +1410,7 @@ func TestAWaitingMessageLeavesTheTurnsRunningCallsOnTheSurface(t *testing.T) {
 	if !a.running() {
 		t.Fatal("the call that just began is not running")
 	}
-	typeLine(t, a, "and the tests too")
+	parkLine(t, a, "and the tests too")
 	if !a.running() {
 		t.Fatal("a waiting message hid a call that is still running")
 	}
@@ -2295,6 +2312,11 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	a.ctxTokens = 100_000
 	a.ctxRing = []int{20_000, 60_000, 100_000}
 	a.inputTokens, a.cacheRead = 10_000, 6_200
+	// A dollar spent and a half-full window arm two earned hints (notice.go),
+	// and either would take the rest slot this ladder measures. The ladder is
+	// about the slot's rest state, so the tips are silenced here as the Display
+	// row would silence them.
+	a.notices.enabled = false
 
 	spark := a.ctxSpark()
 	for _, tc := range []struct {
@@ -2450,10 +2472,24 @@ func taskApp(t *testing.T) (*app, *taskFake, func(time.Duration)) {
 	}
 	a := newTestApp(agent)
 	a.width, a.height = 200, 24
-	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
+	// AND IT PINS THE PLACES ROOT. The tasks place reads the MACHINE — every
+	// project under [session.PlacesRoot] — so a suite that left this empty would
+	// be reading the developer's own history: the refusal on an empty machine
+	// would pass in CI and fail on any laptop that had ever run a task.
+	a.homeRoot = t.TempDir()
+	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
+
+// taskFixtureNow is the one clock every task fixture is dated from.
+//
+// ONE CLOCK AND NOT TWO. The surface's own is pinned so a countdown can be
+// tested without waiting four seconds; a row dated from time.Now() beside it is
+// a row that landed in the future, which the place's time window drops and every
+// age on screen reads wrong. So the rows are dated from this and the surface is
+// too, and the suite is the same on any day of any year.
+var taskFixtureNow = time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
 
 // proposal is one EventTaskProposal, as the engine sends it.
 func proposal(a *app, id uint64, countdown time.Duration) session.Event {
@@ -2522,8 +2558,16 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 		}
 	}
 	// IT IS A QUESTION, SO IT TAKES THE QUESTION HUE — the same violet the
-	// consent block spends and nothing else on this surface does.
-	painted := a.visible(a.bodyWidth())[0].text
+	// consent block spends and nothing else on this surface does. The card is
+	// found rather than assumed to lead the frame: the conversation's opening
+	// breath (render.go's [app.layout]) is a blank row above everything.
+	painted := ""
+	for _, r := range a.visible(a.bodyWidth()) {
+		if strings.TrimSpace(r.text) != "" {
+			painted = r.text
+			break
+		}
+	}
 	if !strings.Contains(painted, sgr256(hueAsk)) {
 		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
 	}
@@ -3517,10 +3561,13 @@ type roomFake struct {
 	// [taskCatchup]). It is kept per node and never drained, because that is what
 	// makes it survive a room being left and re-opened — the fact this fake would
 	// otherwise quietly lose.
-	catchup  map[uint64][]session.Event
-	steered  []steerLine
-	steerErr error
-	watchErr error
+	catchup map[uint64][]session.Event
+	steered []steerLine
+	// steerWaiting is the engine answering that the node was PARKED ON ITS OWN
+	// PIECES when it took the line (internal/session's [Agent.SteerTask]).
+	steerWaiting bool
+	steerErr     error
+	watchErr     error
 	// retargeted is every explicit model pick this fake was handed, in order, and
 	// retargetErr is the engine refusing one — a node that settled between the
 	// frame and the press (internal/session's [Agent.RetargetTask]).
@@ -3584,12 +3631,14 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	}
 }
 
-func (f *roomFake) SteerTask(id uint64, text string) error {
+func (f *roomFake) SteerTask(id uint64, text string) (bool, error) {
 	if f.steerErr != nil {
-		return f.steerErr
+		return false, f.steerErr
 	}
 	f.steered = append(f.steered, steerLine{id: id, text: text})
-	return nil
+	// steerWaiting is the engine's own second answer: the node had handed its
+	// pieces out and was parked on their reports, so this line is what wakes it.
+	return f.steerWaiting, nil
 }
 
 // RetargetTask is the room's fourth door: one running node moved onto another
@@ -3889,6 +3938,49 @@ func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
 	}
 }
 
+// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS SO WHEN IT TAKES
+// THE LINE. Such a node has handed its work out and parked on the reports
+// (internal/session's task_room.go): it is not in a step, so the line is what
+// wakes it, and a page that drew the person's words and went quiet is the page
+// they would see if the words had gone nowhere at all.
+func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerWaiting = true
+	clickRail(t, a, 0)
+
+	a.input.setText("the config lives under etc/")
+	drive(t, a, key("enter"))
+
+	if len(agent.steered) != 1 {
+		t.Fatalf("enter steered %d times, want 1: %+v", len(agent.steered), agent.steered)
+	}
+	body := roomText(a)
+	if !strings.Contains(body, "the config lives under etc/") {
+		t.Fatalf("the steered line is not in the room:\n%s", body)
+	}
+	if !strings.Contains(plain(body), steerWokeWord) {
+		t.Fatalf("the room took a line into a parked node and said nothing about it:\n%s", body)
+	}
+	// AND IT IS THE ROOM'S OWN DIM LINE, not a second thing the node said.
+	if countKind(a, entryNote) != 0 {
+		t.Fatal("the note went into the conversation instead of the room")
+	}
+}
+
+// A NODE THAT IS TAKING STEPS IS NOT ANNOUNCED, because there is nothing to say:
+// the line lands at its next step, which is what a room that keeps moving shows
+// on its own.
+func TestSteeringAWorkingNodeSaysNothingExtra(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	a.input.setText("the config lives under etc/")
+	drive(t, a, key("enter"))
+	if strings.Contains(plain(roomText(a)), steerWokeWord) {
+		t.Fatalf("a working node's room claims the line woke it:\n%s", roomText(a))
+	}
+}
+
 // A ROOM ON A NODE THAT HAS LANDED says so at its foot and ASKS about what is
 // typed at it. Neither of the two silent answers is this surface's to give: a
 // dropped sentence is lost work, and a sentence quietly re-pointed at the main
@@ -4056,18 +4148,26 @@ func TestARoomDrawsAndCollapsesTheNodesThinking(t *testing.T) {
 
 // A PAGE FOLDS ITS OWN CLUSTERS, from its own map and its own turns: ctrl+o in a
 // room is about the rows in the room.
+//
+// A room keeps a screenful of calls rather than the conversation's three
+// (roomscroll_test.go), so the page is fed one call more than its view is tall:
+// exactly the first one folds.
 func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	for _, path := range []string{"a.go", "b.go", "c.go", "d.go"} {
+	paths := []string{"a.go"}
+	for i := 0; i < a.viewHeight(); i++ {
+		paths = append(paths, "more"+strconv.Itoa(i)+".go")
+	}
+	for _, path := range paths {
 		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
 			Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"` + path + `"}`,
 		}})
 	}
 	page := roomText(a)
 	if !strings.Contains(page, "earlier tool call") {
-		t.Fatalf("four calls on a page did not fold:\n%s", page)
+		t.Fatalf("a screenful and one more of calls on a page did not fold:\n%s", page)
 	}
 	if strings.Contains(page, "read a.go") {
 		t.Fatalf("the folded call is still drawn:\n%s", page)

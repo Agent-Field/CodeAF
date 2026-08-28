@@ -151,6 +151,33 @@ func TestLearnedQuirksSurviveTheProcessThatLearnedThem(t *testing.T) {
 	}
 }
 
+func TestASilentlyIgnoredDisableSurvivesTheProcessThatLearnedIt(t *testing.T) {
+	const model = "silent/always-thinks"
+	dir := quirksAt(t, model)
+	NoteReasoningDisableIgnored(model)
+	quirks.save()
+
+	raw, err := os.ReadFile(filepath.Join(dir, quirksFile))
+	if err != nil {
+		t.Fatalf("nothing was written down: %v", err)
+	}
+	var wire quirksWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("memo is not readable: %v", err)
+	}
+	if _, known := wire.ReasoningDisableIgnored[model]; !known {
+		t.Fatalf("memo = %s, want the model that ignored the disable", raw)
+	}
+
+	quirks.mutex.Lock()
+	quirks.disableIgnored = map[string]time.Time{}
+	quirks.mutex.Unlock()
+	LoadQuirks(dir)
+	if !ReasoningDisableIgnored(model) || !ReasoningUnavoidable(model) {
+		t.Fatal("a memo on disk must restore the room this model needs")
+	}
+}
+
 // quirksAt points the memo at a temporary profile for one test and forgets what
 // that test learned on the way out. The memo is process-wide by design, and a
 // test that left its model in it would be teaching every later test.
@@ -168,9 +195,12 @@ func quirksAt(t *testing.T, models ...string) string {
 		defer quirks.mutex.Unlock()
 		for _, model := range models {
 			delete(quirks.mandatory, normalizeModel(model))
-			// Both memos, because both are process-wide and a fact left behind
-			// by one test silently changes the request shape of the next.
+			delete(quirks.disableIgnored, normalizeModel(model))
+			// EVERY memo, because they are all process-wide and a fact left
+			// behind by one test silently changes the request shape of the next.
 			delete(quirks.noCacheControl, normalizeModel(model))
+			delete(quirks.noReasoningBudget, normalizeModel(model))
+			delete(quirks.noReasoningReplay, normalizeModel(model))
 		}
 		quirks.path = ""
 	})

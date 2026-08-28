@@ -119,7 +119,25 @@ func draftPrefix(workspace string) string {
 }
 
 // edited is what every draft mutation returns: the two typed overlays follow
-// what is in the box, the frame is marked, and the debounce is armed.
+// what is in the box, and the debounce is armed.
+//
+// IT DOES NOT TOUCH THE TRANSCRIPT, and that absence is the point. [app.touch]
+// throws away the laid-out screen list ([app.visible]), and typing cannot change
+// a single row of it: the box, the tray, the completion overlay, the slash chip,
+// the spellout preview and the legend's hint are all CHROME, rebuilt from
+// scratch on every frame (view.go's [app.chrome]), and [app.layout] reads none of
+// the draft's state. So a keystroke that marked the transcript dirty was buying a
+// full relayout of the whole conversation — every entry, every tool cluster,
+// every hover pass — to draw exactly the rows it had just drawn, once per
+// character on a fast typist's keyboard and once per chunk of a large paste.
+//
+// THE CALLERS THAT DO CHANGE THE TRANSCRIPT ALREADY SAY SO. Answering a proposal
+// (task.go), settling a standing card (standing.go), steering a room
+// (room.go, roomorch.go), pulling a parked message back (park.go), dropping a
+// picture chip (attach.go) and completing a file (files.go) all touch — or mark
+// their own block stale — on the line above their `return a.edited()`, because
+// each of them is a change to what is IN the list rather than to what is being
+// typed under it. Nothing was ever relying on this call to do it for them.
 func (a *app) edited() tea.Cmd {
 	if len(a.input.value) == 0 {
 		// An empty box is a new draft. Plainness belongs to the sentence that
@@ -127,7 +145,6 @@ func (a *app) edited() tea.Cmd {
 		a.input.demotedTags = nil
 	}
 	lists := a.syncLists()
-	a.touch()
 	if a.draftFile == "" || a.draftPending {
 		return lists
 	}
@@ -317,14 +334,36 @@ func readDraft(path string) string {
 	// Drafts written before the paste fix may carry CR line endings; the
 	// editor's rows break on LF, so restore through the same door as paste.
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
-	return strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	// AND A FILE HOLDING NOTHING BUT WHITESPACE IS NOTHING, on the reading side
+	// as well as the writing one ([writeDraft] says why). It is stated twice
+	// because the two answer different questions: the write stops MAKING these,
+	// and this stops the ones already on disk being restored into a box that
+	// would then show nothing and behave as though it held a sentence. Every
+	// caller treats the empty string as no draft, so [adoptDraft] deletes such a
+	// file on its way past and [app.restoreDraft] leaves the box alone.
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	return text
 }
 
 // writeDraft replaces the file, or removes it when the box is empty — an empty
 // draft is not a draft, and leaving a zero-byte file behind would mean every
 // directory aforge was ever opened in keeps one forever.
+//
+// EMPTY IS WHAT THE BOX ITSELF CALLS EMPTY, which is whitespace and not only the
+// zero-length string ([editor.empty]). A draft of "\n\n" is a draft nobody can
+// see: the frame draws the placeholder over it, `enter` trims it away rather
+// than sending it, and the door at the foot goes on advertising itself. Keeping
+// one on disk meant an invisible draft outliving the window that made it and
+// being ADOPTED into the next window on that directory ([adoptDraft]) — a box
+// that looked empty in a conversation nobody had typed in yet, with a home door
+// drawn over it. It is easy to land in: `ctrl+enter` and `shift+enter` arrive as
+// a bare `ctrl+j` on a terminal that cannot spell them, and `ctrl+j` opens a
+// line.
 func writeDraft(path, text string) {
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		_ = os.Remove(path)
 		return
 	}

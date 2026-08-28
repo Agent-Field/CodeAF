@@ -103,7 +103,7 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WatchTask: %v", err)
 	}
-	if err := agent.SteerTask(1, steerLine); err != nil {
+	if _, err := agent.SteerTask(1, steerLine); err != nil {
 		t.Fatalf("SteerTask: %v", err)
 	}
 	// The journal is the OTHER lane, and it is answerable while the work runs.
@@ -159,7 +159,7 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 	if replayed := drainRoom(t, closed); len(replayed) != 0 {
 		t.Fatalf("a finished node replayed %d events; the journal is the history", len(replayed))
 	}
-	if err := agent.SteerTask(1, "one more thing"); err == nil {
+	if _, err := agent.SteerTask(1, "one more thing"); err == nil {
 		t.Fatal("a finished node accepted steering")
 	}
 }
@@ -174,7 +174,7 @@ func TestTaskRoomDoorsRefuseWhatIsNotThere(t *testing.T) {
 	if _, err := agent.WatchTask(1); err == nil {
 		t.Fatal("WatchTask invented a task")
 	}
-	if err := agent.SteerTask(1, "hello"); err == nil {
+	if _, err := agent.SteerTask(1, "hello"); err == nil {
 		t.Fatal("SteerTask invented a task")
 	}
 	if path := agent.TaskJournal(1); path != "" {
@@ -192,7 +192,7 @@ func TestTaskRoomDoorsRefuseWhatIsNotThere(t *testing.T) {
 	if _, err := agent.WatchTask(id + 7); err == nil {
 		t.Fatal("WatchTask answered for an unknown id")
 	}
-	if err := agent.SteerTask(id+7, "hello"); err == nil {
+	if _, err := agent.SteerTask(id+7, "hello"); err == nil {
 		t.Fatal("SteerTask answered for an unknown id")
 	}
 	if path := agent.TaskJournal(id + 7); path != "" {
@@ -200,7 +200,7 @@ func TestTaskRoomDoorsRefuseWhatIsNotThere(t *testing.T) {
 	}
 	// Nothing to say is not a message: it must not reach the child's lane as an
 	// empty user turn.
-	if err := agent.SteerTask(id, "   "); err == nil {
+	if _, err := agent.SteerTask(id, "   "); err == nil {
 		t.Fatal("SteerTask accepted an empty line")
 	}
 }
@@ -230,7 +230,7 @@ func TestTaskRoomClosesWhenTheNodeLands(t *testing.T) {
 	// Running, but nobody is in there: a stubbed runner has no child agent, and
 	// "there is no worker to talk to" is a better answer than a line queued onto
 	// nothing.
-	if err := agent.SteerTask(id, "hello"); err == nil {
+	if _, err := agent.SteerTask(id, "hello"); err == nil {
 		t.Fatal("SteerTask found a worker where there is none")
 	}
 
@@ -238,7 +238,7 @@ func TestTaskRoomClosesWhenTheNodeLands(t *testing.T) {
 	waitDoneNode(t, graph.node(id))
 	drainRoom(t, stream)
 
-	if err := agent.SteerTask(id, "hello"); err == nil {
+	if _, err := agent.SteerTask(id, "hello"); err == nil {
 		t.Fatal("a landed node accepted steering")
 	}
 	if state := graph.node(id).stateNow(); state != TaskDone {

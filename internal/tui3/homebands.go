@@ -28,7 +28,8 @@ package tui3
 //
 //   - A BAND NEVER BLOCKS. It is drawn on every frame the cursor rests on a
 //     row. Anything that reads a file or runs a command caches on the app by
-//     subject id (see [app.homeLast] for the shape) and answers from the cache.
+//     subject id (see [app.leftOffBand]'s use of [homeView.last] for the shape)
+//     and answers from the cache.
 //
 //   - A BAND IS REGISTERED FROM ITS OWN FILE'S init, so two lanes adding two
 //     bands never edit one line. The registry sorts by order once, lazily.
@@ -151,15 +152,14 @@ const (
 	// bandKindProject is the card for a whole project: the cursor is on a heading
 	// or on a folded project line.
 	bandKindProject
-	// bandKindMachine is the card for THE MACHINE ITSELF, which is what this
-	// column is about when the cursor is on nothing at all (docs/HOME-BRIDGE.md).
-	// It is a subject with no row behind it: its bands are about everything on
-	// the machine at once — what is keeping an eye on things, what happened
-	// across the projects since you left, and what the day has come to — so they
-	// read the app's own reading of all of it (homemachine.go's
-	// [app.machineFactsAt]) rather than anything on [bandSubject].
-	bandKindMachine
 )
+
+// THERE WAS A FOURTH KIND AND IT IS RETIRED. `bandKindMachine` was the card for
+// THE MACHINE ITSELF — the column when the cursor stood on no row at all, which
+// is where home's list left it after `↑` off the top row. That state is gone:
+// `↑` reaches the TAB BAR now (pages.go's [barCursor]), and each of the three
+// questions the machine's card answered has a room of its own on that bar. Every
+// kind here is a row somebody is pointing at, which is what a card is for.
 
 // bandSubject is the thing under the cursor. Exactly the fields its kind names
 // are set.
@@ -189,17 +189,9 @@ func (s bandSubject) id() string {
 		return s.item.Item.ID
 	case bandKindProject:
 		return s.dir
-	case bandKindMachine:
-		// THE MACHINE IS ONE SUBJECT AND THERE IS ONLY EVER ONE OF IT, so its
-		// folds and its caches key on a constant. It is a word no path can be,
-		// which is what keeps it apart from the three kinds that key on one.
-		return machineSubjectID
 	}
 	return ""
 }
-
-// machineSubjectID is that constant.
-const machineSubjectID = "\x00machine"
 
 // bandContext is everything a band needs to draw, handed in whole so a band's
 // signature never grows when a new one needs one more thing.
@@ -228,17 +220,14 @@ const (
 	bandOrderGone        = 5   // the folder this project lived in is not there any more
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
-	bandOrderWatchlist   = 25  // the machine: everything keeping an eye on anything
-	bandOrderHands       = 28  // the machine: what its hands have been doing lately
 	bandOrderNews        = 30  // what happened since you last looked
-	bandOrderSinceLeft   = 35  // the machine: that same question asked of every project
 	bandOrderWork        = 40  // the tasks it ran, with what they came to
 	bandOrderDeliverable = 50  // the files it produced
 	bandOrderNextUp      = 60  // the standing items that will wake, and when
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
 	bandOrderSpend       = 90  // what it has cost
-	bandOrderToday       = 95  // the machine: what the day came to, counted and priced
+	bandOrderThinking    = 93  // a standing item: the rung it thinks at
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 

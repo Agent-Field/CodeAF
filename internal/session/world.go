@@ -67,11 +67,57 @@ import (
 // that wants the whole machine — the same directory, asked a different question.
 func PlacesRoot() string { return home.Join("v3", placesDirName) }
 
+// RunsRoot is where an adaptive run's node transcripts live under the same state
+// root — the directory [orchestrateJournalPath] writes into.
+//
+// IT IS A SIBLING OF THE PLACES ROOT AND NOT A CHILD OF IT, which is the whole
+// reason this name exists. A run's rows are filed in a project's index like every
+// other piece of work, and the transcript each row points at is over here; a door
+// that took the places root for the machine's whole record therefore refused
+// every adaptive journal it had itself written down ([RecordRoots] is the fix).
+func RunsRoot() string { return home.Join("v3", runsDirName) }
+
+// runsDirName is that folder's name, spelled once, because
+// [orchestrateJournalPath] builds paths into it and this reads them back out —
+// two spellings would be a boundary that stops matching the day one moved.
+const runsDirName = "runs"
+
+// LooseTasksRoot is the third place a node transcript can be: the parallel tree
+// [taskJournalDir] writes into for a session that has no folder of its own.
+//
+// A CONVERSATION WITH NO PLACE STILL RUNS TASKS, and its nodes' journals go here
+// rather than under a project bucket that does not exist. It is a real,
+// currently-written directory and not an archaeological one, so a record
+// boundary that left it out refused a hosted room its own live transcript.
+func LooseTasksRoot() string { return home.Join("v3", looseTasksDirName) }
+
+// looseTasksDirName is spelled once, for runsDirName's reason.
+const looseTasksDirName = "tasks"
+
+// RecordRoots is every directory this machine's task transcripts live under, and
+// it is what an ENGINE measures a record read against ([ReadTaskRecordUnder]).
+//
+// THREE ROOTS BECAUSE THE RECORD IS IN THREE PLACES. An ordinary task writes its
+// journal beside the conversation that ran it, under the places root; a
+// conversation with no folder writes its nodes' journals into the parallel tree
+// instead; and an adaptive run's nodes write theirs under the runs root. Every
+// one of those rows is handed to a surface on the same world walk, so a door that
+// admitted only the first told a person over a connection that most of their own
+// machine's work "could not be read" — the file was there, and the boundary was
+// wrong.
+func RecordRoots() []string { return []string{PlacesRoot(), RunsRoot(), LooseTasksRoot()} }
+
 // World is every project on this machine, newest first.
 type World struct {
 	// Projects are the buckets under the places root, ordered by when somebody
 	// last spoke in one of their sessions.
 	Projects []Project
+	// Artifacts are the deliverables this machine's sessions made, newest first.
+	// They ride with the world because home draws them under their conversation
+	// rows, and a surface on another machine cannot read this machine's global
+	// artifacts index. ReadWorld does not fill them because the places root does
+	// not say where that index lives; the door that owns the state root does.
+	Artifacts []Artifact
 	// Read is when this reading was taken. Every age a surface draws is measured
 	// from it rather than from time.Now(), so a list drawn from one scan does not
 	// have rows aging at different instants.
@@ -308,6 +354,97 @@ func ReadWorld(root string) World {
 
 // ReadHome is every project under this machine's state root.
 func ReadHome() World { return ReadWorld(PlacesRoot()) }
+
+// Adopt puts the conversation a window is sitting in into the world when the
+// walk did not find it, and reports whether it had to.
+//
+// THE WALK CAN BE TOO EARLY FOR THE CONVERSATION IT WAS ASKED FROM. A fresh
+// launch mints a folder and a meta.json with no `lastUserAt`, and [readSessionRow]
+// skips exactly that shape on purpose — an empty shell is not a conversation
+// somebody has had. But a person who opens home FROM that shell is sitting in
+// it, and a screen that listed every conversation on the machine except the one
+// on the terminal behind it would be emptier than the machine actually is. So
+// the surface hands over what it knows — the journal it holds, the title, the
+// workspace, the model — and this fills in whatever the folder can add, under
+// the project the folder belongs to, named by the one rule every other project
+// is named by ([projectName]).
+//
+// IT INVENTS NOTHING OUTSIDE THE ROOT. A journal that is not a session folder's
+// `transcript.jsonl` two levels under `root` is a memory-only surface or a test
+// fixture standing somewhere else, and the world answers for the root alone.
+// A conversation the walk already found is left exactly as the walk read it.
+func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
+	transcript := filepath.Clean(strings.TrimSpace(seed.Transcript))
+	if transcript == "." || filepath.Base(transcript) != placeTranscript {
+		return false
+	}
+	dir := filepath.Dir(transcript)
+	bucketDir := filepath.Dir(dir)
+	if filepath.Dir(bucketDir) != filepath.Clean(strings.TrimSpace(root)) {
+		return false
+	}
+	for _, project := range w.Projects {
+		for _, row := range project.Sessions {
+			if row.Transcript == transcript {
+				return false
+			}
+		}
+	}
+	meta, _ := LoadMeta(dir)
+	row := SessionRow{
+		ID:         filepath.Base(dir),
+		Dir:        dir,
+		Transcript: transcript,
+		Title:      firstWord(seed.Title, meta.Title),
+		Workspace:  firstWord(seed.Workspace, meta.Workspace),
+		Owned:      meta.Owned,
+		Model:      firstWord(seed.Model, meta.Model),
+		At:         meta.LastUserAt,
+		Created:    meta.Created,
+		Spend:      meta.SpentUSD,
+		Tokens:     meta.Tokens,
+		Open:       InUse(transcript),
+		Archived:   meta.Archived,
+	}
+	row.Presence, row.Live = ReadSessionPresence(dir, now)
+	var mine []TaskIndexEntry
+	for _, entry := range ReadTaskIndex(filepath.Join(bucketDir, taskIndexName)) {
+		if strings.TrimSpace(entry.SessionID) == row.ID {
+			mine = append(mine, entry)
+		}
+	}
+	row.Tasks = rollUp(mine, row)
+	at := -1
+	for i := range w.Projects {
+		if w.Projects[i].Dir == bucketDir {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		bucket := filepath.Base(bucketDir)
+		project := Project{Bucket: bucket, Dir: bucketDir, Path: projectPath(row)}
+		project.Name = projectName(project.Path, bucket)
+		w.Projects = append(w.Projects, project)
+		at = len(w.Projects) - 1
+	}
+	project := &w.Projects[at]
+	row.Project, row.ProjectDir = project.Name, project.Path
+	project.Sessions = append(project.Sessions, row)
+	sortSessions(project.Sessions)
+	sort.SliceStable(w.Projects, func(i, j int) bool {
+		return w.Projects[i].At().After(w.Projects[j].At())
+	})
+	return true
+}
+
+// firstWord is the first of two strings that says anything, trimmed.
+func firstWord(a, b string) string {
+	if a = strings.TrimSpace(a); a != "" {
+		return a
+	}
+	return strings.TrimSpace(b)
+}
 
 // readWorld is the testable one, with the clock handed in so that ages are
 // measured from one instant.

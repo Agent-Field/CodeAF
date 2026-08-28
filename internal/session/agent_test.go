@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -35,6 +36,7 @@ type scriptedCompleter struct {
 	seen    [][]ai.Message
 	models  []string
 	efforts []provider.Effort
+	max     []int
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -52,6 +54,11 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)
 	s.efforts = append(s.efforts, provider.ReasoningEffortFrom(ctx))
+	ceiling := 0
+	if request.MaxTokens != nil {
+		ceiling = *request.MaxTokens
+	}
+	s.max = append(s.max, ceiling)
 	var next step
 	if index < len(s.steps) {
 		next = s.steps[index]
@@ -61,6 +68,17 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	if next == nil {
 		// Past the script: answer without a tool call so a loop that ran one
 		// step further than the test expected terminates instead of hanging.
+		//
+		// AND THE ONE ASK THAT WOULD KEEP THE LOOP GOING IS ANSWERED PROPERLY.
+		// The end of a turn now asks a reader whether the person's ask is
+		// finished, and re-opens the turn when it is not (checkpoint.go's
+		// [Agent.checkpointReopen]) — so an unscripted answer of prose to THAT
+		// question is a test running to the meter's ceiling rather than
+		// terminating. The remains contract's own token is what "nothing more to
+		// do here" is spelled as, which is what this branch has always meant.
+		if len(snapshot) > 0 && strings.Contains(messageText(snapshot[len(snapshot)-1]), "[still asked]") {
+			return textResponse(checkpointNothingLeft), nil
+		}
 		return textResponse("(unscripted)"), nil
 	}
 	return next(ctx, snapshot)
@@ -920,7 +938,7 @@ func TestRetryDoesNotConcatenatePartialAttempts(t *testing.T) {
 		}
 	}()
 
-	if _, err := agent.completeWithRetry(ctx, nil, "test/model", provider.EffortNone, partial, &warmBatch{}, &formingBatch{}); err == nil {
+	if _, _, err := agent.completeWithRetry(ctx, nil, "test/model", effort.None, partial, &warmBatch{}, &formingBatch{}); err == nil {
 		t.Fatal("completeWithRetry returned no error after the cancel")
 	}
 	if got := partial.take(); got != "second attempt" {
@@ -1421,13 +1439,13 @@ func eventStreamOf(payloads ...string) http.Handler {
 }
 
 // A reasoning model's working reaches the surface as EventReasoning, in order,
-// behind the one EventThinking that opened the run — and never reaches the
-// transcript, where it would come back to the model as something it had said.
+// behind the one EventThinking that opened the run — and never reaches answer
+// Content, where it would come back as something the model had said aloud.
 //
 // This runs against the real adapter over a scripted event stream, so what is
 // pinned is the whole path: the wire's "reasoning_content", the provider's
 // StreamReasoning, the session's EventReasoning.
-func TestReasoningTextArrivesAsEventReasoningAndStaysOutOfTheTranscript(t *testing.T) {
+func TestReasoningTextArrivesAsEventReasoningAndStaysOutOfAnswerContent(t *testing.T) {
 	client, err := provider.NewClient(provider.Config{
 		APIKey: "k", BaseURL: "http://provider.test", Model: "test/model",
 		HTTPClient: fakeHTTP(eventStreamOf(

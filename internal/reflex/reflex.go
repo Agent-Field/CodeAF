@@ -21,12 +21,13 @@
 //     nothing at all.
 //
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
-//     fence, with an enum this package has never heard of, or with nothing at
-//     all, costs ONE repair retry and then a zero result and [ErrReflexFailed].
-//     Every caller treats that as a no-op: the turn happens exactly as it would
-//     have if this package did not exist. That is why the failure is a typed
-//     error rather than a returned half-answer — there is no such thing as a
-//     partly-routed turn.
+//     fence, or with an enum this package has never heard of costs ONE repair
+//     retry. A model that spends its ceiling and answers nothing gets ONE larger
+//     retry, then the session's low-tier fallback. After that every failure is a
+//     zero result and [ErrReflexFailed]. Every caller treats that as a no-op:
+//     the turn happens exactly as it would have if this package did not exist.
+//     That is why the failure is a typed error rather than a returned
+//     half-answer — there is no such thing as a partly-routed turn.
 //
 // The package is the client only. It makes no decision about WHEN a call
 // happens, holds no store, and is wired into no loop; the chat integration and
@@ -38,6 +39,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -68,6 +70,11 @@ type Completer interface {
 var ErrReflexFailed = errors.New("reflex: no usable answer")
 
 const (
+	// AnswerTokens is the ordinary reflex answer ceiling. It is exported so the
+	// accounting layer can recognize the exact paid ceiling in its provider
+	// test doubles without repeating this package's economic constant.
+	AnswerTokens = 200
+
 	// answerTokens is the ceiling on every reflex reply. The largest legitimate
 	// answer here is an extraction with a state delta in it — a handful of short
 	// lines — and a model that wants more than this is not answering the
@@ -79,7 +86,7 @@ const (
 	// answer, every call, every turn — which is what
 	// nex-agi/nex-n2-mini did on the reflex tier: repeated 640-in/200-out calls
 	// billed in full for nothing.
-	answerTokens = 200
+	answerTokens = AnswerTokens
 
 	// thinkingAnswerTokens is the ceiling when the disable was refused —
 	// [provider.ReasoningMandatory], a fact this process learned from a 400 and
@@ -90,7 +97,11 @@ const (
 	// the answer ceiling is that room: a thinking pass on a question this small
 	// runs to a few hundred tokens, and the multiple still stops a model that
 	// has decided to write an essay well before it costs what a turn costs.
-	thinkingAnswerTokens = answerTokens * 10
+	// ThinkingAnswerTokens is the recovery ceiling when reasoning cannot be
+	// removed. It is derived from the ordinary answer budget so the ratio has
+	// one source.
+	ThinkingAnswerTokens = AnswerTokens * 10
+	thinkingAnswerTokens = ThinkingAnswerTokens
 
 	// messageLimit is how much of one side of an exchange the model is shown,
 	// in runes. A router that reads four paragraphs to decide which memory a
@@ -207,6 +218,30 @@ func Model(src roles.Source, sessionDefault string) (string, error) {
 	return roles.Resolve(src, roles.RoleReflex, sessionDefault)
 }
 
+// FallbackModel resolves the configured low tier without borrowing a role pin.
+// A reflex model that cannot answer is a failure of that tier's model, so the
+// fallback is the next economy itself rather than whichever unrelated low-tier
+// role happens to have a private override.
+func FallbackModel(src roles.Source, sessionDefault string) string {
+	if configured, ok := roles.TierModel(src, roles.TierLow); ok {
+		model, _ := roles.SplitEffort(configured)
+		if model = strings.TrimSpace(model); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(sessionDefault)
+}
+
+// Session holds the reflex failover facts that belong to one conversation.
+// Provider quirks are process-wide because they describe a model; abandoning a
+// model is session-local because another session may have changed its crew or
+// may deliberately want to try it again.
+type Session struct {
+	mu       sync.Mutex
+	unusable map[string]bool
+	notified map[string]bool
+}
+
 // Bind returns a [Completer] that sends every request to one model.
 //
 // The three calls take a plain Completer because that is the contract the chat
@@ -218,12 +253,30 @@ func Bind(c Completer, model string) Completer {
 	if strings.TrimSpace(model) == "" {
 		return c
 	}
-	return bound{inner: c, model: model}
+	return bound{inner: c, model: model, session: &Session{}}
+}
+
+// Bind returns a completer that starts on model and, once that model has twice
+// spent its ceiling without answering, uses fallback for the rest of this
+// session. notice is called only on the transition and never while a lock is
+// held.
+func (s *Session) Bind(c Completer, model, fallback string, notice func(string)) Completer {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return c
+	}
+	if s == nil {
+		s = &Session{}
+	}
+	return bound{inner: c, model: model, fallback: strings.TrimSpace(fallback), session: s, notice: notice}
 }
 
 type bound struct {
-	inner Completer
-	model string
+	inner    Completer
+	model    string
+	fallback string
+	session  *Session
+	notice   func(string)
 }
 
 func (b bound) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -232,8 +285,54 @@ func (b bound) CompleteWithMessages(ctx context.Context, messages []ai.Message, 
 	// a slice somebody else is still holding.
 	pinned := make([]ai.Option, 0, len(options)+1)
 	pinned = append(pinned, options...)
-	pinned = append(pinned, ai.WithModel(b.model))
+	pinned = append(pinned, ai.WithModel(b.activeModel()))
 	return b.inner.CompleteWithMessages(ctx, messages, pinned...)
+}
+
+func (b bound) activeModel() string {
+	if b.session == nil {
+		return b.model
+	}
+	b.session.mu.Lock()
+	defer b.session.mu.Unlock()
+	if b.session.unusable[normalizeModel(b.model)] && !sameModel(b.model, b.fallback) {
+		return b.fallback
+	}
+	return b.model
+}
+
+// abandon moves this session off the primary model and reports whether there is
+// a distinct fallback to ask. The calm line is emitted once, after the state is
+// visible to every concurrent reflex call.
+func (b bound) abandon(model string) bool {
+	if b.session == nil || sameModel(model, b.fallback) || !sameModel(model, b.model) {
+		return false
+	}
+	key := normalizeModel(b.model)
+	b.session.mu.Lock()
+	if b.session.unusable == nil {
+		b.session.unusable = make(map[string]bool)
+	}
+	if b.session.notified == nil {
+		b.session.notified = make(map[string]bool)
+	}
+	b.session.unusable[key] = true
+	say := !b.session.notified[key]
+	b.session.notified[key] = true
+	b.session.mu.Unlock()
+	if say && b.notice != nil {
+		b.notice("the reflex model answers nothing at its budget; using " + b.fallback + " for this session")
+	}
+	return true
+}
+
+func normalizeModel(model string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "~"))
+}
+
+func sameModel(left, right string) bool {
+	right = normalizeModel(right)
+	return right != "" && normalizeModel(left) == right
 }
 
 // Route answers which remembered lines this turn needs, before the turn runs.
@@ -417,7 +516,8 @@ func Decide(ctx context.Context, c Completer, candidate ExtractResult, neighbors
 // ── the call ────────────────────────────────────────────────────────────────
 
 // ask makes one reflex call and, if the answer was not readable, exactly one
-// more.
+// repair call. The answer-budget recovery lives inside [call], where the
+// response still carries its finish reason and usage.
 //
 // ONE retry, never a loop. The repair asks for the same thing in four words
 // with the model's own bad answer in front of it, which is what fixes a fenced
@@ -434,13 +534,9 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 		return nil
 	}
 	if strings.TrimSpace(reply) == "" {
-		// NOTHING CAME BACK, so there is nothing to repair. The repair prompt's
-		// whole trick is putting the model's own bad answer in front of it and
-		// asking again — against an empty answer it is a second full-price call
-		// asking the identical question, and the thing that emptied the first
-		// one (a thinking pass that ate the ceiling, a refusal, a cut stream)
-		// will empty the second. One wasted call per turn is the bill this
-		// package was written to avoid; two is that bill doubled.
+		// NOTHING CAME BACK that the JSON repair can use. A length-capped empty
+		// answer already took its one budget recovery inside [call]; every other
+		// blank has no evidence that repeating the question can help.
 		return fmt.Errorf("%w: the model answered nothing", ErrReflexFailed)
 	}
 	repair := []ai.Message{
@@ -467,23 +563,88 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 // [provider.EffortOff] because THE MODEL IS A REFLEX, NOT A THINKER — the law
 // at the top of this file, finally said to the provider instead of only to the
 // prompt. It sends {"reasoning": {"enabled": false}}, so the model spends its
-// whole ceiling on the answer rather than deliberating first, and the answer is
-// the same size either way. It is a harness default rather than an operator
-// request, which is what makes it safe: the adapter's catalog gate drops it for
-// any model whose row does not say it takes a reasoning knob, and an endpoint
-// that refuses the disable outright is remembered
-// ([provider.ReasoningMandatory]) so the next call asks for room instead.
+// whole ceiling on the answer rather than deliberating first. It is REQUIRED
+// rather than a best-effort economy: a cold catalog must not erase the field
+// that makes this small ceiling usable.
+//
+// Some endpoints accept that field and ignore it. Their signature is an empty
+// answer, finish reason "length", and the whole ceiling charged as output. That
+// buys ONE retry with [thinkingAnswerTokens]. An answer records the quirk for
+// later calls and later processes; a second empty answer abandons this session's
+// reflex model and asks the configured low tier once. There is no loop.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
-	ctx = provider.WithReasoningEffort(provider.WithoutStream(ctx), provider.EffortOff)
-	response, err := c.CompleteWithMessages(ctx, messages,
-		ai.WithMaxTokens(answerBudget(c)), ai.WithTemperature(0))
+	ctx = provider.WithRequiredReasoningEffort(provider.WithoutStream(ctx), provider.EffortOff)
+	budget := answerBudget(c)
+	response, err := complete(ctx, c, messages, budget)
 	if err != nil {
 		return "", err
 	}
 	if response == nil {
 		return "", errors.New("the model answered nothing")
 	}
+	if !emptyAtCeiling(response, budget) {
+		return response.Text(), nil
+	}
+
+	model := boundModel(c)
+	if budget < thinkingAnswerTokens {
+		response, err = complete(ctx, c, messages, thinkingAnswerTokens)
+		if err != nil {
+			return "", err
+		}
+		if response != nil && strings.TrimSpace(response.Text()) != "" {
+			if model != "" {
+				provider.NoteReasoningDisableIgnored(model)
+			}
+			return response.Text(), nil
+		}
+	}
+
+	pinned, ok := c.(bound)
+	if !ok || !pinned.abandon(model) {
+		if response == nil {
+			return "", errors.New("the model answered nothing")
+		}
+		return response.Text(), nil
+	}
+	response, err = complete(ctx, c, messages, answerBudget(c))
+	if err != nil {
+		return "", err
+	}
+	if response == nil {
+		return "", errors.New("the fallback model answered nothing")
+	}
 	return response.Text(), nil
+}
+
+func complete(ctx context.Context, c Completer, messages []ai.Message, budget int) (*ai.Response, error) {
+	return c.CompleteWithMessages(ctx, messages,
+		ai.WithMaxTokens(budget), ai.WithTemperature(0))
+}
+
+// emptyAtCeiling is deliberately narrower than "blank". A refusal or a cut
+// stream also has no text, but only a length finish at the requested ceiling
+// says that more answer room can change the result.
+func emptyAtCeiling(response *ai.Response, budget int) bool {
+	if response == nil || strings.TrimSpace(response.Text()) != "" ||
+		!strings.EqualFold(strings.TrimSpace(provider.FinishReason(response)), "length") {
+		return false
+	}
+	return response.Usage == nil || response.Usage.CompletionTokens >= budget
+}
+
+// EmptyAtCeiling exposes the failure signature to the accounting wrapper that
+// journals each paid reflex call. Detection and recovery must read the same
+// definition or the bill can call a request empty that the caller did not.
+func EmptyAtCeiling(response *ai.Response, budget *int) bool {
+	return budget != nil && emptyAtCeiling(response, *budget)
+}
+
+func boundModel(c Completer) string {
+	if pinned, ok := c.(bound); ok {
+		return pinned.activeModel()
+	}
+	return ""
 }
 
 // answerBudget is the ceiling for one call, and it has two values because one
@@ -496,7 +657,7 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 // before; only a model this process has been told 400s the disable is given
 // [thinkingAnswerTokens], and that fact is learned, never guessed.
 func answerBudget(c Completer) int {
-	if pinned, ok := c.(bound); ok && provider.ReasoningMandatory(pinned.model) {
+	if pinned, ok := c.(bound); ok && provider.ReasoningUnavoidable(pinned.activeModel()) {
 		return thinkingAnswerTokens
 	}
 	return answerTokens

@@ -295,25 +295,37 @@ func fixErrorOf(signature string) string {
 // OK and Failed are a CONFIDENCE, not a census. They are halved on the decay
 // interval, so an entry that reads 3/4 today may have been 7/8 a fortnight ago;
 // what they rank correctly is which of two patches is more likely to work now.
+//
+// OK AND WORKED ARE NOT THE SAME OBSERVATION, and the line between them is what
+// the model is allowed to be told (fixrecall.go's [fixAnnotate]). OK counts the
+// times this command RAN AFTER this failure and the failure did not come back —
+// a pairing, which is all the store ever sees the first time. Worked counts the
+// times this command was OFFERED as the answer to this failure, the offer was
+// taken, and the failure went away — which is the only evidence that says the
+// command is a cure rather than a coincidence. Worked is therefore always a
+// subset of OK, and an entry may sit at OK 4, Worked 0 forever if nobody ever
+// takes the line.
 type fixEntry struct {
 	Tool   string    `json:"tool"`
 	Error  string    `json:"error"`
 	Fix    string    `json:"fix"`
 	OK     int       `json:"ok"`
+	Worked int       `json:"worked,omitempty"`
 	Failed int       `json:"failed,omitempty"`
 	Seen   time.Time `json:"seen"`
 
-	// The two deltas are THIS session's own increments since the file was last
+	// The three deltas are THIS session's own increments since the file was last
 	// read, and they are never serialized. They exist because the merge on save
 	// re-reads the file: adding a delta to whatever is on disk keeps two sessions
 	// working the same project from each overwriting the other's count with a
 	// stale one (see [fixStore.saveLocked]).
-	okDelta, failedDelta int
+	okDelta, workedDelta, failedDelta int
 }
 
 // attempts and ratio are how one entry is ranked and gated.
 func (e *fixEntry) attempts() int { return e.ok() + e.failed() }
 func (e *fixEntry) ok() int       { return e.OK + e.okDelta }
+func (e *fixEntry) worked() int   { return e.Worked + e.workedDelta }
 func (e *fixEntry) failed() int   { return e.Failed + e.failedDelta }
 
 func (e *fixEntry) ratio() float64 {
@@ -417,6 +429,7 @@ func (s *fixStore) decayLocked(at time.Time) {
 	kept := s.document.Entries[:0]
 	for _, entry := range s.document.Entries {
 		entry.OK /= 2
+		entry.Worked /= 2
 		entry.Failed /= 2
 		if entry.OK <= 0 && entry.Failed <= 0 {
 			continue
@@ -486,9 +499,17 @@ func (s *fixStore) rankLocked(signature string) []*fixEntry {
 	return copies
 }
 
-// confirm records that this patch made this error go away.
+// confirm records that this patch ran after this error and the error did not
+// come back. It is a PAIRING and nothing stronger — see [fixEntry].
 func (s *fixStore) confirm(signature, patch string) {
-	s.tally(signature, patch, 1, 0)
+	s.tally(signature, patch, 1, 0, 0)
+}
+
+// confirmAdvised records the same pairing when the patch that ran is the patch
+// this store OFFERED. That is the one observation that says the command is a
+// cure, so it is the only one [fixAnnotate] is allowed to call "what worked".
+func (s *fixStore) confirmAdvised(signature, patch string) {
+	s.tally(signature, patch, 1, 1, 0)
 }
 
 // blame records that this patch was offered, tried, and the same error came
@@ -496,10 +517,10 @@ func (s *fixStore) confirm(signature, patch string) {
 // counted successes would rank a patch that has failed nineteen times out of
 // twenty at the top of its own signature forever.
 func (s *fixStore) blame(signature, patch string) {
-	s.tally(signature, patch, 0, 1)
+	s.tally(signature, patch, 0, 0, 1)
 }
 
-func (s *fixStore) tally(signature, patch string, ok, failed int) {
+func (s *fixStore) tally(signature, patch string, ok, worked, failed int) {
 	patch = fixCleanPatch(patch)
 	if signature == "" || patch == "" {
 		return
@@ -519,6 +540,7 @@ func (s *fixStore) tally(signature, patch string, ok, failed int) {
 		s.index[signature] = append(s.index[signature], entry)
 	}
 	entry.okDelta += ok
+	entry.workedDelta += worked
 	entry.failedDelta += failed
 	entry.Seen = s.clock()
 	s.trimLocked(signature)
@@ -647,13 +669,14 @@ func (s *fixStore) mergeLocked(disk fixDocument) fixDocument {
 			// An entry only this session has: its deltas ARE its counts, because
 			// its base was zero when it was created.
 			fresh := *mine
-			fresh.OK, fresh.Failed = mine.ok(), mine.failed()
-			fresh.okDelta, fresh.failedDelta = 0, 0
+			fresh.OK, fresh.Worked, fresh.Failed = mine.ok(), mine.worked(), mine.failed()
+			fresh.okDelta, fresh.workedDelta, fresh.failedDelta = 0, 0, 0
 			disk.Entries = append(disk.Entries, &fresh)
 			byKey[key] = &fresh
 			continue
 		}
 		theirs.OK += mine.okDelta
+		theirs.Worked += mine.workedDelta
 		theirs.Failed += mine.failedDelta
 		if mine.Seen.After(theirs.Seen) {
 			theirs.Seen = mine.Seen
@@ -701,7 +724,7 @@ func readFixDocument(path string) fixDocument {
 		if entry == nil || entry.Tool == "" || entry.Error == "" || entry.Fix == "" {
 			continue
 		}
-		entry.okDelta, entry.failedDelta = 0, 0
+		entry.okDelta, entry.workedDelta, entry.failedDelta = 0, 0, 0
 		kept = append(kept, entry)
 	}
 	document.Entries = kept
@@ -784,8 +807,11 @@ type fixShelf struct {
 // last of which is needed because the outcome has to be recorded back where the
 // advice came from.
 type fixAdvice struct {
-	patch  string
-	ok     int
+	patch string
+	ok    int
+	// worked is the count [fixAnnotate] is allowed to speak a number from: the
+	// times this patch was offered here, taken, and the error went away.
+	worked int
 	failed int
 	from   *fixStore
 }
@@ -820,6 +846,7 @@ func (s *fixShelf) consult(signature string) []fixAdvice {
 			advice = append(advice, fixAdvice{
 				patch:  entry.Fix,
 				ok:     entry.ok(),
+				worked: entry.worked(),
 				failed: entry.failed(),
 				from:   store,
 			})
@@ -829,14 +856,24 @@ func (s *fixShelf) consult(signature string) []fixAdvice {
 	return nil
 }
 
-func (s *fixShelf) confirm(signature, patch string) {
+// confirm writes the pairing into both files, and says whether the patch that
+// ran is the one that was OFFERED — because "this command was handed back and
+// it worked" is a fact about the command, true in whichever file remembered it.
+// Which store's own hit rate moves is a different question, settled by the
+// caller (fixrecall.go's [episode.noteSuccess]).
+func (s *fixShelf) confirm(signature, patch string, advised bool) {
 	if s == nil {
 		return
 	}
 	for _, store := range []*fixStore{s.project, s.global} {
-		if store != nil {
-			store.confirm(signature, patch)
+		if store == nil {
+			continue
 		}
+		if advised {
+			store.confirmAdvised(signature, patch)
+			continue
+		}
+		store.confirm(signature, patch)
 	}
 }
 

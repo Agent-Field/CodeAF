@@ -1,7 +1,7 @@
 package tui3
 
 import (
-	"net/url"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -52,7 +52,7 @@ const (
 	// taskCardBackWord is the way out, in the head's right corner. It is `back`
 	// and not `close` because that is what the key does from here: the list is
 	// underneath, and a card that promised to close would be lying about the
-	// next keystroke — the same honesty [taskSheetFilterKeys] keeps.
+	// next keystroke — the same honesty [tasksClearFilterWord] keeps.
 	taskCardBackWord = "esc back"
 	// taskCardKeys is the foot: the way out, the scroll, and the one gesture
 	// this card carries that the row it came from used to.
@@ -62,16 +62,39 @@ const (
 	// said how it went, and that is the sentence a person came here to read.
 	taskCardTailHead = "what it said at the end"
 	// taskCardTailGone is what the card says when the row NAMES a transcript and
-	// the file is not on this disk any more — a session folder somebody deleted,
-	// a machine the work happened on and this one is not. It is said rather than
-	// left blank because the row's own transcript line is still printed above it,
-	// and a path with nothing under it reads as a card that failed to load.
+	// the file is not on this disk any more — a session folder somebody deleted.
+	// It is said rather than left blank because the row's own transcript line is
+	// still printed above it, and a path with nothing under it reads as a card
+	// that failed to load.
 	taskCardTailGone = "its transcript is not on this disk any more"
+	// taskCardTailGoneOn is that same fact about ANOTHER MACHINE'S disk, and the
+	// machine's name is what makes it true. Over a connection the journal is on
+	// the machine that ran the work, and "not on this disk" said about a file
+	// sitting perfectly well on the server was the exact sentence this card drew
+	// before it learned to ask (host.go's own honesty table).
+	taskCardTailGoneOn  = "its transcript is not on "
+	taskCardTailGoneEnd = " any more"
+	// taskCardTailReading is what stands where the report will be while the far
+	// machine is still being asked for it.
+	//
+	// IT IS NEVER SILENCE, which is where this parts company with the emptiness
+	// law next door. A blank slot on a local card is a read that takes a
+	// millisecond; over a connection it is a round trip down an ssh pipe, and a
+	// card that said nothing for a second and then grew a paragraph reads as a
+	// card that was wrong and then changed its mind. So it says which machine is
+	// being asked, in the same plain register every other line here is in — and
+	// it says nothing about progress, because nothing here knows any.
+	taskCardTailReading = "reading it on "
+	// taskCardTailUnread is the far machine refusing or the link not answering.
+	// The card keeps every fact the ROW carried — they came over on the walk and
+	// are still true — and says only that this one thing could not be had.
+	taskCardTailUnread = "it could not be read on "
 	// The labels on the two places a piece of work left something behind. They
 	// are words and not glyphs because they are the only lines on the card whose
 	// meaning is not obvious from what follows them.
 	taskCardTreeWord       = "worktree"
 	taskCardBranchWord     = "branch"
+	taskCardPlaceWord      = "where"
 	taskCardTranscriptWord = "transcript"
 	// taskCardFilesWord is the count of what the work wrote, singular and plural.
 	// The list is not here — the record keeps a count and not forty paths
@@ -121,6 +144,11 @@ func (h taskCardHit) back() bool { return h == taskCardHitHead || h == taskCardH
 type taskTailMsg struct {
 	path string
 	tail string
+	// kept says the journal is still on the disk of the machine that ran the
+	// work, and unread that the machine could not be asked at all
+	// ([tasksPlace.tail] holds the three sentences these pick between).
+	kept   bool
+	unread bool
 }
 
 // openTaskRecord raises the history page standing INSIDE one row of the record.
@@ -133,19 +161,22 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	if entry == nil {
 		return nil
 	}
-	// THE OTHER FULLSCREEN PAGES STAND DOWN. This is an open path onto the page,
-	// so it owes the same law every other one does ([app.standDownFullscreen],
-	// settings.go) — and it is stated here rather than left to [app.openTaskSheet]
-	// because this one does not go through it.
-	a.standDownFullscreen()
-	a.taskSheet = taskSheet{open: true, detail: *entry, detailOn: true}
+	// IT GOES THROUGH THE ROUTER, exactly as every other door onto a place does
+	// (pages.go's [app.showPage]): what was standing is closed, its look stamp is
+	// written, and the tasks place opens on the same snapshot every other road in
+	// takes. It used to stand the other pages down and build the reading itself,
+	// which is a second answer to what this place is holding — and before that it
+	// built NO reading at all, so a card opened from home left an EMPTY place
+	// behind it and esc dropped the person onto a page with nothing on it.
+	raised := a.showPage(pageTasks)
+	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
 	// The list underneath is parked on the row that was pressed, so esc comes
 	// back to it rather than to the top of a list somebody scrolled a long way
 	// down. It is done on the way IN because the list is rebuilt every frame and
 	// the row's position is only knowable while the entry is in hand.
 	a.taskSheetPointAt(*entry)
 	a.touch()
-	return a.readTaskTail(*entry)
+	return tea.Batch(raised, a.readTaskTail(*entry))
 }
 
 // taskSheetPointAt puts the LIST's cursor on the row naming this piece of work,
@@ -156,8 +187,11 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 // unique across the record (session's task_index.go says so on
 // [session.TaskIndexEntry.ID]).
 func (a *app) taskSheetPointAt(want session.TaskIndexEntry) {
-	for at, item := range a.taskSheetItems() {
-		if item.entry != nil && taskSameRecord(*item.entry, want) {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	for at := range lines {
+		if item, ok := r.at(lines, at); ok && taskSameRecord(item.entry, want) {
 			a.taskSheet.cursor = at
 			return
 		}
@@ -186,9 +220,33 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 		a.taskSheet.tailRead = true
 		return nil
 	}
+	// OVER A CONNECTION THE JOURNAL IS ON THE OTHER MACHINE, so the reading is
+	// asked of the machine that owns it (internal/remote's Places.Task) and never
+	// of this disk. Reading here was the fault: the path is the engine's, almost
+	// certainly names nothing on this laptop, and the miss came back as
+	// `its transcript is not on this disk any more` — a refusal invented by
+	// opening a file on a machine it was never on, which is exactly what home's
+	// [homeView.readGone] refuses to do with a stat.
+	if read := a.farRecord; read != nil {
+		return func() tea.Msg {
+			record, err := read(entry.TranscriptURI, 0)
+			if err != nil {
+				return taskTailMsg{path: path, unread: true}
+			}
+			return taskTailMsg{path: path, tail: record.Report, kept: record.Kept}
+		}
+	}
+	// AND A HOSTED SURFACE WITH NO SEAM ASKS NOBODY. It is the safety net rather
+	// than a state any door produces — the --host door wires the seam — and a
+	// build that forgot to would otherwise fall through to the line below, which
+	// is a read of THIS laptop's disk at a path on somebody else's. It is the
+	// same net [app.worldOf] keeps over the walk, for the same reason.
+	if a.hosted() {
+		return func() tea.Msg { return taskTailMsg{path: path, unread: true} }
+	}
 	return func() tea.Msg {
-		tail, _ := session.PeekReport(path)
-		return taskTailMsg{path: path, tail: tail}
+		record := session.ReadTaskRecord(entry.TranscriptURI, 0)
+		return taskTailMsg{path: path, tail: record.Report, kept: record.Kept}
 	}
 }
 
@@ -199,6 +257,7 @@ func (a *app) taskTailRead(msg taskTailMsg) {
 		return
 	}
 	a.taskSheet.tail, a.taskSheet.tailRead = msg.tail, true
+	a.taskSheet.tailKept, a.taskSheet.tailUnread = msg.kept, msg.unread
 	a.touch()
 }
 
@@ -207,31 +266,19 @@ func (a *app) taskTailRead(msg taskTailMsg) {
 func (a *app) closeTaskRecord() {
 	a.taskSheet.detail, a.taskSheet.detailOn = session.TaskIndexEntry{}, false
 	a.taskSheet.detailTop, a.taskSheet.tail, a.taskSheet.tailRead = 0, "", false
+	a.taskSheet.tailKept, a.taskSheet.tailUnread = false, false
 	a.touch()
 }
 
-// taskURIPath is the LOCAL FILE a row's URI names, or "" for a URI that names
-// anything else.
+// taskURIPath is the FILE a row's URI names, or "" for a URI that names anything
+// else — [session.TaskRecordPath], which is where the rule lives now that both
+// halves of a connection have to agree about it (session's taskrecord.go says
+// what a `git:task/…` URI is and why a URI naming a host is not a path).
 //
-// The record carries two URIs and one of them is sometimes not a file at all: a
-// node whose worktree was pruned keeps its branch, spelled `git:task/…`
-// (session's taskArtifactURI). A file URI naming a host names another machine's
-// disk, which is the same refusal the path linker makes about one (pathlink.go).
-// Everything this returns is a path this machine can be asked to stat.
-func taskURIPath(uri string) string {
-	uri = strings.TrimSpace(uri)
-	if uri == "" {
-		return ""
-	}
-	parsed, err := url.Parse(uri)
-	if err != nil || !strings.EqualFold(parsed.Scheme, "file") || parsed.Path == "" {
-		return ""
-	}
-	if parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost") {
-		return ""
-	}
-	return parsed.Path
-}
+// OVER --host IT IS THE OTHER MACHINE'S PATH. Nothing here stats it, and nothing
+// here may: the card asks the machine that owns the journal instead
+// ([app.readTaskTail]).
+func taskURIPath(uri string) string { return session.TaskRecordPath(uri) }
 
 // ── the keyboard ────────────────────────────────────────────────────────────
 
@@ -497,7 +544,8 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 	}
 	// THE CLOCK IS WRITTEN WHEN THE WORK LANDS and is zero on every row that has
 	// not, so a row still claiming to be running says nothing about how long —
-	// the same reason [taskRecordNote] leaves the age off a live row.
+	// the same reason the record's own right margin says `running` instead of an
+	// age on a row that has not landed.
 	if !entry.Live() {
 		if ran := countUpWord(entry.Duration()); ran != "" {
 			segs = append(segs, "ran "+ran)
@@ -548,17 +596,52 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 		}
 		out = append(out, a.pal.dim(word+railSep)+a.pal.muted(shown))
 	}
+	// OVER A CONNECTION A PATH ON THIS CARD IS THE OTHER MACHINE'S, SO IT IS SAID
+	// WITH THAT MACHINE'S NAME AND NEVER OFFERED AS A DOOR ([app.hostedPath]).
+	// Two things go wrong otherwise, and both were on the frame: `~` collapses
+	// against THIS home directory, so a far path under a home with the same shape
+	// came out claiming to be one here; and a click would ask this laptop for a
+	// file that is on the server — which the linker would in fact refuse (a task's
+	// journal is outside the two roots internal/remote hands anything over under),
+	// so the anchor would be a door onto nothing. The BRANCH row is unaffected: a
+	// branch is a name inside a repository rather than a place on a disk, and it
+	// was never a door on either machine.
+	where := func(word, path string) {
+		if a.hosted() {
+			label(word, a.hostedPath(path), "")
+			return
+		}
+		label(word, taskCardShown(path, a.tilde), path)
+	}
+	var artifactPath string
 	if uri := strings.TrimSpace(entry.ArtifactURI); uri != "" {
 		if path := taskURIPath(uri); path != "" {
-			label(taskCardTreeWord, taskCardShown(path, a.tilde), path)
+			artifactPath = filepath.Clean(path)
+			where(taskCardTreeWord, path)
 		} else {
 			label(taskCardBranchWord, strings.TrimPrefix(uri, "git:"), "")
 		}
 	}
+	if path := strings.TrimSpace(entry.Where); path != "" && (artifactPath == "" || filepath.Clean(path) != artifactPath) {
+		if path == "task folder" {
+			label(taskCardPlaceWord, path, "")
+		} else {
+			where(taskCardPlaceWord, path)
+		}
+	}
 	if path := taskURIPath(entry.TranscriptURI); path != "" {
-		label(taskCardTranscriptWord, taskCardShown(path, a.tilde), path)
+		where(taskCardTranscriptWord, path)
 	}
 	return out
+}
+
+// taskCardGoneWord is "the journal this row names is not there any more", said
+// about the disk it was actually looked for on.
+func (a *app) taskCardGoneWord() string {
+	if a.hosted() {
+		return taskCardTailGoneOn + a.host + taskCardTailGoneEnd
+	}
+	return taskCardTailGone
 }
 
 // taskCardShown is a path as this card prints it: the home directory
@@ -595,18 +678,44 @@ func taskCardShown(path, home string) string {
 // than a heading with a blank under it, which is the emptiness law applied to a
 // fact that is merely late.
 func (a *app) taskCardTailRows(entry session.TaskIndexEntry, width int) []string {
+	named := taskURIPath(entry.TranscriptURI) != ""
 	if !a.taskSheet.tailRead {
+		// OVER A CONNECTION A READ IN FLIGHT IS SAID, NOT LEFT BLANK. At home the
+		// journal opens in a millisecond and the emptiness law is the right answer
+		// to a fact that is merely late; down an ssh pipe it is a round trip, and a
+		// card that stood empty and then grew a paragraph reads as a card that was
+		// wrong first. So the far one says which machine it is waiting on.
+		if a.hosted() && named {
+			return []string{a.pal.dim(fit(taskCardTailReading+a.host, width))}
+		}
 		return nil
+	}
+	if a.taskSheet.tailUnread {
+		// THE MACHINE COULD NOT BE ASKED, which is not the same claim as the file
+		// being gone — every other fact on this card came over on the walk and is
+		// still true, and only this one thing is missing.
+		if !named {
+			return nil
+		}
+		return []string{a.pal.dim(fit(taskCardTailUnread+a.host, width))}
 	}
 	if strings.TrimSpace(a.taskSheet.tail) == "" {
 		// A ROW THAT NAMES A TRANSCRIPT AND HAS NO REPORT SAYS WHY. The file is
 		// named on the band above, so silence here would read as a card that gave
 		// up half way. A row that named no transcript at all says nothing: there
 		// was never anything to open.
-		if taskURIPath(entry.TranscriptURI) == "" {
+		if !named {
 			return nil
 		}
-		return []string{a.pal.dim(fit(taskCardTailGone, width))}
+		// AND A JOURNAL THAT IS STILL THERE SAYS NOTHING AT ALL. `Kept` is the
+		// machine that owns the file answering the question this line used to
+		// guess at from an empty string — a node that landed without a closing
+		// word is not a node whose transcript was deleted, and over --host the
+		// guess was wrong about every row on the far machine.
+		if a.taskSheet.tailKept {
+			return nil
+		}
+		return []string{a.pal.dim(fit(a.taskCardGoneWord(), width))}
 	}
 	out := []string{a.pal.dim(fit(taskCardTailHead, width))}
 	for _, para := range strings.Split(a.taskSheet.tail, "\n") {

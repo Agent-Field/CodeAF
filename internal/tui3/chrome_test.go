@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -117,16 +118,16 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	a, _ := sheetApp(t)
 
 	drive(t, a, tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl})
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("ctrl+, did not open the settings panel")
 	}
 	drive(t, a, key("esc"))
-	if a.sheet.open {
+	if a.at(pageSettings) {
 		t.Fatal("esc did not close the settings panel")
 	}
 
 	typeLine(t, a, "/settings")
-	if !a.sheet.open {
+	if !a.at(pageSettings) {
 		t.Fatal("/settings did not open the settings panel")
 	}
 	// It is fullscreen: the input line and the HUD are not under it. The
@@ -232,7 +233,7 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 
 	// esc backs out the search before it backs out of the panel.
 	drive(t, a, key("esc"))
-	if !a.sheet.open || a.sheet.searching() {
+	if !a.at(pageSettings) || a.sheet.searching() {
 		t.Fatal("esc did not drop the search first")
 	}
 }
@@ -508,7 +509,13 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 	}
 }
 
-// ── the welcome box ─────────────────────────────────────────────────────────
+// ── the empty screen ────────────────────────────────────────────────────────
+//
+// The greeting is ONE CENTRED UNIT — the wordmark, the model, the message box
+// itself, one line of things to try, and the recent sessions where there are
+// any — and every piece of furniture that used to mark an absence around it is
+// absent (welcome.go states the law). These tests read the frame as a person
+// does.
 
 // welcomeApp is an empty session with a wired recent list.
 func welcomeApp(t *testing.T, recent []Session) (*app, *[]string) {
@@ -540,79 +547,295 @@ func fourSessions() []Session {
 	}
 }
 
-// THE BOX OPENS ON AN EMPTY SESSION, carries the wordmark, the model, the place
-// and four slots, and sits ABOVE the input.
-func TestTheWelcomeBoxOpensOnAnEmptySession(t *testing.T) {
+// screenLines is the frame as rows a reader sees, colour stripped.
+func screenLines(a *app) []string { return strings.Split(plain(frame(a)), "\n") }
+
+// rowWith is the first screen row carrying want, or -1.
+func unitRow(lines []string, want string) int {
+	for i, line := range lines {
+		if strings.Contains(line, want) {
+			return i
+		}
+	}
+	return -1
+}
+
+// lead is how many cells of nothing a row starts with.
+func lead(line string) int { return len(line) - len(strings.TrimLeft(line, " ")) }
+
+// THE GREETING IS ONE UNIT, IN THE MIDDLE, IN THIS ORDER: the wordmark, the
+// model, the message box, the line of things to try, then the recent sessions
+// under a heading they earned. No border, no reserved column beside it.
+func TestTheEmptyScreenIsOneCentredUnit(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	if !a.welcome.open {
-		t.Fatal("an empty session did not open the welcome box")
+		t.Fatal("an empty session did not open the greeting")
 	}
 	// Settled, so the assertion is about what it says and not about a frame.
 	a.welcome.step = welcomeFrames
+	lines := screenLines(a)
+	screen := strings.Join(lines, "\n")
 
-	screen := plain(frame(a))
-	for _, want := range []string{
-		"openai/gpt-4.1-mini · lab", "recent sessions",
-		"porting the parser", "the welcome box", "a quiet refactor", "reading the registry",
-	} {
-		if !strings.Contains(screen, want) {
-			t.Fatalf("the welcome box is missing %q:\n%s", want, screen)
+	wordmark := wordmarkRows(false)
+	if len(wordmark) != 3 {
+		t.Fatalf("the wordmark is %d rows", len(wordmark))
+	}
+	order := []string{wordmark[0], wordmark[2], "openai/gpt-4.1-mini", glyphYou,
+		starterTryWord, "recent sessions", "porting the parser", "reading the registry"}
+	last := -1
+	for _, want := range order {
+		at := unitRow(lines, want)
+		if at < 0 {
+			t.Fatalf("the greeting is missing %q:\n%s", want, screen)
+		}
+		if at <= last {
+			t.Fatalf("%q is drawn on row %d, above what should precede it (row %d):\n%s", want, at, last, screen)
+		}
+		last = at
+	}
+	for _, gone := range []string{"╭", "╰", "no recent sessions", "+ /task", "+ /standing"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("the greeting still draws %q:\n%s", gone, screen)
 		}
 	}
-	// The wordmark is drawn in the surface's own letterforms, three rows of it.
-	rows := wordmarkRows(false)
-	if len(rows) != 3 {
-		t.Fatalf("the wordmark is %d rows", len(rows))
-	}
-	for _, row := range rows {
-		if !strings.Contains(screen, row) {
-			t.Fatalf("the wordmark row %q is not on screen:\n%s", row, screen)
-		}
-	}
-	// It is above the input line, and the input line is still there.
-	lines := strings.Split(screen, "\n")
-	box, prompt := -1, -1
-	for i, line := range lines {
-		if strings.Contains(line, "recent sessions") {
-			box = i
-		}
-		if strings.Contains(line, glyphYou) {
-			prompt = i
-		}
-	}
-	if box < 0 || prompt < 0 || box > prompt {
-		t.Fatalf("the box is not above the input (box %d, input %d):\n%s", box, prompt, screen)
-	}
-	// The relative times are coarse and readable.
-	if !strings.Contains(screen, "20m") || !strings.Contains(screen, "3h") ||
-		!strings.Contains(screen, "2d") {
+	// The relative times are coarse and readable, and they sit in one column.
+	if !strings.Contains(screen, "20m") || !strings.Contains(screen, "3h") || !strings.Contains(screen, "2d") {
 		t.Fatalf("the recent times are missing:\n%s", screen)
+	}
+	first, second := lines[unitRow(lines, "20m")], lines[unitRow(lines, "3h")]
+	if strings.Index(first, "20m") != strings.Index(second, "3h") {
+		t.Fatalf("the ages do not line up:\n%s\n%s", first, second)
+	}
+
+	// EVERY ROW OF THE UNIT SHARES ONE LEFT EDGE, and the edge is centred at
+	// every width the unit is drawn at.
+	for _, width := range []int{60, 90, 120, 200} {
+		a.width = width
+		a.touch()
+		lines := screenLines(a)
+		unit := min(width-4, welcomeUnitWidth)
+		want := (width - unit) / 2
+		for _, row := range []string{wordmark[0], "openai/gpt-4.1-mini", glyphYou, starterSlashWord, "recent sessions"} {
+			at := unitRow(lines, row)
+			if at < 0 {
+				t.Fatalf("at width %d the greeting lost %q:\n%s", width, row, strings.Join(lines, "\n"))
+			}
+			if got := lead(lines[at]); got != want {
+				t.Fatalf("at width %d the row %q starts at cell %d, want %d:\n%s", width, row, got, want, lines[at])
+			}
+		}
+	}
+	// And it is in the middle of the frame's height rather than at the top of
+	// it: slack above and slack below.
+	a.width = 90
+	a.touch()
+	lines = screenLines(a)
+	top, bottom := unitRow(lines, wordmark[0]), unitRow(lines, "reading the registry")
+	if top < 3 || bottom > a.height-4 {
+		t.Fatalf("the greeting is not centred (rows %d..%d of %d):\n%s", top, bottom, a.height, strings.Join(lines, "\n"))
 	}
 }
 
-// AN EMPTY LIST STILL DRAWS FOUR SLOTS' WORTH OF BOX, and says so.
-func TestTheWelcomeBoxSaysWhenThereAreNoSessions(t *testing.T) {
-	a, _ := welcomeApp(t, nil)
+// THE MESSAGE BOX IN THE UNIT IS THE REAL ONE: the terminal's cursor is in it,
+// and the first keystroke goes where the eye already is.
+func TestTheCaretSitsInTheCentredBox(t *testing.T) {
+	a, _ := welcomeApp(t, fourSessions())
 	a.welcome.step = welcomeFrames
-	full, _ := welcomeApp(t, fourSessions())
-	full.welcome.step = welcomeFrames
-
-	if !strings.Contains(plain(frame(a)), "no recent sessions") {
-		t.Fatalf("an empty list did not say so:\n%s", plain(frame(a)))
+	f, x, y := a.frame()
+	lines := strings.Split(plain(f), "\n")
+	if y < 0 || y >= len(lines) || !strings.Contains(lines[y], glyphYou) {
+		t.Fatalf("the caret is on row %d, which is not the message box:\n%s", y, plain(f))
 	}
-	if a.welcomeHeight() != full.welcomeHeight() {
-		t.Fatalf("the box is %d rows empty and %d rows full — the slots are not fixed",
-			a.welcomeHeight(), full.welcomeHeight())
+	if want := lead(lines[y]) + len([]rune(glyphYou)); x != want {
+		t.Fatalf("the caret is at cell %d of the box row, want %d: %q", x, want, lines[y])
+	}
+	if y > a.height/2 {
+		t.Fatalf("the caret is at row %d of %d — the box is at the foot, not in the unit", y, a.height)
+	}
+	if got := a.chromeHeight() + a.viewHeight() + a.topHeight(); got != a.height {
+		t.Fatalf("the frame's height accounting tears: %d rows accounted for in %d", got, a.height)
+	}
+}
+
+// THE FIRST KEYSTROKE DISSOLVES THE STARTER LINE WITH THE REST OF THE GREETING,
+// and the box is back at the foot of the frame with the keystroke in it.
+func TestTheStarterLineDissolvesOnTheFirstKeystroke(t *testing.T) {
+	a, _ := welcomeApp(t, fourSessions())
+	a.welcome.step = welcomeFrames
+	if !strings.Contains(plain(frame(a)), starterTryWord) {
+		t.Fatalf("the greeting has no starter line:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("h"))
+	f, _, y := a.frame()
+	screen := plain(f)
+	for _, gone := range []string{starterTryWord, starterSlashWord, "recent sessions"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("%q survived the first keystroke:\n%s", gone, screen)
+		}
+	}
+	if a.input.String() != "h" {
+		t.Fatalf("the keystroke that dissolved the greeting was eaten: %q", a.input.String())
+	}
+	if y < a.height-6 {
+		t.Fatalf("the caret is at row %d of %d — the box did not return to the foot", y, a.height)
+	}
+}
+
+// A FRESH SCREEN HAS NO COLUMN AND NO NUMBERS. No `+ /task`, no `+ /standing`,
+// no `ctrl+g`, no closed-column edge, no `$0.00`, no context meter — only the
+// identity and the state word on the status row. The column arrives with the
+// conversation.
+func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
+	a, _ := welcomeApp(t, fourSessions())
+	a.width = 140
+	a.welcome.step = welcomeFrames
+	a.touch()
+	screen := plain(frame(a))
+	for _, gone := range []string{marginDoorWord(marginTaskType), marginDoorWord(marginStandType), "ctrl+g", "$", "%", "tok"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("a fresh screen draws %q:\n%s", gone, screen)
+		}
+	}
+	if a.railShowing() || a.railStowed() || a.railWidth() != 0 || a.bodyWidth() != 140 {
+		t.Fatalf("the column costs the fresh screen %d cells", a.railWidth())
+	}
+	// A column somebody closed in an earlier session leaves no edge here either:
+	// there is no column to have closed.
+	a.railAway = true
+	if a.railStowed() || a.railWidth() != 0 {
+		t.Fatal("the closed column's edge is on a fresh screen")
+	}
+	a.railAway = false
+	status := plain(a.status(140))
+	for _, want := range []string{"gpt-4.1-mini", "idle"} {
+		if !strings.Contains(status, want) {
+			t.Fatalf("the quiet status row lost %q: %q", want, status)
+		}
+	}
+	// The first keystroke begins the conversation, and the column stands.
+	drive(t, a, key("h"))
+	if !a.railShowing() {
+		t.Fatal("the column did not stand once the conversation began")
+	}
+	if screen := plain(frame(a)); !strings.Contains(screen, marginDoorWord(marginTaskType)) {
+		t.Fatalf("the column's door is not drawn once the conversation began:\n%s", screen)
+	}
+}
+
+// AN ORDER STANDING HERE IS CONTENT, so the column stands on the first frame
+// exactly as it always did — only a column with nothing to say is absent.
+func TestTheColumnStandsOnAFreshScreenWithAnOrderOverIt(t *testing.T) {
+	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
+	a.welcome = welcome{open: true, sel: -1}
+	a.touch()
+	if !a.railShowing() {
+		t.Fatal("a standing order did not raise the column on a fresh screen")
+	}
+	if !strings.Contains(marginRail(a), "keep the tests green") {
+		t.Fatalf("the order is not on the column:\n%s", marginRail(a))
+	}
+	quiet, _ := marginApp(t)
+	quiet.welcome = welcome{open: true, sel: -1}
+	quiet.touch()
+	if quiet.railShowing() {
+		t.Fatal("a column with nothing to say stood on a fresh screen")
+	}
+}
+
+// RECENT SESSIONS ARE ROWS WHEN THERE ARE ANY AND NOTHING WHEN THERE ARE NONE:
+// no heading over an empty list, no sentence about the absence, no rows held
+// open for sessions that do not exist.
+func TestRecentSessionsRenderRowsOrNothing(t *testing.T) {
+	none, _ := welcomeApp(t, nil)
+	none.welcome.step = welcomeFrames
+	screen := plain(frame(none))
+	for _, gone := range []string{"recent sessions", "no recent sessions"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("an empty list drew %q:\n%s", gone, screen)
+		}
+	}
+	one, _ := welcomeApp(t, fourSessions()[:1])
+	one.welcome.step = welcomeFrames
+	four, _ := welcomeApp(t, fourSessions())
+	four.welcome.step = welcomeFrames
+	if !strings.Contains(plain(frame(one)), "recent sessions") || !strings.Contains(plain(frame(one)), "porting the parser") {
+		t.Fatalf("one session did not draw its row under a heading:\n%s", plain(frame(one)))
+	}
+	if strings.Contains(plain(frame(one)), "the welcome box") {
+		t.Fatalf("one session drew a second row:\n%s", plain(frame(one)))
+	}
+	if none.welcomeHeight() >= one.welcomeHeight() || one.welcomeHeight() >= four.welcomeHeight() {
+		t.Fatalf("the unit reserves rows it does not draw: %d rows with none, %d with one, %d with four",
+			none.welcomeHeight(), one.welcomeHeight(), four.welcomeHeight())
+	}
+}
+
+// THE NUMBERS ARRIVE WITH THE FIRST TURN, at both widths, and from then on the
+// status row is exactly what it always was — `$0.00` included, so its segments
+// do not jump.
+func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
+	a, _ := welcomeApp(t, nil)
+	a.width = 140
+	a.touch()
+	if status := plain(a.status(140)); strings.Contains(status, "$") {
+		t.Fatalf("a session that has sent nothing is billed: %q", status)
+	}
+	if deck := plain(strings.Join(a.statusRows(44), "\n")); strings.Contains(deck, "$") {
+		t.Fatalf("the phone deck bills a session that has sent nothing: %q", deck)
+	}
+	typeLine(t, a, "hello")
+	if a.statusQuiet() {
+		t.Fatal("a submitted line did not count as a turn")
+	}
+	if status := plain(a.status(140)); !strings.Contains(status, "$0.00") {
+		t.Fatalf("the running status row lost its spend segment: %q", status)
+	}
+	if deck := plain(strings.Join(a.statusRows(44), "\n")); !strings.Contains(deck, "$0.00") {
+		t.Fatalf("the phone deck lost its spend segment: %q", deck)
+	}
+}
+
+// THE UNIT COMPOSES AT EVERY WIDTH AND HEIGHT IT IS DRAWN AT: the frame is
+// exactly the terminal's height, the box is drawn once, and the slash is the
+// last clause standing on the starter line.
+func TestTheEmptyScreenComposesAtEveryWidth(t *testing.T) {
+	for _, width := range []int{40, 44, 59, 60, 79, 80, 99, 100, 119, 120, 200} {
+		for _, height := range []int{12, 16, 24, 50} {
+			a, _ := welcomeApp(t, fourSessions())
+			a.width, a.height = width, height
+			a.welcome.step = welcomeFrames
+			a.touch()
+			lines := screenLines(a)
+			screen := strings.Join(lines, "\n")
+			if len(lines) != height {
+				t.Fatalf("at %dx%d the frame is %d rows:\n%s", width, height, len(lines), screen)
+			}
+			if unitRow(lines, wordmarkRows(false)[0]) < 0 || !strings.Contains(screen, starterSlashWord) {
+				t.Fatalf("at %dx%d the greeting lost its wordmark or its starter line:\n%s", width, height, screen)
+			}
+			boxes := 0
+			for _, line := range lines {
+				if strings.Contains(line, glyphYou) {
+					boxes++
+				}
+			}
+			if boxes != 1 {
+				t.Fatalf("at %dx%d the message box is drawn %d times:\n%s", width, height, boxes, screen)
+			}
+			if got := a.chromeHeight() + a.viewHeight() + a.topHeight(); got != height {
+				t.Fatalf("at %dx%d the height accounting tears: %d for %d", width, height, got, height)
+			}
+		}
 	}
 }
 
 // A RESUMED SESSION NEVER SEES IT: the transcript already answers the question
-// the box asks.
+// the greeting asks.
 func TestTheWelcomeBoxStaysAwayFromAConversation(t *testing.T) {
 	agent := &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hello"}}}
 	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", Resumed: true})
 	if a.welcome.open {
-		t.Fatal("a resumed session opened the welcome box over its own transcript")
+		t.Fatal("a resumed session opened the greeting over its own transcript")
 	}
 }
 
@@ -623,16 +846,16 @@ func TestTheWelcomeBoxGoesOnTheFirstSubmit(t *testing.T) {
 	typeLine(t, a, "hello")
 
 	if a.welcome.open {
-		t.Fatal("the box survived the first submit")
+		t.Fatal("the greeting survived the first submit")
 	}
 	if strings.Contains(plain(frame(a)), "recent sessions") {
-		t.Fatal("the box is still on screen after a submit")
+		t.Fatal("the greeting is still on screen after a submit")
 	}
 	// A second empty screen does not bring it back.
 	a.entries = nil
 	a.touch()
 	if strings.Contains(plain(frame(a)), "recent sessions") {
-		t.Fatal("the box came back")
+		t.Fatal("the greeting came back")
 	}
 }
 
@@ -641,10 +864,10 @@ func TestTheWelcomeBoxGoesOnAnyKey(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	drive(t, a, key("h"))
 	if a.welcome.open {
-		t.Fatal("a keystroke did not dismiss the box")
+		t.Fatal("a keystroke did not dismiss the greeting")
 	}
 	if a.input.String() != "h" {
-		t.Fatalf("the keystroke that dismissed the box was eaten: %q", a.input.String())
+		t.Fatalf("the keystroke that dismissed the greeting was eaten: %q", a.input.String())
 	}
 }
 
@@ -666,40 +889,52 @@ func TestARecentSessionResumesThroughTheSeam(t *testing.T) {
 		t.Fatalf("enter resumed %v, want the second session", *resumed)
 	}
 	if a.welcome.open {
-		t.Fatal("resuming left the box up")
+		t.Fatal("resuming left the greeting up")
 	}
 	if !strings.Contains(plain(frame(a)), "resumed /s/two.jsonl") {
 		t.Fatalf("the surface did not say which session it opened:\n%s", plain(frame(a)))
 	}
 }
 
-// A CLICK ON A ROW RESUMES THAT ROW, and a click anywhere else dismisses.
+// A CLICK ON A ROW RESUMES THAT ROW, a click on the message box leaves the
+// greeting standing, and a click anywhere else on it dismisses.
 func TestAClickOnARecentSessionResumesIt(t *testing.T) {
 	a, resumed := welcomeApp(t, fourSessions())
 	a.welcome.step = welcomeFrames
 
-	// Asked of the frame rather than computed from it. The welcome box is lifted
-	// out of the chrome block and drawn at the top (view.go's [welcomeLift]), so
-	// a test that worked out the row from the chrome's own length would be
+	// Asked of the frame rather than computed from it. The greeting is lifted
+	// out of the chrome block and drawn in the middle (view.go's [welcomeLift]),
+	// so a test that worked out the row from the chrome's own length would be
 	// asserting a layout instead of the thing that matters: that the row a
 	// pointer lands on is the session drawn there.
 	_, height := a.size()
-	row := -1
+	row, box := -1, -1
 	for y := 0; y < height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome && a.welcomeSlotAt(mark.index) == 2 {
+		mark, ok := a.chromeAt(y)
+		if !ok || mark.kind != chromeWelcome {
+			continue
+		}
+		if a.welcomeSlotAt(mark.index) == 2 {
 			row = y
-			break
+		}
+		if a.welcomeInputRow(mark.index) {
+			box = y
 		}
 	}
-	if row < 0 {
-		t.Fatal("the third recent session was not drawn as a clickable row")
+	if row < 0 || box < 0 {
+		t.Fatalf("the third recent session (%d) or the box (%d) was not drawn as a pressable row", row, box)
+	}
+	drive(t, a, clickAt(20, box))
+	drive(t, a, releaseAt(20, box))
+	if !a.welcome.open {
+		t.Fatal("a click on the message box dismissed the greeting the box is part of")
 	}
 	drive(t, a, motionAt(row))
 	if a.hoveredSlot() != 2 {
 		t.Fatalf("the pointer over a recent row recorded hover %d", a.hoveredSlot())
 	}
-	drive(t, a, clickAt(2, row))
-	drive(t, a, releaseAt(2, row))
+	drive(t, a, clickAt(20, row))
+	drive(t, a, releaseAt(20, row))
 	if len(*resumed) != 1 || (*resumed)[0] != "/s/three.jsonl" {
 		t.Fatalf("the click resumed %v, want the third session", *resumed)
 	}
@@ -709,10 +944,10 @@ func TestAClickOnARecentSessionResumesIt(t *testing.T) {
 func TestTheWelcomeAnimationRunsOnce(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	if !a.welcome.animating() {
-		t.Fatal("the box opened already settled")
+		t.Fatal("the greeting opened already settled")
 	}
 	if a.Init() == nil {
-		t.Fatal("the box did not ask for the paint clock")
+		t.Fatal("the greeting did not ask for the paint clock")
 	}
 	for i := 0; i < welcomeFrames+5; i++ {
 		a.paint()
@@ -724,7 +959,7 @@ func TestTheWelcomeAnimationRunsOnce(t *testing.T) {
 		t.Fatalf("the animation ran to %d frames, want %d", a.welcome.step, welcomeFrames)
 	}
 	if cmd := a.paint(); cmd != nil {
-		t.Fatal("a settled box is still asking for frames")
+		t.Fatal("a settled greeting is still asking for frames")
 	}
 
 	// Settled, the wordmark is one colour and one colour only: the sweep has
@@ -732,14 +967,14 @@ func TestTheWelcomeAnimationRunsOnce(t *testing.T) {
 	settled := frame(a)
 	a.paint()
 	if frame(a) != settled {
-		t.Fatal("the settled box is still moving")
+		t.Fatal("the settled greeting is still moving")
 	}
 	// Init still asks the repository what branch the legend should say
 	// (render.go), and that is the ONLY thing a settled surface asks for: no
 	// frame clock, which is what an idle wakeup would be.
 	for _, produced := range runCmd(a.Init()) {
 		if _, clock := produced.(frameMsg); clock {
-			t.Fatal("a settled box asked for the clock again")
+			t.Fatal("a settled greeting asked for the clock again")
 		}
 	}
 }
@@ -999,11 +1234,27 @@ func lastNote(t *testing.T, a *app) string {
 	return ""
 }
 
-// ── the three fullscreen pages ──────────────────────────────────────────────
+// noteSaying is the text of the note that CONTAINS want, and it exists because
+// one screen may leave more than one line behind: [app.endSetup] writes the
+// no-key line and then, on a Mac, the option-as-meta line, so a caller that
+// means "the note about the key" cannot ask for the last one and be right.
+func noteSaying(t *testing.T, a *app, want string) string {
+	t.Helper()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryNote && strings.Contains(a.entries[i].text, want) {
+			return a.entries[i].text
+		}
+	}
+	t.Fatalf("no note the surface wrote says %q", want)
+	return ""
+}
 
-// threePageApp is a surface where all three fullscreen pages can actually open:
-// a profile for the settings panel, a task in the record for the task page, and
-// a machine with a second conversation on it for home.
+// ── the pages that take the frame ───────────────────────────────────────────
+
+// threePageApp is a surface where every fullscreen page can actually open: a
+// profile for the settings panel, a task in the record for the task page, and a
+// machine with a second conversation on it for home. The two places that draw
+// only their own explanation need nothing at all, which is the point of them.
 func threePageApp(t *testing.T) *app {
 	t.Helper()
 	a, _ := sheetApp(t)
@@ -1018,23 +1269,35 @@ func threePageApp(t *testing.T) *app {
 	return a
 }
 
-// ONLY ONE PAGE EVER OWNS THE FRAME. The settings panel, the task page and home
-// each take the frame WHOLE, and view.go can draw exactly one of them — so
-// opening any one has to close the other two ([app.standDownFullscreen]).
-// Without this the second page opened would take the keyboard from behind the
-// first, and esc would give the frame back to a screen nobody could see.
+// ONLY ONE PAGE EVER OWNS THE FRAME. The settings panel, the task page, home,
+// the two places the router promoted out of being overlays and the two that draw
+// only their own explanation each take the frame WHOLE, and view.go can draw
+// exactly one of them — so opening any one has to close every other
+// ([app.standDownFullscreen]). Without this the second page opened would take the
+// keyboard from behind the first, and esc would give the frame back to a screen
+// nobody could see.
+//
+// THE LAW IS UNCHANGED AND THE LIST IS LONGER. The router did not replace this
+// exclusion; [app.showPage] is a wrapper over it, every page still carries its
+// own `open bool`, and what the wave added is four more pages that have to obey
+// it — the standing list and the memory list, which were overlays drawn under
+// the draft until they took the frame, and spend and search.
 func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
-	// Every ordered pair of the three, so no open path is trusted on the say-so
-	// of another one.
+	// Every ordered pair, so no open path is trusted on the say-so of another
+	// one.
 	open := map[string]func(*app){
 		"the settings panel": func(a *app) { a.openSettings() },
-		"the task page":      func(a *app) { a.openTaskSheet() },
+		"the task page":      func(a *app) { openTaskPlaceWithRows(a) },
 		"home":               func(a *app) { a.openHome() },
+		"the spend place":    func(a *app) { a.showPage(pageSpend) },
+		"the search place":   func(a *app) { a.showPage(pageSearch) },
 	}
 	up := map[string]func(*app) bool{
-		"the settings panel": func(a *app) bool { return a.sheet.open },
-		"the task page":      func(a *app) bool { return a.taskSheet.open },
-		"home":               func(a *app) bool { return a.home.open },
+		"the settings panel": func(a *app) bool { return a.at(pageSettings) },
+		"the task page":      func(a *app) bool { return a.at(pageTasks) },
+		"home":               func(a *app) bool { return a.at(pageHome) },
+		"the spend place":    func(a *app) bool { return a.at(pageSpend) },
+		"the search place":   func(a *app) bool { return a.at(pageSearch) },
 	}
 	for first := range open {
 		for second := range open {
@@ -1084,7 +1347,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatalf("home is not what the frame draws:\n%s", home)
 	}
 	// And the task page over home.
-	if !a.openTaskSheet() {
+	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the task page refused to open over home")
 	}
 	page, _, _ := a.frame()
@@ -1093,5 +1356,25 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	}
 	if !strings.Contains(plain(page), "Port the parser") {
 		t.Fatalf("the task page is not what the frame draws:\n%s", page)
+	}
+	// AND A PLACE WITH NOTHING OF ITS OWN TO DRAW TAKES THE FRAME ON THE SAME
+	// TERMS, which is the whole reason it is a place and not a message: it spends
+	// the frame saying what it is for (place_spend.go's [spendTeach]).
+	a.showPage(pageSpend)
+	spend, _, _ := a.frame()
+	if strings.Contains(plain(spend), "Port the parser") {
+		t.Fatalf("the task page is still being drawn under the spend place:\n%s", spend)
+	}
+	if !strings.Contains(plain(spend), "What this machine has cost") {
+		t.Fatalf("the spend place is not what the frame draws:\n%s", spend)
+	}
+	// AND THE TAB BAR IS ON EVERY ONE OF THEM, naming the seven places and never
+	// a settings section — the negative this test asserts above depends on those
+	// two vocabularies staying apart, so a place may never be renamed to a word
+	// the settings panel already spells (pages.go).
+	for _, id := range pages() {
+		if !strings.Contains(plain(spend), id.word()) {
+			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
+		}
 	}
 }

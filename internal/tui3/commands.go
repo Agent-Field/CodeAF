@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // THE COMMAND LIST: type "/" and what you can type appears.
@@ -74,6 +75,10 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	// A project-less conversation needs this once, while /compact is a daily
+	// command everywhere. Keep the one-shot anchor immediately below the eight
+	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
 	// here" and this is "what is there at all" — the same question one size up —
@@ -194,18 +199,24 @@ var commands = []command{
 	// know" and this is "what does it think WITH", and because position in this
 	// table is a claim about frequency: a person sets their crew once and then
 	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
-	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
+	{name: "crew", desc: "the four models aforge uses on its own behalf, beside the one you talk to"},
+	{name: "crew", args: "<preset>", desc: "…set the four to frugal, balanced or max · /model stays"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
-	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner", door: sendDoorTask},
-	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts", door: sendDoorTask},
+	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
+	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
+	// `adaptive <brief>`, which opened a planner that drew the whole graph before
+	// any of the work had been looked at. The measured road answers that question
+	// later and from evidence — one worker starts, and hands parts out only once
+	// it has opened the material and found the width is real (internal/splitgate,
+	// internal/session's task_divide.go). Leaving the row here would offer a word
+	// that now starts an ordinary task, which is a menu lying about what it does.
 	// AND THE PAGE THAT SHOWS WHAT THEY ALL CAME TO (taskview.go). It sits with
-	// the three rows that START work because that is the pair of errands a person
+	// the two rows that START work because that is the pair of errands a person
 	// has about tasks — set one going, and go and look at the ones that already
 	// did.
 	//
-	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The three rows
-	// above all mean GIVE AFORGE WORK, and a plural sitting among them shared four
+	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The two rows
+	// above both mean GIVE AFORGE WORK, and a plural sitting among them shared four
 	// characters with every one of them: typing "/task" narrowed the list to both
 	// errands at once, so the muscle memory for starting work kept landing on a
 	// page that starts none. What a person calls this thing is the record of
@@ -235,6 +246,18 @@ var commands = []command{
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
 	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
+	// this is what the machine is holding for it — the shared build cache task
+	// workers fill (internal/cachedir). Two rows for one command, /export's
+	// reason exactly: the reading form is the one nearly everybody wants, and
+	// [app.runMenu] writes a row that TAKES something into the draft instead of
+	// running it, so the destructive form rides second wearing the "…". It is
+	// NOT an alias of anything and shares no word with /new's fresh-start set —
+	// /clean already means "start another conversation" there, and a word that
+	// sometimes cleared the screen and sometimes deleted half a gigabyte would
+	// be the most expensive pun on the surface.
+	{name: "cache", desc: "the shared build cache — how big, and where"},
+	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// the first two are the least discoverable on the surface — nothing on the
@@ -267,6 +290,43 @@ var commands = []command{
 	// recognizes by title, and a title a model wrote is not a thing anybody
 	// types back correctly.
 	{name: "files", desc: "what has been made for you · open, reveal or copy one"},
+	// AND THE SAME ERRAND POINTED AT THE OTHER MACHINE. On a `--host` session the
+	// bare row above opens the far workspace as a page in this machine's browser,
+	// and this one brings ONE file back and opens it in whatever this machine
+	// opens that kind of file with (remotefiles.go, remoteopen.go).
+	//
+	// TWO ROWS FOR ONE COMMAND, the way /model and /export have two, and for
+	// their reason: [app.runMenu] puts a row that TAKES something into the draft
+	// instead of running it, so a single row carrying <path> would make the bare
+	// form — the one nearly everybody wants — unreachable from this list.
+	//
+	// The row says what it is FOR rather than which flag it needs, because a
+	// person on a local session who chooses it is told in one sentence that this
+	// form is for a session on another machine ([filesLocalWord]) — which is a
+	// better place to learn it than a table nobody reads twice.
+	{name: "files", args: "<path>", desc: "…or bring one back from the machine over there and open it"},
+	// AND THE ONE THAT GOES THE OTHER WAY: those four take something out of this
+	// conversation and this one puts something INTO it — a log, a CSV, a PDF, on
+	// the same tray a picture rides and read rather than looked at (attach.go).
+	//
+	// IT BELONGS DIRECTLY UNDER /image, and it sits down here instead for the
+	// reason /permissions and /harness do, which is a fact about the LIST rather
+	// than about the command: [menuRows] shows eight rows at once, position in
+	// this table is a claim about frequency, and a row inserted beside /image
+	// would push /compact — which people reach for daily — into a scroll.
+	// standingpage_test.go pins exactly that. So it lands with the doors onto
+	// moving a file, which is the other errand it shares.
+	//
+	// It is NOT a second spelling of /image, and the two rows say so in their own
+	// words: a picture is looked at, a file is read. A picture handed to /attach
+	// still goes on as a picture, because somebody who learned one word should
+	// not have to find out this build has two.
+	//
+	// /upload is here because it is the word people bring from every chat program
+	// they have used. /file is deliberately NOT an alias: it shares four
+	// characters with /files one row above, and a word that narrowed the list to
+	// both errands at once is the near-miss /history was named to avoid.
+	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
@@ -678,7 +738,28 @@ func (a *app) runMenu() tea.Cmd {
 
 // helpText renders the same table the list draws, plus the two keys that have
 // no slash and the session file. One source, two renderings.
-func helpText(file string) string {
+// helpKeyRow is one hand-written row of the key sheet: the chord, then the
+// sentence at [helpKeyColumn]. A chord wider than the column keeps one space, so
+// a Mac's spelling can never run into the words beside it.
+func helpKeyRow(key, note string) string {
+	gap := helpKeyColumn - ansi.StringWidth(key)
+	if gap < 1 {
+		gap = 1
+	}
+	return key + strings.Repeat(" ", gap) + note
+}
+
+// helpKeyColumn is where the sentence starts on every hand-written row of the
+// key sheet below — five for `@path` plus its ten spaces, six for `ctrl+c` plus
+// its nine. It is named because ONE of those rows is spelled for the terminal
+// rather than typed out (chords.go), and a padded literal cannot be padded twice.
+//
+// IT IS NOT THE COMMAND ROWS' COLUMN, which is measured off the longest command
+// on the list and sits further right. The two blocks have always been two
+// columns; this constant states the second one rather than changing it.
+const helpKeyColumn = 15
+
+func helpText(file string, chords chordSpelling) string {
 	width := 0
 	for _, c := range commands {
 		if n := len(c.typed()); n > width {
@@ -706,7 +787,11 @@ func helpText(file string) string {
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
 		"tab            go back to the last conversation, with an empty box",
-		"alt+enter      open a line · enter sends",
+		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
+		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
+		// literal padded to the ASCII spelling would put this one row's sentence
+		// out of the column every other row on the sheet sits in (chords.go).
+		helpKeyRow(chords.say("alt+enter"), "open a line · enter sends"),
 		// THE MARKED SEND (standmark.go). It is on this sheet because it is the
 		// one key here that changes what a sentence MEANS rather than where it
 		// goes, and nothing else on the screen names it until a draft happens to
@@ -717,10 +802,15 @@ func helpText(file string) string {
 		// nothing else names it until a draft happens to look like something to
 		// build.
 		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
-		"ctrl+o         expand this turn's tool calls · click one to open it",
+		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
-		"enter          mid-answer: waits above the box · esc stops and sends · ↑ edits",
+		"enter          mid-answer: stops the current reply and steers these words in",
+		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER
+		// (steer.go). It sits directly under the line about the other two because
+		// the three are one decision — wait, go in, or stop the answer — and the
+		// one that waits is now the secondary choice a person may not guess.
+		parkKey+"      mid-answer: waits above the box · → sends a waiting one",
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",

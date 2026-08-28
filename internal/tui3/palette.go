@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -351,12 +353,33 @@ const (
 	// markOurs is a conversation this terminal has open behind the one on
 	// screen: the same treatment as the front one, at the tier below it.
 	markOurs
-	// markFront is the conversation on screen.
+	// markFront is the CHOSEN ROW OF AN OVERLAY — the model in use, the
+	// conversation a picker would re-open — and it keeps the ladder's selected
+	// step: an overlay is a modal list with a visible cursor in it, and the
+	// chosen row's band is the language those lists have always spoken.
 	markFront
+	// markHere is home's own conversation — the row esc drops back into — and
+	// it is a SEPARATE mark because home is a dashboard, not an overlay: a
+	// persistent band on a resting page read, every time, as a cursor nobody
+	// had moved. It paints the label in the body ink, takes no ground at all,
+	// and says what it is in a word instead (home.go's homeHereWord).
+	markHere
 )
 
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
+	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
+	// absorbs whatever the note leaves and the gap below clamps at one cell, so a
+	// note longer than the terminal used to be appended WHOLE to an empty label —
+	// the row ran past the edge by however long the note was, and no amount of
+	// squeezing the label could pull it back. What it may take is everything but
+	// the lead and that one cell of gap. Settings' `tool exceptions` is the row
+	// that found it: a value naming ten tools is 141 cells against a 60-cell
+	// terminal, which is LAW 1 (a place takes exactly the frame) broken by a
+	// value a person chose.
+	if note != "" {
+		note = fit(note, width-3)
+	}
 	room := width - 2
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
@@ -371,9 +394,19 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	switch {
 	case marked == markFront:
 		painted = pal.accent(label)
+	case marked == markHere:
+		// HOME'S OWN CONVERSATION IS A FACT, NOT A SELECTION. It wore the
+		// front mark's accent-on-selected band for a wave, and on a resting
+		// dashboard that band was the loudest thing in sight — read, every
+		// time, as a cursor nobody had moved. Ground bands on home mean one
+		// thing only: where a person's hands are. So the row says what it is
+		// the way every identity on this surface is said — in words: ink for
+		// the label (readable above its dim siblings, junior to nothing) and
+		// `here` on the tail (homeNote), with no ground and no accent.
+		painted = pal.ink(label)
 	case marked == markOurs:
-		// Open here, and not the one being drawn. The same treatment at dim
-		// strength, so a person's eye reads "this terminal has these" as one
+		// Open here, and not the one being drawn. One tier under the here
+		// row's ink, so a person's eye reads "this terminal has these" as one
 		// group rather than as two unrelated paints.
 		painted = pal.muted(label)
 	case oncursor:
@@ -395,10 +428,11 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 		// a person is reading when they stop on it.
 		line += strings.Repeat(" ", gap) + paintNote(tint, pal, note, lifted)
 	}
-	// THE MARKED ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT. Both can
-	// be true of one row — the cursor lands on the conversation you are in — and
-	// the louder step wins, so that row never gets QUIETER for being arrived at.
-	// The cursor is still said, on the lead.
+	// AN OVERLAY'S CHOSEN ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT
+	// — both can be true of one row, and the louder step wins so the row never
+	// gets quieter for being arrived at; the cursor is still said, on the lead.
+	// Home's own conversation deliberately is not in this switch: on a
+	// dashboard the ground is the hand's and only the hand's ([markHere]).
 	switch {
 	case marked == markFront:
 		return pal.selected(line, width)
@@ -761,23 +795,33 @@ func nextReasoning(level string) string {
 	return ""
 }
 
-// reasoningFor is the level held for a model id, "" when none is or when there
-// is no agent to ask (a headless frame).
-func (a *app) reasoningFor(id string) string {
-	if a.agent == nil {
-		return ""
-	}
-	return a.agent.ReasoningFor(id)
-}
+// The level a model is held at is read through [app.reasoningFor], which lives
+// in reasoninglevel.go: the draw path asks it three times a frame and it must
+// never touch the agent, because over a connection the agent is another machine.
 
 // cycleReasoning is ctrl+t: the selected row's model moves one step round the
 // cycle, or nothing happens because that model takes no reasoning knob.
+//
+// IT ASKS THE AGENT WHERE THE ROW STANDS WHEN NOBODY HAS ASKED YET, which is
+// the one place the surface's held answer is not good enough: the cycle is
+// RELATIVE, so starting it from "not told yet" would walk a model already
+// dialled to high back down to low. This is a keystroke — the fourth of
+// reasoninglevel.go's seeded moments, and waiting is what a keystroke may do.
+//
+// AND THE NEW LEVEL IS WRITTEN THROUGH, so the row under the cursor changes on
+// the very next frame. The surface is the only thing that sets these, so what it
+// just set is what is true.
 func (a *app) cycleReasoning() {
 	chosen, ok := a.pick.choice()
 	if !ok || !chosen.Reasoning || a.agent == nil {
 		return
 	}
-	a.agent.SetReasoningFor(chosen.ID, nextReasoning(a.reasoningFor(chosen.ID)))
+	if _, known := a.levels[session.ReasoningKey(chosen.ID)]; !known {
+		a.learnLevel(chosen.ID)
+	}
+	next := nextReasoning(a.reasoningFor(chosen.ID))
+	a.agent.SetReasoningFor(chosen.ID, next)
+	a.keepLevel(chosen.ID, next)
 }
 
 // pickerHint is the placeholder in the empty filter box. It is the only place
@@ -916,6 +960,10 @@ func (a *app) switchModel(id string, window int) {
 	if a.model == "" {
 		a.model = id
 	}
+	// The new model's dial is learned HERE rather than left to the frame clock,
+	// so the status row names it on the very frame the switch lands on
+	// (reasoninglevel.go states the three moments that are seeded and why).
+	a.learnLevel(a.model)
 	if window <= 0 {
 		window = a.windowFor(a.model)
 	}
@@ -931,6 +979,7 @@ func (a *app) switchModel(id string, window int) {
 	// already knows they asked for; the id is the one thing here they cannot see
 	// anywhere else at this moment, so it steps to ink and the label stays dim.
 	a.noteFacts("model · "+a.model, a.model)
+	a.noticeEvent(eventModelSwitched)
 }
 
 // rememberModel writes the choice down, so the NEXT launch opens on the model
@@ -1019,6 +1068,14 @@ func (p *picker) navigate(msg tea.KeyPressMsg) {
 // own two, because the scoring is about what is being listed. page is how far
 // pgup and pgdn jump, which is that list's own window.
 func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func(), page int) {
+	// THE WORD AND LINE JUMPS ARE THE SURFACE'S, NOT THIS LIST'S (editkeys.go).
+	// They are read before the switch because they belong to every box on the
+	// program and this one is only the busiest door onto them — twelve overlays
+	// share this key map, and a jump added here has to be the same jump the
+	// message box makes or a person learns two of them.
+	if editorMotion(filter, msg.String()) {
+		return
+	}
 	switch msg.String() {
 	case "up", "ctrl+p":
 		move(-1)
@@ -1052,7 +1109,9 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 		filter.left()
 	case "right", "ctrl+f":
 		filter.right()
-	case "home", "ctrl+a":
+	case "home":
+		// `ctrl+a` is the same jump and is read above, with the rest of the
+		// surface's line vocabulary (editkeys.go).
 		filter.home()
 	case "end", "ctrl+e":
 		filter.end()
@@ -1080,8 +1139,8 @@ func (a *app) overlayHeight() int {
 		want = a.pick.height(width)
 	case a.crewPick.open:
 		want = a.crewPick.height()
-	case a.memPanel.open:
-		want = a.memPanel.height(width)
+	case a.effPick.open:
+		want = a.effPick.height()
 	case a.roster.open:
 		want = a.roster.height(width)
 	case a.shelf.open:
@@ -1094,8 +1153,6 @@ func (a *app) overlayHeight() int {
 		want = a.harnPick.height(width)
 	case a.permPanel.open:
 		want = a.permPanel.height(width)
-	case a.standPage.open:
-		want = a.standPage.height(width, a.now())
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
@@ -1135,8 +1192,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
 	case a.crewPick.open:
 		return a.crewPick.rows(width, n, a.pal, hover, a)
-	case a.memPanel.open:
-		return a.memPanel.rows(width, n, a.pal, hover)
+	case a.effPick.open:
+		return a.effPick.rows(width, n, a.pal, hover)
 	case a.roster.open:
 		return a.roster.rows(width, n, a.pal, hover)
 	case a.shelf.open:
@@ -1149,8 +1206,6 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
-	case a.standPage.open:
-		return a.standPage.draw(width, n, a.pal, hover, a.now())
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:

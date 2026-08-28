@@ -116,7 +116,7 @@ Two things tell you a window is waiting while you are elsewhere:
 
 - **A desktop notification**, sent the instant the question goes up. The banner
   is headed `aforge` and reads `<conversation> · waiting on you`.
-- **Home**, and every other aforge window, where the session's row wears `▲`,
+- **Home**, and every other aforge window, where the session's row wears `?`,
   reads `waiting on you`, and sorts to the top of its project. The status line
   says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 
@@ -141,7 +141,7 @@ nowhere, it is one of these:
 Nothing here is a pause you can resume: aforge has no key that suspends a
 session and none that wakes one.
 
-## How long an answer lasts: once, this session, or written down
+## How long an answer lasts: once, this session, or written down — how to make it stop asking every time
 
 - **Once** — `y`, `n`, `esc` and `d` answer this call and nothing else.
 - **For the session** — a "stop asking" answer is kept in memory for the rest of

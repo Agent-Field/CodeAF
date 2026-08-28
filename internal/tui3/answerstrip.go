@@ -40,10 +40,10 @@ func (a *app) answerStrip(width int, now time.Time) []string {
 	tail := strings.Join(answers, answerChipGap)
 	tailWidth := ansi.StringWidth(tail)
 	if tailWidth >= width {
-		return []string{a.pal.ask(fit(tail, width))}
+		return []string{a.pal.warn(fit(tail, width))}
 	}
 	room := width - tailWidth - 1
 	left := fit(lead+strings.TrimSpace(question.Text), room)
 	gap := width - ansi.StringWidth(left) - tailWidth
-	return []string{a.pal.ink(left) + strings.Repeat(" ", gap) + a.pal.ask(tail)}
+	return []string{a.pal.ink(left) + strings.Repeat(" ", gap) + a.pal.warn(tail)}
 }

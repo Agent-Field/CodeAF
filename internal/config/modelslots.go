@@ -145,3 +145,36 @@ func mediaWord(modality string) string {
 	}
 	return modality
 }
+
+// ModelSlotBindings is WHICH MODEL EACH ROLE SLOT IS BOUND TO RIGHT NOW, keyed
+// by the slot word ([ModelSlot.Slot]).
+//
+// It is the join SCREEN 2c's model table asks for: a page holding a model id out
+// of the spending ledger wants the role a person could go and change, which is
+// the binding, and never the auxiliary word one call gave itself.
+//
+// A SLOT NOTHING HAS BOUND IS ABSENT, not present and empty. That is what lets a
+// caller tell "this model is the one execution runs on" from "nothing answers
+// for planning yet", which are the two halves of the design's own table — and it
+// is why this reads [modelSlotReading] rather than [Setting.Value], whose empty
+// reading is the row's `follows execution` label rather than a blank.
+//
+// THE CAPABILITY SLOTS ARE NOT IN IT. Drawing, speaking, composing, filming and
+// voice are knobs with readers rather than router roles ([Settings.modelRow]
+// makes the split), and none of them is a role a text model's bill could be
+// attributed to.
+func (s *Settings) ModelSlotBindings() map[string]string {
+	if s == nil {
+		return nil
+	}
+	bound := map[string]string{}
+	for _, slot := range ModelSlots() {
+		if slot.Role == "" {
+			continue
+		}
+		if model := strings.TrimSpace(modelSlotReading(s.options, slot)); model != "" {
+			bound[slot.Slot] = model
+		}
+	}
+	return bound
+}

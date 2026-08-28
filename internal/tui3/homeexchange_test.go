@@ -56,11 +56,35 @@ type errandLab struct {
 	standing string
 	agent    *errandAgent
 	dirs     []string
+	// orders is every [ErrandOrders] the seam was handed, so a test can assert
+	// WHAT the composer layer settled — the destination, the execution model, the
+	// cap — and not only where the folder went.
+	orders []ErrandOrders
 }
 
 func newErrandLab(t *testing.T) *errandLab {
 	t.Helper()
 	return &errandLab{homeLab: newHomeLab(t), standing: t.TempDir()}
+}
+
+// besideTheList widens a frame until it holds two columns, which is the only
+// shape in which an errand is drawn BESIDE the list rather than stacked over it
+// ([app.homeStacked] asks [homeColumns], and there is no second column below
+// [homeCardMin] any more — homebridge.go).
+//
+// IT HAS TO BE SAID OUT LOUD NOW. These labs used to open at a hundred columns
+// and get the two-column shape for free; a hundred columns is the stacked shape
+// today, so every test whose subject is a pane standing next to a walking list
+// has to ask for a frame wide enough to hold both.
+//
+// AND THE WIDTH IS THE ONE AT WHICH THE PANE STOPS GROWING, spelled out of the
+// parts rather than chosen beside them: the second column takes half of every
+// cell past [homeCardMin] up to [homeCardCap] ([homeColumns]), so this is the
+// widest the pane is ever drawn. That is what keeps a sentence the pane says on
+// ONE line, and an assertion about a sentence out of the business of where a
+// wrap happens to fall.
+func besideTheList(a *app) {
+	a.width, a.height = homeCardMin+2*(homeCardCap-homeCardCol), 30
 }
 
 // app builds the surface with the seam on it, and remembers every folder the
@@ -71,9 +95,10 @@ func (l *errandLab) app(here string, turns ...[]session.Event) *app {
 	l.agent = &errandAgent{fakeAgent: fakeAgent{model: "m", turns: turns}}
 	a := l.homeLab.app(here)
 	a.standingRoot = l.standing
-	a.errand = func(dir, workspace string) (Agent, error) {
-		l.dirs = append(l.dirs, dir)
-		if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"),
+	a.errand = func(orders ErrandOrders) (Agent, error) {
+		l.dirs = append(l.dirs, orders.Dir)
+		l.orders = append(l.orders, orders)
+		if err := os.WriteFile(filepath.Join(orders.Dir, "transcript.jsonl"),
 			[]byte(`{"type":"session","version":1}`+"\n"), 0o600); err != nil {
 			return nil, err
 		}
@@ -95,13 +120,12 @@ func theExchange(a *app) *homeExchange {
 
 // exchangeRowAt is the line of the left column that draws one exchange, and -1
 // when the column is not drawing it.
-// It is the errand's row IN THE LIST and not the second view of it a zone above
-// may be drawing (homeattention.go's first law): an errand waiting or thinking
-// is a `needs you` or `moving` row as well, and the row this file's tests are
-// about is the one inside its project's block.
+// ONE ROW PER ERRAND. It used to have two — its own inside a project block, and
+// a second view of it in whichever strip was drawing it — and the strips are
+// gone: an errand has one row, over the ranked list (place_home.go).
 func exchangeRowAt(a *app, ex *homeExchange) int {
 	for at, line := range a.home.lines {
-		if line.kind == homeExchangeRow && line.ex == ex && line.zone == nil {
+		if line.kind == homeExchangeRow && line.ex == ex {
 			return at
 		}
 	}
@@ -265,6 +289,13 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 // spellings are bound because terminals disagree about which one they can send
 // (home.go's ctrl+enter case says so); alt+enter is the one every terminal here
 // delivers, so it is the one the test presses.
+//
+// IT IS TWO PRESSES NOW AND THE LAW IT PINS IS UNCHANGED: the chord reaches the
+// errand door without the cursor ever leaving the row it was on. The first press
+// opens the composer layer, where the three facts a task needs are settled
+// (composerlayer.go, SCREEN 2e); the second is the send. What would break this
+// test is the chord walking somebody onto the `ask here` row to work — which is
+// exactly what it never did and still never does.
 func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -272,6 +303,10 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	a := lab.app(mine, []session.Event{{Kind: session.EventTurnDone}})
 	a.openHome()
 	typeHome(a, "remind me at 6")
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	if !a.composerShowing() {
+		t.Fatal("the first alt+enter opened no composer layer")
+	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
 
 	if len(lab.agent.sent) != 1 {
@@ -322,6 +357,10 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 		standingProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
+	// THE CARD OUTLIVES THE ANSWER, so the frame has to still be drawing a pane
+	// once the answer has handed the keyboard back to the list — which below
+	// [homeCardMin] it is not (homebridge.go).
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
@@ -376,6 +415,9 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 		standingProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
+	// A DECLINE SETTLES THE CARD AND GIVES THE KEYBOARD BACK, so what is pinned
+	// below is a pane drawn beside the list rather than one holding the frame.
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
@@ -463,7 +505,7 @@ func TestContinueAsAConversationMovesTheFolderIntoTheBucket(t *testing.T) {
 	}
 	// AND HOME CLOSED INTO IT, which is what promoting means: the conversation
 	// is on screen and the screen it was asked from is gone.
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home is still open after the exchange became a conversation")
 	}
 	if a.file != filepath.Join(moved, "transcript.jsonl") {
@@ -518,7 +560,7 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 	}
 	// AND A FOLLOW-UP STILL WORKS, because the session is still there.
 	before := len(lab.agent.sent)
-	drive(t, a, key("tab"))
+	drive(t, a, key("right"))
 	typeHome(a, "make it 7")
 	drive(t, a, key("enter"))
 	if len(lab.agent.sent) != before+1 {
@@ -569,6 +611,10 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 		{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Item: item}},
 		{Kind: session.EventTurnDone},
 	})
+	// THE CARD HAS TO BE DRAWN SOMEWHERE FOR "IT SETTLES IN PLACE" TO MEAN
+	// ANYTHING, and the keyboard goes back to the LIST — so the frame has to be
+	// one that holds both at once.
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
@@ -611,6 +657,9 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 		text(session.EventTextDelta, "I will remind you at 6."),
 		{Kind: session.EventTurnDone},
 	})
+	// "THE PANE STAYS EXACTLY WHERE IT WAS" is a claim about a frame that has a
+	// pane at all, which below [homeCardMin] it does not.
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6")
 	drive(t, a, key("up"), key("enter"))
@@ -663,6 +712,8 @@ func exchangeLab(t *testing.T) (*errandLab, *app) {
 		text(session.EventTextDelta, "I will remind you at 6."),
 		{Kind: session.EventTurnDone},
 	})
+	// EVERY ASSERTION BELOW IS ABOUT TWO ZONES, so the frame has to hold two.
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6")
 	drive(t, a, key("up"), key("enter"))
@@ -678,13 +729,19 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("asking here should put the keyboard in the pane")
 	}
+	// THE TOGGLE IS NOW TWO DIFFERENT KEYS, AND THAT IS THE LAYERING LAW RATHER
+	// THAN AN INCONSISTENCY. A box that has taken the keyboard owns its own keys
+	// — so `tab` inside the pane still hands the keyboard back, exactly as it
+	// always did — while from the LIST, where nothing has taken the keyboard,
+	// `tab` is the router's way to the next place (placekeys.go). The way back
+	// in is `→`, the arrow that points at the column the errand is drawn in.
 	drive(t, a, key("tab"))
 	if ex.focused {
 		t.Fatal("tab did not hand the keyboard to the list")
 	}
-	drive(t, a, key("tab"))
+	drive(t, a, key("right"))
 	if !ex.focused {
-		t.Fatal("tab did not bring the keyboard back to the pane")
+		t.Fatal("→ did not bring the keyboard back to the pane")
 	}
 	// AND IT LEAVES FROM THE OFFER ROW TOO, which is the state that held the
 	// keyboard hostage: `continue as a conversation` answered ↑ and enter and
@@ -698,7 +755,7 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 		t.Fatalf("tab did not leave %q", homeContinueWord)
 	}
 	// AND SO DOES esc, from the same row.
-	drive(t, a, key("tab"), key("down"), key("esc"))
+	drive(t, a, key("right"), key("down"), key("esc"))
 	if ex.focused || ex.onOffer {
 		t.Fatalf("esc did not leave %q", homeContinueWord)
 	}
@@ -808,12 +865,12 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 		t.Fatal("the list does not move after a yes")
 	}
 	// AND THE EXCHANGE IS STILL REACHABLE for a follow-up: its row is where it
-	// was, and tab on it takes the keyboard back into the pane. tab is about the
-	// row under the cursor now, which is what lets every OTHER row keep its own
+	// was, and `→` on it takes the keyboard back into the pane. The key is about
+	// the row under the cursor, which is what lets every OTHER row keep its own
 	// card while an errand is open.
-	drive(t, a, key("up"), key("tab"))
+	drive(t, a, key("up"), key("right"))
 	if !ex.focused {
-		t.Fatal("tab on the exchange row did not bring the answered exchange back")
+		t.Fatal("→ on the exchange row did not bring the answered exchange back")
 	}
 }
 
@@ -920,7 +977,7 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(moved, "transcript.jsonl")); err != nil {
 		t.Fatalf("a click on the offer row did not promote the exchange: %v", err)
 	}
-	if a.home.open {
+	if a.at(pageHome) {
 		t.Fatal("home is still open after the exchange became a conversation")
 	}
 }
@@ -938,6 +995,9 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 		standingProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
+	// A PRESS "IN THE PANE" NEEDS A PANE WITH A SIDE OF ITS OWN. Stacked, the
+	// pane is the whole frame and the zone change it proves is not a zone change.
+	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
@@ -1063,13 +1123,27 @@ func askedHere(t *testing.T, lab *errandLab, a *app, said string) *homeExchange 
 }
 
 // TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing is the shape of the
-// repair: the errand is a line on the left, in its project's block, above the
-// conversations, with its state in the tail.
+// repair: the errand is a line on the left, at the TOP of the one list, above
+// everything the machine has to say for itself, with its state in the tail.
+//
+// IT USED TO SIT INSIDE ITS PROJECT'S BLOCK and there are no project blocks any
+// more (place_home.go's [homeView.switchExchanges]): the resting screen is one
+// flat ranked list, an errand has no row in the world at all to be ranked among,
+// and the thing a person asked for a minute ago belongs above the ledger and
+// above the reading. So the assertion that was "heading < row < first
+// conversation" is now "nothing at all is above it".
+//
+// AND IT IS ONE ROW. It used to have two — its own inside the block, and a
+// second view of it in whichever attention strip was drawing it — and the strips
+// went with the tree.
 func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 
 	a := lab.app(mine)
+	// The row is on the LIST and the pane is beside it, so the frame has to be
+	// drawing both — stacked, the list is not on the screen to have a row on.
+	besideTheList(a)
 	a.openHome()
 	ex := askedHere(t, lab, a, "remind me at 6 to leave")
 
@@ -1083,18 +1157,22 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("`ask here` did not put the keyboard in the pane")
 	}
-	// THE ROW SITS IN THE PROJECT'S BLOCK, ABOVE ITS CONVERSATIONS.
-	heading, firstSession := -1, -1
-	for i, line := range a.home.lines {
-		if line.kind == homeHeading && heading < 0 {
-			heading = i
+	// THE ROW IS THE TOP OF THE LIST, with no heading, no block and no ledger
+	// line above it.
+	if at != 0 {
+		t.Fatalf("the errand is on line %d and not at the top of the list:\n%s", at, homeText(a))
+	}
+	rows := 0
+	for _, line := range a.home.lines {
+		if line.kind == homeHeading {
+			t.Fatalf("the resting list drew a project heading around the errand:\n%s", homeText(a))
 		}
-		if line.kind == homeSession && firstSession < 0 {
-			firstSession = i
+		if line.kind == homeExchangeRow && line.ex == ex {
+			rows++
 		}
 	}
-	if !(heading < at && at < firstSession) {
-		t.Fatalf("the row is not inside the project block: heading=%d row=%d session=%d", heading, at, firstSession)
+	if rows != 1 {
+		t.Fatalf("the errand is drawn on %d rows, want exactly one:\n%s", rows, homeText(a))
 	}
 	// WORKING, with the sentence as its name.
 	frame := homeText(a)
@@ -1194,7 +1272,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 		}
 	}
 	drive(t, a, key("esc"), key("enter"))
-	if a.home.open {
+	if a.at(pageHome) {
 		a.closeHome()
 	}
 
@@ -1229,7 +1307,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	}
 	// AND IT IS STILL ANSWERABLE.
 	a.home.cursor = exchangeRowAt(a, ex)
-	drive(t, a, key("tab"), key("1"))
+	drive(t, a, key("right"), key("1"))
 	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
 		t.Fatalf("the card outlived home but could not be answered, the agent saw %v", lab.agent.answered)
 	}
@@ -1405,8 +1483,13 @@ func TestAFollowUpGetsTheSameSignalAsTheFirstTurn(t *testing.T) {
 	if !strings.Contains(frame, homeAskThinkWord+" · 3s") {
 		t.Fatalf("a follow-up gets no signal that anything is happening:\n%s", frame)
 	}
-	if !strings.Contains(frame, homeAskWorkingWord) {
-		t.Fatalf("the row does not say the exchange went back to work:\n%s", frame)
+	// THE ROW'S OWN TAIL IS ASKED, AND NOT THE WHOLE FRAME. This used to scan the
+	// screen for the word `working`, and it passed for four waves because the
+	// PULSE said `1 working` — the row's tail was never actually checked. The
+	// pulse says `1 moving` now (SCREEN 2b), which is what exposed it, so the
+	// assertion asks the thing it was always about.
+	if tail := plain(a.exchangeTail(ex, false)); !strings.Contains(tail, homeAskWorkingWord) {
+		t.Fatalf("the row's tail does not say the exchange went back to work: %q\n%s", tail, frame)
 	}
 }
 
@@ -1420,6 +1503,10 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.app(mine)
+	// "SEEN" IS "ITS PANE WAS DRAWN WHILE THE CURSOR WAS ON ITS ROW", and a frame
+	// with no second column draws no pane for a row the keyboard is not in — so
+	// the whole middle of this lifecycle needs the two-column shape.
+	besideTheList(a)
 	a.openHome()
 	ex := askedHere(t, lab, a, "remind me at 6 to leave")
 
@@ -1548,12 +1635,19 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 
 // TestAResizeBetweenTheTwoShapesKeepsTheExchange is the other half: the same
 // flag decides both shapes, so dragging a window narrow loses nothing.
+//
+// THE BOUNDARY BETWEEN THE TWO MOVED AND THE LAW DID NOT. Both shapes are
+// settled by [homeColumns] — beside the list while there is a second column,
+// stacked over it while there is not — and the width at which a second column
+// appears is [homeCardMin] now rather than something a hundred and twenty cells
+// could reach (homebridge.go). So the wide end of this test is the floor itself,
+// which is the one number that cannot drift away from the shape it decides.
 func TestAResizeBetweenTheTwoShapesKeepsTheExchange(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 
 	a := lab.app(mine)
-	a.width, a.height = 120, 24
+	a.width, a.height = homeCardMin, 24
 	a.openHome()
 	ex := askedHere(t, lab, a, "remind me at 6 to leave")
 	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
@@ -1575,7 +1669,7 @@ func TestAResizeBetweenTheTwoShapesKeepsTheExchange(t *testing.T) {
 		t.Fatalf("the narrowed frame lost what had been said:\n%s", homeText(a))
 	}
 	// AND BACK AGAIN.
-	a.width = 120
+	a.width = homeCardMin
 	if _, ok := a.homeStacked(); ok {
 		t.Fatal("the widened frame is still stacked")
 	}

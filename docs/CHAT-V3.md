@@ -406,6 +406,13 @@ four turns and over 1500 bytes are replaced in the *live* transcript with a
 bounded stub naming the artifact path the full bytes were written to. The
 journal is never stubbed; the record stays whole.
 
+**A single turn is bounded before session compaction.** Above a 64k-token request estimate
+(or half the trusted window when smaller), already-seen tool results from the current turn
+are stubbed in whole oldest-first batches while the recent 20k-token tail stays verbatim.
+The pass folds to the midpoint between the trigger and that tail so one cache-invalidating
+rewrite buys several rounds of headroom. The newest unseen result, user messages and
+assistant text are never folded; `[folded N results · M tokens]` records each pass.
+
 **Compaction is a ladder, SOTA-ordered** (researched, D9 amended): rung 1
 stub (deletion — best fidelity per cost, runs every turn); rung 2 *frames*
 (omp's snapcompact — the discarded prefix rasterized to PNG pages attached
@@ -537,7 +544,8 @@ presentation derivation is surface business):
 | find/ls | `· N entries` | the listing |
 
 **The palette is pastel, dark-terminal first, designer-curated** — soft, low
-saturation, never loud: body ink soft white (#D8DEE9), accent pastel blue
+saturation, never loud: body ink soft white (#C6CDDA — held under the glare
+ceiling, see THE GLARE LAW), accent pastel blue
 (#9DC3E6) for the one live or chosen thing, dim #6B7280 for meta, diff and
 match accents in nord pastels, failure soft orange-red (#D08770), and the code
 fence theme a pastel chroma style (catppuccin-mocha where available, else the
@@ -581,19 +589,17 @@ tools.go.
 **Decision.** Typing while the session agent works produces two kinds of
 messages, exactly omp's split:
 
-- **Steer** (plain Enter mid-turn): injected into the running turn at the
-  next tool-batch boundary — the agent sees it between steps. v3's
-  `Agent.Submit` during a turn already implements this; every Submit returns
-  a live fan-out channel over the turn's event hub.
+- **Steer** (plain Enter mid-turn): stops the model generation that is running,
+  keeps its partial reply, and injects the person's words as the next user
+  message in the same turn. A short tool reaches its boundary first; a bash
+  already running for 3 seconds is adopted as a job so the steer can land now.
 - **Follow-up** (`ctrl+q`): queued to start a fresh turn the moment the
   current one yields.
 
-Dequeue is one message per poll by default (`steering.mode:
-one-at-a-time`); `all` flushes the queue at one boundary. The queue renders
-above the input as a dim enumerated list ("Steering · 2", "After yield ·
-1"); `alt+up` pops the last queued message back into the input. Interrupt
-(esc) clears both queues — a drain must never auto-resume a turn the person
-just stopped. The display counts only user-authored messages.
+Accepted steers render immediately as the person's own transcript line with a
+short muted landing clause. A steer that finds the turn already sealing lifts
+to the follow-up queue. Interrupt (esc) still ends the turn; a drain must never
+auto-resume a turn the person just stopped.
 
 ## Decision 6 — Settings and models follow omp's pattern on aforge's registry
 
@@ -757,12 +763,13 @@ checkpoint so a resumed graph starts where it was sent.
 
 **A worktree is a branch of the tree, and merging is how work bubbles up.**
 Each node runs in `git worktree add` on `task/<slug>-<shortid>` off the
-person's current HEAD, under `<repo>/.aforge-v3/tasks/<id>/`, so its
+conversation project's current HEAD, under `<session>/trees/<id>/`, so its
 half-finished sweep is never what the person's build compiles. On success the
 node's work is committed on its branch and merged into the person's — clean
 means the worktree and branch are removed (`merged`), a conflict means
-`merge --abort` and the **branch and worktree are kept** and named in the
-report (`conflicted`). The merge is attempted whatever the person's tree looks
+`merge --abort`, the **branch is kept**, and the task worktree is unregistered; the branch
+is named in the report (`conflicted`). An explicit `where` works in that exact directory
+instead of making a worktree. The merge is attempted whatever the person's tree looks
 like: a dirty checkout is the normal state of somebody working, and nothing a
 node wrote is ever thrown away. A workspace that is not a repository (or has
 no commit to branch from) runs **in place** and says so — pretending to
@@ -834,20 +841,24 @@ pocket the node's does.
 
 **A node stops by a NAMED THRESHOLD, never by wandering.** Argus terminates on
 named thresholds rather than on a reviewer's judgement (§1, arXiv:2608.05144),
-and a node now has three: its 30-minute deadline, a **step budget**
-(`max_steps`, default 40) and a **no-progress count** (`no_progress`, default 6
-consecutive steps that changed no file). A step is one finished tool call —
-the only unit visible from outside the child's loop — and *progress* is
-narrower still: a **successful** `edit` or `write`, because an edit whose
-`oldText` did not match changed nothing and repeating it is the exact spin the
-counter exists to catch. Tripping either cancels the child and the report names
-which (`stopped: 6 steps without a change`), instead of leaving half an hour of
-silence for the deadline to collect. Both are per-node on the wire, because the
-right budget for a one-file rename and for a sweep across forty files is not the
-same number; a negative one is a stated error rather than a silently substituted
-default. The no-progress default is deliberately tight — it catches a spin in a
-minute — and a node with real reading to do before its first edit is expected to
-say so with `no_progress`.
+and a node now has three: its one-hour working deadline, a **step budget**
+(`max_steps`, default 200) and a **no-progress count** (`no_progress`, default 6
+consecutive steps that taught nothing, saved nothing and left nothing new in the
+worktree). A step is one finished tool call — the only unit visible from outside
+the child's loop — while progress includes a new question or answer, a saved
+file, worktree movement, and a handed-out part reporting back. A parent waiting
+on parts is parked: it spends neither clock nor no-progress allowance, and when
+the reports land the counter restarts from zero. **A failed part is still news,
+not an ending for its parent**: the same integration turn reads its failure
+reason beside the successful reports, then folds what landed and names or retries
+what is missing. Delayed tool events from before that report cannot spend the
+fresh allowance before the parent reads it; once the report has been carried
+into a request, genuine spinning over the fold is counted normally. Tripping a
+limit cancels the child and names the limit (`stopped: 6 steps without progress`)
+instead of leaving silence for the deadline to collect. Both counters are
+per-node on the wire because the right budget for a one-file rename and for a
+sweep across forty files is not the same number; a negative one is a stated
+error rather than a silently substituted default.
 
 **The goal contract has two tiers, and the line is admission.** Argus again:
 semantic clarifications move freely, the precise objective moves only with
@@ -1191,11 +1202,11 @@ sweep rule: a session whose recorded workspace was under a temp directory is
 litter, and the idle sweep reaps it.
 
 **Every owned workspace is silently `git init`-ed.** The person never has to
-know. What it buys, from machinery that already exists: task nodes get
-worktrees, isolation, the auditor and the merge (Decision 19) for research
-sessions that today run "in place" with none of that — and every document the
-agent touches gets undo history. The in-place fallback survives only for its
-one honest case: a borrowed folder that is not a repository.
+know; it gives scratch documents undo history. It is never a task's branch source. A code
+task in an unanchored owned conversation asks for the repository; `/workspace <path>` or
+the conditional `workspace` tool persists that anchor, reloads project instructions and
+makes future tasks branch from it. A task explicitly shaped with another `where` works
+there, and non-code work may explicitly run in the owned workspace in place.
 
 **Nothing of ours lives in the person's folder.** `<repo>/.aforge-v3/` dies
 entirely. Worktrees move to `trees/<node-id>/` in the session folder — git

@@ -24,8 +24,8 @@ package session
 // So [standingRunner.deliver] walks four roads, in this order, and stops at the
 // first one that ends at a person:
 //
-//  1. THE ORIGIN CONVERSATION, IF IT IS OPEN HERE. The line goes onto the same
-//     steering queue a task's landing and a watch's delta ride, so a person
+//  1. THE ORIGIN CONVERSATION, IF IT IS OPEN HERE. The line goes onto the owed
+//     steering queue a task's landing and a job's ending ride, so a person
 //     sitting in the room hears about it in the room.
 //  2. ANY OTHER OPEN CONVERSATION OF THE SAME PROJECT, most recently touched
 //     first. The origin may be closed, or may be an exchange — and the window
@@ -73,6 +73,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -327,6 +328,12 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg := r.parent
 	cfg.Workspace = item.Workspace
 	cfg.Place = Place{}
+	// THE FOLDER GOES BECAUSE THE PROBE IS NOT THE SESSION; THE LITTER STAYS WITH
+	// THE SESSION BECAUSE IT NEVER BELONGED TO ANY WORKSPACE. The probe's
+	// workspace is the ITEM'S repository — some other project entirely — so a job
+	// log resolved against a zero Place would be this program's droppings in
+	// somebody's tree, made by a check they never watched run (landing.go).
+	cfg.droppings = r.parent.droppingsPlace()
 	cfg.SessionFile = ""
 	cfg.AskConsent = false
 	cfg.InTask = true
@@ -334,7 +341,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg.standingItems = nil
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
-	agent.jobs = newJobRegistry(cfg.Workspace, cfg.Place, agent.enqueueSteering)
+	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 
@@ -346,7 +353,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 			Arguments: standingProbeArgs(item.When.Probe.Args),
 		},
 	}
-	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call)
+	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call, argsText(call))
 	return standingTail(result.text, standing.ProbeClip), nil
 }
 
@@ -376,8 +383,8 @@ func (r *standingRunner) Say(ctx context.Context, item standing.Item, text strin
 // outcome cannot drift on where they land. The four roads and why they are in
 // this order are this file's header; the code below is that list, in that order.
 //
-// THE STEERING LANE IS THE LIVE ONE. It is the same queue a task's landing and
-// a watch's delta ride ([Agent.enqueueSteering]), so a person sitting in the
+// THE STEERING LANE IS THE LIVE ONE. It is the same owed queue a task's landing
+// and a job's ending ride ([Agent.enqueueSteering]), so a person sitting in the
 // room hears about it in the room, and an idle session wakes and answers rather
 // than banking a line nobody will read.
 //
@@ -495,29 +502,47 @@ func standingSessionDir(item standing.Item) string {
 	return filepath.Dir(transcript)
 }
 
-// Run is one firing's work: a fresh headless session in the run folder, one
-// turn on the brief, bounded by the item's own rails.
+// Run is one firing's work: a fresh headless session in the run folder, a turn
+// on the brief, and — for a firing that turned out to be wider than one pair of
+// hands — the parts it handed out and the fold it makes of their reports. All of
+// it bounded by the item's own rails.
 //
 // IT IS A SESSION AND NOT A WORKTREE. A firing runs in the project the person
 // pointed it at, under the rules they have already banked, exactly as
 // docs/AMBIENT.md says an unattended run does. What bounds it is not a governor
 // somewhere else but the two numbers on the card: how many calls it may make,
-// and how much it may spend before the turn is cut.
+// and how much it may spend before the turn is cut. A division does not put the
+// money outside that: a part folds its bill into this session's own books
+// ([Agent.foldTaskUsage]), so the per-run figure this reads is the whole family's
+// and the pass writes down what the family cost ([standingWideWork] for why
+// division reaches here at all).
 func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, evidence string) (standing.Outcome, error) {
 	cfg, err := standingRunConfig(r.parent, item, runDir)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+	brief := standingEvidence(item.Does.Brief, evidence)
+	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
+		brief += "\n\nDONE WHEN: " + acceptance
+	}
+	// THE BRIEF IS BUILT BEFORE THE SESSION IS, because whether this firing may
+	// discover it is wide is read off the brief and has to be settled while the
+	// config can still carry the answer ([standingWideWork]).
+	cfg, graph, root := standingWideWork(cfg, item, brief)
+
 	agent, err := r.newChild(cfg)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
 	defer func() { _ = agent.Close() }()
-
-	brief := standingEvidence(item.Does.Brief, evidence)
-	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
-		brief += "\n\nDONE WHEN: " + acceptance
+	if graph != nil {
+		// The graph is finished now that there is a session to own it: its home
+		// is this firing, and the parts it may hand out are worked by the agent
+		// that named them ([TaskGraph.runOwned] reads the owner at start time,
+		// so it was safe to wire before this line).
+		graph.home = agent
 	}
+
 	events, err := agent.Submit(ctx, brief)
 	if err != nil {
 		return standing.Outcome{}, err
@@ -527,44 +552,107 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if limit <= 0 {
 		limit = standingRunSteps
 	}
-	var reply strings.Builder
-	needs, saved := "", false
-	for event := range events {
-		switch event.Kind {
-		case EventTextDelta:
-			reply.WriteString(event.Text)
-		case EventToolEnd:
-			// A CALL THAT SAVED SOMETHING IS THE LANDING, and [savingTools] is
-			// the one place this build says which calls those are (task_run.go).
-			// It is read on the END of a call and never on its start: a `write`
-			// that failed saved nothing, and a run whose only act was a refused
-			// write came to exactly nothing.
-			if savingTools[event.Tool] {
-				saved = true
-			}
-		case EventToolFinished:
-			steps++
-			// THE STEP CAP IS A STOP AND NOT A REFUSAL. Whatever the run has
-			// already done stands; what it does not get is another call.
-			//
-			// THE MONEY IS CHECKED HERE TOO, at the one boundary where checking
-			// it can change anything: a turn's spend moves when a response
-			// lands, and the only thing an interrupt can still prevent is the
-			// NEXT request. Asking on every streamed delta would take this
-			// agent's lock a thousand times to learn the same figure.
-			if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
-				agent.Interrupt()
-			}
-		case EventToolFailed:
-			if line := standingRefusal(event); line != "" && needs == "" {
-				needs = line
+	reply := ""
+	needs, saved, capped := "", false, false
+	drain := func(events <-chan Event) {
+		var said strings.Builder
+		for event := range events {
+			switch event.Kind {
+			case EventTextDelta:
+				said.WriteString(event.Text)
+			case EventToolEnd:
+				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [savingTools] is
+				// the one place this build says which calls those are (task_run.go).
+				// It is read on the END of a call and never on its start: a `write`
+				// that failed saved nothing, and a run whose only act was a refused
+				// write came to exactly nothing.
+				if savingTools[event.Tool] {
+					saved = true
+				}
+			case EventToolFinished:
+				steps++
+				// THE STEP CAP IS A STOP AND NOT A REFUSAL. Whatever the run has
+				// already done stands; what it does not get is another call.
+				//
+				// THE MONEY IS CHECKED HERE TOO, at the one boundary where checking
+				// it can change anything: a turn's spend moves when a response
+				// lands, and the only thing an interrupt can still prevent is the
+				// NEXT request. Asking on every streamed delta would take this
+				// agent's lock a thousand times to learn the same figure.
+				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
+					capped = true
+					agent.Interrupt()
+				}
+			case EventToolFailed:
+				if line := standingRefusal(event); line != "" && needs == "" {
+					needs = line
+				}
 			}
 		}
+		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
+		// divided opens by announcing that it split the work into three parts
+		// and closes by saying what came of them, and the person reads ONE
+		// clipped line ([standingOutcomeClip]) — so a later turn's words replace
+		// an earlier turn's rather than queueing behind them. A turn that said
+		// nothing replaces nothing: silence is not a newer account, and a run
+		// whose last re-entry was wordless still came to what it said before it.
+		if words := strings.TrimSpace(said.String()); words != "" {
+			reply = words
+		}
+	}
+	drain(events)
+
+	// ── THE FIRING THAT HANDED PARTS OF ITS WORK OUT ────────────────────────
+	//
+	// A turn ends the moment the model has nothing left to say, and the parts it
+	// just named are still working: `divide_work` hands the ids back at once and
+	// tells the worker not to wait (task_divide.go). So THE TURN ENDING IS NOT
+	// THE FIRING ENDING — and this is the same tail loop a task node's runner
+	// holds open around exactly the same shape ([runTaskChild]), for the same
+	// three reasons. The parts' reports have to reach the model that has to fold
+	// them into one account. Their spend has to be in the ledger this run's
+	// figure is read off ([Agent.foldTaskUsage] posts it to this agent, and this
+	// agent is closed the moment Run returns). And an unattended run that
+	// returned while its own parts were still spending would be the pass writing
+	// a bill and a marker for work that had not happened yet.
+	//
+	// THE RAILS STILL BIND, and they bind across the whole firing rather than
+	// per turn: the step count and the spend carry into the fold, and a firing
+	// cut at either of them takes its unfinished parts down with it
+	// ([TaskGraph.stopChildren]) rather than leaving them spending for a run
+	// nobody is going to read.
+	for graph != nil && !capped && ctx.Err() == nil {
+		// The generation is taken BEFORE the question, so a report landing
+		// between the two closes the channel this select is about to wait on.
+		news := agent.taskNewsWait()
+		owed, working := agent.taskNewsOwed(), agent.childrenOutstanding()
+		if owed == 0 && !working {
+			break
+		}
+		if owed == 0 {
+			// The lane goes back for exactly as long as the wait lasts
+			// ([TaskGraph.park]).
+			root.park()
+			select {
+			case <-news:
+			case <-ctx.Done():
+			}
+			root.unpark()
+			continue
+		}
+		next := agent.resumeTurn(ctx)
+		if next == nil {
+			break
+		}
+		drain(next)
+	}
+	if graph != nil && (capped || ctx.Err() != nil) {
+		graph.stopChildren(root.id)
 	}
 
 	outcome := standing.Outcome{
-		Kind: standingCameTo(saved, strings.TrimSpace(reply.String()), needs),
-		Text: clip(strings.TrimSpace(reply.String()), standingOutcomeClip),
+		Kind: standingCameTo(saved, reply, needs),
+		Text: clip(reply, standingOutcomeClip),
 		USD:  agent.Usage().CostUSD,
 	}
 	if needs != "" {
@@ -646,9 +734,31 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	cfg.InTask = true
 	cfg.Standing = nil
 	cfg.standingItems = nil
+	// WHOSE MONEY THIS IS. A firing runs in a folder of its own with a session id
+	// of its own, so without this the machine's usage ledger would hold a growing
+	// pile of one-run conversations and no way to say that they were all the same
+	// promise, kept every morning for a month (usage_ledger.go).
+	cfg.standingItemID = item.ID
 	if model := strings.TrimSpace(item.Does.Model); model != "" {
 		cfg.Model = model
 	}
+	// ── how hard a firing thinks ────────────────────────────────────────────
+	//
+	// A FIRING IS CHEAP UNLESS THE ITEM SAYS OTHERWISE. It runs unattended, it
+	// runs on a schedule, and it runs forever — which is the whole reason the
+	// standing role carries a floor of its own (internal/effort's RoleStanding)
+	// instead of inheriting whatever the person happened to dial in the
+	// conversation that set the item up. An install on max must not quietly
+	// turn every check on the machine into a deep pass.
+	//
+	// The item's own rung sits above that floor, so an item that genuinely
+	// needs thinking says so once, on the card, and gets it on every firing.
+	cfg.EffortRole = effort.RoleStanding
+	cfg.Effort = restoredRung(item.Does.Effort)
+	// The conversation's dial does not reach here: a firing is not the
+	// conversation that proposed it, and the person who dialled that
+	// conversation has long since closed it.
+	cfg.DefaultEffort = effort.None
 	// The folder says what it is without anybody opening its journal, the way
 	// every session folder does (place.go). It is a citation and never a
 	// prerequisite, so a write that fails costs a row and not the run.
@@ -657,9 +767,121 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 		Title:     item.Words,
 		Workspace: item.Workspace,
 		Model:     cfg.Model,
+		Effort:    cfg.Effort.String(),
 		Created:   time.Now(),
 	})
 	return cfg, nil
+}
+
+// ── whether an unattended firing may find it is wide ────────────────────────
+
+// standingWideWork decides, once and before the session exists, whether this
+// firing's work is allowed to discover that it is wider than one pair of hands
+// — and, where it is, builds the one node it IS so that the parts have somewhere
+// to be born.
+//
+// ── WHY THE PLACE NOBODY IS WATCHING IS THE PLACE THIS MATTERS MOST ──
+//
+// A firing is the person's own work done while they are asleep, and until this
+// it was the ONE road on which width was unaddressable: `ActionTask` ran
+// strictly sequentially inside a single turn, however many separate items the
+// brief named. "Every night, bring the eleven adapters up to the new interface"
+// is exactly the shape [splitgate] was measured on, and it was the one shape
+// that could not take the road.
+//
+// ── ENUMERATION ONLY, AND THAT IS THE HONEST FLOOR FOR UNATTENDED WORK ──
+//
+// Ordinary work has three signals ([Agent.armDivision]) and a firing has one of
+// them, because the other two are people. The sizing judge answers a sentence
+// somebody has just typed and is waiting on; a chat model's `wide` is that same
+// judgement made with the whole conversation in front of it. A firing has
+// neither: its brief was compiled from a sentence the person said once, ratified
+// on a card, and has been sitting in a file ever since. ASKING A MODEL HERE WAS
+// CONSIDERED AND REFUSED — a sizing read is a model call, a firing is a
+// recurring bill on a rhythm the person set rather than a piece of work they
+// asked for now, and a call made every night forever to answer a question about
+// a sentence that has not changed since the last time is a subscription nobody
+// agreed to. What is left is the signal that is FREE and reads the work's own
+// text, and it under-arms rather than over-arms: [splitgate] counts a number
+// only where it stands beside one of the item-nouns it knows, so a brief has to
+// have named its width in words before this says yes.
+//
+// AND THE GATES STILL DECIDE AT RUN TIME. Arming is only permission to ask: a
+// firing that turns out to be narrow, or lands on a machine with no free lane,
+// gets the same two answers any worker gets (task_divide.go), and a small firing
+// that was never armed is byte-identical to what it was before this existed —
+// no verb on its belt, nothing in its prompt, no graph.
+//
+// ── THE FIRING'S OWN WORK IS THE ROOT NODE, AND IT IS BORN RUNNING ──
+//
+// A part has to be a node under something, and there is no conversation here to
+// be that something. So the firing's own work is one node of one graph, in the
+// state it is actually in: this session is working it right now, so it is
+// RUNNING and it holds a lane, and it never goes near the frontier, which would
+// otherwise try to start in a worktree the work that is already under way. What
+// the frontier is for in this graph is the parts — and it brings the person's
+// own ceilings with it, so an unattended division on a loaded machine is
+// admitted and WAITS exactly as an attended one does ([TaskGraph.runFrontier]
+// holds it, [TaskGraph.armPoll] lifts it), rather than running the box into the
+// ground while nobody is there to notice.
+func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *TaskGraph, *TaskNode) {
+	if !cfg.Divide || !enumeratesWidth(item.Words, brief, item.Does.Acceptance) {
+		return cfg, nil, nil
+	}
+	graph := newTaskGraph()
+	// The two ceilings and the checkpoint, read off this run's own config
+	// exactly as a conversation's graph reads them off its own ([Agent.graph]).
+	// The checkpoint lands in the run folder, which is where everything else
+	// this firing leaves behind lands.
+	graph.limit = cfg.TaskParallel
+	graph.governor = newAdmissionGovernor(cfg.TaskMaxLoad, cfg.TaskMinFreeMB)
+	graph.store = newTaskStore(taskCheckpointPath(cfg.SessionFile))
+	graph.run = graph.runOwned
+	graph.report = graph.reportHome
+
+	id := graph.reserve()
+	root := &TaskNode{
+		graph: graph,
+		id:    id,
+		done:  make(chan struct{}),
+		spec: taskSpec{
+			title: item.Words,
+			// THE PERSON'S OWN SENTENCE, which is what a part opens on
+			// ([Agent.taskRequest]): a worker in a worktree at 3am has nobody to
+			// type one, and the words on the card are the nearest thing to the
+			// person there is.
+			request:    item.Words,
+			brief:      brief,
+			acceptance: item.Does.Acceptance,
+			model:      cfg.Model,
+			// Named already: this is the person's own sentence and not a
+			// sentence the namer should have another go at (taskname.go).
+			named: true,
+			// Armed, because the line above this function is the whole of the
+			// decision and re-asking it of a home that does not exist yet would
+			// answer no. The word is [armedCounted] and could not honestly be
+			// anything else: what armed it is [enumeratesWidth] over the firing's
+			// own text, which is the ONE signal unattended work has. So a firing
+			// whose parts are then refused on the floor is refused for free and
+			// finally, like any other work the counter armed — the tiebreak is
+			// for two readers disagreeing, and there is only one reader here
+			// (task_divide.go).
+			armed: armedCounted,
+		},
+		state:   TaskRunning,
+		started: time.Now(),
+	}
+	graph.nodes[id] = root
+	graph.order = append(graph.order, id)
+	// IT HOLDS A LANE, and that is what makes the free-hand test mean something
+	// here. A firing on a machine capped at one task at a time has no second
+	// pair of hands to give parts to, and [TaskGraph.freeHands] answers that
+	// correctly only if the work already under way is counted as under way.
+	graph.running = 1
+
+	cfg.tasker = graph
+	cfg.taskID = id
+	return cfg, graph, root
 }
 
 // standingEvidence folds what the probe found into the text that names it.
@@ -758,11 +980,32 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		if built != nil {
 			return false, "", 0, built
 		}
+		// THE SENTINEL ASKS THE LADDER AND THE LADDER SAYS LOW.
+		//
+		// It is the one call in this package where deliberation buys nothing: a
+		// yes-or-no on evidence somebody else already gathered, run on every
+		// check of every item forever. So the role carries its own floor
+		// (internal/effort's RoleSentinel), and the item's rung sits above it for
+		// the judgment somebody has decided is genuinely hard.
+		//
+		// The stamp is the CONFIGURED setter because this client is built here,
+		// without the catalog seam — a harness-default rung would be dropped
+		// every time and the floor would do nothing (provider's requestedEffort).
+		//
+		// IntentBackground says the same thing to the router — nobody is
+		// waiting, so route on price rather than on speed.
+		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
+		if rung := effort.Resolve(effort.Scope{
+			Task: restoredRung(judgment.Item.Does.Effort),
+			Role: effort.RoleSentinel,
+		}); rung != effort.None {
+			callCtx = provider.WithConfiguredEffortRung(callCtx, rung)
+		}
 		response, err := client.CompleteWithMessages(
 			// WithoutStream for the reason the guardian and the route judge use
 			// it: nobody is watching this, and a stream would be typing into a
 			// room that is not open.
-			provider.WithoutStream(ctx),
+			callCtx,
 			[]ai.Message{
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),
