@@ -416,7 +416,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
-	if err := validateBrief(brief); err != nil {
+	if err := validateBrief(&brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
@@ -617,18 +617,26 @@ func normalizeScale(scale string) string {
 	}
 }
 
-func validateBrief(brief Brief) error {
+// validateBrief rejects only what nothing downstream could work from: a goal
+// with no words in it. Assumptions are OPTIONAL BY MEANING — a brief that made
+// none is a complete brief — so a model that leaves the list out or writes a
+// blank entry is tidied, never refused. It used to be refused: deepseek-flash
+// answered a seven-tool ask with a faultless brief and no "assumptions" key,
+// and the whole run ended at 58 seconds with "compile intent: missing
+// assumptions", the same shape as the "empty budget" failure the Brief comment
+// above records. Every reader of the list (the receipt, the working-decisions
+// anchor) already treats nil and empty alike.
+func validateBrief(brief *Brief) error {
 	if strings.TrimSpace(brief.Goal) == "" {
 		return errors.New("empty goal")
 	}
-	if brief.Assumptions == nil {
-		return errors.New("missing assumptions")
-	}
+	kept := brief.Assumptions[:0]
 	for _, assumption := range brief.Assumptions {
-		if strings.TrimSpace(assumption) == "" {
-			return errors.New("empty assumption")
+		if assumption = strings.TrimSpace(assumption); assumption != "" {
+			kept = append(kept, assumption)
 		}
 	}
+	brief.Assumptions = kept
 	return nil
 }
 
