@@ -101,6 +101,13 @@ func runChat(args []string) error {
 	return errors.Join(err, seenErr)
 }
 
+// summaryFileList is the header a leaf writes over the absolute paths it
+// produced, before handing its summary on. The spelling is a constant because
+// two readers depend on it byte for byte: the person who opens the files, and
+// `aforge do`, which strips the block back off the deliverable so its own
+// `files:` footer is the only list on stdout.
+const summaryFileList = "\n\nFiles:\n"
+
 // brainOptions is what separates the two ways this machine is driven. There is
 // one brain and one construction of it; these say which parts of it a
 // particular driver has any use for.
@@ -147,6 +154,17 @@ type brainOptions struct {
 	// cannot let the choice be the variable it is measuring. Empty is the
 	// ordinary path, where the compiler chooses and usually chooses nothing.
 	subharness string
+	// produced is told, as each leaf lands, the absolute paths that leaf's
+	// workspace recorded it writing. It is the registry's own list rather than
+	// anything read back out of prose, and it exists because the workspace dies
+	// with the worker goroutine: nothing downstream of the run can ask it what
+	// was written unless somebody catches the answer on the way past.
+	//
+	// Only an errand wires it — `aforge do` is one process around one job, so
+	// the paths a leaf recorded here are the paths its footer prints and its
+	// --json carries. Nil is every other driver, which reads files off the graph
+	// like any other reader.
+	produced func(paths ...string)
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
 	consent func(store.Node, planEstimate) bool
@@ -444,11 +462,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				return config.EnsurePersistedAPIKey(settings.ProfileDir)
 			})
 	}
-	// Self-practice is curiosity spent on a notebook. An ephemeral store's
-	// notebook is deleted with it, so the practice would be paid for and
-	// unreadable — and it would be competing with the one errand this process
-	// was started to run.
-	if opts.ephemeral {
+	// Self-practice is curiosity spent on a notebook, and a one-shot has no
+	// business buying any. An ephemeral store's notebook is deleted with it, so
+	// the practice would be paid for and unreadable; and on a durable store
+	// named with --db it is worse, because the charter and its work land in
+	// somebody's own journal as the residue of an errand that was asked for one
+	// thing. Either way it competes with the single job this process was
+	// started to run. So the gate is headlessness, not the store's lifetime —
+	// every `aforge do` schedules nothing, and the resident that owns that
+	// store keeps practising on its own time.
+	if opts.headless || opts.ephemeral {
 		reconciler = reconciler.WithPracticeLoop(0, 0)
 	}
 	if craftRunner != nil {
@@ -1193,6 +1216,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				absolute = append(absolute, filepath.Join(jobDir, artifact))
 			}
 		}
+		// The one place an errand can be told what was written. The workspace's
+		// registry knows exactly which files this leaf produced; it is about to
+		// go out of scope with the goroutine, and every reader after this point
+		// has only prose to go on. A leaf that failed halfway still wrote what it
+		// wrote, so this is above the failure branch and not inside the happy one.
+		if opts.produced != nil && len(absolute) > 0 {
+			opts.produced(absolute...)
+		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
 		// which edits the job's unstarted remainder only when this result
 		// contradicts a specific assumption in a specific node. Its default
@@ -1273,7 +1304,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// it actually lives; the absolute paths were resolved above.
 		text := outcome.Text
 		if len(absolute) > 0 {
-			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+			text += summaryFileList + strings.Join(absolute, "\n")
 		}
 		// notes are what the system owes the person ABOUT the work, kept apart
 		// from the work itself for the whole of this function and joined only at
@@ -1436,8 +1467,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							for _, artifact := range polished.Artifacts {
 								absolute = append(absolute, filepath.Join(jobDir, artifact))
 							}
+							// A repair round rewrites the list wholesale, so the
+							// errand is told again; it keeps a set, and a path it
+							// already has costs nothing to hear twice.
+							if opts.produced != nil && len(absolute) > 0 {
+								opts.produced(absolute...)
+							}
 							if len(absolute) > 0 {
-								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+								text += summaryFileList + strings.Join(absolute, "\n")
 							}
 						}
 						log.Printf("quorum: revised after reject")
@@ -1557,7 +1594,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							workerModel = composition.Model
 							text = composition.Text
 							if len(absolute) > 0 {
-								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+								text += summaryFileList + strings.Join(absolute, "\n")
 							}
 							// The outcome is kept, not replaced. Its account,
 							// artifacts and baseline are the record of work that
@@ -1601,8 +1638,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							for _, artifact := range polished.Artifacts {
 								absolute = append(absolute, filepath.Join(jobDir, artifact))
 							}
+							// A repair round rewrites the list wholesale, so the
+							// errand is told again; it keeps a set, and a path it
+							// already has costs nothing to hear twice.
+							if opts.produced != nil && len(absolute) > 0 {
+								opts.produced(absolute...)
+							}
 							if len(absolute) > 0 {
-								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+								text += summaryFileList + strings.Join(absolute, "\n")
 							}
 						}
 					}

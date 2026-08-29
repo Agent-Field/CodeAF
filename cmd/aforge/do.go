@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -372,7 +373,11 @@ func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 		return false
 	}
 
-	brain, release, deferredTo, err := headlessBrain(window, session, request, consent, ephemeral)
+	// What the workers wrote, caught on its way past. Nothing fills it on a run
+	// this process handed to a resident that already holds the store — that work
+	// happens in another process, and the watcher falls back to prose there.
+	produced := &errandRegistry{}
+	brain, release, deferredTo, err := headlessBrain(window, session, request, consent, ephemeral, produced)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -400,6 +405,7 @@ func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 	watcher := &settlementWatch{
 		graph: graph, session: session, commandSeq: command.Seq,
 		refused: refused, progress: request.stderr, started: started,
+		produced: produced,
 	}
 	outcome, err := watcher.wait(ctx)
 	if err != nil {
@@ -444,7 +450,8 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 // serving this store: heldBy is handed back so the caller can hold the wait to
 // a short bound and say who it is waiting for.
 func headlessBrain(window *chatWindow, session string, request doRequest,
-	consent func(store.Node, planEstimate) bool, ephemeral bool) (*chatBrain, func(), *lease.Resident, error) {
+	consent func(store.Node, planEstimate) bool, ephemeral bool,
+	produced *errandRegistry) (*chatBrain, func(), *lease.Resident, error) {
 	releaseLease, heldBy, err := lease.AcquireResident(window.path, headlessSurface)
 	if err != nil {
 		return nil, nil, nil, err
@@ -473,6 +480,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		model:           request.model, planModel: request.planModel,
 		subharness: request.subharness,
 		consent:    consent, newClient: request.newClient,
+		produced: produced.add,
 	})
 	if err != nil {
 		release()
@@ -629,6 +637,10 @@ type settlementWatch struct {
 	refused    chan planEstimate
 	progress   io.Writer
 	started    time.Time
+	// produced is the registry the runner filled as leaves landed. Nil, or
+	// empty, is the deferred run — the work happened in the resident's process
+	// — and compose reads the workers' prose instead.
+	produced *errandRegistry
 
 	watermark int64
 	seen      map[string]store.Status
@@ -1365,8 +1377,13 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		final = &roots[len(roots)-1]
 	}
 	// The artifact record is read before a word of narration is written, because
-	// narration that has not seen it is free to contradict it — and did.
-	outcome.Artifacts = errandArtifacts(nodes)
+	// narration that has not seen it is free to contradict it — and did. The
+	// registry is the record; prose is what is left when there is no registry.
+	if paths := w.produced.list(); len(paths) > 0 {
+		outcome.Artifacts = paths
+	} else {
+		outcome.Artifacts = errandArtifacts(nodes)
+	}
 	if final != nil {
 		// What ran the deliverable, as the store settled it. A machine caller
 		// asking "which worker took this issue" was reading the answer out of a
@@ -1400,6 +1417,10 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			}
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
+		// One list, once. Grounding has had its look at the narration as the
+		// worker wrote it, so the worker's own file list has done its job and
+		// comes back off before anything is printed.
+		outcome.Deliverable = withoutSummaryFileList(outcome.Deliverable, outcome.Artifacts)
 	}
 	// The board survives as the outcome's learned lines: what one worker told
 	// the others is exactly what the caller would want to know about the
@@ -1543,10 +1564,76 @@ func wallWords(artifacts []string) string {
 	return "The time limit was reached before the work was summarised. " + producedWords(artifacts)
 }
 
-// errandArtifacts recovers the files this errand wrote from the only durable
-// record of them: the summaries the workers handed on. Existence on disk is the
-// filter — a path named in prose that is not there is not a file the person
-// can open, and offering it would be worse than saying nothing.
+// errandRegistry is this errand's own record of what its workers wrote.
+//
+// The workspace already knows: it registers every deliverable file a leaf
+// produces, under that leaf's key. The trouble is that it dies with the
+// goroutine that ran the leaf, and until this existed the only thing left
+// afterwards was prose — so the answer to "what did this run produce?" was a
+// regex over a worker's summary, which credited nothing at all to a worker that
+// wrote "hello.txt" instead of naming the whole path. A run that had written a
+// file reported artifacts: [].
+//
+// So the runner hands the registry's own list here as each leaf lands, and this
+// is what the footer prints and what --json carries. It is a set because a
+// repair round re-states the whole list, and it is locked because leaves land
+// in parallel.
+type errandRegistry struct {
+	mu    sync.Mutex
+	seen  map[string]bool
+	paths []string
+}
+
+// add takes absolute paths from a leaf that has just landed.
+func (r *errandRegistry) add(paths ...string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seen == nil {
+		r.seen = make(map[string]bool, len(paths))
+	}
+	for _, path := range paths {
+		if path == "" || r.seen[path] {
+			continue
+		}
+		r.seen[path] = true
+		r.paths = append(r.paths, path)
+	}
+}
+
+// list is what the registry recorded, in path order and filtered to what is
+// still there. A file a leaf wrote and a later step deleted is not something
+// the person can open, and the same existence rule the prose scrape has always
+// applied is the right one here.
+func (r *errandRegistry) list() []string {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := make([]string, 0, len(r.paths))
+	for _, path := range r.paths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			kept = append(kept, path)
+		}
+	}
+	sort.Strings(kept)
+	return kept
+}
+
+// errandArtifacts recovers the files this errand wrote by reading the workers'
+// own prose. It is the fallback and not the answer: the registry above is what
+// the workspace actually recorded, and this only runs when there is no registry
+// to read — a run this process deferred to a resident holding the store's lock
+// did its work in another process entirely, and its summaries are all that
+// reaches here.
+//
+// Existence on disk is the filter — a path named in prose that is not there is
+// not a file the person can open, and offering it would be worse than saying
+// nothing. Absolute paths only, for the same reason: a bare word can be
+// anything.
 func errandArtifacts(nodes []store.Node) []string {
 	seen := make(map[string]bool)
 	paths := make([]string, 0)
@@ -1565,6 +1652,50 @@ func errandArtifacts(nodes []store.Node) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// withoutSummaryFileList takes the worker's own "Files:" block back off the
+// deliverable, because the errand prints the same paths under it as its footer
+// and a person reading stdout got the identical list twice, back to back.
+//
+// The footer is the right home and the summary is not. The footer is the
+// errand's own record — it is what --json carries, it is one line per file, and
+// it is there whether or not any worker thought to mention what it wrote. The
+// block in the summary is a worker addressing a reader in prose, and it is a
+// list in the middle of a sentence-shaped answer.
+//
+// It comes off HERE and not at the point the worker writes it, because the
+// store's copy of that summary is load-bearing elsewhere: a node downstream of
+// this one is given the files its dependency produced by reading absolute paths
+// straight out of that text (store.summaryPaths), and a summary stripped of
+// them would starve it. So the graph keeps the block and stdout does not.
+//
+// Only the errand's own files are dropped. A block naming something this run
+// has no record of is left exactly as the worker wrote it — it is then telling
+// the reader something the footer will not.
+func withoutSummaryFileList(deliverable string, artifacts []string) string {
+	start := strings.LastIndex(deliverable, summaryFileList)
+	if start < 0 {
+		return deliverable
+	}
+	ours := make(map[string]bool, len(artifacts))
+	for _, path := range artifacts {
+		ours[path] = true
+	}
+	lines := strings.Split(deliverable[start+len(summaryFileList):], "\n")
+	dropped := 0
+	for dropped < len(lines) && ours[strings.TrimSpace(lines[dropped])] {
+		dropped++
+	}
+	if dropped == 0 {
+		return deliverable
+	}
+	kept := strings.TrimSpace(strings.Join(lines[dropped:], "\n"))
+	body := strings.TrimRight(deliverable[:start], "\n")
+	if kept == "" {
+		return body
+	}
+	return body + "\n\n" + kept
 }
 
 // reportErrand writes the answer and decides what the process leaves with.
