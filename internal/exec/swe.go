@@ -172,7 +172,9 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	runCtx, cancel := context.WithTimeout(ctx, s.deadline)
 	defer cancel()
 
-	trace := newTracer(s.workspace, task.leafKey())
+	// The coding pipeline leaves the same record the other two belts do; see
+	// tracer.sink for why the seam is the recorder rather than each loop.
+	trace := newRecordingTracer(ctx, s.workspace, task.leafKey())
 	defer trace.close()
 
 	// Where this leaf's engine runs, and how what it writes gets back to the
