@@ -185,6 +185,30 @@ store shows the cost directly — the release at 07:30:13.856, the re-claim at
 1–25 of the new attempt flushed in between turns 45 and 67 of the old one. Two
 workers, one checkout, each undoing the other's edits, both billed.
 
+And a third clause, because the first one named only the marks the journal
+holds. Every durable sign of life is written when something FINISHES — a usage
+row when a call is billed, a transcript flush when sixty-four entries fill, and
+that batching is deliberate: one write per tool result would put several hundred
+rows under a node and turn the database into a log file. So a leaf spending
+twenty minutes inside three long shell commands writes nothing at all, and a
+sweep of the store cannot tell it from a corpse. The answer is not a flush timer
+— a second clock answering a question the first clock is already wrong about,
+paid for with a durable write on every leaf in the system to rescue the rare
+quiet one.
+
+> **A CALL IN FLIGHT IS A SIGN OF LIFE, AND IT IS A SPAN AND NOT A PING.** The
+> worker asked the model, or started a command, and has not been answered yet;
+> that fact is known in this process, for free, by the code that is waiting. It
+> is reported through the context exactly as the transcript sink already is
+> (`exec.Working`), and the listener is the scheduler, because the reaper is in
+> the same process as the worker it would reap. "A tool call was issued" would
+> keep a claim alive for one instant and go quiet again for the seven minutes the
+> command actually runs, which is the case this exists for — so what is reported
+> is the beginning and the end, and everything between them is a worker
+> demonstrably waiting on something. A worker that has never marked anything is
+> not alive by default: the journal is then the only account of it, which is the
+> account the sweep already read.
+
 > **A CLAIM IS NOT TAKEN FROM A WORKER, THE WORKER IS STOPPED.** Every leaf runs
 > on a context this process can end. The reaper cancels; the node stays Running
 > and unclaimable; the worker's OWN landing releases it, so the release happens

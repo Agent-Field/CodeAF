@@ -709,6 +709,15 @@ and 22m06s at a leaf that was calling the model throughout (15m deadline + 2m
 watchdog + 5m pad = 22m, plus one `runnerQuietCeiling` of dispatch latency).
 Every release now carries its reason on the journal.
 
+**And a call in flight counts, without a flush timer.** The three durable marks
+are all written when something finishes, and the transcript's flush is batched at
+`store.MaxTranscriptBatch` on purpose — so a leaf inside one long `go test`
+writes nothing while it runs. `exec.Working(ctx)` opens a span around each tool
+call and each model request; `resident.leafHold` counts the open spans and the
+scheduler's sweep skips a claim whose worker is waiting on something. It costs
+two atomics per call and not one write, it adds no constant, and a worker that
+has marked nothing is judged on the journal exactly as before.
+
 **And it cancels rather than confiscates.** `store.SilentClaims` only reads;
 `resident.Runner.reapSilentClaims` decides. A claim this process is behind is
 never taken back — its worker's context is cancelled and the node stays Running
