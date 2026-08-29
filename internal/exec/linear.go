@@ -983,6 +983,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 						results[index] = errorf("internal fault in this tool call — recorded to the log. Try a different approach.")
 					}
 				}()
+				// The same span the bare loop opens around a running command:
+				// a tool that takes minutes writes nothing to the journal
+				// while it runs, and the claim reaper has nothing else to
+				// read. See Working.
+				defer Working(ctx)()
 				results[index] = tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
 			}(index, call)
 		}
