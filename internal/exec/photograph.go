@@ -160,6 +160,12 @@ func PhotographAfter(
 	if outcome == nil || workspace == nil {
 		return
 	}
+	// THE SYMBOL-LEVEL HALF IS SETTLED FIRST, AND IT IS SETTLED WHETHER OR NOT A
+	// CHECK EVER RAN. It needs no runner, no budget and no declaration — only
+	// the two readings of the tree — so it is the one measurement a project with
+	// no suite, a wall too short for one, or a suite killed at its ceiling still
+	// gets. See verify.Surface.
+	surfaceRemoved(workspace, history, task, reading, outcome)
 	// The photograph rides the outcome whether or not a reading was taken,
 	// because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT FACTS
 	// and only the run that stood there before the work can tell them apart.
@@ -213,16 +219,34 @@ func PhotographAfter(
 			strategy = narrowed
 		}
 	}
-	after, ok := verify.RunReading(ctx, workspace.Root(), strategy, reading.Budget)
+	after, ok := readFinishedTree(ctx, workspace.Root(), strategy, reading, outcome.Artifacts)
 	switch {
 	case !ok:
 		reading.Unread = "the finished tree could not be read: `" +
 			strategy.Command + "` could not be started a second time"
-	case after.TimedOut:
-		reading.Unread = "the finished tree was not read: `" + after.Strategy.Command +
-			"` was killed at its ceiling without finishing"
+	case after.TimedOut && len(after.Reported) == 0:
+		// IT RAN. That is a different fact from "nobody could read this tree",
+		// and the sentence says which: a command that started, produced no
+		// runner output this reader could name a check out of, and was killed at
+		// its ceiling. A gate handed "was not read" cannot tell it from a
+		// project that declares no verification at all.
+		reading.Unread = "`" + after.Strategy.Command + "` ran on the finished tree and was " +
+			"killed at its ceiling of " + reading.Budget.Round(time.Second).String() +
+			" without naming a single check"
 	default:
+		// A CUT ROSTER IS STILL A ROSTER, AND THIS SIDE USED TO THROW IT AWAY.
+		// The before half has kept what a killed runner had already streamed
+		// since ink s7 (verify.photograph); this half discarded it, so ink's
+		// after reading has come back `read: false, named: 0` in two whole
+		// sweeps while the baseline of the same run, on the same command, named
+		// 44 checks. Partial says the subtraction is refused —
+		// Reading.comparable already reads it that way — and the roster is kept,
+		// because "does a check for this exist" is answerable off a partial
+		// roster and is the question the coverage settlement asks.
 		reading.After, reading.AfterTaken = after, true
+		if after.TimedOut {
+			reading.Partial = true
+		}
 		outcome.Verification = reading
 		outcome.Regressed = reading.Regressed()
 		journalReading(history, task, reading, after, "on the finished tree", false)
@@ -230,10 +254,45 @@ func PhotographAfter(
 	}
 	// Not taken, and said so. The before half stands and the outcome keeps it;
 	// what is lost is the subtraction, and a run that cannot say a check went
-	// red must not be able to say one did not either.
+	// red must not be able to say one did not either. The result is journaled as
+	// the runner actually left it — its exit status and whatever it printed —
+	// rather than as a zero value, which is how a command that ran and exited 1
+	// came to be written down as `exit: 0`.
 	outcome.Verification = reading
-	journalReading(history, task, reading, verify.Result{Strategy: strategy},
-		"on the finished tree", false)
+	if after.Strategy.Empty() {
+		after.Strategy = strategy
+	}
+	journalReading(history, task, reading, after, "on the finished tree", false)
+}
+
+// readFinishedTree runs the second reading, and RETAKES IT ON THE BASELINE'S OWN
+// RUNG before reporting that the tree could not be read.
+//
+// The after reading is allowed to differ from the before one in exactly two
+// ways — widened by the run's own work, or aimed at the diff where the whole
+// suite did not fit — and both of those choose a command the baseline never
+// proved could run. A selection this program built is the one thing that can be
+// wrong here in a way a retake fixes: a runner handed a file it cannot run
+// alone, a path with a space in it, a package whose config the narrowed
+// invocation dropped. The baseline's rung is the one command this job has
+// watched work.
+//
+// So a derived rung that will not start, or that is killed having named nothing,
+// falls back to it — once, and only when it is actually a different command.
+// What comes back is whichever attempt said more.
+func readFinishedTree(
+	ctx context.Context, root string, strategy verify.Strategy,
+	reading verify.Reading, record []string,
+) (verify.Result, bool) {
+	after, ok := verify.RunReading(ctx, root, strategy, reading.Budget)
+	if (ok && len(after.Reported) > 0) || reading.Before.Strategy.Command == strategy.Command {
+		return after, ok
+	}
+	retaken, retook := verify.RunReading(ctx, root, reading.Before.Strategy, reading.Budget)
+	if !retook || (len(retaken.Reported) == 0 && ok) {
+		return after, ok
+	}
+	return retaken, retook
 }
 
 // journalReading writes one reading — or one reading that could not be taken —
@@ -319,4 +378,63 @@ func describeChecks(names []string) string {
 		return strings.Join(names[:8], ", ") + " and " + strconv.Itoa(len(names)-8) + " more"
 	}
 	return strings.Join(names, ", ")
+}
+
+// surfaceRemoved settles the public names this work deleted, and journals what
+// it found either way.
+//
+// The comparison is scoped to the run's OWN RECORD of what it changed, which is
+// what keeps it a measurement of the work rather than of the repository: a name
+// that vanished from a file nobody touched vanished some other way, and a
+// finding about that would be a finding about something this leaf never did.
+//
+// It is a measurement and never a gate. A baseline nobody took, a record that
+// names no source file, a file that cannot be read — each leaves the outcome
+// exactly as it arrived, which reads downstream as NO CLAIM and never as nothing
+// removed.
+func surfaceRemoved(
+	workspace *Workspace, history *store.Store, task Task,
+	reading verify.Reading, outcome *Outcome,
+) {
+	if len(reading.Surface) == 0 {
+		return
+	}
+	root := workspace.Root()
+	changed := verify.ChangedSources(root, outcome.Artifacts)
+	// A file the record names and the tree no longer holds is not in
+	// ChangedSources, which only keeps what is still there — so the deletion of
+	// a whole module is added back from the record itself. Losing a public
+	// module is losing every public name in it.
+	for _, path := range verify.MissingFrom(root, outcome.Artifacts) {
+		if _, held := reading.Surface[path]; held {
+			changed = append(changed, path)
+		}
+	}
+	if len(changed) == 0 {
+		return
+	}
+	removed := reading.Surface.Removed(verify.SurfaceOf(root, changed), changed)
+	if len(removed) > 0 {
+		outcome.Removed = removed
+	}
+	journalSurface(history, task, len(changed), removed)
+}
+
+// journalSurface writes what the symbol-level reading found, INCLUDING when it
+// found nothing.
+//
+// A row saying "sixteen files were compared and no public name was lost" is the
+// difference between a run that checked and a run whose reader never ran, and
+// those two were the same silence in every store this mechanism was built from
+// (FAILSAFE.md clause 4). It is a measurement: a store that refuses the row
+// changes nothing about what the leaf does.
+func journalSurface(history *store.Store, task Task, compared int, removed []string) {
+	if history == nil || strings.TrimSpace(task.StoreNodeID) == "" {
+		return
+	}
+	_ = history.RecordSurface(task.StoreNodeID, store.SurfaceReading{
+		Compared: compared,
+		Lost:     len(removed),
+		Names:    verify.SurfaceNamed(removed),
+	})
 }
