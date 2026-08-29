@@ -344,6 +344,14 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		// touched produced fourteen of nothing, and a count cannot say so. See
 		// MeasureRound.
 		Measured: true, Artifacts: artifacts, Remainder: RemainderDigest(gap),
+		// And the finding this round is being bought to close, read off the
+		// judgement that convened it. It is read HERE, at the one seam every
+		// growing job passes through, for the reason the lineage bank and the
+		// open findings above it are: a property of the round cannot be a
+		// property of whichever caller somebody remembered to wire. A caller
+		// with no finding on its context is a round nobody bought for one, and
+		// it keeps exactly the governors it had.
+		Finding: FindingFrom(ctx),
 	}
 	// The world is read once for this round, here, and the same reading is what
 	// both the way-in decision and the exact recheck below are made from.

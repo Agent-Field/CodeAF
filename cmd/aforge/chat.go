@@ -1931,7 +1931,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// from them: a repair asked to say what was wrong needs to
 						// READ what was done, and everything that ever reached it
 						// before was a list of names.
-						extension := revision.ExtendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
+						// THE FINDING THIS ROUND IS BEING BOUGHT FOR travels
+						// with the call that buys it. The growth governor weighs
+						// a round against the thing it was bought for, and the
+						// only place that thing is known in structured form is
+						// here, on the gate's own evidence — the judgement's
+						// gap is a paragraph, and a paragraph reworded reads as
+						// new work. It rides the context because the two hops
+						// between here and the governor are owned by other
+						// waves and a fact threaded through signatures is a
+						// fact that works on whichever caller somebody
+						// remembered. See resident.FindingOf.
+						growCtx := resident.WithFinding(ctx, resident.FindingOf(evidence))
+						extension := revision.ExtendForGap(growCtx, graph, node, outcome.Text, unmet, absolute,
 							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot),
 							outcomeRecords(outcome)...)
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
@@ -2055,6 +2067,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	brain.settings = settings
 	brain.reconciler = reconciler
 	brain.runner = runner
+	// A GATE ALWAYS PRECEDES THE WALL. The governor decides that a job has run
+	// out of wall, and the runner is the only thing that can act on it: stopping
+	// a job's queued work is stopping claims, and a claim belongs to whoever
+	// dispatched it. So the two are wired here, once, on the same terms as the
+	// satisfaction gate above. See resident.SetJobCloser and Runner.CloseOut.
+	resident.SetJobCloser(runner.CloseOut)
 	brain.consent = desk
 	brain.workspaceRoot = workspaceRoot
 	// Everything below this line is the conversation: the commander the surface
