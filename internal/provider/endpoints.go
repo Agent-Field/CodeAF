@@ -307,6 +307,32 @@ type relaxStep struct {
 	name string
 }
 
+// relaxRungs is every rung there is, in the order they are climbed, and it is
+// the ONE place each one's words are written. Two readers spell a rung: the
+// retry line a person watches while the ladder is being climbed, and the
+// model-call log's account of a body that has already climbed it
+// (calllog.go's relaxNames). A rung named separately in each would have been
+// two names for one thing the first time either was reworded.
+var relaxRungs = []relaxStep{
+	{bit: relaxEndpointFilter, label: "relaxed the endpoint filter", name: "provider.require_parameters"},
+	{bit: relaxReasoning, label: "removed reasoning", name: "reasoning"},
+	{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"},
+	{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"},
+	{bit: relaxImages, label: "removed images", name: "images"},
+	{bit: relaxTools, label: "removed tools", name: "tools"},
+}
+
+// rung is one row of the table above. A bit with no row is a programming error
+// rather than a runtime one, and it returns a step that names nothing.
+func rung(bit relaxSet) relaxStep {
+	for _, step := range relaxRungs {
+		if step.bit == bit {
+			return step
+		}
+	}
+	return relaxStep{bit: bit}
+}
+
 // relaxationPlan is the ladder for ONE request: only the rungs that would
 // actually change this body, in the order they are climbed.
 //
@@ -317,26 +343,22 @@ func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model stri
 	var plan []relaxStep
 	if prefs := c.providerPreferences(model, knobs); prefs != nil &&
 		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
-		plan = append(plan, relaxStep{
-			bit:   relaxEndpointFilter,
-			label: "relaxed the endpoint filter",
-			name:  "provider.require_parameters",
-		})
+		plan = append(plan, rung(relaxEndpointFilter))
 	}
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
-		plan = append(plan, relaxStep{bit: relaxReasoning, label: "removed reasoning", name: "reasoning"})
+		plan = append(plan, rung(relaxReasoning))
 	}
 	if request.MaxTokens != nil {
-		plan = append(plan, relaxStep{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"})
+		plan = append(plan, rung(relaxMaxTokens))
 	}
 	if request.ResponseFormat != nil {
-		plan = append(plan, relaxStep{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"})
+		plan = append(plan, rung(relaxResponseFormat))
 	}
 	if carriesAttachments(request.Messages) {
-		plan = append(plan, relaxStep{bit: relaxImages, label: "removed images", name: "images"})
+		plan = append(plan, rung(relaxImages))
 	}
 	if len(request.Tools) > 0 {
-		plan = append(plan, relaxStep{bit: relaxTools, label: "removed tools", name: "tools"})
+		plan = append(plan, rung(relaxTools))
 	}
 	return plan
 }

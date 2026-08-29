@@ -1,0 +1,231 @@
+package calllog
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// fresh points the package's one log at a temporary file and puts it back
+// afterwards, so tests in this file cannot leak into each other or into the
+// developer's own state root.
+func fresh(t *testing.T, path string) {
+	t.Helper()
+	shared.mutex.Lock()
+	shared.close()
+	shared.path = path
+	shared.resolved = path != ""
+	shared.silenced = false
+	shared.mutex.Unlock()
+	t.Cleanup(func() {
+		shared.mutex.Lock()
+		shared.close()
+		shared.path = ""
+		shared.resolved = false
+		shared.silenced = false
+		shared.mutex.Unlock()
+	})
+}
+
+func readLines(t *testing.T, path string) []Record {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open the log: %v", err)
+	}
+	defer file.Close()
+	var records []Record
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var record Record
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("a line of the log is not a record: %v (%q)", err, line)
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func TestEveryAppendIsOneWholeLineAndTheEmptyFieldsAreNotThere(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	fresh(t, path)
+
+	Append(Record{Time: "2026-08-28T21:12:53.000Z", Tag: "compile", Model: "z-ai/glm-5.3", Status: 200})
+	Append(Record{Time: "2026-08-28T21:12:59.000Z", Tag: "turn", Model: "z-ai/glm-5.3", Status: 400,
+		Error: "Reasoning is mandatory", Learned: []string{"reasoning_mandatory"}})
+
+	records := readLines(t, path)
+	if len(records) != 2 {
+		t.Fatalf("two calls should be two lines; got %d", len(records))
+	}
+	if records[0].Tag != "compile" || records[1].Learned[0] != "reasoning_mandatory" {
+		t.Fatalf("the lines are not what was appended: %+v", records)
+	}
+	// The emptiness law reaches the file: a call with no tokens must not write
+	// a zero somebody could read as a count.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"prompt_tokens", "completion_tokens", "cost", "request_body", "phase"} {
+		if strings.Contains(string(raw), absent) {
+			t.Errorf("%q is on a line that never had one", absent)
+		}
+	}
+}
+
+func TestTheLogRotatesAtTheCapAndKeepsOnePredecessor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	fresh(t, path)
+
+	// Records big enough that a couple of hundred of them pass the cap. The
+	// error field is the one that can hold a paragraph; it is clipped by its
+	// writer rather than here, so the test builds the size it needs directly.
+	filler := strings.Repeat("x", 256<<10)
+	for written := int64(0); written < MaxBytes+int64(len(filler)); written += int64(len(filler)) {
+		Append(Record{Time: "2026-08-28T21:12:53.000Z", Tag: "leaf", Error: filler})
+	}
+
+	live, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("the live log should still be there: %v", err)
+	}
+	if live.Size() >= MaxBytes {
+		t.Errorf("the live log is %d bytes, past the %d cap", live.Size(), MaxBytes)
+	}
+	previous, err := os.Stat(filepath.Join(dir, PreviousFileName))
+	if err != nil {
+		t.Fatalf("the predecessor should have been kept: %v", err)
+	}
+	if previous.Size() == 0 {
+		t.Error("the predecessor is empty; the rotation kept the wrong file")
+	}
+	// And exactly two files: a rotation that kept a series would fill a disk
+	// nobody was watching.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("rotation should leave two files, found %d", len(entries))
+	}
+}
+
+func TestOffWritesNothingAtAll(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvVar, OffValue)
+	fresh(t, "")
+	Open(dir)
+
+	Append(Record{Time: "2026-08-28T21:12:53.000Z", Tag: "turn"})
+
+	if path := Path(); path != "" {
+		t.Fatalf("off should resolve to no path; got %q", path)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("off wrote something: %v %v", entries, err)
+	}
+}
+
+func TestAPinnedPathIsWhereTheLogGoes(t *testing.T) {
+	redirect := filepath.Join(t.TempDir(), "somewhere", "else.jsonl")
+	t.Setenv(EnvVar, redirect)
+	fresh(t, "")
+	Open(filepath.Join(t.TempDir(), "profile"))
+
+	Append(Record{Time: "2026-08-28T21:12:53.000Z", Tag: "turn"})
+
+	if Path() != redirect {
+		t.Fatalf("the pin should outrank the profile; got %q", Path())
+	}
+	if records := readLines(t, redirect); len(records) != 1 {
+		t.Fatalf("the redirected log should hold one call; got %d", len(records))
+	}
+}
+
+func TestWithNoPinTheLogSitsUnderTheProfileBesideTheQuirksMemo(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvVar, "")
+	if got, want := PathFor(dir), filepath.Join(dir, DirName, FileName); got != want {
+		t.Fatalf("the profile's log is at %q, want %q", got, want)
+	}
+	// And with no profile at all it falls back to the state root, which is the
+	// same fallback the quirks memo makes.
+	previous := homeJoin
+	homeJoin = func(elements ...string) string {
+		return filepath.Join(append([]string{"/state/root"}, elements...)...)
+	}
+	defer func() { homeJoin = previous }()
+	if got, want := PathFor(""), filepath.Join("/state/root", DirName, FileName); got != want {
+		t.Fatalf("the fallback log is at %q, want %q", got, want)
+	}
+}
+
+func TestAWriteThatCannotHappenFallsSilentOnceAndSaysSoOnce(t *testing.T) {
+	// A directory where the file should be: every write fails, forever.
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "calls.jsonl")
+	if err := os.MkdirAll(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fresh(t, blocked)
+	var complaints strings.Builder
+	previous := stderr
+	stderr = &complaints
+	defer func() { stderr = previous }()
+
+	for range 5 {
+		Append(Record{Time: "2026-08-28T21:12:53.000Z", Tag: "turn"})
+	}
+
+	said := complaints.String()
+	if strings.Count(said, "\n") != 1 {
+		t.Fatalf("a broken log should complain exactly once; it said:\n%s", said)
+	}
+	if !strings.Contains(said, blocked) {
+		t.Errorf("the complaint should name the path it could not write: %q", said)
+	}
+}
+
+func TestBodiesAreOffUnlessSomebodyAsks(t *testing.T) {
+	t.Setenv(BodiesEnvVar, "")
+	if Bodies() {
+		t.Error("bodies should be off with nothing set")
+	}
+	for _, off := range []string{"0", "false", "off"} {
+		t.Setenv(BodiesEnvVar, off)
+		if Bodies() {
+			t.Errorf("%q should not switch bodies on", off)
+		}
+	}
+	t.Setenv(BodiesEnvVar, "1")
+	if !Bodies() {
+		t.Error("bodies should be on when asked for")
+	}
+}
+
+func TestAnErrorIsClippedRatherThanOwningTheWholeLine(t *testing.T) {
+	if got := ClipError("  short  "); got != "short" {
+		t.Errorf("a short message should come through whole: %q", got)
+	}
+	long := ClipError(strings.Repeat("y", MaxErrorChars*2))
+	if len([]rune(long)) != MaxErrorChars+1 || !strings.HasSuffix(long, "…") {
+		t.Errorf("a long message should be clipped and marked: %d runes", len([]rune(long)))
+	}
+}
+
+func TestAPairingTokenIsShortAndDifferentEveryTime(t *testing.T) {
+	first, second := NewID(), NewID()
+	if len(first) != 8 || first == second {
+		t.Fatalf("ids should be eight characters and unique: %q %q", first, second)
+	}
+}

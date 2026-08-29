@@ -20,6 +20,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
@@ -67,6 +68,12 @@ func execute() (code int) {
 			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())
 		}
 	}()
+	// The model-call log's file descriptor goes back at the one exit every
+	// command shares (internal/calllog). Nothing depends on it — every record is
+	// written and flushed as it happens — but a process that closes what it
+	// opened is a process whose logs directory can be removed on Windows and in
+	// a test's temporary home.
+	defer calllog.Close()
 	err := run()
 	var status exitStatus
 	switch {
@@ -175,6 +182,8 @@ func run() error {
 		return runTick(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
+	case "logs":
+		return runLogs(os.Args[2:])
 	case "cache":
 		return runCache(os.Args[2:])
 	case "rebuild":
@@ -239,6 +248,10 @@ const usageText = `aforge — build and revise task graphs
   aforge services stop <name> [--db path]
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
+  aforge logs [--tail 40] [--follow] [--path]
+                                every model call aforge made — what was asked, what came
+                                back, and which ones are still in flight. Prompts are not
+                                in it. AFORGE_CALL_LOG=off turns it off, or names a file.
   aforge cache                  what the shared build cache holds, and how big it is
   aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
                                 path, then asks you to type "clean" — --yes skips the
@@ -309,6 +322,11 @@ Environment:
                        profiles, catalog, skills (default ~/.aforge). Move it to
                        run a disposable brain that touches nothing of yours.
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default AFORGE_HOME)
+  AFORGE_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
+                       "off" writes nothing; any other value is the file to write.
+  AFORGE_CALL_LOG_BODIES=1
+                       also record each call's whole request and response — your
+                       prompts included. Off by default, and for one run at a time.
 
   The user-facing knobs above — budgets, rhythm, the document rung, the vision
   and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists

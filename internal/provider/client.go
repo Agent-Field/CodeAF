@@ -288,6 +288,12 @@ type callKnobs struct {
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
 	reasoning []MessageReasoning
+	// trace is what ONE CALL accumulates on its way to an answer — how many
+	// times it went out, what its refusals taught, the body it last carried —
+	// for the model-call log (calllog.go). It is a pointer because the knobs
+	// travel by value through the repair and relax chains, and the fact the
+	// completed record needs is the count across all of them.
+	trace *callTrace
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
@@ -296,6 +302,7 @@ func knobsFrom(ctx context.Context) callKnobs {
 		effort:    effortFrom(ctx),
 		intent:    routingIntentFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
+		trace:     newCallTrace(),
 	}
 }
 
@@ -377,6 +384,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
+	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
 	if err != nil || !endpointRefusalStatus(response.StatusCode) {
 		return response, err
@@ -400,10 +408,30 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
 		// sidecar tagged with its model never gets here (reasoning.go's
 		// producedElsewhere); this is the journal written before the tag.
+		//
+		// The refused shape gets its own row before the repair, because "the
+		// call that went out first was refused and the one that came back was a
+		// different request" is precisely the fact a log with only the answer
+		// on it cannot tell anybody (calllog.go).
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			attempt: c.attemptsSoFar(knobs), began: began,
+			status: response.StatusCode, err: apiError(response.StatusCode, peek),
+			responseBody: peek,
+		})
 		knobs.reasoning = nil
 		return c.resend(ctx, request, knobs, stream, response)
-	case repairable && c.learn(model, knobs, peek):
-		return c.resend(ctx, request, knobs, stream, response)
+	case repairable:
+		if learned := c.learn(model, knobs, peek); len(learned) > 0 {
+			knobs.trace.note(learned...)
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: c.attemptsSoFar(knobs), began: began,
+				status: response.StatusCode, err: apiError(response.StatusCode, peek),
+				learned: learned, responseBody: peek,
+			})
+			return c.resend(ctx, request, knobs, stream, response)
+		}
 	}
 	// Not ours to fix. The body is handed back whole — the caller still has
 	// to read the provider's own words to build the error it reports.
@@ -432,14 +460,16 @@ func (c *Client) repairable(model string, knobs callKnobs) bool {
 		(len(knobs.reasoning) > 0 && !reasoningReplayRefused(model))
 }
 
-// learn reads a refusal for the facts this adapter can remember and reports
-// whether the next encode will differ. Every memo is consulted rather than the
+// learn reads a refusal for the facts this adapter can remember and names each
+// one it learned, so that an empty list is "the next encode will be the same
+// request" and a non-empty one is both the decision to resend AND the line the
+// model-call log writes about why. Every memo is consulted rather than the
 // first match winning, because a single 400 can name more than one field.
-func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
-	learned := false
+func (c *Client) learn(model string, knobs callKnobs, payload []byte) []string {
+	var learned []string
 	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
 		noteReasoningMandatory(model)
-		learned = true
+		learned = append(learned, learnedReasoningMandatory)
 	}
 	// THE BUDGET IS DROPPED AND THE LEVEL IS KEPT. An endpoint that will not take
 	// a thinking allowance still takes the effort word, so the two top rungs of
@@ -447,17 +477,28 @@ func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
 	// instead of falling off it (wire.go's resolveReasoningBudget).
 	if c.resolveReasoningBudget(model, knobs.effort) > 0 && refusesReasoningBudget(payload) {
 		noteReasoningBudgetRefused(model)
-		learned = true
+		learned = append(learned, learnedReasoningBudgetRefused)
 	}
 	if c.dialectFor(model) == cacheDialectBreakpoints && refusesCacheControl(payload) {
 		noteCacheControlRefused(model)
-		learned = true
+		learned = append(learned, learnedCacheControlRefused)
 	}
 	if len(knobs.reasoning) > 0 && !reasoningReplayRefused(model) && refusesReasoningReplay(payload, knobs.reasoning) {
 		noteReasoningReplayRefused(model)
-		learned = true
+		learned = append(learned, learnedReasoningReplayRefused)
 	}
 	return learned
+}
+
+// attemptsSoFar is which attempt a row about one refused shape belongs to. It
+// reads the transport's own count rather than keeping a second one, and answers
+// 1 for a call whose knobs carry no trace — a document request, or a test that
+// built its knobs by hand.
+func (c *Client) attemptsSoFar(knobs callKnobs) int {
+	if knobs.trace == nil || knobs.trace.attempts <= 0 {
+		return 1
+	}
+	return knobs.trace.attempts
 }
 
 // rewound puts an already-read prefix back in front of a body, so peeking at a
@@ -501,7 +542,7 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.completeOnce(ctx, request)
+	response, relearned, err := c.completeOnce(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -512,19 +553,25 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// (wire.go's thinkingCeiling), so the call is made again with the answer it
 	// was always going to need. Once, because a second empty answer WITH the
 	// room is a model that has nothing to say, and that is the caller's to hear.
-	if c.learnFromAnswer(c.modelFor(request), request, response) {
-		return c.completeOnce(ctx, request)
+	//
+	// The reading is done inside completeOnce so that the row it writes can SAY
+	// what the answer taught; the decision to do it twice is still made here.
+	if relearned {
+		response, _, err := c.completeOnce(ctx, request)
+		return response, err
 	}
 	return response, nil
 }
 
 // learnFromAnswer reads one answer for the fact the adapter can act on and
-// reports whether the next encode will differ. It stays silent for a model
-// the memo already knows — the room was already there, so a blank answer
-// says nothing new — and for a call that set no ceiling to spend.
-func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai.Response) bool {
+// names it, so an empty list is "the next encode will be the same request" and
+// a non-empty one is both the decision to ask again AND the line the
+// model-call log writes about why. It stays silent for a model the memo
+// already knows — the room was already there, so a blank answer says nothing
+// new — and for a call that set no ceiling to spend.
+func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai.Response) []string {
 	if request.MaxTokens == nil || c.reasoningUnstoppable(model) {
-		return false
+		return nil
 	}
 	// THE MEMO IS FOREVER, SO IT IS WRITTEN ONLY ON EVIDENCE. An answer with
 	// no usage block cannot be shown to have spent the ceiling, and a reply
@@ -533,13 +580,13 @@ func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai
 	// a fact recorded on a guess would grow every ceiling this model ever
 	// gets, on every run, with nothing to unlearn it.
 	if response == nil || response.Usage == nil || answeredWithToolCalls(response) {
-		return false
+		return nil
 	}
 	if !EmptyAtCeiling(response, *request.MaxTokens) {
-		return false
+		return nil
 	}
 	NoteReasoningDisableIgnored(model)
-	return true
+	return []string{learnedReasoningDisableIgnored}
 }
 
 // answeredWithToolCalls reports a reply whose answer is a tool call rather
@@ -551,35 +598,51 @@ func answeredWithToolCalls(response *ai.Response) bool {
 // completeOnce is one send and one parse: the request as shaped, the answer as
 // served, and the measurements both feed. CompleteWithMessages owns the
 // decision to do it twice.
-func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Response, error) {
+func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Response, bool, error) {
 	began := c.clock()
-	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), false)
+	// The log's own start, on the world's clock rather than the measurement
+	// seam (calllog.go's logNow).
+	logBegan := logNow()
+	knobs := knobsFrom(ctx)
+	httpResponse, err := c.sendShaped(ctx, request, knobs, false)
 	if err != nil {
-		return nil, err
+		// Every attempt this call made already wrote its own row on the way
+		// past (retry.go); a call that never got a response has nothing left to
+		// add that those rows do not already say.
+		return nil, false, err
 	}
 	defer httpResponse.Body.Close()
 
 	payload, err := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return nil, false, fmt.Errorf("read response: %w", err)
 	}
 	if httpResponse.StatusCode >= 400 {
 		refusal := apiError(httpResponse.StatusCode, payload)
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs,
+			began: logBegan, status: httpResponse.StatusCode,
+			err: refusal, responseBody: payload,
+		})
 		// AND THE LANE GOES, so the caller's next attempt is encoded away from
 		// the upstream that just refused (velocity.go's refuseUpstream). The pin
 		// was already released on the way out of sendShaped; releasing a pin only
 		// stops us ASKING for that endpoint, and the router chooses it again.
 		c.refuseUpstream(c.modelFor(request), refusal)
-		return nil, refusal
+		return nil, false, refusal
 	}
 	// ONE PARSE. The answer and the router's annotation on it come out of the
 	// same decode, because the alternative was reading a megabyte of completion
 	// twice to recover one short string from the second pass.
 	var decoded servedResponse
 	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, false, fmt.Errorf("unmarshal response: %w", err)
 	}
 	response := decoded.Response
+	// The usage block was decoded through the shadow so the reasoning count
+	// came with it; it goes straight back on the response, where every reader
+	// below and above this adapter expects to find it.
+	response.Usage = decoded.Usage.usage()
 	// A non-streamed answer has no first token to wait for — the whole thing
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
@@ -597,7 +660,16 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 		c.clock().Sub(began),
 		0,
 	)
-	return &response, nil
+	// What the answer itself taught, read before the row is written so the row
+	// can carry it. The caller decides whether to ask again.
+	relearned := c.learnFromAnswer(c.modelFor(request), request, &response)
+	c.record(recordFacts{
+		ctx: ctx, request: request, knobs: knobs,
+		began: logBegan, status: httpResponse.StatusCode, served: served,
+		response: &response, reasoningTokens: decoded.Usage.reasoningTokens(),
+		learned: relearned, responseBody: payload,
+	})
+	return &response, len(relearned) > 0, nil
 }
 
 // clock is the client's time source, defaulting to the wall clock so a Client
@@ -623,6 +695,50 @@ type servedResponse struct {
 	// still parses and a sighting with nobody to attribute, which is what it was
 	// when the name was read by a second pass of its own.
 	Provider json.RawMessage `json:"provider"`
+	// Usage shadows the SDK's own usage block so the one figure its type has no
+	// field for is read from THE SAME DECODE as the answer; see [usageWire]. It
+	// is folded straight back onto the response below, so nothing downstream
+	// sees that it was ever shadowed.
+	Usage *usageWire `json:"usage"`
+}
+
+// usageWire is the provider's usage block: everything the SDK's own type holds,
+// plus the reasoning-token count OpenRouter nests one level down under
+// completion_tokens_details and the SDK has no field for.
+//
+// It shadows rather than re-reads for the reason servedResponse.Provider is
+// decoded in one pass: recovering one number by unmarshalling a megabyte of
+// completion a second time is the cost this whole shape exists to avoid. The
+// embedded value promotes every field the SDK declares, so decoding a usage
+// object into this type populates both halves at once.
+//
+// The reasoning count is the figure that turns "the answer came back empty"
+// into "the thinking pass spent the whole ceiling", which is the bug that made
+// the model-call log worth building.
+type usageWire struct {
+	ai.Usage
+	CompletionTokensDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
+}
+
+// usage is the SDK-shaped half, addressable, and nil when the provider sent no
+// usage block at all — which is "unknown" and never "zero".
+func (u *usageWire) usage() *ai.Usage {
+	if u == nil {
+		return nil
+	}
+	block := u.Usage
+	return &block
+}
+
+// reasoningTokens is what the thinking pass cost, or zero when the provider did
+// not break its output down.
+func (u *usageWire) reasoningTokens() int {
+	if u == nil {
+		return 0
+	}
+	return u.CompletionTokensDetails.ReasoningTokens
 }
 
 // servedProvider reads the endpoint the router says answered. An absent field is
@@ -690,6 +806,9 @@ func (c *Client) completeWithMessagesStreaming(
 	}
 	request.Stream = true
 	began := c.clock()
+	// The log's own start, on the world's clock rather than the measurement
+	// seam (calllog.go's logNow).
+	logBegan := logNow()
 	// THE GUARD'S OWN CANCEL, above send's. A stream that has to be cut — the
 	// endpoint gone quiet, the reply gone to soup — is cut by cancelling the
 	// request, because the reader is parked inside Read on a socket and only the
@@ -698,7 +817,11 @@ func (c *Client) completeWithMessagesStreaming(
 	// including the ordinary clean end.
 	guardCtx, cutStream := context.WithCancel(ctx)
 	defer cutStream()
-	httpResponse, err := c.sendShaped(guardCtx, request, knobsFrom(ctx), true)
+	// Resolved once and held, because every row this stream writes is built
+	// from them and the trace inside them is what counts its attempts
+	// (calllog.go).
+	knobs := knobsFrom(ctx)
+	httpResponse, err := c.sendShaped(guardCtx, request, knobs, true)
 	if err != nil {
 		return nil, err
 	}
@@ -706,6 +829,11 @@ func (c *Client) completeWithMessagesStreaming(
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		refusal := apiError(httpResponse.StatusCode, payload)
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode,
+			err: refusal, responseBody: payload,
+		})
 		c.refuseUpstream(c.modelFor(request), refusal)
 		return nil, refusal
 	}
@@ -733,6 +861,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// would price a warm endpoint behind a long prompt as a slow one.
 	var served string
 	var firstToken time.Time
+	// What the thinking pass cost, off the same terminal usage frame the token
+	// counts come from. Zero until one arrives, which is "the provider did not
+	// break its output down" and never "it did not think".
+	reasoningTokens := 0
 
 	// Read once per call rather than once per event: the session does not
 	// change mid-stream, and this loop already runs against the connection's
@@ -796,6 +928,14 @@ func (c *Client) completeWithMessagesStreaming(
 				// A stream that went quiet is an endpoint failing this lineage,
 				// which is the one thing that moves a pin (affinity.go).
 				c.releaseEndpoint(ctx, c.modelFor(request))
+				// AND IT IS HOW THE CALL ENDED, so it ends the call's row too.
+				// A cut is the single outcome a log most needs to carry: the
+				// endpoint accepted the request, answered 200, and then said
+				// nothing for long enough to be given up on.
+				c.record(recordFacts{
+					ctx: ctx, request: request, knobs: knobs, stream: true,
+					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+				})
 				return nil, cut
 			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
@@ -829,12 +969,17 @@ func (c *Client) completeWithMessagesStreaming(
 				// did not, and that name is what the ledger and the journal need.
 				named.Provider = served
 			}
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: true,
+				began: logBegan, status: httpResponse.StatusCode, served: served, err: refusal,
+			})
 			c.refuseUpstream(c.modelFor(request), refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
 			return nil, refusal
 		}
 		if chunk.Usage != nil {
-			response.Usage = chunk.Usage
+			response.Usage = chunk.Usage.usage()
+			reasoningTokens = chunk.Usage.reasoningTokens()
 		}
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
@@ -950,6 +1095,11 @@ func (c *Client) completeWithMessagesStreaming(
 	} else {
 		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0)
 	}
+	c.record(recordFacts{
+		ctx: ctx, request: request, knobs: knobs, stream: true,
+		began: logBegan, status: httpResponse.StatusCode, served: served,
+		response: response, reasoningTokens: reasoningTokens,
+	})
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, nil

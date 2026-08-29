@@ -739,6 +739,14 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"AFORGE_PROFILE_DIR",
+	// The two pins on the model-call log (internal/calllog). AFORGE_CALL_LOG
+	// switches it off or moves the file; AFORGE_CALL_LOG_BODIES adds the whole
+	// request and response to every line. Plumbing rather than settings rows,
+	// and the second one emphatically so: a row in the sheet offering to record
+	// every prompt a person ever sends is not a preference, it is a decision
+	// somebody should have to make on purpose, in a shell, for one run.
+	"AFORGE_CALL_LOG",
+	"AFORGE_CALL_LOG_BODIES",
 	"AFORGE_MODELS",
 	"AFORGE_REASONING",
 	"AFORGE_EXEC_REASONING",

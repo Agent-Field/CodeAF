@@ -545,6 +545,14 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// with a shell command, a script or a build is invisible to the write tools
 	// and visible to this. See Workspace.WatchTree.
 	l.workspace.WatchTree(task.leafKey())
+
+	// WHICH NODE THESE CALLS BELONG TO, on the same context and for the same
+	// reason: every model call this leaf makes, turn after turn, is one node's
+	// work, and a log of a fanned-out run is unreadable without saying whose.
+	// The tag itself is derived from the routing class the scheduler already
+	// stamped (provider.WithCallTag), so "leaf" is spelled once, not twice.
+	ctx = provider.WithCallTag(ctx, "leaf")
+	ctx = provider.WithCallNode(ctx, task.NodeKey)
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()

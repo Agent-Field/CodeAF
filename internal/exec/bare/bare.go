@@ -106,7 +106,11 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		deadline: b.deadline,
 	}
 
-	outcome := loop.run(ctx)
+	// The node these calls belong to, for the model-call log. The bare loop
+	// deliberately attaches nothing else to the context (see loop.go on why it
+	// sends no cache key), and this is not a knob: it changes no request, it
+	// only names the work on the way past.
+	outcome := loop.run(provider.WithCallNode(provider.WithCallTag(ctx, "leaf"), task.NodeKey))
 
 	// Artifacts: whatever this leaf left in the workspace. The bare loop does not
 	// own a git substrate, so this is the workspace's own record — the sweep

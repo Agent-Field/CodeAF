@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1238,6 +1239,16 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		attemptCtx := ctx
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
+		}
+		// What this call is FOR, for the model-call log. A conversation's own
+		// turn and a task child's turn run the identical loop, and the one thing
+		// that tells them apart is whether this agent IS a node — so the word
+		// follows that, and the node it is gets named beside it.
+		if a.config.taskID != 0 {
+			attemptCtx = provider.WithCallNode(provider.WithCallTag(attemptCtx, "task"),
+				strconv.FormatUint(a.config.taskID, 10))
+		} else {
+			attemptCtx = provider.WithCallTag(attemptCtx, "turn")
 		}
 		messages, carried := a.snapshotWithReasoning()
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)

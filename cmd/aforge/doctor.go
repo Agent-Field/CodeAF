@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -36,7 +37,10 @@ type doctorSnapshot struct {
 	ActiveCharters   int
 	PendingQuestions int
 	SWEModel         sweModelReport
-	Now              time.Time
+	// CallLog is where the model-call log is and how big it has got
+	// (internal/calllog), or nothing when nothing has ever been written to it.
+	CallLog callLogReport
+	Now     time.Time
 }
 
 // sweModelReport is doctor's answer to the one precondition of coding work that
@@ -62,6 +66,18 @@ type sweModelReport struct {
 	Unknown bool
 	// Detail explains an Unknown, in the words of whatever failed.
 	Detail string
+}
+
+// callLogReport is where the model-call log is and how big it has got, or
+// nothing at all. Nothing is the honest answer on a machine that has not called
+// a model yet: a path printed beside "0 B" for a file that does not exist reads
+// as a broken log rather than an unused one (the emptiness law).
+type callLogReport struct {
+	Path string
+	Size int64
+	// Off is a log the operator switched off, which is a different report from
+	// one that simply has not been written to.
+	Off bool
 }
 
 func runDoctor(args []string) error {
@@ -123,8 +139,26 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	if err != nil {
 		return err
 	}
+	// The model-call log lives beside the quirks memo under the profile, which
+	// `--db` does not move: it is read from the same environment runDoctor read
+	// the budget from.
+	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))))
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
+}
+
+// readCallLogReport measures the log without opening it for writing. A path
+// that is not there yet is not an error and not a zero — it is a machine that
+// has not made a call.
+func readCallLogReport(path string) callLogReport {
+	if path == "" {
+		return callLogReport{Off: true}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return callLogReport{}
+	}
+	return callLogReport{Path: path, Size: info.Size()}
 }
 
 // sweModelCheck asks the engine's catalog, from this side of the process
@@ -254,7 +288,24 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	if line := formatSWEModel(snapshot.SWEModel); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "coding model", line)
 	}
+	if line := formatCallLog(snapshot.CallLog); line != "" {
+		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
+	}
 	return block
+}
+
+// formatCallLog names the model-call log and what it weighs. It says nothing at
+// all about a log that has never been written: a person who has not made a call
+// has no log to be told about, and a path with no file behind it is the kind of
+// line that sends somebody looking for a bug.
+func formatCallLog(report callLogReport) string {
+	if report.Off {
+		return "off · " + calllog.EnvVar + "=" + calllog.OffValue
+	}
+	if report.Path == "" {
+		return ""
+	}
+	return report.Path + " · " + humanBytes(report.Size)
 }
 
 // formatSWEModel says whether coding work can start, in one line and in the
