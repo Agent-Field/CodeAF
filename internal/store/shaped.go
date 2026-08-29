@@ -37,6 +37,13 @@ type StructuredRepair struct {
 	Spent   int    `json:"spent,omitempty"`
 	Ceiling int    `json:"ceiling,omitempty"`
 	Line    string `json:"line"`
+
+	// Note is why the answer could not be read, in the reader's own words —
+	// shaped.Repair.Note. Line says what was done about it and reads the same
+	// for every cause; this says which cause, and it is the difference between
+	// a model reasoning out loud (the seam working) and a caller's own contract
+	// refusing a well-formed answer (a question asked badly).
+	Note string `json:"note,omitempty"`
 }
 
 // RecordStructuredRepair journals one repair against the node it was made for —

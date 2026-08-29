@@ -368,6 +368,17 @@ type Judgment struct {
 	// own spelling. Empty on a pass, on a claim-subject finding, and on every
 	// mechanical judgement that is already about a named file of its own.
 	File string
+	// HeldPoint is the behaviour of the request this verdict was held to, in
+	// the record's own words: the span a refusal was built on, the size of the
+	// list a pass was weighed against, or HeldPointEmpty where the request
+	// states none and the requirement was off.
+	//
+	// It exists because the quote alone cannot say which. textual v4-flash s13
+	// journaled two gates whose subject and quote were both right, and no
+	// reader could tell whether the quote had passed the checklist enum or
+	// there had been no checklist at all — which are the mechanism working and
+	// the mechanism absent, wearing the same event.
+	HeldPoint string
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -1168,6 +1179,12 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	judgment := judgeDeliverable(ctx, settings, client, graph, node, deliverable, method,
 		evidence, workerModel, options...)
 	judgment.Subject = evidence.SubjectWords()
+	// And the other half of the same question, derived the same way and for the
+	// same reason: WHICH behaviour this verdict was held to, or that there was
+	// no list to hold it to. See heldPointWords.
+	judgment.HeldPoint = heldPointWords(evidence,
+		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
+		newBounds(options).budget(DeliverablePrompt), judgment)
 	return judgment
 }
 

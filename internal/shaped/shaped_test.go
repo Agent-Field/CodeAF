@@ -3,6 +3,7 @@ package shaped
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -335,4 +336,58 @@ func TestAModelWatchedOverrunningALaneIsNeverSentThatCeilingAgain(t *testing.T) 
 	if unknown := Room(Ask{Lane: "fan-out-memo"}, "vendor/some-other-model"); unknown != before {
 		t.Fatalf("a cut by one model moved another model's ceiling: %d, want %d", unknown, before)
 	}
+}
+
+// "The answer was not readable" is two facts, and this seam journaled one word
+// for both: a model reasoning out loud, and a caller's own contract refusing a
+// well-formed answer. textual v4-flash s13 holds two of these on lane `gate`,
+// and telling them apart meant reading token counts out of the usage table
+// three events either side of each one.
+func TestTheJournalSaysWhyAnAnswerCouldNotBeRead(t *testing.T) {
+	for name, sent := range map[string]struct {
+		reply string
+		want  string
+	}{
+		"a model reasoning out loud": {
+			"Looking at the deliverable, the module implements the state machine and the tests cover it.",
+			"no JSON object"},
+		"a contract the caller refused": {
+			`{"pass":false,"gaps":"x","quote":"not a stated behaviour"}`,
+			"not one of them"},
+	} {
+		var journaled []Repair
+		ctx := WithJournal(context.Background(),
+			JournalFunc(func(repair Repair) { journaled = append(journaled, repair) }))
+		client := &scripted{replies: []*ai.Response{whole(sent.reply), whole(`{"ok":true}`)}}
+		var into fussyDestination
+		if _, err := Answer(ctx, client, Ask{Lane: "gate"}, &into); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(journaled) != 1 || journaled[0].Kind != RepairReasked {
+			t.Fatalf("%s: journaled %+v", name, journaled)
+		}
+		if !strings.Contains(journaled[0].Note, sent.want) {
+			t.Errorf("%s: note = %q, want it to name %q", name, journaled[0].Note, sent.want)
+		}
+	}
+}
+
+// fussyDestination is a caller whose contract refuses an answer that decoded
+// perfectly well — the delivery gate's own shape, in miniature.
+type fussyDestination struct{ OK bool }
+
+func (d *fussyDestination) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		OK    bool   `json:"ok"`
+		Quote string `json:"quote"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if !raw.OK {
+		return fmt.Errorf("a fail must quote one of the behaviours this request states, "+
+			"and %q is not one of them", raw.Quote)
+	}
+	d.OK = raw.OK
+	return nil
 }

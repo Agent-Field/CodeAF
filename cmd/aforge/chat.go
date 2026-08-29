@@ -1601,6 +1601,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// markers. An autopsy asking whether a refusal read the
 					// world or a sentence has nothing else to go on.
 					Subject: gate.Subject,
+					// And which behaviour of the request it was allowed to
+					// convict on — or that the request stated none, which is
+					// the same event without this field.
+					HeldPoint: gate.HeldPoint,
 					// And its conclusion. The mapping is the evidence; this is
 					// the finding, and it is recorded as a list of its own so
 					// the stream can say it and an autopsy can find it without
