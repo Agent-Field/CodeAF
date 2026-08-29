@@ -202,13 +202,66 @@ docker exec "$NAME" git config --global --add safe.directory /app >/dev/null 2>&
 # qemu core dump of node as part of its answer. It is the emulator's droppings,
 # not the run's work, so it never reaches the diff.
 docker exec "$NAME" sh -c 'cd /app && rm -f qemu_*.core core.[0-9]* 2>/dev/null; true' >> "$OUT/docker.log" 2>&1
-docker exec "$NAME" git -C /app add -A >> "$OUT/docker.log" 2>&1
-# --binary, because a run that writes a .joblib, a fixture image or any other
-# non-text artifact otherwise produces "Binary files a/x and b/x differ", which
-# `git apply` refuses with "cannot apply binary patch without full index line".
-# The whole patch is then rejected and the run scores 0 for a rig reason. The
-# corpus's own collect command in task.toml uses --binary for this reason.
-docker exec "$NAME" git -C /app diff --cached --binary "$TASK_BASE" > "$OUT/model.patch" 2>> "$OUT/docker.log"
+# The graded diff has to be everything the run changed relative to the task's
+# base commit, and "the index" is not that. A run that commits its work to a
+# branch and leaves the worktree back on the default branch has an index that
+# matches base, and the old `git add -A && git diff --cached <base>` graded it
+# as though it had written nothing — happy-dom s7 spent its whole 90-minute wall
+# and submitted 0 bytes that way.
+#
+# So every place the work could be is measured and the richest one wins: the
+# worktree (with untracked files staged, which is what `add -A` is for), and
+# each local branch that moved off base. They are candidates rather than a union
+# because the grader applies ONE patch and two overlapping patches do not apply.
+# Every candidate's size is written into meta.json, so the choice is auditable
+# and a run whose work was split across two of them is visible rather than
+# silently halved.
+#
+# --binary throughout: a run that writes a .joblib, a fixture image or any other
+# non-text file otherwise produces "Binary files a/x and b/x differ", which
+# `git apply` refuses with "cannot apply binary patch without full index line",
+# and the whole patch is rejected for a rig reason. The corpus's own collect
+# command in task.toml uses --binary for exactly this.
+docker exec -i "$NAME" tee /bench/collect.sh > /dev/null <<'COLLECT'
+#!/bin/sh
+set -u
+base="$1"; out=/bench/candidates
+rm -rf "$out"; mkdir -p "$out"
+cd /app || exit 1
+git add -A >/dev/null 2>&1
+git diff --cached --binary "$base" > "$out/worktree.patch" 2>/dev/null
+for ref in $(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null); do
+  safe=$(printf '%s' "$ref" | tr '/' '_')
+  git diff --binary "$base" "$ref" > "$out/branch-$safe.patch" 2>/dev/null
+done
+# HEAD too, which covers a detached checkout no branch points at.
+git diff --binary "$base" HEAD > "$out/head.patch" 2>/dev/null
+for f in "$out"/*.patch; do
+  [ -f "$f" ] || continue
+  printf '%s\t%s\n' "$(wc -c < "$f" | tr -d ' ')" "$(basename "$f")"
+done
+COLLECT
+docker exec "$NAME" chmod +x /bench/collect.sh >> "$OUT/docker.log" 2>&1
+docker exec "$NAME" /bench/collect.sh "$TASK_BASE" > "$OUT/candidates.tsv" 2>> "$OUT/docker.log"
+
+BEST=$(sort -rn "$OUT/candidates.tsv" 2>/dev/null | head -1 | cut -f2)
+BEST="${BEST:-worktree.patch}"
+docker exec "$NAME" cat "/bench/candidates/$BEST" > "$OUT/model.patch" 2>> "$OUT/docker.log"
+log "$TASK: graded diff taken from $BEST"
+python3 - "$OUT/meta.json" "$OUT/candidates.tsv" "$BEST" <<'CANDS'
+import json, os, sys
+metapath, tsv, best = sys.argv[1], sys.argv[2], sys.argv[3]
+meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
+rows = {}
+if os.path.exists(tsv):
+    for line in open(tsv):
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) == 2 and parts[0].isdigit():
+            rows[parts[1]] = int(parts[0])
+meta["patch_candidates"] = rows
+meta["patch_source"] = best
+json.dump(meta, open(metapath, "w"), indent=2)
+CANDS
 docker cp "$NAME:/bench/graph.db" "$OUT/graph.db" >> "$OUT/docker.log" 2>&1
 
 # Spend is read from the store's own usage ledger, not from the stream: the
