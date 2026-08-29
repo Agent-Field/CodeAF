@@ -1184,3 +1184,20 @@ func TestLsDotfilesIncluded(t *testing.T) {
 		t.Errorf("expected dotfile in listing, got: %q", text)
 	}
 }
+
+// A call that names no timeout is bounded at the ceiling and dies there: a
+// headless leaf's `find /` used to hold its node for the task's whole deadline.
+// The ceiling is lowered through its seam so the proof takes a second.
+func TestBashWithoutATimeoutIsBoundedAtTheCeiling(t *testing.T) {
+	previous := bashDefaultTimeout
+	bashDefaultTimeout = time.Second
+	defer func() { bashDefaultTimeout = previous }()
+	tools := Tools(t.TempDir())
+	text, isErr := runTool(t, tools[1], map[string]any{"command": "sleep 10"})
+	if !isErr {
+		t.Fatalf("an unbounded call was allowed to run: %q", text)
+	}
+	if !strings.Contains(text, "timed out") {
+		t.Fatalf("the call did not say it was bounded: %q", text)
+	}
+}

@@ -1400,8 +1400,8 @@ until its result lands, because until then nothing here knows whether it worked.
 
 A call with no timeout gets no countdown, no bound and no colour — chrome implying a
 deadline would be inventing one. A foreground `bash` always has one: a `timeout` that is
-missing, null or zero counts down against the 120-second default the command will really
-die on, never a number nothing is going to enforce. A background `bash` has no bound,
+missing, null or zero counts down against the 600-second ceiling the command is really
+bounded by, never a number nothing is going to enforce. A background `bash` has no bound,
 because it runs as a job. A turn that ended with a call unresolved stops every clock, and
 it stays stopped:
 the row takes the dim `·` mark at the moment the turn ends and keeps it through every
