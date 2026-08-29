@@ -37,6 +37,18 @@ def row(d):
     cost = read(os.path.join(d, "cost.json"))
     reward = read(os.path.join(d, "reward.json"), default=None)
     note = ""
+    if meta.get("void") is None:
+        # An older result, or one whose run never reached the worker check.
+        # The store still knows, so ask it rather than reporting a run as
+        # valid because the fact was never written down.
+        try:
+            import sqlite3
+            c = sqlite3.connect(os.path.join(d, "graph.db"))
+            ran = sorted({r[0] for r in c.execute(
+                "select subharness from nodes where coalesce(subharness,'') != ''")})
+            meta["workers_ran"], meta["void"] = ran, "swe" in ran
+        except Exception:
+            pass
     if meta.get("void"):
         # A specialist worker took the run over, so it is not a measurement of
         # the path under test. Never averaged in, never silently dropped.
