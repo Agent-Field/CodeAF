@@ -1,6 +1,7 @@
 package revision
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -168,4 +169,61 @@ func producedNonEmpty(named string, artifacts []string) bool {
 		return false
 	}
 	return info.Size() > 0
+}
+
+// regressionsNamed bounds how many failing checks one finding spells out. A
+// worker that breaks an import breaks every test in the file, and a gap that
+// listed four hundred of them is a gap no repair can read and no person can
+// take in; the rest are counted, which is the same shape describeFailing uses
+// on the other side of the same measurement. Eight is what a person reads
+// before their eye slides off a list.
+const regressionsNamed = 8
+
+// Regressions is the second mechanical half of the delivery gate, and the one
+// whose evidence comes from the WORLD rather than from the plan.
+//
+// A check that passed before this work and fails after it is a fact the run
+// measured for itself, twice, with the project's own command. It is a gate
+// failure that names the failing checks verbatim, in the same shape a judged
+// gap takes, so the one-round repair flow the gate already owns runs on it
+// unchanged — and the model judge is skipped for that round, because its cost
+// buys nothing when the failure is a fact about a test runner's output rather
+// than a question about the text.
+//
+// SOURCED, NOT MECHANICAL, AND THE DIFFERENCE IS WHERE THE EVIDENCE CAME FROM.
+// A mechanical gap reads the plan's promises against the disk; refusing its
+// citation is possible and merely pointless. This gap has no citation to weigh
+// at all: the request never said "and do not break the tests", because nobody
+// has to. Grounding it would refuse it every single time, which is exactly the
+// shape of the three graded runs that shipped patches deleting attributes their
+// repositories already had while their own narrow tests stayed green
+// (2026-08-28, bench/deepswe; docs/design/gate/SETTLEMENT.md §4).
+//
+// ok is false — and the caller judges exactly as it did before this existed —
+// when nothing was measured or nothing turned red. A worker that cannot take
+// two readings hands back nil, which reads as no claim and never as no
+// regression.
+func Regressions(regressed []string) (judgment Judgment, ok bool) {
+	broke := make([]string, 0, len(regressed))
+	for _, name := range regressed {
+		if name = strings.TrimSpace(name); name != "" {
+			broke = append(broke, name)
+		}
+	}
+	if len(broke) == 0 {
+		return Judgment{}, false
+	}
+	named := broke
+	if len(named) > regressionsNamed {
+		named = named[:regressionsNamed]
+	}
+	gap := "This work broke checks that were passing before it: " + joinCitations(named) + "."
+	if len(broke) > len(named) {
+		gap += fmt.Sprintf(" And %d more.", len(broke)-len(named))
+	}
+	gap += " They were measured twice with the project's own command, before the work and after it."
+	return Judgment{
+		Pass: false, Gaps: gap, Quote: joinCitations(named),
+		Citations: named, Sourced: true, Checked: true,
+	}, true
 }

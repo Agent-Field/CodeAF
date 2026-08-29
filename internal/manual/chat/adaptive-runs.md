@@ -420,6 +420,100 @@ A node with **no** write scope is read-only work — its brief says `THIS IS REA
 find out, do not change anything` — and writing nothing is the whole of what it was asked
 for. It is never held to this.
 
+## When a review says something is missing — why it says partial, not finished
+
+Before a run's answer is handed over, one review reads it against your own request and
+asks the only question that matters: would you accept this as done? Its default is to
+pass. When it fails, it has to name the missing thing concretely enough that a worker
+could close it from those words alone.
+
+A named gap buys **one revision round** — the same work again with the review's words in
+front of it — and, if the gap survives that, the work that closes it, planned and queued
+like any other piece. You see one line: `a review found this still missing: … — finishing
+that before delivering`.
+
+**Three things can stop that round being bought, and only one of them means the review was
+wrong.**
+
+- **It is already there.** The file the review says is missing is on disk under the name
+  you used, or the things it says are absent are in the text you are about to read. The
+  review was checked against the world and lost, and the answer is handed over as
+  finished: `a review raised this: … — I've delivered as it stands, because what it asked
+  for is already on disk under the name the request used.`
+- **The review asked for something you never asked for.** Nothing is redone, because a
+  round bought against a standard aforge set for itself cannot converge on anything. You
+  are told, in the delivery: `— I've delivered as it stands, because what the review asked
+  for next is not in the request, and I don't redo work over a standard the request never
+  set. Say the word and I will.`
+- **Nothing more could be started.** No money, no rounds, no room, or not enough time left
+  on the run to finish a repair: `I'm handing this over with a reservation — a review found
+  this still missing: … I've taken it as far as repair takes it: there is not enough time
+  left on the run to finish it.`
+
+**Only the first of those is a finished run.** The other two hand over something the run
+itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
+exit **2**, not 0. That is the whole difference: a refusal that was checked against the
+filesystem or against the delivered text overturns the finding, and a refusal about where
+the review got its words does not, because no ruling about a quotation makes missing work
+appear.
+
+Watching a headless run, the line names the finding first and the reason second:
+
+```
+gate: refused — The deliverable does not contain the code that writes feature_schema.joblib — what the review asked for next is not in the request
+```
+
+## What the review is allowed to hold you to — the request, the method, and what was promised
+
+A review may only ask for things that were promised **before the work started**: your own
+request, the working method that kind of work was held to, and what the plan itself said it
+would produce. Those three cannot have moved in response to what the work turned out to be,
+which is what makes them safe to buy work against.
+
+A review's finding is accepted when it quotes one of those — **including a quotation that
+skips a middle**, with `...` between two parts of your sentence, which is how anybody
+quotes a long request — or when it names a file one of them names, under either spelling,
+or when every distinctively spelled name in it is a name one of them uses. So "the code
+that writes feature_schema.joblib is not there" is held to, even though it quotes no whole
+clause of the request, because every name in it is yours.
+
+An ordinary word is not a name. A finding built out of your vocabulary but asking for
+something you never asked for — "March refers to any calendar year present in the data" —
+names nothing distinctive, so it is refused, and the run tells you so rather than quietly
+redoing work against it.
+
+## When the work broke something that was working — checks that passed before and fail after
+
+A run working in a repository reads that repository's **own** way of checking itself — the
+verification command declared in its `package.json` scripts, its `Makefile` targets, its CI
+workflow, `go.mod`, `Cargo.toml`, or a Python project with a suite — and takes two readings
+of it: one before it touches anything, and one after, when the tree actually changed.
+
+A check that passed before and fails after is a finding the run raises about itself, and it
+is a blocker. Nothing is weighed about where it came from: you never have to ask for your
+repository to keep working. It reads:
+
+```
+This work broke checks that were passing before it: tests/test_igel/test_feature_schema.py::TestFeatureSchema::test_fit_writes_schema, … They were measured twice with the project's own command, before the work and after it.
+```
+
+That buys the repair round like any other finding, and if nothing closes it the run lands
+partial rather than finished. Checks that were **already** red before the work began are
+named separately and are never held against the change.
+
+**Why this exists.** A worker's own new checks are the one signal that structurally cannot
+see a breakage, because the worker wrote them. Three measured runs shipped a change that
+deleted an attribute the repository already had, watched their own narrow checks stay
+green, and reported success while every one of the repository's own checks failed on setup.
+
+**When it does not happen.** A project that declares no way to check itself is not checked
+— there is nothing to run. A piece of work whose whole time budget is too short to hold a
+real reading takes none at all, rather than spending an eighth of its life on a command
+that would be killed before it said anything: below about eight minutes of wall, nothing is
+measured. A tree nothing changed is not read a second time. In every one of those cases the
+run behaves exactly as it would have without this, and says nothing about checks it did not
+run.
+
 ## Why it kept spawning the same worker over and over — the repeat guard
 
 If a run seemed to run the same brief again and again — worker after worker sent at one
