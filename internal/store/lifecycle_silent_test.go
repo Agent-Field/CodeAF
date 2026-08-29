@@ -31,12 +31,12 @@ func TestALeafThatKeepsWorkingKeepsItsClaim(t *testing.T) {
 		t.Fatalf("record transcript: %v", err)
 	}
 
-	released, err := graph.ReleaseSilent(22 * time.Minute)
+	silent, err := graph.SilentClaims(22 * time.Minute)
 	if err != nil {
-		t.Fatalf("ReleaseSilent: %v", err)
+		t.Fatalf("SilentClaims: %v", err)
 	}
-	if len(released) != 0 {
-		t.Fatalf("released %v — a leaf that recorded a turn a moment ago was taken off its own work", released)
+	if len(silent) != 0 {
+		t.Fatalf("reported %v silent — a leaf that recorded a turn a moment ago is working", silent)
 	}
 	node, _, err := graph.Node("task-2")
 	if err != nil {
@@ -62,12 +62,12 @@ func TestABilledCallIsAlsoASignOfLife(t *testing.T) {
 		t.Fatalf("record usage: %v", err)
 	}
 
-	released, err := graph.ReleaseSilent(22 * time.Minute)
+	silent, err := graph.SilentClaims(22 * time.Minute)
 	if err != nil {
-		t.Fatalf("ReleaseSilent: %v", err)
+		t.Fatalf("SilentClaims: %v", err)
 	}
-	if len(released) != 0 {
-		t.Fatalf("released %v — a leaf billed for a call a moment ago was taken off its own work", released)
+	if len(silent) != 0 {
+		t.Fatalf("reported %v silent — a leaf billed for a call a moment ago is working", silent)
 	}
 }
 
@@ -89,18 +89,31 @@ func TestASilentClaimIsReleasedAndTheReasonIsJournaled(t *testing.T) {
 	backdateStart(t, graph, "task-2", 40*time.Minute)
 	backdateSigns(t, graph, "task-2", 40*time.Minute)
 
-	released, err := graph.ReleaseSilent(22 * time.Minute)
+	silent, err := graph.SilentClaims(22 * time.Minute)
 	if err != nil {
-		t.Fatalf("ReleaseSilent: %v", err)
+		t.Fatalf("SilentClaims: %v", err)
 	}
-	if len(released) != 1 || released[0].ID != "task-2" {
-		t.Fatalf("released = %v, want the silent claim", released)
+	if len(silent) != 1 || silent[0].ID != "task-2" {
+		t.Fatalf("silent = %v, want the one claim nobody is behind", silent)
 	}
-	if released[0].Quiet < 22*time.Minute {
-		t.Fatalf("the silence was measured at %s, want at least the window", released[0].Quiet)
+	if silent[0].Quiet < 22*time.Minute {
+		t.Fatalf("the silence was measured at %s, want at least the window", silent[0].Quiet)
 	}
-	if !strings.Contains(released[0].Reason, "no sign of life") {
-		t.Fatalf("reason = %q, want it to say what was missing", released[0].Reason)
+	if !strings.Contains(silent[0].Reason, "no sign of life") {
+		t.Fatalf("reason = %q, want it to say what was missing", silent[0].Reason)
+	}
+
+	// The sweep only reads; taking the claim back is the caller's decision,
+	// because only the caller knows whether it has a worker to stop first.
+	if err := graph.ReleaseWithReason(silent[0].Claim(), silent[0].Reason); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	node, _, err := graph.Node("task-2")
+	if err != nil {
+		t.Fatalf("read node: %v", err)
+	}
+	if node.Status != Pending {
+		t.Fatalf("task-2 is %s, want pending once the claim is back", node.Status)
 	}
 
 	// And the reason is on the journal, where an autopsy reads it.

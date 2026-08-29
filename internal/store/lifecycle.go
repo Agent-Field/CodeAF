@@ -417,13 +417,20 @@ func (s *Store) release(claim Claim, reason string) error {
 // was re-claimed inside the same second while its first worker went on writing
 // to the same workspace.
 
-// SilentClaim is one claim this sweep found with nobody behind it: which node,
-// how long it had been silent, and the sentence that says so. The sentence is
-// carried out rather than composed at the caller because the numbers behind it
-// are known here and nowhere else.
+// SilentClaim is one claim this sweep found showing no sign of life: which node
+// and which claim, how long it had been silent, and the sentence that says so.
+// The sentence is carried out rather than composed at the caller because the
+// numbers behind it are known here and nowhere else.
 type SilentClaim struct {
-	// ID is the node the claim was on.
+	// ID is the node the claim is on.
 	ID string
+	// Owner and Token are the claim itself, so a caller that decides to take it
+	// back can do so through the ordinary CAS without reading the node again.
+	Owner string
+	Token uint64
+	// CancelRequested carries the surgery flag through, because a claim the user
+	// had already asked to stop is finished as a cancellation once it is back.
+	CancelRequested bool
 	// Quiet is how long it had been since the node last showed a sign of life.
 	Quiet time.Duration
 	// LastSign is when that sign was. It is the claim's own start when the
@@ -434,8 +441,22 @@ type SilentClaim struct {
 	Reason string
 }
 
-// ReleaseSilent returns to pending every claimed or running node that has shown
-// no sign of life for the given window, and journals why on each release.
+// Claim is the claim this silence was found on, ready for Release.
+func (c SilentClaim) Claim() Claim {
+	return Claim{ID: c.ID, Owner: c.Owner, Token: c.Token}
+}
+
+// SilentClaims is every claimed or running node that has shown no sign of life
+// for the given window, with the sentence that says so.
+//
+// IT READS AND DOES NOT ACT, and the split is the point. Taking a claim back is
+// only half of what has to happen: if a worker in this process is still holding
+// it, that worker must be STOPPED first, or the release simply hands one
+// workspace to a second worker while the first goes on writing to it — which is
+// what the ink run of 2026-08-29 did four times over. Only the scheduler knows
+// which claims it is itself behind, so only the scheduler can decide between
+// stopping a worker and taking a claim from a process that is gone. See
+// resident.Runner.reapSilentClaims.
 //
 // It exists for the live-run case ReleaseOrphans does not reach: a worker that
 // dies mid-run — a process killed, a goroutine wedged past every deadline it was
@@ -446,7 +467,7 @@ type SilentClaim struct {
 //
 // A window of zero or less disarms the sweep entirely, which is what a caller
 // that has not decided a window should get.
-func (s *Store) ReleaseSilent(quietFor time.Duration) ([]SilentClaim, error) {
+func (s *Store) SilentClaims(quietFor time.Duration) ([]SilentClaim, error) {
 	if quietFor <= 0 {
 		return nil, nil
 	}
@@ -472,51 +493,34 @@ func (s *Store) ReleaseSilent(quietFor time.Duration) ([]SilentClaim, error) {
 		 ) WHERE last_sign < ?`,
 		Claimed, Running, RootID, TerritoryGroup, cutoff)
 	if err != nil {
-		return nil, fmt.Errorf("release silent: %w", err)
+		return nil, fmt.Errorf("silent claims: %w", err)
 	}
-	type candidate struct {
-		claim    Claim
-		cancel   bool
-		lastSign time.Time
-	}
-	candidates := make([]candidate, 0, 4)
+	defer rows.Close()
+	silent := make([]SilentClaim, 0, 4)
 	for rows.Next() {
-		var item candidate
+		var found SilentClaim
 		var stamp string
-		if err := rows.Scan(&item.claim.ID, &item.claim.Owner, &item.claim.Token, &item.cancel, &stamp); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("release silent: %w", err)
+		if err := rows.Scan(&found.ID, &found.Owner, &found.Token, &found.CancelRequested, &stamp); err != nil {
+			return nil, fmt.Errorf("silent claims: %w", err)
 		}
 		// A stamp that will not parse is not a reason to leave a claim standing
 		// forever, but it is a reason not to invent a duration for it: the zero
 		// time renders as the claim never having been seen alive, which is what
 		// a row with no readable timestamp actually establishes.
-		item.lastSign, _ = parseTime(stamp)
-		candidates = append(candidates, item)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("release silent: %w", err)
-	}
-	released := make([]SilentClaim, 0, len(candidates))
-	for _, item := range candidates {
-		quiet := quietFor
-		if !item.lastSign.IsZero() {
-			quiet = now.Sub(item.lastSign)
+		found.LastSign, _ = parseTime(stamp)
+		found.Quiet = quietFor
+		if !found.LastSign.IsZero() {
+			found.Quiet = now.Sub(found.LastSign)
 		}
-		reason := fmt.Sprintf(
+		found.Reason = fmt.Sprintf(
 			"no sign of life for %s — no model call and no recorded turn since it was picked up",
-			quiet.Round(time.Second))
-		if err := s.ReleaseWithReason(item.claim, reason); err != nil {
-			continue
-		}
-		if item.cancel {
-			_ = s.CancelPending(item.claim.ID, UserCancelReason)
-		}
-		released = append(released, SilentClaim{
-			ID: item.claim.ID, Quiet: quiet, LastSign: item.lastSign, Reason: reason,
-		})
+			found.Quiet.Round(time.Second))
+		silent = append(silent, found)
 	}
-	return released, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("silent claims: %w", err)
+	}
+	return silent, nil
 }
 
 // ReleaseOrphans returns every claimed or running node to pending. It exists

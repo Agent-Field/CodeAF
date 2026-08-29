@@ -813,7 +813,7 @@ only case a reaper can be right about. On 2026-08-28 it was the FIRST thing to
 react, which is why it looked like the problem: its only available reaction is
 the bluntest one there is.
 
-**And the window bounds SILENCE, not work.** `store.ReleaseSilent` measures it
+**And the window bounds SILENCE, not work.** `store.SilentClaims` measures it
 from the node's last durable sign of life — a billed `usage` row, a `usage_turns`
 row, a `transcript` flush — floored at the claim's own start, and never from
 `started_at` alone. Measured from the start it asked how long the WORKER had
@@ -822,6 +822,18 @@ retry a spent deadline earns: on 2026-08-29 that fired at 22m10s, 22m10s, 22m11s
 and 22m06s at a leaf that was calling the model throughout (15m deadline + 2m
 watchdog + 5m pad = 22m, plus one `runnerQuietCeiling` of dispatch latency).
 Every release now carries its reason on the journal.
+
+**And it cancels rather than confiscates.** `store.SilentClaims` only reads;
+`resident.Runner.reapSilentClaims` decides. A claim this process is behind is
+never taken back — its worker's context is cancelled and the node stays Running
+until that worker's own landing releases it, which is the only release that
+cannot overtake a live goroutine. `store.EventLeafStopped` carries the token and
+is journaled immediately before that release, so the ordering is checkable in any
+store. A worker that ignores its cancellation for `claimReaperPad` — the same
+five minutes a landing leaf is already given, not a new figure — is gone, and the
+claim is taken without it and said to be. A claim owned by a process that is no
+longer here has no worker to stop and is released at once, which is what
+`ReleaseOrphans` does at startup for the same reason.
 
 ### And a reaped node resumes
 
