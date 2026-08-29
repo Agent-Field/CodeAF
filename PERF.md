@@ -603,12 +603,15 @@ instance of a class the run wrote, `surface` read `compared: 8, lost: 0`, and al
 **24** hidden tests failed on `'Configs' object does not support item
 assignment`.
 
-`verify.ChangedDefinitions` intersects the hunks of the run's own diff with the
-declaration spans `verify.DeclarationsIn` already locates — no extra parse: the
-spans come off the same walk that decides a name is public. `verify.Consumers`
-then walks the project ONCE for every name at the same time, because the walk is
-what this costs and a settlement weighing eight definitions must not read the
-tree eight times.
+`verify.ChangedDefinitions` is a subtraction of the two photographs the job
+already takes — a name in both readings whose declaration DIGEST differs — and
+costs nothing beyond the digest itself, which is an FNV hash over the
+declaration's own non-blank lines on the same walk that decides the name is
+public. It needs no diff, which is what makes it exist at all: `Account.Patch` is
+the SWE belt's and the belts a headless run uses set it nowhere.
+`verify.Consumers` then walks the project ONCE for every name at the same time,
+because the walk is what this costs and a settlement weighing eight definitions
+must not read the tree eight times.
 
 | number | value | what it bounds |
 | --- | --- | --- |
@@ -620,9 +623,15 @@ tree eight times.
 | `revision.consumerQuotes` | 24 | consumer lines that travel as the verdict schema's enum |
 | `revision.gateConsumersShare` | **6 of `gateShareTotal`**, 3 KiB unknown | the block's room in the judge's prompt |
 
-Per file it reuses `surfaceFileBytes` **512KB** and skips nothing a source walk
-would not skip. No model call, no second suite run, no toolchain: it is a diff
-already on disk, one walk, and `strings.Index` with an identifier-boundary test.
+Per file it reuses `surfaceFileBytes` **512KB**, and it skips every file the run
+CHANGED — those lines are the work, not a consumer of it. No model call, no
+second suite run, no toolchain: two readings the job already has, one walk, and
+`strings.Index` with an identifier-boundary test.
+
+**The baseline surface now carries a digest per declaration.** A public name is a
+string plus eight bytes, so a repository with twenty thousand of them costs about
+160KB per remembered baseline, and `rememberedTrees` **16** bounds how many are
+held at once — kilobytes, once per process.
 
 Past any bound the reading is PARTIAL, which degrades in the safe direction every
 time: fewer sites can only UNDERSTATE a count, never invent one, and a definition
@@ -771,6 +780,7 @@ place the model.
 | the record that travels as a schema enum | at most **64 paths** | `treeEnumFiles` |
 | the stated behaviours a refusal may quote | **6 of `gateShareTotal`**, 4 KiB unknown | `gateAcceptShare`, `gateAcceptBytes` |
 | the consumer lines a refusal may quote | at most **24**, from what was shown | `consumerQuotes` |
+| the files a refusal may name | the record, the consumers, and everything the plan or request PROMISED | `Evidence.PromisedFiles` |
 
 **NO FILE IS EVER PRINTED IN PART.** A file's contents appear entire or the file
 appears by name and size only, and the block says which. This is the law, not the

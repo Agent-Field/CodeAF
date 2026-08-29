@@ -793,7 +793,7 @@ named, it buys a repair round, and while any of it is still open the run ends `p
 with the count in the last line, whatever else was settled or overturned along the way.
 
 **And a public name your code had before the work and does not have after it is a finding
-too.** A suite only covers what somebody wrote a check for, so it can come back greener on a
+at every check of the job, not only the one that lost it.** A suite only covers what somebody wrote a check for, so it can come back greener on a
 change that broke every caller outside it: one job deleted eight public attributes off a
 class, the project's own checks went from two passing to fourteen, and all twenty-four of
 the hidden ones it was really measured on failed on their first line. So the names are read
@@ -808,13 +808,17 @@ that still uses it.** Deleting a name is only half of what breaks callers; the o
 keeping the name and changing what stands behind it, and no suite and no list of names can
 see that. One job rebound a module's `configs` from a dictionary to an object of its own
 with no item assignment on it — same name, checks still green, every one of the twenty-four
-hidden tests failing on the first line that wrote into it. So the definitions the change's
-own diff rewrote are read out of the finished files, and every place in your project that
-still uses those names is found and counted by what it DOES with them: calls it with so many
+hidden tests failing on the first line that wrote into it. So the same two readings that
+say which names went also say which names STAYED and are no longer the same thing — a
+definition whose own text your project spelled one way before the job and another way
+after — and every place in your project that still uses those names is found and counted
+by what it DOES with them: calls it with so many
 arguments, indexes it, assigns into an index, reaches a member off it, iterates it. That
 goes in front of the check at the end of the job with the file, the line number and the line
 itself, and it may refuse the work on one of those lines — `configs changed and its 14
-consumers still use it as subscript-assign: tests/test_igel.py:92, …`. It is read
+consumers still use it as subscript-assign: tests/test_igel.py:92, …`. It is measured
+against the tree as your job FOUND it, not as the last attempt left it, so it is the same
+finding at every check of that job until the work puts things back. It is read
 conservatively, from the shape of the code and never from what anything means: nothing here
 resolves a type or follows an import, a name it cannot look for whole has no consumers
 rather than the wrong ones, and prose in a document that happens to spell the name is not a

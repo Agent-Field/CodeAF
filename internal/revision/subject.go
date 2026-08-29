@@ -76,6 +76,16 @@ const (
 	SubjectClaim Subject = "claim"
 )
 
+// SubjectFallbackWords is what the record says when the tree contract could not
+// be answered and the delivery was judged under the claim contract instead — or
+// when no verdict could be read at all and the mechanical gate settled it.
+//
+// It replaces the subject rather than joining it because the question the field
+// answers is "what was this gate holding", and under the fallback the answer is
+// neither `tree (n files)` nor `claim`: it is a judge that was shown the tree and
+// held to no enum.
+const SubjectFallbackWords = "fallback"
+
 // Subject answers which of the two this delivery is, from the artifact record
 // settled against the world.
 //
@@ -379,7 +389,7 @@ const treeEnumFiles = 64
 // treeVerdictSchema is the delivery verdict's shape when the subject is the
 // tree. It is the claim schema plus the one field that makes a finding about
 // anything other than a changed file impossible to state.
-func treeVerdictSchema(files, behaviours, consumerFiles, consumerLines []string) json.RawMessage {
+func treeVerdictSchema(files, behaviours, consumerFiles, consumerLines, promised []string) json.RawMessage {
 	file := `{"type": "string"}`
 	// AND A FILE THAT USES WHAT THE RUN CHANGED IS A FILE A REFUSAL MAY NAME.
 	// The record is what the run WROTE; a consumer is somewhere else in the same
@@ -387,7 +397,16 @@ func treeVerdictSchema(files, behaviours, consumerFiles, consumerLines []string)
 	// this door exists to make sayable. It joins the same enum rather than
 	// getting one of its own, because a verdict names one file and the question
 	// is only whether that file is one the judge was shown.
-	named := joinSpans(files, consumerFiles)
+	// AND A FILE THE REQUEST OR THE PLAN PROMISED IS A FILE A REFUSAL MAY NAME,
+	// WHETHER OR NOT IT EXISTS. An absent deliverable is the oldest finding this
+	// gate has, and the first thing a judge reaches for is its name — which is
+	// in no record, because the record is what the run LEFT BEHIND and the whole
+	// complaint is that this is not in it. igel s15 is what leaving it out
+	// costs: the judge answered `"file": "feature_schema.joblib"` about a file
+	// the request names and the disk does not hold, was refused, was re-asked,
+	// refused again, and the run ended after eight minutes with
+	// `the review could not be read, so this delivery was never checked`.
+	named := joinSpans(joinSpans(files, consumerFiles), promised)
 	if len(named) > 0 && len(named) <= treeEnumFiles {
 		if names, err := json.Marshal(named); err == nil {
 			file = `{"type": "string", "enum": ` + string(names) + `}`
@@ -596,6 +615,11 @@ type treeVerdict struct {
 	// because here is where the quote is settled against what the judge was
 	// shown.
 	Consumer bool
+	// Promised says the file this refusal names is one the plan or the person
+	// said would exist and is in no record of what the run left behind. Whether
+	// it is actually absent is settled by the caller against the disk; all this
+	// says is which list the name came from.
+	Promised bool
 
 	// files is the record, set by the caller before the decode. It is lower
 	// case because nothing outside this package may hand a verdict a record
@@ -612,6 +636,10 @@ type treeVerdict struct {
 	// set only where the judge was shown them, for the reason behaviours is.
 	consumerFiles []string
 	consumerLines []string
+	// promised are the files the plan or the person said would exist, in their
+	// own spelling. They are nameable whether or not they are on disk, because
+	// the finding they carry is precisely that one of them is not.
+	promised []string
 }
 
 func (v *treeVerdict) UnmarshalJSON(data []byte) error {
@@ -662,8 +690,17 @@ func (v *treeVerdict) UnmarshalJSON(data []byte) error {
 		named = recordEntry(raw.File, v.consumerFiles)
 	}
 	if named == "" {
-		return fmt.Errorf("a fail must name one of the files this run changed or one of the files "+
-			"that use what it changed, and %q is not one of them", strings.TrimSpace(raw.File))
+		// AND A FILE THAT WAS PROMISED AND IS NOT THERE. It is in no record by
+		// definition, and refusing the verdict that names it is refusing the
+		// gate's own oldest finding. See treeVerdictSchema.
+		if named = recordEntry(raw.File, v.promised); named != "" {
+			v.Promised = true
+		}
+	}
+	if named == "" {
+		return fmt.Errorf("a fail must name one of the files this run changed, one of the files "+
+			"that use what it changed, or one the request asked for, and %q is not one of them",
+			strings.TrimSpace(raw.File))
 	}
 	// AND THE QUOTE IS A BEHAVIOUR THE FILE FAILS, NOT A SENTENCE ABOUT THE
 	// FILE'S EXISTENCE. ofetch s12 satisfied every rule above it: the file was

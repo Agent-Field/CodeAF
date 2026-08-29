@@ -418,25 +418,19 @@ func surfaceRemoved(
 	if len(reading.Surface) == 0 {
 		return
 	}
-	root := workspace.Root()
-	changed := verify.ChangedSources(root, outcome.Artifacts)
-	// A file the record names and the tree no longer holds is not in
-	// ChangedSources, which only keeps what is still there — so the deletion of
-	// a whole module is added back from the record itself. Losing a public
-	// module is losing every public name in it.
-	for _, path := range verify.MissingFrom(root, outcome.Artifacts) {
-		if _, held := reading.Surface[path]; held {
-			changed = append(changed, path)
-		}
-	}
-	if len(changed) == 0 {
+	// The settlement itself is verify.LostNames and is deliberately not spelled
+	// here: the delivery gate takes the same one against the JOB's baseline,
+	// because the leaf that lost a name and the node that gets judged are
+	// routinely not the same node, and two spellings of one settlement would be
+	// two answers to what a run deleted.
+	removed, compared := verify.LostNames(workspace.Root(), reading.Surface, outcome.Artifacts)
+	if compared == 0 {
 		return
 	}
-	removed := reading.Surface.Removed(verify.SurfaceOf(root, changed), changed)
 	if len(removed) > 0 {
 		outcome.Removed = removed
 	}
-	journalSurface(history, task, len(changed), removed)
+	journalSurface(history, task, compared, removed)
 }
 
 // journalSurface writes what the symbol-level reading found, INCLUDING when it

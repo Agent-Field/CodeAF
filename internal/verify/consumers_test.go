@@ -4,6 +4,8 @@ package verify
 // changed what stands behind it, beside the code that still uses the old shape.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -60,30 +62,21 @@ class Configs:
 configs = Configs()
 `
 
-// igelConfigsDiff is the run's own account of that change, in the one form every
-// worker here can produce: a unified diff.
-const igelConfigsDiff = `diff --git a/igel/configs.py b/igel/configs.py
-index e4b3eb8..5d75bca 100644
---- a/igel/configs.py
-+++ b/igel/configs.py
-@@ -1,12 +1,30 @@
- 
- from igel.constants import Constants
- 
--res_path = Path(os.getcwd()) / Constants.stats_dir
--
--configs = {
--    "stats_dir": Constants.stats_dir,
--    "results_path": res_path,
--    "model_props": {"type": "classification"},
--}
-+
-+class Configs:
-+    def __init__(self):
-+        self._cache = {}
-+
-+configs = Configs()
-`
+// baselineOf is the reading a job takes before its first change: the whole tree,
+// as verify.Photograph takes it.
+func baselineOf(t *testing.T, files map[string]string) (root string, baseline Surface) {
+	t.Helper()
+	root = tree(t, files)
+	return root, PublicSurface(root)
+}
+
+// rewrite puts the finished tree in place of the one the baseline was taken of.
+func rewrite(t *testing.T, root, file, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(file)), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // A NAME IS NOT A CONTRACT.
 //
@@ -93,8 +86,8 @@ index e4b3eb8..5d75bca 100644
 // The declaration is what moved, so the declaration is what is read — and the
 // sites that still use the name are read beside it, with the shape of each use.
 func TestADefinitionThatKeptItsNameAndChangedItsShapeIsRead(t *testing.T) {
-	root := tree(t, map[string]string{
-		"igel/configs.py": igelConfigsAfter,
+	root, baseline := baselineOf(t, map[string]string{
+		"igel/configs.py": igelConfigsBase,
 		// The project's own code, untouched by the run, still using the name.
 		"igel/utils.py": "from igel.configs import configs\n\n" +
 			"def load():\n    return open(configs.get(\"results_path\"), \"rb\")\n",
@@ -104,7 +97,8 @@ func TestADefinitionThatKeptItsNameAndChangedItsShapeIsRead(t *testing.T) {
 			"    configs[\"model_file\"] = tmp_path / \"model.joblib\"\n" +
 			"    assert configs[\"results_path\"] == tmp_path\n",
 	})
-	changed := ChangedDefinitions(root, []string{"igel/configs.py"}, igelConfigsDiff)
+	rewrite(t, root, "igel/configs.py", igelConfigsAfter)
+	changed := ChangedDefinitions(root, baseline, []string{"igel/configs.py"})
 	names := make([]string, 0, len(changed))
 	for _, definition := range changed {
 		names = append(names, definition.Name)
@@ -113,11 +107,14 @@ func TestADefinitionThatKeptItsNameAndChangedItsShapeIsRead(t *testing.T) {
 	if !strings.Contains(held, "configs") {
 		t.Fatalf("the run rebound `configs` and nothing read it as a changed definition: %v", names)
 	}
-	if !strings.Contains(held, "Configs") {
-		t.Errorf("the class the run wrote in that hunk was not read either: %v", names)
+	// `Configs` is a name the finished tree has and the baseline never had, so
+	// it is an ADDITION and not a definition that moved. Reporting it would be a
+	// finding about a class nobody could have been using.
+	if strings.Contains(held, " Configs") {
+		t.Errorf("a name the baseline never held was reported as rewritten: %v", names)
 	}
 
-	sites := Consumers(root, names, Hunks(igelConfigsDiff))
+	sites := Consumers(root, names, ChangedSources(root, []string{"igel/configs.py"}))
 	shapes := map[string]int{}
 	var where string
 	for _, site := range sites["configs"] {
@@ -151,11 +148,12 @@ func TestADefinitionThatKeptItsNameAndChangedItsShapeIsRead(t *testing.T) {
 func TestAModuleLevelBindingIsPartOfThePublicSurface(t *testing.T) {
 	root := tree(t, map[string]string{"igel/configs.py": igelConfigsBase})
 	baseline := PublicSurface(root)
-	held := strings.Join(baseline["igel/configs.py"], " ")
+	names := baseline.Names("igel/configs.py")
+	held := strings.Join(names, " ")
 	for _, wanted := range []string{"configs", "res_path"} {
 		if !strings.Contains(held, wanted) {
 			t.Errorf("`%s` is a name this module publishes and the reading missed it: %v",
-				wanted, baseline["igel/configs.py"])
+				wanted, names)
 		}
 	}
 }
@@ -165,27 +163,20 @@ func TestAModuleLevelBindingIsPartOfThePublicSurface(t *testing.T) {
 // arguments. Nothing here knows what an argument means — the arity is counted
 // off the brackets on the line, which is the whole of the claim.
 func TestATypescriptExportsCallSitesCarryTheirArity(t *testing.T) {
-	const diff = `diff --git a/src/retry.ts b/src/retry.ts
---- a/src/retry.ts
-+++ b/src/retry.ts
-@@ -1,3 +1,5 @@
--export function withRetry(fn, attempts) {
-+export function withRetry(fn, attempts, backoff) {
-+  return fn;
- }
-`
-	root := tree(t, map[string]string{
-		"src/retry.ts": "export function withRetry(fn, attempts, backoff) {\n  return fn;\n}\n",
+	root, baseline := baselineOf(t, map[string]string{
+		"src/retry.ts": "export function withRetry(fn, attempts) {\n  return fn;\n}\n",
 		"src/fetch.ts": "import { withRetry } from \"./retry\";\n\n" +
 			"export const load = () => withRetry(get, 3);\n",
 		"docs/guide.md": "Call it like this:\n\n```ts\nwithRetry(get, 3);\n```\n\n" +
 			"Prose that says withRetry is not a call site.\n",
 	})
-	changed := ChangedDefinitions(root, []string{"src/retry.ts"}, diff)
+	rewrite(t, root, "src/retry.ts",
+		"export function withRetry(fn, attempts, backoff) {\n  return fn;\n}\n")
+	changed := ChangedDefinitions(root, baseline, []string{"src/retry.ts"})
 	if len(changed) != 1 || changed[0].Name != "withRetry" {
 		t.Fatalf("the run rewrote the declaration of withRetry: %+v", changed)
 	}
-	sites := Consumers(root, []string{"withRetry"}, Hunks(diff))["withRetry"]
+	sites := Consumers(root, []string{"withRetry"}, ChangedSources(root, []string{"src/retry.ts"}))["withRetry"]
 	calls, files := 0, map[string]bool{}
 	for _, site := range sites {
 		files[site.File] = true
@@ -206,51 +197,42 @@ func TestATypescriptExportsCallSitesCarryTheirArity(t *testing.T) {
 	}
 }
 
-// EVERY SILENCE FAVOURS THE WORK. A diff that overlaps no declaration says
-// nothing, so the judge sees exactly what it saw before this existed.
-func TestAChangeThatTouchesNoDeclarationIsSilent(t *testing.T) {
-	const diff = `diff --git a/igel/utils.py b/igel/utils.py
---- a/igel/utils.py
-+++ b/igel/utils.py
-@@ -2,1 +2,1 @@
--# an old comment
-+# a new comment
-`
-	root := tree(t, map[string]string{
-		"igel/utils.py": "from igel.configs import configs\n# a new comment\n\n" +
-			"def load():\n    return configs.get(\"results_path\")\n\n\n" +
-			"def store():\n    return None\n",
+// EVERY SILENCE FAVOURS THE WORK. A file the run edited without moving any
+// declaration says nothing, so the judge sees exactly what it saw before this
+// existed.
+func TestAChangeThatMovesNoDeclarationIsSilent(t *testing.T) {
+	const body = "from igel.configs import configs\n%s\n\n" +
+		"def load():\n    return configs.get(\"results_path\")\n"
+	root, baseline := baselineOf(t, map[string]string{
+		"igel/utils.py": strings.Replace(body, "%s", "# an old comment", 1),
 	})
-	if changed := ChangedDefinitions(root, []string{"igel/utils.py"}, diff); len(changed) != 0 {
-		t.Errorf("a hunk between two definitions overlaps neither, and this named %+v", changed)
+	rewrite(t, root, "igel/utils.py", strings.Replace(body, "%s", "# a new comment", 1))
+	if changed := ChangedDefinitions(root, baseline, []string{"igel/utils.py"}); len(changed) != 0 {
+		t.Errorf("a comment between two definitions moved neither, and this named %+v", changed)
 	}
-	// And so does a tree with no diff at all, and a language with no reader.
-	if changed := ChangedDefinitions(root, []string{"igel/utils.py"}, ""); len(changed) != 0 {
-		t.Errorf("no diff is no claim, and this named %+v", changed)
+	// And so does a job that took no baseline, and a language with no reader.
+	if changed := ChangedDefinitions(root, nil, []string{"igel/utils.py"}); len(changed) != 0 {
+		t.Errorf("no baseline is no claim, and this named %+v", changed)
 	}
-	if changed := ChangedDefinitions(root, []string{"notes/plan.txt"}, diff); len(changed) != 0 {
+	if changed := ChangedDefinitions(root, baseline, []string{"notes/plan.txt"}); len(changed) != 0 {
 		t.Errorf("a file with no reader declares nothing, and this named %+v", changed)
 	}
 }
 
-// The run's own new lines are not consumers of the run's own work. Counting them
+// A file this run changed is not a consumer of this run's own work. Counting one
 // would report the change as evidence against itself.
-func TestTheRunsOwnChangedLinesAreNotConsumers(t *testing.T) {
-	const diff = `diff --git a/pkg/api.go b/pkg/api.go
---- a/pkg/api.go
-+++ b/pkg/api.go
-@@ -1,6 +1,8 @@
- package pkg
-+
-+var Fallback = Client{}
-`
+func TestAFileTheRunChangedIsNotItsOwnConsumer(t *testing.T) {
 	root := tree(t, map[string]string{
-		"pkg/api.go": "package pkg\n\nvar Fallback = Client{}\n\ntype Client struct{}\n",
+		"pkg/api.go":  "package pkg\n\nvar Fallback = Client{}\n\ntype Client struct{}\n",
+		"pkg/read.go": "package pkg\n\nfunc Read() Client { return Client{} }\n",
 	})
-	sites := Consumers(root, []string{"Client"}, Hunks(diff))["Client"]
+	sites := Consumers(root, []string{"Client"}, ChangedSources(root, []string{"pkg/api.go"}))["Client"]
 	for _, site := range sites {
-		if site.File == "pkg/api.go" && site.Line <= 8 {
-			t.Errorf("a line inside the run's own hunk was counted as a consumer: %+v", site)
+		if site.File == "pkg/api.go" {
+			t.Errorf("a line of a file the run changed was counted as a consumer: %+v", site)
 		}
+	}
+	if len(sites) == 0 {
+		t.Error("the file the run did not touch uses the name and was not counted")
 	}
 }

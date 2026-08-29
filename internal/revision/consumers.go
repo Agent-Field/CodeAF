@@ -69,18 +69,29 @@ const (
 	consumerQuotes = 24
 )
 
-// changedDefinitions is what this run did to definitions the rest of the project
-// uses, read from the run's own diff and the tree on disk.
+// changedDefinitions is what this JOB did to definitions the rest of the project
+// uses, read from the job's own baseline and the tree on disk.
 //
-// It is asked only where the run left a diff AND a workspace to read it against.
-// Either missing is the ordinary case for most workers and reads as no claim.
-func (e Evidence) changedDefinitions() []verify.ChangedDefinition {
+// THE BASELINE IS THE JOB'S AND NOT THIS NODE'S, which is the whole of what
+// makes it reachable. A grown subtree does its work in children and is judged at
+// the parent; the child's readings are the child's. verify.BaselineFor already
+// holds the tree before the job's FIRST change, taken once and inherited by
+// every continuation, and it carries the surface on every path including the
+// ones where no check could be read at all.
+//
+// It is asked only where the job took a baseline AND there is a workspace to
+// read the finished tree in. Either missing reads as no claim.
+func (e Evidence) changedDefinitions(job string) []verify.ChangedDefinition {
 	root := strings.TrimSpace(e.Workspace)
-	diff := e.patchSource()
-	if root == "" || strings.TrimSpace(diff) == "" {
+	if root == "" {
 		return nil
 	}
-	changed := verify.ChangedDefinitions(root, e.Artifacts, diff)
+	held, ok := verify.BaselineFor(root, job)
+	if !ok {
+		return nil
+	}
+	record := e.recordFiles()
+	changed := verify.ChangedDefinitions(root, held.Surface, record)
 	if len(changed) == 0 {
 		return nil
 	}
@@ -88,8 +99,8 @@ func (e Evidence) changedDefinitions() []verify.ChangedDefinition {
 	for _, definition := range changed {
 		names = append(names, definition.Name)
 	}
-	sites := verify.Consumers(root, names, verify.Hunks(diff))
-	held := make([]verify.ChangedDefinition, 0, len(changed))
+	sites := verify.Consumers(root, names, verify.ChangedSources(root, record))
+	used := make([]verify.ChangedDefinition, 0, len(changed))
 	for _, definition := range changed {
 		// A DEFINITION NOBODY USES IS NOT A FINDING AND NOT A BLOCK. The whole
 		// value here is the tension between a declaration that moved and code
@@ -97,10 +108,10 @@ func (e Evidence) changedDefinitions() []verify.ChangedDefinition {
 		// carrying it would spend the judge's room saying nothing.
 		if found := sites[definition.Name]; len(found) > 0 {
 			definition.Consumers = found
-			held = append(held, definition)
+			used = append(used, definition)
 		}
 	}
-	return held
+	return used
 }
 
 // consumersBlock is that reading as the judge is shown it.
@@ -247,6 +258,42 @@ func ConsumerFinding(quote string, changed []verify.ChangedDefinition) (string, 
 		}
 	}
 	return "", false
+}
+
+// removedSinceTheJobBegan re-settles what this JOB has deleted from the public
+// surface, against the tree as it stands at judging time.
+//
+// A NAME THE JOB LOST IS A FINDING AT EVERY GATE OF THAT JOB UNTIL THE TREE HAS
+// IT BACK, and until this existed it was a finding only at the gate of the leaf
+// that happened to lose it. igel s14 is the measured case: three grown leaves
+// journaled `surface {"lost": 3, "names": ["init_file_path", "res_path",
+// "temp_post_req_data_path"]}`, every one of the twenty-four hidden tests failed
+// with `ImportError: cannot import name 'temp_post_req_data_path'`, and both of
+// that job's gates cited a missing file and nothing else — because the gate read
+// the judged node's own outcome and the judged node was not the leaf.
+//
+// IT REPLACES rather than adds to what a leaf measured, and that is the point of
+// re-taking it: a name a round lost and a later round put back must stop being a
+// finding, and only a fresh reading of the finished tree can say so. This is
+// SETTLEMENT §8's rule — a repair is settled against the world — applied to the
+// one finding that was still being carried from a leaf.
+//
+// settled is false where there is no baseline, no workspace, or no changed
+// source to compare, and there the leaf's own answer stands exactly as it did.
+func (e Evidence) removedSinceTheJobBegan(job string) (lost []string, settled bool) {
+	root := strings.TrimSpace(e.Workspace)
+	if root == "" {
+		return nil, false
+	}
+	held, ok := verify.BaselineFor(root, job)
+	if !ok || len(held.Surface) == 0 {
+		return nil, false
+	}
+	gone, compared := verify.LostNames(root, held.Surface, e.recordFiles())
+	if compared == 0 {
+		return nil, false
+	}
+	return gone, true
 }
 
 // journalConsumers writes what the reading found, INCLUDING when it found

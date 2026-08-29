@@ -63,7 +63,40 @@ func MissingProduces(done plan.Done, artifacts []string) (judgment Judgment, ok 
 	return Judgment{
 		Pass: false, Gaps: gap, Quote: gap,
 		Citations: missing, Mechanical: true, Checked: true,
+		Finding: FindingMissingProduces,
 	}, true
+}
+
+// PromisedFiles is every file this delivery was told to produce, in the spelling
+// it was told in: the plan's own structured produces list, and the files the
+// person named in the request.
+//
+// ONE LIST, BECAUSE A JUDGE NAMING AN ABSENT DELIVERABLE MUST BE ABLE TO NAME IT
+// WHATEVER PROMISED IT. The two halves are already both in front of the judge —
+// the criterion above the fence, the named-files block below it — and until igel
+// s15 neither was nameable in a verdict, because neither is in the record of
+// what the run left behind. That is the point of them: the finding is that they
+// are not.
+func (e Evidence) PromisedFiles() []string {
+	promised := producesFiles(e.Done)
+	for _, name := range e.Named {
+		if file, ok := citedFile(name); ok {
+			promised = append(promised, file)
+		}
+	}
+	return trimmedCitations(promised)
+}
+
+// MissingPromised is those of them the run did not leave behind, settled against
+// the disk by the same rule the mechanical gate uses.
+func (e Evidence) MissingPromised() []string {
+	var missing []string
+	for _, name := range e.PromisedFiles() {
+		if !producedNonEmpty(name, e.Artifacts) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 // producesFiles lists the produces entries that name a file rather than an
@@ -195,6 +228,12 @@ const (
 	FindingOwnFailing   = "own-checks-failing"
 	FindingRemovedName  = "removed-public-name"
 	FindingRemovedCheck = "removed-checks"
+	// FindingMissingProduces is the oldest of them and the only one that is not
+	// a subtraction of two readings: a file the plan or the person said would
+	// exist, settled against the disk. It is a kind of its own because a judge
+	// can now reach the same finding by naming the file itself, and an autopsy
+	// counting how often the gate caught an absent deliverable must see both.
+	FindingMissingProduces = "missing-produces"
 )
 
 // Regressions is the second mechanical half of the delivery gate, and the one

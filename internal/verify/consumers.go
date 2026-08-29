@@ -25,16 +25,26 @@ package verify
 // that `x["k"] = v` will not survive a class with no `__setitem__` is left to
 // the reader that is paid to make judgements.
 //
+// IT IS READ OFF THE TWO PHOTOGRAPHS AND NEVER OFF A DIFF, and that is not a
+// simplification — it is what makes it exist at all. A diff is written by one
+// belt, for one leaf, under that leaf's own key; the node a gate judges is
+// routinely a parent or a sibling, and on the belts a headless run actually uses
+// no diff is derived at all. igel s14 proved it twice over: three grown leaves
+// each measured the loss, and both of that job's gates were handed an account
+// with no change text in it. The two surface readings, on the other hand, are
+// taken by every belt, inherited across every round, and already remembered
+// against the JOB — so a definition's own digest, compared between them, is a
+// fact every judged node of every job can reach.
+//
 // It is FAILSAFE.md clause 1 and clause 2 both: read by structure rather than by
-// a list of names, and sourced from the world — the run's own diff and the files
-// on disk — rather than from anything the component being checked says about
-// itself. Every silence in it favours the work: no reader for the language, no
-// declaration the diff overlaps, no consumer found, and nothing is said at all.
+// a list of names, and sourced from the world — two readings of the tree —
+// rather than from anything the component being checked says about itself. Every
+// silence in it favours the work: no reader for the language, no baseline, no
+// definition that moved, no consumer found, and nothing is said at all.
 
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,15 +96,7 @@ func (s Span) Words() string {
 	return "lines " + strconv.Itoa(s.From) + "–" + strconv.Itoa(s.To)
 }
 
-// Hunk is one span of one file that a diff replaced: where those lines stood in
-// the tree before the work, and where they stand in the tree after it.
-type Hunk struct {
-	File   string
-	Before Span
-	After  Span
-}
-
-// Site is one place the project uses a name, outside the lines the run changed.
+// Site is one place the project uses a name, outside the files the run changed.
 //
 // Text is the whole line, trimmed, because the shape is a reading and the line
 // is the evidence for it: a reader who disagrees with the shape can see what it
@@ -109,20 +111,17 @@ type Site struct {
 // Where is the site as everything downstream spells it.
 func (s Site) Where() string { return s.File + ":" + strconv.Itoa(s.Line) }
 
-// ChangedDefinition is one public name whose DECLARATION this run's diff
-// overlaps, with where it stood on either side of the work and what still uses
-// it.
+// ChangedDefinition is one public name this work REWROTE — the name is in both
+// readings and the text of its declaration is not — with where it stood on
+// either side of the work and what still uses it.
 type ChangedDefinition struct {
 	Name string
 	File string
-	// Before is the lines of the file, as it was, that the diff replaced where
-	// this declaration stands. It is the hunk's own old-side range rather than a
-	// reading of a tree nobody kept: the finished tree is on disk and the tree
-	// before the work is not, so what can be said honestly about the old side is
-	// what the diff itself says.
-	Before Span
-	// After is where the declaration stands in the finished tree, read by the
-	// surface reader that also decided the name is public.
+	// Before is where the declaration stood in the tree before the job's first
+	// change, and After is where it stands now. Both come off the readings
+	// themselves rather than off a diff's arithmetic, so both are the
+	// declaration and not the neighbourhood it sits in.
+	Before    Span
 	After     Span
 	Consumers []Site
 }
@@ -155,126 +154,45 @@ func (d ChangedDefinition) Grouped() []SiteGroup {
 	return groups
 }
 
-// hunkHeader is a unified diff's own account of which lines it replaced.
-var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
-
-// Hunks is every span a unified diff touched, keyed by the file it touched.
+// ChangedDefinitions is the public names this work REWROTE: present in the
+// baseline reading and present now, under one file, with a different declaration
+// digest.
 //
-// It reads the diff's own headers and nothing else. A file the diff CREATES has
-// no old side and a file it DELETES has no new side; both are read as what they
-// are, because a created file's declarations are all new — nothing was reshaped
-// under anybody — and a deleted file's names are the presence photograph's
-// business, which already reports every one of them lost.
-func Hunks(diff string) []Hunk {
-	var hunks []Hunk
-	file, live := "", false
-	for _, line := range strings.Split(diff, "\n") {
-		switch {
-		case strings.HasPrefix(line, "diff --git "):
-			file, live = "", false
-		case strings.HasPrefix(line, "+++ "):
-			target := strings.TrimSpace(strings.TrimPrefix(line, "+++ "))
-			if at := strings.IndexAny(target, "\t"); at >= 0 {
-				target = target[:at]
-			}
-			// `/dev/null` on the new side is a deletion, and a deletion has no
-			// finished file to read a declaration out of.
-			if target == "/dev/null" {
-				file, live = "", false
-				continue
-			}
-			file, live = strings.TrimPrefix(strings.TrimPrefix(target, "b/"), "./"), true
-		case live && strings.HasPrefix(line, "@@ "):
-			match := hunkHeader.FindStringSubmatch(line)
-			if match == nil {
-				continue
-			}
-			hunks = append(hunks, Hunk{File: filepath.ToSlash(file),
-				Before: diffSpan(match[1], match[2]), After: diffSpan(match[3], match[4])})
-		}
-	}
-	return hunks
-}
-
-// diffSpan is one side of a hunk header. A count the header omits is one line,
-// which is the unified format's own rule; a count of zero is an insertion point
-// rather than a range, and the line before it is the line it sits after.
-func diffSpan(start, count string) Span {
-	from, err := strconv.Atoi(start)
-	if err != nil {
-		return Span{}
-	}
-	length := 1
-	if count != "" {
-		if parsed, err := strconv.Atoi(count); err == nil {
-			length = parsed
-		}
-	}
-	if length == 0 {
-		return Span{From: from, To: from}
-	}
-	return Span{From: from, To: from + length - 1}
-}
-
-// ChangedDefinitions is the public names whose DECLARATION this run touched: the
-// declarations of the finished tree that a hunk of the run's own diff overlaps.
+// It is the same subtraction Removed is, over the same pair of readings, asking
+// the other question. Removed asks which names went; this asks which of the ones
+// that STAYED are no longer the same thing. Neither needs a runner, a diff or a
+// model, and both are scoped to the run's own record for the same reason: a
+// definition that moved in a file nobody touched moved some other way.
 //
-// It is scoped to the run's own record for the same reason the presence
-// photograph is: a definition that moved in a file nobody touched moved some
-// other way, and reporting it would hand a leaf a finding about something it
-// never did. It is scoped to SOURCES rather than to checks because the question
-// is what the work did to things other code uses, and a project's checks are
-// used by the runner alone.
-//
-// Nothing is reported for a file with no reader, a file that is not on disk, or
-// a declaration no hunk overlaps. Each of those is a silence that leaves the
-// judge seeing exactly what it saw before this existed.
-func ChangedDefinitions(root string, record []string, diff string) []ChangedDefinition {
-	root = strings.TrimSpace(root)
-	if root == "" || strings.TrimSpace(diff) == "" {
+// A name declared twice under one file — an overload, a conditional
+// re-definition — is passed over rather than guessed at. There is no way to say
+// which of two declarations became which, and a reader that picked one would be
+// reporting an arrangement it invented.
+func ChangedDefinitions(root string, baseline Surface, record []string) []ChangedDefinition {
+	if len(baseline) == 0 {
 		return nil
 	}
-	sources := map[string]bool{}
-	for _, path := range ChangedSources(root, record) {
-		sources[path] = true
-	}
-	if len(sources) == 0 {
+	files := ChangedSources(root, record)
+	if len(files) == 0 {
 		return nil
 	}
-	touched := map[string][]Hunk{}
-	for _, hunk := range Hunks(diff) {
-		if sources[hunk.File] {
-			touched[hunk.File] = append(touched[hunk.File], hunk)
-		}
-	}
+	now := SurfaceOf(root, files)
 	var changed []ChangedDefinition
-	for file, hunks := range touched {
-		if surfaceLanguage(lastSegment(file)) == "" {
-			continue
-		}
-		body, read := readSurfaceFile(filepath.Join(root, filepath.FromSlash(file)))
-		if !read {
-			continue
-		}
-		for _, declaration := range DeclarationsIn(file, body) {
-			before := Span{}
-			for _, hunk := range hunks {
-				if !declaration.Overlaps(hunk.After.From, hunk.After.To) {
-					continue
-				}
-				before = widen(before, hunk.Before)
-			}
-			if before.Empty() {
+	for _, file := range files {
+		was, standing := soleDeclarations(baseline[file]), soleDeclarations(now[file])
+		for name, after := range standing {
+			before, known := was[name]
+			if !known || before.Digest == after.Digest || after.Digest == 0 {
 				continue
 			}
-			changed = append(changed, ChangedDefinition{
-				Name: declaration.Name, File: file, Before: before,
-				After: Span{From: declaration.Line, To: declaration.End}})
+			changed = append(changed, ChangedDefinition{Name: name, File: file,
+				Before: Span{From: before.Line, To: before.End},
+				After:  Span{From: after.Line, To: after.End}})
 		}
 	}
-	// Ordered by file and then by where the declaration sits, so the same tree
-	// answers the same way twice and a reader meets the definitions in the order
-	// the file spells them.
+	// Ordered by file and then by where the declaration sits, so the same pair
+	// of readings answers the same way twice and a reader meets the definitions
+	// in the order the file spells them.
 	sort.SliceStable(changed, func(i, j int) bool {
 		if changed[i].File != changed[j].File {
 			return changed[i].File < changed[j].File
@@ -287,15 +205,22 @@ func ChangedDefinitions(root string, record []string, diff string) []ChangedDefi
 	return changed
 }
 
-// widen is the union of two spans, treating an empty one as nothing.
-func widen(held, add Span) Span {
-	if add.Empty() {
-		return held
+// soleDeclarations keys one file's declarations by name, DROPPING every name the
+// file declares more than once. See ChangedDefinitions for why.
+func soleDeclarations(declared []Declaration) map[string]Declaration {
+	held := make(map[string]Declaration, len(declared))
+	twice := map[string]bool{}
+	for _, declaration := range declared {
+		if _, seen := held[declaration.Name]; seen {
+			twice[declaration.Name] = true
+			continue
+		}
+		held[declaration.Name] = declaration
 	}
-	if held.Empty() {
-		return add
+	for name := range twice {
+		delete(held, name)
 	}
-	return Span{From: min(held.From, add.From), To: max(held.To, add.To)}
+	return held
 }
 
 // Consumers is where the project itself uses these names, OUTSIDE the lines this
@@ -313,9 +238,13 @@ func widen(held, add Span) Span {
 // that reaches a class attribute through `self` spells something this cannot
 // recognise, and not recognising it costs a silence rather than a wrong finding.
 //
-// Lines INSIDE the run's own hunks are not consumers. They are the work itself,
-// and counting them would report the run's own new code as evidence against it.
-func Consumers(root string, names []string, touched []Hunk) map[string][]Site {
+// A LINE IN A FILE THIS RUN CHANGED IS NOT A CONSUMER. It is the work itself, or
+// it sits beside the work in a file the run was editing, and counting either
+// would report a run's own code as evidence against it. Excluding the whole file
+// rather than the changed lines costs real consumers in a large edited file —
+// which is a silence, and silence is the direction this reading is wrong in
+// everywhere else.
+func Consumers(root string, names []string, changed []string) map[string][]Site {
 	root = strings.TrimSpace(root)
 	wanted := map[string]string{}
 	for _, name := range names {
@@ -326,11 +255,9 @@ func Consumers(root string, names []string, touched []Hunk) map[string][]Site {
 	if root == "" || len(wanted) == 0 {
 		return nil
 	}
-	changed := map[string][]Span{}
-	for _, hunk := range touched {
-		if !hunk.After.Empty() {
-			changed[hunk.File] = append(changed[hunk.File], hunk.After)
-		}
+	ours := make(map[string]bool, len(changed))
+	for _, file := range changed {
+		ours[filepath.ToSlash(filepath.Clean(strings.TrimSpace(file)))] = true
 	}
 	sites := map[string][]Site{}
 	visited, budget := 0, consumerReadBudget
@@ -355,12 +282,15 @@ func Consumers(root string, names []string, touched []Hunk) map[string][]Site {
 			return nil
 		}
 		slashed := filepath.ToSlash(relative)
+		if ours[slashed] {
+			return nil
+		}
 		body, read := readSurfaceFile(path)
 		budget -= len(body)
 		if !read {
 			return nil
 		}
-		readConsumers(slashed, body, wanted, changed[slashed], sites)
+		readConsumers(slashed, body, wanted, sites)
 		return nil
 	})
 	for name, found := range sites {
@@ -372,18 +302,13 @@ func Consumers(root string, names []string, touched []Hunk) map[string][]Site {
 }
 
 // readConsumers records one file's usage sites of every wanted name.
-func readConsumers(file, body string, wanted map[string]string,
-	skip []Span, into map[string][]Site,
-) {
+func readConsumers(file, body string, wanted map[string]string, into map[string][]Site) {
 	code := codeLines(file, body)
 	for index, line := range code {
 		if line == "" {
 			continue
 		}
 		number := index + 1
-		if inAnySpan(number, skip) {
-			continue
-		}
 		for name, needle := range wanted {
 			at := wholeIdentifierAt(line, needle)
 			if at < 0 {
@@ -393,16 +318,6 @@ func readConsumers(file, body string, wanted map[string]string,
 				Text: strings.TrimSpace(line), Shape: shapeAt(line, at, at+len(needle))})
 		}
 	}
-}
-
-// inAnySpan says this line is inside one of the ranges the run changed.
-func inAnySpan(line int, spans []Span) bool {
-	for _, span := range spans {
-		if !span.Empty() && line >= span.From && line <= span.To {
-			return true
-		}
-	}
-	return false
 }
 
 // consumerNeedle is the name as a caller writes it: the surface reader's

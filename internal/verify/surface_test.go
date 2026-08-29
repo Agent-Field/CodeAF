@@ -123,7 +123,7 @@ func tree(t *testing.T, files map[string]string) string {
 func TestAPublicNameThisWorkDeletedIsNamed(t *testing.T) {
 	root := tree(t, map[string]string{"igel/igel.py": igelBase})
 	baseline := PublicSurface(root)
-	if names := baseline["igel/igel.py"]; len(names) == 0 {
+	if names := baseline.Names("igel/igel.py"); len(names) == 0 {
 		t.Fatal("the baseline read no public name out of a public class")
 	}
 	if err := os.WriteFile(filepath.Join(root, "igel/igel.py"), []byte(igelAfter), 0o644); err != nil {
@@ -155,7 +155,7 @@ func TestAPublicNameThisWorkDeletedIsNamed(t *testing.T) {
 	}
 	// A private name is the author saying it is theirs, and this takes them at
 	// their word.
-	for _, name := range append(append([]string{}, removed...), baseline["igel/igel.py"]...) {
+	for _, name := range append(append([]string{}, removed...), baseline.Names("igel/igel.py")...) {
 		if strings.Contains(name, "_read_data_to_df") || strings.Contains(name, "_私") {
 			t.Errorf("a private name reached the public surface: %q", name)
 		}
@@ -195,15 +195,15 @@ func TestThePublicSurfaceIsReadByLanguageShape(t *testing.T) {
 		"store/gate.go": {"Gate", "Gate.Pass", "Gate.Whole", "Open"},
 		"src/lib.rs":    {"Breaker", "Breaker.cooldown", "Breaker::open", "build"},
 	} {
-		held := strings.Join(baseline[file], " ")
+		held := strings.Join(baseline.Names(file), " ")
 		for _, name := range wanted {
-			if !namedIn(baseline[file], name) {
-				t.Errorf("%s: %s is public and was not read: %v", file, name, baseline[file])
+			if !namedIn(baseline.Names(file), name) {
+				t.Errorf("%s: %s is public and was not read: %v", file, name, baseline.Names(file))
 			}
 		}
 		for _, private := range []string{"secret", "hidden", "closed", "shut"} {
 			if strings.Contains(held, private) {
-				t.Errorf("%s: a private name reached the surface: %v", file, baseline[file])
+				t.Errorf("%s: a private name reached the surface: %v", file, baseline.Names(file))
 			}
 		}
 	}
@@ -253,7 +253,7 @@ func TestThePublicSurfaceIsReadByLanguageShape(t *testing.T) {
 	}
 	// And the new name IS in the finished tree's reading, so the pair reads as
 	// removed-and-added rather than as a mystery.
-	if !namedIn(SurfaceOf(root, changed)["store/gate.go"], "Gate.Settled") {
+	if !namedIn(SurfaceOf(root, changed).Names("store/gate.go"), "Gate.Settled") {
 		t.Error("the renamed-to name was not read on the finished tree")
 	}
 }
