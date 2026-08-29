@@ -216,3 +216,65 @@ deadline, so none of them met the reaper at all. Whether that is decomposition
 paying for itself or simply small leaves being small is not settled here; it is
 written down because the two runs that hit the wall are the two that never
 decomposed early.
+## A seventh failure, 2026-08-29: the reading of the wrong thing, and the finding nobody heard
+
+*Added against the s6 and s7 stores under `bench/deepswe/results/`. Four defects,
+four clauses, and every one of them a mechanism that existed and did not fire.*
+
+**Clause 1, detect by structure — the runner lives in a package.** happy-dom's
+root `npm test` is `turbo run test`, a fan-out whose whole job is to run each
+package's own command. Measured in its task image at its base commit: it exits 1
+in 5.3 seconds with 0 of 4 tasks successful and names no check of any package;
+`npx vitest run --reporter=json` at the root is killed at a 180-second ceiling
+naming nothing; and the same runner inside `packages/happy-dom`, handed the test
+file next to the change, exits 0 and names 173 checks. A WORKSPACE'S PACKAGES ARE
+DECLARED — `workspaces`, `pnpm-workspace.yaml`, `lerna.json`, `[workspace]
+members`, `go.work`, or a manifest per package under a fan-out tool — and a path
+belongs to the nearest manifest above it. `verify.Members`, `verify.MemberFor`.
+
+**A budget cannot rescue a measurement of the wrong size.** textual's
+whole-repository pytest is 3,422 tests and 793 seconds against a 5m30s budget, so
+the only rung the ladder had was one that could never finish. The repair is not a
+bigger ceiling: A READING IS SCOPED BEFORE IT IS BOUNDED. The checks adjacent to
+the change come first — the test files the work is in, beside, or named by — and
+the whole suite is what is below them. `verify.Adjacent`, and the scope rides on
+the strategy so two readings of different scopes are never subtracted from each
+other.
+
+**Clause 3, propagate to the verdict — the finding was a paragraph.** igel s6's
+gate event held `exercises: 17 rows, 3 unmapped`, and its coverage gap survived
+only as text glued into the middle of the judge's own `gap` string. Prose glued
+onto a gap is invisible three ways: nothing journals it as a finding, the stream
+prints `firstLine(gap)` and never reaches it, and the round it rides on is bought
+on the judge's citation — so a refusal of THAT citation takes the measurement
+down with it. It is now a list (`Judgment.Unexercised`, `store.DeliveryGate.
+Unexercised`), one narrated line, and a finding that buys its own round when the
+judge's words are refused (`Judgment.measuredHalf`).
+
+**Clause 2, source evidence from the world — "not produced" of a file on disk.**
+igel s6's gate said `feature_schema.joblib` "was not produced" while
+`model_results/feature_schema.joblib` sat on disk and in the graded patch. The
+record it read is the artifact REGISTRY, which is a report of what leaves
+claimed; what a run left behind is answered by the filesystem. Every name the
+request or the plan asks about is now settled against one bounded walk of the
+workspace before anything reads the record, and a file matching the named
+basename-and-suffix anywhere under it is produced, quoted at its fuller path.
+Binary files are deliverables like any other. `Evidence.completeAgainstTheWorld`.
+
+**Clause 5, a floor that cannot deliver nothing as done.** ink s7 journaled its
+cut `npx ava --tap` correctly — killed at its ceiling of 1m53s — and then passed
+the round-two gate over a tree with no roster at all and left with exit 0 at 13
+of 25 hidden checks. A PASS OVER A SUITE NOBODY COULD READ IS NOT A PASS OVER A
+CHECKED DELIVERY: it settles partial, exit 2, with the reason on the last line.
+A project that declares no verification at all is not charged for it — that
+question is unanswerable rather than unanswered — and which of the two it was is
+journaled (`store.DeliveryGate.Unreadable`).
+
+**And clause 4 once more, from the other side.** A cut reading used to return
+nothing whatever. What a runner named before its ceiling fired is a real roster
+of everything it reached; it answers "does a check for this exist" and it may
+never answer "did this work break something". It is kept as
+`verify.Reading.Partial`, with `CutAfter` beside it — the only thing a run ever
+learns about the pace of the machine it is on, which matters because these
+readings are taken in amd64 containers under qemu where everything is five to ten
+times slower than the wall-derived arithmetic assumes.

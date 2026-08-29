@@ -118,6 +118,19 @@ type DeliveryGate struct {
 	// apart is the whole of what an autopsy of this mechanism has to do.
 	Exercises []ExercisedPoint `json:"exercises,omitempty"`
 
+	// Unexercised is the behaviours the request stated that no check exercises,
+	// one entry per line of the request they were read from.
+	//
+	// It is the FINDING; Exercised above is the evidence it is a conclusion of.
+	// They are two fields because a mapping with three empty rows and a finding
+	// naming three behaviours are the same fact only to a reader who already
+	// knows this mechanism exists, and the person watching the run is not that
+	// reader. igel s6 journaled the mapping and never the finding: the gate event
+	// carried "exercises: 17 rows, 3 unmapped" and the coverage gap survived only
+	// as a paragraph inside `gap`, where the stream's own line — firstLine(gap) —
+	// could not reach it and no repair round was ever aimed at it.
+	Unexercised []string `json:"unexercised,omitempty"`
+
 	// Unmeasured says the gate held a checklist and could settle none of it:
 	// the project declares no verification this run could read and the change
 	// produced no readable diff, so nothing could be matched to what the
@@ -129,6 +142,11 @@ type DeliveryGate struct {
 	// journal a passing gate; only this tells them apart, and an autopsy of
 	// this mechanism has nothing else to read.
 	Unmeasured string `json:"unmeasured,omitempty"`
+
+	// Unreadable says the project DECLARED a way of checking itself and this run
+	// could not read it. It is the half of Unmeasured that leaves the delivery
+	// short, and it is what Whole below spends.
+	Unreadable bool `json:"unreadable,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and
@@ -158,6 +176,22 @@ type ExercisedPoint struct {
 // person reads and a verdict an exit code carries are one fact, and one fact is
 // one reading.
 func (g DeliveryGate) Whole() bool {
+	// A PASS OVER A SUITE NOBODY COULD READ IS NOT A PASS OVER A CHECKED
+	// DELIVERY. The judge answered on the deliverable's own words, and the one
+	// thing that could have contradicted them — the project's own verification —
+	// was declared, attempted, and unreadable. ink s7 journaled `npx ava --tap`
+	// killed at its ceiling, passed the next gate over an empty roster, and left
+	// with exit 0 at 13 of 25 hidden checks. FAILSAFE clause 5: a fail-safe has
+	// a FLOOR that cannot deliver nothing as done.
+	//
+	// A project that declares no verification at all is deliberately not here.
+	// There was nothing to read, the coverage question is unanswerable rather
+	// than unanswered, and failing every such delivery would fail every piece of
+	// prose this program writes. Which of the two it was is Unreadable, and it
+	// is journaled either way.
+	if g.Unreadable {
+		return false
+	}
 	return g.Pass || g.PolishClosed || g.Overturned
 }
 
@@ -207,6 +241,19 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 		}
 	}
 	gate.Quotes = quotes
+	// The finding is bounded the same way, per entry and for the same reason: a
+	// behaviour clipped to a share of a budget it does not know the size of is a
+	// behaviour clipped mid-word.
+	unexercised := make([]string, 0, len(gate.Unexercised))
+	for _, point := range gate.Unexercised {
+		if point = bounded(strings.TrimSpace(point), MaxDigestBytes); point != "" {
+			unexercised = append(unexercised, point)
+		}
+	}
+	gate.Unexercised = unexercised
+	if len(gate.Unexercised) == 0 {
+		gate.Unexercised = nil
+	}
 	if len(gate.Quotes) == 0 {
 		// An empty list and a nil one are the same fact, and only one of them
 		// round-trips through the journal as the value it was given.

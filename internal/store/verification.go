@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // EventVerification is one reading of a project's own checks, journaled against
@@ -57,6 +58,18 @@ type VerificationReading struct {
 	Format      string `json:"format,omitempty"`
 	Source      string `json:"source,omitempty"`
 	ReadAsPlain bool   `json:"read_as_plain,omitempty"`
+	// Scope is HOW MUCH of the project this reading covered — "whole", or the
+	// count of files a reading scoped to the change selected — and Package is
+	// WHERE it was taken, which for a monorepo is the package it read rather
+	// than the workspace root.
+	//
+	// They are journaled because a roster of forty checks means two different
+	// things and the row could not say which: a small project read whole, or a
+	// large one read next to the change. The regression comparison turns on the
+	// same distinction (verify.Reading.comparable), so an autopsy that cannot
+	// see the scope cannot check the comparison either.
+	Scope   string `json:"scope,omitempty"`
+	Package string `json:"package,omitempty"`
 	// Exit is the command's own status, and -1 is a command that never got far
 	// enough to have one. TimedOut says the ceiling fired, which is an
 	// INCOMPLETE OBSERVATION and not a red one.
@@ -69,6 +82,19 @@ type VerificationReading struct {
 	// shape the names came out in — a file path means the reader read a
 	// file-level summary, a test name means it read the checks.
 	Sample []string `json:"sample,omitempty"`
+	// Partial says the reading was CUT: the command was killed at its ceiling
+	// having already named some of its checks, and Elapsed is how long it ran
+	// before that happened.
+	//
+	// They are journaled because the pair is what an autopsy needs to tell a
+	// small suite from a big one that was interrupted, and because Elapsed is
+	// the only thing this run ever learns about the PACE of the machine it is
+	// on. The budget's arithmetic assumes a native host; these readings are
+	// taken in amd64 containers under qemu, where everything is five to ten
+	// times slower, and a ceiling derived from a wall knows nothing about that
+	// until a reading is cut and says so.
+	Partial bool          `json:"partial,omitempty"`
+	Elapsed time.Duration `json:"elapsed,omitempty"`
 	// Inherited says this reading was not taken here: it is the baseline this
 	// job took before its first change, carried forward into a later round.
 	Inherited bool `json:"inherited,omitempty"`

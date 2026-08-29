@@ -263,3 +263,59 @@ which is the unit a check is matched to.
 The finding is grouped the other way, back onto the request's own lines, because
 four halves of one sentence must not become four repair rounds. Both derivations
 are in PERF.md, "What the acceptance checklist costs".
+
+---
+
+## What s6 and s7 proved: the checklist and its finding belong to the JOB
+
+*Added 2026-08-29 against the s6 and s7 stores under `bench/deepswe/results/*`.*
+
+Every mechanism above is one node's. A job is not one node.
+
+**ofetch s7.** Round one mapped 54 points, named 18 behaviours nothing
+exercises, and bought a repair. Rounds two, three and four hold ZERO mapping
+rows. The continuation nodes are planned afresh so their specs carry no
+`Accept`; the continuation worker (`linear`) takes no photograph, so there was
+no roster to map against either. The gates that judged them raised prose gaps
+about the deliverable's wording, and the run ended at 41 of 47 with the same
+four defaults untested that round one had named out loud.
+
+**textual s7.** The planner fell back to one worker (`the planner could not lay
+this out — running it as one piece of work`), and that path dropped
+`compiled.Accept` on the floor. The store holds no `acceptance` event and no
+`verification` event at all: no checklist, no reading, nothing for the gate to
+weigh but prose.
+
+The rule both of them state:
+
+> **THE CHECKLIST IS A READING OF THE REQUEST, AND EVERY ROUND OF A JOB HAS THE
+> SAME REQUEST. So is the photograph, and so is what the job is still short of.
+> All three are remembered against the JOB — the identical key
+> `verify.BaselineFor` already uses — and every round inherits them.**
+
+Four mechanisms follow, each in `internal/revision/acceptance.go`:
+
+1. **The checklist is inherited.** `RememberChecklist`/`ChecklistFor`, keyed by
+   `verify.JobKey(request)`. A round whose own spec carries none uses the job's,
+   weighed through `Held` against the request exactly as before. And the planner
+   fallback carries `compiled.Accept` onto its one leaf's spec, which is where
+   textual s7 lost it.
+2. **The reading is the job's.** `jobReading` reads this round's photograph
+   first, the job's remembered baseline second, and takes one itself — on
+   `ReadingBudget` of the gate's own remaining wall, remembered against the job —
+   only when nothing anywhere has looked. That is what a run whose workers do not
+   photograph gets instead of silence.
+3. **The mapping is settled on every verdict of every round**, which it already
+   was; what changed is that there is now a checklist and a roster to settle it
+   with. It is one model call against a reading the job has already paid for, and
+   it is the ONLY thing that can shrink the set: a round that wrote the missing
+   checks grows the roster with names that map, and the next mapping notices.
+4. **A finding measured once stands until a measurement closes it.**
+   `RememberUnexercised`/`UnexercisedFor`. A round whose worker took no reading
+   inherits the open set rather than passing over it, and the finding's last line
+   is the score — `3 of the 17 behaviours this request states are still exercised
+   by nothing` — so each round's brief says what REMAINS.
+
+**And a pass over a suite nobody could read is not whole.** See FAILSAFE's
+seventh failure, clause 5: `store.DeliveryGate.Unreadable`, exit 2, and the last
+line `partial — nothing in this project's verification could be read: <why>`.
