@@ -14,7 +14,9 @@
 //
 // Four passes, each a single round no matter how large the graph gets:
 //
-//	spine    1 call     ordered stages — the only serial call in the system
+//	spine    1 call     ordered stages — the only serial call in the system;
+//	                    each stage names the earlier stages it consumes, and
+//	                    stages that name nothing share a level (levels.go)
 //	fan-out  S calls    every stage split into simultaneous parts, at once
 //	bind     ≤S calls   what each node reads or waits behind, and what duplicates what
 //	audit    S-1 calls  what each node is missing — the counterweight to bind
@@ -1054,10 +1056,17 @@ func spreadLabel(choice *SpineChoice) string {
 	if choice.Samples < 2 {
 		return ""
 	}
-	if choice.Agreed {
-		return fmt.Sprintf("(%d samples agreed)", choice.Samples)
+	// When a sample wrote more stages than it has levels, say so: "7 drawn" beside
+	// "1 stage" is the report of a bundle the model laid end to end and the
+	// planner put back side by side.
+	drawn := ""
+	if joinInts(choice.Drawn) != joinInts(choice.Spread) {
+		drawn = fmt.Sprintf(", drawn as %s", joinInts(choice.Drawn))
 	}
-	return fmt.Sprintf("(%d samples: %s)", choice.Samples, joinInts(choice.Spread))
+	if choice.Agreed {
+		return fmt.Sprintf("(%d samples agreed%s)", choice.Samples, drawn)
+	}
+	return fmt.Sprintf("(%d samples: %s%s)", choice.Samples, joinInts(choice.Spread), drawn)
 }
 
 func plural(count int, noun string) string {
