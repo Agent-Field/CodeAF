@@ -75,3 +75,47 @@ No new retry counts, no new timeouts, no new models. Every failure above already
 had its retry; what it lacked was a detector that could see the failure, evidence
 that matched the world, or a line that told the person. Adding a sixth retry to a
 blind fail-safe buys a sixth blind retry.
+
+---
+
+## A sixth failure, 2026-08-29: the reading that was never there
+
+*Added against `bench/deepswe/results/textual-richlog-follow-state-…-s6/`, the
+first graded run on the wave that made the verification photograph work.*
+
+The run scored 18 of 20 hidden fail-to-pass tests and its store holds **no
+verification event at all**. No roster, no before, no after, no regression
+finding. From outside it is indistinguishable from a project that declares no
+way of checking itself.
+
+What actually happened is in the usage timestamps. `bare` took the node over at
+07:13:47 and made its first model call at 07:19:14 — **five minutes and
+twenty-seven seconds** with no call, which is the reading running and being
+killed at its ceiling. The command it ran was `python3 -m pytest -rA` over
+textual's whole repository: 3,422 collected tests, which was still running at
+twenty-five minutes when measured by hand in that same image.
+
+Two defects, one clause each.
+
+**Clause 1, detect by structure.** textual's Makefile says `run := poetry run`
+and then `$(run) pytest tests/ -n 16 --dist=loadgroup $(ARGS)`. The reader took
+`$(run)` for the command's name, found no runner in the recipe, and fell through
+to a whole-repository invocation. A make variable and an environment launcher are
+both STRUCTURE — one is the file's own assignment table, the other is a program
+whose entire job is to run another program — and a reader that cannot see past
+either of them cannot see any recipe a real project writes.
+
+**Clause 4, leave a record.** Four different things return no reading: a project
+that declares no verification, a wall too short to afford one, a shell the
+preamble cannot be trusted in, and a command killed at its ceiling. They cost a
+run nothing, nothing, nothing and an eighth of its wall. All four returned the
+same zero value, silently, so the only thing an autopsy could read was an absence
+that meant four things at once.
+
+> **A MEASUREMENT THAT WAS NOT TAKEN IS A FACT ABOUT THE RUN, AND IT IS WRITTEN
+> DOWN WITH ITS REASON AND ITS PRICE.** An absence in the record is never a
+> diagnosis; it is the four diagnoses nobody can now tell apart.
+
+`verify.Reading.Unread` carries the sentence, `store.EventVerification` carries
+the row with `read: false`, and the reason is remembered against the job so the
+next round does not spend the wall discovering it again.
