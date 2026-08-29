@@ -172,6 +172,18 @@ type Task struct {
 	// pays anything for it.
 	Progress func(phase string, done, total int, latest string)
 
+	// Fault carries a recovered panic out to whoever can write it down.
+	//
+	// It exists because guard.Note's whole record is a line in a log file, and a
+	// caught fault is a fact about the run that changes what the person watching
+	// should expect. In the crashed run of 2026-08-28 a leaf faulted, was
+	// escalated two seconds later, and the headless stream said `still waiting`
+	// for eleven minutes; the operator read it as a hang. The surface that owns
+	// the journal is the one that can journal it, so the leaf-running code
+	// reports and the surface records. Nil-safe and ignored when nil, so a
+	// caller with nowhere to write pays nothing.
+	Fault func(error)
+
 	// control is installed by the scheduler so its watchdog can tear down a
 	// Toolbox even when the executor goroutine itself is abandoned.
 	control *leafControl
@@ -195,6 +207,17 @@ func (t Task) progress(phase string, done, total int, latest string) {
 		return
 	}
 	t.Progress(phase, done, total, latest)
+}
+
+// Faulted reports one recovered panic, and reports nothing at all when the
+// surface offered nowhere to write it. The nil check lives here for the same
+// reason [Task.progress]'s does, and it matters more: every call site is inside
+// a deferred recover, which is exactly where a second panic is unrecoverable.
+func (t Task) Faulted(err error) {
+	if t.Fault == nil || err == nil {
+		return
+	}
+	t.Fault(err)
 }
 
 type ControlAction string

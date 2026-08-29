@@ -394,8 +394,18 @@ func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
 	if _, ok := space.Locate(filepath.Join(jobsDir, jobLogName("1", 1))); !ok {
 		t.Fatal("the job log was not retained past leaf end")
 	}
-	if artifacts := outcome.Artifacts; len(artifacts) != 0 {
-		t.Fatalf("leaf artifacts = %v, want the job log held out of the job's own output", artifacts)
+	// The job log is machinery and stays out of the answer. survivor.pid is not:
+	// a background command wrote it into the workspace, no write tool ever heard
+	// about it, and the tree diff is the only thing that can see it — which is
+	// the whole of rule 2. The assertion used to be "nothing at all", which was
+	// only true while the file a shell wrote was invisible.
+	for _, path := range outcome.Artifacts {
+		if strings.HasPrefix(path, jobsDir) {
+			t.Fatalf("leaf artifacts = %v, want the job log held out of the job's own output", outcome.Artifacts)
+		}
+	}
+	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != "survivor.pid" {
+		t.Fatalf("leaf artifacts = %v, want the file the background command wrote", outcome.Artifacts)
 	}
 }
 

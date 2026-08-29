@@ -162,6 +162,13 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 		return nil, fmt.Errorf("node %s: the swe worker cannot find its own executable to re-exec", task.leafKey())
 	}
 
+	// The world's own account of what this leaf leaves behind, taken before the
+	// engine opens its view. The derivation below is git's and is the better
+	// answer wherever it can be had; this is what stands when it cannot — a
+	// workspace that is not a repository, a base that was never recorded, a git
+	// that refused — and it sees a file however it was written.
+	s.workspace.WatchTree(task.leafKey())
+
 	runCtx, cancel := context.WithTimeout(ctx, s.deadline)
 	defer cancel()
 
@@ -598,6 +605,10 @@ func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outco
 		outcome.Text = strings.TrimSpace(outcome.Text) +
 			fmt.Sprintf("\n\n(%d further changed files are named in the run's trace rather than here)", extra)
 	}
+	// And the world's own account, read after the landing for the same reason
+	// the substrate account is: until the branch is squashed home the shared
+	// tree does not hold the work.
+	s.workspace.RecordChanges(task.leafKey())
 	outcome.Artifacts = s.workspace.Artifacts(task.leafKey())
 	outcome.Elapsed = time.Since(started)
 	outcome.Verdict = verdictFor(outcome)

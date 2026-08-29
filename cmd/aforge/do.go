@@ -639,6 +639,15 @@ type settlementWatch struct {
 	// the first thing stderr ever carried was a leaf changing status, so a run
 	// that compiled and then hung showed nothing at all.
 	structured bool
+	// narrated is how far into the journal the within-node narration has read.
+	// It starts at the present rather than at zero: a store with a year of
+	// tenure holds a journal this run had nothing to do with, and catching up
+	// through it two hundred rows at a time would delay the first line this run
+	// actually has to say.
+	narrated int64
+	// phase remembers the last stage said for each node, because a progress row
+	// is replaceable and repeats itself until it moves.
+	phase map[string]string
 	// moved and said are the two clocks the quiet line reads: when a node this
 	// errand owns last changed state, and when this watcher last admitted to
 	// being alive. The first is deliberately not the journal's own watermark —
@@ -662,6 +671,13 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 	ticker := time.NewTicker(settlementBeat)
 	defer ticker.Stop()
 	w.lastMoved, w.lastSaid = time.Now(), time.Now()
+	// Narration reads forward from wherever the journal stands now. This
+	// errand's own nodes do not exist yet — the reconciler creates them after
+	// the command is admitted — so nothing this run will do is behind the
+	// cursor, and everything that came before belongs to somebody else's work.
+	if seq, err := w.graph.LatestEventSeq(); err == nil && w.narrated == 0 {
+		w.narrated = seq
+	}
 	for {
 		select {
 		case estimate := <-w.refused:
@@ -907,6 +923,10 @@ func (w *settlementWatch) report(nodes []store.Node) bool {
 			plural(len(nodes), "task"), worker, time.Since(w.started).Round(time.Second))
 	}
 	w.noteDegradedWorkers(nodes)
+	// Everything the journal knows that a status column cannot say. It runs
+	// before the status lines so that the fault which caused an escalation is
+	// read above the escalation, in the order the two things happened.
+	w.narrate(nodes)
 	changed := false
 	for _, node := range nodes {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
@@ -962,6 +982,239 @@ func (w *settlementWatch) noteDegradedWorkers(nodes []store.Node) {
 		w.noted[node.ID] = true
 		noteUnavailableWorker(w.progress, worker)
 	}
+}
+
+// narrationLimit bounds one read of the journal. The watcher reads on every
+// beat the journal moved, so 200 rows is several seconds of the busiest run
+// there is, and the cursor carries the rest to the next beat rather than
+// pulling an unbounded slice into memory on a store with years of tenure.
+const narrationLimit = 200
+
+// narrate says the things that happen INSIDE a node.
+//
+// The status column above it can only say pending, running, done, failed. That
+// was the whole of the headless stream on 2026-08-28, and it is why a run that
+// was recovering correctly was killed: a leaf faulted, the scheduler escalated
+// it from bare to swe two seconds later, the swe engine started a seven-minute
+// baseline — three facts, all of them in the journal, none of them in the
+// stream, which said `still waiting: 0 tasks pending, 1 running — 10m57s`. The
+// operator read it as a hang.
+//
+// A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS. Four kinds of fact
+// change what somebody watching should expect, so four kinds of fact get a line
+// in the same register as ▶ and ✓: a caught fault, a change of worker, a
+// subharness phase, and the delivery gate's judgement. Nothing here is a new
+// flag and nothing here spends money — every one of them is already written
+// down, and until now nobody read it.
+//
+// It is a read of event KINDS and payload fields, never of prose. A narrator
+// that recognised its facts by the words they were phrased in would be one
+// rewording behind forever.
+func (w *settlementWatch) narrate(nodes []store.Node) {
+	if w.progress == nil || w.graph == nil {
+		return
+	}
+	events, err := w.graph.Events(w.narrated, narrationLimit)
+	if err != nil {
+		// A journal this reader cannot open is the settlement loop's problem to
+		// report, and it will, on its own next read. Narration going quiet is
+		// never worth ending a run over.
+		return
+	}
+	member := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		member[node.ID] = node
+	}
+	said := false
+	for _, event := range events {
+		w.narrated = event.Seq
+		node, ours := member[event.NodeID]
+		if !ours {
+			continue
+		}
+		said = w.narrateOne(event, node, nodes) || said
+	}
+	// `still waiting` is what is printed when NOTHING is known. A fact just went
+	// past, so the next interval has something better to say than silence, and
+	// the quiet line stands down for exactly as long as it would have after any
+	// other thing this watcher said.
+	if said {
+		w.lastSaid = time.Now()
+	}
+}
+
+// narrateOne writes the line for one journal row, and answers whether it wrote
+// anything. A kind with no line is the common case and costs one switch arm.
+func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes []store.Node) bool {
+	switch event.Kind {
+	case store.EventNodeFaulted:
+		var fault struct {
+			Fault string `json:"fault"`
+		}
+		if json.Unmarshal(event.Payload, &fault) != nil || strings.TrimSpace(fault.Fault) == "" {
+			return false
+		}
+		w.say("✗", nodeDisplay(node), firstLine(fault.Fault))
+		return true
+
+	case store.EventNodeWorkerChanged:
+		var change struct {
+			Subharness string `json:"subharness"`
+			Previous   string `json:"previous"`
+			Reason     string `json:"reason"`
+		}
+		if json.Unmarshal(event.Payload, &change) != nil || strings.TrimSpace(change.Subharness) == "" {
+			return false
+		}
+		w.say("↻", nodeDisplay(node), workerChangeWords(change.Previous, change.Subharness, change.Reason))
+		return true
+
+	case store.EventMessagePosted:
+		var message struct {
+			Progress *store.MessageProgress `json:"progress"`
+		}
+		if json.Unmarshal(event.Payload, &message) != nil || message.Progress == nil {
+			return false
+		}
+		phase := strings.TrimSpace(message.Progress.Phase)
+		if phase == "" {
+			return false
+		}
+		// A replaceable row says the same thing until it changes. Printing every
+		// repeat would bury the stream in a phase that has not moved, so a phase
+		// is said once per node until a different one arrives.
+		if w.phase == nil {
+			w.phase = map[string]string{}
+		}
+		if w.phase[node.ID] == phase {
+			return false
+		}
+		w.phase[node.ID] = phase
+		subject := phase
+		if worker := phaseWorker(node, nodes); worker != "" {
+			subject = worker + ": " + phase
+		}
+		if message.Progress.Total > 0 {
+			subject += fmt.Sprintf(" · %d of %d", message.Progress.Done, message.Progress.Total)
+		}
+		detail := strings.TrimSpace(message.Progress.Latest)
+		if detail == "" {
+			detail = phaseHint(phase)
+		}
+		w.note(subject, detail)
+		return true
+
+	case store.EventDeliveryGate:
+		var gate store.DeliveryGate
+		if json.Unmarshal(event.Payload, &gate) != nil {
+			return false
+		}
+		verdict, detail := gateWords(gate)
+		w.note("gate: "+verdict, detail)
+		return true
+	}
+	return false
+}
+
+// say writes one narration line about a node, in the register the status lines
+// already use: two spaces, a mark, the subject in the same column, then what
+// happened and the clock every other line in this file prints.
+func (w *settlementWatch) say(mark, subject, detail string) {
+	fmt.Fprintf(w.progress, "  %s %-28s — %s  %s\n", mark, clip(subject, 28), detail,
+		time.Since(w.started).Round(time.Second))
+}
+
+// note writes a narration line about the run rather than about one node, and so
+// carries no mark and no node column. A phase and a gate result are facts about
+// where the work has got to; hanging a ▶ on them would say a node changed state
+// when none did.
+func (w *settlementWatch) note(subject, detail string) {
+	elapsed := time.Since(w.started).Round(time.Second)
+	if strings.TrimSpace(detail) == "" {
+		fmt.Fprintf(w.progress, "  %s  %s\n", subject, elapsed)
+		return
+	}
+	fmt.Fprintf(w.progress, "  %s — %s  %s\n", subject, detail, elapsed)
+}
+
+// workerChangeWords says which worker took the work over. An escalation is the
+// usual case and it names both ends, because "escalated bare → swe" is the fact
+// that explains why the next thing the run does looks nothing like the last.
+// A node given a worker it did not previously have was not escalated from
+// anything, and saying it was would invent a failure.
+func workerChangeWords(previous, subharness, reason string) string {
+	previous, subharness = strings.TrimSpace(previous), strings.TrimSpace(subharness)
+	words := "handed to " + subharness
+	if previous != "" {
+		words = fmt.Sprintf("escalated %s → %s", previous, subharness)
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		words += ": " + firstLine(reason)
+	}
+	return words
+}
+
+// gateWords is the delivery gate's judgement in three words a person already
+// knows. A refusal is said as a refusal rather than as a failure: the two mean
+// different things to whoever is reading — one is work that fell short, the
+// other is a round the run declined to buy — and collapsing them is how a
+// refused repair came to look like a passed delivery.
+func gateWords(gate store.DeliveryGate) (verdict, detail string) {
+	if refused := strings.TrimSpace(gate.Refused); refused != "" {
+		return "refused", firstLine(refused)
+	}
+	if gate.Pass {
+		return "pass", ""
+	}
+	return "fail", firstLine(strings.TrimSpace(gate.Gap))
+}
+
+// phaseWorker names the specialist a phase belongs to, and names nothing when it
+// cannot be sure.
+//
+// Progress is anchored on the job's root node, so the root's own worker is the
+// answer whenever the job has one. When the root is the generalist the phase
+// still came from somewhere, and the only structural candidate is a leaf that is
+// still running under a specialist: exactly one of those is an answer, two is a
+// guess, and a guess would put the wrong worker's name on the wrong stage.
+func phaseWorker(anchor store.Node, nodes []store.Node) string {
+	if worker := promisedWorker(anchor); worker != "" && worker != exec.LinearSubharness {
+		return worker
+	}
+	found := ""
+	for _, node := range nodes {
+		if terminalStatus(node.Status) {
+			continue
+		}
+		worker := promisedWorker(node)
+		if worker == "" || worker == exec.LinearSubharness {
+			continue
+		}
+		if found != "" && found != worker {
+			return ""
+		}
+		found = worker
+	}
+	return found
+}
+
+// phaseHint turns a phase name into an expectation, for the handful of stages
+// whose whole problem is that they are long and silent.
+//
+// The LINE is structural: every phase the journal carries gets one, hint or no
+// hint, so nothing here can leave a stage unreported. This is decoration on top
+// of it — the sentence that stops somebody killing a seven-minute test run at
+// minute four — and a phase that is not in the table simply prints without it.
+func phaseHint(phase string) string {
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "baseline":
+		return "running the repository's own tests, this can take minutes"
+	case "running the repository's own checks":
+		return "the repository's own test suite, this can take minutes"
+	case "preparing the repository":
+		return "fetching and setting it up, this can take minutes"
+	}
+	return ""
 }
 
 // saySomethingIfQuiet accounts for a run that has stopped producing evidence.

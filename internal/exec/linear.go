@@ -540,6 +540,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// it is not close. It is applied before the deadline so that every call the
 	// leaf makes, including the tool-side model calls, rides the same key.
 	ctx = provider.WithLeafCacheKey(ctx, task.leafKey())
+	// The world's own account of what this leaf leaves behind starts here: the
+	// tree as it stands before a single turn has run. Everything the leaf writes
+	// with a shell command, a script or a build is invisible to the write tools
+	// and visible to this. See Workspace.WatchTree.
+	l.workspace.WatchTree(task.leafKey())
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -572,6 +577,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			} else {
 				returned.Text = strings.TrimSpace(returned.Text) + "\n\n" + note
 			}
+			// A background job that was still running at landing may have
+			// written after the account was taken, so the tree is read once more
+			// before the list is rebuilt.
+			l.workspace.RecordChanges(task.leafKey())
 			returned.Artifacts = l.workspace.Artifacts(task.leafKey())
 		}
 		task.control.detach(tools, terminated)
@@ -1221,6 +1230,9 @@ func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
 // because there are five ways out of the loop above and a verdict that is set on
 // four of them is worse than none at all.
 func (l *Linear) land(ctx context.Context, task Task, outcome *Outcome, started time.Time) *Outcome {
+	// What the leaf left behind is read off the disk before it is reported, so
+	// the list is the world's answer and not only the write tools'.
+	l.workspace.RecordChanges(task.leafKey())
 	outcome.Artifacts = l.workspace.Artifacts(task.leafKey())
 	outcome.Elapsed = time.Since(started)
 	outcome.Verdict = verdictFor(outcome)
