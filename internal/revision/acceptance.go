@@ -129,6 +129,18 @@ func jobReading(ctx context.Context, evidence Evidence, job string) verify.Readi
 		if held.Taken {
 			return held
 		}
+		if held.Retakeable() {
+			// A scoped reading cut at its ceiling measured this project's pace
+			// and nothing else. The gate reads again over what that pace
+			// affords rather than inheriting a silence about a size this
+			// program chose. See verify.Reading.Retakeable.
+			if deadline, timed := ctx.Deadline(); timed {
+				retaken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
+					gateFocus(evidence), held.Pace())
+				verify.RememberBaseline(evidence.Workspace, job, retaken)
+				return retaken
+			}
+		}
 		// The job already found out it could not read this project, and why.
 		// Paying for that answer twice is what the baseline memory exists to
 		// stop; the reason it holds is carried up so the verdict can say it.
@@ -152,7 +164,7 @@ func jobReading(ctx context.Context, evidence Evidence, job string) verify.Readi
 		return evidence.Verification
 	}
 	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
-		gateFocus(evidence))
+		gateFocus(evidence), verify.Pace{})
 	verify.RememberBaseline(evidence.Workspace, job, taken)
 	return taken
 }

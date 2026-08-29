@@ -41,7 +41,7 @@ import (
 //
 // The Reading it returns is always meaningful: Taken says a reading exists, and
 // Unread says in one sentence why one does not.
-func Photograph(ctx context.Context, root string, wall time.Duration, focus Focus) Reading {
+func Photograph(ctx context.Context, root string, wall time.Duration, focus Focus, pace Pace) Reading {
 	plan := Discover(root)
 	ladder, ok := ReadingStrategies(root, plan, focus)
 	if !ok {
@@ -55,6 +55,16 @@ func Photograph(ctx context.Context, root string, wall time.Duration, focus Focu
 				"of it, and the floor is %s), so `%s` was not run",
 			wall.Round(time.Second), ShortestUsefulReading, ladder[0].Command)}
 	}
+	// WHAT AN EARLIER CUT MEASURED IS SPENT BEFORE THE FIRST RUNG RUNS. A
+	// selection this program chose that could not finish inside the budget is
+	// the one refusal a later round must not simply inherit; the cut measured
+	// the pace that sizes it properly, and the trim keeps the front of the
+	// ranked selection.
+	for index, rung := range ladder {
+		if narrowed, ok := rung.narrowedTo(rung.retakeSize(pace.Affords(budget))); ok {
+			ladder[index] = narrowed
+		}
+	}
 	return photograph(ctx, root, plan, ladder, budget)
 }
 
@@ -67,7 +77,9 @@ func photograph(
 ) Reading {
 	reading := Reading{Plan: plan, Budget: budget, Strategy: ladder[0]}
 	left := budget
-	for index, rung := range ladder {
+	rungs := len(ladder)
+	for index := 0; index < len(ladder); index++ {
+		rung := ladder[index]
 		reading.Strategy = rung
 		// A RUNG IS ENTITLED TO ITS SHARE OF THE BUDGET OR IT IS NOT STARTED.
 		// The ladder is walked inside ONE budget, so a rung reached with a scrap
@@ -80,7 +92,7 @@ func photograph(
 		// The first rung is never refused: ReadingBudget already turned down a
 		// wall that could not hold one reading, and a photograph that refuses
 		// its own first rung is a photograph that never takes one.
-		if index > 0 && left < budget/time.Duration(len(ladder)) {
+		if index > 0 && left < budget/time.Duration(rungs) {
 			reading.Unread = fmt.Sprintf("the reading's budget of %s was spent before `%s` "+
 				"could be run, and %s left is under this ladder's share of it",
 				budget.Round(time.Second), rung.Command, left.Round(time.Second))
@@ -114,6 +126,21 @@ func photograph(
 				reading.Before, reading.Taken, reading.Partial = result, true, true
 				reading.Unread = ""
 				return reading
+			}
+			// NEVER THE SAME BLIND CEILING TWICE. A scoped rung that was cut
+			// naming nothing has measured one thing after all — how long this
+			// project takes per check file — and that is exactly what was
+			// missing when the size was chosen. textual s8 selected forty files
+			// and died at 1m53s having named none of them; at the pace that cut
+			// measured, the budget affords a handful, and a handful of the
+			// right files is a reading. The trim keeps the front of the ranked
+			// selection, which is the checks the change is in.
+			cut := Pace{Spent: spent, Files: len(rung.Selected)}
+			if narrowed, ok := rung.narrowedTo(rung.retakeSize(cut.Affords(left))); ok {
+				ladder = append(ladder[:index+1:index+1], append([]Strategy{narrowed}, ladder[index+1:]...)...)
+				reading.Unread = fmt.Sprintf("`%s` was killed at its ceiling of %s "+
+					"without naming a check", rung.Command, budget.Round(time.Second))
+				continue
 			}
 			reading.Unread = fmt.Sprintf("`%s` was killed at its ceiling of %s without "+
 				"finishing or naming a single check, so nothing it would have named is known",

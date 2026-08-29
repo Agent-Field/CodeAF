@@ -144,6 +144,67 @@ func (r Reading) comparable() bool {
 		r.Before.Strategy.comparable(r.After.Strategy)
 }
 
+// Pace is what a reading that was CUT measured about how fast this project's
+// checks run: the time it spent, and how many check files it had been asked for.
+//
+// It is the only thing a run ever learns about the speed of the machine under
+// it, and it is a fact about the project and the machine rather than about the
+// round — so it is remembered against the job with the baseline and spent by
+// the next round, which is what "never the same blind ceiling twice" means. A
+// zero value is a job that has measured nothing, and its reading is sized the
+// way every reading here was.
+type Pace struct {
+	Spent time.Duration
+	Files int
+}
+
+// Known says this pace was actually measured.
+func (p Pace) Known() bool { return p.Spent > 0 && p.Files > 1 }
+
+// Affords is how many check files this pace says fit in a budget, and it is
+// written to be honest about what a CUT measured rather than to look precise.
+//
+// A cut proves one thing: this selection costs MORE than Spent. So Spent over
+// Files is a lower bound on the per-file cost, and the count it yields is a
+// CEILING on what fits — never a target. Taken as a target it says a reading
+// killed at 1m53s over forty files can be retaken over thirty-six, which is the
+// same reading again.
+//
+// So the ceiling is one of two bounds and the other is a halving, which is the
+// only certain thing about a size that did not fit: the next one must be
+// materially smaller. A tenth is held back on top for the difference between an
+// average and a worst case.
+func (p Pace) Affords(budget time.Duration) int {
+	if !p.Known() || budget <= 0 {
+		return 0
+	}
+	perFile := p.Spent / time.Duration(p.Files)
+	if perFile <= 0 {
+		return 0
+	}
+	return min(int((budget-budget/10)/perFile), p.Files/2)
+}
+
+// Pace is what this reading measured about the project's speed, if it measured
+// anything. Only a cut reading does: a reading that finished says how long its
+// own selection took and nothing about the ceiling it never reached.
+func (r Reading) Pace() Pace {
+	return Pace{Spent: r.CutAfter, Files: len(r.Strategy.Selected)}
+}
+
+// Retakeable says this remembered answer is one a later round should NOT simply
+// inherit: a scoped reading cut at its ceiling having named nothing.
+//
+// Everything else about a failed reading is a fact about the tree, the project
+// and the wall, and none of those move between rounds — that is why the refusal
+// is remembered at all. A ceiling hit by a selection THIS PROGRAM CHOSE is not
+// one of them: it is a fact about a size, the cut measured the pace that would
+// have chosen a better one, and inheriting it is how textual s8 spent its one
+// reading on forty files and then declined to look again.
+func (r Reading) Retakeable() bool {
+	return !r.Taken && r.Pace().Known()
+}
+
 // Declared says the project SAID how it is checked, whether or not a reading was
 // taken of it.
 //

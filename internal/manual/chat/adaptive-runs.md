@@ -628,9 +628,21 @@ whose whole job is to fan out over packages says nothing about any of them: meas
 project's own base commit, the declared root command exited 1 in five seconds naming no
 check, and the same reading taken inside the package named 173.
 
-**And it reads the checks next to your change before it reads the whole suite.** The test
-files your work is in, the ones beside it, and the ones that name what it touched are run
-first; the whole suite is what is tried if that names nothing. A reading is scoped before it
+**And it reads the checks next to your change before it reads the whole suite.** Two things
+count as next to it, and both are relationships rather than resemblances: the test file
+**named after** what you touched, by the runner's own convention — `test_thing.py`,
+`thing.test.ts`, `thing_test.go` — together with the test files sitting beside it; and the
+test files whose **import lines** name it, including through a package's own front door,
+because `from textual.widgets import RichLog` is an import of `_rich_log.py` and the
+package's `__init__.py` is the only thing that says so. Only import lines are read and only
+whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
+does not have to spell a path**: a name it uses that this repository has a file for — an
+`IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
+decides which package is read.
+
+If the selection still comes to more than an eighth of the suite it is not a scope any more,
+so it is cut back to the checks your change is actually in. The whole suite is what is tried
+if that names nothing. A reading is scoped before it
 is bounded, because a budget cannot rescue a measurement of the wrong size: one project's
 whole suite is 3,422 checks and takes over thirteen minutes, against the five and a half
 minutes its run could afford, so the only reading it had was one that could never finish.
@@ -642,6 +654,13 @@ scoped one would report every check that was not selected as one that had disapp
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never
 reached are missing from it for a reason that has nothing to do with your change.
+
+**And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
+reading is a fact about your project or about the time available, and a later round inherits
+it rather than paying to learn it twice. A scoped reading that ran out of time is not one of
+those: it is a fact about a size aforge chose, and the run now knows how fast this project's
+checks go — so the next reading is the checks your change is in, rather than the same
+ceiling again.
 
 **Repair rounds are measured against the tree the job started with.** The first reading
 belongs to the whole job, not to one attempt: a second or third round inherits it rather

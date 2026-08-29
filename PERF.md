@@ -177,6 +177,8 @@ killed the run. So this measurement is bounded three ways, and the bound is
 | `verify.scopeScanLimit` | **6000** | `internal/verify/scope.go` |
 | `verify.scopeReadBudget` | **2 MiB** | `internal/verify/scope.go` |
 | `verify.scopeSelectionLimit` | **40** | `internal/verify/scope.go` |
+| `verify.namedSubjectLimit` | **64** | `internal/verify/scope.go` |
+| a scope's share of the suite | **`WallShare`, an eighth** | `internal/verify/scope.go` |
 | `revision.rememberedJobs` | **16** | `internal/revision/acceptance.go` |
 | `revision.producedSweepLimit` | **6000** | `internal/revision/produces.go` |
 | `store.VerificationSample` | **8** | `internal/store/verification.go` |
@@ -278,11 +280,43 @@ afforded: the only rung the ladder had was one that could not finish. So
 the runner handed the checks adjacent to the change — and the whole suite is what
 is below it.
 
-The scope is derived from the job's own `verify.Focus`: the paths the person's
-request names and the paths the record shows the work touched. `verify.Adjacent`
-turns those into the test files the focus names outright, the test files beside
-what it touched, and the test files that name what it touched, bounded three
-ways — `scopeScanLimit` **6000** entries walked (`internal/exec`'s
+The scope is derived from the job's own `verify.Focus`: the names the person's
+request uses and the paths the record shows the work touched. **A request usually
+spells no path at all** — happy-dom's says "Implement `observe()`, `unobserve()`,
+`disconnect()` and `takeRecords()`" and names `IntersectionObserver`, and
+contains no path — so `verify.NamedSubjects` reads the identifiers too (CamelCase
+or snake_case with at least two segments, capped at `namedSubjectLimit` **64**)
+and `verify.Locate` resolves each of them, WHOLE, against a source file the
+workspace holds. A name that matches nothing costs nothing; a name that matches
+is a fact about where the work is. Without it happy-dom s8 had an empty focus, no
+touched package, and both its readings taken at the repository root and killed at
+their ceiling.
+
+**Adjacency is a relationship and never a substring**, which is the second half
+of the same repair. `verify.Adjacent` selects by structure only: rank 1 is the
+test file NAMED AFTER a touched file under the runner's own convention
+(`test_<stem>.py`, `<stem>.test.ts`, `<stem>_test.go`) plus the test files beside
+it; rank 2 is the test files whose IMPORT STATEMENTS resolve to the touched
+module — through the package entry point's own re-exports for Python, and by
+resolving relative specifiers for JavaScript. Only import lines are read and only
+whole identifiers match, so `Log` never matches inside `Logger` and `log` never
+matches inside `dialog`. textual s8 flattened every name to its letters and asked
+whether a test file's TEXT contained one: the selection came back as **40 of 251
+files** — a third of the suite, spanning animations, command_palette, css,
+directory_tree, document, footer and input — and the reading was killed at 1m53s
+naming nothing. The structural answer for that same job is **3 files**.
+
+**And a selection larger than an eighth of the suite is not a scope.** Past that
+it is a sample of the same order as the whole thing and the whole rung below it
+is a better reading for the same money, so the selection is cut back to its rank-1
+core (or, where nothing is named after the change, to the eighth itself). The
+eighth is `WallShare` spent on the other axis, for the reason it is spent on the
+first: an eighth is the share of a thing a measurement may take before it has
+become the thing. It applies only to a suite larger than `scopeSelectionLimit`,
+because below that the whole rung costs about the same and trimming loses roster
+for nothing.
+
+The selection is bounded three ways — `scopeScanLimit` **6000** entries walked (`internal/exec`'s
 `producedScanLimit` at the other end of the same question), `scopeReadBudget`
 **2 MiB** read to find the checks that IMPORT a touched module, and
 `scopeSelectionLimit` **40** paths on one command line. Past any of them the
@@ -320,6 +354,19 @@ with 0 of 4 tasks successful and names **no check of any package**; `npx vitest
 run --reporter=json` at the ROOT is killed at a 180s ceiling naming **nothing**;
 and the reading this change takes — vitest inside `packages/happy-dom`, scoped to
 the touched test file — exits 0 and names **173 checks**.
+
+**A cut reading is retaken at the size its own pace affords.** Every other
+refusal is a fact about the tree, the project or the wall and is inherited by
+every round; a scoped reading killed at its ceiling is a fact about a size THIS
+PROGRAM CHOSE, and `verify.Reading.Retakeable` is what stops a job inheriting it.
+The arithmetic is deliberately modest about what a cut proves: it proves the
+selection cost MORE than `CutAfter`, so `CutAfter / files` is a lower bound on
+the per-file cost and the count it yields is a CEILING, never a target — taken as
+a target it says a reading killed at 1m53s over forty files can be retaken over
+thirty-six, which is the same reading again. So `Pace.Affords` is the smaller of
+that ceiling and a halving, and `Strategy.retakeSize` puts the rank-1 core under
+it as a floor: textual s8's forty files narrow to the three named after what it
+touched, not to the twenty a halving alone would reach.
 
 **A cut reading keeps what it named, and the run learns the pace.** A command
 killed at its ceiling used to return nothing at all; ink s7's `npx ava --tap` was
