@@ -816,7 +816,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if modeErr := graph.RecordLeafMode(node.ID, leafMode); modeErr != nil {
 			log.Printf("note: could not journal the dispatch shape of %s: %v", node.ID, modeErr)
 		}
-		worker := executorFor(subharness, build)
+		// The worker, and the record that it is this one. Both come out of the
+		// same call because the record is worthless if a dispatch path can get
+		// its executor without leaving it — see runningWorker.
+		worker := runningWorker(node.ID, subharness, build, "")
 		// The steering mailbox: user messages anchored to this node land in
 		// the worker's transcript before its next turn. The cursor starts at
 		// zero so guidance sent while the node was still queued applies too.
@@ -1119,7 +1122,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
 					watchdog = leafRoom.Watchdog(openTokens)
-					worker = executorFor(subharness, build)
+					worker = runningWorker(node.ID, subharness, build, "")
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
 						Handles: handles, Turns: openTurns, Tokens: openTokens,
@@ -1206,7 +1209,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					chosenRoom := exec.SubharnessFor(chosen)
 					build.deadline = chosenRoom.Deadline(tokens)
 					watchdog = chosenRoom.Watchdog(tokens)
-					worker = executorFor(chosen, build)
+					worker = runningWorker(node.ID, chosen, build,
+						"escalated from "+escalatedFrom+" after a failed attempt")
 					shape = chosen
 				}
 				task = attempted
