@@ -727,7 +727,7 @@ in parentheses, the generalist included — so the reading that cost a day is a
 line a person watching already has. Clause 3 and clause 4 are one fix here: a
 record nobody can read and a stream that does not say it are the same silence.
 
-## The ninth failure: the reading that read something and reported nothing
+## A fourteenth failure, 2026-08-29: the reading that read something and reported nothing
 
 *ink s10 and s11, `bench/deepswe/results/ink-grid-box-layout-*`, 2026-08-29.*
 
@@ -762,3 +762,126 @@ What it states:
 > words, rather than borrowing the sentence for a tree nobody could read. And a
 > rung this program DERIVED that names nothing is retaken on the rung the baseline
 > proved, once, before anything is reported unreadable.
+
+---
+
+## A fifteenth failure, 2026-08-29: the rounds that were free, and the wall nobody could see
+
+*ink s10 and s11, happy-dom s10, `bench/deepswe/results/`, 2026-08-29.*
+
+Three runs, three walls. Each was given 5400 seconds and spent 5401 of them.
+Each ended `settled: false`. Between ink s10 and happy-dom s10 there is **not one
+gate event** — a gate is cut at settlement, and a run the clock kills mid-round
+never settles, so nothing was ever judged. ink s10 cost $0.538 and delivered a
+verdict on nothing at all.
+
+Every rule that should have stopped this already existed. Four things were wrong
+with them, and they are four readings of one mistake: **the governor was
+measuring the wrong quantity, over the wrong unit, at the wrong scope, against a
+clock it could not see.**
+
+### 1. Progress was measured over any file, so a stuck model bought rounds for free
+
+ink s10's five `job_growth` rows are all `reason: overrun`, on one lineage —
+`task-2 → x1 → x2 → x3`. The remainder digest changed on every single round
+(`9c6637ca → d0ef521a → f804b0fb → 18a30ad8 → 64ae4b6d`), so the fixed-point rule
+saw motion. The produced count was 15, 5, 9, 4, 4, so the standstill rule saw
+motion too. What the run had actually written, recoverable only from resume
+payloads in the transcript, was `debug-grid.ts`, `debug-grid2.ts`,
+`debug-grid3.tsx`, `debug-grid10.ts`, `debug-grid11.ts`, `debug-yoga.ts`,
+`debug-yoga2.ts`, `debug-test2.tsx`, `debug-test3.tsx`, `debug-grid-pos.tsx`.
+
+A model that is stuck writes scratch files, and a scratch file is a file. **Clause
+2 was satisfied and clause 1 was not**: the evidence came from the world — the
+workspace's own before-and-after diff, exactly as it should — and the DETECTOR
+read it as a count of paths, which is a vocabulary the work being checked
+controls. What finally stopped ink s10 was arithmetic, `cause: rounds`, four
+rounds and ninety minutes later.
+
+> **A ROUND MOVED SOMETHING ONLY IF IT MOVED WHAT THE JOB IS ABOUT.** Check files
+> always. Source files inside the focus the request names, and beside it — the
+> job's own focus, resolved by `verify.Locate` and made adjacent by
+> `verify.Adjacent`'s first rank, which is the identical reading the verification
+> photograph takes to decide how much of a project to read. And the job's own
+> shortfall getting smaller: a failing check that passes, a stated behaviour
+> brought under a check, a deleted public name put back
+> (`store.SurfaceReading`), a review finding answered. Everything else the round
+> wrote is journaled BY NAME as scratch, because "this round wrote fourteen files
+> and moved none of them" is a recognisable failure and the names are what make
+> it recognisable.
+
+No pattern for `debug-` appears anywhere in the mechanism, and none may. That is
+one model's spelling and a rule written against it would be one spelling behind
+forever. What is structural is the relationship between what a round wrote and
+what the request is about — and a job that names nothing this workspace holds
+narrows by nothing, which is verify's own reading of an empty focus and the
+fail-safe direction here.
+
+### 2. An overrun round was not a round
+
+ink s10 exhausted eight times and journaled five growth decisions. The gap is the
+leaf that ran out of room and was claimed again IN PLACE — same node id, attempt
+raised by one, its own banked transcript handed back to it. Nothing is added, so
+nothing passes the growth gate, so the ledger never sees it and no rule that
+counts rounds out of that ledger can weigh it.
+
+> **A BODY OF WORK IS A ROUND WHATEVER MADE IT POSSIBLE.** A resumption is
+> journaled as an admitted round with the same evidence every other round
+> carries. It does not spend the round CAP — the cap bounds how many times a job
+> may be made bigger, and this makes it no bigger — and it is weighed by the
+> evidence rules, which is exactly what it was escaping.
+
+### 3. A standstill was a fact about a lineage, and the wall is the job's
+
+happy-dom s10 is the demonstration, and it is exact. `task-2-x1` asked for a
+third overrun round and was **refused, `cause: standstill`**, in the right words,
+at the right time. Then `task-2-x2` — a sibling lineage — bought a revision round
+and ran the remaining forty minutes into the wall. One lineage being declared a
+fixed point said nothing whatever to the other.
+
+> **THE JOB HAS ONE WALL, SO A STANDSTILL IS WEIGHED AT THE JOB.** Two consecutive
+> measured rounds anywhere in the job that moved nothing relevant, and no lineage
+> of it may buy another. The floor holds unchanged: two, never one, because a
+> leaf can run out before it writes its first file and that is precisely the
+> round a repair exists for (clause 5).
+
+The fixed point stays per-lineage, because it is a claim about one text: two
+lineages are two remainders and their being different says nothing.
+
+### 4. The wall existed in one process and not in the machinery
+
+`revision.outOfWall` has read `ctx.Deadline()` since the SETTLEMENT §3 wave, and
+in a headless run it has never once fired. `aforge do` builds its timeout context
+and hands it to the **settlement watcher**; the brain that plans, claims,
+executes and grows runs on `context.Background()`. So every rule in the program
+that asks "is there time left to finish another round of work" was asking a
+context with no deadline and being told there is no limit.
+
+> **THE WALL THE WATCHER IS WATCHING IS THE WALL THE WORK RUNS UNDER.** The
+> errand's timeout is the run context's deadline. And a job that cannot hold
+> another round of work stops growing, so what is running lands and the job
+> settles and a gate verdict exists — the bound derived from the job's OWN
+> measured rounds, never a typed number (PERF.md, "What a round of a job costs").
+
+### And the person is told
+
+All four of these were already in the journal, on a node inside a job nobody
+opens, while the last line of the run said `partial` and named the clock. A run
+that reached its wall having already been refused for a standstill must not
+report the clock as the reason; the clock is what it ran into afterwards.
+
+```
+partial — no relevant progress in 3 rounds; last change: src/grid.ts
+partial — no time left for another round of work
+```
+
+Clause 3, again, and it is the third chapter in this document to end on it.
+
+## What is deliberately not here
+
+No new round cap, no new timeout, no new constant of any kind as the lever. The
+round cap was reached in ink s10 and it was too late by ninety minutes; a
+smaller one would have been the wrong number for every other run. What was
+missing is a detector that could tell fourteen debug files from a fix, a ledger
+that counted the rounds that actually happened, a scope that matched the thing
+being bounded, and a clock the machinery could read.

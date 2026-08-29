@@ -658,12 +658,21 @@ was already there:
 | --- | --- | --- |
 | `MaxOverrunRounds` | **3** | `internal/resident/grow.go` — the BACKSTOP, unchanged |
 
-What actually stops a lineage is what the growth journal measured: two rounds in
-a row that left nothing on disk (standstill), or the same remainder handed over
-twice (fixed point). The spent-citation ledger now defers to the same evidence —
-words whose round positively moved the tree may buy another, and **everything
-unknown stays spent**, which keeps the bound's direction wherever the journal is
-missing.
+What actually stops a job is what the growth journal measured: two rounds in a
+row that moved nothing the job is about (standstill, weighed at the JOB), or the
+same remainder handed to one lineage twice (fixed point). The spent-citation
+ledger now defers to the same evidence — words whose round positively moved the
+tree may buy another, and **everything unknown stays spent**, which keeps the
+bound's direction wherever the journal is missing.
+
+**What "moved" means costs one workspace walk per growth decision**, and it is
+`verify`'s own, not a second one: `verify.Locate` resolves what the request names
+against the tree, bounded at `scopeScanLimit` (**6000** entries) like every other
+walk in that package, and `verify.OwnChecks` / `verify.ChangedSources` are two
+passes over the round's own artifact list. It runs a handful of times in a job's
+life — once per growth ask, and the exact-ceiling recheck deliberately reuses the
+first reading rather than taking a second, because a recheck that could answer
+differently is not a recheck. See `internal/resident/progress.go`.
 
 One clock enters, as a floor rather than a ceiling, in `outOfWall`
 (`internal/revision/judge.go`): **a repair is bought only while the run's own
@@ -674,6 +683,33 @@ is not a knob and not a typed duration. A repair the wall will kill mid-flight
 spends money to deliver nothing, and a run that stopped for want of time is
 **partial** (exit 2), never whole. An unknown deadline or an untimed attempt
 answers empty and buys the round: this makes runs longer, not shorter.
+
+## What a round of a job costs, measured on that job
+
+A job still growing when its wall arrives is a job that never settles, so no gate
+is cut and the person is handed a partial with nothing judged: ink s10 and
+happy-dom s10 both ended that way, 5401 seconds each, `settled: false`, **zero
+gate events between them**. So a job stops growing while there is still time to
+finish what is running and be judged — and the bound is derived, never typed:
+
+| term | value | where |
+| --- | --- | --- |
+| the pace | the **longest** interval between two admitted rounds of THIS job | `jobPace`, `internal/resident/grow.go` |
+| the clock | the run context's deadline, which is the errand's own `--timeout` | `chatBrain.wall`, `cmd/aforge/chat.go` |
+| the rule | refuse when `time.Until(deadline) < pace` | `CauseOutOfWall` |
+
+The longest and not the mean, because the question is whether the wall can hold
+ANOTHER round: a round the clock cuts in half delivers nothing and costs the run
+its verdict. Fewer than two admitted rounds is a job that has not shown its pace,
+and it answers zero, which refuses nothing — the same direction `outOfWall` takes
+above, and for the same reason (`SETTLEMENT.md` §3).
+
+**The clock reaches the machinery.** `aforge do` used to build its timeout
+context for the settlement watcher alone while the brain ran on
+`context.Background()`, so every deadline-reading rule in the program — this one
+and `outOfWall` both — was told there was no limit. The errand's wall is now the
+run context's deadline. It changes no timing on a run that finishes inside its
+wall; what it changes is that a run approaching one can act on it.
 
 ## The shaped answer's room, which is derived and never named
 

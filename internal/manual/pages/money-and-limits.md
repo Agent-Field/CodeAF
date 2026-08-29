@@ -123,15 +123,34 @@ paraphrase used to be a finding that mostly did not reach it at all.
 ## When work stops growing itself — it gave up early, why did it stop trying
 
 Work that runs out mid-way is re-planned rather than abandoned: what is left is
-worked out and queued as fresh pieces, and you see one line saying so. Four
-things stop that from becoming a habit, and the first two read what actually
+worked out and queued as fresh pieces, and you see one line saying so. Five
+things stop that from becoming a habit, and the first three read what actually
 happened rather than counting:
 
-- **Nothing is changing.** A round that left nothing at all on disk, after a
-  round before it that also left nothing, ends the lineage:
+- **Nothing is changing.** A round that changed nothing the job is about, after
+  a round before it that also changed nothing, ends the **whole job** — not just
+  the piece that asked:
   `carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands`.
   One fruitless round is never refused — work can run out before it writes its
   first file, and that is exactly the round this exists to buy.
+
+  **What counts as changing something** is narrower than "a file appeared". It
+  is a check file, a source file the request is about or one sitting beside it,
+  or the job's own shortfall getting smaller — a failing check that passes now,
+  a behaviour that nothing checked and something does, a deleted public name put
+  back, a review finding answered. A worker that is stuck writes scratch files
+  next to the work — `debug-grid.ts`, `debug-yoga.ts` — and those are not
+  progress however many of them there are. They are written down by name, so a
+  run that stopped this way can be read afterwards.
+
+  A piece that ran out of room and was picked up again counts as a round here
+  too, even though nothing new was queued for it.
+
+- **No time left.** A run given a wall stops growing while there is still time
+  to finish what is running and get a verdict on it:
+  `there is not enough time left on this run to finish another round of work, so this is handed over while there is still time to check it`.
+  How long a round of this job takes is measured on this job — its own rounds,
+  not a fixed number.
 - **The same work again.** When what is left to do comes back word for word the
   same as last time, another round would ask for exactly what the last one
   already did:
