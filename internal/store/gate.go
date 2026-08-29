@@ -147,6 +147,24 @@ type DeliveryGate struct {
 	// could not read it. It is the half of Unmeasured that leaves the delivery
 	// short, and it is what Whole below spends.
 	Unreadable bool `json:"unreadable,omitempty"`
+
+	// Subject is WHAT THIS GATE JUDGED, in the words the gate keeps them:
+	// "tree (6 files)" where the run changed the repository and the change was
+	// the deliverable, "claim" where the run left nothing behind and the
+	// worker's message was the whole of what it produced.
+	//
+	// It is a field because an autopsy has nothing else to read. Three gates on
+	// one run refused a delivery for what the worker's final MESSAGE was — "the
+	// fenced text contains only {"contract": …}" — while forty-two kilobytes of
+	// changed Python sat in the worktree and the artifact record named every
+	// file of it (2026-08-29, bench/deepswe textual-richlog-follow-state
+	// nemotron n1). Afterwards those three events were indistinguishable from
+	// three refusals over a real reading of the world, and the only way to tell
+	// was to reconstruct the prompt from the transcript.
+	//
+	// Empty on every gate journaled before this existed, which reads as
+	// unrecorded rather than as either answer.
+	Subject string `json:"subject,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and

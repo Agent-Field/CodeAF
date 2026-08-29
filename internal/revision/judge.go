@@ -151,7 +151,11 @@ When you name a gap, quote the words of the request it is a failure of — a spa
 
 The deliverable is fenced. Everything between the line ` + deliverableOpen + ` and the line ` + deliverableClose + ` is the deliverable, the whole of it, and nothing outside those two lines is any part of it. What sits above the fence — settled taste, lessons from earlier work, the request, the goal, the working method — is how to judge, never what is judged, and what sits below it is the record of the run. A lesson from earlier work describes a job that is not this one: it may tell you what to look for and it can never tell you what is there. Read the fenced text itself before you say anything about it, and describe only what is in it. If you are about to say the deliverable is a progress report, a series of messages, or a set of pointers to files, that sentence must be true of the fenced text in front of you — check it there first, because that is a description earlier work has been given and it is the easiest one to repeat about work it does not fit.
 
-Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
+The fenced material is one of two things and it opens by saying which. Where the run changed the tree, THE DELIVERABLE IS THAT CHANGE: the files the run wrote or changed, listed there with what is in them, and that is the whole of what the person is being handed. The worker's own final message then appears BELOW the fence, under a heading that calls it what it is — a claim about the work, and not the work. Judge the files. What the claim says, what shape it came out in, whether it is a summary, a plan, a paragraph or a data object, is not the deliverable and is never a gap: a verdict describing the worker's message when the tree is the subject is a verdict about the wrong thing. The claim is worth reading for exactly one purpose, which is the one the run records serve too — a claim the files do not bear out is an element unsupported by evidence, and you name the FILE it is not true of. Where the run changed nothing, the fenced material is the worker's message, the message is the whole of what the run produced, and every paragraph above applies to it exactly as written.
+
+So a fail over a changed tree has a fixed shape, and the answer field carries it: name the one file of the record the request is not satisfied by, quote the words of the request it fails, and say what is missing from that file. If nothing in the record can be named — if the change genuinely does everything the request asked for — that is a pass.
+
+Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. Where the deliverable is a changed tree, a fail carries one field more — "file": "<the one file of the record this gap is about, spelled exactly as the record spells it>" — and a fail without it cannot be read. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
 var deliverableSchema = json.RawMessage(`{
   "type": "object",
@@ -333,6 +337,22 @@ type Judgment struct {
 	// been, and a run with a hole in its check has not been shown to be whole.
 	// See faulted, and FAILSAFE.md's floor.
 	Fault string
+
+	// Subject is what this gate held between its fence markers, in the words
+	// the record keeps: "tree (6 files)" or "claim". See subject.go.
+	//
+	// It is carried on the judgement rather than recomputed by the wiring
+	// because the two would answer differently the moment anything about the
+	// record moved between them, and the whole value of the field is that an
+	// autopsy can trust it: three refusals of one run described a sentence
+	// while the tree held 42KB of changed Python, and nothing anywhere said
+	// which of the two had been read.
+	Subject string
+
+	// File is the one file of the record this finding is about, in the record's
+	// own spelling. Empty on a pass, on a claim-subject finding, and on every
+	// mechanical judgement that is already about a named file of its own.
+	File string
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -654,24 +674,40 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 		return UnexercisedRecord
 	}
 	var body strings.Builder
+	// A TREE THAT IS THE DELIVERABLE IS NOT ALSO A RECORD ABOUT ONE. Where the
+	// fence holds the changed files (see subject.go), listing them again here
+	// would put one list in the prompt twice under two headings that mean
+	// different things — and the second heading, "what the work left behind",
+	// is the one that invites a judge to weigh the tree as supporting evidence
+	// for a message it is no longer being shown as the deliverable.
+	//
+	// WHAT THE RECORD CLAIMS AND THE WORLD DOES NOT HOLD SURVIVES EITHER WAY,
+	// because the fence can only carry files that exist and those two lines are
+	// the ones that convict: a path the deliverable names and the filesystem
+	// does not have, and a directory wearing a file's name. They are the whole
+	// of the block under a tree subject and they lead it under a claim.
 	if len(e.Artifacts) > 0 {
-		body.WriteString("What the work left behind:\n")
+		tree := e.Subject() == SubjectTree
+		head := "What the work left behind:\n"
+		if tree {
+			head = "What the record NAMES and the tree does not hold:\n"
+		}
 		for _, artifact := range e.Artifacts {
-			if info, err := os.Stat(artifact); err == nil {
-				if info.IsDir() {
-					// A directory where a file was expected is the shape that
-					// made a leaf claim a written file that was never written:
-					// reported as a size it reads as the deliverable.
-					fmt.Fprintf(&body, "%s (a directory, not a file)\n", artifact)
-					continue
-				}
-				fmt.Fprintf(&body, "%s (%d bytes)\n", artifact, info.Size())
-				continue
+			info, err := os.Stat(artifact)
+			switch {
+			case err != nil:
+				// A path the deliverable names and the filesystem does not
+				// have is the loudest thing in this block, so it is stated
+				// rather than dropped for being unreadable.
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (not on disk)\n", artifact))
+			case info.IsDir():
+				// A directory where a file was expected is the shape that made
+				// a leaf claim a written file that was never written: reported
+				// as a size it reads as the deliverable.
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (a directory, not a file)\n", artifact))
+			case !tree:
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (%d bytes)\n", artifact, info.Size()))
 			}
-			// A path the deliverable names and the filesystem does not have is
-			// the loudest thing in this block, so it is stated rather than
-			// dropped for being unreadable.
-			fmt.Fprintf(&body, "%s (not on disk)\n", artifact)
 		}
 	}
 	if named := e.namedBlock(); named != "" {
@@ -757,6 +793,16 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 		}
 	}
 	return strings.TrimRight(body.String(), "\n")
+}
+
+// headOnce writes a section's heading the first time the section has anything
+// under it, and nothing after that. It exists because a heading printed above an
+// empty list is the record asserting a fact it does not hold — "what the tree
+// does not have:" followed by nothing reads as a claim that something is missing.
+func headOnce(head *string) string {
+	written := *head
+	*head = ""
+	return written
 }
 
 // gatePatchBytes is how much of the change's text travels when the window is
@@ -1105,6 +1151,15 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// closed — reads one list, and until this call that list was an ACCOUNT of
 	// what leaves reported rather than an observation of the tree.
 	evidence.completeAgainstTheWorld()
+	// AND HERE IS THE ONE DECISION THIS WHOLE GATE TURNS ON: what the fence
+	// holds. Where the run changed the tree, the change is the deliverable and
+	// the worker's message is a claim about it; where it changed nothing, the
+	// message is the whole of what the run produced and it is the deliverable,
+	// exactly as it always was. It is settled here, above every judgement
+	// below, so that a mechanical gap and a judged one record the same answer
+	// to "what was this about". See subject.go.
+	subject := evidence.Subject()
+	subjectWords := evidence.SubjectWords()
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
 	// measurement the run made of the world, and it outranks every other reading
@@ -1113,7 +1168,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// same reason a missing promised file is — the answer is already known and a
 	// judge's cost would buy nothing.
 	if regression, broke := Regressions(evidence.Regressed); broke {
-		regression.Grounds = grounds
+		regression.Grounds, regression.Subject = grounds, subjectWords
 		return regression
 	}
 	// And the half of the same measurement no suite can make: A PUBLIC NAME THAT
@@ -1124,7 +1179,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// reading called the tree IMPROVED on the change that broke all twenty-four
 	// of its hidden tests at setup.
 	if lost, removed := RemovedPublicNames(evidence.Removed); removed {
-		lost.Grounds = grounds
+		lost.Grounds, lost.Subject = grounds, subjectWords
 		return lost
 	}
 	// And its near neighbour, which the photograph could not see until it kept
@@ -1135,11 +1190,11 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// regression — the worker's own diff and two readings of the world — and so
 	// the same place in the order.
 	if weakened, removed := WeakenedChecks(evidence.removedChecks(), evidence.Verification.Vanished()); removed {
-		weakened.Grounds = grounds
+		weakened.Grounds, weakened.Subject = grounds, subjectWords
 		return weakened
 	}
 	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
-		mechanical.Grounds = grounds
+		mechanical.Grounds, mechanical.Subject = grounds, subjectWords
 		return mechanical
 	}
 	ask := node.Provenance.Intent
@@ -1179,7 +1234,22 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if method = strings.TrimSpace(method); method != "" {
 		body += "\n\nThe working method this deliverable was held to:\n" + method
 	}
-	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(deliverable)
+	judged := deliverable
+	if subject == SubjectTree {
+		judged = evidence.treeBlock(budget)
+	}
+	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(judged)
+	// The worker's own account, below the fence, named for what it is. It is
+	// first among the records because it is the most useful of them for the one
+	// purpose it has left — a claim the files do not bear out — and because a
+	// reader that meets it anywhere above the fence is a reader that has been
+	// invited to judge it.
+	if subject == SubjectTree {
+		if claim := strings.TrimSpace(deliverable); claim != "" {
+			body += "\n\nWhat the worker said about its own work. THIS IS A CLAIM ABOUT " +
+				"THE DELIVERABLE AND IS NOT THE DELIVERABLE:\n" + boundedDelivery(claim, budget)
+		}
+	}
 	// The records come last, under the deliverable they are used to check: they
 	// are the most volatile block in the prompt — a revision rewrites the text
 	// and re-runs the work — and the cache pays for volatility by position.
@@ -1196,21 +1266,28 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var verdict struct {
-		Pass      bool   `json:"pass"`
-		Gaps      string `json:"gaps"`
-		Quote     string `json:"quote"`
-		Exercised bool   `json:"exercised"`
+	// The answer's shape follows the subject. Over a changed tree a refusal must
+	// name one file of the record and quote the behaviour it fails, which is
+	// what makes a finding about the worker's sentence unsayable rather than
+	// merely discouraged; over a claim the shape is the one it always was.
+	record := evidence.recordNames()
+	verdict := treeVerdict{files: record}
+	schema := deliverableSchema
+	if subject == SubjectTree {
+		schema = treeVerdictSchema(record)
 	}
 	// One seam for every structured reply in the system. This used to send, then
 	// scan for braces, then decide — and a failed decode here was a silent pass.
 	// Both mistakes are gone: the seam continues a verdict that ran out of room,
 	// asks once more for one that came back as prose, and when neither works it
-	// says so in a type this file cannot mistake for silence.
+	// says so in a type this file cannot mistake for silence. A verdict this
+	// gate cannot READ — a fail over a changed tree that names no file of the
+	// record — travels that same path for the same reason: the contract it
+	// broke is the schema's, so the schema is what it is asked again with.
 	_, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, deliverableSchema, &verdict)
+	}, schema, &verdict)
 	if err != nil {
 		// AN UNREADABLE VERDICT IS A FAULT ON THE GATE, NEVER AN ABSTENTION.
 		// This is the s4 sweep's second fatal shape: the gate answered with
@@ -1235,7 +1312,8 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
-		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true, Grounds: grounds}
+		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true,
+			Grounds: grounds, Subject: subjectWords}
 		// And the last question: does anything CHECK what the person asked
 		// for? On a pass it is the whole verdict — a delivery about to be
 		// called whole with a stated behaviour nothing exercises is the run
@@ -1261,8 +1339,12 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// was. Both fields are written because they are one fact seen from two
 	// sides: what a person reads, and what the admission rules weigh.
 	quote := strings.TrimSpace(verdict.Quote)
+	// THE FILE FIRST. Over a changed tree the finding is about one file of the
+	// record, so the line a person reads opens with its path rather than with
+	// whatever clause the model chose to lead on.
+	gaps = treeGapWords(verdict.File, gaps)
 	failed := Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
-		Checked: true, Grounds: grounds}
+		Checked: true, Grounds: grounds, Subject: subjectWords, File: verdict.File}
 	// And the coverage question on this side too. A repair round is aimed at
 	// the gap the gate NAMED, so a round bought for a missing branch name
 	// closes the branch name and leaves every behaviour nothing checks exactly

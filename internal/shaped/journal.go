@@ -53,6 +53,8 @@ func (r Repair) Words() string {
 		return "answer cut at the ceiling — continued"
 	case RepairReasked:
 		return "the answer was not readable — asked again"
+	case RepairReshaped:
+		return "the answer came back as a data object instead of the work — asked again"
 	case RepairFailed:
 		return "the answer was still not readable — giving up on it"
 	default:
