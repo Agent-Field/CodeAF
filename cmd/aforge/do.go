@@ -1293,6 +1293,16 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		if words := unexercisedWords(gate.Unexercised); words != "" {
 			w.note("no check exercises", words)
 		}
+		// AND THE CHECKS THIS WORK WROTE THAT ARE RED GET THEIR OWN LINE, in
+		// their own words. They used to be printed as `gate: fail — This work
+		// broke checks that were passing before it: …`, which is a sentence
+		// about a repository somebody damaged rather than about a leaf that has
+		// not finished — and on happy-dom's nemotron n1 run it was said of
+		// eighteen checks the run had written that hour, over a tree the grader
+		// scored 9 of 9.
+		if words := unexercisedWords(gate.OwnFailing); words != "" {
+			w.note("the checks this work wrote fail", words)
+		}
 		return true
 	}
 	return false

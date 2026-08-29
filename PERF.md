@@ -451,6 +451,20 @@ per round: `jobReading` remembers against `verify.JobKey`, so later rounds
 inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
 remaining wall as every other reading here.
 
+**A regression is a check named green at the baseline, and the run's own red
+checks are a different finding.** Subtracting the two failing lists is exact only
+while both readings run the same set of checks, and a run writes checks:
+happy-dom's nemotron n1 run rewrote the one file its reading was scoped to, from
+**4** checks to **33**, and the gate failed the delivery for breaking eighteen it
+had written that hour — on a tree the grader scored 9/9. The baseline's roster is
+the authority now (`Reading.Regressed`) — a roster that names at least one GREEN
+check, because a runner that prints only its failures has a reported list that IS
+its failure list and can tell nothing apart; there the old subtraction stands.
+What such a roster never named is `Reading.OwnFailing` → `revision.OwnChecksFailing`, Sourced, buying the same
+round, with `DeliveryGate.OwnFailing` and a stream line of its own. It costs
+nothing: the same two rosters, read once. The old `Strategy.Widened` heuristic
+this replaces is gone.
+
 **A suite that failed to collect is not a suite that went red.** A runner told to
 print a machine-readable report prints one whenever it ran its tests at all, so
 its absence is a fact rather than an empty roster: `Result.Uncollected` records

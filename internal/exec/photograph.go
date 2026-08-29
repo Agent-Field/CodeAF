@@ -261,6 +261,7 @@ func PhotographAfter(
 		}
 		outcome.Verification = reading
 		outcome.Regressed = reading.Regressed()
+		outcome.OwnFailing = reading.OwnFailing()
 		journalReading(history, task, reading, after, "on the finished tree", false)
 		return
 	}

@@ -1605,7 +1605,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// the finding, and it is recorded as a list of its own so
 					// the stream can say it and an autopsy can find it without
 					// reading a paragraph out of the middle of the gap.
-					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable}
+					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable,
+					// And the checks the run wrote and did not get passing,
+					// which is a different state from a broken repository and
+					// was spelled the same way until it had a field.
+					OwnFailing: gate.OwnFailing}
 				if gate.Pass {
 					outcome.Verdict = revision.GateVerdict(gate)
 					// Quorum: two cheap validators independently verify the pass.
@@ -3054,6 +3058,10 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// Regressions), so this field is what makes a regression a blocker
 		// rather than something a leaf's own green tests can talk over.
 		evidence.Regressed = outcome.Regressed
+		// And its near neighbour, which is a different finding in different
+		// words: the checks this run WROTE and did not get passing. See
+		// revision.OwnChecksFailing.
+		evidence.OwnFailing = outcome.OwnFailing
 		// And the names the work deleted, which the suite could not have told
 		// anyone about: a project only owns checks for what somebody wrote
 		// checks for. See revision.RemovedPublicNames.

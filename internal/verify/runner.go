@@ -110,11 +110,6 @@ type Strategy struct {
 	// to the ones that merely import what it touched. It is the floor a reading
 	// cut at its ceiling narrows back to.
 	Core int `json:"-"`
-	// Widened are the paths WithOwnChecks joined on: the check files the run
-	// itself left behind, which the before reading cannot have read because
-	// they did not exist when it was taken. They are kept so the subtraction
-	// can tell a check this work broke from a check this work WROTE.
-	Widened []string `json:"-"`
 }
 
 // retakeSize is how many checks this rung should be retaken over, given the
@@ -303,7 +298,6 @@ func (s Strategy) WithChangedWork(workspace string, record []string) (Strategy, 
 		return s, false
 	}
 	sort.Strings(added)
-	s.Widened = added
 	s.Selected = append(append([]string{}, s.Selected...), added...)
 	s.Command = s.Base + " " + strings.Join(s.Selected, " ")
 	s.Scope = fmt.Sprintf("touched packages (%d %s)", len(s.Selected), plural(len(s.Selected), "file"))

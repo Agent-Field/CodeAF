@@ -365,6 +365,19 @@ type Outcome struct {
 	// §4, FAILSAFE.md clause 2).
 	Regressed []string
 
+	// OwnFailing names the red checks that FIRST APPEARED AFTER THE BASELINE:
+	// the ones this run wrote itself, and did not get passing.
+	//
+	// It is what Regressed used to swallow. A leaf whose own new checks are red
+	// has not finished; a leaf that turned somebody else's check red has broken
+	// the repository, and calling the first one the second is how happy-dom's
+	// nemotron n1 run was failed for breaking checks it had written that hour
+	// while the grader scored the same tree 9 of 9.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim.
+	OwnFailing []string
+
 	// Removed names the PUBLIC names this work deleted: a name the tree spelled
 	// before the job's first change that the finished tree does not, in the
 	// files the run's own record says it changed.

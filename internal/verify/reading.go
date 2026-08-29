@@ -138,64 +138,104 @@ func (r Reading) Regressed() []string {
 	if !r.comparable() {
 		return nil
 	}
-	// A REGRESSION IS A CHECK THAT PASSED BEFORE, and the only reading that has
-	// to ask is one that was WIDENED. Where both halves ran the same command
-	// over the same files, subtracting the two failing lists is exactly right
-	// and always was: a runner that names its failures and nothing else says
-	// nothing about its passes, and reading its silence as "that check did not
-	// exist" would excuse every regression in every such project.
+	// A REGRESSION IS A CHECK THAT WAS NAMED GREEN AT THE BASELINE AND IS RED
+	// NOW. Nothing else is one, and every earlier spelling of this rule was a
+	// way of approximating it.
 	//
-	// The after reading takes in the check files the run itself wrote
-	// (Strategy.WithChangedWork), and those are a different matter: they did not
-	// exist when the before reading was taken, so a brand-new failing test
-	// would subtract out as a regression — the work convicted of breaking a
-	// check that did not exist until it wrote it. A red new test is a leaf that
-	// has not finished, which is what the acceptance finding is for.
+	// Subtracting the two FAILING lists is the approximation, and it holds only
+	// while both readings run the same set of checks. They do not. A run writes
+	// checks — that is most of what a run does — and happy-dom's nemotron n1 run
+	// rewrote the very file its reading was scoped to, taking it from 4 checks
+	// to 33. Both halves ran the identical command, so nothing had been widened
+	// and nothing looked suspicious, and eighteen of the run's OWN new checks
+	// were red. The gate failed the delivery with `This work broke checks that
+	// were passing before it: IntersectionObserver initial observation
+	// queuing …` — checks that did not exist when the baseline was taken — while
+	// the grader scored that same tree 9 of 9.
 	//
-	// Two ways of recognising one, because runners name their checks
-	// differently: the failure names one of the files this reading added
-	// (pytest's `path::test`, go test's package path), or the before reading
-	// kept a roster and that roster never named it. Only checks the widening
-	// brought in are weighed this way; everything else subtracts as it always
-	// did.
+	// So the baseline's ROSTER is the authority, not its failure list. A name it
+	// reported and did not report failing was green; a name it never reported at
+	// all is not this work's to have broken, whatever the reason it is there now.
+	//
+	// Where the baseline kept no roster the question cannot be asked, and there
+	// the old subtraction stands: plenty of runners print their failures and
+	// nothing else, and reading that silence as "no check existed" would excuse
+	// every regression in every such project.
 	broke := NewFailures(r.Before.Failing, r.After.Failing)
-	added := r.After.Strategy.Widened
-	if len(added) == 0 {
+	greenBefore, roster := r.Before.greenRoster()
+	if !roster {
 		return broke
-	}
-	reportedBefore := make(map[string]bool, len(r.Before.Reported))
-	for _, name := range r.Before.Reported {
-		reportedBefore[name] = true
 	}
 	var stood []string
 	for _, name := range broke {
-		if namesOneOf(name, added) {
-			continue
+		if greenBefore[name] {
+			stood = append(stood, name)
 		}
-		if len(reportedBefore) > 0 && !reportedBefore[name] {
-			continue
-		}
-		stood = append(stood, name)
 	}
 	return stood
 }
 
-// namesOneOf says a check's name is a check IN one of these files, which is how
-// every runner this program reads spells the check it just ran: pytest's
-// `tests/test_thing.py::test_case`, go test's package path, a TAP line that
-// leads with the file. A runner that names neither the file nor a roster is one
-// this cannot answer for, and there the roster rule above stands alone.
-func namesOneOf(check string, files []string) bool {
-	check = strings.TrimSpace(check)
-	if check == "" {
-		return false
+// OwnFailing names the red checks that FIRST APPEARED AFTER THE BASELINE: the
+// ones this run wrote itself, and did not get passing.
+//
+// It is the other half of what the failure list used to be read as, and it is a
+// different finding with different words. A leaf whose own new checks are red
+// has not finished; a leaf that turned somebody else's check red has broken the
+// repository. Both are worth a repair round and only one of them is true of a
+// run that wrote thirty new tests and got twelve of them right.
+//
+// Only where the baseline kept a roster, for the reason Regressed states: with
+// no roster there is no way to tell a new check from an old one, and inventing
+// the distinction would put every failure in a runner that prints only failures
+// into this list instead of the other.
+func (r Reading) OwnFailing() []string {
+	if !r.comparable() {
+		return nil
 	}
-	for _, file := range files {
-		if file != "" && strings.Contains(check, file) {
-			return true
+	knownBefore, roster := r.Before.greenRoster()
+	if !roster {
+		return nil
+	}
+	var own []string
+	for _, name := range r.After.Failing {
+		if name = strings.TrimSpace(name); name == "" {
+			continue
+		}
+		if _, held := knownBefore[name]; !held {
+			own = append(own, name)
 		}
 	}
-	return false
+	return own
+}
+
+// greenRoster is which of this reading's checks were passing, and whether it
+// kept a roster worth asking that of at all.
+//
+// ok is false where the reading named NO GREEN CHECK — which is not the same as
+// naming nothing. Plenty of runners print their failures and nothing else, and
+// against those the reported list IS the failure list: it carries no evidence
+// that any check passed, so it cannot tell a check that was green and is missing
+// from a check that never existed. Reading it as a roster would file every
+// regression in every such project as a test the run wrote itself, which is the
+// opposite of the mistake this rule was written to fix. There the old
+// failing-list subtraction stands, exactly as it always did.
+func (r Result) greenRoster() (green map[string]bool, ok bool) {
+	if len(r.Reported) == 0 {
+		return nil, false
+	}
+	green = make(map[string]bool, len(r.Reported))
+	for _, name := range r.Reported {
+		green[name] = true
+	}
+	for _, name := range r.Failing {
+		green[name] = false
+	}
+	for _, passing := range green {
+		if passing {
+			return green, true
+		}
+	}
+	return nil, false
 }
 
 // comparable says this photograph has two halves that are photographs of the

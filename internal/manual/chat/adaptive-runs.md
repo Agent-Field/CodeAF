@@ -744,6 +744,13 @@ idea of public: an underscore, `private`, an unexported name and a non-`pub` ite
 the author called it internal. It is read conservatively and says nothing it is not sure of.
 A rename reads as the old name going, which is what everyone calling it sees.
 
+**A check the run wrote itself and did not get passing is a different finding from a check
+it broke.** Only a check that was in your project's roster before the work, and green there,
+can be reported as broken by it. A red check that first appears after the work is the run's
+own unfinished business, and it says so — `the checks this work wrote fail: …` — because a
+run told it damaged your repository and a run told its new tests do not pass will do two
+different things about it. Both stop the work landing clean and both buy a repair round.
+
 A check that passed before and fails after is a finding the run raises about itself, and it
 is a blocker. Nothing is weighed about where it came from: you never have to ask for your
 repository to keep working. It reads:

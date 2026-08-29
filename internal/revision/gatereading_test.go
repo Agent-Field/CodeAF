@@ -427,3 +427,43 @@ func TestARemovedPublicNameIsASourcedFinding(t *testing.T) {
 		t.Error("whitespace was read as a lost name")
 	}
 }
+
+// A LEAF WHOSE OWN CHECKS ARE RED HAS NOT FINISHED; A LEAF THAT TURNED SOMEBODY
+// ELSE'S CHECK RED HAS BROKEN THE REPOSITORY. Two findings, two sentences.
+func TestTheChecksThisWorkWroteAreTheirOwnFinding(t *testing.T) {
+	red := []string{
+		"IntersectionObserver initial observation queuing Queues an entry for each target",
+		"IntersectionObserver observation-order preservation",
+	}
+	unfinished, any := OwnChecksFailing(red)
+	if !any {
+		t.Fatal("a leaf whose own new checks are red raised nothing")
+	}
+	if unfinished.Pass {
+		t.Error("a leaf with red checks of its own passed")
+	}
+	if !strings.HasPrefix(unfinished.Gaps, "The checks this work wrote fail:") {
+		t.Errorf("the finding does not say whose checks they are:\n%s", unfinished.Gaps)
+	}
+	if strings.Contains(unfinished.Gaps, "broke checks that were passing") {
+		t.Errorf("a leaf that has not finished was accused of breaking things:\n%s",
+			unfinished.Gaps)
+	}
+	// Sourced, so it is admitted with no citation weighed and buys the round a
+	// regression buys.
+	if !unfinished.Sourced || !unfinished.Checked {
+		t.Errorf("the finding would have to quote a request that never mentioned it: %#v",
+			unfinished)
+	}
+	if len(unfinished.OwnFailing) != len(red) {
+		t.Errorf("the finding travels with no list of its own: %v", unfinished.OwnFailing)
+	}
+	if _, any := OwnChecksFailing(nil); any {
+		t.Error("a run whose own checks all pass raised a finding anyway")
+	}
+	// And the two are different findings on the same evidence.
+	regression, _ := Regressions(red)
+	if regression.Gaps == unfinished.Gaps {
+		t.Error("the two findings still say the same thing")
+	}
+}

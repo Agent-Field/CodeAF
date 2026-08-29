@@ -289,6 +289,12 @@ type Judgment struct {
 	// FAILING verdict too — the acceptance question is asked on every verdict,
 	// and a run that failed for a missing file is not a run whose stated
 	// behaviours are covered.
+	// OwnFailing is the checks THIS WORK WROTE that are red — a leaf that has
+	// not finished, and never a repository that was broken. It is a list of its
+	// own so the stream can say it and an autopsy can find it without reading a
+	// paragraph out of the middle of the gap, which is the same reason
+	// Unexercised is one. See OwnChecksFailing.
+	OwnFailing  []string
 	Unexercised []string
 	// Stated is how many behaviours were weighed to reach Unexercised, so the
 	// finding can say what a repair round most needs to know: how much of the
@@ -565,6 +571,11 @@ type Evidence struct {
 	// Nil on every worker that cannot take two readings of the tree, which reads
 	// as no claim.
 	Removed []string
+	// OwnFailing names the red checks that first appeared AFTER the baseline —
+	// the ones this run wrote itself and did not get passing. See
+	// OwnChecksFailing, and verify.Reading.OwnFailing for why it is not a
+	// regression.
+	OwnFailing []string
 	// Account is the worker's own structured account of the work: the files it
 	// changed, with the kind and size of each change, and the checks it ran
 	// with what each one found.
@@ -1181,6 +1192,16 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if lost, removed := RemovedPublicNames(evidence.Removed); removed {
 		lost.Grounds, lost.Subject = grounds, subjectWords
 		return lost
+	}
+	// And the third measurement off the same pair of readings, which is a
+	// different fact about the run and gets different words: THE CHECKS THIS
+	// WORK WROTE AND DID NOT GET PASSING. It sits below the two findings about
+	// damage because it is not damage — nothing that was working stopped — and
+	// above every model round for the reason they are: the answer is already
+	// measured, and a judge's cost would buy nothing.
+	if unfinished, red := OwnChecksFailing(evidence.OwnFailing); red {
+		unfinished.Grounds, unfinished.Subject = grounds, subjectWords
+		return unfinished
 	}
 	// And its near neighbour, which the photograph could not see until it kept
 	// rosters rather than only failures: A CHECK THAT STOPPED EXISTING. Deleting
