@@ -192,6 +192,31 @@ func (g DeliveryGate) Whole() bool {
 	if g.Unreadable {
 		return false
 	}
+	// AN ACQUITTAL IS OF ONE FINDING, AND THE COVERAGE SET IS NOT THAT FINDING.
+	//
+	// Overturned says a refusal was weighed against the world and lost: the file
+	// the review called missing is on disk under the name the request used. That
+	// is true of ONE thing, and it says nothing whatever about behaviours the
+	// request states that no check exercises — which is a measurement of the
+	// repository taken by a different mechanism, on different evidence, and
+	// closed only by a check existing.
+	//
+	// textual s10 settled exactly that way: one gate, `unexercised` naming two
+	// groups of behaviours, the verdict refused as `what it asked for is already
+	// on disk under the name the request used`, Overturned true — and Whole()
+	// read the acquittal as covering everything on the event. Exit 0 at 5 of 20
+	// hidden checks, with the run's own record naming thirteen behaviours it had
+	// measured as exercised by nothing.
+	//
+	// The set is the finding, and a finding that STANDS is what this method is
+	// for. It empties the only way a finding here ever empties: a later mapping
+	// measures a check that covers it. See revision.Unexercised, which is
+	// Sourced for the same reason a regression is — no citation is weighed for
+	// it, because a person does not have to ask for the behaviour they asked for
+	// to be checked.
+	if len(g.Unexercised) > 0 {
+		return false
+	}
 	return g.Pass || g.PolishClosed || g.Overturned
 }
 

@@ -650,6 +650,16 @@ The line in the record says which it was — `scope: touched packages (3 files)`
 `whole` — and the two are never compared with each other, because a whole reading minus a
 scoped one would report every check that was not selected as one that had disappeared.
 
+**And the checks beside what you changed are read on the second pass.** The scope of the
+first reading comes from your request, because when it is taken nothing has changed yet — and
+a request is not a change. One run asked for two widgets by name, only one of the two names
+matched a file, and the test file sitting next to the other one was never read on either
+side. So the second reading takes the checks next to your change as well: the files the run
+actually touched, put through the same beside-and-imports rule. If your request matched
+nothing at all and the whole suite ran out of time, the second reading is aimed at your
+change instead of at the same ceiling — you get the checks for the work that was just done
+rather than nothing.
+
 **And the checks the run wrote itself are always read.** A scope is worked out from your
 request, before any work exists, so it can never contain a test file the run goes on to
 create — one run wrote about forty checks into a new file and every reading it took named
@@ -686,6 +696,14 @@ belongs to the whole job, not to one attempt: a second or third round inherits i
 than photographing a tree its own earlier round has already changed. Without that, a check
 broken in round one is red in round two's baseline and is never reported again. It also
 means a repair round runs the suite once rather than twice.
+
+**A behaviour you asked for that no check covers keeps the run from ending clean.** The
+check at the end of a job maps every behaviour your request states against the checks that
+exist, and it holds that mapping to the same standard it holds a quotation to: a check
+covers a behaviour only when the check itself — its name, or the file it lives in — spells
+the names your sentence spelled. A judge saying so is not enough. What is left over is
+named, it buys a repair round, and while any of it is still open the run ends `partial`
+with the count in the last line, whatever else was settled or overturned along the way.
 
 A check that passed before and fails after is a finding the run raises about itself, and it
 is a blocker. Nothing is weighed about where it came from: you never have to ask for your

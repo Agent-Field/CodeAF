@@ -196,8 +196,22 @@ func PhotographAfter(
 	// not exist before cannot be a regression. This lives here, not in one belt,
 	// because a mechanism only the optional worker has is one the run does not.
 	strategy := reading.Before.Strategy
-	if widened, added := strategy.WithOwnChecks(workspace.Root(), outcome.Artifacts); added {
+	switch widened, added := strategy.WithChangedWork(workspace.Root(), outcome.Artifacts); {
+	case added:
 		strategy = widened
+	case strategy.Scope == verify.ScopeWhole && reading.Partial:
+		// A WHOLE READING THAT DID NOT FIT DOES NOT FIT TWICE. The first one
+		// proved this project's suite is bigger than the wall; running it again
+		// on the finished tree spends the same eighth of the wall to be killed
+		// at the same ceiling, and the run ends holding no roster of the work it
+		// just did. The change always resolves — it is a list of files that
+		// exist — so the second reading is aimed at it. The pair stops being
+		// comparable, which covers already refuses and Regressed already answers
+		// nothing to; what it buys is the roster the coverage settlement spends.
+		if narrowed, ok := verify.ChangedWorkStrategy(
+			workspace.Root(), reading.Plan, outcome.Artifacts); ok {
+			strategy = narrowed
+		}
 	}
 	after, ok := verify.RunReading(ctx, workspace.Root(), strategy, reading.Budget)
 	switch {

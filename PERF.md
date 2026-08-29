@@ -451,6 +451,22 @@ per round: `jobReading` remembers against `verify.JobKey`, so later rounds
 inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
 remaining wall as every other reading here.
 
+**The second reading is aimed at the change as well as at the request.** The
+first reading's scope has to come from the request — there is no diff yet — and
+textual s10 is what that costs on its own: the request said *Log and RichLog*,
+`RichLog` resolved to `_rich_log.py`, `Log` resolved to nothing, and both readings
+ran `tests/test_concurrency.py tests/test_textlog.py` while `tests/test_log.py`
+sat unread beside a file the change had touched. `verify.ChangedSources` reads the
+non-check half of the artifact record and `Strategy.WithChangedWork` puts it back
+through `Adjacent`, so the second reading's selection is the first's ∪ the diff's
+structural adjacency ∪ the run's own checks. Same command, longer file list, no
+extra reading. And where the request resolved to nothing — ofetch s10 took six
+readings, all `whole` — a whole rung killed at its ceiling has proved the suite
+is bigger than the wall, so `verify.ChangedWorkStrategy` aims the second reading
+at the diff rather than spending another eighth on the same ceiling. That pair is
+a subset rather than a superset, so `covers` refuses it and `Regressed` answers
+nothing; what it buys is the roster.
+
 **What a person would see if this were wrong.** Too generous, and short leaves
 stop doing work — a `do` run whose nodes each sit for minutes with nothing in
 the stream but the suite they are running, which is exactly the failure that got
@@ -460,6 +476,15 @@ lets a patch that deleted an attribute the repository already had ship as whole
 — the measured failure in `docs/design/gate/SETTLEMENT.md` §4. Neither is a test
 going red; both are read off a run, which is why the numbers are written down
 here.
+
+## What grounding the acceptance mapping costs
+
+`revision.GroundMapping` spends no model call. It reads the file each mapped
+check names, once, lowercased and cached, bounded twice: `mappingBodyBytes`
+**512KB** for one file so a generated fixture cannot spend the whole allowance,
+and `mappingBodyBudget` **2MB** for one settlement — `verify`'s `scopeReadBudget`
+at the same size and for the same reason. It degrades in the safe direction: a
+body it could not read grounds nothing, so the point stays unexercised.
 
 ## What the acceptance checklist costs
 
