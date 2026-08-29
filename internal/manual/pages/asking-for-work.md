@@ -90,6 +90,34 @@ signature out.
 Turn it off in the settings sheet under **sharing**, or pin it from your shell
 with `AFORGE_ATTRIBUTION`. Off means the worker is never told to sign at all.
 
+## Where a coding worker actually works, and what happens to work that was not brought back
+
+A coding worker that shares a directory with other workers, or that is pointed at
+a repository of yours, is given a **checkout of its own** — a git worktree under
+aforge's own state, on a branch named `aforge/leaf/<the part's id>`. It edits
+there, runs the project's own checks there against a tree no sibling can move
+under it, and when it succeeds its branch is squashed back into your workspace as
+**one commit** with a real message. Your directory is never worked in directly.
+
+**Work that does not come back is never thrown away, and it is never silent.**
+When the work is refused — a check said it is not right, or its change would not
+merge — nothing is applied, because a change nobody has judged good must not be
+put into a tree other work is being checked against. What you get instead is one
+sentence, on the result and in the running output, saying where it is:
+
+```
+This work is written and it is not in your workspace: 4 file(s) are in <the checkout>, on branch aforge/leaf/<id> — `git merge aforge/leaf/<id>` brings it over.
+```
+
+The checkout and the branch are both kept for **seven days**, so the sentence is
+still true when you come back to it on Monday. Whether that work belongs in your
+repository is a decision for you and not for the run.
+
+That sentence is written from **git**, never from what the worker said about
+itself: aforge reads the checkout's own status and the commits on its branch. A
+worker that reports having written everything and a worker that reports having
+written nothing are equally unreliable about it.
+
 ## What the reply promises
 
 A receipt says the work is queued and that you will be told when it lands. It

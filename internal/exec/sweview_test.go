@@ -882,3 +882,118 @@ func TestAnIsolatedLeafIsToldWhereUpstreamFilesActuallyAre(t *testing.T) {
 		t.Fatalf("an isolated leaf was pointed at a file it cannot open:\n%s", isolated)
 	}
 }
+
+// The measured loss this closes: a coding leaf finished a whole implementation
+// in its own view, the delivery gate failed it, nothing was merged, and the run
+// ended with an empty workspace and not one sentence anywhere naming the
+// checkout the work was in. Sixty-seven percent of that run's spend was in that
+// directory.
+//
+// The merge is still refused — a change nothing judged good must not be squashed
+// into a tree siblings verify against — so what is tested here is that the
+// refusal SAYS SO, and that it says so on git's evidence rather than on the
+// leaf's.
+func TestALeafThatDidNotDeliverSaysWhereItsWorkIsLeft(t *testing.T) {
+	for _, shape := range []struct {
+		name   string
+		leave  func(t *testing.T, view *sweView)
+		expect bool
+	}{
+		{
+			name: "committed on its own branch",
+			leave: func(t *testing.T, view *sweView) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(view.dir, "shared.txt"), []byte("finished\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				fakeWIPCommit(view.dir, "wip(edit): the whole change")
+			},
+			expect: true,
+		},
+		{
+			name: "staged and never committed",
+			leave: func(t *testing.T, view *sweView) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(view.dir, "staged.txt"), []byte("finished\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			expect: true,
+		},
+		{
+			name:   "nothing at all",
+			leave:  func(t *testing.T, view *sweView) { t.Helper() },
+			expect: false,
+		},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			t.Setenv(home.EnvVar, t.TempDir())
+			root := personsRepository(t)
+			space, err := NewWorkspace(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			space = space.WithScratch(t.TempDir()).OwnedByPerson()
+			view, _, err := sweOpen(context.Background(), space, "n4-x1", newTracer(space, "n4-x1"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !view.isolated {
+				t.Fatal("the leaf did not get a view of its own")
+			}
+			shape.leave(t, view)
+
+			landing := view.land(context.Background(), false, "the leaf's change")
+			if !shape.expect {
+				if landing.refusal != "" {
+					t.Fatalf("an empty view claimed to be holding work:\n%s", landing.refusal)
+				}
+				return
+			}
+			if landing.refusal == "" {
+				t.Fatal("a view holding a finished change was abandoned without a word")
+			}
+			if !strings.Contains(landing.refusal, view.branch) ||
+				!strings.Contains(landing.refusal, view.dir) {
+				t.Fatalf("the sentence does not say where the work is:\n%s", landing.refusal)
+			}
+			// And it is still there to be merged, which is what the sentence
+			// promises.
+			if _, err := os.Stat(view.dir); err != nil {
+				t.Fatalf("the view the sentence points at was removed: %v", err)
+			}
+			if branches := gitOut(t, root, "branch", "--list", view.branch); branches == "" {
+				t.Fatal("the branch the sentence points at does not exist")
+			}
+		})
+	}
+}
+
+// An account whose change set is real and is not in the workspace has not
+// landed. Composable reads exactly this, and tells a writer that "the change is
+// already made, it is committed, and the diff below is exactly what is in the
+// repository" — a false statement about somebody's repository, on the one
+// ending that produces it.
+func TestAChangeSetHeldBackFromTheWorkspaceHasNotLanded(t *testing.T) {
+	inTheTree := &Account{
+		Files: []FileChange{{Path: "internal/tui3/home.go", Change: ChangeChanged}},
+		Range: Range{Base: "aaaaaaaaaaaa", Head: "bbbbbbbbbbbb"},
+	}
+	if !inTheTree.Landed() {
+		t.Fatal("a measured change set in the workspace did not read as landed")
+	}
+	if words := inTheTree.WithheldWords(); words != "" {
+		t.Fatalf("work in the workspace was described as held back: %q", words)
+	}
+
+	held := *inTheTree
+	held.Withheld = "/home/p/.aforge/views/477d72a0bc73/task-2-n4-x1"
+	held.WithheldBranch = "aforge/leaf/task-2-n4-x1"
+	if held.Landed() {
+		t.Fatal("a change set nobody else can open read as landed")
+	}
+	words := held.WithheldWords()
+	if !strings.Contains(words, held.Withheld) || !strings.Contains(words, held.WithheldBranch) {
+		t.Fatalf("the sentence does not say where the work is: %q", words)
+	}
+}
