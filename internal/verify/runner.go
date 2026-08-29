@@ -95,6 +95,61 @@ type Strategy struct {
 	// is scoped before it is bounded, and Reading.comparable for why the scope
 	// is part of this strategy's identity rather than a note beside it.
 	Scope string `json:"scope,omitempty"`
+	// Base and Selected are Command taken apart: the runner's own invocation,
+	// and the checks it was told to run. They are here so a reading CUT AT ITS
+	// CEILING can be taken again over fewer of them — the measured pace of a
+	// suite is spent divided by Selected, and that is the only thing a run ever
+	// learns about how fast the machine under it is.
+	//
+	// All three fields are written in one place (scopedStrategy) and nothing
+	// else may write one without the others; Command is what runs, and these
+	// two are what it was built out of.
+	Base     string   `json:"-"`
+	Selected []string `json:"-"`
+	// Core is how many of Selected are the checks the change is IN, as opposed
+	// to the ones that merely import what it touched. It is the floor a reading
+	// cut at its ceiling narrows back to.
+	Core int `json:"-"`
+}
+
+// retakeSize is how many checks this rung should be retaken over, given the
+// ceiling a cut reading's pace allows.
+//
+// THE CORE IS THE FLOOR AND THE PACE IS THE CEILING. The checks the change is IN
+// are the smallest selection that is still a reading of this change rather than
+// of its neighbourhood, so when they fit under the ceiling they are the answer:
+// textual s8's forty files narrow to the two named after what it touched, not to
+// the twenty a halving would reach. Where there is no core — every check found
+// merely imports what changed — the ceiling stands on its own.
+func (s Strategy) retakeSize(ceiling int) int {
+	if ceiling < 1 {
+		return 0
+	}
+	if s.Core > 0 && s.Core < ceiling {
+		return s.Core
+	}
+	return ceiling
+}
+
+// narrowedTo is this scoped strategy over the first count of its checks — the
+// same runner, the same place, a smaller reading.
+//
+// SMALLEST FIRST IS WHAT MAKES THE TRIM HONEST. The selection arrives ranked:
+// the checks the change is IN before the ones that merely import it, so a
+// reading cut down to what the clock affords keeps the most specific end of it
+// rather than whatever sorted early.
+func (s Strategy) narrowedTo(count int) (Strategy, bool) {
+	if count < 1 || count >= len(s.Selected) || strings.TrimSpace(s.Base) == "" {
+		return Strategy{}, false
+	}
+	kept := s.Selected[:count]
+	s.Selected = kept
+	if s.Core > count {
+		s.Core = count
+	}
+	s.Command = s.Base + " " + strings.Join(kept, " ")
+	s.Scope = fmt.Sprintf("touched packages (%d %s)", len(kept), plural(len(kept), "file"))
+	return s, true
 }
 
 // comparable says two readings are readings of the SAME thing, which is the
@@ -458,6 +513,11 @@ func expandVariables(body string, lines []string) string {
 //
 // ok is false exactly when there was nothing anywhere to run.
 func ReadingStrategies(workspace string, plan Plan, focus Focus) ([]Strategy, bool) {
+	// WHAT THE REQUEST SAYS, RESOLVED TO WHAT THE WORKSPACE HOLDS. A request
+	// that names its subject and no path at all — which is most of them — used
+	// to produce an empty focus, no touched package, and a reading of the whole
+	// repository from its root. See Locate.
+	focus = Locate(workspace, focus)
 	var ladder []Strategy
 	// The packages the work touched, most-touched first. Each is discovered in
 	// its own right — a package declares its own runner, its own scripts and its
@@ -570,7 +630,7 @@ func scopedStrategy(root string, plain Strategy, chosen runner, focus Focus) (St
 	if !chosen.selects || strings.TrimSpace(chosen.invocation) == "" {
 		return Strategy{}, false
 	}
-	paths, ok := Adjacent(root, focus)
+	paths, core, ok := Adjacent(root, focus)
 	if !ok {
 		return Strategy{}, false
 	}
@@ -581,7 +641,8 @@ func scopedStrategy(root string, plain Strategy, chosen runner, focus Focus) (St
 	rung := plain
 	rung.Runner, rung.Read = chosen.name, chosen.read
 	rung.Source = "the checks next to what this job touched"
-	rung.Command = machineReadable(root, chosen.invocation, chosen) + " " + strings.Join(selectors, " ")
+	rung.Base, rung.Selected, rung.Core = machineReadable(root, chosen.invocation, chosen), selectors, core
+	rung.Command = rung.Base + " " + strings.Join(selectors, " ")
 	rung.Scope = fmt.Sprintf("touched packages (%d %s)", len(paths), plural(len(paths), "file"))
 	return rung, true
 }

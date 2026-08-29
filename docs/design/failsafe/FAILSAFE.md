@@ -321,3 +321,65 @@ never answer "did this work break something". It is kept as
 learns about the pace of the machine it is on, which matters because these
 readings are taken in amd64 containers under qemu where everything is five to ten
 times slower than the wall-derived arithmetic assumes.
+
+---
+
+## An eighth failure, 2026-08-29: adjacency by substring, and a focus that was empty
+
+*Added against `bench/deepswe/results/textual-…-s8` and `…happy-dom-…-s8`, taken
+on the wave that made readings scoped. Both are clause 1 — detect by STRUCTURE —
+broken in the new mechanism itself.*
+
+**textual s8: a substring is not a relationship.** The job touched `_log.py`,
+`_rich_log.py`, `widget.py` and `messages.py`. The reader flattened every name to
+its letters and asked whether a test file's TEXT contained one, so the stem `log`
+matched `dialog`, `catalog`, `logic` and `logging` wherever they appeared. The
+selection was **40 of 251 test files** — a third of the suite, spanning
+tests/animations, command_palette, css, directory_tree, document, footer and
+input — and the reading was killed at its ceiling of 1m53s naming nothing.
+
+Adjacency is now two structural relationships, ranked:
+
+1. the test file NAMED AFTER the touched file by the runner's own convention —
+   `test_<stem>.py`, `<stem>.test.ts`, `<stem>_test.go` — the stem compared
+   whole; plus the test files beside it;
+2. the test files whose IMPORT STATEMENTS resolve to the touched module. For
+   Python that includes the package entry point's own re-exports, because
+   `from textual.widgets import RichLog` is an import of `_rich_log.py` and the
+   `__init__.py` is the only thing that says so. For JavaScript a relative
+   specifier is resolved against the importing file's own directory.
+
+Only import lines are read; only whole identifiers match, so `Log` is not
+`Logger` and `log` is not `dialog`. The structural answer for that same job is
+three files. And **a selection larger than an eighth of the suite is not a
+scope**: past that it is a sample of the same order as the whole thing, and it is
+cut back to its rank-1 core.
+
+**happy-dom s8: the focus was empty.** Both readings were taken at the repository
+ROOT with `scope: whole` and both were killed at 1m53s. Nothing was wrong with
+the workspace declaration (`workspaces: ["packages/*", …]` beside a turbo.json)
+or with the nearest-manifest walk. The focus was built only from paths the
+request SPELLS OUT, and that request spells none — it says "Implement
+`observe()`, `unobserve()`, `disconnect()` and `takeRecords()`" and names
+`IntersectionObserver`, four times, and no path at all. So no package was ever
+touched as far as the reader knew and the ladder had only root rungs.
+
+> **A REQUEST THAT NAMES A THING THIS REPOSITORY HAS A FILE FOR IS A REQUEST
+> ABOUT THAT FILE.** `verify.NamedSubjects` reads the identifiers a request uses
+> in the repository's own spelling, and `verify.Locate` resolves each of them,
+> whole, against a file the workspace holds. A name that matches nothing costs
+> nothing.
+
+Measured in that task image on 2026-08-29: the root reading is killed at its
+ceiling naming nothing; the reading this repair takes — vitest inside
+`packages/happy-dom` over `test/intersection-observer/IntersectionObserver.test.ts`
+— exits 0 and names 4 checks. The `package` the reading was taken in is on the
+`verification` event whenever a member was read.
+
+**And clause 4 again: a cut is not a settled refusal.** A scoped reading killed
+at its ceiling is a fact about a size this program chose, not about the tree, so
+it is the one remembered answer a later round does not inherit
+(`verify.Reading.Retakeable`). What the cut measured is a CEILING on the per-file
+cost and never a target — a reading killed over forty files "affords"
+thirty-six by that arithmetic, which is the same reading again — so the retake is
+the smaller of that ceiling and a halving, floored at the rank-1 core.
