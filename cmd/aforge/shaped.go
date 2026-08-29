@@ -39,6 +39,7 @@ func (j repairJournal) Repaired(repair shaped.Repair) {
 		Spent:   repair.Spent,
 		Ceiling: repair.Ceiling,
 		Line:    repair.Line(),
+		Note:    repair.Note,
 	})
 }
 

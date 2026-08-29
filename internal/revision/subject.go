@@ -485,17 +485,51 @@ func behavioursBlock(spans []string) string {
 //
 // Whitespace and case are folded because a span re-wrapped by a model is the
 // same words, and nothing else is forgiven.
-func behaviourNamed(quote string, spans []string) bool {
+func behaviourNamed(quote string, spans []string) (string, bool) {
 	want := foldedSpan(quote)
 	if want == "" {
-		return false
+		return "", false
 	}
 	for _, span := range spans {
 		if have := foldedSpan(span); have != "" && strings.Contains(have, want) {
-			return true
+			return span, true
 		}
 	}
-	return false
+	return "", false
+}
+
+// HeldPointEmpty is what the record says where the request states no checkable
+// behaviour, or states more of them than the judge's room holds: the quote
+// requirement was OFF for this gate.
+//
+// It is a sentence rather than a silence because an empty field already means
+// something else — a gate journaled before any of this existed — and the two
+// readings an autopsy has to tell apart are exactly "the quote passed the list"
+// and "there was no list". textual v4-flash s13 journaled two gates whose
+// subject and quote were both right and whose held point was nothing at all, so
+// neither could be told from the other without rebuilding the prompt.
+const HeldPointEmpty = "checklist: empty"
+
+// heldPointWords is what the record says about the behaviour a tree verdict was
+// held to: the span a refusal was built on, the size of the list a pass was
+// weighed against, or HeldPointEmpty where there was no list.
+//
+// It is DERIVED at the gate's one exit rather than written by whichever
+// judgement happened to be built, for the reason Subject is: a field set by
+// every constructor is a field the next constructor forgets, and this one is a
+// pure function of things that exit already holds.
+func heldPointWords(evidence Evidence, grounds Grounds, budget ctxbudget.Budget, judgment Judgment) string {
+	if evidence.Subject() != SubjectTree {
+		return ""
+	}
+	spans := behaviourSpans(HeldPoints(evidence, grounds), budget)
+	if len(spans) == 0 {
+		return HeldPointEmpty
+	}
+	if matched, ok := behaviourNamed(judgment.Quote, spans); ok {
+		return matched
+	}
+	return "checklist: " + plural(len(spans), "behaviour")
 }
 
 // foldedSpan is the form those comparisons are made in: lower case, with every
@@ -585,7 +619,7 @@ func (v *treeVerdict) UnmarshalJSON(data []byte) error {
 	// producing it. A refusal built on a behaviour the request states cannot be
 	// that claim, because the record already answers whether a file exists and
 	// no behaviour is about its being on disk.
-	if len(v.behaviours) > 0 && !behaviourNamed(v.Quote, v.behaviours) {
+	if _, held := behaviourNamed(v.Quote, v.behaviours); len(v.behaviours) > 0 && !held {
 		return fmt.Errorf("a fail must quote one of the behaviours this request states, and %q is not one of them",
 			clipUTF8Bytes(v.Quote, 120))
 	}

@@ -197,6 +197,22 @@ type DeliveryGate struct {
 	// Empty on every gate journaled before this existed, which reads as
 	// unrecorded rather than as either answer.
 	Subject string `json:"subject,omitempty"`
+
+	// HeldPoint is WHICH BEHAVIOUR OF THE REQUEST this gate was held to: the
+	// span a refusal was built on, the size of the list a pass was weighed
+	// against, or "checklist: empty" where the request states none and the
+	// requirement was off.
+	//
+	// Subject says what the gate read; this says what it was allowed to
+	// convict on. textual v4-flash s13 journaled two gates with the subject
+	// right and the quote a verbatim behaviour of the request, and nothing in
+	// the event could tell whether the quote had passed the checklist or there
+	// had been no checklist to pass — the mechanism working and the mechanism
+	// switched off, wearing one event.
+	//
+	// Empty on a claim-subject gate, where there is no such list, and on every
+	// gate journaled before this existed.
+	HeldPoint string `json:"held_point,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and

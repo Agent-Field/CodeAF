@@ -41,6 +41,22 @@ type Repair struct {
 	Round   int        `json:"round,omitempty"`
 	Spent   int        `json:"spent,omitempty"`
 	Ceiling int        `json:"ceiling,omitempty"`
+
+	// Note is WHY the answer could not be read, in the reader's own words.
+	//
+	// "The answer was not readable" is two different facts and this seam was
+	// journaling one word for both. A reply that never contained an object at
+	// all is a model reasoning out loud, and the re-ask is the mechanism
+	// working. A reply that decoded and was refused by the caller's own
+	// contract — a delivery verdict naming a file the record does not hold, or
+	// quoting something the request never states — is a model answering a
+	// question it was asked badly, and the re-ask may be buying nothing.
+	//
+	// textual v4-flash s13 holds two of these on lane `gate` and no way to tell
+	// which: settling it meant reading token counts out of the usage table
+	// three events either side. The error the decode returned says it in one
+	// line, and it is the line nobody had.
+	Note string `json:"note,omitempty"`
 }
 
 // Words is the repair as a person reads it, in the register the headless

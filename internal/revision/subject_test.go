@@ -589,3 +589,54 @@ func TestTheTruncationPerceptCannotBeReached(t *testing.T) {
 		t.Fatalf("a complaint about the page was accepted as a finding: %+v", judgment)
 	}
 }
+
+// textual v4-flash s13 journaled two gates whose subject and quote were both
+// right, and nothing in either event said whether the quote had passed the
+// checklist enum or there had been no checklist to pass. Those are the
+// mechanism working and the mechanism switched off, wearing one event.
+func TestTheGateRecordsWhichBehaviourItWasHeldTo(t *testing.T) {
+	root, record := treeFixture(t)
+	settings := config.Config{Model: "worker/model"}
+	node := textualNode()
+	node.Provenance.Intent += " Log and RichLog expose is_following_end: bool attribute."
+	held := []plan.Point{{Behaviour: "Log and RichLog expose is_following_end",
+		Quote: "Log and RichLog expose is_following_end: bool attribute"}}
+
+	for name, judged := range map[string]struct {
+		reply  string
+		accept []plan.Point
+		want   string
+	}{
+		"a refusal names the behaviour it was built on": {
+			`{"pass":false,"file":"tests/test_log.py","gaps":"nothing asserts it",` +
+				`"quote":"Log and RichLog expose is_following_end: bool attribute"}`,
+			held, "Log and RichLog expose is_following_end: bool attribute"},
+		"a pass names the list it was weighed against": {
+			`{"pass":true,"exercised":true}`, held, "checklist: 1 behaviour"},
+		"and a request that states none says so": {
+			`{"pass":true,"exercised":true}`, nil, HeldPointEmpty},
+	} {
+		// The job's remembered checklist is a package memo, so each case starts
+		// from a job that has none — which is the only way the empty case can
+		// be the empty case.
+		ForgetChecklists()
+		judge := &recordingJudge{replies: []string{judged.reply}}
+		judgment := JudgeDeliverable(context.Background(), settings,
+			pool.Adopt(settings, judge.Model(), judge), nil, node, "done", "",
+			Evidence{Artifacts: record, Workspace: root, Observed: true, Accept: judged.accept},
+			"worker/model")
+		if judgment.HeldPoint != judged.want {
+			t.Errorf("%s: held point = %q, want %q", name, judgment.HeldPoint, judged.want)
+		}
+	}
+
+	// A claim-subject gate has no such list and says nothing rather than
+	// claiming an empty one.
+	judge := &recordingJudge{replies: []string{`{"pass":true,"exercised":true}`}}
+	claim := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, node, "done", "",
+		Evidence{Observed: true, Accept: held}, "worker/model")
+	if claim.HeldPoint != "" {
+		t.Fatalf("a claim gate invented a checklist reading: %q", claim.HeldPoint)
+	}
+}
