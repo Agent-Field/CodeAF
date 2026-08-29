@@ -197,6 +197,11 @@ meta "exit_code=$CODE" "agent_seconds=$WALL" "stage=extract"
 # Stage first so files the harness created land in the diff; diffing --cached
 # against the base commit then captures committed and uncommitted work alike.
 docker exec "$NAME" git config --global --add safe.directory /app >/dev/null 2>&1
+# An emulated process that crashes leaves a core dump in the working directory,
+# and `git add -A` stages it like any other new file. ink s3 submitted a 
+# qemu core dump of node as part of its answer. It is the emulator's droppings,
+# not the run's work, so it never reaches the diff.
+docker exec "$NAME" sh -c 'cd /app && rm -f qemu_*.core core.[0-9]* 2>/dev/null; true' >> "$OUT/docker.log" 2>&1
 docker exec "$NAME" git -C /app add -A >> "$OUT/docker.log" 2>&1
 # --binary, because a run that writes a .joblib, a fixture image or any other
 # non-text artifact otherwise produces "Binary files a/x and b/x differ", which
