@@ -162,11 +162,12 @@ func Answer(ctx context.Context, client Completer, ask Ask, into any) (*ai.Respo
 	// became text has still answered, and a repair taken on the finish reason
 	// spent forty-five seconds fetching a second copy of an answer already in
 	// hand.
-	if provider.DecodeJSONObject(answered, into) == nil {
+	refused := provider.DecodeJSONObject(answered, into)
+	if refused == nil {
 		return response, nil
 	}
 
-	repaired, err := repair(ctx, client, ask, model, ceiling, response, answered, into)
+	repaired, err := repair(ctx, client, ask, model, ceiling, response, answered, refused, into)
 	if err != nil {
 		// A model that would not answer in shape is a format failure and moves a
 		// rating. A provider that could not be reached partway through a repair
@@ -186,7 +187,7 @@ func Answer(ctx context.Context, client Completer, ask Ask, into any) (*ai.Respo
 // failed to decode. It is separate from Answer only so that the happy path —
 // which is almost every call — reads as the three lines it actually is.
 func repair(ctx context.Context, client Completer, ask Ask, model string, ceiling int,
-	response *ai.Response, answered string, into any) (*ai.Response, error) {
+	response *ai.Response, answered string, refused error, into any) (*ai.Response, error) {
 
 	// A CUT ANSWER IS CONTINUED, NOT RE-BOUGHT, AND THE READING IS STRUCTURAL.
 	// "Was an object begun and left open" is a fact about the text; the finish
@@ -253,7 +254,7 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 	// same arithmetic as plan.retryTokenBudget and revision.retryVerdictTokens,
 	// which is now written once, here).
 	note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairReasked,
-		Round: 1, Spent: spent, Ceiling: ceiling})
+		Round: 1, Spent: spent, Ceiling: ceiling, Note: why(refused)})
 	again, err := client.CompleteWithMessages(ctx, reask(ask, joined), ask.request(doubled(spent, ceiling))...)
 	if err != nil {
 		return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
@@ -265,7 +266,8 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 	// What matters here is only that it is reported as a FAULT, in a type the
 	// caller cannot mistake for silence.
 	note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairFailed,
-		Round: 1, Spent: spent + spentOn(again, ceiling), Ceiling: ceiling})
+		Round: 1, Spent: spent + spentOn(again, ceiling), Ceiling: ceiling,
+		Note: why(provider.DecodeJSONObject(text(again), &struct{}{}))})
 	return again, fmt.Errorf("%s: %w%s", ask.laneWords(), ErrUnreadable, detail(again))
 }
 
@@ -466,6 +468,30 @@ func detail(response *ai.Response) string {
 	}
 	return words + ")"
 }
+
+// why is the reader's own account of what was wrong with an answer, bounded to
+// one line and a sentence's worth of bytes.
+//
+// It is the decode error verbatim because that error is where the two cases
+// already differ: a reply with no object in it fails in provider's scan, and a
+// reply the caller's own contract refused fails inside that caller's
+// UnmarshalJSON, in words the caller wrote. Nothing here classifies anything —
+// a classification would be a third opinion to keep in step with two.
+func why(err error) string {
+	if err == nil {
+		return ""
+	}
+	line := err.Error()
+	if cut := strings.IndexByte(line, '\n'); cut >= 0 {
+		line = line[:cut]
+	}
+	return clip(strings.TrimSpace(line), noteBytes)
+}
+
+// noteBytes bounds that line. A decode error is a sentence; anything longer is
+// a model's own words quoted inside one, and the head of it is the part that
+// says which door refused.
+const noteBytes = 400
 
 func clip(text string, bytes int) string {
 	if len(text) <= bytes {
