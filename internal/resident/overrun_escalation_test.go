@@ -123,7 +123,13 @@ func TestALinearExhaustionKeepsTheGeneralist(t *testing.T) {
 // Exhausting a swe leaf says nothing about the envelope — the engine resumes
 // from its own checkpoints — so the ladder does not touch it: the continuation
 // runs on the worker the caller judged, unchanged.
+//
+// The worker is registered because the fixture would otherwise be impossible:
+// a swe leaf that RAN is a swe leaf this install has, and a judged specialist
+// is honoured only when it is installed.
 func TestASweExhaustionIsLeftToTheFrozenEngine(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
 	graph, node := exhaustionLeafFixture(t, "swe")
 
 	spliced, sink, err := ReplanOverrunOn(context.Background(), graph, node,
@@ -228,5 +234,51 @@ func TestALinearExhaustionKeepsTheGeneralistWhenTheSpecialistIsNotInstalled(t *t
 	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
 	if got := escalateContinuation(exec.LinearSubharness, "", "swe"); got != "swe" {
 		t.Fatalf("the ladder did not climb to an installed specialist: %q", got)
+	}
+}
+
+// AND THE JUDGMENT ITSELF IS GATED THE SAME WAY. A judge may name a worker
+// this install does not hold — a profile whose roster leaves the specialist
+// out, a bundle retired between the plan and the exhaustion — and the registry
+// would run that continuation on the generalist whatever the node said. What
+// it must not do is WRITE the missing worker down: a name nobody can act on,
+// journaled onto the continuation and into the ledger, is how a profile that
+// holds no coding pipeline ends up with a file full of generalist leaves filed
+// under the pipeline's name.
+//
+// So the answer is the generalist, NAMED, on the node and in its provenance —
+// not silence, which is the verdict nobody made and which every reader
+// downstream fills in from somewhere else.
+func TestAJudgedWorkerThisInstallDoesNotHaveIsTheGeneralist(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.ForgetSubharnesses()
+
+	graph, node := exhaustionLeafFixture(t, "")
+	spliced, sink, err := ReplanOverrunOn(context.Background(), graph, node,
+		"the partial result", "", nil, 0, "swe", twoNodeRemainder)
+	if err != nil || spliced != 2 {
+		t.Fatalf("spliced=%d err=%v", spliced, err)
+	}
+	continued, _, _ := graph.Node(sink)
+	if continued.Subharness != exec.LinearSubharness {
+		t.Fatalf("a continuation judged for an uninstalled worker was written as %q, want the generalist",
+			continued.Subharness)
+	}
+	if continued.Provenance.Subharness != exec.LinearSubharness {
+		t.Fatalf("the provenance records %q, want the generalist that will really run it",
+			continued.Provenance.Subharness)
+	}
+	// And the same judgment on an install that HAS the worker is honoured, so
+	// the assertion above is about the roster and not about the judgment being
+	// ignored.
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
+	installed, installedNode := exhaustionLeafFixture(t, "")
+	_, installedSink, err := ReplanOverrunOn(context.Background(), installed, installedNode,
+		"the partial result", "", nil, 0, "swe", twoNodeRemainder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if honoured, _, _ := installed.Node(installedSink); honoured.Subharness != "swe" {
+		t.Fatalf("an installed specialist the judge named was written as %q", honoured.Subharness)
 	}
 }

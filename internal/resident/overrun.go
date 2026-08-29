@@ -213,16 +213,37 @@ func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, p
 // ladder does not touch it. A dead leaf nobody sized promised no envelope, so
 // its continuation keeps whatever the caller judged (or the baseline when
 // nothing was), preserving the splice's "degradation, never failure" default.
+//
+// EVERY RUNG IS GATED ON THE WORKER BEING INSTALLED HERE. A judgment is a
+// claim about the work; whether this install has the worker to act on it is a
+// separate fact, and the profile's roster (internal/config's workers.go) is
+// what answers it. A name that reaches no installed worker would run on the
+// generalist anyway — the registry degrades rather than fails — but it would
+// be WRITTEN onto the continuation node and into the ledger, so a profile that
+// holds no coding pipeline would keep filing generalist leaves under the
+// pipeline's name. The gate is the same one the provenance rung has always
+// had, said once at the top so that every road out of this function obeys it.
 func escalateContinuation(dead, judged, provenance string) string {
 	dead = strings.TrimSpace(dead)
 	judged = strings.TrimSpace(judged)
+	// A judged worker this install does not have is THE GENERALIST, NAMED —
+	// not silence. Somebody did answer the question, and blanking their answer
+	// would make it indistinguishable from the verdict nobody made, which every
+	// reader downstream fills in from somewhere else. The generalist is left
+	// alone because it is never a registration, and an unanswered question is
+	// left alone because it is not an answer.
+	if executor.SubharnessChosen(judged) && !executor.GeneralistSubharness(judged) &&
+		!executor.KnownSubharness(judged) {
+		judged = executor.LinearSubharness
+	}
 	// The frozen engine first: its exhaustion is its own business, and the
 	// caller's choice — judged or empty — is returned unchanged.
 	if strings.EqualFold(dead, executor.SWESubharness) {
 		return judged
 	}
 	// A specialist the judge recognised is the top of the ladder; escalation
-	// only ever climbs, never downgrades it.
+	// only ever climbs, never downgrades it. It reaches here only when this
+	// install actually has that worker, by the gate above.
 	if strings.EqualFold(judged, executor.SWESubharness) {
 		return executor.SWESubharness
 	}
