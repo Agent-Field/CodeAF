@@ -981,11 +981,25 @@ Write the check for each, and make it pass.
 Under a headless run it is its own line, `asserted by no check — …`, and it buys the
 repair round exactly as an unexercised behaviour does.
 
+**Your own words count as identifiers where the tree agrees.** "the vertical scrollbar
+position" names `ScrollBar.position` — the project's own public names are read as a
+vocabulary, and consecutive words of yours that spell the words a name is built out of name
+that name. Two words at least, and only names that have an owner: one word is a word, and
+"after users scroll up" is not a reference to a `ScrollUp` class that happens to exist.
+
+**Every one of them has to be asserted, not just one.** A check that weighs the scroll
+position and never reads the scrollbar has answered half of what you asked, and the line
+names the half it missed: `observables never asserted: ScrollBar.position`. Where a name
+you wrote is qualified, a check satisfies it through the member — you write
+`ScrollBar.position`, the check writes `bar.position`.
+
 **Every silence here favours the check.** A behaviour of yours with no identifier in it —
-"normal scrolling must still update the visible viewport" — is asked nothing; only checks
+"it must post only when the boolean actually changes" — is asked nothing; only checks
 the run itself wrote are read; a file in a language this program has no reader for, or a
-check whose declaration it cannot find, is left alone; and **one** identifier named in
-**one** assertion clears the behaviour outright.
+check whose declaration it cannot find, is left alone. Hyphenated English — "full-width",
+"half-open" — is not a name unless you wrote it as a selector like `#follow-log` or the
+project declares it, and a bare class name is what a check builds rather than what it
+weighs.
 
 **The question is asked again on every round, and the answer is the job's.** The checklist
 was read off your request, and every round of the job has the same request — so a repair

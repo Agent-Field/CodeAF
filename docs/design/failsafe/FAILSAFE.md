@@ -1838,3 +1838,28 @@ a scope analysis that got one comprehension wrong would invent a finding, and on
 this reader skips costs it only a silence. And no reader for Go or Rust, where a
 compiler already answers the same question better than any hundred lines here
 could.
+
+### Addendum, the same day: one of them is not all of them
+
+textual v4-flash s16 ran with the assertion door above and lost the same
+behaviour anyway. *Normal scrolling must still update the visible viewport and
+vertical scrollbar position for both widgets* named no code-shaped token, so the
+door was silent; the run asserted `scroll_y`/`max_scroll_y` 106 times and never
+read `ScrollBar.position`, which is precisely what the two hidden p2p checks
+that failed assert. ofetch s16 is the same fault from the other side — one of a
+behaviour's names asserted, the rest not — and its door had never opened at all,
+because every vitest identity it was handed is `describe describe case` joined
+by spaces and no declaration could be found behind one.
+
+> **A NAME THE PERSON SPELLED IN ENGLISH IS STILL A NAME**, and the tree is what
+> says so: consecutive words of a request that spell the words a public name is
+> built out of name that member. **And a point is asserted only where EVERY
+> observable it names is asserted** — weighing one of them says nothing about the
+> others.
+
+Both halves stay one-directional. Two words at least and a qualified name only,
+so `ScrollUp` is not read out of "scroll up"; hyphenated compounds and bare types
+are not observables, because under *every-observable* they would be findings
+nothing could close; and a behaviour that still names nothing is asked nothing.
+Measured on the s16 tree: one of thirteen points gains an observable, four lose
+a spurious one, none gains a false one.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // The behaviours textual s13's request stated, in the request's own words.
@@ -27,24 +28,24 @@ var (
 )
 
 func TestObservablesAreNamesSpelledOrNamesBound(t *testing.T) {
-	named := Observables(expandPoint.Quote)
+	named := Observables(expandPoint.Quote, verify.SurfaceIndex{})
 	for _, want := range []string{"richlog.write", "expand"} {
 		if !contains(named, want) {
 			t.Errorf("observables of the expand behaviour should carry %q, got %v", want, named)
 		}
 	}
 	// A signature binds its parameter the same way a call binds its argument.
-	if named := Observables("follow_end(animate: bool = False)"); !contains(named, "animate") ||
+	if named := Observables("follow_end(animate: bool = False)", verify.SurfaceIndex{}); !contains(named, "animate") ||
 		!contains(named, "follow_end") {
 		t.Errorf("a signature's parameter is an observable: %v", named)
 	}
 	// A SENTENCE WITH NO IDENTIFIER IN IT NAMES NOTHING, which is what keeps the
 	// door shut on every prose behaviour a request states.
-	if named := Observables(scrollPoint.Quote); len(named) != 0 {
+	if named := Observables(scrollPoint.Quote, verify.SurfaceIndex{}); len(named) != 0 {
 		t.Errorf("prose named observables: %v", named)
 	}
 	// And a colon in prose is not a binding.
-	if named := Observables("it must post only when the boolean actually changes"); len(named) != 0 {
+	if named := Observables("it must post only when the boolean actually changes", verify.SurfaceIndex{}); len(named) != 0 {
 		t.Errorf("prose named observables: %v", named)
 	}
 }
@@ -68,7 +69,7 @@ async def test_rich_log_write_expand_preserves_full_width_justified() -> None:
         for strip in rich_log.lines:
             assert strip.cell_length >= 5
 `)
-	weighed := WeighAssertions(root, []string{"tests/test_log.py"},
+	weighed := WeighAssertions(root, "job", []string{"tests/test_log.py"},
 		[]plan.Point{expandPoint},
 		[]store.ExercisedPoint{{Point: expandPoint.Behaviour,
 			Check: "tests/test_log.py::test_rich_log_write_expand_preserves_full_width_justified"}})
@@ -93,9 +94,10 @@ async def test_rich_log_expand_entries_reflow_after_min_width_change() -> None:
         rich_log.write("short", expand=True)
         rich_log.min_width = 40
         await pilot.pause()
-        assert rich_log.lines[0].cell_length == rich_log.min_width
+        assert rich_log.min_width == 40
+        assert rich_log.lines[0].cell_length == 40, "write(expand=True) must reflow entries"
 `)
-	weighed := WeighAssertions(root, []string{"tests/test_log.py"},
+	weighed := WeighAssertions(root, "job", []string{"tests/test_log.py"},
 		[]plan.Point{reflowPoint},
 		[]store.ExercisedPoint{{Point: reflowPoint.Behaviour,
 			Check: "tests/test_log.py::test_rich_log_expand_entries_reflow_after_min_width_change"}})
@@ -111,7 +113,7 @@ func TestAProsePointIsLeftToTheMappingItAlreadyHad(t *testing.T) {
 async def test_log_normal_scrolling() -> None:
     assert True
 `)
-	weighed := WeighAssertions(root, []string{"tests/test_log.py"},
+	weighed := WeighAssertions(root, "job", []string{"tests/test_log.py"},
 		[]plan.Point{scrollPoint},
 		[]store.ExercisedPoint{{Point: scrollPoint.Behaviour,
 			Check: "tests/test_log.py::test_log_normal_scrolling"}})
@@ -126,13 +128,63 @@ func TestTheDoorStaysShutWhereNothingCouldBeRead(t *testing.T) {
 	root := suiteWith(t, "async def test_other() -> None:\n    assert True\n")
 	mapping := []store.ExercisedPoint{{Point: expandPoint.Behaviour,
 		Check: "tests/test_log.py::test_rich_log_write_expand"}}
-	if weighed := WeighAssertions(root, []string{"tests/test_log.py"},
+	if weighed := WeighAssertions(root, "job", []string{"tests/test_log.py"},
 		[]plan.Point{expandPoint}, mapping); len(weighed[0].Unasserted) != 0 {
 		t.Errorf("a check the file does not declare was judged: %v", weighed[0].Unasserted)
 	}
-	if weighed := WeighAssertions(root, nil,
+	if weighed := WeighAssertions(root, "job", nil,
 		[]plan.Point{expandPoint}, mapping); len(weighed[0].Unasserted) != 0 {
 		t.Errorf("a check outside the run's own record was judged: %v", weighed[0].Unasserted)
+	}
+}
+
+// EACH observable, not any one of them. A check that weighs one of the things a
+// behaviour names says nothing about the others.
+func TestEveryObservableMustBeAsserted(t *testing.T) {
+	root := suiteWith(t, `
+async def test_rich_log_write_expand() -> None:
+    rich_log.write("short", expand=True)
+    assert rich_log.write is not None
+`)
+	weighed := WeighAssertions(root, "job", []string{"tests/test_log.py"},
+		[]plan.Point{expandPoint},
+		[]store.ExercisedPoint{{Point: expandPoint.Behaviour,
+			Check: "tests/test_log.py::test_rich_log_write_expand"}})
+	// The assertion names RichLog.write through the instance and says nothing
+	// about expand, so expand is what remains.
+	if got := weighed[0].Unasserted; len(got) != 1 || got[0] != "expand" {
+		t.Fatalf("the observable nothing asserted was not named alone: %v", got)
+	}
+}
+
+// The tree is the vocabulary: a person writing "vertical scrollbar position" has
+// named ScrollBar.position, and textual s16 asserted scroll_y a hundred times
+// without ever reading it.
+func TestAnObservableCanBeNamedInTheRequestsOwnWords(t *testing.T) {
+	surface := verify.Surface{"src/scrollbar.py": []verify.Declaration{
+		{Name: "ScrollBar"}, {Name: "ScrollBar.position"}, {Name: "ScrollUp"}}}
+	named := Observables(scrollPoint.Quote, verify.IndexSurface(surface))
+	if len(named) != 1 || named[0] != "scrollbar.position" {
+		t.Fatalf("the spoken name was not read: %v", named)
+	}
+	// A SINGLE WORD IS A WORD, and a bare type is what a check builds rather
+	// than what it weighs: neither becomes an observable.
+	spoken := Observables("RichLog still snaps back after users scroll up, unlike Log",
+		verify.IndexSurface(verify.Surface{"a.py": []verify.Declaration{
+			{Name: "ScrollUp"}, {Name: "RichLog"}, {Name: "Log"}}}))
+	if len(spoken) != 0 {
+		t.Errorf("prose was promoted to names of the tree: %v", spoken)
+	}
+}
+
+// A hyphen is not an identifier character, so a hyphenated compound is English —
+// unless the person wrote it as a selector or the tree declares it.
+func TestAHyphenatedCompoundIsNotAnObservable(t *testing.T) {
+	if named := Observables("preserves full-width justified rendering", verify.SurfaceIndex{}); len(named) != 0 {
+		t.Errorf("an English compound became an observable: %v", named)
+	}
+	if named := Observables("Buttons #follow-log and #write-expanded", verify.SurfaceIndex{}); len(named) != 2 {
+		t.Errorf("a selector is a name and was dropped: %v", named)
 	}
 }
 

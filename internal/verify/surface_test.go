@@ -333,3 +333,24 @@ func namedIn(names []string, wanted string) bool {
 	}
 	return false
 }
+
+func TestTheSurfaceIsReadAsAVocabulary(t *testing.T) {
+	index := IndexSurface(Surface{"src/scrollbar.py": []Declaration{
+		{Name: "ScrollBar"}, {Name: "ScrollBar.position"}, {Name: "Log.is_following_end"}}})
+	if spoken := index.Spoken("the vertical scrollbar position for both widgets"); len(spoken) != 1 ||
+		spoken[0] != "ScrollBar.position" {
+		t.Errorf("a name spelled in words was not read: %v", spoken)
+	}
+	// One word is a word; a bare type is not a value to weigh.
+	if spoken := index.Spoken("the scrollbar reports its position"); len(spoken) != 0 {
+		t.Errorf("single words became names: %v", spoken)
+	}
+	// A symbol the request already spelled is confirmed through the member it
+	// names, because a person writes is_following_end and leaves the class implied.
+	if name, held := index.Holds("is_following_end"); !held || name != "Log.is_following_end" {
+		t.Errorf("a member name was not confirmed: %q %v", name, held)
+	}
+	if _, held := index.Holds("full-width"); held {
+		t.Errorf("a compound the tree does not declare was confirmed")
+	}
+}

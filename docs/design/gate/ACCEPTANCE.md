@@ -678,3 +678,69 @@ update the visible viewport…*, *it must post only when the boolean actually
 changes*. All three were on the checklist and all three were mapped. Two hidden
 p2p checks about scrollbar position still failed, and the second of those three
 points names no observable at all, so this door is silent on it by design.
+
+### Addendum, textual s16: one observable is not all of them, and the tree is a vocabulary
+
+*Added 2026-08-29 against
+`bench/deepswe/results/textual-richlog-follow-state-deepseek-deepseek-v4-flash-s16/`
+(18/20 f2p, 4/6 p2p) and `…/ofetch-per-origin-circuit-breaker-…-s16/`.*
+
+The assertion door above shipped and fired — three of s16's four gates carry
+`unasserted` rows. It still let the run's largest gap through, twice over.
+
+**Point [2], *Normal scrolling must still update the visible viewport and
+vertical scrollbar position for both widgets*, named no observable at all**, so
+the door was silent on it and the mapping's word stood. The run asserted
+`scroll_y` and `max_scroll_y` **106** times — its content is taller than the
+viewport, so the scrolling is real — and **not one assertion reads the ScrollBar
+widget's own `position`**, which is exactly what the two hidden p2p checks that
+failed assert (`assert 0 == 4 where 0 = ScrollBar(...position=0).position`).
+
+> **A REQUEST NAMES THE TREE IN THE PERSON'S OWN WORDS.** *vertical scrollbar
+> position* is `ScrollBar.position` spelled in English, and a program that reads
+> observables only out of code-shaped tokens cannot see it. So the tree's own
+> public surface is a VOCABULARY: a name is spoken by a sentence where consecutive
+> words of the sentence spell exactly the words that name is built out of.
+
+`verify.SurfaceIndex` is that reading (`IndexSurface`, `Spoken`, `Holds`), over
+the surface the job's baseline already holds — no new walk and no new budget.
+Two words at least, and the name must be QUALIFIED: one word of a sentence is a
+word, and textual declares a `ScrollUp` message that "after users scroll up" has
+nothing to do with. Measured on the s16 tree at its base commit, exactly **one**
+of the thirteen points gains an observable this way — point [2], to
+`ScrollBar.position` — and it reads unasserted. Four others get SMALLER: the
+tree confirms `RichLog` is a type, and a type is what a check builds rather than
+what it weighs.
+
+**And the second half: EACH observable, not any one of them.** The door passed a
+point the moment one of its names appeared in one assertion, which is how a
+behaviour naming a viewport *and* a scrollbar position is settled by a hundred
+assertions about neither. ofetch s16 has the same shape from the other side —
+*tracks circuit state independently per origin*, with `vi.fn()` called once
+rather than twice and the second origin never weighed.
+
+> **A POINT IS ASSERTED ONLY WHERE EVERY OBSERVABLE IT NAMES APPEARS IN SOME
+> ASSERTION OF THE CHECK MAPPED TO IT**, and the finding lists the ones that do
+> not: `observables never asserted: ScrollBar.position`.
+
+A qualified observable is satisfied by its member — the request writes
+`ScrollBar.position` and a check writes `bar.position`, because the class is what
+made the object.
+
+**Two shapes are thrown away so this is survivable.** A hyphen is not an
+identifier character in any language read here, so a token held together only by
+hyphens is an English compound — `full-width`, `half-open` — and under
+*every-observable* it would be a finding nothing could ever close. It is
+re-admitted where the person wrote it as a selector (`#follow-log`) or where the
+tree declares it. And a bare type the surface confirms is dropped, as above.
+
+**ofetch's door had never opened at all.** All forty-seven of its mapped
+identities are vitest's `describe describe case` joined by SPACES, with nothing
+in the string to say where the groups end — so no declaration was ever found and
+every pairing was left alone. `verify.Assertions.Named` tries the identity's
+trailing words, longest first, and takes the first that is a case the file
+declares. One trailing word is never tried: that is a coincidence, not a case.
+
+**Journaled.** `store.ExercisedPoint.Observables` records what each point was
+weighed against, beside the `Unasserted` conclusion — the resolution is the half
+an autopsy cannot reconstruct, because the tree it was read from has moved on.

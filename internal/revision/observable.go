@@ -50,7 +50,7 @@ const observablesNamed = 4
 // Observables are the identifiers a stated behaviour names — what a check would
 // have to weigh for the behaviour to be exercised rather than merely visited.
 //
-// Two shapes, and both are shapes rather than vocabulary:
+// Three shapes, and every one of them is a shape rather than a vocabulary:
 //
 //   - a name somebody spelled DISTINCTIVELY, which is symbolsIn's own rule and
 //     the identical one the entailment door opens on: `is_following_end`,
@@ -58,25 +58,87 @@ const observablesNamed = 4
 //   - a name somebody BOUND to something, which is how code spells an argument
 //     and prose does not: `expand=True`, `width=40`, `follow_end(animate: bool =
 //     False)`. The name is the observable; the value is what makes it one.
+//   - a name of the TREE somebody spelled IN WORDS. textual s16 asked that
+//     normal scrolling still update "the visible viewport and vertical scrollbar
+//     position"; the run asserted `scroll_y` and `max_scroll_y` a hundred and six
+//     times and never touched `ScrollBar.position`, which is precisely what the
+//     two hidden checks that failed assert. "vertical scrollbar position" names
+//     `ScrollBar.position` and nothing in this program could see it.
+//     verify.SurfaceIndex.Spoken is that reading, against the tree's own public
+//     surface and only for names that have an owner.
 //
-// A behaviour that yields neither names nothing a check could be asked about —
-// "normal scrolling must still update the visible viewport" is a true sentence
-// with no identifier in it — and the door above stays shut on it. That is the
-// same asymmetry GroundMapping keeps, for the same reason: a floor that refuses
-// everything is not a floor.
-func Observables(text string) []string {
-	found := symbolsIn(text)
-	seen := make(map[string]bool, len(found))
-	for _, symbol := range found {
-		seen[symbol] = true
-	}
-	for _, name := range boundNames(text) {
-		if folded := strings.ToLower(name); !seen[folded] {
-			seen[folded] = true
-			found = append(found, folded)
+// TWO SHAPES ARE THROWN AWAY, and both because they cannot be asserted ON.
+//
+// A hyphen is not an identifier character in any language this program reads, so
+// a token whose only separator is one is an English compound: `full-width`,
+// `half-open`, `pre-fetch`. It is re-admitted where the person wrote it as a
+// selector (`#follow-log`) or where the tree itself declares it, because those
+// are names. Without this the door would hold every request to a word nothing
+// can ever assert.
+//
+// And a bare TYPE name the tree declares at the top level — `RichLog`, `Log` —
+// is what a check constructs, never what it weighs; the values it weighs are
+// that type's members. A symbol the surface confirms as an unqualified
+// declaration is dropped for that reason, and one the surface does not know is
+// kept, because the request may be asking for it to exist.
+//
+// A behaviour that yields none of the three names nothing a check could be asked
+// about — "it must post only when the boolean actually changes" is a true
+// sentence with no identifier in it — and the door below stays shut on it. That
+// is the same asymmetry GroundMapping keeps, for the same reason: a floor that
+// refuses everything is not a floor.
+func Observables(text string, index verify.SurfaceIndex) []string {
+	var found []string
+	seen := map[string]bool{}
+	admit := func(name string) {
+		if name = strings.ToLower(strings.TrimSpace(name)); name != "" && !seen[name] {
+			seen[name] = true
+			found = append(found, name)
 		}
 	}
+	selectors := selectorNames(text)
+	for _, symbol := range symbolsIn(text) {
+		if compoundOnly(symbol) && !selectors[symbol] {
+			if _, held := index.Holds(symbol); !held {
+				continue
+			}
+		}
+		if name, held := index.Holds(symbol); held && !verify.Qualified(name) {
+			// The tree says this is a type of its own. A check builds one; it
+			// asserts on what one carries.
+			continue
+		}
+		admit(symbol)
+	}
+	for _, name := range boundNames(text) {
+		admit(name)
+	}
+	for _, name := range index.Spoken(text) {
+		admit(name)
+	}
 	return found
+}
+
+// compoundOnly says this token is held together by hyphens and nothing else,
+// which is how English writes a compound and how no language this program reads
+// writes a name.
+func compoundOnly(symbol string) bool {
+	return strings.ContainsRune(symbol, '-') &&
+		!strings.ContainsAny(symbol, "._/#") &&
+		!strings.ContainsRune(symbol, '_')
+}
+
+// selectorNames are the hyphenated tokens the person wrote as a selector — the
+// one place a hyphen IS part of a name. `#follow-log` and `.write-expanded` are
+// names of things on a page; `full-width` is two words.
+var selectorToken = regexp.MustCompile(`[#.]([A-Za-z_][A-Za-z0-9_-]*-[A-Za-z0-9_-]+)`)
+
+func selectorNames(text string) map[string]bool {
+	held := map[string]bool{}
+	for _, match := range selectorToken.FindAllStringSubmatch(text, -1) {
+		held[strings.ToLower(match[1])] = true
+	}
+	return held
 }
 
 var (
@@ -164,11 +226,20 @@ func parenthesisedItems(text string) []string {
 // to a request it was written years before would fail every delivery that reuses
 // one. The run's own record says which files are its (verify.OwnChecks), and a
 // check outside them is left exactly as the mapping answered it.
-func WeighAssertions(root string, record []string,
+func WeighAssertions(root, job string, record []string,
 	points []plan.Point, mapping []store.ExercisedPoint,
 ) []store.ExercisedPoint {
 	if len(mapping) == 0 || root == "" {
 		return mapping
+	}
+	// THE VOCABULARY IS THE JOB'S BASELINE AND COSTS NOTHING NEW. The whole
+	// tree's public surface is already read once per job, before its first
+	// change; re-walking it per gate would spend verify's largest budget on
+	// every verdict. Where a job has no baseline the index is empty and the
+	// spoken half of Observables simply says nothing.
+	var vocabulary verify.SurfaceIndex
+	if held, ok := verify.BaselineFor(root, job); ok {
+		vocabulary = verify.IndexSurface(held.Surface)
 	}
 	bodies := &checkBodies{root: root, budget: mappingBodyBudget, held: map[string]string{}}
 	bodies.record = verify.OwnChecks(root, record)
@@ -187,21 +258,26 @@ func WeighAssertions(root string, record []string,
 		if check == "" || index >= len(points) {
 			continue
 		}
-		observables := Observables(points[index].Quote)
+		observables := Observables(points[index].Quote, vocabulary)
 		if len(observables) == 0 {
 			continue
 		}
+		weighed[index].Observables = observables
 		asserted, found := assertionText(check, own, bodies, read)
 		if !found {
 			continue
 		}
+		// EACH OBSERVABLE, NOT ANY ONE OF THEM. A behaviour names the things a
+		// check would have to weigh, and weighing one of them says nothing about
+		// the others. textual s16 asserted `scroll_y` and `max_scroll_y` a
+		// hundred and six times against a behaviour that also named the
+		// scrollbar's own `position`, nothing in the run ever read that
+		// position, and the two hidden checks that failed assert exactly it.
 		var missing []string
 		for _, observable := range observables {
-			if namesSymbol(asserted, observable) {
-				missing = nil
-				break
+			if !assertionNames(asserted, observable) {
+				missing = append(missing, observable)
 			}
-			missing = append(missing, observable)
 		}
 		if len(missing) > observablesNamed {
 			missing = missing[:observablesNamed]
@@ -209,6 +285,24 @@ func WeighAssertions(root string, record []string,
 		weighed[index].Unasserted = missing
 	}
 	return weighed
+}
+
+// assertionNames says this check's assertions name the observable, whole, either
+// as the person spelled it or as the member of it a check would actually read.
+//
+// A QUALIFIED NAME IS REACHED THROUGH AN INSTANCE. The request writes
+// `ScrollBar.position` and `RichLog.write`; a check writes `bar.position` and
+// `rich_log.write`, because the class is what made the object and the member is
+// what it asks for. So the last part of a qualified observable satisfies it, and
+// the whole of an unqualified one has to be there.
+func assertionNames(asserted, observable string) bool {
+	if namesSymbol(asserted, observable) {
+		return true
+	}
+	if at := strings.LastIndexAny(observable, "./:"); at >= 0 && at+1 < len(observable) {
+		return namesSymbol(asserted, observable[at+1:])
+	}
+	return false
 }
 
 // assertionText is what this check's own assertions say, and whether the check
@@ -235,7 +329,7 @@ func assertionText(check string, own map[string]bool,
 			assertions = verify.AssertionsIn(path, bodies.read(path))
 			read[path] = assertions
 		}
-		if text, found := assertions.Text(leaf); found {
+		if text, found := assertions.Named(leaf); found {
 			return text, true
 		}
 	}
