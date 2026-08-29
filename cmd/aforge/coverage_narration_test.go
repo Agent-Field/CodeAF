@@ -107,3 +107,42 @@ func TestAPassOverAnUnreadableSuiteEndsShortAndSaysWhy(t *testing.T) {
 		t.Error("a project with no verification at all was charged for not having one")
 	}
 }
+
+// THE LAST LINE NAMES WHAT THE RUN IS ACTUALLY SHORT OF. A gate whose refusal
+// was overturned has settled the thing it was refused about; what stands is the
+// coverage set, and leading with the acquitted prose would name the finding that
+// LOST as the reason the run is partial.
+func TestThePartialLineNamesTheCoverageCount(t *testing.T) {
+	gate := store.DeliveryGate{
+		Gap:         "what it asked for is already on disk under the name the request used",
+		Refused:     "what it asked for is already on disk under the name the request used",
+		Overturned:  true,
+		Unexercised: []string{"Log and RichLog expose is_following_end", "RichLog honours expand=True"},
+	}
+	finding, reason, ok := gateStanding(gate)
+	if !ok {
+		t.Fatal("a gate with two behaviours nothing checks owed the person no reservation")
+	}
+	if finding != "2 behaviours the request states have no check" {
+		t.Errorf("the last line does not count what is open: %q", finding)
+	}
+	if reason != "" {
+		t.Errorf("a coverage shortfall was given a repair excuse: %q", reason)
+	}
+	if line := partialWords(finding, reason); line !=
+		"partial — 2 behaviours the request states have no check" {
+		t.Errorf("the stream's last line reads %q", line)
+	}
+	one := gate
+	one.Unexercised = one.Unexercised[:1]
+	if finding, _, _ := gateStanding(one); finding != "1 behaviour the request states has no check" {
+		t.Errorf("one behaviour is counted as %q", finding)
+	}
+	// A gate that FAILED and was never repaired still leads with its own gap:
+	// there the finding the judge named is the news.
+	failed := store.DeliveryGate{Gap: "The deliverable reports on the work rather than carrying it.",
+		Unexercised: gate.Unexercised}
+	if finding, _, _ := gateStanding(failed); !strings.Contains(finding, "reports on the work") {
+		t.Errorf("a standing gap was replaced by the coverage count: %q", finding)
+	}
+}

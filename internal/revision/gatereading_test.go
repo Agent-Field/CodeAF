@@ -264,3 +264,127 @@ func TestAPassOverAnUnreadableSuiteIsPartialWithOrWithoutAChecklist(t *testing.T
 		})
 	}
 }
+
+// THE CHECKLIST IS REMEMBERED WHERE IT IS READ, NOT WHERE IT IS SETTLED.
+//
+// ofetch s10: the planner read 47 points onto `task-2`'s spec and journaled
+// them; `task-2` was handed over without ever reaching a delivery gate; and
+// `task-2-x1` — planned afresh, so carrying no Accept of its own — reached the
+// only gate of the run with no checklist at all. Its event holds `pass: true`
+// and nothing else: no mapping, no finding, no `unmeasured`. The coverage
+// question was not answered wrongly, it was never asked, and the run left at 42
+// of 47. The memory was there; only the gate ever wrote to it.
+func TestAContinuationInheritsTheChecklistTheRequestWasReadInto(t *testing.T) {
+	ForgetChecklists()
+	request := "Implement an opt-in per-origin circuit breaker for fetch requests. " +
+		"When circuitBreaker: true, defaults are threshold = 5 and halfOpenMaxRequests = 1."
+	points := []plan.Point{
+		{Behaviour: "Circuit breaker is opt-in per origin for fetch requests",
+			Quote: "opt-in per-origin circuit breaker for fetch requests"},
+		{Behaviour: "When circuitBreaker: true, defaults are halfOpenMaxRequests = 1",
+			Quote: "When circuitBreaker: true, defaults are threshold = 5 and halfOpenMaxRequests = 1"},
+	}
+	// The planner reads the request onto the first node's spec, and that is the
+	// moment the job learns what it is judged against.
+	RememberChecklistForRequest(request, points)
+
+	// The continuation's own spec carries none of it.
+	grounds := Grounds{Intent: request}
+	if held := Held(ChecklistFor(verify.JobKey(request)), grounds); len(held) != len(points) {
+		t.Fatalf("the continuation inherited %d of %d points", len(held), len(points))
+	}
+	graph := gateStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	settled := settleAcceptance(ctx, config.Config{}, nil, graph, store.Node{ID: "task-2"},
+		Evidence{Workspace: t.TempDir()}, grounds, "worker/model",
+		Judgment{Pass: true, Checked: true})
+	// With no reading anywhere the coverage question is unanswerable, and the
+	// verdict says so — which is already more than an event holding `pass: true`
+	// and nothing else.
+	if strings.TrimSpace(settled.Unmeasured) == "" {
+		t.Error("a gate that inherited a checklist and could measure nothing said nothing")
+	}
+}
+
+// A JUDGE'S SAY-SO IS VOCABULARY, AND THE MAPPING GOES THROUGH THE SAME DOOR A
+// CITATION DOES.
+//
+// The defaults family is the one ofetch keeps failing on: s8's gate named
+// `When circuitBreaker: true, defaults are halfOpenMaxRequests = 1` and its
+// siblings as exercised by nothing, and the suite meanwhile grew checks about
+// the breaker in general. A mapping weighed on vocabulary alone eventually pairs
+// those two — the words are about the same subject, and the check is not about
+// that behaviour.
+func TestAMappingIsGroundedInWhatTheCheckItselfNames(t *testing.T) {
+	root := t.TempDir()
+	body := "" +
+		"import { describe, it, expect } from 'vitest'\n" +
+		"describe('circuit breaker', () => {\n" +
+		"  it('opens after repeated failures', async () => {\n" +
+		"    await $fetch('/x', { circuitBreaker: true })\n" +
+		"  })\n" +
+		"  it('honours an explicit cooldown', async () => {\n" +
+		"    await $fetch('/x', { circuitBreaker: { cooldown: 1000 } })\n" +
+		"  })\n" +
+		"})\n"
+	if err := os.MkdirAll(filepath.Join(root, "test"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "test/circuit-breaker.test.ts"),
+		[]byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record := []string{"test/circuit-breaker.test.ts"}
+
+	points := []plan.Point{
+		{Behaviour: "Request option circuitBreaker accepts an object with cooldown"},
+		{Behaviour: "When circuitBreaker: true, defaults are halfOpenMaxRequests = 1"},
+		{Behaviour: "When circuitBreaker: true, defaults are failureStatusCodes = [408, 409]"},
+		{Behaviour: "Normal scrolling must still update the visible viewport"},
+	}
+	// What a judge asked to be helpful hands back: every point paired with the
+	// one check file that exists.
+	const check = "test/circuit-breaker.test.ts > circuit breaker > opens after repeated failures"
+	generous := make([]store.ExercisedPoint, 0, len(points))
+	for _, point := range points {
+		generous = append(generous, store.ExercisedPoint{Point: point.Behaviour, Check: check})
+	}
+
+	grounded := GroundMapping(root, record, points, generous)
+	if len(grounded) != len(points) {
+		t.Fatalf("the door dropped rows: %d of %d", len(grounded), len(points))
+	}
+	// The cooldown option IS in that file, spelled the way the request spells it.
+	if grounded[0].Check == "" {
+		t.Error("a pairing the file itself supports was refused")
+	}
+	// These two are not, and no amount of talking about circuit breakers makes
+	// them so.
+	for _, index := range []int{1, 2} {
+		if grounded[index].Check != "" {
+			t.Errorf("%q was declared exercised by a check that never names it",
+				points[index].Behaviour)
+		}
+	}
+	// And a behaviour that spells no name at all is not judged here: there is no
+	// structural question to ask of it, and answering "unexercised" to every such
+	// behaviour would fail every prose request this program is given.
+	if grounded[3].Check == "" {
+		t.Error("a behaviour that names nothing distinctive was refused by a door about names")
+	}
+}
+
+// The whole-name rule the adjacency is held to, asked of this door: `Log` inside
+// `Logger` is not a mention of Log.
+func TestGroundingAMappingNeverMatchesInsideAnotherName(t *testing.T) {
+	if namesSymbol("class logger:\n    pass\n", "log") {
+		t.Error("a name matched inside another name")
+	}
+	if !namesSymbol("from textual.widgets import log\n", "log") {
+		t.Error("a whole name beside punctuation was not matched")
+	}
+	if !namesSymbol("await $fetch('/x', { circuitbreaker: true })", "circuitbreaker") {
+		t.Error("a name beside a brace was not matched")
+	}
+}

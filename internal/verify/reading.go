@@ -133,7 +133,7 @@ func (r Reading) Regressed() []string {
 	// exist" would excuse every regression in every such project.
 	//
 	// The after reading takes in the check files the run itself wrote
-	// (Strategy.WithOwnChecks), and those are a different matter: they did not
+	// (Strategy.WithChangedWork), and those are a different matter: they did not
 	// exist when the before reading was taken, so a brand-new failing test
 	// would subtract out as a regression — the work convicted of breaking a
 	// check that did not exist until it wrote it. A red new test is a leaf that

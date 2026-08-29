@@ -439,3 +439,91 @@ coverage branch and asked of every verdict before the checklist is looked for. I
 sets `Unmeasured` on a delivery nothing measured and `Unreadable` on the narrower
 case that matters at the door: a project that DECLARES a way of checking itself
 which this run could not read. See FAILSAFE's seventh failure, clause 5.
+
+## What s10 proved: four ways a settlement was decided by something other than the world
+
+*Added 2026-08-29 against the s10 stores under `bench/deepswe/results/*`.*
+
+### 1. An acquittal is of one finding
+
+textual s10 has ONE gate. It carries `unexercised` naming two groups of stated
+behaviours, a verdict `refused` as *what it asked for is already on disk under
+the name the request used*, and `overturned: true`. It settled **whole**, exit 0,
+at 5 of 20 hidden checks — over its own measurement of thirteen behaviours it had
+just found exercised by nothing.
+
+Overturning says the review was wrong about ONE thing: the file it called missing
+is on disk. It says nothing about a set measured by a different mechanism, on
+different evidence, that closes only when a check exists.
+
+> **`DeliveryGate.Whole()` is false while the coverage set is non-empty, whatever
+> a later verdict overturned.** The last line names the count:
+> `partial — 2 behaviours the request states have no check`.
+
+`cmd/aforge/do.go`'s `gateStanding` leads with that count rather than with the
+gate's prose wherever the verdict itself settled — otherwise the line would name
+the finding that LOST as the reason the run is short.
+
+### 2. The checklist is remembered where it is read, not where it is settled
+
+ofetch s10's gate event holds `pass: true` and nothing else: no mapping, no
+finding, no `unmeasured`. The planner read **47** points onto `task-2`'s spec and
+journaled them; `task-2` was handed over without reaching a delivery gate; and
+`task-2-x1`, planned afresh and carrying no `Accept`, reached the run's only gate
+with no checklist. The coverage question was not answered wrongly — it was never
+asked, and the run left at 42 of 47.
+
+The job-level memory of § "What s6 and s7 proved" was right and had one writer:
+the gate. `revision.RememberChecklistForRequest` is called from
+`journalAcceptance`, where the checklist is read, so every round of the job
+inherits it whether or not the first node was ever judged.
+
+### 3. A judge's say-so is vocabulary; the mapping goes through the citation door
+
+The mapping is one model call, and until now the only thing weighed about its
+answer was that the check NAME EXISTED in the roster. ofetch keeps naming the
+same family — `When circuitBreaker: true, defaults are halfOpenMaxRequests = 1`
+and its siblings — as exercised by nothing while the suite grows checks about the
+breaker in general, and a pairing weighed on vocabulary will eventually put those
+two together.
+
+> **A check may satisfy a point only where every name the point spells
+> DISTINCTIVELY is a name the check spells too** — in its own identity, or in the
+> body of the file that identity comes out of.
+
+`revision.GroundMapping` uses grounding.go's own `symbolsIn`/`symbolShaped`, the
+same door an admitted citation goes through, with whole-name matching so `Log`
+inside `Logger` is not a mention of Log. It only ever REMOVES a pairing. A point
+that spells no name is not judged there: there is no structural question to ask
+of "Normal scrolling must still update the visible viewport", and a door that
+answered *unexercised* to every such behaviour would fail every prose request
+this program is given.
+
+### 4. The second reading is aimed at the change, not only at the request
+
+A scope has to be a reading of the REQUEST — at the moment the first reading is
+taken there is no diff. A request is not a diff. textual s10 asked for *Log and
+RichLog*: `RichLog` resolves to `_rich_log.py`, `Log` is a single word that
+resolves to nothing, and both readings ran
+`pytest tests/test_concurrency.py tests/test_textlog.py` (3 checks, the two files
+that import RichLog through the package front door). The change touched `_log.py`
+and `_rich_log.py`, and `tests/test_log.py` — which the repository already had,
+named after the changed file by pytest's own convention — was read on neither
+side.
+
+> **The second reading's selection = the first's ∪ the structural adjacency of
+> the DIFF ∪ the run's own checks.**
+
+`verify.ChangedSources` is the other half of the record `OwnChecks` reads;
+`Strategy.WithChangedWork` puts those source files back through `Adjacent`, so
+what joins is the checks named after them and the checks whose imports resolve to
+them, never a name that merely looks alike. `Strategy.covers` already admits the
+superset.
+
+And where the request resolved to nothing at all — ofetch s10 took six readings
+and every one was `whole` — a whole rung killed at its ceiling has proved this
+project's suite is bigger than the wall. `verify.ChangedWorkStrategy` aims the
+second reading at the diff instead. That pair is deliberately not comparable
+(a subset, which `covers` refuses and `Regressed` answers nothing to); what it
+buys is the ROSTER, which is the half the coverage settlement spends and the half
+a cut whole reading has none of.

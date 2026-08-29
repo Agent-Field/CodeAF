@@ -253,3 +253,43 @@ func TestTheAcceptanceChecklistIsJournaledAgainstTheWorkItJudges(t *testing.T) {
 		t.Errorf("the mapping did not survive the journal: %#v", back.Exercises)
 	}
 }
+
+// AN ACQUITTAL IS OF ONE FINDING. textual s10 held a single gate whose
+// `unexercised` named two groups of behaviours the request states and nothing
+// checks, whose verdict was refused as `what it asked for is already on disk
+// under the name the request used`, and whose Overturned was true — and it
+// settled WHOLE. Exit 0 at 5 of 20 hidden checks, over the run's own measurement
+// of thirteen behaviours it had just found exercised by nothing.
+//
+// Overturning a refusal says the review was wrong about ONE thing: the file it
+// called missing is on disk. It says nothing whatever about a set measured by a
+// different mechanism on different evidence, and closed only by a check existing.
+func TestAnOverturnDoesNotCloseTheCoverageSet(t *testing.T) {
+	standing := DeliveryGate{
+		Pass:        false,
+		Refused:     "what it asked for is already on disk under the name the request used",
+		Overturned:  true,
+		Unexercised: []string{"Log and RichLog expose is_following_end", "RichLog honours expand=True"},
+	}
+	if standing.Whole() {
+		t.Error("a gate with two behaviours nothing checks settled whole on an overturn")
+	}
+	// The same overturn, with nothing open, still acquits — that is what it is
+	// for, and charging it a non-zero code would teach a harness to distrust the
+	// gate's own corrections.
+	closed := standing
+	closed.Unexercised = nil
+	if !closed.Whole() {
+		t.Error("an overturn with nothing open stopped acquitting")
+	}
+	// And it is the SET that stands, not the verdict: a pass and a repaired
+	// gate are held to it too.
+	for _, settled := range []DeliveryGate{
+		{Pass: true, Unexercised: standing.Unexercised},
+		{PolishClosed: true, Unexercised: standing.Unexercised},
+	} {
+		if settled.Whole() {
+			t.Errorf("a settled gate carried an open coverage set into whole: %#v", settled)
+		}
+	}
+}

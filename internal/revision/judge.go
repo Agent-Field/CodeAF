@@ -2144,8 +2144,16 @@ func (e *Evidence) measureFinalTree(ctx context.Context) {
 	// regression: Reading.Regressed counts only checks the before roster
 	// reported green, and these did not exist then.
 	strategy := reading.Before.Strategy
-	if widened, added := strategy.WithOwnChecks(e.Workspace, e.Artifacts); added {
+	switch widened, added := strategy.WithChangedWork(e.Workspace, e.Artifacts); {
+	case added:
 		strategy = widened
+	case strategy.Scope == verify.ScopeWhole && reading.Partial:
+		// A whole reading that was killed at its ceiling will be killed again.
+		// The diff is the reading that fits, and the roster is what this gate
+		// came for. See verify.ChangedWorkStrategy.
+		if narrowed, ok := verify.ChangedWorkStrategy(e.Workspace, reading.Plan, e.Artifacts); ok {
+			strategy = narrowed
+		}
 	}
 	after, ok := verify.RunReading(ctx, e.Workspace, strategy, reading.Budget)
 	if !ok || after.TimedOut {
