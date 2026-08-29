@@ -95,7 +95,7 @@ func TestAClaimThatEveryTestPassesIsWorthNoCoverage(t *testing.T) {
 		Observed: true,
 		Accept:   ofetchPoints(),
 	}
-	if checks := CheckEvidence(evidence); len(checks) != 0 {
+	if checks := CheckEvidence(context.Background(), evidence, ""); len(checks) != 0 {
 		t.Fatalf("coverage was found where nothing was measured: %#v", checks)
 	}
 	pass := Judgment{Pass: true, Checked: true}
@@ -110,7 +110,7 @@ func TestAClaimThatEveryTestPassesIsWorthNoCoverage(t *testing.T) {
 	}
 	// And the claim itself is read by nothing: the same evidence carrying the
 	// deliverable's own sentence produces the identical answer.
-	if again := CheckEvidence(evidence); len(again) != 0 {
+	if again := CheckEvidence(context.Background(), evidence, ""); len(again) != 0 {
 		t.Errorf("prose became evidence: %#v", again)
 	}
 }
@@ -203,13 +203,13 @@ func TestCoverageEvidenceComesFromTheRunnerAndTheDiff(t *testing.T) {
 		Before: verify.Result{Reported: []string{"existing check"}},
 		After:  verify.Result{Reported: []string{"existing check", "opens after five failures"}},
 	}
-	checks := CheckEvidence(Evidence{Verification: reading})
+	checks := CheckEvidence(context.Background(), Evidence{Verification: reading}, "")
 	if !contains(checks, "opens after five failures") || !contains(checks, "existing check") {
 		t.Errorf("the finished tree's roster is not coverage evidence: %#v", checks)
 	}
-	unread := CheckEvidence(Evidence{Verification: verify.Reading{
+	unread := CheckEvidence(context.Background(), Evidence{Verification: verify.Reading{
 		After: verify.Result{Reported: []string{"opens after five failures"}},
-	}})
+	}}, "")
 	if len(unread) != 0 {
 		t.Errorf("a photograph nobody took supplied %#v", unread)
 	}
@@ -305,6 +305,10 @@ func TestAFailingGateStillAsksWhetherAnythingChecksTheRequest(t *testing.T) {
 // rather than in a log — a fail-safe that does not reach the person watching is
 // decoration.
 func TestNobodyLookedIsRecordedAsSuchAndOnlyThen(t *testing.T) {
+	// The checklist and the still-open finding are remembered against the JOB
+	// for the life of the process, so a test that shares one with its
+	// neighbours inherits their jobs. Same reason verify.ForgetBaselines exists.
+	ForgetChecklists()
 	settled := settleAcceptance(context.Background(), config.Config{}, nil,
 		store.Node{ID: "task-2"},
 		Evidence{Accept: ofetchPoints()}, ofetchGrounds(t), "worker/model",

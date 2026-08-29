@@ -2,12 +2,15 @@ package revision
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // MissingProduces is the mechanical half of the delivery gate: the one fact a
@@ -226,4 +229,103 @@ func Regressions(regressed []string) (judgment Judgment, ok bool) {
 		Pass: false, Gaps: gap, Quote: joinCitations(named),
 		Citations: named, Sourced: true, Checked: true,
 	}, true
+}
+
+// producedSweepLimit bounds the walk that settles a named file against the
+// world. It is internal/exec's producedScanLimit read from the other end and
+// carries the same figure for the same reason: a workspace is usually a handful
+// of files, a person's repository is not, and a walk whose size is nobody's plan
+// stops rather than going on forever. Past it the answer is whatever was found,
+// which is the narrower answer and never a wrong one.
+const producedSweepLimit = 6000
+
+// completeAgainstTheWorld settles every file this delivery is ABOUT against the
+// tree it was produced in, and adds what it finds to the record.
+//
+// FAILSAFE clause 2, applied to the last record in this gate that was still an
+// account rather than an observation. What a run left behind is answered by the
+// filesystem, and the artifact registry is a report of it: a leaf that landed
+// under another node's key, a file a background job wrote after the leaf's own
+// sweep, a path recorded by a worker this process never held. igel s6 is the
+// measured case — the request asked for `feature_schema.joblib`, the gate said
+// "nothing of that name was left behind", and `model_results/feature_schema.joblib`
+// was on disk and in the graded patch. The judge then convicted a correct
+// deliverable of not having written it.
+//
+// A FILE ANYWHERE UNDER THE WORKSPACE THAT ANSWERS TO THE NAME IS PRODUCED, and
+// namedAs is what "answers to the name" means — the same law, read by the same
+// code, that decides it for the registry. A bare name is answered wherever the
+// file landed and a name carrying a directory is answered only at that place, so
+// a request naming `feature_schema.joblib` is closed by the nested path and a
+// request naming `docs/memo.md` is not closed by one in `notes/`.
+//
+// NOTHING HERE LOOKS AT WHAT IS INSIDE A FILE. A joblib, a compiled model, a PNG
+// are deliverables exactly as a Markdown file is; the registry has always known
+// that and this is the reading that has to agree with it. Only emptiness
+// disqualifies, and it disqualifies at the caller that cares (producedNonEmpty).
+//
+// It is asked ONLY about names this delivery already holds — what the request
+// named and what the plan promised — so it is one bounded walk that answers a
+// closed question, never a re-inventory of the tree.
+func (e *Evidence) completeAgainstTheWorld() {
+	root := strings.TrimSpace(e.Workspace)
+	if root == "" {
+		return
+	}
+	var wanted []string
+	for _, name := range append(append([]string{}, e.Named...), producesFiles(e.Done)...) {
+		if fileKey(name) == "" {
+			continue
+		}
+		if _, held := ProducedFile(name, e.Artifacts); held {
+			continue
+		}
+		wanted = append(wanted, name)
+	}
+	if len(wanted) == 0 {
+		return
+	}
+	found := sweepFor(root, wanted)
+	if len(found) == 0 {
+		return
+	}
+	e.Artifacts = append(append([]string{}, e.Artifacts...), found...)
+}
+
+// sweepFor is that one walk: every path under root that answers to one of these
+// names, as an absolute path in stable order.
+func sweepFor(root string, wanted []string) []string {
+	var found []string
+	visited := 0
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if visited++; visited > producedSweepLimit {
+			return fs.SkipAll
+		}
+		if entry.IsDir() {
+			// The harness's own machinery and somebody else's installed
+			// packages are not this run's deliverables, and a node_modules is
+			// forty thousand entries of proof that the walk must not enter them.
+			if path != root && verify.SkipTree(entry.Name()) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		relative, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		relative = filepath.ToSlash(relative)
+		for _, name := range wanted {
+			if namedAs(name, relative) {
+				found = append(found, path)
+				break
+			}
+		}
+		return nil
+	})
+	sort.Strings(found)
+	return found
 }
