@@ -166,6 +166,13 @@ func PhotographAfter(
 	// no suite, a wall too short for one, or a suite killed at its ceiling still
 	// gets. See verify.Surface.
 	surfaceRemoved(workspace, history, task, reading, outcome)
+	// And the reading beside it that needs no baseline at all: the names this
+	// work READS that nothing in the tree binds. It is taken here, on the same
+	// seam and under the same rule — whatever happened to the check-level half —
+	// because a project with no suite, a wall too short for one and a suite
+	// killed at its ceiling are exactly the runs where nothing else would say a
+	// word about it.
+	unboundNames(workspace, history, task, outcome)
 	// The photograph rides the outcome whether or not a reading was taken,
 	// because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT FACTS
 	// and only the run that stood there before the work can tell them apart.
@@ -450,4 +457,48 @@ func journalSurface(history *store.Store, task Task, compared int, removed []str
 		Lost:     len(removed),
 		Names:    verify.SurfaceNamed(removed),
 	})
+}
+
+// unboundNames settles the names this work reads that nothing in the tree binds,
+// and journals what it found either way.
+//
+// The reading is scoped to the run's OWN RECORD of what it changed, which is
+// what keeps it a measurement of the work rather than of the repository: a
+// dangling reference in a file nobody touched was dangling before this run
+// started.
+//
+// It is a measurement and never a gate. No workspace, a record that names no
+// source this program reads, a scope holding any construct that binds names
+// dynamically — each leaves the outcome exactly as it arrived, which reads
+// downstream as NO CLAIM and never as nothing unbound.
+//
+// The settlement itself is verify.UnboundReferences and is deliberately not
+// spelled here: the delivery gate re-takes the same one against the tree it is
+// judging, because the leaf that wrote the reference and the node that gets
+// judged are routinely not the same node, and two spellings of one settlement
+// would be two answers to what a run left dangling.
+func unboundNames(workspace *Workspace, history *store.Store, task Task, outcome *Outcome) {
+	found := verify.UnboundReferences(workspace.Root(), outcome.Artifacts)
+	if len(found) > 0 {
+		outcome.Unbound = verify.UnboundWords(found)
+	}
+	journalUnbound(history, task, found)
+}
+
+// journalUnbound writes what the reading found, INCLUDING when it found nothing.
+//
+// A row saying "the changed sources were read and every name they use is bound"
+// is the difference between a run that looked and a run whose reader never ran,
+// and those two were the same silence in every store this mechanism was built
+// from (FAILSAFE.md clause 4).
+func journalUnbound(history *store.Store, task Task, found []verify.UnboundName) {
+	if history == nil || strings.TrimSpace(task.StoreNodeID) == "" {
+		return
+	}
+	reading := store.UnboundReading{Found: len(found)}
+	for _, one := range verify.UnboundNamed(found) {
+		reading.Names = append(reading.Names, store.UnboundSite{
+			Name: one.Name, Where: one.Where(), Ground: one.Ground})
+	}
+	_ = history.RecordUnbound(task.StoreNodeID, reading)
 }

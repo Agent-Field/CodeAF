@@ -827,6 +827,26 @@ resolves a type or follows an import, a name it cannot look for whole has no con
 rather than the wrong ones, and prose in a document that happens to spell the name is not a
 usage site.
 
+**And a name your code READS that nothing in your project defines is caught before anything
+runs it.** The other two readings both ask about a name that used to be there. This one asks
+whether a name is there at all: an attribute a class reaches for on itself that no code
+anywhere assigns, and an import that asks one of your own modules for a binding that module
+does not define. One job rewrote a module so that three paths became local variables inside a
+function, left an `import` of one of them standing in another file, and every one of the
+twenty-four checks it was really measured on failed on that single line — while the only
+thing the run could say was that its own tests were red, never which name they were red
+about. So it says the name, the file and the line, and where it looked: `this work reads
+names nothing defines: temp_post_req_data_path (igel/servers/fastapi_server.py:1,
+igel/configs.py binds no top-level temp_post_req_data_path)`. Python, TypeScript and
+JavaScript; Go and Rust are left to their own compilers, which answer this better. It is
+read from your files with no type checker and nothing that resolves a type, and it is
+deliberately timid: a class that sets its attributes through `setattr`, a class built on a
+base your project does not itself declare, an import from a package outside your tree, a
+module that re-exports with `*` — each of those makes the question unanswerable rather than
+answered, and it says nothing at all. A name assigned ANYWHERE in your project counts as
+bound, including by a test. It buys a repair round, it stops the work landing clean, and the
+next check of the same job re-reads the tree — so binding the name closes it.
+
 **A check the run wrote itself and did not get passing is a different finding from a check
 it broke.** Only a check that was in your project's roster before the work, and green there,
 can be reported as broken by it. A red check that first appears after the work is the run's

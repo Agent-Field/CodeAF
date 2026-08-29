@@ -628,6 +628,38 @@ CHANGED — those lines are the work, not a consumer of it. No model call, no
 second suite run, no toolchain: two readings the job already has, one walk, and
 `strings.Index` with an identifier-boundary test.
 
+## What the unbound-reference reading costs
+
+One question further back than either of those: a name the run's own sources READ
+that no file in the tree binds. It needs no baseline and no suite — one reading
+of the finished tree settles it — which makes it the only measurement a project
+with no verification at all still gets. igel s14 imported
+`temp_post_req_data_path` from a module that had just stopped binding it, all 24
+hidden tests failed on `ImportError`, and the gate could say only that a suite
+was red (FAILSAFE.md's twenty-fifth chapter).
+
+`verify.UnboundReferences` walks the tree ONCE for bindings — every attribute,
+method, class, field, slot and module name the repository spells, with no privacy
+rule applied, because a leading underscore says a name is internal and never that
+it is absent — and then reads only the run's own changed sources for references.
+Import targets are read on demand and memoised.
+
+| number | value | what it bounds |
+| --- | --- | --- |
+| `unboundScanLimit` | 2000 | source files the binding index reads; `surfaceFileLimit`'s sibling |
+| `unboundReadBudget` | 8MB | bytes that walk reads; `surfaceReadBudget`'s figure, once per settlement |
+| `unboundModuleBudget` | 1MB | bytes resolving imports reads on top of it |
+| `unboundSitesKept` | 24 | unbound references one settlement carries |
+| `unboundNamesReported` | 8 | references one finding spells out; `surfaceNamesReported`'s sibling |
+
+Per file it reuses `surfaceFileBytes` **512KB**. Past either walk bound the index
+is PARTIAL, and a partial index **silences every attribute check** rather than
+narrowing it — a binding the walk never reached is a binding that reads as
+absent, which is the one direction this reading may not be wrong in. Measured on
+the bench trees: textual's 988 python files in **0.8s**, happy-dom's 615 readable
+sources in **0.2s**, igel's 44 in **0.03s**. No model call, no second suite run,
+no toolchain, and no type checker in any of it.
+
 **The baseline surface now carries a digest per declaration.** A public name is a
 string plus eight bytes, so a repository with twenty thousand of them costs about
 160KB per remembered baseline, and `rememberedTrees` **16** bounds how many are

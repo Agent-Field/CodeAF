@@ -419,3 +419,105 @@ func (s *Store) ConsumersFor(nodeID string) ([]ConsumersReading, error) {
 	}
 	return readings, rows.Err()
 }
+
+// EventUnbound is the fourth reading of the same tree, journaled beside the
+// other three: the names the run's own sources READ that nothing in the tree
+// binds.
+//
+// It is its own kind for the reason EventSurface and EventConsumers are. Those
+// three all answer a question about a name that used to exist — is it still
+// there, does a check exercise it, did its shape move under its callers — and
+// none of them can see a name that was NEVER there. igel s14 imported
+// `temp_post_req_data_path` from a module that had just stopped binding it, all
+// twenty-four hidden tests failed on `ImportError`, and the run's own record
+// held only that its checks were red.
+const EventUnbound EventKind = "unbound"
+
+// UnboundReading is that reading as the journal keeps it: how many sources were
+// read, and the references that came back with their sites.
+//
+// NAMES PLUS THE SITE THEY WERE READ AT, which is the shape SurfaceReading keeps
+// one field wider — the whole value of this finding to a repair round is the
+// name AND the line, and a list of names with no line sends a worker looking.
+type UnboundReading struct {
+	// Found is how many unbound references the reading came back with. Zero is a
+	// real answer — the run's own files reference nothing this tree fails to
+	// bind — and the ROW's existence is what says the reading happened at all,
+	// which is not the same fact and had no other spelling.
+	Found int           `json:"found"`
+	Names []UnboundSite `json:"names,omitempty"`
+}
+
+// UnboundSite is one reference and where it stands.
+type UnboundSite struct {
+	Name string `json:"name"`
+	// Where is the file and line, as `file:line`, and Ground is where this
+	// reading looked for a binding and did not find one.
+	Where  string `json:"where,omitempty"`
+	Ground string `json:"ground,omitempty"`
+}
+
+// RecordUnbound journals one reading of the run's own references against a node.
+//
+// EVERY READING IS WRITTEN, including one that found nothing, for the reason
+// RecordSurface's is: "the changed sources reference nothing this tree fails to
+// bind" and "nobody looked" are two facts and the absence of the row is the only
+// spelling either has.
+func (s *Store) RecordUnbound(nodeID string, reading UnboundReading) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record unbound: %w: empty node id", ErrInvalid)
+	}
+	if len(reading.Names) > VerificationSample {
+		reading.Names = reading.Names[:VerificationSample]
+	}
+	for index := range reading.Names {
+		reading.Names[index].Name = bounded(strings.TrimSpace(reading.Names[index].Name), MaxDigestBytes)
+		reading.Names[index].Where = bounded(strings.TrimSpace(reading.Names[index].Where), MaxDigestBytes)
+		reading.Names[index].Ground = bounded(strings.TrimSpace(reading.Names[index].Ground), MaxDigestBytes)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("record unbound: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record unbound: %w", err)
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventUnbound, reading); err != nil {
+		return fmt.Errorf("record unbound: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record unbound: %w", err)
+	}
+	return nil
+}
+
+// UnboundFor returns every unbound-reference reading journaled for a node,
+// oldest first.
+func (s *Store) UnboundFor(nodeID string) ([]UnboundReading, error) {
+	rows, err := s.db.Query(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq ASC`, nodeID, EventUnbound)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("unbound for %s: %w", nodeID, err)
+	}
+	defer rows.Close()
+	var readings []UnboundReading
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("unbound for %s: %w", nodeID, err)
+		}
+		var reading UnboundReading
+		if err := json.Unmarshal(payload, &reading); err != nil {
+			continue
+		}
+		readings = append(readings, reading)
+	}
+	return readings, rows.Err()
+}

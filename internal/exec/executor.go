@@ -392,6 +392,21 @@ type Outcome struct {
 	// as no claim and never as nothing removed. See verify.Surface.
 	Removed []string
 
+	// Unbound names what this work READS that nothing in the tree binds: an
+	// attribute a class reaches for and no code assigns, a binding an import
+	// asks an in-tree module for that the module does not define.
+	//
+	// It is the question one step further back than Removed. That one compares
+	// two readings and reports a name that USED to be there; this needs only the
+	// tree as it stands, and it is the one measurement a run gets on a project
+	// with no baseline at all. igel s14 imported `temp_post_req_data_path` from
+	// a module it had just stopped binding it in, all twenty-four hidden tests
+	// failed on `ImportError`, and the only thing the run could say was that its
+	// own checks were red. See verify.UnboundReferences.
+	//
+	// Nil on every worker with no workspace to read, which reads as no claim.
+	Unbound []string
+
 	// Verification is the whole photograph the two readings above came out of:
 	// the entrypoint that was run, the budget it was run on, and both readings'
 	// complete rosters rather than only their red halves.

@@ -1711,3 +1711,130 @@ kind's other names are what stop the loop in that case. And no truncation of the
 spent ledger where it would matter — the row keeps up to 64 names, well above the
 widest checklist this system has been measured raising, because a list silently
 cut is a name silently un-spent.
+
+## A twenty-fifth failure, 2026-08-29: the name the checks were red about
+
+*igel v4-flash s14,
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s14`;
+textual v4-flash s15 beside it.*
+
+The run rewrote `igel/configs.py` so that `temp_post_req_data_path` became a
+LOCAL inside a builder function, and left `igel/servers/fastapi_server.py`
+opening with:
+
+```python
+from igel.configs import temp_post_req_data_path
+```
+
+All twenty-four hidden tests failed on
+`ImportError: cannot import name 'temp_post_req_data_path' from 'igel.configs'`.
+The run's own checks went red, the own-checks-failing finding fired, and the
+worker was told:
+
+```
+gate  The checks this work wrote fail: test_fit, test_predict, … And 21 more.
+```
+
+Which sends a worker to go and run a suite. **It never said which NAME.** That
+word was readable off the tree for nothing, by anybody who cared to open the two
+files — the reference is in one, and the definition is in none.
+
+Every reading beside it answers a question about a name that USED to exist. The
+presence photograph compares two surfaces and this name is in neither. The
+changed-definition reading compares digests of names that are in both. The
+assertion door weighs behaviours the REQUEST states, and nobody states "and the
+names your code imports must exist", because nobody has to.
+
+> **A NAME A RUN'S OWN SOURCES READ AND NO FILE IN THE TREE BINDS IS A FACT
+> ABOUT THE WORLD, MEASURED WITH NO MODEL AND NO TYPE CHECKER.** It needs no
+> baseline and no suite: one reading of the finished tree settles it, which
+> makes it the one measurement a project with no verification at all still gets.
+
+`verify.UnboundReferences` reads the run's CHANGED SOURCES for references and the
+whole tree for bindings, and reports the residue: a `self.name` a class reads
+that nothing anywhere assigns, a `from module import name` where the module is a
+file in the tree and does not bind that name, and — only for a file whose EVERY
+import resolves inside the tree — a bare name that is neither imported, defined,
+nor the language's own. Go and Rust are absent on purpose: `go build` and
+`cargo build` are the reading for those two and are already run.
+
+### It is narrow because a false blocker is the expensive failure here
+
+Python binds names through decorators, metaclasses, `setattr` in a base class
+four files away, and a module's own `__getattr__`; TypeScript has declaration
+merging and index signatures. Each of those is a way for a reference this reader
+cannot see the binding for to be perfectly correct, so **each SILENCES the scope
+it appears in** rather than being reasoned about:
+
+| what silences it | what it silences |
+| --- | --- |
+| `setattr`/`getattr`/`__getattr__`/`exec`/`globals()` in a class | that class |
+| a base class the tree does not declare — `NamedTuple`, `logging.Handler` | that class |
+| `extends` anything, an index signature, `Object.assign(this` | that TypeScript class |
+| a module outside the tree, a star import, `__all__` this reader cannot read | that import |
+| an index the walk could not finish, a path under `node_modules`/`dist` | every attribute check |
+
+The binding index is **tree-wide**: a name assigned anywhere in the repository is
+bound everywhere in it. A check that assigns an attribute onto an instance binds
+that attribute; a mixin in another file binds it; the base class this reader CAN
+read has its bindings in the index already. What survives is a name the
+repository does not spell as a binding anywhere at all.
+
+### What it was measured on, and what it did not catch
+
+Run over the finished trees of five bench runs, over every source file each tree
+holds rather than only the record:
+
+| tree | readable sources | findings |
+| --- | --- | --- |
+| igel s14 | 44 | **1** — `temp_post_req_data_path`, the true one |
+| textual s15 | 734 | 0 |
+| happy-dom s15 | 615 | 0 |
+| ink s10 | 235 | 0 |
+| ofetch | 18 | 0 |
+
+**Zero false positives on 1602 real source files, and one true finding.** Three
+of the silences above were written because the first cut of the reader was NOT
+conservative enough and those trees said so: textual's own tree returned
+`WidgetPlacement._replace` (a `NamedTuple`), `TextualHandler.format` (a
+`logging.Handler`) and two more, and happy-dom's returned twenty-four members
+declared eighty lines below the line that used them, inside `node_modules`.
+
+And the honest half. **textual s15 is not an instance of this failure.** Its
+eighty-four hidden failures were
+`AttributeError: 'RichLog' object has no attribute '_size_known'`, and the
+patched `_rich_log.py` DOES assign `self._size_known = False` — at line 171 of
+`__init__`, seventeen lines after `self.min_width = min_width`, which is a
+reactive whose watcher reads the flag before it exists. That is an ORDERING
+defect inside one constructor, and seeing it needs a model of what `reactive`
+does on assignment. This reader is silent on it, correctly. With the bindings
+actually removed from that tree it names
+`RichLog._size_known (src/textual/widgets/_rich_log.py:224, assigned nowhere in
+class RichLog, tree-wide)`, which is the sentence the class of failure needs.
+
+### Where it lands
+
+`revision.UnboundNames`, **Sourced** for the reason a regression is — there is no
+citation to weigh — raised beside `OwnChecksFailing` and above every model round,
+because the answer is already measured and a judge's cost would buy nothing. It
+is RE-TAKEN at the gate against the tree it is judging rather than carried up
+from a leaf, which is the twenty-first chapter's rule: a name a round left
+dangling and a later round bound must stop being a finding. The leaf takes it too
+— on `exec.PhotographAfter`, beside the presence photograph and under the same
+whatever-happened-to-the-suite rule — and that answer stands where a gate has no
+workspace to re-read.
+
+It is journaled either way (`store.EventUnbound`, with the names and their
+sites), it is a field on the gate (`store.DeliveryGate.Unbound`) so the stream
+and an autopsy can reach it without reading a paragraph, it refuses `Whole()`
+while it stands, and it is carried into `resident.OpenFindings` and
+`StandingEvidence` so the worker's repair brief opens with the exact name.
+
+### What is deliberately not here
+
+No type checker, no import resolution beyond one filename, no scope analysis. A
+name bound anywhere in a file is treated as bound everywhere in it, on purpose:
+a scope analysis that got one comprehension wrong would invent a finding, and one
+this reader skips costs it only a silence. And no reader for Go or Rust, where a
+compiler already answers the same question better than any hundred lines here
+could.

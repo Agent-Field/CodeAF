@@ -206,6 +206,18 @@ type DeliveryGate struct {
 	// about it (2026-08-29, bench/deepswe).
 	Consumers []string `json:"consumers,omitempty"`
 
+	// Unbound is the finding the unbound-reference reading produced: one line
+	// per name the run's own sources READ that nothing in the tree binds, each
+	// naming the file and line it is read at.
+	//
+	// It is a field beside Consumers because it is the same kind of fact one
+	// question further back. Consumers is a name that exists and no longer
+	// answers to how it is used; this is a name that does not exist at all —
+	// igel s14 imported `temp_post_req_data_path` from a module that had stopped
+	// binding it, and the run's whole record of that was that its own checks
+	// were red, never WHICH name was missing (2026-08-29, bench/deepswe).
+	Unbound []string `json:"unbound,omitempty"`
+
 	// Subject is WHAT THIS GATE JUDGED, in the words the gate keeps them:
 	// "tree (6 files)" where the run changed the repository and the change was
 	// the deliverable, "claim" where the run left nothing behind and the
@@ -331,6 +343,14 @@ func (g DeliveryGate) Whole() bool {
 	if len(g.Unasserted) > 0 {
 		return false
 	}
+	// And a name nothing binds is the same kind of standing measurement, and the
+	// hardest of the three to argue with: the reference is in one file, the
+	// definition is in none, and no acquittal of a review's sentence puts a
+	// binding in the tree. It empties the one way a measurement empties — a
+	// later reading of the finished tree finds the name bound.
+	if len(g.Unbound) > 0 {
+		return false
+	}
 	return g.Pass || g.PolishClosed || g.Overturned
 }
 
@@ -415,6 +435,19 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	gate.Consumers = consumers
 	if len(gate.Consumers) == 0 {
 		gate.Consumers = nil
+	}
+	// And the same, per line, for the unbound-reference finding: one entry is
+	// one name and the site it is read at, and a line clipped to a share of a
+	// budget it does not know the size of would be clipped mid-path.
+	unbound := make([]string, 0, len(gate.Unbound))
+	for _, line := range gate.Unbound {
+		if line = bounded(strings.TrimSpace(line), MaxDigestBytes); line != "" {
+			unbound = append(unbound, line)
+		}
+	}
+	gate.Unbound = unbound
+	if len(gate.Unbound) == 0 {
+		gate.Unbound = nil
 	}
 	if len(gate.Quotes) == 0 {
 		// An empty list and a nil one are the same fact, and only one of them

@@ -389,6 +389,16 @@ type Judgment struct {
 	// nothing and reachable by nothing. See consumers.go.
 	Consumers []string
 
+	// Unbound is the finding the unbound-reference reading produced: one line
+	// per name the run's own sources READ that nothing in the tree binds, each
+	// carrying the file and line it is read at.
+	//
+	// It is a field of its own for the reason Consumers is, and the name is the
+	// whole point of it: igel s14's gate could say the run's checks were red and
+	// could not say that `temp_post_req_data_path` was the name they were red
+	// about. See unbound.go.
+	Unbound []string
+
 	// Finding names WHICH MEASUREMENT this gap is, in one stable word, and
 	// Cited above holds the things it names. Empty for a model judge's verdict,
 	// which is a reading of a request and not a measurement of the world.
@@ -630,6 +640,14 @@ type Evidence struct {
 	// OwnChecksFailing, and verify.Reading.OwnFailing for why it is not a
 	// regression.
 	OwnFailing []string
+
+	// Unbound is what the LEAF measured of the same question the gate re-takes
+	// for itself: names the run's own sources read that nothing in the tree
+	// binds, already worded (verify.UnboundWords). The gate reads it only
+	// where it has no workspace of its own to re-read — which is the same place
+	// removedSinceTheJobBegan leaves the leaf's answer standing, and for the
+	// same reason: a measurement nobody could re-take is still a measurement.
+	Unbound []string
 	// Account is the worker's own structured account of the work: the files it
 	// changed, with the kind and size of each change, and the checks it ran
 	// with what each one found.
@@ -1282,6 +1300,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// Nil everywhere the reading found nothing, which is most runs.
 	var consumers []verify.ChangedDefinition
 	var consumerFiles, consumerLines []string
+	unbound := evidence.Unbound
 	if subject == SubjectTree {
 		consumers = evidence.changedDefinitions(job)
 		consumerFiles, consumerLines = consumerGrounds(consumers)
@@ -1289,6 +1308,15 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// autopsy asking whether this door was open on a run has nothing else to
 		// read (FAILSAFE.md clause 4).
 		journalConsumers(graph, node.ID, consumers)
+		// And the reading one question further back, taken here for every reason
+		// that one is: it is about the tree the gate is judging rather than
+		// about the leaf that happened to write it, and a measurement that only
+		// happens on the path where a model is bought is absent exactly when a
+		// run is already going wrong. See unbound.go.
+		if found, settled := evidence.unboundReferences(); settled {
+			unbound = verify.UnboundWords(found)
+			journalUnbound(graph, node.ID, found)
+		}
 	}
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
@@ -1321,6 +1349,17 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if unfinished, red := OwnChecksFailing(evidence.OwnFailing); red {
 		unfinished.Grounds = grounds
 		return unfinished
+	}
+	// And the fact one question further back than any of them: A NAME THIS WORK
+	// READS THAT NOTHING IN THE TREE BINDS. It sits here, beside the checks the
+	// run wrote and left red, because it is what those reds usually ARE — igel
+	// s14's twenty-four hidden failures were one `ImportError` on one name, and
+	// the only thing the gate could say was that a suite was red. It is settled
+	// above every model round for the reason the three above it are: the answer
+	// is already measured, and a judge's cost would buy nothing.
+	if imagined, reads := UnboundNames(unbound); reads {
+		imagined.Grounds = grounds
+		return imagined
 	}
 	// And its near neighbour, which the photograph could not see until it kept
 	// rosters rather than only failures: A CHECK THAT STOPPED EXISTING. Deleting

@@ -55,6 +55,11 @@ const (
 	// FindingConsumers is definitions this run reshaped that the rest of the
 	// project still uses the old way.
 	FindingConsumers = "consumers"
+	// FindingUnbound is names this run's own sources READ that nothing in the
+	// tree binds. It sits beside FindingConsumers because it is the same kind of
+	// measurement one question further back — that one is a name whose shape
+	// moved, this is a name that is not there at all.
+	FindingUnbound = "unbound"
 	// FindingMechanical is a file the plan promised and the disk does not hold.
 	FindingMechanical = "mechanical"
 	// FindingReview is the judge's own finding, named by the spans it cited.
@@ -148,6 +153,8 @@ func FindingOf(gate store.DeliveryGate) Finding {
 		return Finding{Kind: FindingUnasserted, Names: gate.Unasserted}
 	case len(gate.Consumers) > 0:
 		return Finding{Kind: FindingConsumers, Names: gate.Consumers}
+	case len(gate.Unbound) > 0:
+		return Finding{Kind: FindingUnbound, Names: gate.Unbound}
 	case gate.Mechanical:
 		return Finding{Kind: FindingMechanical, Names: gate.Cited()}
 	case len(gate.Cited()) > 0 || strings.TrimSpace(gate.Gap) != "":
@@ -165,7 +172,8 @@ func FindingOf(gate store.DeliveryGate) Finding {
 // A kind whose evidence has no list of its own keeps its citations, which are
 // then the only names there are.
 func measuredNames(gate store.DeliveryGate) []string {
-	for _, list := range [][]string{gate.OwnFailing, gate.Unexercised, gate.Unasserted, gate.Consumers} {
+	for _, list := range [][]string{gate.OwnFailing, gate.Unexercised, gate.Unasserted,
+		gate.Consumers, gate.Unbound} {
 		if len(list) > 0 {
 			return list
 		}
@@ -218,6 +226,8 @@ func FindingNoun(kind string, count int) string {
 		noun = "public name"
 	case FindingConsumers:
 		noun = "definition"
+	case FindingUnbound, "unbound-names":
+		noun = "name"
 	case FindingMechanical:
 		noun = "promised file"
 	}
