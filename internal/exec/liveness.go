@@ -67,3 +67,35 @@ func Working(ctx context.Context) func() {
 	}
 	return func() {}
 }
+
+// AlsoWithLiveness arms a second listener without displacing the first.
+//
+// TWO LISTENERS ARE THE ORDINARY CASE, not an edge one. The claim reaper
+// listens because it is deciding whether a node is held by nobody; the node
+// watchdog listens because it is deciding whether to give up on this particular
+// worker. They are different questions asked by different code at different
+// levels, about the same fact, and the fact is reported once. A plain
+// WithLiveness at the second site would silently take the mark away from the
+// first — which is the whole class of defect the transcript sink had when two
+// recorders were armed on one attempt.
+func AlsoWithLiveness(ctx context.Context, mark LivenessMark) context.Context {
+	if mark == nil {
+		return ctx
+	}
+	existing, _ := ctx.Value(livenessContextKey{}).(LivenessMark)
+	if existing == nil {
+		return WithLiveness(ctx, mark)
+	}
+	return WithLiveness(ctx, func() func() {
+		first := existing()
+		second := mark()
+		return func() {
+			if first != nil {
+				first()
+			}
+			if second != nil {
+				second()
+			}
+		}
+	})
+}

@@ -195,6 +195,12 @@ type loopState struct {
 	// the verdict the person reads. Nil is a loop with nowhere to write, which
 	// is what the tests and the bench harness run.
 	faulted func(error)
+
+	// measured is what this leaf has learned about the machine it is running
+	// on: how long its own model calls and its own transcript writes actually
+	// take. It is what the tool bound and the landing decision are derived
+	// from, so neither of them is a number somebody picked. See room.go.
+	measured pace
 }
 
 // tell reports one interruption of this loop to whoever can write it down, and
@@ -262,6 +268,14 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			l.fault("the leaf's time ran out before turn " + strconv.Itoa(l.turn+1) + ": " + ctx.Err().Error())
 			return outcome
 		}
+		// THE ROOM TO LAND IS NOT THE WORK'S TO SPEND. Asked before the call
+		// rather than after it, because a turn started inside the reserve is a
+		// turn whose answer arrives after the deadline and is thrown away —
+		// which is how a leaf that had been working for seventeen minutes was
+		// recorded as one that never came back. See room.go.
+		if left, bounded := room(ctx); bounded && left <= l.measured.reserve() {
+			return l.landOnTheWall(ctx, outcome, started)
+		}
 		l.turn++
 
 		// Snapshot the messages for the append-only test assertion.
@@ -317,8 +331,25 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			})
 		}
 
+		// THE BATCH RUNS INSIDE WHAT IS LEFT, LESS WHAT IT TAKES TO LAND. A
+		// command handed the leaf's whole remaining envelope can spend all of
+		// it, and then there is no leaf left to read what it said. Cutting the
+		// command instead costs the command; cutting the leaf costs everything
+		// the leaf had done. See room.go.
+		toolCtx, release, affordable := l.toolRoom(ctx)
+		if !affordable {
+			// Nothing left but the landing. The calls the model just made are
+			// already on the record as calls that were never run, which is the
+			// honest account of them.
+			return l.landOnTheWall(ctx, outcome, started)
+		}
+
 		// Execute the tool calls in parallel (pi spec §2: "run in parallel").
-		results := l.executeTools(ctx, calls)
+		results := l.executeTools(toolCtx, calls)
+		// Released here rather than deferred: this is a loop that runs two
+		// hundred times, and two hundred parked cancels is a leak wearing a
+		// keyword.
+		release()
 
 		// Append tool result messages in the order the calls were issued.
 		for i, call := range calls {
@@ -387,9 +418,15 @@ func (l *loopState) note(text string) {
 // flushTranscript makes the record durable. It is called from a defer in run,
 // so it must tolerate a nil sink and a second call from the runner.
 func (l *loopState) flushTranscript() {
-	if l.transcript != nil {
-		l.transcript.Flush()
+	if l.transcript == nil {
+		return
 	}
+	// The write times itself, because the landing reserve is partly this: a
+	// leaf that lands has to get its record on disk, and how long that takes is
+	// a fact about the store under it rather than a number this file may pick.
+	began := time.Now()
+	l.transcript.Flush()
+	l.measured.noteFlush(time.Since(began))
 }
 
 // toolResult is the output of executing one tool call.
@@ -502,8 +539,14 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 		// safety net — it is the honest reading of a long reply that is still
 		// arriving, which is a worker at work and not a claim to reap.
 		callDone := exec.Working(ctx)
+		began := time.Now()
 		response, err := l.client.CompleteWithMessages(ctx, l.messages, ai.WithTools(defs))
 		callDone()
+		// Measured whether it answered or failed: a call that took four minutes
+		// to time out is four minutes this leaf must expect to need again, and
+		// a reserve that only counted successes would be blind to exactly the
+		// machine that is running slow.
+		l.measured.noteCall(time.Since(began))
 		if err == nil {
 			return response, nil
 		}
