@@ -650,8 +650,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// exactly what their own fan-in measures — see gatheringGrant. Reflexes use
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
-		deadline := exec.SubharnessFor(subharness).Deadline(tokens)
-		watchdog := deadline + 2*time.Minute
+		leafRoom := exec.SubharnessFor(subharness)
+		deadline := leafRoom.Deadline(tokens)
+		watchdog := leafRoom.Watchdog(tokens)
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
 			deadline = reflexDeadline
@@ -798,8 +799,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if fold {
 			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
 				exec.FoldTurns, pushed, tokens)
-			deadline = exec.SubharnessFor(subharness).Deadline(tokens)
-			watchdog = deadline + 2*time.Minute
+			deadline = leafRoom.Deadline(tokens)
+			watchdog = leafRoom.Watchdog(tokens)
 			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
 		}
 		// Journaled either way, so a benchmark can tell a fold that fired from a
@@ -1117,7 +1118,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					attempted.Fold = false
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
-					watchdog = build.deadline + 2*time.Minute
+					watchdog = leafRoom.Watchdog(openTokens)
 					worker = executorFor(subharness, build)
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
@@ -1202,8 +1203,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// The budget shape belongs to the worker, not to the leaf:
 					// the generalist's fifteen-minute backstop applied to a
 					// coding pipeline is a guillotine at its first merge.
-					build.deadline = exec.SubharnessFor(chosen).Deadline(tokens)
-					watchdog = build.deadline + 2*time.Minute
+					chosenRoom := exec.SubharnessFor(chosen)
+					build.deadline = chosenRoom.Deadline(tokens)
+					watchdog = chosenRoom.Watchdog(tokens)
 					worker = executorFor(chosen, build)
 					shape = chosen
 				}
@@ -1594,7 +1596,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 							retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
 							retryCtx = armBilling(retryCtx, banker)
-							polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+							polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, exec.WatchdogAbove(deadline))
 							if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
 								spent.PromptTokens += polished.Usage.PromptTokens
 								spent.CompletionTokens += polished.Usage.CompletionTokens
@@ -1791,7 +1793,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
 						retryCtx = armBilling(retryCtx, banker)
 						var polishErr error
-						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, exec.WatchdogAbove(deadline))
 						if model := provider.CallFrom(retryCtx).Model(); model != "" {
 							polishModel = model
 						}
@@ -3614,16 +3616,6 @@ func shouldGate(node store.Node, outcome *exec.Outcome, continuing bool) bool {
 func shouldPromoteReflex(node store.Node, outcome *exec.Outcome) bool {
 	return node.Group == resident.ReflexGroup && outcome != nil &&
 		(outcome.Promote || outcome.Overran())
-}
-
-// leafDeadline scales the hang backstop with the granted budget, as the
-// headless runner does: 15 minutes floor, one minute per 50k tokens above it.
-func leafDeadline(budget int) time.Duration {
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(budget/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
-	return deadline
 }
 
 // jobPlans retains each planned job's graph for the lifetime of its run, so

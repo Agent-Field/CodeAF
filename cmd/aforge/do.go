@@ -1162,7 +1162,8 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 
 	case store.EventNodeReleased:
 		var release struct {
-			Reason string `json:"reason"`
+			Reason   string `json:"reason"`
+			Recorded int    `json:"recorded"`
 		}
 		if json.Unmarshal(event.Payload, &release) != nil || strings.TrimSpace(release.Reason) == "" {
 			return false
@@ -1171,6 +1172,21 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		// node back says everything by handing it back; a claim taken away from
 		// one is the event a person watching a run restart needs, and it was
 		// invisible four times on the ink run of 2026-08-29.
+		//
+		// ✗ IS THE FAULT REGISTER AND A REQUEUE IS NOT A FAULT. A release that
+		// hands on a record is the ordinary end of a leaf that ran out of its
+		// room — the ⏳ line directly above has already said so — and marking it
+		// as a fault said the opposite of the truth twice in three lines. The
+		// count is the release's own (store.releasePayload.Recorded), which is
+		// the fact the next claim's resume seed is built from, so the two lines
+		// cannot disagree about how much was picked up. ✗ is kept for the
+		// release this mark was added for: a claim taken back over a worker that
+		// never answered, which hands on nothing.
+		if release.Recorded > 0 {
+			w.say("↻", nodeDisplay(node), fmt.Sprintf("picked up again from %s",
+				plural(release.Recorded, "recorded turn")))
+			return true
+		}
 		w.say("✗", nodeDisplay(node), "picked up again — "+firstLine(release.Reason))
 		return true
 

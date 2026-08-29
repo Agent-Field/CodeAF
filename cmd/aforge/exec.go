@@ -195,11 +195,10 @@ func execDeadline(maxTokens, timeoutSeconds int) time.Duration {
 	if timeoutSeconds > 0 {
 		return time.Duration(timeoutSeconds) * time.Second
 	}
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(maxTokens/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
-	return deadline
+	// The shape is the generalist's, asked for and never worked out again:
+	// exec.SubharnessInfo.Deadline is the one place in the process that knows
+	// the floor and the per-token scaling.
+	return exec.SubharnessFor(exec.LinearSubharness).Deadline(maxTokens)
 }
 
 func execExitCode(stop exec.StopReason, text string) int {

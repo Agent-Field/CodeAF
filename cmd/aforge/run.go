@@ -214,11 +214,11 @@ func runExecute(args []string) error {
 	}
 	// The deadline is a hang backstop, not a work limit, so it scales with the
 	// budget the operator granted: a 2M-token leaf doing honest work with
-	// reasoning on runs well past the quarter hour that fits the default.
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
+	// reasoning on runs well past the quarter hour that fits the default. The
+	// shape is asked for rather than worked out here — see
+	// exec.SubharnessInfo.Deadline, which is the one place in the process that
+	// knows it.
+	deadline := exec.SubharnessFor(exec.LinearSubharness).Deadline(*maxTokens)
 	mediaTools := &exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient, WorkingModel: settings.Model,
 		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
@@ -305,8 +305,10 @@ func runExecute(args []string) error {
 	}
 	// The watchdog sits above every deadline a leaf was given: it only fires
 	// when an executor is wedged past all of them, and it turns that from a
-	// silent forever-hang into a recorded failure the run survives.
-	scheduler.NodeTimeout = deadline + 2*time.Minute
+	// silent forever-hang into a node that goes back on the queue with whatever
+	// it had reached. The pad above the deadline is the subharness table's, for
+	// the same reason the deadline is.
+	scheduler.NodeTimeout = exec.SubharnessFor(exec.LinearSubharness).Watchdog(*maxTokens)
 	clock := newClockWatch()
 	scheduler.OnEvent = func(event exec.Event) {
 		clock.sample()

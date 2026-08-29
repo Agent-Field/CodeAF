@@ -553,20 +553,24 @@ const runnerQuietCeiling = 15 * time.Second
 // SILENCE rather than work, and a leaf that keeps calling keeps its claim for as
 // long as it keeps calling.
 const (
-	// leafDeadlineFloor is the shortest deadline any surface grants a leaf
-	// (cmd/aforge's leafDeadline and the headless runner both start here), and
-	// the figure this window is measured from.
-	leafDeadlineFloor = 15 * time.Minute
 	// claimReaperPad is how far above a worker's own deadline the reaper sits:
 	// the room a leaf told to land needs to write its result and release its
 	// claim. Five minutes, which is the landing reserve a leaf at its deadline
 	// is already given, doubled — a claim released a minute late costs nothing,
 	// and a claim reaped a minute early costs the whole leaf.
 	claimReaperPad = 5 * time.Minute
-	// staleClaimAge is the window as a fresh runner starts with it. It bounds
-	// SILENCE, not work: see [Runner.Tick] and store.ReleaseSilent.
-	staleClaimAge = leafDeadlineFloor + claimReaperPad
 )
+
+// staleClaimAge is the window as a fresh runner starts with it. It bounds
+// SILENCE, not work: see [Runner.Tick] and store.ReleaseSilent.
+//
+// The floor it is measured from is the generalist's own, ASKED FOR RATHER THAN
+// REPEATED. It used to be a fifteen-minute constant beside this one, and the
+// arithmetic that produces a leaf's deadline lived in three other files as
+// well; a floor raised in one of them and not here would put this backstop
+// below the deadline it exists to sit above. See exec.SubharnessInfo.Deadline,
+// which is now the only place in the process that knows the shape.
+var staleClaimAge = executor.SubharnessFor(executor.LinearSubharness).Deadline(0) + claimReaperPad
 
 // runnerQuietGate is the dispatch loop's proof that a timed pass would find
 // nothing. A negative seq means it is disarmed and the next pass runs.
@@ -1246,23 +1250,23 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 		// second, and left with exit 1 and no gate verdict over seventy-three
 		// minutes of unspent wall and a twenty-six kilobyte patch on disk.
 		//
-		// The worker ran out of the room it was given. That is the growth
-		// governor's own input and the queue's, not a verdict on the work — so
-		// the claim goes back and the next one RESUMES, seeded from the record
-		// this attempt left (cmd/aforge reads it at claim time through
-		// resident.Bank when node.Attempt is above zero).
-		//
-		// IT IS GATED ON THERE BEING SOMETHING TO RESUME FROM, which is what
-		// keeps this from being an unbounded retry. A re-claim that reads an
-		// empty record is not a resumption, it is the same cold start again;
-		// an attempt that recorded not one turn before the clock stopped it has
-		// told us nothing except that starting it costs the whole envelope, and
-		// that is a failure however it is spelled.
-		if allowed, spent := executor.RanOutOfRoom(err); spent {
-			if _, recorded := BankedRun(r.graph, node.ID); recorded > 0 {
-				_ = r.graph.ReleaseWithReason(claim, exhaustedClaimReason(allowed, recorded))
-				return
-			}
+		// The rule itself is [executor.Requeued] — the one this runner and the
+		// one-shot scheduler both ask, so the two surfaces cannot answer
+		// differently about what a spent clock means. What is local here is only
+		// what the record IS: this side reads the transcript bank, and the next
+		// claim resumes from the same bank (cmd/aforge reads it at claim time
+		// through resident.Bank when node.Attempt is above zero).
+		if allowed, recorded, requeue := executor.Requeued(err, func() int {
+			_, turns := BankedRun(r.graph, node.ID)
+			return turns
+		}); requeue {
+			// The turn count rides on the release itself and not only inside its
+			// sentence, because the headless stream has to tell a requeue that
+			// is PROGRESS from a claim taken off a worker that never answered,
+			// and reading that out of prose would be a second, private answer to
+			// a question the record already holds. See store.ReleaseWithRecord.
+			_ = r.graph.ReleaseWithRecord(claim, exhaustedClaimReason(allowed, recorded), recorded)
+			return
 		}
 		_ = r.graph.Fail(claim, err.Error())
 		if guard.IsFault(err) {
