@@ -1121,3 +1121,48 @@ that built one, and a judgement is built at thirteen places. It is now stamped
 once, at the single exit of `JudgeDeliverable`, over whatever comes back —
 including a fault. **A field set by every constructor is a field the next
 constructor forgets.**
+
+## A nineteenth failure, 2026-08-29: the check that mentioned it and weighed nothing
+
+*textual v4-flash s13,
+`bench/deepswe/results/textual-richlog-follow-state-deepseek-deepseek-v4-flash-s13`.*
+
+Exit 0, `pass: true`, subject `tree (4 files)`, 19 of 20 hidden f2p and 4 of 6
+p2p. The gate's first round had named the behaviour that was later missed —
+`RichLog.write(expand=True) no longer preserves full-width justified rendering
+with current Rich` — as exercised by nothing. Its second round mapped that
+behaviour to a check the run had just written, and the finding closed.
+
+The check calls `rich_log.write("short", expand=True)` and then asserts
+`len(rich_log.lines) > 0` and `strip.cell_length >= 5`. `expand` is in the call.
+It is in no assertion of that check or of either of its two siblings, and
+`min_width` is nowhere in the run's diff. The hidden check for the behaviour,
+`test_rich_log_expand_entries_reflow_after_min_width_change`, was red.
+
+Every existing door held and every one of them was answering a different
+question. The mapping asked a model whether the check exercises the behaviour and
+got yes. `GroundMapping` asked whether the check's file SPELLS the names the
+behaviour spells and got yes — truthfully, because the call spells them. Clause
+2, evidence from the world: the file was on disk the whole time, and the fact
+that decides this is a fact about which lines of it are assertions.
+
+What it states:
+
+> **A BEHAVIOUR IS EXERCISED BY A CHECK ONLY WHERE THE CHECK'S OWN ASSERTIONS
+> NAME ONE OF THE BEHAVIOUR'S OBSERVABLES** — the identifiers the request itself
+> spelled, read by shape from the person's words, matched against the text of the
+> check's assertion statements, read by shape from the file. Setup is not an
+> assertion. A behaviour a check NAMES and no assertion WEIGHS is *weakly
+> exercised*: its own finding, its own gate line (`asserted by no check: … —
+> observables never asserted: …`), its own journal field, buying the round an
+> unexercised behaviour buys.
+
+And the fail-safe direction is stated once and holds everywhere: **a behaviour
+that names no observable, a check in an unparsed language, a check whose
+declaration cannot be found, and a check the run did not write are all left
+exactly as the mapping answered them**, and one observable in one assertion
+clears the point. A floor that refuses everything is not a floor — which is why
+`Normal scrolling must still update the visible viewport and vertical scrollbar
+position`, a true sentence of the same request with no identifier in it, is
+asked nothing by this door even though two hidden checks about scrollbar
+position failed.

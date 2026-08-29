@@ -1606,6 +1606,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// the stream can say it and an autopsy can find it without
 					// reading a paragraph out of the middle of the gap.
 					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable,
+					// And the half of it the assertion door found: behaviours a
+					// check names and no assertion weighs, each carrying the
+					// observables nothing asserted.
+					Unasserted: gate.Unasserted,
 					// And the checks the run wrote and did not get passing,
 					// which is a different state from a broken repository and
 					// was spelled the same way until it had a field.

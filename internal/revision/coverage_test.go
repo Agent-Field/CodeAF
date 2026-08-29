@@ -65,7 +65,10 @@ func TestTheCoverageFindingTravelsAsAListOnEveryVerdict(t *testing.T) {
 		t.Errorf("the finding cannot say how much of the checklist is open: %d of %d",
 			len(settled.Unexercised), settled.Stated)
 	}
-	if !strings.Contains(settled.Gaps, "still exercised by nothing") {
+	// The score line counts BOTH halves of the measurement now — a behaviour
+	// nothing exercises and a behaviour a check names and no assertion weighs —
+	// so it can no longer say "exercised by nothing" of all of them.
+	if !strings.Contains(settled.Gaps, "still have no check that asserts them") {
 		t.Errorf("the repair brief does not say what remains:\n%s", settled.Gaps)
 	}
 	if !strings.Contains(settled.Gaps, "report about the work") {
@@ -149,7 +152,7 @@ func TestTheChecklistAndItsFindingBelongToTheJob(t *testing.T) {
 		store.Node{ID: "task-2-x2"}, covered, grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	_ = whole
-	if open, _ := UnexercisedFor(verify.JobKey(grounds.Intent)); len(open) == 0 {
+	if open, _, _ := UnexercisedFor(verify.JobKey(grounds.Intent)); len(open) == 0 {
 		t.Skip("this fixture's mapping is empty without a model, so nothing closes")
 	}
 }

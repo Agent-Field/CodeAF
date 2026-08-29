@@ -587,3 +587,94 @@ evidence, and a run can have either without the other. Every comparison is
 written, including one that found nothing — *sixteen files compared, no public
 name lost* and *nobody compared anything* are two facts, and the absence of the
 row was the only spelling either of them had.
+
+## What textual s13 proved: a check that names the behaviour and asserts nothing about it
+
+*Added 2026-08-29 against
+`bench/deepswe/results/textual-richlog-follow-state-deepseek-deepseek-v4-flash-s13/`.*
+
+The run ended at exit 0, gate `task-2-x1` `pass: true` over `tree (4 files)`, with
+19 of 20 hidden f2p checks green and 4 of 6 p2p. Gate 1, one round earlier, had
+named the behaviour that was later missed:
+
+```
+no check exercises: … RichLog.write(expand=True) no longer preserves full-width
+justified rendering with current Rich …
+```
+
+Round two wrote `tests/test_log.py::test_rich_log_write_expand_preserves_full_width_justified`.
+The mapping paired it with that behaviour, `GroundMapping` admitted the pairing —
+every name the behaviour spells is in the file — and the finding closed. Here is
+the whole of that check's evidence:
+
+```python
+rich_log.write("short", expand=True)
+await pilot.pause()
+assert len(rich_log.lines) > 0
+for strip in rich_log.lines:
+    assert strip.cell_length is not None
+    assert strip.cell_length >= 5
+```
+
+`expand` appears in the CALL. It appears in no assertion, in that check or in
+either of its two siblings, and `min_width` appears nowhere in the run's 44KB
+diff at all. The hidden check for the behaviour —
+`test_rich_log_expand_entries_reflow_after_min_width_change` — was red.
+
+> **A BEHAVIOUR THE REQUEST STATES IS EXERCISED BY A CHECK ONLY WHERE THE CHECK'S
+> OWN ASSERTIONS NAME ONE OF THE BEHAVIOUR'S OBSERVABLES.** Everything outside an
+> assertion is setup, and setup is what a check MENTIONS rather than what it
+> CHECKS. A behaviour a check names and no assertion weighs is *weakly
+> exercised*: it stays open, it buys the repair round an unexercised behaviour
+> buys, and the finding names the identifier to go and assert on.
+
+Both halves are read from the world and no model has a say in either.
+
+**The observables are read off the REQUEST**, by shape, the way `symbolsIn`
+already reads symbol entailment out of a citation: a name spelled distinctively
+(`is_following_end`, `RichLog.write`, `max_scroll_y`, `#follow-log`) or a name
+BOUND to something (`expand=True`, `follow_end(animate: bool = False)`, `y=0`).
+`expand` is an English word; `expand=True` is an argument, and the difference is
+not in the letters but in what the person wrote beside it. See
+`revision.Observables`.
+
+**The assertions are read off the FILE**, by language shape, in the register
+`verify.PublicSurface` reads in — `verify.AssertionsIn`. Python's `assert`
+statement, `pytest.raises`, `self.assert*`; JavaScript's `expect(…)`, `assert.*`,
+ava's `t.is`/`t.deepEqual`; Go's assertion libraries and the `if` condition
+beside the `t.Fatalf` it guards, because the comparison is the half that names
+anything; Rust's `assert!` family. **The owner of an assertion is the OUTERMOST
+definition it sits in** — a textual test declares an `App` subclass with its own
+`compose` method inside the test body, and a reader taking the nearest enclosing
+`def` finds the test itself asserting nothing at all.
+
+**Every silence favours the check, and that is the whole safety argument.** A
+behaviour that names no observable is not judged here — "Normal scrolling must
+still update the visible viewport and vertical scrollbar position" is a true
+sentence with no identifier in it, and a door that answered "unexercised" to
+every such behaviour would fail every prose request this program is given. Only
+the checks the run itself wrote are read (`verify.OwnChecks`); a project's
+existing suite was written before the request and is not this run's account of
+its own work. A file in a language with no reader, a check whose declaration the
+reader cannot find, a body the budget could not reach: all left exactly as the
+mapping answered them. And ONE observable named in ONE assertion clears the point
+outright — which means being generous about what counts as an observable makes
+this door quieter, never louder.
+
+**It is a finding of its own, not prose inside another one.**
+`store.DeliveryGate.Unasserted` is the list, one entry per line of the request,
+each carrying the observables nothing asserted;
+`store.ExercisedPoint.Unasserted` is the evidence, on the mapping row that
+produced it, so an autopsy can ask WHICH observable was skipped. It leaves the
+delivery short in `DeliveryGate.Whole()` for the same reason `Unexercised` does —
+an acquittal is of one finding, and a measurement of the repository is not that
+finding — and the resident's brief prints it in its own section, asking for an
+assertion rather than for another check.
+
+**Also true of this run, and already right:** `plan.Acceptance()` did yield the
+PRESERVED behaviours as points of their own — *RichLog still snaps back to the
+newest entry after users scroll up, unlike Log*, *Normal scrolling must still
+update the visible viewport…*, *it must post only when the boolean actually
+changes*. All three were on the checklist and all three were mapped. Two hidden
+p2p checks about scrollbar position still failed, and the second of those three
+points names no observable at all, so this door is silent on it by design.

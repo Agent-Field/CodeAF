@@ -265,7 +265,11 @@ type Shortfall struct {
 func ReadShortfall(graph *store.Store, lineage string) Shortfall {
 	findings := ReadOpenFindings(graph, lineage)
 	shortfall := Shortfall{
-		Unexercised: len(findings.Unexercised),
+		// The two halves of the coverage measurement are ONE counter, because
+		// the comparison made of it is a fall: a round that turned a behaviour
+		// nothing exercised into one a check merely visits has closed nothing,
+		// and two counters would let it read as progress on the first.
+		Unexercised: len(findings.Unexercised) + len(findings.Unasserted),
 		Red:         len(findings.Failing),
 		Lost:        lostPublicNames(graph, lineage),
 	}

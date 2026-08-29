@@ -298,6 +298,13 @@ type Judgment struct {
 	// Unexercised is one. See OwnChecksFailing.
 	OwnFailing  []string
 	Unexercised []string
+	// Unasserted is the other half of the same finding as a list: the behaviours
+	// a check NAMES and no assertion WEIGHS, each already carrying the
+	// observables nothing asserted. It is a field of its own for the reason
+	// Unexercised is one — a finding that travels as prose inside somebody
+	// else's gap is journaled by nothing, said by nothing, and taken down by a
+	// refusal of a citation it has no part in.
+	Unasserted []string
 	// Stated is how many behaviours were weighed to reach Unexercised, so the
 	// finding can say what a repair round most needs to know: how much of the
 	// checklist is still open, out of how much there was.
@@ -1711,7 +1718,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 			// bought, aimed at the half that survives. Without this, igel s6's
 			// three unexercised behaviours died with a refusal of a sentence
 			// about something else entirely.
-			if len(unmet.Unexercised) == 0 {
+			if len(unmet.Unexercised) == 0 && len(unmet.Unasserted) == 0 {
 				extension.Refused = refusal
 				return extension
 			}
