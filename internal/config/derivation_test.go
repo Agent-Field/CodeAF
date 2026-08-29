@@ -225,7 +225,12 @@ var settingReaders = map[string]string{
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,
 	// as the guardian and the countdown rows do.
-	KeyTaskModel:     "TaskModelAt",
+	KeyTaskModel: "TaskModelAt",
+	// The worker roster is read once, at the top of cmd/aforge's run(), by the
+	// function that registers this build's workers — before any command has read
+	// a flag, because registration is what puts a worker in front of everything
+	// that could choose one. It names its own accessor, as the throttle rows do.
+	KeyWorkers:       "WorkersAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
 	// The mastermind row names the TIER rather than the shared spelling, for the

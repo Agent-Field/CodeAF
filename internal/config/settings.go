@@ -377,6 +377,24 @@ const (
 	// to both of them — this row changes who is asked first, and nothing else.
 	KeyTaskSettle = "task.settle"
 
+	// KeyWorkers is WHICH LEAF WORKERS ARE INSTALLED IN THIS PROFILE — the
+	// roster (internal/config's workers.go states the law, cmd/aforge's
+	// subharness.go applies it at registration).
+	//
+	// It is named under `work.` rather than `task.` because it is not about the
+	// work you hand off from a conversation: a worker is what actually takes a
+	// leaf, on every surface there is — a task, an adaptive run's node, a
+	// headless `aforge run`, and the resident's continuation ladder. The `task.`
+	// rows above are about one road onto that; this is about who is standing at
+	// the end of all of them.
+	//
+	// A comma-separated set of worker names, and BLANK IS EVERY WORKER THIS
+	// BUILD HAS — the default, and byte for byte the behaviour every profile had
+	// before the row existed. Names this build does not know are said once on
+	// stderr and ignored; a line that places no worker at all leaves the
+	// generalist, which is never on the roster because it is never registered.
+	KeyWorkers = "work.workers"
+
 	// The web-search rows. They are three rather than one because they answer
 	// three separable questions: WHERE a lookup goes, and the two credentials
 	// that change what "where" can mean. A person with no key still searches —
@@ -1455,6 +1473,29 @@ func (s *Settings) build() []Setting {
 				"A change lands the next time aforge starts.",
 			read:  func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
+		},
+
+		// And beside the three rails on the MONEY, the one on the MACHINERY:
+		// which workers this install may hand a piece of work to at all. It sits
+		// here rather than beside the task rows because it is not about the work
+		// that leaves one conversation — a worker takes leaves on every surface
+		// there is — and because the specialists are the expensive way of taking
+		// a job, which is the subject the three rows above it are already on.
+		//
+		// Its receipt names the build's own workers rather than the hint, because
+		// the hint is written once and the workers are whatever the binary ships
+		// — a sentence listing them here would be the copy that goes stale.
+		Setting{
+			Key: KeyWorkers, Category: CategorySpending, Kind: SettingText,
+			Label: "workers", EmptyLabel: "every worker installed", Env: EnvWorkers,
+			Hint: "which workers this install may hand a piece of work to, separated by " +
+				"commas. Blank is all of them, which is the default. The general-purpose " +
+				"worker is never on the list and is never off it — it is what takes the work " +
+				"when nothing else is named, so a roster that names nothing runs everything " +
+				"the ordinary way.",
+			read:    func() string { return WorkersAt(dir) },
+			write:   func(raw string) error { return writeText(dir, KeyWorkers, raw) },
+			receipt: workersReceipt,
 		},
 
 		// The two consent rows sit with spending because they answer the same

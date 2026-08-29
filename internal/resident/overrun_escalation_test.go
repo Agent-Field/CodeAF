@@ -207,3 +207,26 @@ func TestCheapFirstOnSubtree(t *testing.T) {
 		t.Fatalf("generalist-compiled node = %q, want the inheritance left alone", out.Nodes[0].Subharness)
 	}
 }
+
+// A WORKER OFF THE PROFILE'S ROSTER IS A RUNG THE LADDER CANNOT REACH.
+//
+// The third rung is the one place the ladder climbs to a worker nobody has run
+// yet — the compiler's admission judgment, cashed in after two exhausted
+// single-agent envelopes — and it is gated on the registration and not on the
+// name. So an install whose roster leaves the specialist out keeps the
+// generalist, named, exactly as it does on a job whose provenance judged
+// nothing: there is no higher rung here to climb to.
+func TestALinearExhaustionKeepsTheGeneralistWhenTheSpecialistIsNotInstalled(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.ForgetSubharnesses()
+
+	if got := escalateContinuation(exec.LinearSubharness, "", "swe"); got != exec.LinearSubharness {
+		t.Fatalf("the ladder climbed to %q with swe off the roster, want the generalist", got)
+	}
+	// And the same job on a build that has the worker does climb, so the test
+	// above is about the registration and not about the ladder being broken.
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
+	if got := escalateContinuation(exec.LinearSubharness, "", "swe"); got != "swe" {
+		t.Fatalf("the ladder did not climb to an installed specialist: %q", got)
+	}
+}
