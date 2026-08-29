@@ -42,6 +42,21 @@ type DeliveryGate struct {
 	Extended     bool     `json:"extended,omitempty"`
 	Refused      string   `json:"refused,omitempty"`
 	Mechanical   bool     `json:"mechanical,omitempty"`
+
+	// Unclosed says the gap STANDS: the repair that would have closed it was
+	// never bought, so nothing ran and nothing about the shortfall changed.
+	//
+	// It is the distinction the exit code turns on, and it is recorded rather
+	// than read out of the refusal sentence because those are two categorically
+	// different refusals wearing the same field. A gap refused as ungrounded, or
+	// as one somebody already paid to close, is the GATE being wrong and caught
+	// at it — the deliverable stands whole. A gap whose repair a governor would
+	// not fund, or that nothing could plan, is the gate being RIGHT and
+	// unaffordable: the thing it named is still missing, and a run that hands
+	// that over is handing over less than it promised. One measured run shipped
+	// "Deliverable is empty - contains no implementation" over exit 0 because
+	// the two were one field (2026-08-28, meta/muse-spark-1.1).
+	Unclosed bool `json:"unclosed,omitempty"`
 }
 
 // Cited is the gate's citations however they were written down. A row recorded

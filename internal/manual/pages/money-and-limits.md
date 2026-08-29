@@ -55,6 +55,31 @@ Charters are capped explicitly: each one carries a per-firing budget (default
 **$0.15**) and a max-per-day (default **10**). A firing that would cross the
 daily rail is deferred and you are asked first.
 
+## When work stops growing itself — it gave up early, why did it stop trying
+
+Work that runs out mid-way is re-planned rather than abandoned: what is left is
+worked out and queued as fresh pieces, and you see one line saying so. Four
+things stop that from becoming a habit, and the first two read what actually
+happened rather than counting:
+
+- **Nothing is changing.** A round that left nothing at all on disk, after a
+  round before it that also left nothing, ends the lineage:
+  `carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands`.
+  One fruitless round is never refused — work can run out before it writes its
+  first file, and that is exactly the round this exists to buy.
+- **The same work again.** When what is left to do comes back word for word the
+  same as last time, another round would ask for exactly what the last one
+  already did:
+  `the work left to do came back word for word the same as last time, so another round would ask for exactly what this one already did — handing over what's done`.
+- **Rounds.** A lineage may grow **three** times. Past that:
+  `this work has split as many times as splitting helps — handing over what's done`.
+- **Size.** A job may hold **90** pieces in all:
+  `this job has grown as large as jobs are allowed to grow — handing over what's done`.
+
+Every one of them hands over what exists rather than failing, and every one is
+said on the work's own record, so a job that quietly stopped growing never looks
+like a job that is still going.
+
 ## The practice carve-out
 
 Aforge's own practice has its own pocket: **$2.00 a day**, spent as at most two

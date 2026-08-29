@@ -9,6 +9,8 @@ package resident
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -118,6 +120,25 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state
 		goal.WriteString(strings.Join(records, "\n"))
 	}
 	return goal.String()
+}
+
+// RemainderDigest is a piece of remaining work reduced to something two rounds
+// can be compared by.
+//
+// Case and runs of whitespace are dropped because they are the two ways one
+// sentence is written twice without being a different sentence; nothing else is.
+// This is an EQUALITY test and not a similarity one on purpose: a remainder that
+// came back reworded is a different claim about what is left, and it is the
+// standstill rule beside this one — which reads the tree rather than the text —
+// that catches a loop dressed in fresh words. Empty in, empty out, and an empty
+// digest never matches anything, so a caller with no reviewer finding is never
+// refused on this ground.
+func RemainderDigest(gap string) string {
+	if strings.TrimSpace(gap) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.Join(strings.Fields(gap), " "))))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ReplanOverrun splices a repair subtree for a leaf whose partial result is
@@ -265,6 +286,11 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		JobRoot: jobRootID(graph, node), Node: node, Lineage: lineage,
 		Reason: growth.reason(), Round: round, DailyBudgetUSD: dailyBudgetUSD,
 		Ungated: growth.Ungated,
+		// The two facts the governor weighs this round against, both taken from
+		// outside the work being weighed. The artifact list is the workspace's
+		// own before-and-after reading of the tree, not the leaf's account of
+		// itself; the gap is what a reviewer named as still missing.
+		Produced: len(artifacts), Remainder: RemainderDigest(gap),
 	}
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {
@@ -406,12 +432,39 @@ func OverrunLineage(nodeID string) (string, int) {
 // the sentence the person is owed is the delivery that follows it, which says
 // what they got and carries the same "handing over what's done" in its own
 // words.
-func postGovernorNotice(graph *store.Store, node store.Node, body string) {
+func postGovernorNotice(graph *store.Store, node store.Node, cause, body string) {
 	_, _ = thread.Record(graph, store.Message{
 		Role:   store.RoleSystem,
 		NodeID: node.ID,
 		Body:   body,
+		// The progress payload is what carries this out of the record and into
+		// the headless stream, where the reader watching a run needs it most: a
+		// governor stopping work is invisible there otherwise, and "still
+		// waiting" over a job that has quietly stopped growing is the line that
+		// gets a run killed by hand. See narrateOne in cmd/aforge/do.go.
+		Progress: &store.MessageProgress{Phase: governorPhrase(cause), Latest: body},
 	})
+}
+
+// governorPhrase is the two or three words the stream shows above the governor's
+// own sentence. It is per cause so two different refusals on one node are two
+// different lines rather than one repeated phase the stream deduplicates away —
+// and it is written in the register of the product, which never names its own
+// machinery to a person.
+func governorPhrase(cause string) string {
+	switch cause {
+	case CauseStandstill:
+		return "nothing is changing"
+	case CauseFixedPoint:
+		return "the same work again"
+	case CauseRounds:
+		return "no more rounds"
+	case CauseCeiling:
+		return "no more room"
+	case CauseCovered:
+		return "already covered"
+	}
+	return "handing over"
 }
 
 // ResumeDeferredOverruns admits journaled repairs after the rail is raised.

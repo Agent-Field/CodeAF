@@ -84,6 +84,15 @@ const (
 	CauseCeiling = "ceiling"
 	CauseRail    = "rail"
 	CauseCovered = "goal-already-covered"
+
+	// CauseStandstill is the round that was refused because the round before it
+	// changed nothing in the world, and neither did the work before that.
+	CauseStandstill = "standstill"
+
+	// CauseFixedPoint is the round that was refused because it was handed the
+	// same remaining work as the round before it: a split whose output is its
+	// own input.
+	CauseFixedPoint = "fixed-point"
 )
 
 // The refusals in the words a person reads. They are constants because two of
@@ -94,6 +103,12 @@ const (
 	RefusedRounds  = "this work has split as many times as splitting helps — handing over what's done"
 	RefusedCeiling = "this job has grown as large as jobs are allowed to grow — handing over what's done"
 	RefusedCovered = "everything this job is judged on is already covered by work that has landed or is already running — handing over what's done"
+
+	// The two refusals that read evidence rather than a count. They say what
+	// was observed and not what rule fired, because the person reading them is
+	// owed the fact — nothing has changed, twice over — and not the machinery.
+	RefusedStandstill = "carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands"
+	RefusedFixedPoint = "the work left to do came back word for word the same as last time, so another round would ask for exactly what this one already did — handing over what's done"
 )
 
 // GrowthGate is the wave's rollback switch. Off, the governor keeps the three
@@ -291,6 +306,18 @@ type GrowRequest struct {
 	// needs ("handing over what's done") would describe something that is not
 	// happening, on a node the reader is about to watch finish.
 	Quiet bool
+	// Produced is how many files the work this growth reacts to left behind in
+	// the world. It comes from the workspace's own before-and-after reading of
+	// the tree, never from the worker's account of itself, because a worker
+	// that produced nothing is exactly the worker whose account cannot be
+	// trusted about it. Zero on a caller that has no such reading is
+	// indistinguishable from a leaf that wrote nothing, which is why the
+	// standstill rule below needs TWO of them before it refuses anything.
+	Produced int
+	// Remainder is the work this round is being bought to finish, as the
+	// reviewer named it. It is compared against the last round's for equality
+	// and for nothing else.
+	Remainder string
 	// Rechecking marks a second look at a decision already taken this round —
 	// the exact ceiling, once a plan exists and its node count is known. The
 	// free checks are re-read; the paid question is not, because it was already
@@ -338,17 +365,52 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	refuse := func(cause, words string) (GrowVerdict, error) {
 		verdict := GrowVerdict{Round: round, Cause: cause, Refused: words}
 		if words != "" && !req.Quiet {
-			postGovernorNotice(graph, req.Node, words)
+			postGovernorNotice(graph, req.Node, cause, words)
 		}
 		noteGrowth(graph, jobRoot, store.JobGrowth{
 			Reason: reason, Lineage: lineage, Adding: req.Adding,
 			Round: round, Allowed: false, Refused: words, Cause: cause,
+			Produced: req.Produced, Remainder: req.Remainder,
 		})
 		return verdict, nil
 	}
 
+	// 0. Evidence, before any of the counters. This is the only check here that
+	//    asks whether the last round ACHIEVED anything; every other one asks
+	//    whether too much has been spent, and a loop that produces nothing can
+	//    run its whole allowance before arithmetic notices. It is free — one
+	//    read of the journal this function already writes.
+	//
+	//    Both readings are of the world rather than of a worker's account of
+	//    itself: what the workspace holds that it did not hold before, and the
+	//    remaining work a reviewer named. See [previousGrowth].
+	if previous, ok := previousGrowth(graph, jobRoot, lineage); ok {
+		// A split whose remaining work is its parent's remaining work is a
+		// fixed point. The round that just ran was aimed at exactly this text
+		// and gave it back unchanged, so the next round would buy the same
+		// question a third time. Measured: one lineage was handed a
+		// byte-identical remainder three rounds running, at $0.47 a round, and
+		// produced nothing on any of them.
+		if req.Remainder != "" && req.Remainder == previous.Remainder {
+			return refuse(CauseFixedPoint, RefusedFixedPoint)
+		}
+		// And the same finding from the other side, for a remainder that was
+		// reworded rather than repeated: two consecutive bodies of work that
+		// left nothing at all in the tree. One is not evidence — a leaf can run
+		// out before it writes its first file, and that is exactly the round a
+		// repair exists for, so the first one is never refused here. Two is a
+		// standstill.
+		if req.Produced == 0 && previous.Produced == 0 {
+			return refuse(CauseStandstill, RefusedStandstill)
+		}
+	}
+
 	// 1. Rounds. A lineage that is still growing after its allowance is
 	//    thrashing, whatever the reason it gives for the next round.
+	//
+	//    It is the BACKSTOP and not the mechanism: a count cannot tell a round
+	//    that is finishing the work from a round that is repeating it, which is
+	//    why check 0 above reads what happened instead.
 	if round > MaxOverrunRounds {
 		return refuse(CauseRounds, RefusedRounds)
 	}
@@ -426,6 +488,13 @@ func admitGrowth(graph *store.Store, req GrowRequest, verdict GrowVerdict, splic
 	noteGrowth(graph, jobRoot, store.JobGrowth{
 		Reason: reason, Lineage: lineage, Adding: spliced,
 		Round: verdict.Round, Allowed: true,
+		// The evidence travels with the admission because the NEXT round is
+		// weighed against it. A round admitted without it leaves the lineage
+		// with no record of what the work it grew from actually did, and check 0
+		// then has nothing to compare — which reads as "not measured" and lets
+		// the round through, the fail-safe direction for a bound that has the
+		// round cap under it.
+		Produced: req.Produced, Remainder: req.Remainder,
 	})
 }
 
@@ -436,6 +505,28 @@ func noteGrowth(graph *store.Store, jobRoot string, growth store.JobGrowth) {
 	if err := graph.RecordJobGrowth(jobRoot, growth); err != nil {
 		log.Printf("note: could not journal growth of %s: %v", jobRoot, err)
 	}
+}
+
+// previousGrowth is the last round this lineage actually spent, and it is what
+// check 0 weighs the next one against.
+//
+// Only ADMITTED rounds count, for the same reason growthRound only counts them:
+// a refusal is not a round anybody spent, and a lineage refused once at the rail
+// and resumed later has done its work once. A read failure answers "no previous
+// round", which admits the growth — the fail-safe direction for a bound that has
+// the round cap and the job ceiling underneath it.
+func previousGrowth(graph *store.Store, jobRoot, lineage string) (store.JobGrowth, bool) {
+	growths, err := graph.JobGrowths(jobRoot)
+	if err != nil {
+		log.Printf("note: could not read the growth journal for %s: %v", jobRoot, err)
+		return store.JobGrowth{}, false
+	}
+	for i := len(growths) - 1; i >= 0; i-- {
+		if growths[i].Allowed && growths[i].Lineage == lineage {
+			return growths[i], true
+		}
+	}
+	return store.JobGrowth{}, false
 }
 
 // growthRound is the next round number for a lineage, counted from the

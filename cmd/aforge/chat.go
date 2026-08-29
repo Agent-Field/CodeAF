@@ -1696,6 +1696,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
+						evidence.Unclosed = extension.Unclosed
 						if extension.Spliced > 0 {
 							extended = true
 							// The receipt on the summary is what tells every reader

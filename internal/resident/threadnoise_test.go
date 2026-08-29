@@ -123,7 +123,7 @@ func TestASettledMultiPartTaskLeavesOnlyItsDeliveryInTheConversation(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	postGovernorNotice(graph, first, "this work has split as many times as splitting helps — handing over what's done")
+	postGovernorNotice(graph, first, CauseRounds, RefusedRounds)
 	// The two the surface writes on the same node, through the same door: the
 	// ruler's verdict about itself, and the arithmetic of a split.
 	recordRunNote(t, graph, "job-n1", "ruler: median 19 turns, 4 of 18 overran — the ruler holds")

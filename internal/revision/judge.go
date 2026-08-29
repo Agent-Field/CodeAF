@@ -1307,6 +1307,11 @@ type Extension struct {
 	Round      int
 	Refused    string
 	Mechanical bool
+	// Unclosed says the gap is still open: the repair was refused for want of
+	// money, rounds or a planner, rather than because the gap itself was found
+	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
+	// the one the exit code reads.
+	Unclosed bool
 }
 
 // GapContinuationNotice is the whole of what a person sees when a judgement
@@ -1363,7 +1368,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
 		Mechanical: unmet.Mechanical}
 	if graph == nil || planRemainder == nil {
-		extension.Refused = "there is nothing here that could plan the rest"
+		extension.Refused, extension.Unclosed = "there is nothing here that could plan the rest", true
 		return extension
 	}
 	// Admissibility is decided before any planning call: an ungrounded gap must
@@ -1380,14 +1385,14 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap, Records: records}, planRemainder)
 	if err != nil {
 		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
-		extension.Refused = "the work that would close it could not be planned"
+		extension.Refused, extension.Unclosed = "the work that would close it could not be planned", true
 		return extension
 	}
 	if spliced == 0 {
 		// A governor has already said so in the thread in its own words, or the
 		// rail has journaled the repair and is waiting on consent. Either way
 		// nothing new is running and the delivery has to say so.
-		extension.Refused = "no more work could be started on it"
+		extension.Refused, extension.Unclosed = "no more work could be started on it", true
 		return extension
 	}
 	extension.Spliced = spliced

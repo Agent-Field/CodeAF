@@ -43,6 +43,21 @@ type JobGrowth struct {
 	Refused string `json:"refused,omitempty"`
 	// Cause is the machine-readable half of Refused: which governor spoke.
 	Cause string `json:"cause,omitempty"`
+
+	// Produced is how many files the work this round grows FROM left behind in
+	// the world — the workspace's own before-and-after reading, never the
+	// worker's account of itself. It is journaled because it is the only
+	// evidence the next round can be weighed against: a lineage whose last two
+	// bodies of work both changed nothing on disk is not making slow progress,
+	// it is at a standstill, and no round after that buys anything.
+	Produced int `json:"produced,omitempty"`
+
+	// Remainder is a digest of the work this round was planned to finish. Two
+	// consecutive rounds handed the same remainder are a fixed point: the round
+	// that just ran was aimed at exactly this and did not move it. The digest
+	// rather than the text because the text is unbounded and this is only ever
+	// compared for equality.
+	Remainder string `json:"remainder,omitempty"`
 }
 
 // RecordJobGrowth journals one growth decision against a job root. Losing it
