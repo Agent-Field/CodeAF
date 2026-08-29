@@ -366,10 +366,19 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	// The system message is the constant and nothing else, for every process
 	// this compiler runs in: measured content that moves within a session is
 	// added below, in the user message, never here.
+	// THE REPLY IS ASKED FOR AS JSON ON THE WIRE, NOT ONLY IN THE PROMPT.
+	// Every planning call sends its shape as a response format; this one asked
+	// in prose alone, and a model handed an issue written in Markdown answered
+	// in Markdown — twice, once per attempt — and the whole job was forfeit at
+	// three seconds for $0.0007. JSON mode rather than a strict schema, because
+	// the shape here is the prompt's to extend: the subharness menu, the
+	// charter, the model note are fields the prompt adds when they apply, and
+	// a strict schema would have to know every one of them. An endpoint that
+	// refuses the format has it taken off by the provider's own ladder.
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
-	}, ai.WithMaxTokens(compileTokens))
+	}, ai.WithMaxTokens(compileTokens), ai.WithJSONMode())
 	if err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
@@ -382,7 +391,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
 			textMessage("system", compilerSystemPrompt),
 			textMessage("user", user),
-		}, ai.WithMaxTokens(compileTokens*2))
+		}, ai.WithMaxTokens(compileTokens*2), ai.WithJSONMode())
 		// The error a person reads is the SECOND attempt's, because that is the
 		// one that decided the outcome: reporting the first here told an
 		// operator "empty response" when the retry had failed some other way.
