@@ -259,7 +259,7 @@ deadline, so none of them met the reaper at all. Whether that is decomposition
 paying for itself or simply small leaves being small is not settled here; it is
 written down because the two runs that hit the wall are the two that never
 decomposed early.
-## A seventh failure, 2026-08-29: the reading of the wrong thing, and the finding nobody heard
+## An eighth failure, 2026-08-29: the reading of the wrong thing, and the finding nobody heard
 
 *Added against the s6 and s7 stores under `bench/deepswe/results/`. Four defects,
 four clauses, and every one of them a mechanism that existed and did not fire.*
@@ -324,7 +324,7 @@ times slower than the wall-derived arithmetic assumes.
 
 ---
 
-## An eighth failure, 2026-08-29: adjacency by substring, and a focus that was empty
+## A ninth failure, 2026-08-29: adjacency by substring, and a focus that was empty
 
 *Added against `bench/deepswe/results/textual-…-s8` and `…happy-dom-…-s8`, taken
 on the wave that made readings scoped. Both are clause 1 — detect by STRUCTURE —
@@ -383,7 +383,7 @@ it is the one remembered answer a later round does not inherit
 cost and never a target — a reading killed over forty files "affords"
 thirty-six by that arithmetic, which is the same reading again — so the retake is
 the smaller of that ceiling and a halving, floored at the rank-1 core.
-## A ninth failure, 2026-08-29: the room the leaf never had
+## A tenth failure, 2026-08-29: the room the leaf never had
 
 *Added against `bench/deepswe/results/ink-grid-box-layout-…-s8` and
 `textual-richlog-follow-state-…-s8`. Three defects, and every one of them is the
@@ -519,7 +519,7 @@ both now see an interrupted leaf.
 
 ---
 
-## A ninth failure, 2026-08-29: the belt that had none of it
+## An eleventh failure, 2026-08-29: the belt that had none of it
 
 *Added against `bench/deepswe/results/ink-grid-box-layout-…-s9`, the first run on
 the wave that fixed the eighth. The banking worked — 57 usage rows, $0.0456,
@@ -613,7 +613,7 @@ forty that had already been rejected.
 
 ---
 
-## A tenth failure, 2026-08-29: what the job knew and never said
+## A twelfth failure, 2026-08-29: what the job knew and never said
 
 *Added against `bench/deepswe/results/textual-richlog-follow-state-…-s9`. Both
 defects are the same shape as the ninth and neither is a belt: a fact the job had
@@ -682,3 +682,47 @@ sixth failure's rule, broken inside the fix for the ninth. It logs now. **An
 unreadable record and an empty one must never be the same value**, and the place
 that lesson keeps having to be learned is the error path of whatever was just
 built.
+## A thirteenth failure, 2026-08-29: the table of blanks
+
+*Added against the s9 sweep's stores — `bench/deepswe/results/{ink,igel}-…-s9/`
+— where every node's `subharness` column was empty.*
+
+The question an autopsy asks first is who did the work. The store could not
+answer it. `nodes.subharness` was blank on every node of both runs, and the
+diagnosis that followed cost a day.
+
+The column was never lying; it was answering a different question. It holds the
+worker a node was **assigned** — the compiler's routing judgement, or the
+escalation that replaced it — and the compiler routes almost nothing, so its
+honest answer for ordinary work is nothing at all. What actually happens is that
+the dispatch path resolves that empty assignment against the registry, gets the
+generalist, and runs it. `linear` is never a registered subharness, nothing
+degrades, nothing is wrong, and **nothing anywhere writes down that a worker
+took the node.**
+
+So one blank meant four things: nobody routed it, nobody claimed it, nobody ran
+it, or a worker ran it and nobody said which. It also could not tell a node that
+got the specialist it was promised from one whose build had no such specialist
+and quietly ran the generalist wearing its name — which is a benchmark cell
+silently measuring the wrong program. And the rig's own "VOID if a `swe` node
+ran" guard read this column, so the guard was asking the ask.
+
+> **THE WORKER THAT RAN A NODE IS A FACT ABOUT THE RUN, AND IT IS WRITTEN DOWN
+> WHERE IT HAPPENS.** Not derived afterwards from an assignment that is empty by
+> design, and not left to a reader to infer from an absence. The generalist says
+> `linear` out loud, for the same reason it has a name at all: an unnamed worker
+> and a worker nobody recorded look identical, and the difference is the whole
+> autopsy.
+
+`nodes.ran` carries it, `store.EventNodeRan` journals it with the worker it
+replaced and why, and both are written at ONE seam — `runningWorker` in
+`cmd/aforge/subharness.go`, the single place the surface builds a leaf's
+executor, with a source test that fails the build on a second one. The
+assignment column keeps its own meaning untouched: one column, one question,
+and the two are allowed to disagree, because the runs worth reading are exactly
+the ones where they do.
+
+The headless stream says it too — every `▶` and every `✓` now carries its worker
+in parentheses, the generalist included — so the reading that cost a day is a
+line a person watching already has. Clause 3 and clause 4 are one fix here: a
+record nobody can read and a stream that does not say it are the same silence.

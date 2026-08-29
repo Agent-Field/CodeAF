@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -416,6 +417,51 @@ func executorFor(subharness string, build leafBuild) exec.Executor {
 		return construct(build)
 	}
 	return leafExecutors[exec.LinearSubharness](build)
+}
+
+// runningWorker is THE SEAM. It builds the worker one node will actually be run
+// by and writes that down against the node in the same breath, because this is
+// the one moment in the process where both halves of the fact are in hand: the
+// node, and the executor the resolution above just settled on.
+//
+// It exists because the two facts were never the same column and one of them
+// was never written at all. `nodes.subharness` is an ASSIGNMENT — what the
+// compiler asked for — and the compiler asks for nothing on the great majority
+// of nodes, so an autopsy of a run where nobody routed anything reads a table
+// of blanks. Every node of the s9 sweep's ink and igel stores said exactly that,
+// and the sweep's diagnosis cost a day to a question the store could not answer:
+// WHO DID THE WORK. It answers it now, here, and the generalist answers "linear"
+// rather than leaving the blank that also means "nobody ran this".
+//
+// [executorFor] stays the pure resolution it always was, and after this it has
+// one caller in the surface. That is a law and not a convenience: a dispatch
+// path that resolved a worker without journaling it would put the blank back on
+// exactly the nodes nobody thought to look at.
+// `TestTheWorkerThatRanIsWrittenAtOneSeam` fails the build on a second caller.
+func runningWorker(nodeID, promised string, build leafBuild, reason string) exec.Executor {
+	worker := executorFor(promised, build)
+	ran := worker.Subharness()
+	if reason == "" && strings.TrimSpace(promised) != "" && strings.TrimSpace(promised) != ran {
+		// The degradation, said in the record rather than only on a trace file
+		// somebody has to know to open. A benchmark cell that silently became a
+		// default cell is a measurement of the wrong thing, and this is the row
+		// that tells whoever reads the store afterwards which of the two it was.
+		reason = "promised " + strings.TrimSpace(promised) + "; this build has no such worker"
+	}
+	recordRunningWorker(build.graph, nodeID, ran, reason)
+	return worker
+}
+
+// recordRunningWorker journals who is doing the work. It is best-effort in the
+// same sense every other note on the dispatch path is: a journal write that
+// fails costs an autopsy and must never cost the work.
+func recordRunningWorker(graph *store.Store, nodeID, subharness, reason string) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" || strings.TrimSpace(subharness) == "" {
+		return
+	}
+	if _, err := graph.RecordNodeRan(nodeID, subharness, reason); err != nil {
+		log.Printf("note: could not journal the worker running %s: %v", nodeID, err)
+	}
 }
 
 // registerLeafExecutors fills a scheduler's registry with every worker this

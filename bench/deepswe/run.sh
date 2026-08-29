@@ -284,23 +284,41 @@ PY
 # Which worker actually did the work. `aforge do` is meant to be measured on
 # its own path: a run a specialist worker took over is measuring the specialist,
 # not the harness, so it is recorded and flagged rather than quietly averaged
-# in. nodes.subharness is the worker a node RAN on; splice_subharness is only
-# the worker its children would have been spliced onto, which is an intention
-# and not a fact.
+# in.
+#
+# THE COLUMN IS nodes.ran, AND IT IS THE ONLY ONE THAT ANSWERS THIS QUESTION.
+# nodes.subharness is what the compiler ASKED for and is blank on the great
+# majority of nodes, because the compiler routes almost nothing — every node of
+# the s9 ink and igel stores read blank, which is why that sweep's autopsy took
+# a day. splice_subharness is what the subtree was admitted under, an intention
+# and not a fact. nodes.ran is written by the dispatch path at the moment it
+# builds the worker, and it names the generalist out loud.
 python3 - "$OUT/graph.db" "$OUT/meta.json" <<'WORKERS'
 import json, os, sqlite3, sys
 db, metapath = sys.argv[1], sys.argv[2]
 meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
-ran, planned = [], []
+ran, asked, planned = [], [], []
 try:
     c = sqlite3.connect(db)
-    ran = sorted({r[0] for r in c.execute(
+    columns = {r[1] for r in c.execute("pragma table_info(nodes)")}
+    if "ran" in columns:
+        ran = sorted({r[0] for r in c.execute(
+            "select ran from nodes where coalesce(ran,'') != ''")})
+    else:
+        # A store written by a binary from before the column existed. The ask is
+        # all it has, and it is recorded as the ask rather than passed off as
+        # the fact — an absence is never a diagnosis.
+        meta["workers_from_ask"] = True
+        ran = sorted({r[0] for r in c.execute(
+            "select subharness from nodes where coalesce(subharness,'') != ''")})
+    asked = sorted({r[0] for r in c.execute(
         "select subharness from nodes where coalesce(subharness,'') != ''")})
     planned = sorted({r[0] for r in c.execute(
         "select splice_subharness from nodes where coalesce(splice_subharness,'') != ''")})
 except Exception as err:
     meta["workers_error"] = str(err)
 meta["workers_ran"] = ran
+meta["workers_asked"] = asked
 meta["workers_planned"] = planned
 meta["void"] = "swe" in ran
 json.dump(meta, open(metapath, "w"), indent=2)

@@ -41,12 +41,21 @@ def row(d):
         # An older result, or one whose run never reached the worker check.
         # The store still knows, so ask it rather than reporting a run as
         # valid because the fact was never written down.
+        #
+        # nodes.ran is the worker that ACTUALLY executed the node, written at
+        # dispatch; nodes.subharness is only what the compiler asked for, and it
+        # is blank on nearly every node ever planned. A store from before the
+        # column existed has only the ask, and this says so rather than passing
+        # one off as the other.
         try:
             import sqlite3
             c = sqlite3.connect(os.path.join(d, "graph.db"))
+            columns = {r[1] for r in c.execute("pragma table_info(nodes)")}
+            column = "ran" if "ran" in columns else "subharness"
             ran = sorted({r[0] for r in c.execute(
-                "select subharness from nodes where coalesce(subharness,'') != ''")})
+                f"select {column} from nodes where coalesce({column},'') != ''")})
             meta["workers_ran"], meta["void"] = ran, "swe" in ran
+            meta["workers_from_ask"] = column == "subharness"
         except Exception:
             pass
     if meta.get("void"):
