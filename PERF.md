@@ -451,6 +451,25 @@ per round: `jobReading` remembers against `verify.JobKey`, so later rounds
 inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
 remaining wall as every other reading here.
 
+**A cut second reading keeps what it named, and a derived rung retakes on the
+baseline's.** The before half has kept a partial roster since ink s7; the after
+half discarded it, so ink's second reading came back `read: false, named: 0` on
+EVERY leaf of two whole sweeps (s10 and s11) while the baseline of the same run,
+on the same `npx ava --tap` at the same workdir, named **44** checks — 156 on one
+node. Nothing was wrong with the reader, the scope or the room: the runner
+streamed its checks in TAP, the ceiling fired, and the after path threw away what
+it had already read. It is kept now, marked `Partial` so the subtraction is
+refused (`Reading.comparable` already reads it that way) while the roster the
+coverage settlement spends survives. Two further corrections came with it: the
+failure path journals the result the runner actually left — its exit status and
+whatever it printed — rather than a zero value, which is how a command that ran
+and exited 1 was written down as `exit: 0`; and `exec.readFinishedTree` retakes
+on the BASELINE'S OWN RUNG before reporting a tree unreadable, because the two
+ways an after reading may differ from a before one (widened by the run's own
+work, aimed at the diff) both choose a command the baseline never proved could
+run, and that is the one thing here a retake fixes. One retake, only when the
+command actually differs, and whichever attempt said more is the one kept.
+
 **The second reading is aimed at the change as well as at the request.** The
 first reading's scope has to come from the request — there is no diff yet — and
 textual s10 is what that costs on its own: the request said *Log and RichLog*,
@@ -476,6 +495,44 @@ lets a patch that deleted an attribute the repository already had ship as whole
 — the measured failure in `docs/design/gate/SETTLEMENT.md` §4. Neither is a test
 going red; both are read off a run, which is why the numbers are written down
 here.
+
+## What the symbol-level photograph costs
+
+The check-level reading answers *what does this project's suite say*. It cannot
+answer *what did this work delete*, because a project only owns checks for what
+somebody wrote checks for. igel s11 removed eight public class attributes off
+`Igel` and its own reading of the finished tree came back BETTER — named **2 →
+14**, red **2 → 0** — while all **24** hidden tests failed at setup on
+`Igel.results_path`.
+
+`verify.PublicSurface` reads the tree's public names once per photograph, beside
+the check-level reading and on every path that reading can refuse on — a project
+that declares no verification, a wall too short for a suite, a suite killed at
+its ceiling all still get this half. `verify.SurfaceOf` re-reads only the files
+the run's own record says it changed.
+
+| number | value | what it bounds |
+| --- | --- | --- |
+| `surfaceFileLimit` | 2000 | source files one baseline reads; textual is ~700 python files, ofetch ~90 typescript ones |
+| `surfaceReadBudget` | 8MB | bytes one baseline reads — four times the scope walk's, spent once per JOB rather than once per reading |
+| `surfaceFileBytes` | 512KB | one file, so a generated module cannot spend the budget alone |
+| `surfaceNamesReported` | 8 | names one finding spells out; `store.VerificationSample`'s sibling |
+
+Past either bound the walk stops and the surface is PARTIAL, which degrades in
+the safe direction: a file with no baseline entry can never be reported as having
+lost a name. No model call and no second suite run — it is two file reads and a
+set difference.
+
+**What the readers deliberately do not read.** Go goes through the standard
+library's own parser, and a file that does not parse contributes NOTHING rather
+than a partial reading — a syntax error mid-edit would otherwise read as half a
+package disappearing. Python, TypeScript/JavaScript and Rust go through
+line-and-indent readers that only ever read a DECLARATION AT THE START OF A LINE,
+which is the one thing each language's own formatter guarantees. A name assigned
+inside a conditional, a class built by a decorator, an export re-exported through
+a barrel file, a symbol behind a macro: none of those is read, on purpose. The
+cost of a name invented here is a false blocker on real work; the cost of a name
+missed is the silence this was written in.
 
 ## What grounding the acceptance mapping costs
 

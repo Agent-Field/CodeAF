@@ -183,3 +183,93 @@ func (s *Store) VerificationsFor(nodeID string) ([]VerificationReading, error) {
 	}
 	return readings, nil
 }
+
+// EventSurface is the symbol-level half of the photograph, journaled beside the
+// check-level one.
+//
+// It is its own kind rather than a field on the reading because the two answer
+// different questions from different evidence, and a run can have either without
+// the other: a project that declares no verification still has a public surface,
+// and a suite that ran fine still says nothing about a name it never touched.
+// igel s11's check-level row said the tree got BETTER on the run that deleted
+// eight public attributes.
+const EventSurface EventKind = "surface"
+
+// SurfaceReading is that comparison as the journal keeps it.
+//
+// A COUNT PLUS A BOUNDED SAMPLE, exactly as the check roster is kept, and for
+// the identical reason: a repository's public surface is tens of thousands of
+// short strings, what a reader wants is the difference, and a handful of names
+// settles what SHAPE the loss has as well as four hundred would.
+type SurfaceReading struct {
+	// Compared is how many changed source files the two readings were compared
+	// across. Zero with Lost zero is a real answer — the run changed no source
+	// this program can read — and it is not the same answer as no row at all.
+	Compared int `json:"compared"`
+	// Lost is how many public names the finished tree no longer spells.
+	Lost  int      `json:"lost"`
+	Names []string `json:"names,omitempty"`
+}
+
+// RecordSurface journals one symbol-level comparison against a node.
+//
+// EVERY COMPARISON IS WRITTEN, including one that found nothing. "Sixteen files
+// were compared and no public name was lost" and "nobody compared anything" are
+// two facts, and the absence of the row was the only spelling either of them
+// had.
+func (s *Store) RecordSurface(nodeID string, reading SurfaceReading) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record surface: %w: empty node id", ErrInvalid)
+	}
+	if len(reading.Names) > VerificationSample {
+		reading.Names = reading.Names[:VerificationSample]
+	}
+	for index, name := range reading.Names {
+		reading.Names[index] = bounded(strings.TrimSpace(name), MaxDigestBytes)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("record surface: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record surface: %w", err)
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventSurface, reading); err != nil {
+		return fmt.Errorf("record surface: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record surface: %w", err)
+	}
+	return nil
+}
+
+// SurfacesFor returns every symbol-level comparison journaled for a node,
+// oldest first.
+func (s *Store) SurfacesFor(nodeID string) ([]SurfaceReading, error) {
+	rows, err := s.db.Query(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq ASC`, nodeID, EventSurface)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("surfaces for %s: %w", nodeID, err)
+	}
+	defer rows.Close()
+	var readings []SurfaceReading
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("surfaces for %s: %w", nodeID, err)
+		}
+		var reading SurfaceReading
+		if err := json.Unmarshal(payload, &reading); err != nil {
+			continue
+		}
+		readings = append(readings, reading)
+	}
+	return readings, rows.Err()
+}
