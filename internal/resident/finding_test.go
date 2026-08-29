@@ -98,7 +98,7 @@ func TestAFindingThatStoodTwiceBuysNoThirdRound(t *testing.T) {
 	// And every row says which finding it was bought for, so an autopsy can see
 	// that four rounds were four attempts at one thing.
 	for _, round := range rounds {
-		if !round.Finding.Same(finding) {
+		if !round.Finding.Same(finding.Row()) {
 			t.Fatalf("a round does not name the finding it was bought for: %+v", round.Finding)
 		}
 	}
@@ -156,7 +156,7 @@ func TestAFindingIsItsKindAndItsNamesAndNotItsSentence(t *testing.T) {
 		"IntersectionObserver observe() Does nothing",
 		"IntersectionObserver disconnect() Does nothing")
 	shuffled.Gap = "an entirely different sentence about the same four checks"
-	if !first.Same(FindingOf(shuffled)) {
+	if !first.Row().Same(FindingOf(shuffled).Row()) {
 		t.Fatal("one finding written twice read as two")
 	}
 	wider := removedChecks(
@@ -165,7 +165,7 @@ func TestAFindingIsItsKindAndItsNamesAndNotItsSentence(t *testing.T) {
 		"IntersectionObserver takeRecords() Returns empty array",
 		"IntersectionObserver unobserve() Does nothing",
 		"IntersectionObserver root margin is parsed")
-	if first.Same(FindingOf(wider)) {
+	if first.Row().Same(FindingOf(wider).Row()) {
 		t.Fatal("a finding that grew a name read as the finding it grew from")
 	}
 	// A gate that passed, and one whose finding was weighed against the world
@@ -185,5 +185,110 @@ func TestAFindingIsItsKindAndItsNamesAndNotItsSentence(t *testing.T) {
 	// for one thing.
 	if (store.GrowthFinding{}).Same(store.GrowthFinding{}) {
 		t.Fatal("two rounds nobody named were read as one finding")
+	}
+}
+
+// unexercised is a gate raising the coverage finding over whichever subset of
+// the request it happened to weigh — which is what ofetch v4-flash s15 did four
+// times, with four different sets and one behaviour in every one of them.
+func unexercised(names ...string) store.DeliveryGate {
+	return store.DeliveryGate{Gap: "no check exercises these", Unexercised: names}
+}
+
+// THE FINDING IS EACH NAME AND NOT THE SET.
+//
+// ofetch s15's four gap rounds digested to `f3c9d09f`, `8b9bcc0a`, `84152215`
+// and `64a910f1` — four different values for one finding — because each gate
+// cited a rotating subset. `Count a circuit failure for body-read errors` stood
+// in all four, unclosed, and bought a round every time; the run ended on the
+// round cap with the behaviour exactly where it started.
+func TestARotatingCitationCannotBuyOneNameFourRounds(t *testing.T) {
+	root := inkWorkspace(t)
+	graph := inkJob(t, root)
+	node := jobNode(t, graph, "task-2")
+	const recurring = "Count a circuit failure for body-read/stream-consumption errors"
+
+	ask := func(round int, gate store.DeliveryGate) GrowVerdict {
+		t.Helper()
+		request := GrowRequest{
+			JobRoot: "task-2", Node: node, Lineage: "task-2", Reason: GrowGap,
+			Round: round, Workspace: root, Finding: FindingOf(gate),
+			Artifacts: scratchRun(t, root, "src/grid.ts"),
+		}
+		verdict, err := growJob(context.Background(), graph, nil, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict.Allow {
+			admitGrowth(graph, request, verdict, 1)
+		}
+		return verdict
+	}
+
+	// Two rounds, two different sets, one behaviour in both.
+	if verdict := ask(1, unexercised(recurring, "The behavior must work for $fetch")); !verdict.Allow {
+		t.Fatalf("the first round was refused: %+v", verdict)
+	}
+	if verdict := ask(2, unexercised(recurring, "Tests must run without network access")); !verdict.Allow {
+		t.Fatalf("the second round was refused: %+v", verdict)
+	}
+
+	// The recurring behaviour has now had its two rounds. A set holding only it
+	// buys nothing — which is the round s15 spent and the two after it.
+	third := ask(3, unexercised(recurring))
+	if third.Allow || third.Cause != CauseFindingStood {
+		t.Fatalf("a spent behaviour bought a third round: %+v", third)
+	}
+
+	// But a set that still holds a name nobody has worked on twice does buy one,
+	// and the spent name rides along rather than blocking the round.
+	fresh := ask(3, unexercised(recurring, "When circuit is open, reject immediately"))
+	if !fresh.Allow {
+		t.Fatalf("a fresh behaviour was refused because a spent one sat beside it: %+v", fresh)
+	}
+	if len(fresh.Spent) != 1 || fresh.Spent[0] != recurring {
+		t.Fatalf("spent = %v, want the behaviour that has had its rounds", fresh.Spent)
+	}
+
+	// The journal carries the rule's own working: what each round was bought
+	// for, and what could not buy it.
+	rounds, err := graph.JobGrowthRounds("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, round := range rounds {
+		if len(round.BoughtFor) == 0 {
+			t.Fatalf("a round does not name what it was bought for: %+v", round)
+		}
+	}
+	refused := rounds[2]
+	if refused.Allowed || len(refused.Spent) != 1 || refused.Spent[0] != recurring {
+		t.Fatalf("the refusal does not name the behaviour that stood: %+v", refused)
+	}
+
+	// And the person reads it as a count and the names.
+	standing, ok := GovernorStanding(graph, "task-2")
+	if !ok || !strings.Contains(standing, "1 behaviour stood through 2 rounds of repair") ||
+		!strings.Contains(standing, recurring) {
+		t.Fatalf("closing line = %q ok=%t", standing, ok)
+	}
+}
+
+// The names are the measurement's whole answer and not the sentence's bounded
+// sample: a gate that quotes two of eighteen behaviours has still raised
+// eighteen, and spending them off the quote would un-spend sixteen.
+func TestTheNamesComeFromTheMeasurementAndNotTheCitation(t *testing.T) {
+	gate := unexercised("one", "two", "three")
+	gate.Finding = "regression"
+	gate.Quotes = []string{"one"}
+	finding := FindingOf(gate)
+	if finding.Kind != "regression" || len(finding.Names) != 3 {
+		t.Fatalf("finding = %+v, want the measurement's word over its whole list", finding)
+	}
+	// A kind whose evidence has no list of its own keeps its citations, which
+	// are then the only names there are.
+	bare := store.DeliveryGate{Finding: "removed-public-name", Quotes: []string{"Igel.results_path"}}
+	if names := FindingOf(bare).Names; len(names) != 1 || names[0] != "Igel.results_path" {
+		t.Fatalf("names = %v, want the citations", names)
 	}
 }

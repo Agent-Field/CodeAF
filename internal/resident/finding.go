@@ -64,6 +64,49 @@ const (
 	FindingReview = "review"
 )
 
+// Finding is one delivery judgement as the thing a repair round is bought to
+// close: what KIND of finding it is, and every name it stands on.
+//
+// A FINDING'S IDENTITY IS A KIND AND ONE NAME. The set is not the finding; the
+// set is whichever subset of the world one gate happened to weigh, and it
+// rotates. ofetch v4-flash s15 raised four unexercised findings over one
+// request, and the four sets digested to `f3c9d09f`, `8b9bcc0a`, `84152215`,
+// `64a910f1` — four different values — while `Count a circuit failure for
+// body-read/stream-consumption errors` stood in every one of them and was never
+// closed. A rule that compares sets bought four rounds for one behaviour and
+// stopped on the round cap; a rule that compares names stops on the second.
+type Finding struct {
+	Kind  string
+	Names []string
+}
+
+// Empty reports that this judgement raised nothing a round could be bought for.
+func (f Finding) Empty() bool { return strings.TrimSpace(f.Kind) == "" }
+
+// Row is the comparable half, for the journal: the kind, and a digest of the
+// whole set. The names travel beside it on the row (store.JobGrowth.BoughtFor)
+// because they are what the per-name rule is actually made of.
+func (f Finding) Row() store.GrowthFinding {
+	if f.Empty() {
+		return store.GrowthFinding{}
+	}
+	return store.GrowthFinding{Kind: f.Kind, Names: findingDigest(f.Names)}
+}
+
+// spendable is the names this finding is bought name by name. A kind with no
+// names of its own — an unreadable suite — is its own single name, because
+// there is exactly one way for a project's checks to be unreadable and a round
+// bought for it is bought for that one thing.
+func (f Finding) spendable() []string {
+	if f.Empty() {
+		return nil
+	}
+	if len(f.Names) == 0 {
+		return []string{f.Kind}
+	}
+	return f.Names
+}
+
 // FindingOf reads one delivery judgement as the finding a repair round would be
 // bought to close.
 //
@@ -82,56 +125,66 @@ const (
 // overturned — the finding was weighed against the world and lost, and a lost
 // finding is not a standing one.
 //
-// The names are the structured list of whichever kind was read, lower-cased and
-// sorted before they are digested, because a list is the same list whatever
-// order a model happened to emit it in and whatever case it used. That is the
-// same normalisation RemainderDigest makes of a sentence, for the same reason,
-// and it is the whole of what is done to them: this is an EQUALITY test, so a
-// finding that cites one more name than it did is a different finding and buys
-// its own round.
-func FindingOf(gate store.DeliveryGate) store.GrowthFinding {
+// THE NAMES COME FROM THE STRUCTURED FIELDS AND NOT FROM THE CITATION SAMPLE.
+// A gate's citations are the spans one refusal was built on, bounded and
+// chosen for a sentence a person reads; the lists are the measurement's whole
+// answer. Reading the sample would spend and un-spend names according to which
+// twelve a paragraph happened to quote.
+func FindingOf(gate store.DeliveryGate) Finding {
 	if gate.Pass || gate.Overturned {
-		return store.GrowthFinding{}
+		return Finding{}
 	}
 	if measured := strings.TrimSpace(gate.Finding); measured != "" {
-		cited := gate.Cited()
-		return store.GrowthFinding{Kind: measured, Names: findingDigest(cited), Cited: namedFew(cited)}
+		return Finding{Kind: measured, Names: measuredNames(gate)}
 	}
-	kind, names := "", []string(nil)
 	switch {
 	case gate.Unreadable:
-		kind = FindingUnreadable
+		return Finding{Kind: FindingUnreadable}
 	case len(gate.OwnFailing) > 0:
-		kind, names = FindingOwnFailing, gate.OwnFailing
+		return Finding{Kind: FindingOwnFailing, Names: gate.OwnFailing}
 	case len(gate.Unexercised) > 0:
-		kind, names = FindingUnexercised, gate.Unexercised
+		return Finding{Kind: FindingUnexercised, Names: gate.Unexercised}
 	case len(gate.Unasserted) > 0:
-		kind, names = FindingUnasserted, gate.Unasserted
+		return Finding{Kind: FindingUnasserted, Names: gate.Unasserted}
 	case len(gate.Consumers) > 0:
-		kind, names = FindingConsumers, gate.Consumers
+		return Finding{Kind: FindingConsumers, Names: gate.Consumers}
 	case gate.Mechanical:
-		kind, names = FindingMechanical, gate.Cited()
+		return Finding{Kind: FindingMechanical, Names: gate.Cited()}
 	case len(gate.Cited()) > 0 || strings.TrimSpace(gate.Gap) != "":
-		kind, names = FindingReview, gate.Cited()
-	default:
-		// A refusal with neither a list nor a citation nor a sentence is a gate
-		// that recorded nothing anyone could aim a round at. It is left empty
-		// rather than given a kind, because an empty finding refuses nothing —
-		// the fail-safe direction for a rule that stops work.
-		return store.GrowthFinding{}
+		return Finding{Kind: FindingReview, Names: gate.Cited()}
 	}
-	return store.GrowthFinding{Kind: kind, Names: findingDigest(names), Cited: namedFew(names)}
+	// A refusal with neither a list nor a citation nor a sentence is a gate that
+	// recorded nothing anyone could aim a round at. It is left empty rather than
+	// given a kind, because an empty finding refuses nothing — the fail-safe
+	// direction for a rule that stops work.
+	return Finding{}
+}
+
+// measuredNames is the whole answer behind a measurement's own word, preferring
+// the list the measurement filled to the citations it was summarised into.
+// A kind whose evidence has no list of its own keeps its citations, which are
+// then the only names there are.
+func measuredNames(gate store.DeliveryGate) []string {
+	for _, list := range [][]string{gate.OwnFailing, gate.Unexercised, gate.Unasserted, gate.Consumers} {
+		if len(list) > 0 {
+			return list
+		}
+	}
+	return gate.Cited()
 }
 
 // findingDigest reduces a finding's names to something two rounds can be
 // compared by. A finding with no names — an unreadable suite — digests to
-// nothing, and its KIND is then the whole of its identity, which is correct:
-// there is only one way for a project's own checks to be unreadable.
+// nothing, and its KIND is then the whole of its identity.
+//
+// It is no longer what decides whether a round is bought — the names are — and
+// it stays because it is what an autopsy sorts by: two rows with one digest are
+// two gates that weighed the identical set, which is a fact worth being able to
+// see at a glance.
 func findingDigest(names []string) string {
 	cleaned := make([]string, 0, len(names))
 	for _, name := range names {
-		flat := strings.ToLower(strings.Join(strings.Fields(name), " "))
-		if flat != "" {
+		if flat := findingName(name); flat != "" {
 			cleaned = append(cleaned, flat)
 		}
 	}
@@ -143,21 +196,77 @@ func findingDigest(names []string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// FindingWords says a finding as a person reads it: the first name it cites and
-// how many more there are. It is what the run's closing line points at when it
-// says a finding stood, so a person told "this did not move" is told what.
-func FindingWords(finding store.GrowthFinding) string {
-	if len(finding.Cited) == 0 {
-		if finding.Kind == FindingUnreadable {
-			return "this project's own checks could not be read"
-		}
-		return "the same finding"
+// findingName is one name as it is compared: case dropped and runs of
+// whitespace collapsed, because those are the two ways one behaviour is written
+// twice without being a different behaviour, and nothing else is. Whole names
+// on both sides — this is an equality test, never a similarity one.
+func findingName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// FindingNoun is what this kind's names ARE, in a person's words. The closing
+// line counts them, and "4 findings" tells a reader nothing that "4 behaviours"
+// does not tell them better.
+func FindingNoun(kind string, count int) string {
+	noun := "finding"
+	switch kind {
+	case FindingUnexercised, FindingUnasserted:
+		noun = "behaviour"
+	case FindingOwnFailing, "own-checks-failing", "removed-checks", "regression":
+		noun = "check"
+	case "removed-public-name":
+		noun = "public name"
+	case FindingConsumers:
+		noun = "definition"
+	case FindingMechanical:
+		noun = "promised file"
 	}
-	words := strings.TrimSpace(finding.Cited[0])
-	if more := len(finding.Cited) - 1; more > 0 {
-		words += fmt.Sprintf(" and %d more", more)
+	if count == 1 {
+		return noun
+	}
+	return noun + "s"
+}
+
+// FindingWords says a bounded handful of names as a person reads them.
+func FindingWords(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	shown := names
+	more := 0
+	if len(shown) > findingsNamed {
+		more, shown = len(shown)-findingsNamed, shown[:findingsNamed]
+	}
+	trimmed := make([]string, 0, len(shown))
+	for _, name := range shown {
+		trimmed = append(trimmed, strings.TrimSpace(name))
+	}
+	words := strings.Join(trimmed, "; ")
+	if more > 0 {
+		words += fmt.Sprintf("; and %d more", more)
 	}
 	return words
+}
+
+// findingsNamed bounds how many names one closing line spells. Three is what a
+// sentence carries; the count in front of them is the finding.
+const findingsNamed = 3
+
+// findingNamesLimit bounds how many names one journal row keeps. A job with more
+// than this many behaviours open at once has a shape problem no journal can fix,
+// and a row that printed them all would be a row nobody reads — but it is well
+// above the widest checklist this system has been measured raising (18), because
+// TRUNCATING THIS LIST SILENTLY UN-SPENDS A NAME.
+const findingNamesLimit = 64
+
+func boundedNames(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	if len(names) > findingNamesLimit {
+		names = names[:findingNamesLimit]
+	}
+	return append([]string(nil), names...)
 }
 
 // ── the finding this round is being bought for ───────────────────────────────
@@ -172,7 +281,7 @@ type findingKey struct{}
 
 // WithFinding names the finding a growth about to be asked for is bought to
 // close. The empty finding removes it.
-func WithFinding(ctx context.Context, finding store.GrowthFinding) context.Context {
+func WithFinding(ctx context.Context, finding Finding) context.Context {
 	if ctx == nil {
 		return nil
 	}
@@ -180,35 +289,68 @@ func WithFinding(ctx context.Context, finding store.GrowthFinding) context.Conte
 }
 
 // FindingFrom is that finding, or the empty one where nobody said.
-func FindingFrom(ctx context.Context) store.GrowthFinding {
+func FindingFrom(ctx context.Context) Finding {
 	if ctx == nil {
-		return store.GrowthFinding{}
+		return Finding{}
 	}
-	finding, _ := ctx.Value(findingKey{}).(store.GrowthFinding)
+	finding, _ := ctx.Value(findingKey{}).(Finding)
 	return finding
 }
 
-// findingStood is how many rounds this job has ALREADY bought for exactly this
-// finding, counting back from the newest.
+// spentNames is every name of this finding that has already had its two rounds.
 //
-// Rounds nobody bought for a finding do not break the run — an overrun or a
-// resumption that happened between two repair rounds says nothing about whether
-// the finding moved — but a round bought for a DIFFERENT finding does: the job
-// changed what it was working on, and the count starts again from there.
-func findingStood(rounds []store.JobGrowthRound, finding store.GrowthFinding) int {
-	if finding.Empty() {
-		return 0
+// A NAME THAT STOOD THROUGH TWO ROUNDS BOUGHT FOR IT IS SPENT. "Stood" needs no
+// separate reading: the name is in the finding a gate is raising NOW, so every
+// earlier round bought for it ended with it still open. Two such rounds and it
+// may buy no more — the same floor every other rule here keeps, one name at a
+// time instead of one set at a time.
+//
+// Rounds of another kind are not counted. `unexercised: X` and `regression: X`
+// are two different things about one name, answered by different work, and a
+// round bought for one says nothing about the other.
+func spentNames(rounds []store.JobGrowthRound, finding Finding) []string {
+	names := finding.spendable()
+	if len(names) == 0 {
+		return nil
 	}
-	stood := 0
-	for index := len(rounds) - 1; index >= 0; index-- {
-		row := rounds[index]
-		if !row.Allowed || row.Finding.Empty() {
+	bought := make(map[string]int, len(names))
+	for _, round := range rounds {
+		if !round.Allowed || round.Finding.Kind != finding.Kind {
 			continue
 		}
-		if !row.Finding.Same(finding) {
-			break
+		for _, name := range round.BoughtFor {
+			if flat := findingName(name); flat != "" {
+				bought[flat]++
+			}
 		}
-		stood++
 	}
-	return stood
+	spent := make([]string, 0, len(names))
+	for _, name := range names {
+		if bought[findingName(name)] >= 2 {
+			spent = append(spent, name)
+		}
+	}
+	if len(spent) == 0 {
+		return nil
+	}
+	return spent
+}
+
+// unspentNames is the rest: the names that can still buy a round. A round is
+// bought only if its finding holds at least one of them.
+func unspentNames(finding Finding, spent []string) []string {
+	if len(spent) == 0 {
+		return finding.spendable()
+	}
+	gone := make(map[string]bool, len(spent))
+	for _, name := range spent {
+		gone[findingName(name)] = true
+	}
+	fresh := make([]string, 0, len(finding.spendable()))
+	for _, name := range finding.spendable() {
+		if !gone[findingName(name)] {
+			fresh = append(fresh, name)
+		}
+	}
+	return fresh
 }

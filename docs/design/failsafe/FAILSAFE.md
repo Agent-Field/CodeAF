@@ -1655,3 +1655,59 @@ in part, the preference wearing a citation. Three tests in
 `internal/revision/subject_test.go` went red the moment it existed. A floor that
 lets a run be settled by the opinion the contract just refused is not a floor; it
 is the contract deleted on the path where it matters most.
+
+
+## A twenty-fourth failure, 2026-08-29: a rotating citation, and a finding that was a set
+
+*ofetch `per-origin-circuit-breaker`, v4-flash s15, `bench/deepswe/results/`, 2026-08-29.*
+
+Four gap rounds, all `kind: unexercised`, and four different names digests:
+`f3c9d09f` → `8b9bcc0a` → `84152215` → `64a910f1`. The finding's own fixed point
+never fired and the run ended on `cause: rounds` with the behaviours where it
+found them.
+
+Nothing about those four gates was inconsistent. Each weighed whichever subset of
+the request's behaviours it happened to reach, and the subsets rotate: rounds two
+and four both cite `Count a circuit failure for body-read/stream-consumption
+errors` and still digest differently, because round two cited two behaviours and
+round four cited five. That behaviour is in **all four** sets. It was open at
+every gate, it bought a round every time, and no round ever closed it.
+
+The identity was one level too coarse. A set is not a finding; a set is one
+gate's sample of the world.
+
+> **A FINDING'S IDENTITY IS A KIND AND ONE NAME.** A round bought for a set is a
+> round bought for every name in it. A name still open at the next gate, through
+> two rounds bought for it, is SPENT and may buy no more. A round is bought only
+> while its set still holds a name that is not spent — so a spent behaviour rides
+> along beside a fresh one rather than blocking it, and a set of nothing but
+> spent names buys nothing.
+
+Rounds of another kind do not count against a name. `unexercised: X` and
+`regression: X` are two different things about one name, answered by different
+work.
+
+And the names come from the measurement's own lists —
+`DeliveryGate.Unexercised`, `Unasserted`, `OwnFailing`, `Consumers` — and never
+from the citation sample. Citations are the spans one refusal was built on,
+bounded and chosen for a sentence a person reads; s15's first round quoted twelve
+of a set the shortfall counted at eighteen. Spending names off the quote would
+un-spend six of them the moment a paragraph got shorter.
+
+The row carries the rule's own working, so an autopsy can replay it:
+`bought_for: [names]` and `spent: [names]`, per round. And the closing line
+counts and names:
+
+```
+partial — 1 behaviour stood through 2 rounds of repair: Count a circuit failure for body-read/stream-consumption errors
+```
+
+### What is deliberately not here
+
+No similarity between names. This is an equality test on whole names with case
+and runs of whitespace dropped, exactly as the remainder digest is on a sentence:
+a behaviour reworded by a model is a different behaviour to this rule, and the
+kind's other names are what stop the loop in that case. And no truncation of the
+spent ledger where it would matter — the row keeps up to 64 names, well above the
+widest checklist this system has been measured raising, because a list silently
+cut is a name silently un-spent.
