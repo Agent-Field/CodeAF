@@ -81,6 +81,28 @@ Three things follow from that, and they are all readable on the work's record:
   billed, not when the work finishes, so a worker interrupted halfway still
   shows its full spend on `/cost` and in the run's own total.
 
+## What actually stops a worker — it stopped early, what ran out
+
+Three things can stop a worker that is still going, and the record always says
+which one it was, with its own two numbers:
+
+- **The money.** Each piece of work is given an allowance, counted in what the
+  provider actually charges — fresh input, the answer, and re-read context at
+  the discount the provider gives it. This is the ordinary way a long piece of
+  work ends.
+- **Turns.** A backstop at 400 steps, which honest work never reaches.
+- **Going in circles.** A worker that re-runs the same command, or goes several
+  steps without writing anything or learning anything new, is told to wrap up
+  and then stopped. This is what catches a worker that is stuck rather than
+  slow.
+
+Two other numbers are watched and **neither one stops anything**: how many
+tokens have gone over the wire in total, and the same figure undiscounted. They
+climb just as fast for a worker doing hard work as for one going in circles — a
+long conversation re-sends everything it has said so far, every step — so they
+are used to tell a worker to start wrapping up, and never to end it. They used
+to end it, and the work that was thrown away was real.
+
 ## When work stops growing itself — it gave up early, why did it stop trying
 
 Work that runs out mid-way is re-planned rather than abandoned: what is left is
