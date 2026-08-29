@@ -160,6 +160,14 @@ var runners = []runner{{
 	declaredBy:  []string{".mocharc.json", ".mocharc.yml", ".mocharc.yaml", ".mocharc.js", ".mocharc.cjs"},
 	dependency:  "mocha", invocation: "mocha",
 }, {
+	// ava speaks TAP for the same reason mocha is asked to: its own default
+	// output names only what failed, and TAP is already in the shared
+	// vocabulary. One row, no parser.
+	name: "ava", binary: "ava", read: FormatPlain,
+	machineArgs: []string{"--tap"},
+	declaredBy:  []string{"ava.config.js", "ava.config.cjs", "ava.config.mjs"},
+	dependency:  "ava", invocation: "ava",
+}, {
 	// pytest's quiet default prints one dot per check and no names at all, and
 	// its normal default names only the red ones. `-rA` asks for the short
 	// summary over EVERY check, which is exactly the roster, spelled in the
@@ -201,7 +209,17 @@ var (
 	envAssignments = regexp.MustCompile(`^(?:[A-Z_][A-Z0-9_]*=(?:'[^']*'|"[^"]*"|[^[:space:]]*)[[:space:]]+)+`)
 	// The runner-launcher prefixes a script body may already carry. A segment
 	// that has one needs none added.
-	execPrefixes = regexp.MustCompile(`^(?:npx|pnpm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+exec|yarn[[:space:]]+dlx|npm[[:space:]]+exec|bun[[:space:]]+x)[[:space:]]+(?:--[[:space:]]+)?`)
+	//
+	// A launcher is a program whose whole job is to run ANOTHER program inside
+	// the project's own environment, and every ecosystem has one: npx and the
+	// package managers' exec verbs in JavaScript, poetry/pdm/hatch/uv/pipenv
+	// `run` in Python. They are stripped to FIND the runner and kept in the
+	// command that is RUN, because the runner usually exists only inside the
+	// environment the launcher opens. textual's own Makefile is `poetry run
+	// pytest tests/ ...`, and a reader that could not see past `poetry` did not
+	// find pytest at all — it fell through to a whole-repository invocation
+	// that collected 3,422 tests and was killed at its ceiling.
+	execPrefixes = regexp.MustCompile(`^(?:npx|pnpm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+exec|yarn[[:space:]]+dlx|npm[[:space:]]+exec|bun[[:space:]]+x|poetry[[:space:]]+run|pdm[[:space:]]+run|hatch[[:space:]]+run|uv[[:space:]]+run|pipenv[[:space:]]+run|rye[[:space:]]+run)[[:space:]]+(?:--[[:space:]]+)?`)
 	// `<manager> run <script>` and `<manager> test`, which is how discovery.go
 	// spells a package script and therefore what has to be expanded back into a
 	// body before a runner can be found in it.
@@ -218,58 +236,15 @@ var (
 // return.
 const scriptExpansions = 4
 
-// ReadingStrategy decides how this project's checks are read, from what this
-// project itself declares.
-//
-// ok is false exactly when RunTests would have had nothing to run: no test
-// entrypoint at all. Every other outcome is a strategy, because the project's
-// own declared command run as plain text IS a strategy — the one this program
-// used for every reading it ever took — and naming it as such is what lets an
-// autopsy see which one was chosen.
+// ReadingStrategy is the first rung of [ReadingStrategies]: the most faithful
+// way this project's checks can be read. It is what a caller taking exactly one
+// reading uses.
 func ReadingStrategy(workspace string, plan Plan) (Strategy, bool) {
-	var entrypoint Entrypoint
-	found := false
-	for _, candidate := range plan.Entrypoints {
-		if candidate.Kind == KindTest {
-			entrypoint, found = candidate, true
-			break
-		}
-	}
-	if !found {
+	ladder, ok := ReadingStrategies(workspace, plan)
+	if !ok {
 		return Strategy{}, false
 	}
-	plain := Strategy{
-		Command: entrypoint.Command, Workdir: entrypoint.Workdir,
-		Read: FormatPlain, Source: entrypoint.Source, Declared: entrypoint.Command,
-	}
-	root := filepath.Join(workspace, entrypoint.Workdir)
-	// First door: the body of the project's OWN test script. This is the door
-	// that matters, because a script that lints before it tests is the failure
-	// this file was written for, and the runner invocation inside it carries
-	// the project's own flags — its config path, its environment, its scope.
-	body, source := expandScript(root, entrypoint.Command)
-	if segment, chosen, ok := runnerSegment(body); ok {
-		strategy := plain
-		strategy.Runner = chosen.name
-		strategy.Read = chosen.read
-		strategy.Command = machineReadable(root, segment, chosen)
-		if source != "" {
-			strategy.Source = source
-		}
-		return strategy, true
-	}
-	// Second door: what the project declares it is built out of. A repository
-	// that depends on a runner and configures it is a repository checked by
-	// that runner, whatever its lifecycle script happens to shell out to.
-	if chosen, source, ok := declaredRunner(root); ok {
-		strategy := plain
-		strategy.Runner = chosen.name
-		strategy.Read = chosen.read
-		strategy.Command = machineReadable(root, chosen.invocation, chosen)
-		strategy.Source = source
-		return strategy, true
-	}
-	return plain, true
+	return ladder[0], true
 }
 
 // expandScript follows a named target back to the commands it actually runs,
@@ -348,7 +323,7 @@ func recipeBody(root, tool, target string) (body, file string, ok bool) {
 			if len(recipe) == 0 {
 				return "", "", false
 			}
-			return strings.Join(recipe, " ; "), name, true
+			return expandVariables(strings.Join(recipe, " ; "), lines), name, true
 		}
 	}
 	return "", "", false
@@ -356,6 +331,127 @@ func recipeBody(root, tool, target string) (body, file string, ok bool) {
 
 // recipeHeader is a target's own line: a name, a colon, and its prerequisites.
 var recipeHeader = regexp.MustCompile(`^([A-Za-z0-9_.-]+)[[:space:]]*:(?:[^=]|$)`)
+
+var (
+	// A file-scope assignment: `run := poetry run`, `PYTEST = python -m pytest`.
+	variableAssignment = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*[:?+]?=[[:space:]]*(.*)$`)
+	// A reference to one, in either spelling a recipe may use.
+	variableReference = regexp.MustCompile(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
+)
+
+// expandVariables substitutes a recipe's own variables from the file it lives
+// in, so the command a target actually runs is visible.
+//
+// It is the file's OWN table and nothing else — no environment, no defaults, no
+// guesses. A reference with no assignment behind it is dropped rather than left
+// standing, because a literal `$(ARGS)` in the middle of a command line is not
+// something a shell can be handed, and an unset make variable expands to nothing
+// there too. That is the same reading make itself gives it.
+//
+// This is what makes a recipe legible at all. textual declares
+// `run := poetry run` and then `$(run) pytest tests/ -n 16 --dist=loadgroup
+// $(ARGS)`, and a reader that took `$(run)` for the command name found no runner
+// in the recipe, kept none of `tests/`, and ran the whole repository instead.
+func expandVariables(body string, lines []string) string {
+	table := map[string]string{}
+	for _, line := range lines {
+		if line == "" || line[0] == '\t' || line[0] == ' ' || line[0] == '#' {
+			continue
+		}
+		if match := variableAssignment.FindStringSubmatch(strings.TrimSpace(line)); match != nil {
+			table[match[1]] = strings.TrimSpace(match[2])
+		}
+	}
+	// Bounded for the reason scriptExpansions is: a variable that names itself
+	// would otherwise never settle.
+	for hop := 0; hop < scriptExpansions; hop++ {
+		expanded := variableReference.ReplaceAllStringFunc(body, func(reference string) string {
+			name := variableReference.FindStringSubmatch(reference)[1]
+			return table[name]
+		})
+		if expanded == body {
+			break
+		}
+		body = expanded
+	}
+	return strings.Join(strings.Fields(body), " ")
+}
+
+// ReadingStrategies is the ladder of ways this project's checks can be read,
+// most specific first.
+//
+// There is a ladder because the most specific rung can fail in a way that says
+// nothing about the suite. textual's own `make test` is `poetry run pytest
+// tests/ -n 16 --dist=loadgroup` and the task image has no pytest-xdist, so that
+// invocation exits in eight seconds on `unrecognized arguments: -n` — a reading
+// that names nothing, of a suite that was never asked to run. A reader with one
+// rung takes that for the whole answer; a reader with a ladder drops to the
+// runner's own invocation and reads the suite.
+//
+// The rungs, and why they are in this order:
+//
+//  1. The runner as the PROJECT'S OWN script or recipe invokes it, with the
+//     project's flags kept. This is the most faithful reading there is, and it
+//     is the only rung that knows the project scoped its suite to `tests/`.
+//  2. The runner as it invokes itself, taken from what the project declares it
+//     depends on and configures. It drops the project's flags, which is the
+//     point: a flag that needs a plugin the environment lacks is what put us
+//     here.
+//  3. The project's declared entrypoint, run as it stands and read as plain
+//     text. This is what every reading in this program was before strategies
+//     existed, and it is the floor rather than an absence of one.
+//
+// Identical rungs are collapsed, so a project whose script already spells the
+// runner plainly produces one strategy and one reading.
+//
+// ok is false exactly when RunTests would have had nothing to run.
+func ReadingStrategies(workspace string, plan Plan) ([]Strategy, bool) {
+	var entrypoint Entrypoint
+	found := false
+	for _, candidate := range plan.Entrypoints {
+		if candidate.Kind == KindTest {
+			entrypoint, found = candidate, true
+			break
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	plain := Strategy{
+		Command: entrypoint.Command, Workdir: entrypoint.Workdir,
+		Read: FormatPlain, Source: entrypoint.Source, Declared: entrypoint.Command,
+	}
+	root := filepath.Join(workspace, entrypoint.Workdir)
+	var ladder []Strategy
+	body, source := expandScript(root, entrypoint.Command)
+	if segment, chosen, ok := runnerSegment(body); ok {
+		rung := plain
+		rung.Runner, rung.Read = chosen.name, chosen.read
+		rung.Command = machineReadable(root, segment, chosen)
+		if source != "" {
+			rung.Source = source
+		}
+		ladder = append(ladder, rung)
+	}
+	if chosen, source, ok := declaredRunner(root); ok {
+		rung := plain
+		rung.Runner, rung.Read = chosen.name, chosen.read
+		rung.Command = machineReadable(root, chosen.invocation, chosen)
+		rung.Source = source
+		ladder = append(ladder, rung)
+	}
+	ladder = append(ladder, plain)
+	seen := map[string]bool{}
+	distinct := make([]Strategy, 0, len(ladder))
+	for _, rung := range ladder {
+		if rung.Empty() || seen[rung.Command] {
+			continue
+		}
+		seen[rung.Command] = true
+		distinct = append(distinct, rung)
+	}
+	return distinct, len(distinct) > 0
+}
 
 // packageScripts is package.json's own scripts map, or nothing.
 func packageScripts(root string) (map[string]string, bool) {

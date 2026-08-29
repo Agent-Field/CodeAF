@@ -70,7 +70,22 @@ func ReadingBudget(wall time.Duration) (time.Duration, bool) {
 type Reading struct {
 	Plan   Plan          `json:"plan,omitzero"`
 	Budget time.Duration `json:"budget,omitempty"`
-	Before Result        `json:"before,omitzero"`
+	// Strategy is the rung that was reached — the command that ran, or the one
+	// that would have. It is set even when nothing was read, because "what
+	// would have run" is half of why nothing did.
+	Strategy Strategy `json:"strategy,omitzero"`
+	// Unread is why there is no reading, in one sentence, and it is the whole
+	// repair of the silence this type used to keep. A zero Reading has four
+	// causes — a project that declares no verification, a wall too short to
+	// afford one, a shell the preamble cannot be trusted in, and a command
+	// killed at its ceiling — and downstream they mean different things and
+	// cost different amounts. textual's s6 leaf spent five and a half minutes
+	// on the fourth of them and left no trace of having done so.
+	//
+	// It is empty when Taken is true. NOBODY LOOKED IS A FACT, AND A FACT
+	// ABOUT THE RUN REACHES THE RECORD (FAILSAFE.md clause 4).
+	Unread string `json:"unread,omitempty"`
+	Before Result `json:"before,omitzero"`
 	// After is the second reading, of the tree as it was handed over. It is
 	// separate from Before rather than replacing it because the whole value of
 	// a photograph is the subtraction, and a run holding one reading cannot

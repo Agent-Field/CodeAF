@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
@@ -222,5 +223,98 @@ func TestARepairRoundIsMeasuredAgainstTheTreeTheJobStartedWith(t *testing.T) {
 	if len(outcome.Regressed) != 1 || outcome.Regressed[0] != "tests/test_igel.py::test_results_path" {
 		t.Errorf("Regressed = %#v; the check the job broke two rounds ago is not "+
 			"named against the tree the job started with", outcome.Regressed)
+	}
+}
+
+// A READING THAT COULD NOT BE TAKEN IS JOURNALED, AND THE JOB PAYS FOR FINDING
+// THAT OUT ONCE.
+//
+// textual s6 is the run this is about. The bare leaf spent five minutes and
+// twenty-seven seconds of its wall on a reading that was killed at its ceiling,
+// then made its first model call, and the finished store held no row saying any
+// of it had happened — indistinguishable, from outside, from a project that
+// declares no verification at all. Every way of having no reading now writes its
+// own sentence, and a continuation of the same job inherits that answer rather
+// than spending the wall again to reach it.
+func TestAReadingThatCouldNotBeTakenIsJournaledAndNotRepeated(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+
+	stage := stageSuite(t)
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "task-2", Brief: "expose the follow state", Stage: 1,
+	}}}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "s1", Intent: "expose the follow state",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job := exec.Task{Goal: "expose the follow state", StoreNodeID: "task-2"}
+
+	// A minute of wall affords 7.5 seconds a reading, which is under the floor,
+	// so nothing is run — and that refusal is the news.
+	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", time.Minute).WithStore(graph)
+	reading, inherited := worker.photographBefore(context.Background(), job)
+	if reading.Taken || inherited {
+		t.Fatalf("a sixty-second leaf took a reading: %#v", reading)
+	}
+	if got := stage.readings(t); got != 0 {
+		t.Errorf("the suite ran %d time(s) for a leaf that could not afford it", got)
+	}
+	rows, err := graph.VerificationsFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("a reading that could not be taken was journaled as %d rows, want 1", len(rows))
+	}
+	if rows[0].Read {
+		t.Error("a reading nobody took was journaled as one somebody did")
+	}
+	if !strings.Contains(rows[0].Why, "cannot afford") {
+		t.Errorf("the row does not say why nothing was read: %+v", rows[0])
+	}
+	if rows[0].Command == "" {
+		t.Error("the row does not name the command that was not run, so an autopsy " +
+			"cannot tell where the reader was looking")
+	}
+
+	// And the outcome carries the reason too, so the gate is handed a reason
+	// rather than a void.
+	outcome := &exec.Outcome{}
+	worker.photographAfter(context.Background(), job, reading, true, inherited, outcome)
+	if outcome.Verification.Taken || outcome.Verification.Unread == "" {
+		t.Errorf("the outcome does not say why nothing was measured: %#v", outcome.Verification)
+	}
+	if outcome.Regressed != nil {
+		t.Errorf("Regressed = %#v, want nil — nobody looked, so there is no claim",
+			outcome.Regressed)
+	}
+
+	// The continuation inherits the answer instead of spending the wall to
+	// reach it again.
+	space, err := exec.NewWorkspace(stage.workspace.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := New(space, "model", "key", "http://127.0.0.1:1", 90*time.Minute).WithStore(graph)
+	carried, inherited := second.photographBefore(context.Background(), job)
+	if !inherited {
+		t.Fatal("a continuation of the same job re-derived a refusal that cannot have " +
+			"changed, and paid for it again")
+	}
+	if carried.Taken || carried.Unread == "" {
+		t.Errorf("the inherited answer lost its reason: %#v", carried)
+	}
+	if got := stage.readings(t); got != 0 {
+		t.Errorf("the continuation ran the suite %d time(s) for an answer it had", got)
+	}
+	rows, _ = graph.VerificationsFor("task-2")
+	if len(rows) != 2 || !rows[1].Inherited {
+		t.Errorf("the continuation's own row is missing or not marked inherited: %+v", rows)
 	}
 }

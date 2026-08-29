@@ -42,11 +42,19 @@ type VerificationReading struct {
 	// the runner underneath it. Declared keeps the project's own spelling.
 	Command  string `json:"command"`
 	Declared string `json:"declared,omitempty"`
-	// Runner and Read are the strategy: which program was asked, and how its
+	// Read says a reading EXISTS. False is the row this type was extended for:
+	// a reading that was not taken is still an event, because "nobody looked"
+	// and "this project declares no verification" and "the command was killed
+	// at its ceiling" are three different facts that cost three different
+	// amounts, and a run that journals none of them is a run whose autopsy
+	// cannot tell them apart. Why says which, in one sentence.
+	Read bool   `json:"read"`
+	Why  string `json:"why,omitempty"`
+	// Runner and Format are the strategy: which program was asked, and how its
 	// answer was read. ReadAsPlain says the strategy's own reader found nothing
 	// and the shared vocabulary read the same bytes instead.
 	Runner      string `json:"runner,omitempty"`
-	Read        string `json:"read,omitempty"`
+	Format      string `json:"format,omitempty"`
 	Source      string `json:"source,omitempty"`
 	ReadAsPlain bool   `json:"read_as_plain,omitempty"`
 	// Exit is the command's own status, and -1 is a command that never got far
@@ -74,11 +82,14 @@ type VerificationReading struct {
 // eight hundred.
 const VerificationSample = 8
 
-// RecordVerification journals one reading against a node.
+// RecordVerification journals one reading, or one reading that could not be
+// taken, against a node.
 //
-// A reading with no command is not journaled: it is the zero value, which says
-// nobody looked, and a row for it would be one every reader has to learn to
-// ignore. The absence of the event is that fact, said by not saying it.
+// A ROW THAT SAYS NOTHING IS THE ONLY ONE NOT WRITTEN. A reading naming neither
+// a command nor a reason is the zero value — nobody called this — and a row for
+// it would be one every reader has to learn to ignore. Everything else is
+// written, including every refusal: the absence of the event used to be the only
+// spelling of four different facts.
 func (s *Store) RecordVerification(nodeID string, reading VerificationReading) error {
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" {
@@ -86,7 +97,8 @@ func (s *Store) RecordVerification(nodeID string, reading VerificationReading) e
 	}
 	reading.Command = bounded(strings.TrimSpace(reading.Command), MaxDigestBytes)
 	reading.Declared = bounded(strings.TrimSpace(reading.Declared), MaxDigestBytes)
-	if reading.Command == "" {
+	reading.Why = bounded(strings.TrimSpace(reading.Why), MaxDigestBytes)
+	if reading.Command == "" && reading.Why == "" {
 		return nil
 	}
 	if len(reading.Sample) > VerificationSample {
