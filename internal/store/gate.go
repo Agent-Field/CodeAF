@@ -43,6 +43,20 @@ type DeliveryGate struct {
 	Refused      string   `json:"refused,omitempty"`
 	Mechanical   bool     `json:"mechanical,omitempty"`
 
+	// Finding names WHICH MEASUREMENT raised this gap — `regression`,
+	// `own-checks-failing`, `removed-public-name`, `removed-checks` — and
+	// Quotes above holds the names it cited. Empty where a model judge read the
+	// request rather than the world.
+	//
+	// The pair is what makes a finding comparable ACROSS ROUNDS, and until it
+	// existed the only identity a finding had was its sentence — with a bounded
+	// list of names glued into the middle, so one finding raised over two
+	// different tails read as two. happy-dom's v4-flash s13 raised the identical
+	// removed-checks finding on four consecutive rounds, each round bought a
+	// repair, no repair could close it, and no reader of this event could say
+	// the four were one thing (2026-08-29, bench/deepswe).
+	Finding string `json:"finding,omitempty"`
+
 	// Unclosed says the gap STANDS: the repair that would have closed it was
 	// never bought, so nothing ran and nothing about the shortfall changed.
 	//

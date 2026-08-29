@@ -1622,7 +1622,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// And the checks the run wrote and did not get passing,
 					// which is a different state from a broken repository and
 					// was spelled the same way until it had a field.
-					OwnFailing: gate.OwnFailing}
+					OwnFailing: gate.OwnFailing,
+					// And which measurement raised it, so a reader comparing
+					// this round against the last one compares a kind and a
+					// list of names rather than two sentences.
+					Finding: gate.Finding}
 				if gate.Pass {
 					outcome.Verdict = revision.GateVerdict(gate)
 					// Quorum: two cheap validators independently verify the pass.

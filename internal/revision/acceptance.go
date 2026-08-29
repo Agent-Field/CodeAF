@@ -878,7 +878,7 @@ func WeakenedChecks(removed, vanished []string) (judgment Judgment, ok bool) {
 		"whatever it was holding is now held by nothing."
 	return Judgment{
 		Pass: false, Gaps: gap, Quote: joinCitations(named),
-		Citations: named, Sourced: true, Checked: true,
+		Citations: named, Sourced: true, Checked: true, Finding: FindingRemovedCheck,
 	}, true
 }
 

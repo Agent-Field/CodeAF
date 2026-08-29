@@ -351,8 +351,9 @@ func (r Reading) Declared() bool {
 	return false
 }
 
-// Vanished names the checks the suite reported before this work and did not
-// report after it — deleted, renamed, or skipped.
+// Vanished names the checks the suite reported before this work, did not report
+// after it, and whose SUBJECT no check after it covers — deleted, or skipped,
+// and never merely rewritten.
 //
 // It asks the question only when BOTH rosters named something. Two empty
 // rosters subtract to nothing, which is arithmetic and not an acquittal, and a
@@ -360,13 +361,38 @@ func (r Reading) Declared() bool {
 // that lost all of them — reading either as a disappearance would convict every
 // project whose runner is quiet on success. Same fail-safe direction as
 // NewFailures, for the same reason.
+//
+// A NAME IS NOT A SUBJECT. The subtraction alone reports a rewritten check as a
+// deleted one, and a run's whole job is often to rewrite checks: happy-dom's
+// v4-flash s13 replaced four stubs with real ones under the identical describe
+// path, and every repair round it bought re-raised the same removal finding
+// against a tree the grader scored 9 of 9. See SplitReplaced and Replaced.
 func (r Reading) Vanished() []string {
+	removed, _ := r.vanishedSplit()
+	return removed
+}
+
+// Replaced names the checks that stopped being reported and the checks that
+// took their subject over, before to after.
+//
+// It is a record and never a finding: nothing follows from a rewritten check
+// except that it was not a removed one. It is carried so an autopsy of a run
+// that raised no removal finding can see WHY — a mechanism that silently
+// declines to convict is indistinguishable from one that was never reached
+// (FAILSAFE.md clause 4).
+func (r Reading) Replaced() []Replacement {
+	_, replaced := r.vanishedSplit()
+	return replaced
+}
+
+// vanishedSplit is the one subtraction both readings above are halves of.
+func (r Reading) vanishedSplit() (removed []string, replaced []Replacement) {
 	if !r.comparable() {
-		return nil
+		return nil, nil
 	}
 	before, after := r.Before.Reported, r.After.Reported
 	if len(before) == 0 || len(after) == 0 {
-		return nil
+		return nil, nil
 	}
-	return Subtract(before, after)
+	return SplitReplaced(Subtract(before, after), after)
 }
