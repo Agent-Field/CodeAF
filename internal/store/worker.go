@@ -81,3 +81,79 @@ func applyNodeWorkerView(tx *sql.Tx, id, subharness string, seq int64) error {
 	return replayUpdate(tx, id, `UPDATE nodes SET subharness = ?, updated_seq = ? WHERE id = ?`,
 		subharness, seq, id)
 }
+
+// nodeRanPayload is the durable record of who actually did the work: the worker
+// the dispatch path built, the one it replaced when a second attempt changed
+// hands, and why the change happened.
+type nodeRanPayload struct {
+	Subharness string `json:"subharness"`
+	Previous   string `json:"previous,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// RecordNodeRan journals the worker that is running this node, and returns
+// whether anything changed.
+//
+// It is the answer to a question [SetNodeSubharness] above cannot answer. That
+// one records an ASSIGNMENT — what the node is to be run on next — and it is
+// legitimately empty for the great majority of nodes, because the compiler
+// routes almost nothing and the generalist is what you get when nobody chose.
+// This one records a FACT ABOUT THE RUN: the dispatch path resolved that empty
+// assignment to an executor, and the executor has a name. An autopsy that can
+// only read the assignment cannot tell an unrouted node from a node nobody
+// ran, and cannot tell a node that got the specialist it was promised from one
+// whose build did not have that specialist and quietly ran the generalist
+// wearing its name.
+//
+// It refuses nothing. A node may be recorded before it settles and once more
+// per hand-over, and an unregistered name is stored as faithfully as a
+// registered one — the store carries names and holds no opinion about which
+// ones exist, exactly as it does one function up.
+func (s *Store) RecordNodeRan(id, subharness, reason string) (bool, error) {
+	id = strings.TrimSpace(id)
+	subharness = strings.TrimSpace(subharness)
+	if subharness == "" {
+		// A blank is the one thing this column may never hold: it is the
+		// absence the whole seam exists to remove, and writing it would put the
+		// unreadable value back under a name that promises it is readable.
+		return false, fmt.Errorf("record node worker: %w: a node that ran ran on something", ErrInvalid)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return false, fmt.Errorf("record node worker: %w", err)
+	}
+	defer tx.Rollback()
+	var current string
+	if err := tx.QueryRow(`SELECT ran FROM nodes WHERE id = ? AND folded = 0`, id).
+		Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("record node worker: %w: %q", ErrNotFound, id)
+		}
+		return false, fmt.Errorf("record node worker: %w", err)
+	}
+	if current == subharness {
+		// The same worker rebuilt — a released fold, a repair round on the
+		// executor already in hand — is not a hand-over, and a journal that
+		// recorded it as one would read as a run that changed workers twice.
+		return false, nil
+	}
+	payload := nodeRanPayload{
+		Subharness: subharness, Previous: current, Reason: strings.TrimSpace(reason),
+	}
+	seq, _, err := appendEvent(tx, id, EventNodeRan, payload)
+	if err != nil {
+		return false, fmt.Errorf("record node worker: %w", err)
+	}
+	if err := applyNodeRanView(tx, id, subharness, seq); err != nil {
+		return false, fmt.Errorf("record node worker: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("record node worker: %w", err)
+	}
+	return true, nil
+}
+
+func applyNodeRanView(tx *sql.Tx, id, subharness string, seq int64) error {
+	return replayUpdate(tx, id, `UPDATE nodes SET ran = ?, updated_seq = ? WHERE id = ?`,
+		subharness, seq, id)
+}
