@@ -1,0 +1,126 @@
+[
+ {
+  "task": "happy-dom",
+  "measured_exit": 2,
+  "f2p": "13/14",
+  "gates": [
+   {
+    "node": "task-2",
+    "pass": false,
+    "gap": "The deliverable states 'All 38 tests pass' but the project's own verification (`npm run test`) exited 1 and named 0 checks — the tests did not pass. The working method required the worker to verify the implementation compiles and existing tests pass before committing, and evidence of this is stated in the final message. The claim that tests pass is unsupported by the evidence of what actually ran.",
+    "extended": true,
+    "round": 1
+   },
+   {
+    "node": "task-2-x1",
+    "pass": false,
+    "gap": "The deliverable is a plan for what to do next, not the finished work itself. The request asked for an implementation of IntersectionObserver in Happy DOM with all required behaviors, and the deliverable contains only a message about checking whether vitest works — no implementation, no test results, no commit.",
+    "extended": true,
+    "round": 2
+   },
+   {
+    "node": "task-2-x2",
+    "pass": false,
+    "gap": "The deliverable claims the implementation is complete and verified with all 38 tests passing, but the run record shows the test suite was run and the deliverable does not report what came back — whether tests passed or failed. The request asked for a real implementation with specific behaviors; the deliverable merely asserts the work is done without providing the actual test results, verdict, or evidence that the implementation works. The missing element is the test outcome itself — the numbers, pass/fail status, or any concrete result from running the tests.",
+    "round": 3,
+    "refused": "the same words were already worked on once"
+   }
+  ]
+ },
+ {
+  "task": "igel",
+  "measured_exit": 2,
+  "f2p": "23/24",
+  "gates": [
+   {
+    "node": "task-2",
+    "pass": false,
+    "gap": "The deliverable describes what was changed and confirms that tests pass, but the request asked for the code change itself — the branch, the files changed, and the committed work — to be the deliverable. The fenced text is a summary of what was done, not the actual code changes or a pointer to a committed branch that the person can inspect. The request said 'Please work on this in a new branch from main and commit everything when you are done' and the working method states 'The code change is the deliverable; the worker writes it out in their own final message, naming the branch and the files changed.' The deliverable names the branch and files but does not contain the code itself, and the record shows no branch was created or committed — `git status` was run multiple times and `git diff master --stat` was attempted, but no `git checkout -b` or `git commit` appears in the run tail. The element of the request that is absent is the actual code change on a committed branch.",
+    "extended": true,
+    "round": 1
+   },
+   {
+    "node": "task-2-x1",
+    "pass": false,
+    "gap": "The request asked for the branch, files changed, and committed work to be the deliverable — the actual code changes on disk. The fenced text is a summary describing what was done, not the code itself. The record shows that the named files (feature_schema.joblib, description.json) were not produced, and the run's tail shows only git inspection commands, not the creation of the branch or committing of files. The deliverable reports on the work rather than carrying it — the branch, the commit, and the files are the substance the request asked for, and they are absent from the fenced text.",
+    "extended": true,
+    "round": 2
+   },
+   {
+    "node": "task-2-x2",
+    "pass": false,
+    "gap": "The deliverable reports that tests were run and pass, but the run record shows no pytest output — the last command ran pytest but its output is not shown (only the command and a timeout flag). More critically, the deliverable states the branch exists at commit 8a3df75 with all four files committed, but the run record shows git status --short produced no output (meaning no uncommitted changes), yet the deliverable itself is a textual report rather than the committed branch itself. The request asked for the work to be committed on a branch — the deliverable is a description of that state, not the state itself. The request asked for the branch to exist with the committed files; the deliverable reports that it does, but the deliverable is the message, not the branch. The gap is that the deliverable describes the committed branch instead of being it — the person asked for the branch to be created/committed, and what they receive is a report that it was done.",
+    "round": 3,
+    "refused": "the same words were already worked on once"
+   }
+  ]
+ },
+ {
+  "task": "ink",
+  "measured_exit": 0,
+  "f2p": "7/25",
+  "gates": [
+   {
+    "node": "task-2",
+    "pass": false,
+    "gap": "The deliverable is a listing of files, not the answer itself. The request asked for grid display mode to be implemented — the code changes, the branch, and the confirmation that it compiles and works. The fenced text contains only a file listing and a line 'Now let me rebuild and test:' with no actual code changes, no branch name, no confirmation of compilation or testing results. The missing element is the substance of the work: the implemented code, the branch created, and the confirmation that it compiles and the new grid properties parse and apply correctly.",
+    "polish_closed": true
+   }
+  ]
+ },
+ {
+  "task": "ofetch",
+  "measured_exit": 0,
+  "f2p": "44/47",
+  "gates": [
+   {
+    "node": "task-2",
+    "pass": false,
+    "gap": "The request asked for tests that pass. The project's own verification (`pnpm test`) exited 1 and named 0 checks — tests did not pass. The deliverable claims 'all tests pass' but the record shows the test suite failed.",
+    "extended": true,
+    "round": 1
+   },
+   {
+    "node": "task-2-x1",
+    "pass": false,
+    "gap": "The deliverable reports that tests pass and the implementation is complete, but it does not contain the test output, the verdict on whether tests pass, or any evidence that the work was exercised. The request asked for an implementation to be built and committed; the deliverable is a report about the work rather than the work itself. The missing element is the test results and the confirmation that pnpm test exits 0.",
+    "polish_closed": true
+   }
+  ]
+ },
+ {
+  "task": "textual",
+  "measured_exit": 0,
+  "f2p": "1/20",
+  "gates": [
+   {
+    "node": "task-2",
+    "pass": false,
+    "gap": "The deliverable describes the work but does not contain the actual code changes — the fenced text is a summary of what was done, not the deliverable itself. The request asked for changes to Log and RichLog (exposing is_following_end, follow_end, FollowChanged, viewport stability, expanded rendering) and a new example file. The fenced text reports on those changes rather than carrying them: it says what was added, but the actual code — the new methods, the modified write methods, the example file contents — is absent from the deliverable. The person who asked would receive a description of the work, not the work itself.",
+    "extended": true,
+    "round": 1
+   },
+   {
+    "node": "task-2-x1",
+    "pass": false,
+    "gap": "The deliverable describes the work but does not contain the actual code changes — the fenced text is a summary of what was done, not the code itself. The request asked for specific code changes to _log.py, _rich_log.py, and examples/rich_log_follow_state.py, and the deliverable provides only a description of those changes rather than the actual modified files.",
+    "extended": true,
+    "round": 2
+   },
+   {
+    "node": "task-2-x2",
+    "pass": false,
+    "gap": "The deliverable reports on the work rather than carrying it. The request asked for changes to RichLog.write and for the file examples/rich_log_follow_state.py to be added. The deliverable's fenced text contains only a checklist of what was done, not the actual code or the file itself. The element of the request that is absent is the content of those changes and the example file.",
+    "extended": true,
+    "round": 3
+   },
+   {
+    "node": "task-2-x3",
+    "pass": false,
+    "gap": "The deliverable reports that examples/rich_log_follow_state.py exists and is committed, but the run record shows nothing of that name was produced — it is absent from what was left behind. The deliverable also reports that RichLog.write(expand=True) with full-width justified rendering is implemented in src/textual/widgets/_rich_log.py, but the run record shows nothing of that name was produced either. Both are elements of the request that are absent or unsupported by evidence.",
+    "overturned": true,
+    "refused": "everything it names is already in the delivered text, in the words the request used"
+   }
+  ]
+ }
+]

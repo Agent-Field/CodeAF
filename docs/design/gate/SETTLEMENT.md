@@ -278,3 +278,136 @@ shorter. No new models and no new calls on the common path: the grounding work i
 string shape, the settlement work is a field, and the regression work is the
 project's own command, which the run was already running by hand nine times an
 hour without ever comparing two readings of it.
+
+---
+
+# The s5 sweep: one record, one verdict, and what may overturn a finding
+
+*Appended 2026-08-29 against `bench/deepswe/results/*-s5/` — the first sweep run
+on a binary carrying §1–§4 above. Five tasks, one seed. igel ended exit 2 with
+its finding named, which is what §2 was built to do. The other four did not, and
+the three defects below are why.*
+
+## 5. The record the gate reads is the job's, not the node's
+
+`cmd/aforge/chat.go`, `gateEvidence`. The gate's `Evidence.Artifacts` was the
+artifacts of THE ONE LEAF being judged — `outcome.Artifacts` joined onto the job
+directory. The settlement narrates something else: `cmd/aforge/do.go`,
+`w.produced.list()`, the errand's own registry, which every leaf in the job feeds
+as it lands and which is filtered against the disk when it is read.
+
+Two records, and a repair round is exactly where they diverge. A repair is a new
+node; it writes nothing new, because the work already landed under its parent.
+So the gate that judges it is handed an EMPTY record and told the run was
+observed from beginning to end, and `Evidence.namedBlock` prints, of a file that
+is on disk:
+
+> `examples/rich_log_follow_state.py — nothing of that name is among what was left behind`
+
+textual s5, `task-2-x3`, is that sentence coming back out of the judge as the
+finding it refused the delivery on — while the run's own `--json` artifact list,
+printed forty lines later out of the OTHER record, names
+`/app/examples/rich_log_follow_state.py`. igel s5 `task-2-x1` is the same shape
+("the record shows that the named files were not produced"). A gate whose record
+is narrower than the run's is FAILSAFE clause 2 again, one seam along from where
+that clause was first written: the evidence was narrower than the world.
+
+> **WHAT THE RUN LEFT BEHIND IS ONE RECORD, HELD BY THE JOB, AND THE GATE READS
+> THE SAME ONE THE SETTLEMENT NARRATES.**
+
+`brainOptions.produced` was a write-only sink — the wiring could tell the
+registry about a file and could never ask it anything — which is the whole reason
+two records existed. It becomes a record with both halves, `add` and `list`, and
+`gateEvidence` is handed the job's list unioned with the leaf's own. Path
+identity is `namedAs`, which already answers a relative spelling against an
+absolute path by suffix, so a deliverable that writes `examples/rich_log_follow_state.py`
+and a record that holds `/app/examples/rich_log_follow_state.py` are one file and
+never a contradiction. Nothing here is compared by string equality on whatever
+spelling the deliverable happened to use.
+
+## 6. Prose in the deliverable is not the world
+
+`internal/revision/judge.go`, `AdmitGapPresent`. It reads an ENUMERATION out of
+the citation — three or more items, by shape — and acquits the delivery when
+every one of those items appears somewhere in the delivered text, case-folded.
+`cmd/aforge/chat.go` then sets `store.DeliveryGate.Overturned`, whose own comment
+says the field means the refusal was CHECKED AGAINST THE WORLD.
+
+It was not. The citation is a span of the REQUEST; the text it is checked against
+is the deliverable's own account of itself. A worker that restates the request
+back in the request's words satisfies it by writing prose, which is what textual
+s5 did:
+
+> `gate: refused — The deliverable reports that examples/rich_log_follow_state.py
+> exists and is committed, but the run record shows nothing of that name was
+> produced … — everything it names is already in the delivered text, in the words
+> the request used`
+
+The finding was true, the acquittal was decided by the deliverable, and the run
+left with exit 0 at 1 of 20 hidden checks. This is FAILSAFE clause 2 broken in
+the strict sense the clause states it: the evidence was sourced FROM THE
+COMPONENT BEING CHECKED.
+
+> **A FINDING IS OVERTURNED ONLY BY THE WORLD — a file on disk, a check green in
+> a reading, an artifact in the record. The delivered text can overturn a finding
+> only when the delivered text IS the whole of what the run left behind.**
+
+That last clause is not a softening; it is the same rule. A question answered in
+prose produces nothing but the message, so the message is the artifact and a
+citation settled against it is settled against everything the run made. That is
+the measured case this door was built for — twelve profiles asked for by name,
+twelve profiles in the message, and a gate reporting the twelve were absent — and
+it is preserved exactly. The moment the run left a file behind, the record is the
+world and the text is a claim about it, so the text settles nothing:
+`AdmitGapPresent` is asked for the record and returns no acquittal when the
+record holds anything.
+
+The anti-runaway half is untouched. A finding must still be grounded in the
+request, the working method or the plan's own promises (`Grounds`,
+`citationGrounded`), and a provenance refusal still leaves the finding STANDING
+and the run partial, exactly as §2 built it. Refusing to buy a round and
+acquitting the work were never the same act; §2 separated them and this keeps
+them separate at the other door.
+
+## 7. One reading of "whole", and the person reads it
+
+`cmd/aforge/do.go`. `deliveredWhole` computed the settled verdict as
+`Pass || PolishClosed || Overturned`; `gateWords`, forty lines away, computed the
+line the person watching reads from `Pass` and `Refused` alone. Two readers, two
+contracts, and on three of five s5 runs they disagreed out loud: ink and ofetch
+printed
+
+```
+gate: fail — The deliverable is a listing of files, not the answer itself …
+```
+
+as the last thing the person saw, and left with exit 0. The event carries both a
+first verdict and a repair's, and `gateWords` was only ever shown the first.
+
+> **THE SETTLED VERDICT IS ONE FIELD-READING, AND EVERY READER USES IT.**
+
+`store.DeliveryGate.Whole` is that reading, on the event, beside the fields it
+combines. `deliveredWhole` is `!gate.Whole()` and `gateWords` says `pass` for a
+gate a repair closed. What `PolishClosed` means is unchanged and is worth stating
+plainly, because it is the one branch here that is not a defect: it is set only
+from a SECOND full `JudgeDeliverable` that answered pass, and that judgement
+re-runs the whole world half first — regressions, vanished checks, promised files
+against the disk, and its own reading of the final tree. A repair that closed the
+gap is a world-checked pass and settles whole. What was wrong was the sentence
+the person read on the way out, not the code.
+
+And the run says why it was short, once, last, in the register the stream already
+uses:
+
+```
+partial — gate: <the finding> (not repaired: <the reason nothing more ran>)
+```
+
+FAILSAFE clause 3: a fail-safe that does not reach the person watching is
+decoration, and an exit code nobody sees is the quietest decoration there is.
+
+## What is deliberately not here
+
+No new judge call, no new clock, no new field on the gate event that is not a
+reading of fields already on it. The record union costs a slice; the acquittal
+rule costs a length check; the verdict costs a method.

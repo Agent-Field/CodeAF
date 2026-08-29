@@ -154,17 +154,28 @@ type brainOptions struct {
 	// cannot let the choice be the variable it is measuring. Empty is the
 	// ordinary path, where the compiler chooses and usually chooses nothing.
 	subharness string
-	// produced is told, as each leaf lands, the absolute paths that leaf's
-	// workspace recorded it writing. It is the registry's own list rather than
-	// anything read back out of prose, and it exists because the workspace dies
-	// with the worker goroutine: nothing downstream of the run can ask it what
-	// was written unless somebody catches the answer on the way past.
+	// produced is the job's record of what its work left behind: told, as each
+	// leaf lands, the absolute paths that leaf's workspace recorded it writing.
+	// It is the registry's own list rather than anything read back out of prose,
+	// and it exists because the workspace dies with the worker goroutine:
+	// nothing downstream of the run can ask it what was written unless somebody
+	// catches the answer on the way past.
 	//
 	// Only an errand wires it — `aforge do` is one process around one job, so
 	// the paths a leaf recorded here are the paths its footer prints and its
 	// --json carries. Nil is every other driver, which reads files off the graph
 	// like any other reader.
-	produced func(paths ...string)
+	//
+	// IT READS AS WELL AS WRITES, AND THAT IS THE WHOLE OF THE CHANGE. It was a
+	// write-only sink for a while — a func the wiring could tell things and
+	// could never ask anything — so the delivery gate was handed a second,
+	// narrower record instead: the artifacts of the ONE LEAF in front of it. A
+	// repair round writes nothing, because the work landed under its parent, so
+	// the gate judging one was told the run had left nothing behind and refused
+	// a delivery whose files were on disk and in this registry the whole time
+	// (2026-08-29, bench/deepswe textual s5 and igel s5;
+	// docs/design/gate/SETTLEMENT.md §5).
+	produced artifactRecord
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
 	consent func(store.Node, planEstimate) bool
@@ -1248,7 +1259,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// has only prose to go on. A leaf that failed halfway still wrote what it
 		// wrote, so this is above the failure branch and not inside the happy one.
 		if opts.produced != nil && len(absolute) > 0 {
-			opts.produced(absolute...)
+			opts.produced.add(absolute...)
 		}
 		// Work that is finished and is NOT in the workspace is the one thing a
 		// person cannot find for themselves: there is no file to open, the
@@ -1470,7 +1481,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			records := gateEvidence(node, task.Spec, outcome, absolute, true, jobDir)
+			records := gateEvidence(node, task.Spec, outcome,
+				jobArtifacts(opts.produced, absolute), true, jobDir)
 			// Whatever the gate's own call has to be repaired to get an answer is
 			// journaled against this node, so a delivery that took three model
 			// calls to judge says so rather than looking like one that took one.
@@ -1542,7 +1554,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								// errand is told again; it keeps a set, and a path it
 								// already has costs nothing to hear twice.
 								if opts.produced != nil && len(absolute) > 0 {
-									opts.produced(absolute...)
+									opts.produced.add(absolute...)
 								}
 								if len(absolute) > 0 {
 									text += summaryFileList + strings.Join(absolute, "\n")
@@ -1586,14 +1598,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						closed = revision.AdmitGapArtifact(gate.Cited(), records)
 					}
 					// And the same refusal for the gap the deliverable itself
-					// has already closed. The artifact half asks the disk; this
-					// half asks the text the person is about to read, which is
-					// the half that was missing when a gate looked at twelve
-					// verbatim profiles and reported that the twelve were not
-					// there. A repair round bought on that verdict replaced a
-					// correct answer with a broken one.
+					// has already closed — but ONLY where the deliverable is the
+					// whole of what the run left behind. The artifact half asks
+					// the disk; this half asks the text the person is about to
+					// read, which is the half that was missing when a gate
+					// looked at twelve verbatim profiles and reported that the
+					// twelve were not there. A repair round bought on that
+					// verdict replaced a correct answer with a broken one. Where
+					// the run DID leave files behind, the record is the world and
+					// the text is a claim about it, so the rule reads the record
+					// and declines — see revision.AdmitGapPresent, which is
+					// handed the record for exactly that reason.
 					if ungrounded == "" && closed == "" && !gate.Mechanical {
-						closed = revision.AdmitGapPresent(gate.Cited(), text)
+						closed = revision.AdmitGapPresent(gate.Cited(), text, records)
 					}
 				}
 				switch {
@@ -1727,7 +1744,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// errand is told again; it keeps a set, and a path it
 							// already has costs nothing to hear twice.
 							if opts.produced != nil && len(absolute) > 0 {
-								opts.produced(absolute...)
+								opts.produced.add(absolute...)
 							}
 							if len(absolute) > 0 {
 								text += summaryFileList + strings.Join(absolute, "\n")
@@ -1737,7 +1754,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					if polished != nil {
 						closed := revision.JudgeDeliverable(withRepairJournal(ctx, graph, node.ID),
 							settings, planClient, graph, node, text, task.Contract,
-							gateEvidence(node, task.Spec, outcome, absolute, true, jobDir), polishModel)
+							gateEvidence(node, task.Spec, outcome,
+								jobArtifacts(opts.produced, absolute), true, jobDir), polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
@@ -2514,9 +2532,62 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 	return shape
 }
 
+// artifactRecord is the job's own account of what its work left behind, with
+// both halves it needs to be a record at all: a leaf tells it what it wrote, and
+// anybody judging the job can ask it what exists.
+//
+// ONE RECORD. The settlement narrates this list under the deliverable and the
+// delivery gate is held to it, and for a while those were two different lists —
+// see brainOptions.produced and docs/design/gate/SETTLEMENT.md §5. An interface
+// rather than the concrete registry so that chat.go, which every driver shares,
+// does not learn the errand's own type.
+type artifactRecord interface {
+	add(paths ...string)
+	list() []string
+}
+
+// jobArtifacts is what the run left behind, as one list, for a gate that is
+// about to be asked whether the person got what they asked for.
+//
+// The job's record leads because it is the complete one: every leaf that has
+// landed, filtered against the disk when it is read. The leaf's own paths follow
+// because this is called before the leaf that produced them has necessarily been
+// announced on every path through the caller, and a record missing the file
+// being judged is the defect this whole seam exists to close. Order is the
+// record's own — a person reading the block reads the job's files first — and a
+// path already in it is not repeated.
+//
+// A nil record is every driver but the errand, and there the leaf's list is the
+// whole of what anybody holds, which is exactly what the gate was given before.
+func jobArtifacts(record artifactRecord, leaf []string) []string {
+	var known []string
+	if record != nil {
+		known = record.list()
+	}
+	if len(known) == 0 {
+		return leaf
+	}
+	seen := make(map[string]bool, len(known)+len(leaf))
+	joined := make([]string, 0, len(known)+len(leaf))
+	for _, paths := range [][]string{known, leaf} {
+		for _, path := range paths {
+			if path == "" || seen[path] {
+				continue
+			}
+			seen[path] = true
+			joined = append(joined, path)
+		}
+	}
+	return joined
+}
+
 // gateEvidence is the record the delivery gate is held to, assembled from the
 // three things the caller holds and the judge cannot see: what the run left
 // behind, what it ran, and what the person actually asked for.
+//
+// What the run left behind is the JOB's record and not this leaf's — see
+// jobArtifacts, and SETTLEMENT.md §5 for the repair round that was judged
+// against an empty list while its parent's files sat on disk.
 //
 // The two additions past the files and the run tail are what made the gate stop
 // judging prose. The request's own named files, settled against the artifact
