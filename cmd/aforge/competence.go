@@ -25,7 +25,7 @@ func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 	flags.SetOutput(io.Discard)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	modelFlag := flags.String("model", "", "working model whose profile buckets to include")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "model": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

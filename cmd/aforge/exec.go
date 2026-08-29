@@ -40,11 +40,7 @@ func runExec(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
 	asJSON := flags.Bool("json", false, "print a machine-readable result")
 	output := flags.String("o", "", "write the machine-readable result to this file")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"w": true, "system": true, "turns": true, "budget": true, "timeout": true,
-		"model": true, "plan-model": true, "context-fill": true, "completion-reserve": true,
-		"o": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
