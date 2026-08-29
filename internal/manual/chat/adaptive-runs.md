@@ -958,6 +958,17 @@ removed in the same change and cancels. And a run that reported no check identit
 either reading raises nothing — plenty of verification commands say only `ok`, and a quiet one is
 not a suite that lost everything.
 
+**A check you REWROTE is not a check you removed.** Most runners spell a check's name as a
+path — a describe chain, `file.py::Class::test_thing`, `TestThing/subtest` — and that path,
+plus the code names the title opens with, is what the check is ABOUT. Replacing
+`IntersectionObserver > observe() > Does nothing` with real checks under the same
+`observe()` leaves nothing uncovered, so it raises nothing: the run reports it as replaced
+and moves on. Only a check whose subject has no check at all after it is called removed.
+Whether the checks that replaced it PASS is a separate question, and it has its own words —
+`the checks this work wrote fail: …`. A runner whose names carry no path at all, such as
+TAP's plain sentences, has nothing here to read, and its checks are compared by name exactly
+as before.
+
 ## Why it kept spawning the same worker over and over — the repeat guard
 
 If a run seemed to run the same brief again and again — worker after worker sent at one

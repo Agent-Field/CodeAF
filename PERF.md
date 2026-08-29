@@ -182,6 +182,13 @@ killed the run. So this measurement is bounded three ways, and the bound is
 | `revision.rememberedJobs` | **16** | `internal/revision/acceptance.go` |
 | `revision.producedSweepLimit` | **6000** | `internal/revision/produces.go` |
 | `store.VerificationSample` | **8** | `internal/store/verification.go` |
+| `verify.ReplacementsNamed` | **4** | `internal/verify/subject.go` |
+
+`verify.ReplacementsNamed` bounds the heirs one replacement record names — a row
+is read to learn what SHAPE a replacement had, one stub into one check or one
+stub into nine, and four settles that as well as forty. The subtraction it comes
+out of costs one pass over each roster and one map of them, which is what the
+subtraction already cost.
 
 The two share constants moved out of `internal/exec/bare` on 2026-08-29. Two
 things read them now — the worker that photographs before the work, and the

@@ -388,6 +388,21 @@ type Judgment struct {
 	// a finding that travels as prose inside somebody else's gap is journaled by
 	// nothing and reachable by nothing. See consumers.go.
 	Consumers []string
+
+	// Finding names WHICH MEASUREMENT this gap is, in one stable word, and
+	// Cited above holds the things it names. Empty for a model judge's verdict,
+	// which is a reading of a request and not a measurement of the world.
+	//
+	// It exists because a finding's identity has only ever been its SENTENCE,
+	// and a sentence is not a structure. A reader asking "is this the same
+	// finding the last round raised" — the governor deciding whether a repair
+	// round bought anything, an autopsy counting how many times one mechanism
+	// fired — has had to compare prose that carries a bounded list of names
+	// glued into the middle of it. happy-dom's v4-flash s13 raised the identical
+	// removed-checks finding on four consecutive rounds and nothing in the
+	// record could say so. The pair is the comparable thing: this kind, and the
+	// names.
+	Finding string
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes

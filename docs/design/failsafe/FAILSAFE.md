@@ -1296,3 +1296,80 @@ No type checker, no import resolution, no semantic model of what a shape means.
 Every one of those would need a toolchain per language in a container this
 harness does not control, and would fail closed the moment it could not run —
 which is the shape of a fail-safe that becomes a false blocker on real work.
+
+## A twenty-first failure, 2026-08-29: the stub that was replaced, called a check that was deleted
+
+*happy-dom v4-flash s13,
+`bench/deepswe/results/happy-dom-deterministic-intersectionobserver-deepseek-deepseek-v4-flash-s13`.*
+
+The request asks for a real `IntersectionObserver`. The repository's own checks
+for it are stubs — `IntersectionObserver observe() Does nothing`, and three
+siblings of the same shape. The run rewrote them into real checks under the
+identical describe path. The gate answered:
+
+```
+gate: fail — This work removed checks that existed before it: IntersectionObserver disconnect() Does nothing, IntersectionObserver observe() Does nothing, IntersectionObserver takeRecords() Returns empty array, IntersectionObserver unobserve() Does nothing.
+```
+
+Four times, on four rounds, in the same words. Every repair round it bought was
+aimed at putting back checks that had not gone anywhere, so nothing it did could
+close it, and the run finished at 9 of 14 where the previous seed reached 12.
+The grader's p2p on that tree is **9/9**: nothing it looked for was missing.
+
+The subtraction was exact and the conclusion was not. `Reading.Vanished` asked
+which NAMES the after roster stopped reporting, and a name is not a subject. A
+run's job is very often to rewrite checks, and a rewritten check changes its
+title while staying exactly where it was.
+
+> **A CHECK THAT EXISTED BEFORE AND IS ABSENT AFTER IS REMOVED ONLY IF NOTHING
+> AFTER IT COVERS ITS SUBJECT.** The subject is read out of the runner's own
+> grammar and never out of a word list: the name's parent path — the describe
+> chain, the pytest node id's file and class, the Go test a subtest hangs off —
+> plus the leading CODE-SHAPED tokens of its leaf title, with the clause after
+> them dropped by structure. A code-shaped token is one carrying punctuation or
+> an inner capital that a sentence does not carry: `observe()`,
+> `IntersectionObserver`, `RichLog.write`. `Does` is prose.
+
+`verify.CheckSubject` reads it, as a prefix of the name itself so two names
+carrying one subject carry it byte for byte. `verify.SplitReplaced` sorts the
+names a roster stopped reporting into the ones nothing covers and the ones a
+later check took over; `Reading.Vanished` reports only the first, and
+`Reading.Replaced` carries the second as a record. Whether the checks that
+replaced a stub PASS is a different question, and the finding for it already
+exists — `the checks this work wrote fail: …` (the eighteenth failure above).
+
+**Two fail-safes, both in the direction that costs nothing.** A runner whose
+names carry no path — TAP prints a plain sentence — has nothing here to read,
+and its rosters subtract exactly as they always did. And where the path is
+spelled with whitespace rather than a separator, a single leading code name is
+the top-level describe every check in the file shares: `IntersectionObserver` is
+a file and `IntersectionObserver observe()` is a subject, so one token alone is
+not read as one. An explicit separator is the runner SAYING the name is a path,
+and one level of that — a pytest file, a Go test function — is enough.
+
+**And the record says the mechanism ran.** A mechanism that silently declines to
+convict cannot be told apart from one nothing reached, which is clause 4. The
+verification journal row gains `replaced: N`, beside `named` and `red`. The gate
+line for a genuine removal is unchanged.
+
+### And a finding's identity was its sentence
+
+The same four rounds raised the same finding and no reader could say so. A
+finding's only structure was its prose, with a bounded list of names glued into
+the middle of it, so one finding raised over two different tails read as two
+different findings and two identical raisings read as one repetition nobody
+counted. `Judgment.Finding` and `store.DeliveryGate.Finding` name which
+measurement raised the gap — `regression`, `own-checks-failing`,
+`removed-public-name`, `removed-checks` — beside the `quotes` that were already
+there. The pair is the comparable thing, and it is set on all four of the gate's
+sourced findings rather than on the one that needed it.
+
+### What is deliberately not here
+
+No reading of the test SOURCE to recover a describe chain. The check names a
+diff yields (`verify.PatchChecks`) are bare leaf titles with no path in them, so
+they carry no subject and are compared by name as before — the diff half of the
+removal finding is unchanged by all of this. And no attempt to decide whether the
+replacement is as strong as what it replaced: that is a judgement, the gate has a
+judge for judgements, and a mechanism that tried it by counting assertions would
+be back to reading vocabulary.
