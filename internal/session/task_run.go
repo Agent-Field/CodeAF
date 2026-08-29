@@ -4461,6 +4461,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// row the picker filters on, and a node is the same worker doing the
 		// same job somewhere quieter.
 		SupportsParameter: parent.SupportsParameter,
+		ReasoningProfile:  parent.ReasoningProfile,
 		// The leash's checkpoint seam travels for the reason a seam exists at
 		// all: it stands in for the read-only checker on the agent that OWNS the
 		// node ([Agent.taskProgress]), and a part's owner is its parent's worker.

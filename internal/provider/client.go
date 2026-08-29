@@ -35,6 +35,14 @@ type Config struct {
 	// answer is reported by returning known=false, never by waiting.
 	SupportsParameter func(model, parameter string) (bool, bool)
 
+	// ReasoningProfile answers what the provider published about a model's
+	// thinking pass — whether it can be turned off, and which effort words the
+	// model takes — from data already in memory, under the same contract as
+	// SupportsParameter: never blocks, and an unknown is known=false. It is
+	// the authority thinking.go reads first; the quirks memo is what stands in
+	// when it is silent.
+	ReasoningProfile func(model string) (ReasoningProfile, bool)
+
 	// Routing says how this client asks the router to choose among the
 	// endpoints serving one model (velocity.go). NIL IS NOBODY'S CHOICE, not a
 	// choice of latency: the adapter then decides per request from who is
@@ -369,7 +377,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	response, err := c.send(ctx, request, body, stream)
+	response, err := c.send(ctx, request, knobs, body, stream)
 	if err != nil || !endpointRefusalStatus(response.StatusCode) {
 		return response, err
 	}
@@ -411,7 +419,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.send(ctx, request, body, stream)
+	return c.send(ctx, request, knobs, body, stream)
 }
 
 // repairable reports whether this request carried a knob whose refusal this
@@ -515,7 +523,16 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 // the memo already knows — the room was already there, so a blank answer
 // says nothing new — and for a call that set no ceiling to spend.
 func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai.Response) bool {
-	if request.MaxTokens == nil || ReasoningUnavoidable(model) {
+	if request.MaxTokens == nil || c.reasoningUnstoppable(model) {
+		return false
+	}
+	// THE MEMO IS FOREVER, SO IT IS WRITTEN ONLY ON EVIDENCE. An answer with
+	// no usage block cannot be shown to have spent the ceiling, and a reply
+	// that was cut while calling a tool has an answer — the call — that
+	// merely has no text. Neither says the thinking pass ate the reply, and
+	// a fact recorded on a guess would grow every ceiling this model ever
+	// gets, on every run, with nothing to unlearn it.
+	if response == nil || response.Usage == nil || answeredWithToolCalls(response) {
 		return false
 	}
 	if !EmptyAtCeiling(response, *request.MaxTokens) {
@@ -523,6 +540,12 @@ func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai
 	}
 	NoteReasoningDisableIgnored(model)
 	return true
+}
+
+// answeredWithToolCalls reports a reply whose answer is a tool call rather
+// than words, which is an answer all the same.
+func answeredWithToolCalls(response *ai.Response) bool {
+	return response != nil && len(response.Choices) > 0 && len(response.Choices[0].Message.ToolCalls) > 0
 }
 
 // completeOnce is one send and one parse: the request as shaped, the answer as

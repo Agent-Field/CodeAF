@@ -125,6 +125,30 @@ type Model struct {
 	// means the provider said nothing or the row predates this field, which is
 	// unknown rather than "supports nothing" — see [Catalog.SupportsParameter].
 	Parameters []string `json:"parameters,omitempty"`
+	// Reasoning is what the provider publishes about this model's thinking
+	// pass — OpenRouter's `reasoning` block on the row. It is the second
+	// published answer the adapter reads on the request path, beside
+	// Parameters: whether the pass can be turned off at all, and which effort
+	// words the model takes. Absent (Known false) on a row cached before it was
+	// kept and on a row the provider published nothing for — see
+	// [Catalog.ReasoningProfile].
+	Reasoning ReasoningProfile `json:"reasoning,omitempty"`
+}
+
+// ReasoningProfile is the provider's own account of a model's thinking pass.
+//
+// Mandatory says the pass cannot be disabled: OpenRouter's rule for such a row
+// is "hide disable controls and do not send effort: none — the model rejects
+// it", and 83 of the rows carried it on 2026-08-28 (GLM 5.3, Gemini 3.7 Flash,
+// Grok 4.6 among them). Efforts is the ladder of words the model accepts,
+// lowercased and in the provider's order; DefaultEffort is where the model
+// sits when nobody sends a word — for GLM 5.3 that is "max", which is why a
+// request that sent nothing spent ten thousand tokens thinking.
+type ReasoningProfile struct {
+	Known         bool     `json:"known,omitempty"`
+	Mandatory     bool     `json:"mandatory,omitempty"`
+	Efforts       []string `json:"efforts,omitempty"`
+	DefaultEffort string   `json:"default_effort,omitempty"`
 }
 
 // Reasons says the provider accepts a reasoning knob on this model — the
@@ -607,6 +631,46 @@ func (c *Catalog) SupportsParameter(modelID, parameter string) (bool, bool) {
 	return false, true
 }
 
+// ReasoningProfile answers what the provider published about modelID's
+// thinking pass, and whether it published anything.
+//
+// The second bool matters for the same reason it does on SupportsParameter: a
+// row nobody has seen, a catalog still warming, and a row cached before the
+// block was kept all say "no idea", and the adapter falls back to the one
+// other way it can learn the fact — being told no by the endpoint. It never
+// waits, for SupportsParameter's reason.
+func (c *Catalog) ReasoningProfile(modelID string) (ReasoningProfile, bool) {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return ReasoningProfile{}, false
+	}
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok || !model.Reasoning.Known {
+		return ReasoningProfile{}, false
+	}
+	return model.Reasoning, true
+}
+
+// reasoningProfile reads the published block into the row. Known is set by
+// the block's presence, not by any field inside it: a provider that published
+// {mandatory:false, efforts:[]} has still said something.
+func reasoningProfile(wire *struct {
+	Mandatory        bool     `json:"mandatory"`
+	DefaultEnabled   bool     `json:"default_enabled"`
+	SupportedEfforts []string `json:"supported_efforts"`
+	DefaultEffort    string   `json:"default_effort"`
+}) ReasoningProfile {
+	if wire == nil {
+		return ReasoningProfile{}
+	}
+	return ReasoningProfile{
+		Known:         true,
+		Mandatory:     wire.Mandatory,
+		Efforts:       cleanLowerList(wire.SupportedEfforts),
+		DefaultEffort: strings.ToLower(strings.TrimSpace(wire.DefaultEffort)),
+	}
+}
+
 // PriceNow is what modelID's own published tariff is, per token in US dollars,
 // and whether anybody actually published one.
 //
@@ -836,6 +900,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			InputModalities:   cleanLowerList(item.Architecture.Input),
 			OutputModalities:  cleanLowerList(item.Architecture.Output),
 			Parameters:        cleanLowerList(item.SupportedParameters),
+			Reasoning:         reasoningProfile(item.Reasoning),
 		})
 	}
 	// The one cleaning pass for the fetched path; what is cached and what is
@@ -883,6 +948,14 @@ type modelWire struct {
 		InputCacheRead string `json:"input_cache_read"`
 	} `json:"pricing"`
 	SupportedParameters []string `json:"supported_parameters"`
+	// Reasoning is a pointer so that a row without the block reads as "the
+	// provider said nothing" rather than as a model that can be switched off.
+	Reasoning *struct {
+		Mandatory        bool     `json:"mandatory"`
+		DefaultEnabled   bool     `json:"default_enabled"`
+		SupportedEfforts []string `json:"supported_efforts"`
+		DefaultEffort    string   `json:"default_effort"`
+	} `json:"reasoning"`
 	// Benchmarks stays raw so its shape cannot break the row around it. It
 	// carried an object beside a LIST on 2026-08-11 (`design_arena: []` next
 	// to `artificial_analysis: {…}`), which is exactly the kind of thing that
