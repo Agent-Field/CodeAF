@@ -34,11 +34,16 @@ import (
 // reading is the exact short-circuit that let fifty-two stated behaviours go
 // unasked.
 //
+// focus is what this job is about, and it is what decides HOW MUCH of the
+// project each rung reads — see scope.go. An empty focus is a job that named
+// nothing, and every rung of its ladder is a reading of the whole project,
+// which is what every reading here was before scopes existed.
+//
 // The Reading it returns is always meaningful: Taken says a reading exists, and
 // Unread says in one sentence why one does not.
-func Photograph(ctx context.Context, root string, wall time.Duration) Reading {
+func Photograph(ctx context.Context, root string, wall time.Duration, focus Focus) Reading {
 	plan := Discover(root)
-	ladder, ok := ReadingStrategies(root, plan)
+	ladder, ok := ReadingStrategies(root, plan, focus)
 	if !ok {
 		return Reading{Plan: plan, Unread: "this project declares no way of checking itself, " +
 			"so there is no reading to take"}
@@ -64,14 +69,27 @@ func photograph(
 	left := budget
 	for index, rung := range ladder {
 		reading.Strategy = rung
-		if left <= 0 {
-			reading.Unread = fmt.Sprintf("the reading's whole budget of %s was spent before "+
-				"`%s` could be run", budget.Round(time.Second), rung.Command)
+		// A RUNG IS ENTITLED TO ITS SHARE OF THE BUDGET OR IT IS NOT STARTED.
+		// The ladder is walked inside ONE budget, so a rung reached with a scrap
+		// of it left is a command that will be killed before it says anything —
+		// which costs the rest of the budget and returns the same silence as
+		// not running it. An equal share is the ladder's own arithmetic and
+		// scales with it; it is ShortestUsefulReading's rule one level in, where
+		// the thing being divided is the reading's budget rather than the wall.
+		//
+		// The first rung is never refused: ReadingBudget already turned down a
+		// wall that could not hold one reading, and a photograph that refuses
+		// its own first rung is a photograph that never takes one.
+		if index > 0 && left < budget/time.Duration(len(ladder)) {
+			reading.Unread = fmt.Sprintf("the reading's budget of %s was spent before `%s` "+
+				"could be run, and %s left is under this ladder's share of it",
+				budget.Round(time.Second), rung.Command, left.Round(time.Second))
 			return reading
 		}
 		started := time.Now()
 		result, ran := RunReading(ctx, root, rung, left)
-		left -= time.Since(started)
+		spent := time.Since(started)
+		left -= spent
 		switch {
 		case !ran:
 			// The command could not be started at all — no shell this
@@ -81,11 +99,24 @@ func photograph(
 				"%s for the reading's shell preamble", rung.Command, readingShell)
 			return reading
 		case result.TimedOut:
-			// A HUNG SUITE IS AN INCOMPLETE OBSERVATION, NOT A RED ONE. The
-			// ceiling has also consumed the budget, so no rung below it can be
-			// afforded and saying so is the whole of what is left to do.
+			// A HUNG SUITE IS AN INCOMPLETE OBSERVATION, NOT A RED ONE — but an
+			// incomplete observation is not an absent one. WHAT THE RUNNER
+			// NAMED BEFORE THE CEILING FIRED IS KEPT, marked partial, because a
+			// roster answers "does a check for this exist" and a partial roster
+			// answers it for everything it reached. ink s7 threw away the names
+			// ava had streamed before its 1m53s ceiling and passed a deliverable
+			// with nothing whatever to weigh.
+			//
+			// The ceiling has also consumed the budget, so no rung below it can
+			// be afforded either way.
+			reading.CutAfter = spent
+			if len(result.Reported) > 0 {
+				reading.Before, reading.Taken, reading.Partial = result, true, true
+				reading.Unread = ""
+				return reading
+			}
 			reading.Unread = fmt.Sprintf("`%s` was killed at its ceiling of %s without "+
-				"finishing, so nothing it would have named is known",
+				"finishing or naming a single check, so nothing it would have named is known",
 				rung.Command, budget.Round(time.Second))
 			return reading
 		case len(result.Reported) == 0 && index+1 < len(ladder):

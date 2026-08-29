@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // What a command left behind, and why the write tools alone could never see it.
@@ -132,16 +134,7 @@ func producedBound(changes map[string]ArtifactChange, before, after *TreeSnapsho
 // this workspace: dependency installs, caches, and version-control storage. A
 // leaf that ran `pip install` or `npm install` produced thousands of files and
 // delivered none of them.
-func producedSkipDir(name string) bool {
-	if strings.HasPrefix(name, ".") {
-		return true
-	}
-	switch name {
-	case "node_modules", "vendor", "site-packages", "__pycache__", "bower_components", "venv":
-		return true
-	}
-	return false
-}
+func producedSkipDir(name string) bool { return verify.SkipTree(name) }
 
 // recordProduced files everything this call changed in the workspace under this
 // leaf's node identity — the same registry, keyed the same way, as a write.

@@ -31,6 +31,7 @@ package verify
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -89,6 +90,25 @@ type Strategy struct {
 	// was actually run so the two can be compared. Where a lifecycle script
 	// wraps the runner these differ, and the difference is the news.
 	Declared string `json:"declared,omitempty"`
+	// Scope is HOW MUCH of the project this reading covers: ScopeWhole, or the
+	// count of files a scoped reading selected. See scope.go for why a reading
+	// is scoped before it is bounded, and Reading.comparable for why the scope
+	// is part of this strategy's identity rather than a note beside it.
+	Scope string `json:"scope,omitempty"`
+}
+
+// comparable says two readings are readings of the SAME thing, which is the
+// only condition under which subtracting one from the other means anything.
+//
+// Command and workdir and scope, all three, because each of them alone has
+// changed what a reading covers: a different rung of the ladder is a different
+// command, a different package of a monorepo is a different workdir, and the
+// same command scoped to three files is a different suite from the same command
+// scoped to none. A before reading of a whole suite minus an after reading of
+// three files is a hundred checks that "disappeared", and every one of them
+// would be a finding.
+func (s Strategy) comparable(other Strategy) bool {
+	return s.Command == other.Command && s.Workdir == other.Workdir && s.Scope == other.Scope
 }
 
 // Empty reports a strategy that names no command, which is what an undiscovered
@@ -131,6 +151,16 @@ type runner struct {
 	// invocation is how the runner is run when the project declares it but its
 	// own script does not spell it out.
 	invocation string
+	// selects says this runner takes the checks to run as positional arguments
+	// on its own command line — a path, a file, a pattern. It is what makes a
+	// SCOPED reading possible at all: a runner that can only be told to run
+	// everything has one honest reading, and that is the whole suite.
+	selects bool
+	// selectsDirectories says the positional arguments are directories rather
+	// than files. Go is the case: `go test` is handed packages, and a package
+	// is a directory, so a selection of three test files is a selection of the
+	// one or two packages they live in.
+	selectsDirectories bool
 }
 
 // runners is the table, in the order a project declaring two of them should be
@@ -146,19 +176,19 @@ var runners = []runner{{
 	// reading taken without it is a reading that hits its ceiling every time.
 	runArgs:    []string{"run", "related", "bench"},
 	declaredBy: []string{"vitest.config.ts", "vitest.config.js", "vitest.config.mjs", "vitest.config.mts", "vitest.config.cjs"},
-	dependency: "vitest", invocation: "vitest run",
+	dependency: "vitest", invocation: "vitest run", selects: true,
 }, {
 	name: "jest", binary: "jest", read: FormatNodeJSON,
 	machineArgs: []string{"--json"},
 	declaredBy:  []string{"jest.config.ts", "jest.config.js", "jest.config.mjs", "jest.config.cjs", "jest.config.json"},
-	dependency:  "jest", invocation: "jest",
+	dependency:  "jest", invocation: "jest", selects: true,
 }, {
 	// Mocha's own JSON is a third document shape, and it does not need a third
 	// parser: mocha speaks TAP, and TAP is already in the shared vocabulary.
 	name: "mocha", binary: "mocha", read: FormatPlain,
 	machineArgs: []string{"--reporter", "tap"},
 	declaredBy:  []string{".mocharc.json", ".mocharc.yml", ".mocharc.yaml", ".mocharc.js", ".mocharc.cjs"},
-	dependency:  "mocha", invocation: "mocha",
+	dependency:  "mocha", invocation: "mocha", selects: true,
 }, {
 	// ava speaks TAP for the same reason mocha is asked to: its own default
 	// output names only what failed, and TAP is already in the shared
@@ -166,7 +196,7 @@ var runners = []runner{{
 	name: "ava", binary: "ava", read: FormatPlain,
 	machineArgs: []string{"--tap"},
 	declaredBy:  []string{"ava.config.js", "ava.config.cjs", "ava.config.mjs"},
-	dependency:  "ava", invocation: "ava",
+	dependency:  "ava", invocation: "ava", selects: true,
 }, {
 	// pytest's quiet default prints one dot per check and no names at all, and
 	// its normal default names only the red ones. `-rA` asks for the short
@@ -176,7 +206,7 @@ var runners = []runner{{
 	name: "pytest", binary: "pytest", module: "pytest", read: FormatPlain,
 	machineArgs: []string{"-rA"},
 	declaredBy:  []string{"pytest.ini", "tox.ini", "pyproject.toml", "setup.cfg", "noxfile.py"},
-	invocation:  "python3 -m pytest",
+	invocation:  "python3 -m pytest", selects: true,
 }, {
 	name: "unittest", binary: "", module: "unittest", read: FormatPlain,
 	// unittest prints "ok" and nothing else without -v; with it, one named
@@ -186,6 +216,7 @@ var runners = []runner{{
 	name: "go test", binary: "go", read: FormatGoJSON,
 	machineArgs: []string{}, runArgs: nil,
 	declaredBy: []string{"go.mod"}, invocation: "go test -json ./...",
+	selects: true, selectsDirectories: true,
 }, {
 	// Cargo's own machine-readable reporter is nightly-only, and a reading that
 	// needs an unstable toolchain is a reading most repositories cannot take.
@@ -239,8 +270,8 @@ const scriptExpansions = 4
 // ReadingStrategy is the first rung of [ReadingStrategies]: the most faithful
 // way this project's checks can be read. It is what a caller taking exactly one
 // reading uses.
-func ReadingStrategy(workspace string, plan Plan) (Strategy, bool) {
-	ladder, ok := ReadingStrategies(workspace, plan)
+func ReadingStrategy(workspace string, plan Plan, focus Focus) (Strategy, bool) {
+	ladder, ok := ReadingStrategies(workspace, plan, focus)
 	if !ok {
 		return Strategy{}, false
 	}
@@ -388,24 +419,74 @@ func expandVariables(body string, lines []string) string {
 // rung takes that for the whole answer; a reader with a ladder drops to the
 // runner's own invocation and reads the suite.
 //
-// The rungs, and why they are in this order:
+// The ladder has two dimensions, and both of them are "most specific first".
 //
-//  1. The runner as the PROJECT'S OWN script or recipe invokes it, with the
-//     project's flags kept. This is the most faithful reading there is, and it
-//     is the only rung that knows the project scoped its suite to `tests/`.
-//  2. The runner as it invokes itself, taken from what the project declares it
+// WHERE, from [Members]. A monorepo's root command is a fan-out: happy-dom's
+// `npm test` is `turbo run test`, which at an uncompiled base commit dies inside
+// turbo having named no check of any package, while the runner that names its
+// 7,260 checks sits in packages/happy-dom's own manifest. So the packages the
+// work touched are read first, most-touched first, and the root is the last
+// place tried rather than the only one. A project that declares no workspace
+// has exactly one place and this dimension collapses to nothing.
+//
+// HOW MUCH, from [Adjacent]. Inside each place the SCOPED rung comes first — the
+// runner handed the checks that sit next to the change — and the whole-suite
+// rungs come after it. textual's whole-repository reading collects 3,422 tests
+// and takes 793 seconds against a budget of 5m30s, so the whole rung was the
+// only rung and it never returned an answer at all.
+//
+// The rungs within one place, and why they are in this order:
+//
+//  1. The runner, handed the checks adjacent to the change. It is built from the
+//     runner's OWN invocation rather than from the project's script, because
+//     what is being replaced is the project's own scope — appending a selection
+//     to a command that already names `tests/` selects both.
+//  2. The runner as the PROJECT'S OWN script or recipe invokes it, with the
+//     project's flags kept. This is the most faithful whole reading there is,
+//     and it is the only rung that knows the project scoped its suite to
+//     `tests/`.
+//  3. The runner as it invokes itself, taken from what the project declares it
 //     depends on and configures. It drops the project's flags, which is the
 //     point: a flag that needs a plugin the environment lacks is what put us
 //     here.
-//  3. The project's declared entrypoint, run as it stands and read as plain
+//  4. The project's declared entrypoint, run as it stands and read as plain
 //     text. This is what every reading in this program was before strategies
 //     existed, and it is the floor rather than an absence of one.
 //
 // Identical rungs are collapsed, so a project whose script already spells the
 // runner plainly produces one strategy and one reading.
 //
-// ok is false exactly when RunTests would have had nothing to run.
-func ReadingStrategies(workspace string, plan Plan) ([]Strategy, bool) {
+// ok is false exactly when there was nothing anywhere to run.
+func ReadingStrategies(workspace string, plan Plan, focus Focus) ([]Strategy, bool) {
+	var ladder []Strategy
+	// The packages the work touched, most-touched first. Each is discovered in
+	// its own right — a package declares its own runner, its own scripts and its
+	// own config — which is the whole of what the root reader could not see.
+	for _, member := range TouchedMembers(workspace, focus) {
+		place := filepath.Join(workspace, filepath.FromSlash(member.Dir))
+		ladder = append(ladder, placeStrategies(place, member.Dir, Discover(place), focus.Within(member.Dir))...)
+	}
+	ladder = append(ladder, placeStrategies(workspace, "", plan, focus)...)
+	seen := map[string]bool{}
+	distinct := make([]Strategy, 0, len(ladder))
+	for _, rung := range ladder {
+		key := rung.Workdir + "\x00" + rung.Command
+		if rung.Empty() || seen[key] {
+			continue
+		}
+		seen[key] = true
+		distinct = append(distinct, rung)
+	}
+	return distinct, len(distinct) > 0
+}
+
+// placeStrategies is the ladder for ONE place — the workspace root, or one
+// package of it — with the scoped rung in front of the whole ones.
+//
+// dir is that place relative to the workspace, and it is prefixed onto every
+// rung's workdir rather than being a second field, because where a command runs
+// is one fact and Strategy already holds it.
+func placeStrategies(place, dir string, plan Plan, focus Focus) []Strategy {
 	var entrypoint Entrypoint
 	found := false
 	for _, candidate := range plan.Entrypoints {
@@ -415,42 +496,126 @@ func ReadingStrategies(workspace string, plan Plan) ([]Strategy, bool) {
 		}
 	}
 	if !found {
-		return nil, false
+		return nil
 	}
 	plain := Strategy{
-		Command: entrypoint.Command, Workdir: entrypoint.Workdir,
+		Command: entrypoint.Command, Workdir: joinWorkdir(dir, entrypoint.Workdir),
 		Read: FormatPlain, Source: entrypoint.Source, Declared: entrypoint.Command,
+		Scope: ScopeWhole,
 	}
-	root := filepath.Join(workspace, entrypoint.Workdir)
-	var ladder []Strategy
+	root := filepath.Join(place, entrypoint.Workdir)
+	var whole []Strategy
+	scriptRunner, scriptFound := runner{}, false
 	body, source := expandScript(root, entrypoint.Command)
 	if segment, chosen, ok := runnerSegment(body); ok {
+		scriptRunner, scriptFound = chosen, true
 		rung := plain
 		rung.Runner, rung.Read = chosen.name, chosen.read
 		rung.Command = machineReadable(root, segment, chosen)
 		if source != "" {
 			rung.Source = source
 		}
-		ladder = append(ladder, rung)
+		whole = append(whole, rung)
 	}
-	if chosen, source, ok := declaredRunner(root); ok {
+	declared, declaredSource, declaredFound := declaredRunner(root)
+	if declaredFound {
 		rung := plain
-		rung.Runner, rung.Read = chosen.name, chosen.read
-		rung.Command = machineReadable(root, chosen.invocation, chosen)
-		rung.Source = source
-		ladder = append(ladder, rung)
+		rung.Runner, rung.Read = declared.name, declared.read
+		rung.Command = machineReadable(root, declared.invocation, declared)
+		rung.Source = declaredSource
+		whole = append(whole, rung)
 	}
-	ladder = append(ladder, plain)
+	whole = append(whole, plain)
+
+	// The runner the scoped rung is built on is whichever one this place is
+	// known to use, the script's own naming of it first.
+	chosen, known := declared, declaredFound
+	if scriptFound {
+		chosen, known = scriptRunner, true
+	}
+	if !known {
+		return whole
+	}
+	scoped, ok := scopedStrategy(root, plain, chosen, focus)
+	if !ok {
+		return whole
+	}
+	return append([]Strategy{scoped}, whole...)
+}
+
+// joinWorkdir puts a package's own directory in front of an entrypoint's, in the
+// slash spelling every recorded path in this program uses.
+func joinWorkdir(dir, workdir string) string {
+	joined := strings.Trim(filepath.ToSlash(filepath.Join(dir, workdir)), "/")
+	if joined == "." {
+		return ""
+	}
+	return joined
+}
+
+// scopedStrategy is the reading of the checks that sit next to the change.
+//
+// It is built from the RUNNER'S OWN INVOCATION and never from the project's
+// script, and that is the one decision in this function. A project's script
+// carries the project's own scope — textual's says `tests/`, and pytest handed
+// both `tests/` and `tests/test_rich_log.py` runs both — so a selection appended
+// to it is not a selection at all. Dropping the script's flags is the same
+// trade-off rung 3 already makes, for the same reason, and the config the runner
+// needs is in the runner's own config file rather than on that command line.
+//
+// ok is false when this runner cannot be told what to run, or when nothing
+// adjacent to the change was found. Both mean the ladder starts at the whole
+// suite, which is where it started before scopes existed.
+func scopedStrategy(root string, plain Strategy, chosen runner, focus Focus) (Strategy, bool) {
+	if !chosen.selects || strings.TrimSpace(chosen.invocation) == "" {
+		return Strategy{}, false
+	}
+	paths, ok := Adjacent(root, focus)
+	if !ok {
+		return Strategy{}, false
+	}
+	selectors := paths
+	if chosen.selectsDirectories {
+		selectors = selectedDirectories(paths)
+	}
+	rung := plain
+	rung.Runner, rung.Read = chosen.name, chosen.read
+	rung.Source = "the checks next to what this job touched"
+	rung.Command = machineReadable(root, chosen.invocation, chosen) + " " + strings.Join(selectors, " ")
+	rung.Scope = fmt.Sprintf("touched packages (%d %s)", len(paths), plural(len(paths), "file"))
+	return rung, true
+}
+
+// selectedDirectories turns a selection of files into the packages holding them,
+// in the spelling a toolchain that is handed packages expects. `go test` is the
+// case: a package is a directory, and `./internal/verify/...` is how one is
+// named on its own command line.
+func selectedDirectories(paths []string) []string {
 	seen := map[string]bool{}
-	distinct := make([]Strategy, 0, len(ladder))
-	for _, rung := range ladder {
-		if rung.Empty() || seen[rung.Command] {
+	dirs := make([]string, 0, len(paths))
+	for _, path := range paths {
+		dir := pathDir(path)
+		selector := "."
+		if dir != "." && dir != "" {
+			selector = "./" + dir + "/..."
+		}
+		if seen[selector] {
 			continue
 		}
-		seen[rung.Command] = true
-		distinct = append(distinct, rung)
+		seen[selector] = true
+		dirs = append(dirs, selector)
 	}
-	return distinct, len(distinct) > 0
+	sort.Strings(dirs)
+	return dirs
+}
+
+// plural is the one place this file spells the difference between one thing and
+// several, so a scope sentence never reads "1 files".
+func plural(count int, word string) string {
+	if count == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 // packageScripts is package.json's own scripts map, or nothing.
