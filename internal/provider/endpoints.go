@@ -77,12 +77,46 @@ var endpointRefusalPhrases = []string{
 	"doesn't support tool use",
 	"does not support structured",
 	"doesn't support structured",
+	// THE ROUTER'S OTHER SPELLING OF AN EMPTY SET, and the one that cost a whole
+	// headless run three identical retries and a dead task (2026-08-28). The
+	// price ceiling (velocity.go's [Client.priceCeiling]) is list price times
+	// 1.25, and for deepseek-v4-pro that admits exactly ONE endpoint — the
+	// first-party one at list price; every reseller is 1.7× to 2.2× above it.
+	// When the account's privacy setting excludes that one endpoint, the ceiling
+	// leaves nothing, and the router does not say "no endpoints found that
+	// satisfy the max price" — it reports the LAST filter that emptied the set,
+	// which was the data policy. None of the phrases above matched, so
+	// [endpointRefusal] said "not this class", the plain-404 path resent the
+	// identical body, and the ladder that drops the ceiling on its first rung
+	// never fired. The proof was a bisect against the live router with the
+	// captured body: every field passed alone, and max_price at list × 1.0
+	// produced this exact sentence.
+	"no endpoints available",
+	"data policy",
+	"guardrail restrictions",
+	"satisfy the max price",
 }
 
 // endpointRefusal reads a refusal body for the one complaint this chain answers.
 // It matches on the words rather than on the status alone, so a 404 from a
 // mistyped base URL — which says nothing about parameters — is surfaced as the
 // error it is instead of provoking four retries of a request that can never land.
+// ceilingRefusal reads a refusal body for the two spellings the router uses
+// when it is the PRICE CEILING that left nothing: its own "satisfy the max
+// price", and the data-policy sentence it prefers when the last endpoint under
+// the ceiling was one the account has excluded. It is the narrower question
+// [endpointRefusal] asks first, and its only reader is the memo that stops the
+// ceiling being sent to that model again ([velocityLedger.refuseCeiling]).
+func ceilingRefusal(payload []byte) bool {
+	text := strings.ToLower(string(payload))
+	for _, phrase := range []string{"satisfy the max price", "data policy", "guardrail restrictions"} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 func endpointRefusal(payload []byte) bool {
 	text := strings.ToLower(string(payload))
 	for _, phrase := range endpointRefusalPhrases {
@@ -244,6 +278,14 @@ func (c *Client) recoverFromRefusal(
 	first []byte,
 ) (*http.Response, error) {
 	model := c.modelFor(request)
+	// THE LEDGER LEARNS BEFORE THE LADDER CLIMBS. If this refusal is the price
+	// ceiling's doing and a ceiling was on the wire, the model is marked so the
+	// NEXT call carries none; the ladder below still recovers THIS call.
+	if c.velocity != nil && ceilingRefusal(first) {
+		if prefs := c.providerPreferences(model, knobs); prefs != nil && prefs.MaxPrice != nil {
+			c.velocity.refuseCeiling(model)
+		}
+	}
 	plan := c.relaxationPlan(request, knobs, model)
 	fallbacks := c.fallbackChain(model)
 	total := len(plan) + len(fallbacks)

@@ -307,11 +307,18 @@ func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPre
 	}
 	yes := true
 	prefs := &providerPrefs{Sort: word, AllowFallbacks: &yes, RequireParameters: &yes}
-	if strategy == RoutingLatency {
+	if strategy == RoutingLatency && !(c.velocity != nil && c.velocity.ceilingRefused(model)) {
 		// The ceiling rides the latency ask and only the latency ask. Sorting by
 		// price is already asking for the cheapest thing available, and a ceiling
 		// on top of it could only ever take endpoints away without changing which
 		// one is chosen.
+		//
+		// AND IT IS NOT SENT TWICE TO A MODEL THAT REFUSED IT. The ladder
+		// (endpoints.go) drops the ceiling on its first rung and the call lands,
+		// but a ladder is a recovery, not a routing policy: without the ledger's
+		// memo every call to that model would pay a 404 round trip before doing
+		// any work. The first refusal teaches the process and the second call
+		// is shaped right from the start.
 		prefs.MaxPrice = c.priceCeiling(model)
 	}
 	if c.velocity != nil {
@@ -742,15 +749,40 @@ type velocityLedger struct {
 	// bare floor forever. Nothing here can move a request to another endpoint,
 	// so recording it steers nothing.
 	runs map[string]map[string]time.Duration
+	// noCeiling is model → "the price ceiling has emptied this model's endpoint
+	// set once, do not send it again". It is process-lifetime and never expires,
+	// because what it records is not a lane's mood but the ACCOUNT'S privacy
+	// policy meeting the catalog's list price: the ceiling is list × 1.25, the
+	// only endpoint under it is the first-party one, and the account has that
+	// provider switched off. Nothing about that changes between one call and
+	// the next, so a memo that expired would just buy the same 404 back.
+	noCeiling map[string]bool
 }
 
 func newVelocityLedger() *velocityLedger {
 	return &velocityLedger{
-		now:   time.Now,
-		lanes: map[string]map[string]*lane{},
-		last:  map[string]Sighting{},
-		runs:  map[string]map[string]time.Duration{},
+		now:       time.Now,
+		lanes:     map[string]map[string]*lane{},
+		last:      map[string]Sighting{},
+		runs:      map[string]map[string]time.Duration{},
+		noCeiling: map[string]bool{},
 	}
+}
+
+// refuseCeiling records that the router emptied model's endpoint set on price
+// or policy grounds while a ceiling was on the request. From here on
+// [Client.providerPreferences] sends no max_price for that model.
+func (v *velocityLedger) refuseCeiling(model string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.noCeiling[normalizeModel(model)] = true
+}
+
+// ceilingRefused reports whether [refuseCeiling] has been called for model.
+func (v *velocityLedger) ceilingRefused(model string) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.noCeiling[normalizeModel(model)]
 }
 
 // noteRun remembers how long one COMPLETED reply took, under the endpoint that
