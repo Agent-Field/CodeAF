@@ -267,3 +267,99 @@ at 30m11s and 50m22s. The run then exited 0.
 Neither is a model failure. igel s3 and ink s3 are recorded as rig failures, not
 zeroes, and both need re-running on the fixed rig before anything is concluded
 from them.
+
+---
+
+# s4 — the settlement and liveness fixes (`7c498557`)
+
+Same five tasks, same model, roster still pinned to `bare`, rig now snapshotting
+itself and taking the diff with `--binary`.
+
+| task | seed | reward | f2p | p2p | cost | wall | exit | nodes | test runs | broke at |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ofetch-per-origin-circuit-breaker | s4 | 0 | 41/47 | 12/13 | $0.053 | 603s | 0 | 1 | 14 | **settlement** — gate passed a wrong answer |
+| ink-grid-box-layout | s4 | 0 | 7/25 | 49/49 | $0.128 | 1033s | 0 | 1 | 18 | **gate broke** — delivered unjudged |
+| textual-richlog-follow-state | s4 | **none** | — | — | $0.000 | 230s | **1** | 0 | 0 | **planner broke** — no work ever started |
+| igel-persist-feature-schema | s4 | 0 | 6/24 | 2/2 | $0.122 | 1263s | **2** | 4 | 0 | **honest partial** — repair exhausted |
+| happy-dom-…-intersectionobserver | s4 | 0 | **13/14** | 9/9 | $0.099 | 1759s | 0 | 1 | 30 | **settlement** — gate passed a wrong answer |
+
+## The settlement fix works, and it is visible
+
+igel s4 is the first run in twenty to end the way a failed run should. The whole
+chain is in the stream:
+
+```
+18m57s  no more rounds — this work has split as many times as splitting helps
+                       — handing over what's done
+21m2s   gate: refused — The deliverable is a plan for what to run next, not the
+                       finished work itself. … it describes what will be done
+                       rather than carrying the completed changes
+                       — no more work could be started on it
+exit 2
+```
+
+And the deliverable now says so in its own voice, where every earlier run said
+"All 41 tests pass":
+
+> I'm handing this over with a reservation — a review found this still missing:
+> … I've taken it as far as repair takes it: no more work could be started on it.
+
+That is the finding named, the repair rounds accounted for, and the exit code
+telling the truth. **One run of five.**
+
+## What the other four say
+
+- **ofetch and happy-dom still exit 0 on a wrong answer**, because the gate
+  *passed* them. happy-dom's gate failed the first attempt with an accurate
+  finding at 27m58s ("The deliverable is a list of file paths, not the
+  implementation itself"), the run repaired, and the gate passed at 29m17s a
+  deliverable claiming "All tests pass (31/31)" — 13 of 14 hidden tests pass.
+  ofetch's gate passed a deliverable claiming "All 56 tests pass" at 41/47. The
+  refusal path is fixed; the **acceptance** path is now the hole.
+- **happy-dom s4 is one test short of a solve** — the best result of any sweep,
+  at $0.10 and 29 minutes.
+
+## The new dominant failure: the model answers, and it is not JSON
+
+Three different places in the harness now break on the same thing, and two of
+them cost the whole run:
+
+| where | line | cost |
+| --- | --- | --- |
+| plan fan-out | `splice failed: plan request: fan-out stage 2: response contains no JSON object (finish_reason=length completion_tokens=16384)` | **textual s4: exit 1, zero nodes, $0.0003, nothing attempted** |
+| delivery gate | `note: the delivery gate did not judge task-2 — the gate answered with nothing this could read: response contains no JSON object; delivering unjudged` | **ink s4: the gate is skipped and the run delivers anyway, exit 0** |
+
+The planner case is the worse of the two: the fan-out response was cut at the
+completion cap (`finish_reason=length`, 16384 tokens), and rather than retry with
+a smaller ask the run gave up before a single node existed. textual had scored
+17/20 on the previous sweep.
+
+The gate case quietly converts a graded run into an ungraded one — the whole
+point of the settlement fix is the gate, and a gate that answers with
+unparseable text is treated as an abstention rather than a fault.
+
+## Liveness: not exercised
+
+No `✗ … retried` fault line appears in any s4 run (`fault_retries: 0` in all five
+`meta.json`). No provider call hung this sweep, so the cut-and-retry path had
+nothing to fire on — untested, not broken. happy-dom s4's `task-2` did restart
+once, and no resume line was printed, so whether it came back to banked work
+cannot be read off the stream.
+
+The before/after regression finding did not appear either: no run's stream
+carries a `regression` or turned-red line. The two regressions this corpus knows
+about (`RichLog._size_known`, `Igel.results_path`) were both in runs that did not
+reach that stage this sweep.
+
+## Sweep over sweep
+
+| task | s1 | s2 | s3 | s4 |
+| --- | --- | --- | --- | --- |
+| ofetch | 41/47 | 42/47 | 37/47 | 41/47 |
+| ink | 17/25 | 5/25 | rig | 7/25 |
+| textual | 2/20 | 2/20 | **17/20** | planner died |
+| igel | 5/24 | 0/24 | rig | 6/24 **(exit 2)** |
+| happy-dom | void | lost | 12/14 | **13/14** |
+
+Nothing has scored 1 yet. Two tasks are now within three tests of it, and the
+run that is furthest from it is the one that never started.
