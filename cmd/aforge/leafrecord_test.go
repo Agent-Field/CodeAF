@@ -236,3 +236,36 @@ func TestGateEvidenceCarriesTheBaselineDelta(t *testing.T) {
 		t.Fatalf("a leaf with no baseline claimed one: %#v", plain.Baseline)
 	}
 }
+
+// The gate judges the node under the root, and for a divided job that is the
+// assembly: a summary written over the workers' results, which itself writes
+// nothing. Judged on its own artifacts it failed a delivery with seven green
+// packages on the disk and bought a second wave of all seven. It is shown
+// what the results it assembled were handed on with, once each, own files
+// first.
+func TestTheGateSeesWhatTheAssembledResultsLeftBehind(t *testing.T) {
+	dir := t.TempDir()
+	own := filepath.Join(dir, "summary.md")
+	theirs := filepath.Join(dir, "luhn", "tests", "test_luhn.py")
+	if err := os.MkdirAll(filepath.Dir(theirs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{own, theirs} {
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inputs := []exec.Input{
+		{Title: "task-2-n7", Result: "luhn done", Artifacts: []string{theirs, own}},
+		{Title: "task-2-n1", Result: "csvstats done", Artifacts: []string{theirs}},
+	}
+	got := assembledArtifacts([]string{own}, inputs)
+	want := []string{own, theirs}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("assembled = %v, want %v", got, want)
+	}
+	record := gateEvidence(store.Node{ID: "task-2"}, plan.Spec{}, &exec.Outcome{}, got, true)
+	if len(record.Artifacts) != 2 {
+		t.Fatalf("the gate was shown %v, want both files", record.Artifacts)
+	}
+}

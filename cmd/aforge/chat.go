@@ -1427,7 +1427,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			records := gateEvidence(node, task.Spec, outcome, absolute, true)
+			records := gateEvidence(node, task.Spec, outcome, assembledArtifacts(absolute, inputs), true)
 			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
 			if gate.Checked {
@@ -2432,6 +2432,41 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 // produced convicts a claim that it was written. The done-criterion is the
 // standard the plan set before the work started; it travels verbatim through
 // retries, so it is the only standard here the run itself cannot have moved.
+// assembledArtifacts is what a node that ASSEMBLES other nodes' results left
+// behind: its own files, and the files those results were handed on with.
+//
+// The gate judges the node under the root, and for a divided job that node is
+// the assembly — a summary written over seven finished workers. Judged on its
+// own artifacts it has none, because a summary writes nothing, and the judge
+// read exactly that: "no source code, test files, or package structure appear
+// in the deliverable or the run records" — with seven packages and 121 green
+// tests on the disk beside it. The gap it named bought a revision that ran all
+// seven workers again, doubling the bill for work that was already done.
+//
+// The results the assembly consumed already carry the paths their producers
+// wrote them out with (store.DependencyInput.Artifacts); the gate is shown the
+// same list the assembler was. Own files first, then each input's, once each.
+func assembledArtifacts(own []string, inputs []exec.Input) []string {
+	seen := make(map[string]bool, len(own))
+	combined := make([]string, 0, len(own))
+	add := func(path string) {
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		combined = append(combined, path)
+	}
+	for _, path := range own {
+		add(path)
+	}
+	for _, input := range inputs {
+		for _, path := range input.Artifacts {
+			add(path)
+		}
+	}
+	return combined
+}
+
 func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string, observed bool) revision.Evidence {
 	evidence := revision.Evidence{
 		Artifacts: artifacts,
