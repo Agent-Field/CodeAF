@@ -25,10 +25,17 @@ func happyDomShape(t *testing.T) string {
   "scripts": {"test": "vitest run"},
   "devDependencies": {"vitest": "^4.0.16"}
 }`,
-		"packages/happy-dom/vitest.config.ts":                   "export default {}\n",
-		"packages/happy-dom/src/nodes/element/Element.ts":       "export class Element {}\n",
-		"packages/happy-dom/test/nodes/element/Element.test.ts": "it('has a tag name', () => {})\n",
-		"packages/happy-dom/test/console/Console.test.ts":       "it('logs', () => {})\n",
+		// The real intersection-observer layout, which is what s8 was working
+		// in: three source files and the one check file, and the request that
+		// job was given names none of them.
+		"packages/happy-dom/src/intersection-observer/IntersectionObserver.ts":       "export default class IntersectionObserver {}\n",
+		"packages/happy-dom/src/intersection-observer/IntersectionObserverEntry.ts":  "export default class IntersectionObserverEntry {}\n",
+		"packages/happy-dom/src/intersection-observer/IIntersectionObserverInit.ts":  "export default interface IIntersectionObserverInit {}\n",
+		"packages/happy-dom/test/intersection-observer/IntersectionObserver.test.ts": "it('observes', () => {})\n",
+		"packages/happy-dom/vitest.config.ts":                                        "export default {}\n",
+		"packages/happy-dom/src/nodes/element/Element.ts":                            "export class Element {}\n",
+		"packages/happy-dom/test/nodes/element/Element.test.ts":                      "it('has a tag name', () => {})\n",
+		"packages/happy-dom/test/console/Console.test.ts":                            "it('logs', () => {})\n",
 		"packages/@happy-dom/jest-environment/package.json": `{
   "name": "@happy-dom/jest-environment", "scripts": {"test": "jest"},
   "devDependencies": {"jest": "^29"}
@@ -88,6 +95,73 @@ func TestTheReadingIsTakenInThePackageTheWorkTouched(t *testing.T) {
 	}
 	if !whole {
 		t.Error("the ladder has no rung at the workspace root")
+	}
+}
+
+// happyDomRequest is the request s8 was given, in the shape that matters: it
+// names its subject four times over and does not contain one path.
+const happyDomRequest = "Implement a real IntersectionObserver engine in Happy DOM with " +
+	"deterministic geometry handling and async delivery behavior. Implement `observe()`, " +
+	"`unobserve()`, `disconnect()` and `takeRecords()` with real target tracking. " +
+	"Each IntersectionObserverEntry must carry a stable target."
+
+// A REQUEST THAT NAMES ITS SUBJECT AND NO PATH IS STILL A REQUEST ABOUT A
+// PACKAGE. happy-dom s8 took both of its readings at the repository ROOT with
+// `scope: whole`, and both were killed at their ceiling of 1m53s naming nothing.
+// Nothing was wrong with the workspace declaration or with the nearest-manifest
+// walk: the focus was EMPTY, because it was built only from paths the request
+// spells out and that request spells none.
+//
+// Measured in the task image on 2026-08-29: the root reading is killed at its
+// ceiling naming nothing; the reading this test pins — vitest inside
+// packages/happy-dom over the one check file — exits 0 and names 4 checks.
+func TestARequestThatNamesNoPathStillReachesItsPackage(t *testing.T) {
+	root := happyDomShape(t)
+	focus := Focus(NamedSubjects(happyDomRequest))
+	if len(NamedPaths(happyDomRequest)) != 0 {
+		t.Fatal("the fixture request names a path, so it is not the case this is about")
+	}
+	if len(focus) == 0 {
+		t.Fatal("a request that names its subject four times produced no focus at all")
+	}
+
+	located := Locate(root, focus)
+	found := false
+	for _, entry := range located {
+		if entry == "packages/happy-dom/src/intersection-observer/IntersectionObserver.ts" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the request's own subject did not resolve to the file that is it: %#v", located)
+	}
+
+	touched := TouchedMembers(root, located)
+	if len(touched) == 0 || touched[0].Dir != "packages/happy-dom" {
+		t.Fatalf("the package the work is in was not chosen: %#v", touched)
+	}
+
+	ladder, ok := ReadingStrategies(root, Discover(root), focus)
+	if !ok {
+		t.Fatal("the monorepo produced no strategy")
+	}
+	first := ladder[0]
+	if first.Workdir != "packages/happy-dom" {
+		t.Fatalf("the reading is still taken at the repository root: %#v", first)
+	}
+	if first.Scope == ScopeWhole {
+		t.Errorf("the reading is still of the whole package: %#v", first)
+	}
+	if !strings.Contains(first.Command, "test/intersection-observer/IntersectionObserver.test.ts") {
+		t.Errorf("the scoped reading does not name the check for the subject: %q", first.Command)
+	}
+	if strings.Contains(first.Command, "turbo") {
+		t.Errorf("the reading is the root's fan-out: %q", first.Command)
+	}
+	// And a name shorter than a word resolves to nothing: `Log` and `App` and
+	// `Row` are names half a repository answers to.
+	if got := locateKey("Log"); got != "" {
+		t.Errorf("a three-letter name was admitted as a subject: %q", got)
 	}
 }
 

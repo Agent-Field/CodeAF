@@ -68,6 +68,112 @@ func (f Focus) Within(dir string) Focus {
 	return within
 }
 
+// Locate resolves what a request SAYS into paths the workspace actually holds.
+//
+// It exists because happy-dom s8 took its whole reading at the repository root
+// and never once looked at `packages/happy-dom`, where the work was. Nothing was
+// wrong with the workspace declaration or with the nearest-manifest walk: THE
+// FOCUS WAS EMPTY. A focus was derived only from paths a request spells out, and
+// that request spells out none — it says "Implement `observe()`, `unobserve()`,
+// `disconnect()` and `takeRecords()`", names `IntersectionObserver` and
+// `IntersectionObserverEntry`, and never writes a single path. So no package was
+// touched as far as the reader knew, the ladder had only root rungs, and the
+// root's `npx vitest run` was killed at its ceiling naming nothing.
+//
+// A request that names a thing this repository has a FILE for is a request about
+// that file, and that is a structural fact rather than a guess. Three ways a
+// name resolves, all of them whole-name equality and none of them a substring:
+//
+//   - a path the workspace holds outright;
+//   - a bare file name, resolved to wherever the workspace keeps it;
+//   - a distinctive identifier whose spelling IS a source file's name under the
+//     ecosystem's own convention — `IntersectionObserver` is
+//     `IntersectionObserver.ts`, and `RichLog` is `_rich_log.py`, because
+//     CamelCase and snake_case are two spellings of one name and a leading
+//     underscore is Python's mark for a private module.
+//
+// Unresolved entries are kept as they were: they cost nothing and a caller may
+// have handed a path this walk could not reach.
+func Locate(root string, focus Focus) Focus {
+	wanted := map[string][]int{}
+	located := append(Focus{}, focus...)
+	for index, entry := range focus {
+		clean := strings.TrimSpace(entry)
+		if clean == "" || strings.ContainsAny(clean, "/\\") || filepath.IsAbs(clean) {
+			continue
+		}
+		if key := locateKey(clean); key != "" {
+			wanted[key] = append(wanted[key], index)
+		}
+	}
+	if len(wanted) == 0 {
+		return located
+	}
+	visited := 0
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if visited++; visited > scopeScanLimit {
+			return filepath.SkipAll
+		}
+		if entry.IsDir() {
+			if path != root && skipBuilt(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// A test file is where a name is CHECKED, never where it lives. Filing
+		// the request's own subject under a test file would send the reading to
+		// the package the check is in rather than to the package the work is in
+		// — usually the same place, and when it is not, the wrong one.
+		if testFileName(entry.Name()) {
+			return nil
+		}
+		relative, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		slashed := filepath.ToSlash(relative)
+		name := lastSegment(slashed)
+		stem := name
+		if index := strings.IndexByte(name, '.'); index > 0 {
+			stem = name[:index]
+		}
+		for _, key := range []string{locateKey(name), locateKey(stem)} {
+			for _, at := range wanted[key] {
+				// First sighting wins, so two files of one name resolve the same
+				// way twice rather than by whichever the walk reached last.
+				if located[at] == focus[at] {
+					located[at] = slashed
+				}
+			}
+		}
+		return nil
+	})
+	return located
+}
+
+// locateKey is the one spelling two names are compared in: lowercased, with the
+// word marks a name is written with in one convention and without in another
+// taken out, and with Python's private mark off the front.
+//
+// It is EQUALITY of whole names and never containment, which is the difference
+// between this and the reader textual s8 replaced. A key shorter than four
+// characters is dropped: `Log` and `App` and `Row` are names half a repository
+// answers to, and a focus that resolves to half a repository is no focus.
+func locateKey(name string) string {
+	key := separators.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "")
+	if len(key) < 4 {
+		return ""
+	}
+	return key
+}
+
+// separators are the word marks a name is spelled with in one convention and
+// without in another: rich_log, rich-log, RichLog.
+var separators = regexp.MustCompile(`[^a-z0-9]+`)
+
 // namedPath matches a token that reads as a path: a stem, a dot, and a
 // two-to-eight character alphanumeric extension opening with a letter. The
 // extension's shape is what keeps prose out — "e.g.", "i.e.", "vs." and version
@@ -97,6 +203,56 @@ func NamedPaths(text string) []string {
 		names = append(names, clean)
 	}
 	return names
+}
+
+// subjectSpellings are the two ways a repository's own name for a thing is
+// written inside a sentence: CamelCase with at least two segments, and
+// snake_case with at least two segments. Both are DISTINCTIVE by construction —
+// a word a person could have used by accident is one segment — and both are only
+// ever resolved by whole-name equality against a file the workspace holds, so a
+// spelling that names nothing costs nothing.
+var subjectSpellings = []*regexp.Regexp{
+	regexp.MustCompile(`\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b`),
+	regexp.MustCompile(`\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`),
+}
+
+// namedSubjectLimit bounds how many subjects one request contributes. A request
+// naming more than this many distinct things is not describing a change, and the
+// resolution walk is one walk whatever the count — this bounds the map and the
+// focus that comes out of it, not the reading.
+const namedSubjectLimit = 64
+
+// NamedSubjects is what a request is ABOUT, as the names it uses: the paths it
+// spells out, and the identifiers it names in the repository's own spelling.
+//
+// The second half is the repair for happy-dom s8, whose request names
+// `IntersectionObserver`, `IntersectionObserverEntry`, `observe()` and
+// `takeRecords()` and does not contain one path — so a focus built from paths
+// alone was empty, no package was ever chosen, and the whole reading was taken
+// at the repository root and killed at its ceiling.
+//
+// Nothing here decides anything on its own: a name is only a subject once
+// [Locate] has matched it, whole, to a file the workspace holds.
+func NamedSubjects(text string) []string {
+	named := NamedPaths(text)
+	seen := make(map[string]bool, len(named))
+	for _, name := range named {
+		seen[strings.ToLower(name)] = true
+	}
+	for _, spelling := range subjectSpellings {
+		for _, match := range spelling.FindAllString(text, -1) {
+			key := strings.ToLower(match)
+			if seen[key] || locateKey(match) == "" {
+				continue
+			}
+			seen[key] = true
+			named = append(named, match)
+			if len(named) >= namedSubjectLimit {
+				return named
+			}
+		}
+	}
+	return named
 }
 
 // ScopeWhole is what a reading of everything the entrypoint covers calls itself.
@@ -167,36 +323,55 @@ func testFileName(name string) bool {
 	return false
 }
 
-// testDirName says a directory is where a project keeps its checks. It is the
-// second half of the same shape rule: a repository that keeps every check in
-// tests/ names none of its files after the module they exercise.
-func testDirName(name string) bool {
-	switch strings.ToLower(name) {
-	case "test", "tests", "__tests__", "spec", "specs", "testing":
-		return true
-	}
-	return false
-}
-
-// Adjacent is the checks that sit next to a change: the test files the focus
-// names outright, the test files beside what it touched, and the test files that
-// name what it touched.
+// Adjacent is the checks that sit next to a change, and it decides that BY
+// STRUCTURE.
+//
+// It did not, once, and the cost is measured. textual s8 touched `_log.py`,
+// `_rich_log.py`, `widget.py` and `messages.py`; the reader flattened every name
+// to its letters and asked whether a test file's text CONTAINED one, so the stem
+// `log` matched `dialog`, `catalog`, `logic` and `logging` wherever they
+// appeared. The selection came back as forty files spanning tests/animations,
+// command_palette, css, directory_tree, document, footer and input — a third of
+// the suite, none of it about this change — and the reading was killed at its
+// ceiling of 1m53s naming nothing at all. A SUBSTRING IS NOT A RELATIONSHIP.
+//
+// Two structural relationships, in this rank:
+//
+//  1. The test file NAMED AFTER the touched file, by the runner's own naming
+//     convention — `test_<stem>.py`, `<stem>_test.go`, `<stem>.test.ts` — with
+//     the stem compared whole and never as a fragment; and the test files
+//     sitting in the same directory as the touched file.
+//  2. The test files whose IMPORT STATEMENTS resolve to the touched module —
+//     `from textual.widgets._rich_log import RichLog`, and equally
+//     `from textual.widgets import RichLog`, because the package's own
+//     `__init__.py` says that name comes from that file. For JavaScript a
+//     relative specifier is resolved against the importing file's own
+//     directory. Only import lines are read, and only whole identifiers match,
+//     so `Log` never matches inside `Logger` and `log` never matches inside
+//     `dialog`.
 //
 // Paths come back relative to root — which for a member rung is the package's
-// own directory, so the selection drops straight onto a command run there — in
-// stable order, bounded at scopeSelectionLimit.
+// own directory, so the selection drops straight onto a command run there — with
+// rank 1 before rank 2 and each rank sorted inside itself. That order is what
+// survives the cap, so a selection cut to fit keeps the checks the change is
+// actually in.
+//
+// core is how many of them are rank 1 — the checks the change is IN, as opposed
+// to the ones that merely import it. It is what a reading cut at its ceiling
+// narrows back to, because that is the smallest selection that is still a
+// reading of this change rather than of its neighbourhood.
 //
 // ok is false when the focus names nothing, when nothing adjacent was found, or
 // when the walk hit its bound before finding anything. All three mean the same
 // thing to the caller: THERE IS NO SCOPED READING TO TAKE HERE, take the whole
 // one. A scoped reading that guessed would be a reading of a suite nobody chose.
-func Adjacent(root string, focus Focus) (paths []string, ok bool) {
-	dirs, stems := focusShape(root, focus)
-	if len(dirs) == 0 && len(stems) == 0 {
-		return nil, false
+func Adjacent(root string, focus Focus) (paths []string, core int, ok bool) {
+	touched := focusShape(root, focus)
+	if touched.empty() {
+		return nil, 0, false
 	}
-	var named, beside, importing []string
-	visited, budget := 0, scopeReadBudget
+	var named, importing []string
+	visited, budget, suite := 0, scopeReadBudget, 0
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -213,57 +388,249 @@ func Adjacent(root string, focus Focus) (paths []string, ok bool) {
 		if !testFileName(entry.Name()) {
 			return nil
 		}
+		suite++
 		relative, relErr := filepath.Rel(root, path)
 		if relErr != nil {
 			return nil
 		}
 		slashed := filepath.ToSlash(relative)
 		switch {
-		case stems[stemOf(entry.Name())]:
-			// The change is IN this test file, or the test file is named after
-			// what the change touched. Either way it is the first thing to run.
+		case touched.namesAfter(entry.Name()) || touched.dirs[pathDir(slashed)]:
 			named = append(named, slashed)
-		case adjacentDir(slashed, dirs):
-			beside = append(beside, slashed)
 		default:
-			// The last and most expensive question: does this check name the
-			// thing that changed? It is asked only of files the first two rules
-			// did not already take, and only while the read budget lasts.
+			// The second rank, and the only one that costs a read. It is asked
+			// only of files the first rank did not already take, and only while
+			// the read budget lasts.
 			if budget <= 0 {
 				return nil
 			}
 			body, read := readSmallFile(path)
 			budget -= len(body)
-			if read && namesAny(body, stems) {
+			if read && touched.importedBy(slashed, body) {
 				importing = append(importing, slashed)
 			}
 		}
 		return nil
 	})
-	// The three groups keep their order and each is sorted inside itself. The
-	// order is what survives the cap: a selection cut at its limit keeps the
-	// test files the change is IN before the ones merely beside it, and those
-	// before the ones that only mention it.
-	selection := dedupe(append(append(sortedUnique(named), sortedUnique(beside)...), sortedUnique(importing)...))
+	first := sortedUnique(named)
+	selection := dedupe(append(first, sortedUnique(importing)...))
 	if len(selection) == 0 {
-		return nil, false
+		return nil, 0, false
 	}
 	if len(selection) > scopeSelectionLimit {
 		selection = selection[:scopeSelectionLimit]
 	}
-	return selection, true
+	core = min(len(first), len(selection))
+	// A SELECTION LARGER THAN AN EIGHTH OF THE SUITE IS NOT A SCOPE. Past that
+	// it is a sample of the same order as the whole thing, and the whole rung
+	// directly below it is a better reading for the same money — so the scoped
+	// rung has stopped paying for itself and is cut back to the checks the
+	// change is IN.
+	//
+	// The eighth is WallShare, spent on the other axis and for the same reason
+	// it is spent on the first: an eighth is the share of a thing a measurement
+	// may take before it has become the thing. textual s8 selected forty of its
+	// 251 test files — a third of the suite — because `widget.py` and
+	// `messages.py` are genuinely imported by three dozen tests. Every one of
+	// those imports is real; the selection is still not a reading of this
+	// change, and it was killed at its ceiling naming nothing.
+	//
+	// Where there is no core — nothing is named after what changed — the
+	// neighbourhood is all there is, and it is cut to the eighth itself.
+	// The comparison is only worth making on a suite big enough for a scope to
+	// be worth having: one no larger than the most a scope may name at all is
+	// one where the whole rung directly below costs about the same, and
+	// trimming there buys nothing and loses roster.
+	if share := suite / WallShare; suite > scopeSelectionLimit && len(selection) > share {
+		switch {
+		case core > 0 && core < len(selection):
+			selection = selection[:core]
+		case share > 0 && share < len(selection):
+			selection = selection[:share]
+		}
+		core = min(core, len(selection))
+	}
+	return selection, core, true
 }
 
-// focusShape reduces a focus to the two things the selection asks of it: the
-// directories the work touched, and the stems of the files it touched.
+// change is what a focus says about the tree, in the three forms the two
+// adjacency rules ask for it.
+type change struct {
+	// dirs are the directories the work touched, so a check sitting beside it
+	// is a check next to it.
+	dirs map[string]bool
+	// stems are the touched files' own names without their extension, compared
+	// WHOLE. `_rich_log.py` contributes `_rich_log` and `rich_log`, because a
+	// leading underscore is Python's mark for a private module and is not part
+	// of the name the check is written under — `test_rich_log.py`.
+	stems map[string]bool
+	// identifiers are what an import statement would have to name to be naming
+	// one of these files: the module's own tail, and every public name the
+	// package's own `__init__.py` re-exports FROM that module. textual's
+	// widgets package says `from textual.widgets._rich_log import RichLog`, so
+	// a test that writes `from textual.widgets import RichLog` is importing the
+	// touched file and there is no other way to know it.
+	identifiers map[string]bool
+	// files are the touched paths themselves, so a relative JavaScript
+	// specifier can be resolved against them.
+	files map[string]bool
+}
+
+func (c change) empty() bool {
+	return len(c.dirs) == 0 && len(c.stems) == 0 && len(c.identifiers) == 0
+}
+
+// namesAfter says this test file is the one written for a touched file, under
+// the runner's own naming convention.
 //
-// A stem is the file name without its extension, which is the one spelling a
-// module is imported by in every ecosystem here: `_rich_log` in Python, `Igel`
-// in a Java import, `feature_schema` in a `from igel.feature_schema import`.
-// Names too short to be a module — one or two characters, `index`, `main` — are
-// dropped, because a stem that matches every file selects every file.
-func focusShape(root string, focus Focus) (dirs map[string]bool, stems map[string]bool) {
-	dirs, stems = map[string]bool{}, map[string]bool{}
+// The convention is a table of AFFIXES, not a substring search: the file's name
+// with its test marker removed must EQUAL a touched stem. `test_log.py` is the
+// check for `_log.py`; `test_logger.py` is the check for `logger.py` and for
+// nothing else, which is the distinction the flattened reader could not draw.
+func (c change) namesAfter(name string) bool {
+	for _, bare := range testFileStems(name) {
+		if c.stems[bare] {
+			return true
+		}
+	}
+	return false
+}
+
+// testFileStems is a test file's name with each of the test conventions'
+// affixes taken off, in every reading that applies. A name is usually one of
+// them; returning all of them costs nothing and keeps the table declarative.
+func testFileStems(name string) []string {
+	lowered := strings.ToLower(name)
+	trimmed := lowered
+	if index := strings.IndexByte(lowered, '.'); index > 0 {
+		trimmed = lowered[:index]
+	}
+	stems := []string{}
+	add := func(stem string) {
+		if len(stem) >= 2 {
+			stems = append(stems, stem)
+		}
+	}
+	// `foo.test.ts`, `foo.spec.tsx` — the marker sits between stem and
+	// extension, so the stem is already what is in front of the first dot.
+	if hasTestInfix(lowered, ".test.") || hasTestInfix(lowered, ".spec.") {
+		add(trimmed)
+	}
+	for _, prefix := range []string{"test_", "spec_", "test"} {
+		if after, cut := strings.CutPrefix(trimmed, prefix); cut {
+			add(after)
+		}
+	}
+	for _, suffix := range []string{"_test", "_spec", "test", "tests", "spec"} {
+		if before, cut := strings.CutSuffix(trimmed, suffix); cut {
+			add(before)
+		}
+	}
+	return stems
+}
+
+// importedBy says this test file's IMPORT STATEMENTS name the touched module.
+//
+// Only import lines are read. A module's name appearing in the body of a check
+// is the check talking about something; a module's name in an import is the
+// check depending on it, and only the second is a relationship. That difference
+// is the whole of textual s8: `log` in the word `dialog` in the body of a test
+// about the command palette put that test in the reading.
+func (c change) importedBy(file, body string) bool {
+	dir := pathDir(file)
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !importLine.MatchString(trimmed) {
+			continue
+		}
+		for identifier := range c.identifiers {
+			if namesIdentifier(trimmed, identifier) {
+				return true
+			}
+		}
+		// A relative specifier is a path, and it resolves against the file that
+		// wrote it. `import { Element } from '../src/nodes/Element'` in
+		// test/nodes/X.test.ts is that file and nothing else.
+		for _, specifier := range relativeSpecifier.FindAllStringSubmatch(trimmed, -1) {
+			if c.resolves(dir, specifier[1]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolves says a relative import specifier, read from a file in dir, names one
+// of the touched files — trying the extensions and the index file a JavaScript
+// resolver would try, because a specifier is written without them.
+func (c change) resolves(dir, specifier string) bool {
+	joined := filepath.ToSlash(filepath.Join(dir, specifier))
+	if c.files[joined] {
+		return true
+	}
+	for _, extension := range []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"} {
+		if c.files[joined+extension] || c.files[joined+"/index"+extension] {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	// An import statement, in the two grammars this program meets. It is the
+	// line's own shape and not a search for a word.
+	importLine = regexp.MustCompile(
+		`^(?:from[[:space:]]|import[[:space:]]|import\{|const[[:space:]].*=[[:space:]]*require\(|.*[[:space:]]require\()` +
+			`|^import[[:space:]]*[{*'"]` + "|^export[[:space:]].*[[:space:]]from[[:space:]]")
+	// A relative specifier inside one, in either quote.
+	relativeSpecifier = regexp.MustCompile(`['"](\.[^'"]*)['"]`)
+	// A leading underscore is Python's mark for a private module, and it is not
+	// part of the name the check for it is written under.
+	privateMark = regexp.MustCompile(`^_+`)
+)
+
+// namesIdentifier says this line names this identifier AS AN IDENTIFIER: not as
+// a fragment of a longer one, and not inside a word.
+//
+// It is rule 3 of the repair, and it is the one that had to be a rule. `Log`
+// must not match `Logger`; `log` must not match `dialog`; `_rich_log` must not
+// match `_rich_log2`. The test is that the characters either side of the match
+// cannot themselves be part of an identifier.
+func namesIdentifier(line, identifier string) bool {
+	if identifier == "" {
+		return false
+	}
+	for offset := 0; ; {
+		index := strings.Index(line[offset:], identifier)
+		if index < 0 {
+			return false
+		}
+		at := offset + index
+		before := byte(' ')
+		if at > 0 {
+			before = line[at-1]
+		}
+		after := byte(' ')
+		if end := at + len(identifier); end < len(line) {
+			after = line[end]
+		}
+		if !identifierByte(before) && !identifierByte(after) {
+			return true
+		}
+		offset = at + 1
+	}
+}
+
+func identifierByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// focusShape reduces a focus to what the two adjacency rules ask of the tree.
+func focusShape(root string, focus Focus) change {
+	shape := change{
+		dirs: map[string]bool{}, stems: map[string]bool{},
+		identifiers: map[string]bool{}, files: map[string]bool{},
+	}
 	for _, entry := range focus {
 		clean := strings.TrimSpace(entry)
 		if clean == "" {
@@ -280,110 +647,83 @@ func focusShape(root string, focus Focus) (dirs map[string]bool, stems map[strin
 		if clean == "." || strings.HasPrefix(clean, "..") {
 			continue
 		}
-		base := clean
-		if index := strings.LastIndexByte(clean, '/'); index >= 0 {
-			dirs[clean[:index]] = true
-			base = clean[index+1:]
-		} else {
-			dirs["."] = true
+		dir, base := pathDir(clean), lastSegment(clean)
+		shape.dirs[dir] = true
+		stem := base
+		if index := strings.IndexByte(base, '.'); index > 0 {
+			stem = base[:index]
 		}
-		if stem := stemOf(base); stem != "" {
-			stems[stem] = true
+		if len(stem) < 2 || commonStems[strings.ToLower(stem)] {
+			continue
+		}
+		shape.files[strings.TrimSuffix(clean, filepath.Ext(clean))] = true
+		shape.stems[strings.ToLower(stem)] = true
+		public := privateMark.ReplaceAllString(stem, "")
+		if len(public) >= 2 {
+			shape.stems[strings.ToLower(public)] = true
+		}
+		// The module's own tail is what a full-path import names.
+		shape.identifiers[stem] = true
+		for name := range reExportedNames(root, dir, stem) {
+			shape.identifiers[name] = true
 		}
 	}
-	return dirs, stems
+	return shape
 }
 
-// commonStems are the file names that name nothing: every package has an index
-// and a main, and a stem that matches everything selects everything.
+// commonStems are the file names that name nothing in particular: every package
+// has an index and a main, and a check named after one of them is named after
+// the package rather than after the file.
 var commonStems = map[string]bool{
-	"index": true, "main": true, "mod": true, "init": true, "lib": true,
-	"types": true, "utils": true, "util": true, "test": true, "tests": true,
+	"index": true, "main": true, "mod": true, "init": true, "__init__": true,
 }
 
-// stemOf is a file name reduced to the module it is about: its extensions taken
-// off, its test affixes taken off, and its word separators taken out.
+// reExport is the line a package's own entry point writes to say that a public
+// name comes from one of its modules: `from textual.widgets._rich_log import
+// RichLog`, `from ._rich_log import RichLog`, `export { Element } from
+// './nodes/Element'`.
+var reExport = regexp.MustCompile(
+	`(?m)^[[:space:]]*(?:from[[:space:]]+([\w.]+)[[:space:]]+import[[:space:]]+(.+)$` +
+		`|export[[:space:]]*\{([^}]*)\}[[:space:]]*from[[:space:]]*['"]([^'"]+)['"])`)
+
+// reExportedNames are the public names a package's entry point re-exports FROM
+// one of its modules.
 //
-// All three reductions are the same rule — TWO SPELLINGS OF ONE NAME ARE ONE
-// NAME — and each of them is a way a project spells the link between a module
-// and the check for it. `foo.test.ts` checks `foo.ts`; `test_rich_log.py`
-// checks `_rich_log.py`, where the leading underscore is Python's own mark for
-// a private module and belongs to neither name; and `RichLog` in an import is
-// `rich_log` on disk, which is one name written in the two conventions the same
-// project uses at once. A reader that compared these literally found nothing
-// adjacent to anything, which is a scoped reading that never happens.
-func stemOf(name string) string {
-	if index := strings.IndexByte(name, '.'); index > 0 {
-		name = name[:index]
-	}
-	name = strings.ToLower(name)
-	for _, affix := range []string{"test_", "spec_"} {
-		name = strings.TrimPrefix(name, affix)
-	}
-	for _, affix := range []string{"_test", "_spec", "test", "spec"} {
-		if trimmed := strings.TrimSuffix(name, affix); trimmed != "" {
-			name = trimmed
+// It is what turns `from textual.widgets import RichLog` into a fact about
+// `_rich_log.py`. Without it a test that imports a widget the way every user of
+// the library imports it is invisible to the reader, and the only tests found
+// are the ones that reached past the package's own front door.
+//
+// Read from the package's own entry point and from nowhere else: this is the
+// file whose job is to say where its names come from, and a name it does not
+// mention is a name it does not export.
+func reExportedNames(root, dir, module string) map[string]bool {
+	names := map[string]bool{}
+	for _, entry := range []string{"__init__.py", "index.ts", "index.js", "index.tsx", "mod.rs"} {
+		body, ok := readSmallFile(filepath.Join(root, filepath.FromSlash(dir), entry))
+		if !ok {
+			continue
+		}
+		for _, match := range reExport.FindAllStringSubmatch(body, -1) {
+			source, exported := match[1], match[2]
+			if source == "" {
+				source, exported = match[4], match[3]
+			}
+			if lastSegment(strings.ReplaceAll(source, ".", "/")) != module {
+				continue
+			}
+			for _, name := range strings.Split(exported, ",") {
+				name = strings.TrimSpace(strings.Trim(strings.TrimSpace(name), "()"))
+				if index := strings.Index(name, " as "); index > 0 {
+					name = strings.TrimSpace(name[index+4:])
+				}
+				if name != "" && name != "*" {
+					names[name] = true
+				}
+			}
 		}
 	}
-	name = separators.ReplaceAllString(name, "")
-	if len(name) < 3 || commonStems[name] {
-		return ""
-	}
-	return name
-}
-
-// separators are the word marks a name is spelled with in one convention and
-// without in another: rich_log, rich-log, RichLog. Taking them out is what lets
-// the three be recognised as one name.
-var separators = regexp.MustCompile(`[^a-z0-9]+`)
-
-// adjacentDir says a test file sits beside the change: in a directory the work
-// touched, or in that directory's own tests/ directory, or in a tests/
-// directory the touched directory sits under.
-func adjacentDir(file string, dirs map[string]bool) bool {
-	dir := pathDir(file)
-	for touched := range dirs {
-		if dir == touched || strings.HasPrefix(dir, touched+"/") {
-			return true
-		}
-		// A repository that keeps its checks in one tree names that tree's
-		// directories after the source tree's. `src/widgets/x.py` is checked by
-		// `tests/widgets/`, and the shared tail is what says so.
-		if testDirName(firstSegment(dir)) && strings.HasSuffix(dir, "/"+lastSegment(touched)) {
-			return true
-		}
-	}
-	return false
-}
-
-func firstSegment(slashed string) string {
-	if index := strings.IndexByte(slashed, '/'); index >= 0 {
-		return slashed[:index]
-	}
-	return slashed
-}
-
-func lastSegment(slashed string) string {
-	if index := strings.LastIndexByte(slashed, '/'); index >= 0 {
-		return slashed[index+1:]
-	}
-	return slashed
-}
-
-// namesAny says this body of source mentions one of the stems the work touched.
-// It is a mention rather than a parsed import on purpose: every ecosystem spells
-// an import differently and all of them spell the module's own name, and the
-// cost of over-matching here is one more file on a command line.
-func namesAny(body string, stems map[string]bool) bool {
-	// Read in the same spelling stemOf reduces a name to, so an import of
-	// `RichLog` and a file called `_rich_log.py` are one name here as well.
-	flattened := separators.ReplaceAllString(strings.ToLower(body), "")
-	for stem := range stems {
-		if strings.Contains(flattened, stem) {
-			return true
-		}
-	}
-	return false
+	return names
 }
 
 // sortedUnique orders one group of the selection, so the same tree answers the
@@ -407,4 +747,12 @@ func dedupe(names []string) []string {
 		kept = append(kept, name)
 	}
 	return kept
+}
+
+// lastSegment is the final component of a slash-spelled path.
+func lastSegment(slashed string) string {
+	if index := strings.LastIndexByte(slashed, '/'); index >= 0 {
+		return slashed[index+1:]
+	}
+	return slashed
 }
