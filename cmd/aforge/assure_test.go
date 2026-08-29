@@ -78,7 +78,7 @@ func TestOnlyTheAsksOwnWordsAdmitAGap(t *testing.T) {
 		"a different span still admits":         {quote: "compare the two parsers", spent: []string{"the benchmark numbers"}, admitted: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := revision.AdmitGapCitation(intent, test.quote, test.spent)
+			refusal := revision.AdmitGapCitation(intent, []string{test.quote}, test.spent)
 			if test.admitted && refusal != "" {
 				t.Fatalf("a legitimate citation was refused: %q", refusal)
 			}
@@ -111,7 +111,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 		"no citation at all is refused":      {quote: "  "},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := revision.AdmitGapRevision(intent, method, test.quote)
+			refusal := revision.AdmitGapRevision(intent, method, []string{test.quote})
 			if test.admitted && refusal != "" {
 				t.Fatalf("a grounded gap was refused its round: %q", refusal)
 			}
@@ -131,7 +131,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 	}
 	// A job with no working method is the ordinary case and must not become
 	// a job where every gap is grounded by an empty string.
-	if refusal := revision.AdmitGapRevision(intent, "", "any calendar year present"); refusal == "" {
+	if refusal := revision.AdmitGapRevision(intent, "", []string{"any calendar year present"}); refusal == "" {
 		t.Fatal("an empty working method grounded a gap it never contained")
 	}
 }
@@ -165,10 +165,10 @@ func TestTheGapLedgerCountsOnlyTheRoundsThatWereBought(t *testing.T) {
 	if len(spent) != 1 || spent[0] != "every part" {
 		t.Fatalf("ledger = %v, want only the citation that bought a round", spent)
 	}
-	if refusal := revision.AdmitGapCitation("answer every part", "every part", spent); refusal == "" {
+	if refusal := revision.AdmitGapCitation("answer every part", []string{"every part"}, spent); refusal == "" {
 		t.Fatal("a span that already bought a round bought a second one")
 	}
-	if refusal := revision.AdmitGapCitation("answer every part", "answer", spent); refusal != "" {
+	if refusal := revision.AdmitGapCitation("answer every part", []string{"answer"}, spent); refusal != "" {
 		t.Fatalf("a refused citation blocked its own words forever: %q", refusal)
 	}
 	// The lineage is this job's, never the one whose id merely starts the same.
@@ -446,5 +446,68 @@ func TestTheRoundCapStillBoundsEvenACitedLineage(t *testing.T) {
 		if strings.Contains(message.Body, "split as many times") {
 			t.Fatalf("the governor receipt reached the conversation: %q", message.Body)
 		}
+	}
+}
+
+// A REFUSED MECHANICAL GAP IS NOT A WHOLE DELIVERY. Every other refusal on this
+// event is the gate being caught in an error of OPINION — a judge named
+// something the request never set, or something already on disk, or something
+// already in the text — and a run whose only complaint was wrong delivered what
+// was asked for, so it exits 0. The mechanical half holds no opinion. It says a
+// file the plan itself promised is missing or empty, and refusing its citation
+// declines to buy a repair round without making the file appear. Under the old
+// rule a headless run that produced nothing at all reported settled, done and
+// exit 0 under a note explaining that the review had overreached.
+func TestARefusedMechanicalGateIsPartialAndARefusedJudgeIsWhole(t *testing.T) {
+	graph := openCacheStore(t)
+	for name, gate := range map[string]store.DeliveryGate{
+		"mechanical": {Gap: "report.md", Quote: "report.md", Quotes: []string{"report.md"},
+			Mechanical: true, Refused: "what the review asked for next is not in the request"},
+		"judged": {Gap: "no chart of the results", Quote: "a chart of the results",
+			Quotes:  []string{"a chart of the results"},
+			Refused: "what the review asked for next is not in the request"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			id := "job-" + name
+			if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+				{ID: id, Brief: "write the report"}}},
+				store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "write report.md"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.RecordDeliveryGate(id, gate); err != nil {
+				t.Fatal(err)
+			}
+			node, found, err := graph.Node(id)
+			if err != nil || !found {
+				t.Fatalf("node %s: found %t, err %v", id, found, err)
+			}
+			watch := &settlementWatch{graph: graph}
+			whole := watch.deliveredWhole(node)
+			if gate.Mechanical && whole {
+				t.Fatal("a run that never wrote the file the plan promised delivered whole")
+			}
+			if !gate.Mechanical && !whole {
+				t.Fatal("a gap the system itself overruled was charged a non-zero exit code")
+			}
+		})
+	}
+	// And the repair that worked is still whole, mechanical or not: the polish
+	// round wrote the file, the second gate read it, and there is nothing left
+	// for an exit code to complain about.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job-closed", Brief: "write the report"}}},
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "write report.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job-closed", store.DeliveryGate{
+		Gap: "report.md", Quotes: []string{"report.md"}, Mechanical: true, PolishClosed: true}); err != nil {
+		t.Fatal(err)
+	}
+	node, found, err := graph.Node("job-closed")
+	if err != nil || !found {
+		t.Fatalf("node job-closed: found %t, err %v", found, err)
+	}
+	if watch := (&settlementWatch{graph: graph}); !watch.deliveredWhole(node) {
+		t.Fatal("a mechanical gap the repair round closed was still called partial")
 	}
 }

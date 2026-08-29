@@ -1,0 +1,9 @@
+{
+ "delivery_gate": {
+  "pass": false,
+  "gap": "internal/tui3/spacing.go, internal/tui3/home.go, internal/tui3/homebridge.go, internal/tui3/designlanguage_test.go, internal/tui3/breakpoints_test.go",
+  "polish_closed": false,
+  "quote": "internal/tui3/spacing.go, internal/tui3/home.go, internal/tui3/homebridge.go, internal/tui3/designlanguage_test.go, internal/tui3/breakpoints_test.go",
+  "refused": "what the review asked for next is not in the request"
+ }
+}

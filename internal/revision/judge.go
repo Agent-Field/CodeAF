@@ -25,8 +25,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -204,11 +202,38 @@ const GateRevisionContract = "Your final message is the deliverable and the only
 type Judgment struct {
 	Pass bool
 	Gaps string
-	// Quote is the span of the user's own request the gap is a failure of. It
-	// is what buys the gap authority over the job: a gate may re-run one leaf on
-	// any named gap, but it may only grow the graph for a gap that quotes the
-	// ask. See AdmitGapCitation for why that is the whole convergence argument.
+	// Quote is the citations as one line: the display half, and what every
+	// surface that shows a gap to a person or keeps it as text has always read.
+	// It decides nothing. Citations is what the admission rules weigh, and the
+	// two are written together so a reader of either is looking at one gap.
 	Quote string
+	// Citations are the spans of the user's own request the gap is a failure
+	// of — one per thing the review says is missing. They are what buys the gap
+	// authority over the job: a gate may re-run one leaf on any named gap, but
+	// it may only grow the graph for a gap that quotes the ask.
+	//
+	// It is a list rather than one string because the two halves of this gate
+	// name gaps differently and one invariant has to hold for both. A model
+	// judge answers with a single verbatim span, so its list has one element and
+	// is weighed exactly as it always was. The mechanical half names every file
+	// the plan promised and the disk does not hold, which is one citation per
+	// file; flattened into a comma list and handed to a rule asking "is this one
+	// substring of the ask", it could never be admitted, and a gate reporting
+	// five files the person had themselves listed was refused as an invention
+	// while the leaf that wrote none of them was delivered as done. The list is
+	// the fix, and it costs the convergence argument nothing — see
+	// AdmitGapCitation, where every element is held to the same test the single
+	// span was.
+	Citations []string
+	// Mechanical says the gap came from MissingProduces rather than from a
+	// judge: a file the plan named as a deliverable is missing or empty on disk.
+	// It travels because a refusal means two different things on either side of
+	// it. Refusing a model judge's citation says the gate was wrong, and a run
+	// whose only complaint was wrong delivered whole. Refusing a mechanical
+	// citation says only that no repair round will be bought — the absence it
+	// reports is a fact about the filesystem, which no admission rule is
+	// competent to overturn. See deliveredWhole in cmd/aforge/do.go.
+	Mechanical bool
 	// Exercised is the gate's separate answer about evidence: it saw the
 	// finished thing run the way it will be used, and hold. A pass without it
 	// is a pass — it is simply not a verified one, and the difference is the
@@ -226,6 +251,41 @@ type Judgment struct {
 	// fail-closed switch: flipping the default is a behaviour change and it is
 	// not this wave's.
 	Unjudged string
+}
+
+// Cited is the gap's citations, and the one reader every admission rule goes
+// through. It falls back to the joined Quote when the list is empty so a
+// judgement built before the list existed — or by a caller outside this
+// package that only knew how to set one span — is still weighed rather than
+// silently treated as citing nothing.
+func (j Judgment) Cited() []string {
+	if cited := trimmedCitations(j.Citations); len(cited) > 0 {
+		return cited
+	}
+	return trimmedCitations([]string{j.Quote})
+}
+
+// trimmedCitations is the shape every citation list is kept in: trimmed, with
+// the empty ones dropped. A blank element is not a citation, and one silently
+// carried through the rules would ground itself against any text at all —
+// strings.Contains is true of the empty string everywhere.
+func trimmedCitations(citations []string) []string {
+	kept := make([]string, 0, len(citations))
+	for _, citation := range citations {
+		if citation = strings.TrimSpace(citation); citation != "" {
+			kept = append(kept, citation)
+		}
+	}
+	return kept
+}
+
+// joinCitations renders a citation list as the one line a person reads and a
+// text field stores. The separator is the one anybody enumerating in prose
+// would use, and it is the only place in this package that turns the list back
+// into a string — nothing downstream of it may re-split the result, because a
+// citation that legitimately contains a comma would come apart.
+func joinCitations(citations []string) string {
+	return strings.Join(trimmedCitations(citations), ", ")
 }
 
 // GateNotebookBytes is the notebook digest's bound when the window is unknown,
@@ -660,30 +720,18 @@ func NamedFiles(text string) []string {
 // ProducedFile answers whether one named file is among the files a run left
 // behind, and returns the path it landed at.
 //
-// A name carrying a directory names that place: "docs/memo.md" is satisfied by
-// a path ending in docs/memo.md and by nothing else, which is exactly the case
-// a leaf lost when it wrote the right content at the wrong address. A bare name
-// names the file wherever it landed, because the person who wrote "report.md"
-// said nothing about which directory.
+// Which recorded path answers to a name is namedAs, which states that law once
+// for this package because the grounding rule asks the same question of a
+// citation and a request.
 //
 // The file must be on disk and must be a file: a recorded path with nothing at
 // it, or a directory wearing the name, is not a produced deliverable.
 func ProducedFile(named string, artifacts []string) (string, bool) {
-	want := strings.ToLower(strings.TrimPrefix(strings.Trim(strings.TrimSpace(named), "/"), "./"))
-	if want == "" {
+	if fileKey(named) == "" {
 		return "", false
 	}
-	bare := !strings.Contains(want, "/")
 	for _, artifact := range artifacts {
-		have := strings.ToLower(filepath.ToSlash(strings.TrimSpace(artifact)))
-		if have == "" {
-			continue
-		}
-		matched := have == want || strings.HasSuffix(have, "/"+want)
-		if bare && !matched {
-			matched = path.Base(have) == want
-		}
-		if !matched {
+		if !namedAs(named, artifact) {
 			continue
 		}
 		if info, err := os.Stat(artifact); err != nil || info.IsDir() {
@@ -708,8 +756,13 @@ func ProducedFile(named string, artifacts []string) (string, bool) {
 // It refuses nothing else. A gap about what is INSIDE a produced file quotes the
 // substance rather than the filename, and the substance is not a name this can
 // match — so the ordinary path judges it, as it should.
-func AdmitGapArtifact(quote string, evidence Evidence) string {
-	names := NamedFiles(quote)
+func AdmitGapArtifact(citations []string, evidence Evidence) string {
+	// Every file every citation names, because the gap is one gap: a list of
+	// five files of which four are on disk is still a gap about the fifth.
+	var names []string
+	for _, citation := range trimmedCitations(citations) {
+		names = append(names, NamedFiles(citation)...)
+	}
 	if len(names) == 0 {
 		return ""
 	}
@@ -751,8 +804,11 @@ const enumerationFloor = 3
 //
 // Presence is checked case-insensitively and nowhere else is anything relaxed:
 // this is a containment test, so it can close a gap and can never open one.
-func AdmitGapPresent(quote, deliverable string) string {
-	quote, deliverable = strings.TrimSpace(quote), strings.ToLower(deliverable)
+func AdmitGapPresent(citations []string, deliverable string) string {
+	// The enumeration is read off the citations as one line. Joining is safe
+	// here and only here: an item of an enumeration cannot span the separator,
+	// because the separator is not a character an item is made of.
+	quote, deliverable := joinCitations(citations), strings.ToLower(deliverable)
 	if quote == "" || deliverable == "" {
 		return ""
 	}
@@ -1005,7 +1061,13 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// paid work — neither the revision round nor the extension — and both of
 	// those refusals happen at the wiring seam rather than being laundered
 	// into a pass here.
-	return Judgment{Gaps: gaps, Quote: strings.TrimSpace(verdict.Quote), Checked: true}
+	//
+	// The model judge is asked for one verbatim span and answers with one, so
+	// its gap carries a single-element list and is weighed exactly as it always
+	// was. Both fields are written because they are one fact seen from two
+	// sides: what a person reads, and what the admission rules weigh.
+	quote := strings.TrimSpace(verdict.Quote)
+	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}), Checked: true}
 }
 
 // unjudged is the fail-open pass, said out loud.
@@ -1039,10 +1101,12 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // admissible gaps finite and fixed before the first round runs. The user's
 // verbatim intent is immutable by construction — the store refuses an empty
 // one, never rewrites it, and stamps the same value on every node of every
-// splice — so the substrings of that one string are a fixed, finite set. A gap
-// must name one of them. Round k+1 must name one no earlier round spent. The
-// number of unspent spans falls by at least one per admitted round, so the loop
-// terminates on the content of the ask rather than on a counter.
+// splice — so the substrings of that one string, and the files it names, are a
+// fixed, finite set. Every citation a gap carries must be one of them. Round
+// k+1 must carry at least one no earlier round spent, and spends every citation
+// it carries. The number of unspent citations falls by at least one per
+// admitted round, so the loop terminates on the content of the ask rather than
+// on a counter.
 //
 // "verification of what the previous round produced" is not a substring of
 // anything a person typed, so that round is refused before a planning call is
@@ -1054,41 +1118,130 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // of are the user's own. The residual it does not close is a real span cited
 // for an invented requirement — bounded by the round cap, and by the plan's own
 // rule that no piece of work may exist to check another's product.
-func AdmitGapCitation(intent, quote string, spent []string) string {
-	if refusal := admitGapGrounding(quote, intent); refusal != "" {
+func AdmitGapCitation(intent string, citations, spent []string) string {
+	if refusal := admitGapCitations(citations, intent); refusal != "" {
 		return refusal
 	}
-	quote = citationKey(quote)
+	// The ledger keys per citation and not on the joined line, which is the one
+	// thing the list changes about the argument above. Keyed on the line, a gap
+	// naming four files already worked on and one fresh one would read as words
+	// nobody had spent, and a gap naming one file already worked on beside a
+	// fresh one would be refused wholesale — the first buys unbounded rounds,
+	// the second abandons real work. Per citation, a round is admitted only if
+	// it names something no earlier round did, and every citation it names is
+	// spent by it. The unspent set therefore falls by at least one on every
+	// admitted round, which is exactly the guarantee the single span gave.
+	for _, citation := range trimmedCitations(citations) {
+		if !citationSpent(citation, spent) {
+			return ""
+		}
+	}
+	return "the same words were already worked on once"
+}
+
+// citationSpent reports that an earlier round of this job already commissioned
+// work against this citation. It asks the two questions the grounding rule
+// asks, in the same order: the same words, or — when the citation is a file
+// name — the same file under either spelling. The second is what keeps a round
+// from being bought twice for one file by resolving its path in between.
+func citationSpent(citation string, spent []string) bool {
+	key := citationKey(citation)
+	cited, isFile := citedFile(citation)
 	for _, prior := range spent {
-		if citationKey(prior) == quote {
-			return "the same words were already worked on once"
+		if citationKey(prior) == key {
+			return true
+		}
+		if !isFile {
+			continue
+		}
+		if priorFile, ok := citedFile(prior); ok && namesSameFile(cited, priorFile) {
+			return true
+		}
+	}
+	return false
+}
+
+// admitGapCitations is the citation invariant's core, and the one door every
+// reader of it goes through. A gap is admitted when EVERY citation it carries
+// is grounded in something nobody in this system wrote for itself during the
+// run: the user's ask, or the working method this kind of job was held to
+// before anything was produced. Everything else — the compiled goal, the
+// working decisions, the previous round's own output — is aforge talking to
+// aforge, and a gap that can only quote those is a preference rather than a
+// failure.
+//
+// Every citation, and not merely one of them, because a list that smuggles an
+// invented requirement in among four real ones is still an invention, and the
+// round it would buy is a round against a standard the run wrote for itself.
+//
+// A citation is grounded two ways, and the second exists because the first
+// alone made the mechanical half of this gate unusable.
+//
+// It is grounded when it is a verbatim span of a ground. Whitespace is
+// normalised on both sides and nothing else is: a model that re-wraps a quoted
+// line has still quoted it, and a model that invents a requirement has still
+// invented it.
+//
+// It is also grounded when it NAMES A FILE that a ground names — the same file,
+// under either spelling, by the identity law namesSameFile states once for this
+// whole package. A person writes "there is a breakpoints_test.go, update it"
+// and the plan resolves that to internal/tui3/breakpoints_test.go; the file the
+// review is missing is the file the person asked for, and a rule that could
+// only compare the two spellings letter by letter called it an invention. That
+// refusal is not hypothetical: it delivered a run that had written no file at
+// all as done, with a note explaining that the review had overreached
+// (2026-08-28, meta/muse-spark-1.1 on the spacing ladder). This second door is
+// narrow in the direction that matters — it opens only for a citation that IS a
+// file name rather than a sentence mentioning one, and only against a file the
+// ask or the method actually names — so it can admit a gap the person really
+// asked for and cannot admit one they did not.
+func admitGapCitations(citations []string, grounds ...string) string {
+	citations = trimmedCitations(citations)
+	if len(citations) == 0 {
+		return "the review could not point at anything in the request that is missing"
+	}
+	// The grounds are keyed and read for names once rather than per citation:
+	// they are the same two strings for every element of the list, and a gap
+	// naming five files would otherwise re-scan the whole request five times.
+	keyed := make([]string, 0, len(grounds))
+	named := make([][]string, 0, len(grounds))
+	for _, ground := range grounds {
+		key := citationKey(ground)
+		if key == "" {
+			continue
+		}
+		keyed = append(keyed, key)
+		named = append(named, NamedFiles(ground))
+	}
+	for _, citation := range citations {
+		if !citationGrounded(citation, keyed, named) {
+			return "what the review asked for next is not in the request"
 		}
 	}
 	return ""
 }
 
-// admitGapGrounding is the citation invariant's core, and the one door both
-// readers of it go through. A quote is admitted when it is a verbatim span of
-// something nobody in this system wrote for itself during the run: the user's
-// ask, or the working method this kind of job was held to before anything was
-// produced. Everything else — the compiled goal, the working decisions, the
-// previous round's own output — is aforge talking to aforge, and a gap that can
-// only quote those is a preference rather than a failure.
-//
-// Whitespace is normalised on both sides and nothing else is: a model that
-// re-wraps a quoted line has still quoted it, and a model that invents a
-// requirement has still invented it.
-func admitGapGrounding(quote string, grounds ...string) string {
-	quote = citationKey(quote)
-	if quote == "" {
-		return "the review could not point at anything in the request that is missing"
-	}
-	for _, ground := range grounds {
-		if ground = citationKey(ground); ground != "" && strings.Contains(ground, quote) {
-			return ""
+// citationGrounded applies both doors of the rule above to one citation, span
+// first because it is the cheaper question and the one that answers for prose.
+func citationGrounded(citation string, keyed []string, named [][]string) bool {
+	key := citationKey(citation)
+	for _, ground := range keyed {
+		if strings.Contains(ground, key) {
+			return true
 		}
 	}
-	return "what the review asked for next is not in the request"
+	cited, ok := citedFile(citation)
+	if !ok {
+		return false
+	}
+	for _, files := range named {
+		for _, file := range files {
+			if namesSameFile(cited, file) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AdmitGapRevision applies that same grounding one layer earlier than the
@@ -1109,8 +1262,8 @@ func admitGapGrounding(quote string, grounds ...string) string {
 //
 // A refusal is not a pass. The gap is journaled, it is said in the thread, and
 // it rides the delivery — it simply does not redo the work.
-func AdmitGapRevision(intent, method, quote string) string {
-	return admitGapGrounding(quote, intent, method)
+func AdmitGapRevision(intent, method string, citations []string) string {
+	return admitGapCitations(citations, intent, method)
 }
 
 // GapNote is what an ungrounded gap gets instead of a round: the reviewer's
@@ -1141,9 +1294,15 @@ func citationKey(text string) string { return strings.Join(strings.Fields(text),
 // would be told.
 type Extension struct {
 	Spliced int
-	Quote   string
-	Round   int
-	Refused string
+	// Quote is the citations as one line, and Citations is the list the
+	// admission rule actually weighed. They travel together for the same reason
+	// they do on a Judgment: the ledger that bounds the next round reads the
+	// list, and everything that shows a person what was cited reads the line.
+	Quote      string
+	Citations  []string
+	Round      int
+	Refused    string
+	Mechanical bool
 }
 
 // GapContinuationNotice is the whole of what a person sees when a judgement
@@ -1196,7 +1355,9 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	unmet Judgment, artifacts []string, dailyBudgetUSD float64,
 	planRemainder resident.OverrunPlanFunc, records ...string) Extension {
 	base, round := resident.OverrunLineage(node.ID)
-	extension := Extension{Quote: strings.TrimSpace(unmet.Quote), Round: round + 1}
+	cited := unmet.Cited()
+	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
+		Mechanical: unmet.Mechanical}
 	if graph == nil || planRemainder == nil {
 		extension.Refused = "there is nothing here that could plan the rest"
 		return extension
@@ -1204,7 +1365,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// Admissibility is decided before any planning call: an ungrounded gap must
 	// cost nothing at all, or the refusal is only a refusal to splice what has
 	// already been bought.
-	if refusal := AdmitGapCitation(node.Provenance.Intent, extension.Quote, SpentCitations(graph, base)); refusal != "" {
+	if refusal := AdmitGapCitation(node.Provenance.Intent, extension.Citations, SpentCitations(graph, base)); refusal != "" {
 		extension.Refused = refusal
 		return extension
 	}
@@ -1242,10 +1403,13 @@ func SpentCitations(graph *store.Store, baseID string) []string {
 		log.Printf("note: could not read the gap ledger for %s: %v", baseID, err)
 		return nil
 	}
+	// Flattened across gates, because the ledger is a set of citations and not
+	// a set of rounds: what bounds the next round is which of the ask's words
+	// and files have already been worked on, whichever round spent them.
 	var spent []string
 	for _, gate := range gates {
-		if gate.Extended && strings.TrimSpace(gate.Quote) != "" {
-			spent = append(spent, gate.Quote)
+		if gate.Extended {
+			spent = append(spent, gate.Cited()...)
 		}
 	}
 	return spent
