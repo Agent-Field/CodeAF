@@ -176,6 +176,42 @@ locally.
   hand-edit a plan. To *do* a job, `aforge do` is the one that thinks while it
   works.
 
+## Writing the task for `aforge do`
+
+The task is whatever you pass, byte for byte, and it may begin with anything.
+A brief written as a bullet list is a brief:
+
+```
+aforge do "- Update the display style property
+- Keep the grid measurable"
+```
+
+A flag is only a flag when `do` declares one by that name, so a leading `-` on
+your own words is your own words. A misspelling is still refused — `--dbb` is an
+error rather than part of the task — and `--` ends the flags if you ever need a
+task that is one dashed word.
+
+You can also hand it the task on standard input: `aforge do -` reads it, and so
+does `aforge do` with something piped in. `aforge do` with nothing piped and
+nothing typed prints the usage instead of waiting.
+
+## When a run says `✗ … the call was retried`
+
+A line like
+
+```
+  ✗ Core engine                  — nothing came back from the model in 1m30s → the call was retried, routed away from deepinfra
+```
+
+means one model call went quiet and was cut. **The call was asked again, not the
+work.** Everything the worker had already done is still in hand, and the endpoint
+that went quiet is set aside for a few minutes so the retry goes somewhere else.
+
+If a piece of work does have to be picked up again — because nothing was holding
+it any more — it continues from what it had reached: its own turns, what it had
+already said, and the files it had already written are all handed back to it. It
+does not start over.
+
 ## There is no web surface
 
 Everything is the terminal chat and these commands. If you want aforge running
