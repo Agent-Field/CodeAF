@@ -495,6 +495,20 @@ reading said was missing> — closed by the repair`: the work was redone and re-
 that were passing before were checked again, and the exit code is 0. Only a finding that
 was still standing when the run stopped makes it partial.
 
+A run that stopped because it had stopped getting anywhere says that instead, and it says
+it in front of any review finding — the review says what is missing, this says why nothing
+more was bought to go and get it:
+
+```
+partial — no relevant progress in 3 rounds; last change: src/grid.ts
+```
+
+`last change` is the newest file the run changed that the request was actually about; when
+there has never been one it says `nothing this job is about has changed`. A run stopped
+because its wall could not hold another round of work says `partial — no time left for
+another round of work` — which is a run choosing to stop while there is still time to
+check what it did, not a run that ran out of time.
+
 ## When the repair only rewrote the summary — a round that changed nothing on disk
 
 Sometimes the work has already landed and what is wrong is the account of it, so instead
@@ -638,7 +652,11 @@ package's `__init__.py` is the only thing that says so. Only import lines are re
 whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
 does not have to spell a path**: a name it uses that this repository has a file for — an
 `IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
-decides which package is read.
+decides which package is read. It resolves to **every** file of that name rather than the
+first one found, so a repository that keeps a documented example beside the real widget does
+not send the reading to the example. And when your request writes a name both ways — `Log`
+and `RichLog` in one sentence — the short one counts as a name too, so a change to both is
+read on both sides. A short word you only ever write on its own is not treated as a name.
 
 If the selection still comes to more than an eighth of the suite it is not a scope any more,
 so it is cut back to the checks your change is actually in. The whole suite is what is tried

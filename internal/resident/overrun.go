@@ -337,8 +337,17 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		// outside the work being weighed. The artifact list is the workspace's
 		// own before-and-after reading of the tree, not the leaf's account of
 		// itself; the gap is what a reviewer named as still missing.
-		Measured: true, Produced: len(artifacts), Remainder: RemainderDigest(gap),
+		//
+		// The LIST travels rather than its length. What counts as having
+		// produced something is the governor's question and not this path's —
+		// a round that wrote fourteen debug files beside a change it never
+		// touched produced fourteen of nothing, and a count cannot say so. See
+		// MeasureRound.
+		Measured: true, Artifacts: artifacts, Remainder: RemainderDigest(gap),
 	}
+	// The world is read once for this round, here, and the same reading is what
+	// both the way-in decision and the exact recheck below are made from.
+	request = request.weighed(graph, request.JobRoot, lineage)
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)

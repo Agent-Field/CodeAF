@@ -158,10 +158,17 @@ func TestARequestThatNamesNoPathStillReachesItsPackage(t *testing.T) {
 	if strings.Contains(first.Command, "turbo") {
 		t.Errorf("the reading is the root's fan-out: %q", first.Command)
 	}
-	// And a name shorter than a word resolves to nothing: `Log` and `App` and
-	// `Row` are names half a repository answers to.
-	if got := locateKey("Log"); got != "" {
-		t.Errorf("a three-letter name was admitted as a subject: %q", got)
+	// And a short capitalised word standing on its own is not a subject: `Log`
+	// and `App` and `Row` are names half a repository answers to, and the first
+	// word of a sentence looks exactly like one. What admits a short name is the
+	// request spelling it BOTH ways — see standaloneSegments — and this request
+	// spells none of them.
+	for _, bare := range []string{"App", "Row", "Log"} {
+		for _, subject := range NamedSubjects("Fix the " + bare + ". It must not throw.") {
+			if subject == bare {
+				t.Errorf("a bare short word was admitted as a subject: %q", subject)
+			}
+		}
 	}
 }
 
