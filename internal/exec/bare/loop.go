@@ -133,8 +133,14 @@ var contextOverflowPattern = regexp.MustCompile(
 
 // loopState holds the mutable state of one bare run.
 type loopState struct {
-	client   providerClient
-	tools    []Tool
+	client providerClient
+	tools  []Tool
+	// produced is told, after every tool call, when that call began, so the
+	// files it left in the workspace can be filed under this leaf. pi's tools
+	// know a directory and nothing of a workspace, and this is the seam that
+	// keeps them from having to: the workspace's own sweep reads the clock.
+	// Nil is a loop with nobody to tell, which is what the tests run.
+	produced func(mark time.Time)
 	system   string
 	user     string
 	cwd      string
@@ -279,7 +285,11 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 	args := json.RawMessage(call.Function.Arguments)
 	for _, tool := range l.tools {
 		if tool.Name == name {
+			mark := time.Now()
 			text, isError, err := tool.Execute(ctx, args)
+			if l.produced != nil {
+				l.produced(mark)
+			}
 			if err != nil {
 				// Harness-level failure: treat as a tool error with the Go
 				// error message as the model-visible text. This mirrors pi's

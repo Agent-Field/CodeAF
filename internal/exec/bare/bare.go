@@ -85,9 +85,15 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		userText = strings.TrimSpace(task.Goal)
 	}
 
+	leaf := leafKey(task)
 	loop := &loopState{
-		client:   client,
-		tools:    tools,
+		client: client,
+		tools:  tools,
+		// Every file a tool call leaves behind is filed under this leaf, the
+		// same way exec.Toolbox files what a shell command produces. Without
+		// it the registry the delivery gate reads was structurally empty for a
+		// bare leaf — the file was on disk and the run said it was not.
+		produced: func(mark time.Time) { b.workspace.RecordProducedSince(leaf, mark) },
 		system:   system,
 		user:     userText,
 		cwd:      cwd,
@@ -96,8 +102,9 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 
 	outcome := loop.run(ctx)
 
-	// Artifacts: whatever the tools wrote to the workspace. The bare loop does
-	// not own a git substrate, so this is the workspace's own record.
-	outcome.Artifacts = b.workspace.Artifacts(leafKey(task))
+	// Artifacts: whatever the tools wrote to the workspace, as filed by the
+	// sweep above. The bare loop does not own a git substrate, so this is the
+	// workspace's own record.
+	outcome.Artifacts = b.workspace.Artifacts(leaf)
 	return outcome, nil
 }

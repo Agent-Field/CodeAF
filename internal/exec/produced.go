@@ -144,10 +144,22 @@ func producedSkipDir(name string) bool {
 // recordProduced files everything the workspace gained since mark under this
 // leaf's node identity — the same registry, keyed the same way, as a write.
 func (t *Toolbox) recordProduced(mark time.Time) {
-	if t.workspace == nil {
+	t.workspace.RecordProducedSince(t.leaf, mark)
+}
+
+// RecordProducedSince files everything the workspace gained since mark under
+// leaf, in the same registry a write goes into. It is the ONE door for an
+// executor whose tools do not report their own writes — a shell command, or a
+// tool ported from elsewhere that knows a directory and nothing of this
+// workspace — because what the delivery gate is later shown is this registry
+// and nothing else: a leaf that wrote the file and never filed it is convicted
+// of not writing it, and a second leaf is spliced in to write it again. The
+// bare loop paid that twice on every run until it went through this door.
+func (w *Workspace) RecordProducedSince(leaf string, mark time.Time) {
+	if w == nil {
 		return
 	}
-	for _, path := range t.workspace.producedSince(mark) {
-		t.workspace.Record(t.leaf, path)
+	for _, path := range w.producedSince(mark) {
+		w.Record(leaf, path)
 	}
 }
