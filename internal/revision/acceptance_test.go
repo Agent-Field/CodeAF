@@ -99,7 +99,7 @@ func TestAClaimThatEveryTestPassesIsWorthNoCoverage(t *testing.T) {
 		t.Fatalf("coverage was found where nothing was measured: %#v", checks)
 	}
 	pass := Judgment{Pass: true, Checked: true}
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, evidence, ofetchGrounds(t), "worker/model", pass)
 	if !settled.Pass {
 		t.Fatal("a delivery was failed for a measurement nobody could take")
@@ -241,7 +241,7 @@ func TestAnEmptyRosterIsAFindingAndNotANote(t *testing.T) {
 		t.Fatal("a reading that ran and named nothing was read as nobody having looked")
 	}
 	pass := Judgment{Pass: true, Checked: true}
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, evidence, ofetchGrounds(t), "worker/model", pass)
 	if settled.Pass {
 		t.Fatal("a delivery whose project verification named no check at all was " +
@@ -281,7 +281,7 @@ func TestAFailingGateStillAsksWhetherAnythingChecksTheRequest(t *testing.T) {
 		Citations: []string{"commit everything when you are done"},
 		Checked:   true,
 	}
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, evidence, ofetchGrounds(t), "worker/model", failed)
 	if !strings.Contains(settled.Gaps, "report about the work") {
 		t.Error("the gap the gate named was replaced rather than joined")
@@ -309,7 +309,7 @@ func TestNobodyLookedIsRecordedAsSuchAndOnlyThen(t *testing.T) {
 	// for the life of the process, so a test that shares one with its
 	// neighbours inherits their jobs. Same reason verify.ForgetBaselines exists.
 	ForgetChecklists()
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"},
 		Evidence{Accept: ofetchPoints()}, ofetchGrounds(t), "worker/model",
 		Judgment{Pass: true, Checked: true})

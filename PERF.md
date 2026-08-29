@@ -423,6 +423,34 @@ one itself on `ReadingBudget(time until the gate's own deadline)` only when
 nothing anywhere has looked, remembering it against the job so it costs one
 reading per job rather than one per round.
 
+**And whatever the gate does about a reading, it journals.** The photograph used
+to be journaled by exactly one reader — `internal/exec/bare` — so the record of a
+run's own verification was a fact about WHICH WORKER THE RULER PICKED rather than
+about the project. igel s9 and ink s9 put every node on the generalist and
+finished with **zero** `verification` events between them: not a reading, not a
+refusal, not a row, while the gate had in fact taken a reading of the tree it was
+judging. ofetch s9, on the identical binary, journaled **four**, because one of
+its nodes happened to run under `bare`. `revision.journalGateReading` writes the
+same event the belt writes, with `when: on the tree the gate is judging`, on
+every path: the reading it took, the job baseline it inherited, and each refusal
+— no workspace, and no deadline to size a budget against. It costs one row and no
+reading: the reading was already being taken or already being declined.
+`CheckEvidence` was split so the settlement reads ONE photograph and writes ONE
+row rather than asking the memoised reader twice.
+
+**And the reading is taken on every gate, checklist or no checklist.** It used to
+sit below the checklist, so a job that stated none returned before the reading —
+`Judgment.Unreadable` was unreachable on that path and a delivery settled
+`Whole()` over a verification nothing had looked at, exit 0. The two are
+different questions: a checklist governs whether COVERAGE can be settled, and
+whether the WORLD was read is a fact about the project and the run that is true
+or false whether or not anyone wrote a checklist. `revision.settleUnmeasured` is
+that half, split out and asked of every verdict. **The cost is one reading per
+JOB on jobs that state no checklist and whose leaves never photographed** — not
+per round: `jobReading` remembers against `verify.JobKey`, so later rounds
+inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
+remaining wall as every other reading here.
+
 **What a person would see if this were wrong.** Too generous, and short leaves
 stop doing work — a `do` run whose nodes each sit for minutes with nothing in
 the stream but the suite they are running, which is exactly the failure that got

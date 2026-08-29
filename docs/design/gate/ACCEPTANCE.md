@@ -381,3 +381,61 @@ mechanism allows, and two invariants pay for it:
 
 The cost is nothing: the same command against a longer file list, at the same
 rung, on the same budget. See PERF.md, "The verification photograph's budget".
+
+## What igel s9 proved: the reader that is silent and the reader that read nothing
+
+*Added 2026-08-29 against the s9 stores under `bench/deepswe/results/*`.*
+
+igel s9 and ink s9 hold **zero** `verification` events. Not a reading, not a
+`read:false` refusal, nothing — across four nodes and eight exhausted leaves in
+igel's case. ofetch s9, built from the same binary, holds **four**.
+
+The difference is not the projects and not the scope mechanism. It is which
+worker the ruler picked: `nodes.subharness` is empty for every node of igel s9
+and ink s9, and `bare` for one node of ofetch s9. **Only `bare` journaled the
+photograph.** § 2 above already says the reading belongs to the JOB and that the
+gate takes one when no worker did — and it does; what it never did was write the
+row. So a run whose leaves all went to the generalist could not be told apart,
+from outside, from a run whose reader was broken.
+
+> **THE GATE JOURNALS ITS READING OF THE TREE IT IS JUDGING, AND JOURNALS EVERY
+> REFUSAL TO TAKE ONE.**
+
+`revision.journalGateReading` writes the event `internal/exec/bare` writes, with
+`when: on the tree the gate is judging` and `inherited` set when the row is the
+job's baseline carried forward. Four paths reach it:
+
+- the reading the gate took, or retook after a cut;
+- the job's baseline, inherited rather than re-run;
+- **no workspace** — the gate holds nothing to read;
+- **no deadline** — a budget is a share of a wall and there was no wall.
+
+It is a measurement and never a gate: a nil store, an unknown node, or a store
+that refuses the row all leave the verdict exactly as it was.
+
+Two things follow that are worth stating separately. `CheckEvidence` was split
+into an exported form that takes its own reading and an internal one that is
+handed the settlement's — the reader is memoised against the job, so asking twice
+cost nothing in wall time and wrote a second row saying the same thing. And **an
+empty strategy ladder is impossible**: `verify.placeStrategies` always ends a
+place's rungs with the whole suite and the scoped rung is only ever prepended, so
+`ReadingStrategies` returns nothing only for a project that declares no way of
+checking itself — which `Photograph` answers with a sentence, never a silence.
+
+### And the checklist has no say in whether the world is read
+
+The reading sat BELOW the checklist, and `settleAcceptance` returned early when a
+job stated none — so on that path nothing asked whether the project could be read,
+`Judgment.Unreadable` was unreachable, and `store.DeliveryGate.Whole()` came back
+true over a verification nobody had looked at. Exit 0, with the one question that
+could have said otherwise never put.
+
+> **THE READING, AND THE UNREADABLE VERDICT IT SETTLES, ARE TAKEN ON EVERY GATE
+> REGARDLESS OF WHETHER A CHECKLIST EXISTS. The checklist governs coverage
+> findings only — never whether the world is read.**
+
+`revision.settleUnmeasured` is that half of the settlement, split out of the
+coverage branch and asked of every verdict before the checklist is looked for. It
+sets `Unmeasured` on a delivery nothing measured and `Unreadable` on the narrower
+case that matters at the door: a project that DECLARES a way of checking itself
+which this run could not read. See FAILSAFE's seventh failure, clause 5.

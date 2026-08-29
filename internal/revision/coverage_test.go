@@ -56,7 +56,7 @@ func TestTheCoverageFindingTravelsAsAListOnEveryVerdict(t *testing.T) {
 	failing := Judgment{Pass: false, Checked: true,
 		Gaps:      "The deliverable is a report about the work rather than the work.",
 		Citations: []string{"implement a per-origin circuit breaker"}}
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, evidence, grounds, "worker/model", failing)
 	if len(settled.Unexercised) == 0 {
 		t.Fatal("a failing verdict carried the coverage gap as prose and nothing else")
@@ -118,7 +118,7 @@ func TestTheChecklistAndItsFindingBelongToTheJob(t *testing.T) {
 	points := ofetchPoints()
 	grounds := ofetchGrounds(t)
 
-	first := settleAcceptance(context.Background(), config.Config{}, nil,
+	first := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, measuredEvidence(points), grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	if len(first.Unexercised) == 0 {
@@ -128,7 +128,7 @@ func TestTheChecklistAndItsFindingBelongToTheJob(t *testing.T) {
 	// Round two: a continuation, planned afresh, run by a worker that takes no
 	// reading. Its own spec carries no checklist and its outcome carries no
 	// photograph — which is exactly the round that used to ask nothing.
-	second := settleAcceptance(context.Background(), config.Config{}, nil,
+	second := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2-x1"}, Evidence{}, grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	if second.Pass {
@@ -145,7 +145,7 @@ func TestTheChecklistAndItsFindingBelongToTheJob(t *testing.T) {
 
 	// And a round that DID measure, and found everything covered, closes it.
 	covered := measuredEvidence(points)
-	whole := settleAcceptance(context.Background(), config.Config{}, nil,
+	whole := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2-x2"}, covered, grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	_ = whole
@@ -169,7 +169,7 @@ func TestAPassOverAnUnreadableSuiteIsNotWhole(t *testing.T) {
 		Plan:   verify.Plan{Entrypoints: []verify.Entrypoint{{Kind: verify.KindTest, Command: "npm test"}}},
 		Unread: "`npx ava --tap` was killed at its ceiling of 1m53s without finishing",
 	}}
-	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+	settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-2"}, declared, grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	if !settled.Unreadable {
@@ -188,7 +188,7 @@ func TestAPassOverAnUnreadableSuiteIsNotWhole(t *testing.T) {
 	// and failing every such delivery would fail every piece of prose this
 	// program writes.
 	ForgetChecklists()
-	silent := settleAcceptance(context.Background(), config.Config{}, nil,
+	silent := settleAcceptance(context.Background(), config.Config{}, nil, nil,
 		store.Node{ID: "task-3"}, Evidence{Accept: points}, grounds, "worker/model",
 		Judgment{Pass: true, Checked: true})
 	if silent.Unreadable {
