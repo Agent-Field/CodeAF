@@ -228,6 +228,11 @@ const (
 	FindingOwnFailing   = "own-checks-failing"
 	FindingRemovedName  = "removed-public-name"
 	FindingRemovedCheck = "removed-checks"
+	// FindingUnbound is a name the run's own sources READ that nothing in the
+	// tree binds. It is the newest of them and the only one that compares no
+	// pair of readings: the reference is in one file, the definition is in none,
+	// and one reading of the finished tree settles it. See unbound.go.
+	FindingUnbound = "unbound-names"
 	// FindingMissingProduces is the oldest of them and the only one that is not
 	// a subtraction of two readings: a file the plan or the person said would
 	// exist, settled against the disk. It is a kind of its own because a judge

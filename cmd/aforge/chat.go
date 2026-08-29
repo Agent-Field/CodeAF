@@ -1619,6 +1619,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// suite and no name comparison can make, because the name
 					// is still there and nobody wrote a check for it.
 					Consumers: gate.Consumers,
+					// And the names it READS that nothing in the tree binds —
+					// the finding igel s14 could only spell as "the checks this
+					// work wrote fail", never as the one name they failed on.
+					Unbound: gate.Unbound,
 					// And the checks the run wrote and did not get passing,
 					// which is a different state from a broken repository and
 					// was spelled the same way until it had a field.
@@ -3118,6 +3122,10 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// anyone about: a project only owns checks for what somebody wrote
 		// checks for. See revision.RemovedPublicNames.
 		evidence.Removed = outcome.Removed
+		// And what it READS that nothing binds. The gate re-takes this reading
+		// for itself wherever it has a workspace; this is the leaf's own answer,
+		// which stands where it does not. See revision.UnboundNames.
+		evidence.Unbound = outcome.Unbound
 		// And the whole photograph those two lists were subtracted out of. The
 		// gate needs the rosters, not the failures: which checks exist is what
 		// answers whether anything exercises what the request asked for, and

@@ -60,6 +60,12 @@ type OpenFindings struct {
 	// comparison can make it, because the name is still there.
 	// store.DeliveryGate.Consumers.
 	Consumers []string
+	// Unbound is the unbound-reference finding: one line per name this run's own
+	// sources READ that nothing in the tree binds, each carrying the file and
+	// line it is read at. It is a reading of the world like Failing and unlike
+	// Gap, and it is the one a repair round can act on without running anything.
+	// store.DeliveryGate.Unbound.
+	Unbound []string
 	// Mechanical says the standing gap is the MECHANICAL half's: a file the
 	// plan promised and the disk does not hold. It is beside Gap rather than
 	// inside it because the two are answered by different evidence — one is a
@@ -73,7 +79,8 @@ type OpenFindings struct {
 // tokens and teaches the model that the heading means nothing.
 func (f OpenFindings) Empty() bool {
 	return len(f.Unexercised) == 0 && len(f.Unasserted) == 0 && len(f.Failing) == 0 &&
-		len(f.Consumers) == 0 && strings.TrimSpace(f.Gap) == "" && !f.Unclosed && !f.Unreadable
+		len(f.Consumers) == 0 && len(f.Unbound) == 0 && strings.TrimSpace(f.Gap) == "" &&
+		!f.Unclosed && !f.Unreadable
 }
 
 // OpenFindingsHeader introduces the section. It is one wording, exported, and
@@ -102,6 +109,12 @@ func (f OpenFindings) Words() string {
 	if len(f.Failing) > 0 {
 		section.WriteString("\n\nChecks the last reading found failing — run them and make them pass:\n")
 		section.WriteString(bulleted(f.Failing))
+	}
+	if len(f.Unbound) > 0 {
+		section.WriteString("\n\nNames this work READS that nothing in the tree binds — read from " +
+			"the source on disk, not guessed. Each needs the name bound, or the line that " +
+			"reaches for it changed:\n")
+		section.WriteString(bulleted(f.Unbound))
 	}
 	if len(f.Unexercised) > 0 {
 		section.WriteString("\n\nBehaviours the request asks for that NO check in the tree exercises. " +
@@ -183,6 +196,9 @@ func ReadOpenFindings(graph *store.Store, lineage string) OpenFindings {
 			if len(gate.Consumers) > 0 {
 				findings.Consumers = append([]string(nil), gate.Consumers...)
 			}
+			if len(gate.Unbound) > 0 {
+				findings.Unbound = append([]string(nil), gate.Unbound...)
+			}
 			if gate.Pass {
 				// A gate that passed answers the gap before it. What it cannot
 				// answer is the coverage above, which is a measurement rather
@@ -253,6 +269,7 @@ const (
 	EvidenceUnexercised = "unexercised"
 	EvidenceUnasserted  = "unasserted"
 	EvidenceConsumers   = "consumers"
+	EvidenceUnbound     = "unbound"
 	EvidenceLost        = "lost-names"
 	EvidenceMechanical  = "mechanical-gap"
 )
@@ -293,7 +310,7 @@ func StandingEvidence(graph *store.Store, jobRoot string) []string {
 		return nil
 	}
 	findings := ReadOpenFindings(graph, root)
-	standing := make([]string, 0, 6)
+	standing := make([]string, 0, 7)
 	if len(findings.Failing) > 0 {
 		standing = append(standing, EvidenceFailing)
 	}
@@ -305,6 +322,12 @@ func StandingEvidence(graph *store.Store, jobRoot string) []string {
 	}
 	if len(findings.Consumers) > 0 {
 		standing = append(standing, EvidenceConsumers)
+	}
+	// And a name nothing binds, which is the least arguable of them: the
+	// reference is in one file, the definition is in none, and no ruling about
+	// coverage puts a binding in the tree.
+	if len(findings.Unbound) > 0 {
+		standing = append(standing, EvidenceUnbound)
 	}
 	if lostPublicNames(graph, root) > 0 {
 		standing = append(standing, EvidenceLost)
