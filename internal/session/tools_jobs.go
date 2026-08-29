@@ -73,12 +73,12 @@ var timeoutSentence = " bash WAITS for the command. A foreground call runs for a
 // `background: true`, which is a decision the model makes rather than one the
 // clock makes for it.
 //
-// bare itself carries a model-settable timeout with no default and no sane cap
-// (its maximum is int32 milliseconds — 24 days), which is pi's choice for a bare
-// loop and the wrong one for a session: an unbounded foreground call is a turn
-// that never ends. Exported so the surface counts down against the same number
-// rather than restating it.
-const BashCeilingSeconds = 600
+// The number itself lives with the bare tool (bare.BashCeilingSeconds), which
+// now applies it as its own default too — a headless worker nobody is watching
+// used to run `find /` unbounded — so the session, the bare loop and the surface
+// that counts down all read one figure. Exported here so the surface need not
+// know where it is kept.
+const BashCeilingSeconds = bare.BashCeilingSeconds
 
 // BashTimeoutSeconds is the bound one foreground bash call actually runs
 // under: the model's own figure when it set a usable one, and

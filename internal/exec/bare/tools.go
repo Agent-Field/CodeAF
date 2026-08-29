@@ -68,7 +68,28 @@ func Tools(cwd string) []Tool {
 
 const readSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"],"additionalProperties":false}`
 
-const bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional, no default timeout)"}},"required":["command"],"additionalProperties":false}`
+const bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional; 600 when unset)"}},"required":["command"],"additionalProperties":false}`
+
+// BashCeilingSeconds is the bound a foreground bash call runs under when the
+// model named no usable timeout of its own — ONE NUMBER, typed once, read by
+// this tool, by the session's own law (internal/session.BashCeilingSeconds)
+// and by the surface that counts down against it.
+//
+// There used to be no default here at all — pi's choice for a bare loop, and
+// the wrong one for a worker nobody is watching: a headless leaf that ran
+// `find / -name "luhn*"` held its node for the whole of the task's deadline,
+// two of seven workers at once, with the run's own log saying only that the
+// last model call was minutes ago. Ten minutes is longer than almost every
+// build, test suite and script a worker runs in one call; a call that is meant
+// to outlive it is a background job, which is a decision the model makes
+// rather than one the clock makes for it. With a promoter present the bound is
+// a handoff (promote.go); with none, the process group is killed and the call
+// says so.
+const BashCeilingSeconds = 600
+
+// bashDefaultTimeout is the ceiling as a duration, seamed so a test can prove
+// the bound without waiting ten minutes for it.
+var bashDefaultTimeout = time.Duration(BashCeilingSeconds) * time.Second
 
 const editSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to edit (relative or absolute)"},"edits":{"type":"array","items":{"type":"object","properties":{"oldText":{"type":"string","description":"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},"newText":{"type":"string","description":"Replacement text for this targeted edit."}},"required":["oldText","newText"],"additionalProperties":false},"description":"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."}},"required":["path","edits"],"additionalProperties":false}`
 
@@ -306,6 +327,13 @@ func newBashTool(cwd string) Tool {
 				}
 				timeoutMs = ms
 			}
+			// A CALL THAT NAMED NO TIMEOUT IS BOUNDED, NOT UNBOUNDED — see
+			// BashCeilingSeconds. A figure the model did set is honoured as it
+			// always was, however large.
+			if !timeoutSet {
+				timeoutSet = true
+				timeoutMs = int(bashDefaultTimeout / time.Millisecond)
+			}
 
 			// Check cwd exists.
 			if _, err := os.Stat(cwd); os.IsNotExist(err) {
@@ -435,7 +463,9 @@ func newBashTool(cwd string) Tool {
 			}
 
 			if call.wasTimedOut() {
-				timeoutSecs := int(*p.Timeout)
+				// The bound that was APPLIED, which is the model's own figure
+				// or the ceiling it was given in place of one.
+				timeoutSecs := timeoutMs / 1000
 				return appendStatus(text, fmt.Sprintf("Command timed out after %d seconds", timeoutSecs)), true, nil
 			}
 
