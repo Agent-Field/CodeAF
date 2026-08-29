@@ -1,0 +1,210 @@
+package resident
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+)
+
+// What a job is still short of, read from its own record and handed to
+// everything that works on it next.
+//
+// THE DEFECT THIS ANSWERS. The textual run of 2026-08-29 (s9) measured its
+// coverage gap on every one of three gates and reported the same two unexercised
+// behaviours each time — 2, then 2, then 2. Across those three repair rounds it
+// briefed fourteen nodes, and THIRTEEN OF THE FOURTEEN BRIEFS NAME NEITHER
+// BEHAVIOUR. One node, by luck of the planner's wording, mentioned one of them.
+// So the run measured the same shortfall three times, spent three rounds and
+// fourteen leaves on it, and never once told a worker what it was.
+//
+// The reason is that the findings were reaching the brief through PROSE. A
+// planner is handed a goal, writes briefs in its own words, and whatever it does
+// not happen to restate is gone — and a model summarising a page of instructions
+// will drop a two-item list nine times in ten. The measurement was structured
+// (store.DeliveryGate.Unexercised is a list, and was one deliberately), and then
+// it was flattened back into a paragraph on the only path that mattered.
+//
+// So: THE OPEN FINDINGS ARE READ FROM THE RECORD AND WRITTEN INTO THE BRIEF
+// VERBATIM, in a fixed section, by the composer rather than by a model. What a
+// worker is told it is short of is not a thing another model gets to paraphrase.
+
+// OpenFindings is everything a job's own record says is still outstanding.
+//
+// Every field is sourced from a journal row rather than from anybody's summary
+// of one — FAILSAFE.md's second clause, applied to the job's account of itself.
+// An empty value means the record does not say, never that the answer is no.
+type OpenFindings struct {
+	// Unexercised are the behaviours the request stated that no check in the
+	// tree exercises, in the words the request used. store.DeliveryGate.
+	Unexercised []string
+	// Failing are the named checks the last reading of the project's own tests
+	// found red. store.VerificationReading.Sample.
+	Failing []string
+	// Gap is the last finding the delivery gate recorded against this lineage.
+	Gap string
+	// Unclosed says a gap the gate raised was never closed — the repair was
+	// refused or could not be bought — which is a different fact from a gap
+	// that a later round answered.
+	Unclosed bool
+	// Unreadable says the last gate passed over a tree whose checks nobody
+	// could read, which is not a pass over a checked delivery.
+	Unreadable bool
+}
+
+// Empty reports that the record names nothing outstanding, in which case no
+// composer should write a section: a heading announcing no findings costs
+// tokens and teaches the model that the heading means nothing.
+func (f OpenFindings) Empty() bool {
+	return len(f.Unexercised) == 0 && len(f.Failing) == 0 &&
+		strings.TrimSpace(f.Gap) == "" && !f.Unclosed && !f.Unreadable
+}
+
+// OpenFindingsHeader introduces the section. It is one wording, exported, and
+// used by every path that hands work on, so a worker meets the same words
+// whether it was spliced by a gap round, an overrun, a split or a retry.
+const OpenFindingsHeader = "WHAT THIS JOB IS STILL SHORT OF — measured, not guessed. Read this before the assignment below; work that does not close these is work this job has already paid for once:"
+
+// openFindingsLimit bounds each list in the section. The findings are the
+// request's own behaviours and the runner's own check names, so a job with
+// forty of them has a shape problem the brief cannot fix, and a brief that
+// prints forty has stopped being read.
+const openFindingsLimit = 12
+
+// Words renders the fixed section, or nothing when there is nothing to say.
+//
+// The order is deliberate and it is the order of specificity: a named failing
+// check is a thing to go and run, an unexercised behaviour is a thing to go and
+// write, and the gate's own sentence is the judgement over both. A worker that
+// reads only the first line has read the most actionable one.
+func (f OpenFindings) Words() string {
+	if f.Empty() {
+		return ""
+	}
+	var section strings.Builder
+	section.WriteString(OpenFindingsHeader)
+	if len(f.Failing) > 0 {
+		section.WriteString("\n\nChecks the last reading found failing — run them and make them pass:\n")
+		section.WriteString(bulleted(f.Failing))
+	}
+	if len(f.Unexercised) > 0 {
+		section.WriteString("\n\nBehaviours the request asks for that NO check in the tree exercises. " +
+			"Each needs a check that would fail if the behaviour were removed:\n")
+		section.WriteString(bulleted(f.Unexercised))
+	}
+	if gap := strings.TrimSpace(f.Gap); gap != "" {
+		section.WriteString("\n\nWhat the last review found missing:\n")
+		section.WriteString(gap)
+	}
+	if f.Unclosed {
+		section.WriteString("\n\nThat finding was never answered — no round has closed it yet.")
+	}
+	if f.Unreadable {
+		section.WriteString("\n\nThe project's own checks could not be read on the last attempt, " +
+			"so nothing here has been confirmed against them. Getting one reading is worth more than any new work.")
+	}
+	return section.String()
+}
+
+// bulleted is one list, one item per line, bounded and counted when it is cut —
+// a list silently shortened is a list a reader believes is complete.
+func bulleted(items []string) string {
+	shown := items
+	more := 0
+	if len(shown) > openFindingsLimit {
+		more, shown = len(shown)-openFindingsLimit, shown[:openFindingsLimit]
+	}
+	var out strings.Builder
+	for _, item := range shown {
+		out.WriteString("- ")
+		out.WriteString(strings.TrimSpace(item))
+		out.WriteString("\n")
+	}
+	if more > 0 {
+		fmt.Fprintf(&out, "- and %d more the record holds\n", more)
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// ReadOpenFindings assembles the findings from one lineage's own journal.
+//
+// It reads the LINEAGE and not the node, because a repair round is a different
+// node id from the work it repairs — that is the whole shape of the defect in
+// (A) as well — so a reader that asked the node would find a fresh row with
+// nothing on it and conclude the job was short of nothing.
+//
+// A failure to read is not a failure to work: this is an account of the job and
+// never a part of it, so an unreadable journal answers with nothing and lets the
+// work go on with the brief it would otherwise have had.
+func ReadOpenFindings(graph *store.Store, lineage string) OpenFindings {
+	findings := OpenFindings{}
+	if graph == nil || strings.TrimSpace(lineage) == "" {
+		return findings
+	}
+	gates, err := graph.DeliveryGateLineage(lineage)
+	if err == nil {
+		// Oldest first, so the last word wins on every field that has one. A
+		// coverage measurement is a photograph of the tree as it stood, and the
+		// newest photograph is the only one still true.
+		for _, gate := range gates {
+			if len(gate.Unexercised) > 0 {
+				findings.Unexercised = append([]string(nil), gate.Unexercised...)
+			}
+			if gate.Pass {
+				// A gate that passed answers the gap before it. What it cannot
+				// answer is the coverage above, which is a measurement rather
+				// than a judgement and stands until it is re-measured.
+				findings.Gap, findings.Unclosed = "", false
+			} else if strings.TrimSpace(gate.Gap) != "" {
+				findings.Gap, findings.Unclosed = strings.TrimSpace(gate.Gap), gate.Unclosed
+			}
+			findings.Unreadable = gate.Unreadable
+		}
+	}
+	findings.Failing = failingChecks(graph, lineage)
+	return findings
+}
+
+// failingChecks is every check the lineage's newest reading found red.
+//
+// The newest reading and not the union of all of them: a check that was red
+// three rounds ago and is green now is not a finding, it is history, and
+// handing it to a worker as outstanding work is how a round gets spent
+// re-fixing something that is already fixed.
+func failingChecks(graph *store.Store, lineage string) []string {
+	nodes, err := graph.LineageNodes(lineage)
+	if err != nil {
+		return nil
+	}
+	// Newest first, and it stops at the first node that took a reading at all.
+	// This runs on every claim of every leaf, so walking the whole lineage and
+	// keeping the last answer would make the cost of composing a brief grow
+	// with the size of the job — and it would be the same answer: a node that
+	// read the tree AFTER another node read it has the newer photograph, and
+	// the older one is history rather than a finding.
+	for index := len(nodes) - 1; index >= 0; index-- {
+		readings, err := graph.VerificationsFor(nodes[index].ID)
+		if err != nil || len(readings) == 0 {
+			continue
+		}
+		var newest []string
+		took := false
+		for _, reading := range readings {
+			if !reading.Read {
+				continue
+			}
+			took = true
+			newest = nil
+			if reading.Red > 0 && len(reading.Sample) > 0 {
+				newest = append([]string(nil), reading.Sample...)
+			}
+		}
+		if !took {
+			continue
+		}
+		sort.Strings(newest)
+		return newest
+	}
+	return nil
+}
