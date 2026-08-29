@@ -103,6 +103,23 @@ long conversation re-sends everything it has said so far, every step — so they
 are used to tell a worker to start wrapping up, and never to end it. They used
 to end it, and the work that was thrown away was real.
 
+## What a new piece of work is told about the pieces before it
+
+When a job splits again — because work ran out of room, or because a review
+found something missing — the new pieces are not strangers to it. Each one is
+handed two things, taken from the job's own record rather than from anyone's
+summary of it:
+
+- **What the job has already done**, as an outline of the earlier pieces' turns
+  and the files they left on disk, so nothing sets out to write a file that is
+  already there. You see one line saying how much was picked up.
+- **What the job is still short of**, at the top of its instructions and in the
+  words the request itself used: behaviours nothing checks yet, checks that were
+  failing when they were last run, and what the last review said was missing.
+
+Neither is rewritten on the way. A finding that reached a worker as somebody's
+paraphrase used to be a finding that mostly did not reach it at all.
+
 ## When work stops growing itself — it gave up early, why did it stop trying
 
 Work that runs out mid-way is re-planned rather than abandoned: what is left is

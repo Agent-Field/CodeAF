@@ -610,3 +610,75 @@ This is the second time the same lesson has been learned here: `maxTurnBackstop`
 was raised from 40 to 400 because forty "also stopped honest complex work". The
 reuse ceiling was a turn bound in disguise, sitting three times tighter than the
 forty that had already been rejected.
+
+---
+
+## A tenth failure, 2026-08-29: what the job knew and never said
+
+*Added against `bench/deepswe/results/textual-richlog-follow-state-…-s9`. Both
+defects are the same shape as the ninth and neither is a belt: a fact the job had
+measured, structured, and journaled, which then reached the worker through
+somebody's prose — or not at all.*
+
+### 1. A job's memory is a property of its lineage, not of a node id
+
+`task-2` ran 350 recorded rows over 80 turns and exhausted on its budget. Thirteen
+minutes later a growth round on `reason: gap` spliced five FRESH IDS under it, and
+`task-2-x1-n2`'s first recorded row is turn 1, *"Let me start by examining the
+existing codebase"*, followed by `find /app`. `task-2-x1-n1` opens the same way.
+No resume event, on any of the fourteen nodes three rounds spliced.
+
+The seed built for the eighth failure worked, on the two paths where the id stays
+the same — the in-place retry and the requeue after a claim comes back — and on
+the one growth reason it had been wired for. **A growing job does not keep its
+id.** It splices new ones beside the work, under the root, so the result is
+announced like any other deliverable; so every path that grows a job is a path
+where a node-shaped seed finds an empty record and starts cold beside a workspace
+full of its predecessors' work.
+
+> **THE RECORDED RUNS ARE A LINEAGE PROPERTY.** Every node spliced under a
+> lineage — by an overrun, a gap round, a cooperative split, a deferred
+> resumption — is seeded from the recorded runs of that lineage, and the
+> resumption is journaled against the node that is actually resuming.
+
+It is read at the splice and not passed in by the caller. `replanOverrun` is the
+one seam every growing job passes through, and a property of the work that
+arrives as a parameter is a property of whichever caller somebody remembered:
+that is exactly how this survived the eighth failure's repair, which wired the
+overrun call site and left the gap round — the one this run actually took —
+reaching the graph through the same function with an empty field.
+
+### 2. A measurement that reaches the worker as prose has not reached the worker
+
+The coverage gate measured the same two unexercised behaviours on all three
+rounds — **2, then 2, then 2**. Those rounds briefed fourteen nodes. **Thirteen
+of the fourteen name neither behaviour**; one names one, by luck of the planner's
+wording. The job measured its shortfall three times, spent fourteen leaves, and
+never told a worker what it was.
+
+`store.DeliveryGate.Unexercised` is a list, and it was made one deliberately —
+the seventh failure's own repair, so that a finding could not be lost inside a
+judge's paragraph. It was then flattened back into a paragraph on the only path
+that mattered: written into a goal, handed to a planner, and restated in whatever
+words that planner chose. A model summarising a page of instructions drops a
+two-item list most times it is asked.
+
+> **WHAT A WORKER IS TOLD IT IS SHORT OF IS NOT A THING ANOTHER MODEL GETS TO
+> PARAPHRASE.** The open findings are read from the record — the gate's
+> unexercised behaviours, the last reading's failing checks, the standing gap —
+> and written into a fixed section at the top of the brief by the composer, at
+> the last moment before a worker reads anything, which is the only point
+> downstream of every planner.
+
+Both repairs share one reader, `resident.ReadOpenFindings`, because the planner
+sizing a remainder and the worker doing it are short of the same things.
+
+### And a note on how the first of these was found twice
+
+`LineageBank` returned "no record" for a lineage that had 80 turns, because the
+query it was built on appended one `ORDER BY` to another and did not parse. The
+error was swallowed into the same empty return an honest absence uses — the
+sixth failure's rule, broken inside the fix for the ninth. It logs now. **An
+unreadable record and an empty one must never be the same value**, and the place
+that lesson keeps having to be learned is the error path of whatever was just
+built.

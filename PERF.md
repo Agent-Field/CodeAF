@@ -1156,3 +1156,33 @@ hand (`tracer.sink`, `newRecordingTracer`). One seam, and the coding pipeline
 gets it in the same change because it builds a tracer too. The cost is the batch
 the store already imposes — `store.MaxTranscriptBatch` — and not one extra write
 per tool result, which is the line `internal/exec/liveness.go` draws.
+
+## What a growing job hands its next piece
+
+`resident.replanOverrun` is the one seam every growing job passes through — the
+overrun round, the delivery gate's gap round, the cooperative split and the
+deferred resumption all reach the graph through it. Two things are read THERE,
+from the lineage, rather than passed in by whichever caller asked:
+
+| what | where it comes from | bound |
+| --- | --- | --- |
+| the recorded runs | `LineageBank` over `store.LineageNodes`, newest first, sink skipped | `BankedTranscriptBytes` **once for the whole composition**, not per node |
+| the open findings | `ReadOpenFindings` over `store.DeliveryGateLineage` and the newest `VerificationReading` | `openFindingsLimit` (12) per list, and the count is printed when a list is cut |
+
+Both are lineage reads because **a growing job does not keep its id**: a repair
+round is spliced beside the work it repairs, under the root, so a node-shaped
+read finds a fresh row with nothing on it. `store.LineageNodes` is an id-range
+read on the `-x` namespace, the same law `DeliveryGateLineage` already ran on,
+rather than a second copy of it built from parents and edges.
+
+`ReadOpenFindings` runs on **every leaf claim** (it composes the brief), so its
+walk is bounded by construction: it reads one gate query, then walks the lineage
+newest-first and **stops at the first node that took a reading at all**. A node
+that read the tree after another node read it holds the newer photograph, and the
+older one is history rather than a finding — so keeping the last answer over the
+whole lineage would cost O(nodes) queries per claim to arrive at the same string.
+
+Measured, textual s9: three gap rounds, fourteen briefed nodes, the same two
+unexercised behaviours reported on every gate, and thirteen of the fourteen
+briefs naming neither. Pinned by `internal/resident/lineage_test.go` and
+`cmd/aforge/openfindings_test.go`.
