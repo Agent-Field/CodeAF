@@ -231,6 +231,58 @@ func Regressions(regressed []string) (judgment Judgment, ok bool) {
 	}, true
 }
 
+// RemovedPublicNames is the symbol-level half of the same measurement, and the
+// half a test suite structurally cannot make.
+//
+// A CHECK IS EVIDENCE THAT SOMETHING IS EXERCISED; IT IS NOT EVIDENCE THAT
+// NOTHING ELSE EXISTS. igel s11 deleted eight public class attributes off `Igel`
+// — `results_path` among them — and moved them onto instances set in `__init__`.
+// No check that project owns touches any of them, so the reading of the finished
+// tree came back an IMPROVEMENT: named 2 → 14, red 2 → 0. Every one of the
+// twenty-four hidden tests failed at setup on `Igel.results_path`, and the run
+// held not one word about it. There was nothing wrong with the reading. The
+// question it answers is simply not this one.
+//
+// SOURCED, NOT MECHANICAL, for the reason Regressions is: there is no citation
+// to weigh. The request never said "and do not delete the class's public
+// attributes", because nobody has to, and a door that asked for a quotation
+// would refuse this finding every single time.
+//
+// It names the removal and not a remedy. Putting the name back and keeping the
+// new arrangement are both answers, and which one is right is the repair round's
+// business — this says only what the world lost.
+//
+// ok is false when nothing was measured or nothing was lost. A worker that
+// cannot take two readings of the tree hands back nil, which reads as no claim
+// and never as nothing removed.
+func RemovedPublicNames(removed []string) (judgment Judgment, ok bool) {
+	gone := make([]string, 0, len(removed))
+	for _, name := range removed {
+		if name = strings.TrimSpace(name); name != "" {
+			gone = append(gone, name)
+		}
+	}
+	if len(gone) == 0 {
+		return Judgment{}, false
+	}
+	named := gone
+	if len(named) > regressionsNamed {
+		named = named[:regressionsNamed]
+	}
+	gap := "This work removed a public name that existed before it: " + joinCitations(named) + "."
+	if len(gone) > len(named) {
+		gap += fmt.Sprintf(" And %d more.", len(gone)-len(named))
+	}
+	gap += " The public surface of the files this work changed was read twice, before the " +
+		"work and after it, and these names are in the first reading and not the second. " +
+		"Anything outside this run that used them is broken by it. Restore them, or say " +
+		"in the deliverable why removing them was what the request asked for."
+	return Judgment{
+		Pass: false, Gaps: gap, Quote: joinCitations(named),
+		Citations: named, Sourced: true, Checked: true,
+	}, true
+}
+
 // producedSweepLimit bounds the walk that settles a named file against the
 // world. It is internal/exec's producedScanLimit read from the other end and
 // carries the same figure for the same reason: a workspace is usually a handful

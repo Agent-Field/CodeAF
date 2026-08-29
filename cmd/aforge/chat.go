@@ -2996,6 +2996,10 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// Regressions), so this field is what makes a regression a blocker
 		// rather than something a leaf's own green tests can talk over.
 		evidence.Regressed = outcome.Regressed
+		// And the names the work deleted, which the suite could not have told
+		// anyone about: a project only owns checks for what somebody wrote
+		// checks for. See revision.RemovedPublicNames.
+		evidence.Removed = outcome.Removed
 		// And the whole photograph those two lists were subtracted out of. The
 		// gate needs the rosters, not the failures: which checks exist is what
 		// answers whether anything exercises what the request asked for, and

@@ -705,6 +705,17 @@ the names your sentence spelled. A judge saying so is not enough. What is left o
 named, it buys a repair round, and while any of it is still open the run ends `partial`
 with the count in the last line, whatever else was settled or overturned along the way.
 
+**And a public name your code had before the work and does not have after it is a finding
+too.** A suite only covers what somebody wrote a check for, so it can come back greener on a
+change that broke every caller outside it: one job deleted eight public attributes off a
+class, the project's own checks went from two passing to fourteen, and all twenty-four of
+the hidden ones it was really measured on failed on their first line. So the names are read
+as well as the checks — what your source files publish before the work and what they publish
+after, for the files the job actually changed. Python, TypeScript, JavaScript, Go and Rust, each by its own
+idea of public: an underscore, `private`, an unexported name and a non-`pub` item all mean
+the author called it internal. It is read conservatively and says nothing it is not sure of.
+A rename reads as the old name going, which is what everyone calling it sees.
+
 A check that passed before and fails after is a finding the run raises about itself, and it
 is a blocker. Nothing is weighed about where it came from: you never have to ask for your
 repository to keep working. It reads:

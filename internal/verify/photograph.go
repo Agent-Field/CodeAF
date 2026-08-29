@@ -42,15 +42,25 @@ import (
 // The Reading it returns is always meaningful: Taken says a reading exists, and
 // Unread says in one sentence why one does not.
 func Photograph(ctx context.Context, root string, wall time.Duration, focus Focus, pace Pace) Reading {
+	// THE SYMBOL-LEVEL HALF IS TAKEN WHATEVER HAPPENS TO THE CHECK-LEVEL ONE,
+	// and that is the point of it. A public name that existed before the work
+	// and is gone after it is a fact about the tree, readable with no runner, no
+	// budget and no declaration — so it is measured for a project that declares
+	// no way of checking itself, for a wall too short to afford a suite, and for
+	// a reading killed at its ceiling, all of which are silences the check-level
+	// half can only report. igel s11's own suite came back BETTER on the tree
+	// that had just lost eight public attributes.
+	surface := PublicSurface(root)
 	plan := Discover(root)
 	ladder, ok := ReadingStrategies(root, plan, focus)
 	if !ok {
-		return Reading{Plan: plan, Unread: "this project declares no way of checking itself, " +
-			"so there is no reading to take"}
+		return Reading{Plan: plan, Surface: surface,
+			Unread: "this project declares no way of checking itself, " +
+				"so there is no reading to take"}
 	}
 	budget, affordable := ReadingBudget(wall)
 	if !affordable {
-		return Reading{Plan: plan, Strategy: ladder[0], Unread: fmt.Sprintf(
+		return Reading{Plan: plan, Surface: surface, Strategy: ladder[0], Unread: fmt.Sprintf(
 			"a wall of %s cannot afford a reading worth taking (one reading is an eighth "+
 				"of it, and the floor is %s), so `%s` was not run",
 			wall.Round(time.Second), ShortestUsefulReading, ladder[0].Command)}
@@ -65,7 +75,9 @@ func Photograph(ctx context.Context, root string, wall time.Duration, focus Focu
 			ladder[index] = narrowed
 		}
 	}
-	return photograph(ctx, root, plan, ladder, budget)
+	reading := photograph(ctx, root, plan, ladder, budget)
+	reading.Surface = surface
+	return reading
 }
 
 // photograph is the ladder walk, with the budget already decided. It is
