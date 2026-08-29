@@ -288,3 +288,75 @@ func TestEveryDeliveryGateIsHeldToTheJobsRecord(t *testing.T) {
 		t.Fatal("no gate call site was found; this test has stopped watching anything")
 	}
 }
+
+// A REPAIR THAT MOVED NOTHING MAY NOT CLOSE A FINDING ABOUT THE WORLD, AND THE
+// WIRING ASKS ONE FUNCTION WHETHER IT DID.
+//
+// The seam set PolishClosed from the re-judgement's verdict alone. That reads as
+// airtight — the second gate re-runs the whole world half before it answers —
+// and it is not, because of what the repair in front of it had been: a
+// composition rewrites the account of work that already landed and runs nothing,
+// so the second gate reads a better summary of the identical world the first one
+// failed. ink s5 and ofetch s5 both settled whole that way, at 7 of 25 and 44 of
+// 47 hidden checks (docs/design/gate/SETTLEMENT.md §8).
+//
+// The rule lives in revision.RepairClosed, which weighs the verdict, the tree
+// stamp taken either side of the round, and whether the finding's ground is the
+// world. This pins that the settlement asks it rather than deciding for itself —
+// the same thing the record test above pins, one field along, and for the same
+// reason: an expression at a wiring seam is a rule nobody can see to get right.
+func TestThePolishVerdictIsWeighedAgainstWhatTheRepairMoved(t *testing.T) {
+	source, err := os.ReadFile("chat.go")
+	if err != nil {
+		t.Fatalf("read the wiring: %v", err)
+	}
+	body := string(source)
+	const assigned = "evidence.PolishClosed = "
+	index := strings.Index(body, assigned)
+	if index < 0 {
+		t.Fatal("nothing sets PolishClosed; this test has stopped watching anything")
+	}
+	if strings.Contains(body[index+len(assigned):], assigned) {
+		t.Error("PolishClosed is set in two places, so the rule has two copies")
+	}
+	line := strings.SplitN(body[index+len(assigned):], "\n", 2)[0]
+	if !strings.HasPrefix(strings.TrimSpace(line), "revision.RepairClosed(") {
+		t.Errorf("the settlement decides for itself whether a repair closed the gate:\n\t%s", line)
+	}
+	// And the stamp it is weighed against is taken twice, on either side of the
+	// round: one call is a stamp nothing is compared to.
+	if strings.Count(body, "revision.TreeStamp(") != 2 {
+		t.Errorf("the tree is stamped %d times; a repair is judged on the difference between two",
+			strings.Count(body, "revision.TreeStamp("))
+	}
+}
+
+// And the closing line names the one reason a person would never guess: a repair
+// ran, and it changed nothing on disk.
+func TestAnUnmovedRepairIsNamedInTheClosingLine(t *testing.T) {
+	// The ink s5 event as this build would journal it: the composition's pass
+	// did not count, so PolishClosed is absent and Unmoved says why.
+	gate := store.DeliveryGate{
+		Gap:     "The deliverable is a listing of files, not the answer itself.",
+		Unmoved: true,
+	}
+	if gate.Whole() {
+		t.Fatal("a gate no repair closed settled whole")
+	}
+	finding, reason, standing := gateStanding(gate)
+	if !standing {
+		t.Fatal("the run is partial and named nothing it was short of")
+	}
+	if !strings.Contains(reason, "changed nothing on disk") {
+		t.Errorf("the reason does not say what the repair did: %q", reason)
+	}
+	line := partialWords(finding, reason)
+	if !strings.HasPrefix(line, "partial — gate: ") || !strings.Contains(line, "not repaired: ") {
+		t.Errorf("the closing line is %q", line)
+	}
+	// A refusal, when there is one, is the more specific reason and wins.
+	gate.Refused = "there is not enough time left on the run to finish it"
+	if _, reason, _ = gateStanding(gate); reason != gate.Refused {
+		t.Errorf("a refusal was talked over by the fallback: %q", reason)
+	}
+}

@@ -1675,6 +1675,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// shared working tree's lease to land, which every sibling
 					// view's landing waits on; a composition takes neither.
 					composedOnly := revision.Composable(worker, outcome)
+					// THE WORLD AS THE FINDING FOUND IT. A repair round is
+					// allowed to close a finding about the tree or about a
+					// check only if it could have changed one, and whether it
+					// did is a measurement rather than a claim: the record is
+					// stamped here and again at the re-judgement, and two equal
+					// stamps are a round that moved nothing. It is taken above
+					// the branch because both kinds of repair are asked the same
+					// question — a composition moves nothing by construction,
+					// and an engine re-run that edited no file moves nothing in
+					// fact. See revision.TreeStamp.
+					foundWorldAs := revision.TreeStamp(jobArtifacts(opts.produced, absolute))
 					var polished *exec.Outcome
 					polishModel := workerModel
 					if composedOnly {
@@ -1752,11 +1763,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						}
 					}
 					if polished != nil {
+						reread := gateEvidence(node, task.Spec, outcome,
+							jobArtifacts(opts.produced, absolute), true, jobDir)
 						closed := revision.JudgeDeliverable(withRepairJournal(ctx, graph, node.ID),
 							settings, planClient, graph, node, text, task.Contract,
-							gateEvidence(node, task.Spec, outcome,
-								jobArtifacts(opts.produced, absolute), true, jobDir), polishModel)
-						evidence.PolishClosed = closed.Checked && closed.Pass
+							reread, polishModel)
+						// Did the round move anything? Same stamp, same record,
+						// taken after everything the repair was going to do.
+						evidence.Unmoved = revision.TreeStamp(reread.Artifacts) == foundWorldAs
+						// A REPAIR THAT DID NOT MOVE THE TREE MAY NOT CLOSE A
+						// FINDING WHOSE GROUND IS THE TREE OR A READING. The
+						// composition rewrites the account and runs nothing, so
+						// a second judge reading the better account is reading
+						// the same world the first one failed; ink s5 and ofetch
+						// s5 both settled whole that way over findings about the
+						// substance of the work and the state of their own
+						// suites. What such a round may still close is a finding
+						// whose only ground was the delivered text — a wrong
+						// summary, a missing explanation — which is the case
+						// Compose was built for and which writing really does
+						// fix. See revision.GroundedInTheWorld, and
+						// docs/design/gate/SETTLEMENT.md §8.
+						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
 						if evidence.PolishClosed {

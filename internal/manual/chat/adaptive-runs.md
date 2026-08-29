@@ -486,6 +486,25 @@ reading said was missing> — closed by the repair`: the work was redone and re-
 that were passing before were checked again, and the exit code is 0. Only a finding that
 was still standing when the run stopped makes it partial.
 
+## When the repair only rewrote the summary — a round that changed nothing on disk
+
+Sometimes the work has already landed and what is wrong is the account of it, so instead
+of running the worker again aforge rewrites the summary over the change that is already
+there. Nothing runs; only the words are new. **That kind of round can close a review's
+finding about the summary — a wrong description, a missing explanation — and it is not
+allowed to close one about the work itself.**
+
+The files on disk are stamped before the round and again after it, and if nothing moved,
+a finding about a file, about a check the run ran, or about a change no test has been run
+against still stands. The run ends partial and the last line says which round it was:
+
+```
+partial — gate: The missing element is the substance of the work (not repaired: the repair rewrote the account and changed nothing on disk)
+```
+
+A finding that only ever concerned the wording still closes this way, and so does anything
+where the project's own checks ran on the change and came back green.
+
 ## When the review itself could not be read — unchecked, and said so
 
 The review is a model call like any other, and a model can answer with something that is

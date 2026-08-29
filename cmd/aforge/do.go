@@ -1277,6 +1277,13 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 		return "", "", false
 	}
 	reason = firstLine(strings.TrimSpace(gate.Refused))
+	if reason == "" && gate.Unmoved {
+		// The one reason worth saying over "nothing further was started",
+		// because it is the reason a person would otherwise never guess: a
+		// repair DID run and it rewrote the account without touching the tree,
+		// so the finding it was aimed at is exactly where it was.
+		reason = "the repair rewrote the account and changed nothing on disk"
+	}
 	if reason == "" {
 		reason = "nothing further was started"
 	}
