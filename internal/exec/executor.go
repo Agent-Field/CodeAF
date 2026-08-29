@@ -325,6 +325,29 @@ type Outcome struct {
 	// this in; every other leaf leaves it empty, which reads as "no claim".
 	Baseline []string
 
+	// Regressed names the project's own checks that passed before this work and
+	// fail after it.
+	//
+	// It exists because a leaf's own new tests are the ONE signal that
+	// structurally cannot see a regression: the leaf wrote them, so they test
+	// what the leaf was thinking about and nothing else. Three graded runs in
+	// the 2026-08-28 sweep shipped patches that deleted attributes their
+	// repositories already had, every hidden test failed on setup, and from
+	// inside the run there was no signal at all — one of them ran its own tests
+	// thirty-three times and scored zero. Test COUNT correlates with nothing.
+	// Two measured runs of the project's own command, before and after, are the
+	// only thing that can see it, and that is what fills this in.
+	//
+	// NIL MEANS NO CLAIM — nobody looked, because the project declares no
+	// verification entrypoint, or the leaf's wall could not afford the reading,
+	// or the command would not run, or the tree never changed. Empty-non-nil is
+	// not a distinction anything downstream needs and nothing writes one: this
+	// field is nil or it is populated. A populated one is a finding the gate
+	// raises itself, with no citation to weigh, because the person never had to
+	// ask for their repository to keep working (docs/design/gate/SETTLEMENT.md
+	// §4, FAILSAFE.md clause 2).
+	Regressed []string
+
 	// Account is the worker's structured account of the work itself: the files
 	// it changed, the checks it ran, and what each one found. See [Account] for
 	// why a leaf that reports only prose is expensive.

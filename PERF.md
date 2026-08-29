@@ -156,6 +156,59 @@ time get consulted at all, and that is the one place a clock is still trusted.
 `TestProducedFilesAreBounded` pins the per-call cap of **24** paths
 (`producedPerCall`) that one command may claim.
 
+## The verification photograph's budget
+
+Running a project's own test suite twice — once before a leaf works and once
+after — is the most expensive thing on the bare worker's path. The swe worker's
+equivalent baseline `go test` was measured at seven minutes, and it was
+invisible enough in the headless stream that an operator read it as a hang and
+killed the run. So this measurement is bounded three ways, and the bound is
+**derived from the leaf's own wall** rather than typed as a duration.
+
+| number | value | where |
+| --- | --- | --- |
+| `verificationWallShare` | **8** | `internal/exec/bare/verification.go` |
+| `shortestUsefulReading` | **1 minute** | `internal/exec/bare/verification.go` |
+| `capturedOutputLimit` | **4 MiB** | `internal/verify/run.go` |
+
+The arithmetic is one line: **one reading may spend `deadline / 8`, and a
+reading worth less than a minute is not taken at all.** A ninety-minute leaf
+affords 11m15s a reading, which is a real suite — codeaf's own project
+verification ceiling is ten minutes, so this is the same order and arrived at
+from the other end. A sixty-second leaf affords 7.5s, which is under the floor,
+so **it photographs nothing and runs no command**: a leaf too short to afford
+the measurement does not take it rather than spending its whole life measuring.
+The shortest wall that photographs at all is therefore eight minutes.
+
+The floor is derived too. One minute is the fastest whole project suite measured
+in the 2026-08-28 sweep — igel's two passing project tests, "2 passed in 27.86s"
+— doubled to leave room for an interpreter, an import graph and a compile.
+Below it the reading is killed before the runner says anything, so it costs an
+eighth of a wall for a result that names nothing.
+
+Two more conditions keep the worst case off the common path, and neither is a
+clock. A reading is taken only when the project **declares** a test entrypoint
+(`verify.Discover`), and the second reading is taken only when the **tree
+actually changed** — the workspace's own before-and-after comparison, not a
+fresh stat. A leaf that changed nothing cannot have regressed anything. So the
+quarter-of-the-wall worst case is paid only by a long leaf, in a project that
+says how it is checked, that actually wrote something.
+
+`capturedOutputLimit` bounds the memory rather than the time: it keeps the last
+4 MiB of a reading's output, ten times the largest suite output in that sweep
+(textual's 391,519-byte log for twenty failing tests with full tracebacks). It
+is a tail because every runner prints its failure summary last.
+
+**What a person would see if this were wrong.** Too generous, and short leaves
+stop doing work — a `do` run whose nodes each sit for minutes with nothing in
+the stream but the suite they are running, which is exactly the failure that got
+a run killed by hand once. Too mean, and `Outcome.Regressed` is nil on every
+leaf that should have carried a name, which reads downstream as *no claim* and
+lets a patch that deleted an attribute the repository already had ship as whole
+— the measured failure in `docs/design/gate/SETTLEMENT.md` §4. Neither is a test
+going red; both are read off a run, which is why the numbers are written down
+here.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000

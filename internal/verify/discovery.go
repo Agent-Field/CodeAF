@@ -1,6 +1,21 @@
-// Package fullverification discovers the project-wide build and test
-// entrypoints that form the session-end machine verification floor.
-package fullverification
+// Package verify discovers the project-wide build and test entrypoints that
+// form the session-end machine verification floor, runs one of them, and reads
+// the failing test names out of what it printed.
+//
+// It lived under internal/swepro/internal/session/fullverification until
+// 2026-08-29, where Go's own visibility rule made it reachable by exactly one
+// worker. That is the WHY of the move, and it is a law about laws: A LAW ABOUT
+// A PROJECT'S OWN VERIFICATION THAT ONLY ONE WORKER CAN REACH IS A LAW THE
+// OTHER WORKERS SILENTLY DO WITHOUT. The bare and linear workers — the only
+// workers `aforge do` uses on the plain path — could not import this, so they
+// never photographed the repository, never compared two readings of it, and
+// shipped patches that deleted attributes the repository already had while
+// their own narrow tests stayed green (docs/design/gate/SETTLEMENT.md §4).
+//
+// Nothing here knows what language the workspace is in, and nothing here is a
+// gate. It discovers, it runs, it reads, and it subtracts; what a caller does
+// with a new red name is the caller's business.
+package verify
 
 import (
 	"encoding/json"

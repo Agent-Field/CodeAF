@@ -23,20 +23,22 @@ package codeaf
 //
 // Nothing here knows what language the workspace is in. It does not run the
 // tests — the engine already knows how to do that, and this reuses that path
-// verbatim — it only reads the runners' own failure vocabulary, which is small,
-// stable, and shared across every ecosystem this engine has met.
+// verbatim — and it does not read the runners' failure vocabulary either: that
+// is [verify.FailingTests], one package that every worker can reach, because a
+// law about a project's own verification that only this engine could import was
+// a law every other worker silently did without. What stays here is this
+// engine's own pipeline around it — where the photograph is kept, when it is
+// retaken, and how the subtraction is worded for the two models that read it.
 
 import (
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // baselineEntry is one entrypoint as it behaved before the run touched
@@ -132,7 +134,7 @@ func (runner *pipeline) establishBaseline(ctx context.Context, resume bool) {
 // tree. It costs one suite run, spent where it buys the most: without it every
 // later verdict in this run is about the repository rather than about the work.
 func (runner *pipeline) captureBaseline(ctx context.Context) {
-	plan := fullverification.Discover(runner.workspace)
+	plan := verify.Discover(runner.workspace)
 	record := &baselineRecord{
 		BaseSHA: gitOutput(ctx, runner.workspace, "rev-parse", "HEAD"),
 		Entries: map[string]baselineEntry{},
@@ -145,7 +147,7 @@ func (runner *pipeline) captureBaseline(ctx context.Context) {
 			Workdir: entrypoint.Workdir, Exit: exit, TimedOut: timedOut,
 		}
 		if entry.red() && !timedOut {
-			entry.Failing = failingTestNames(output)
+			entry.Failing = verify.FailingTests(output)
 		}
 		record.Entries[verificationMemoKey(entrypoint)] = entry
 		commands = append(commands, map[string]any{
@@ -204,7 +206,7 @@ type baselineDelta struct {
 
 // judge subtracts the baseline from one failing entrypoint's output.
 func (record *baselineRecord) judge(
-	entrypoint fullverification.Entrypoint, exit int, output string,
+	entrypoint verify.Entrypoint, exit int, output string,
 ) baselineDelta {
 	if record == nil {
 		return baselineDelta{}
@@ -219,7 +221,7 @@ func (record *baselineRecord) judge(
 	for _, name := range entry.Failing {
 		before[name] = true
 	}
-	after := failingTestNames(output)
+	after := verify.FailingTests(output)
 	var known, fresh []string
 	for _, name := range after {
 		if before[name] {
@@ -268,89 +270,4 @@ func describeFailing(names []string) string {
 		return strings.Join(names[:8], ", ") + " and " + strconv.Itoa(len(names)-8) + " more"
 	}
 	return strings.Join(names, ", ")
-}
-
-// ── reading a test runner's failures ────────────────────────────────────────
-
-// failingTestPatterns is the failure vocabulary of the runners this engine
-// meets, each pattern capturing one identity that is stable between two runs of
-// the same suite: no durations, no line numbers that move, no counts.
-//
-// A pattern that over-matches is safe in one direction only, and that is the
-// direction it is written for: a phantom name read out of BOTH runs cancels,
-// and a phantom read out of the AFTER run alone is scored as a new failure,
-// which fails the run. Nothing here can turn a real regression green.
-var failingTestPatterns = []*regexp.Regexp{
-	// go test
-	regexp.MustCompile(`(?m)^\s*--- FAIL:\s+([^\s(]+)`),
-	regexp.MustCompile(`(?m)^FAIL\s+(\S+)\s`),
-	// pytest
-	regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+::\S+)`),
-	regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+\.py)\s*$`),
-	// python unittest
-	regexp.MustCompile(`(?m)^(?:FAIL|ERROR):\s+([\w.]+\s*\([\w.]+\))`),
-	// jest / vitest / mocha
-	regexp.MustCompile(`(?m)^\s*[✕✗×]\s+(.+?)\s*$`),
-	regexp.MustCompile(`(?m)^\s*●\s+(.+?)\s*$`),
-	// cargo test
-	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+FAILED`),
-	// maven surefire / gradle
-	regexp.MustCompile(`(?m)^\[ERROR\]\s+(\S+)\s+Time elapsed`),
-	regexp.MustCompile(`(?m)^\s*(\S+)\s+>\s+\S+\s+FAILED\s*$`),
-	// dotnet test / xunit
-	regexp.MustCompile(`(?m)^\s*(?:Failed|X)\s+(\S+)\s`),
-	// rspec
-	regexp.MustCompile(`(?m)^rspec\s+(\./\S+:\d+)`),
-	// ctest
-	regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Failed\)`),
-	// TAP
-	regexp.MustCompile(`(?m)^not ok\s+\d+\s+-?\s*(.+?)\s*$`),
-}
-
-var (
-	ansiEscape     = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
-	trailingTiming = regexp.MustCompile(`\s*[\(\[]\s*[\d.,]+\s*(?:ms|s|sec|secs|seconds)?\s*[\)\]]\s*$`)
-	digitRun       = regexp.MustCompile(`\d+`)
-	spaceRun       = regexp.MustCompile(`\s+`)
-)
-
-// failingTestNames reads every test identity a runner named as failing, sorted
-// and deduplicated so two runs of one suite compare as sets rather than as
-// transcripts.
-func failingTestNames(output string) []string {
-	clean := ansiEscape.ReplaceAllString(output, "")
-	seen := map[string]bool{}
-	var names []string
-	for _, pattern := range failingTestPatterns {
-		for _, match := range pattern.FindAllStringSubmatch(clean, -1) {
-			name := normalizeTestName(match[1])
-			if name == "" || seen[name] {
-				continue
-			}
-			seen[name] = true
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	return names
-}
-
-func normalizeTestName(raw string) string {
-	name := strings.TrimSpace(trailingTiming.ReplaceAllString(strings.TrimSpace(raw), ""))
-	name = spaceRun.ReplaceAllString(name, " ")
-	name = strings.Trim(name, ":.,")
-	// A "name" that is a count, a bare verb or a punctuation run is a false
-	// read of a summary line, and carrying it would make two identical runs
-	// disagree with each other.
-	if len(name) < 2 || len(name) > 200 {
-		return ""
-	}
-	if digitRun.ReplaceAllString(name, "") == "" {
-		return ""
-	}
-	switch strings.ToLower(name) {
-	case "console", "failures", "failed", "error", "errors", "test", "tests":
-		return ""
-	}
-	return name
 }
