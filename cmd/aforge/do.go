@@ -1181,11 +1181,24 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 // being wrong and being caught at it; those deliver whole, and charging them a
 // non-zero code would teach a harness to distrust the gate's own corrections.
 //
+// EXCEPT WHEN THE GATE CANNOT BE WRONG. The refusals above are all corrections
+// of an OPINION: a judge read the deliverable and named something missing, and
+// a rule found that the thing it named was never asked for, or is already on
+// disk, or is already in the text. A mechanical gap is not an opinion. It says
+// a file the plan itself promised is missing or empty on disk, which is a fact
+// about the filesystem, and refusing its citation only declines to buy a repair
+// round — it cannot make the file appear. Charging that exit 0 is what let a run
+// that produced no file at all report settled, done, success, under a note
+// explaining that the review had overreached (2026-08-28, meta/muse-spark-1.1).
+// It is exit 2, partial, which is the honest code for a job that delivered less
+// than it promised. See revision.Judgment.Mechanical.
+//
 // An unreadable store answers whole. This decides an exit code, not the work,
 // and a failed read is not evidence of a shortfall.
 func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
-		!gate.Pass && !gate.PolishClosed && strings.TrimSpace(gate.Refused) == "" {
+		!gate.Pass && !gate.PolishClosed &&
+		(gate.Mechanical || strings.TrimSpace(gate.Refused) == "") {
 		return false
 	}
 	parts, err := w.graph.SubtreeNodes(node.ID)

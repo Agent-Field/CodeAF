@@ -12,22 +12,57 @@ import (
 // delivery's result; Gap names what it missed; PolishClosed says whether the
 // single permitted repair was subsequently judged complete.
 //
-// The last four fields are the gap ledger, and they are fields on this event
-// rather than a second event kind because every reader of a job's judgement
-// already reads this one. Quote is the span of the user's verbatim request the
-// gap was said to be a failure of; Round is which round of repair it was
-// weighed for; Extended says the job actually grew work to close it; Refused
-// names, in the words the user would be told, why it did not. A quote that was
-// extended on is spent — the same words may not buy a second round — so the
-// ledger that bounds the loop is exactly what replays out of the journal.
+// The last fields are the gap ledger, and they are fields on this event rather
+// than a second event kind because every reader of a job's judgement already
+// reads this one. Quotes are the spans of the user's verbatim request the gap
+// was said to be a failure of, and Quote is those spans as the one line a
+// person reads; Round is which round of repair it was weighed for; Extended
+// says the job actually grew work to close it; Refused names, in the words the
+// user would be told, why it did not. A citation that was extended on is spent
+// — the same words may not buy a second round — so the ledger that bounds the
+// loop is exactly what replays out of the journal.
+//
+// Quotes is a list because a gap may be a failure of several things at once:
+// the mechanical half of the gate names one citation per file the plan promised
+// and the disk does not hold. Quote stays, holding the same citations joined,
+// because it is what every existing reader and every already-written journal
+// row has — see Cited, which is how the ledger reads either.
+//
+// Mechanical distinguishes those two halves, and it is recorded rather than
+// inferred because the exit code depends on it. A refused gap from a model
+// judge is the gate being wrong; a refused gap from the mechanical half is a
+// file that is still not on disk, and no refusal of a citation makes it appear.
 type DeliveryGate struct {
-	Pass         bool   `json:"pass"`
-	Gap          string `json:"gap,omitempty"`
-	PolishClosed bool   `json:"polish_closed"`
-	Quote        string `json:"quote,omitempty"`
-	Round        int    `json:"round,omitempty"`
-	Extended     bool   `json:"extended,omitempty"`
-	Refused      string `json:"refused,omitempty"`
+	Pass         bool     `json:"pass"`
+	Gap          string   `json:"gap,omitempty"`
+	PolishClosed bool     `json:"polish_closed"`
+	Quote        string   `json:"quote,omitempty"`
+	Quotes       []string `json:"quotes,omitempty"`
+	Round        int      `json:"round,omitempty"`
+	Extended     bool     `json:"extended,omitempty"`
+	Refused      string   `json:"refused,omitempty"`
+	Mechanical   bool     `json:"mechanical,omitempty"`
+}
+
+// Cited is the gate's citations however they were written down. A row recorded
+// before the list existed carries only the joined line, and reading it as one
+// citation is the honest reading of it: that is exactly what it was when it was
+// written, and a ledger that treated it as nothing would hand an old job a
+// fresh allowance on replay.
+func (g DeliveryGate) Cited() []string {
+	cited := make([]string, 0, len(g.Quotes))
+	for _, quote := range g.Quotes {
+		if quote = strings.TrimSpace(quote); quote != "" {
+			cited = append(cited, quote)
+		}
+	}
+	if len(cited) > 0 {
+		return cited
+	}
+	if quote := strings.TrimSpace(g.Quote); quote != "" {
+		return []string{quote}
+	}
+	return nil
 }
 
 // RecordDeliveryGate appends one gate result. It has no materialized view: the
@@ -44,6 +79,22 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	gate.Gap = bounded(gate.Gap, MaxDigestBytes)
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)
 	gate.Refused = bounded(strings.TrimSpace(gate.Refused), MaxDigestBytes)
+	// Per citation, not on the list as a whole. The bound exists so one event
+	// cannot carry an unbounded string, and a citation clipped to a share of a
+	// budget it does not know the size of would be clipped mid-word — which is
+	// a citation that no longer matches the words it was taken from.
+	quotes := make([]string, 0, len(gate.Quotes))
+	for _, quote := range gate.Quotes {
+		if quote = bounded(strings.TrimSpace(quote), MaxDigestBytes); quote != "" {
+			quotes = append(quotes, quote)
+		}
+	}
+	gate.Quotes = quotes
+	if len(gate.Quotes) == 0 {
+		// An empty list and a nil one are the same fact, and only one of them
+		// round-trips through the journal as the value it was given.
+		gate.Quotes = nil
+	}
 
 	tx, err := s.beginWrite()
 	if err != nil {

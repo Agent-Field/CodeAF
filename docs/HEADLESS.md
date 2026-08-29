@@ -110,6 +110,15 @@ as work that stands.
 A gate verdict the system overruled is **not** a rejection: a gap the one polish
 pass closed, and a gap refused as ungrounded or as already closed, exit `0`.
 
+There is one exception, and it is the difference between an opinion and a fact.
+The gate has a **mechanical half**: before a judge is paid anything, every file
+the plan's own stopping criterion named must be on disk and non-empty. When one
+is not, the gap it raises names those files — one citation per file — and it is
+marked mechanical. The admission rules may still refuse to buy a repair round
+over it, but refusing a citation cannot make a file appear, so a refused
+mechanical gate exits `2`, not `0`. Every other refusal says a judge was wrong
+about the text; this one says the plan promised a file that is not there.
+
 **The exit code is the verdict; `settled` is not.** `settled` says only that
 nothing this process is waiting for can still move. The two disagree in exactly
 one honest way: an errand stopped by a question is **over** (`settled: true`)

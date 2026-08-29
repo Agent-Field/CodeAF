@@ -33,19 +33,19 @@ func TestADeliverableContainingWhatWasAskedForDoesNotFailForLackingIt(t *testing
 		"**FAISS** — a library rather than a server: IVF, HNSW and PQ indexes.",
 	}, "\n\n")
 
-	if closed := revision.AdmitGapPresent(quote, deliverable); closed == "" {
+	if closed := revision.AdmitGapPresent([]string{quote}, deliverable); closed == "" {
 		t.Fatalf("a gap naming five things the deliverable spells out verbatim was admitted; "+
 			"it would buy a repair round against a correct answer\nquote: %s", quote)
 	}
 	// And the direction that must still convict. One of the five never arrives,
 	// so the review is right and the ordinary path has to judge it.
 	missing := strings.Replace(deliverable, "**Chroma**", "**Pinecone**", 1)
-	if closed := revision.AdmitGapPresent(quote, missing); closed != "" {
+	if closed := revision.AdmitGapPresent([]string{quote}, missing); closed != "" {
 		t.Fatalf("a gap about a genuinely absent item was refused with %q", closed)
 	}
 	// Prose is not an enumeration, and a rule that fired on prose would be a
 	// rule that swallowed every real gap phrased in the person's own words.
-	if closed := revision.AdmitGapPresent("write me a 500 word essay on latency",
+	if closed := revision.AdmitGapPresent([]string{"write me a 500 word essay on latency"},
 		"I will research latency and write the essay next."); closed != "" {
 		t.Fatalf("a prose gap was refused with %q", closed)
 	}

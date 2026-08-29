@@ -1393,7 +1393,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
 			if gate.Checked {
-				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
+				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
+					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical}
 			if gate.Pass {
 				outcome.Verdict = revision.GateVerdict(gate)
 				// Quorum: two cheap validators independently verify the pass.
@@ -1446,15 +1447,22 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// delivery, and free.
 				ungrounded, closed := "", ""
 				if !gate.Pass {
-					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Quote)
+					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Cited())
 					// The same refusal, for the gap the record has already
 					// closed rather than the one the request never set. A span
 					// of the ask naming a file the run produced is not a thing
 					// the person asked for and did not get, and the round it
 					// used to buy was spent retyping a correct file into a
 					// message while the file itself sat in the workspace.
-					if ungrounded == "" {
-						closed = revision.AdmitGapArtifact(gate.Quote, records)
+					// Neither of the two "already closed" doors is asked of a
+					// mechanical gap, and the reason is that it has already been
+					// through the stricter version of both. It asked the disk
+					// for a file that is present AND non-empty; the artifact
+					// door asks only for present, so the one case where they
+					// disagree is a file left at zero bytes — which was not
+					// written, and which the mechanical half is right about.
+					if ungrounded == "" && !gate.Mechanical {
+						closed = revision.AdmitGapArtifact(gate.Cited(), records)
 					}
 					// And the same refusal for the gap the deliverable itself
 					// has already closed. The artifact half asks the disk; this
@@ -1463,8 +1471,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// verbatim profiles and reported that the twelve were not
 					// there. A repair round bought on that verdict replaced a
 					// correct answer with a broken one.
-					if ungrounded == "" && closed == "" {
-						closed = revision.AdmitGapPresent(gate.Quote, text)
+					if ungrounded == "" && closed == "" && !gate.Mechanical {
+						closed = revision.AdmitGapPresent(gate.Cited(), text)
 					}
 				}
 				switch {
@@ -1606,6 +1614,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// work is aimed at and what the citation is checked on.
 							unmet = closed
 							evidence.Gap, evidence.Quote = closed.Gaps, closed.Quote
+							evidence.Quotes, evidence.Mechanical = closed.Citations, closed.Mechanical
 						}
 					} else {
 						outcome.Verdict = provider.VerdictSemanticFailure
@@ -1633,6 +1642,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot),
 							outcomeRecords(outcome)...)
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
+						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
 						if extension.Spliced > 0 {
 							extended = true

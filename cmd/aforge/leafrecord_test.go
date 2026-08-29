@@ -156,12 +156,12 @@ func TestTheGateWeighsTheProducedFileBeforeTheProse(t *testing.T) {
 
 	// And the behavioural half: a gap quoting the span of the ask that names
 	// the produced file buys nothing. It is delivered under, not acted on.
-	if refusal := revision.AdmitGapArtifact("write docs/decision-memo.md", record); refusal == "" {
+	if refusal := revision.AdmitGapArtifact([]string{"write docs/decision-memo.md"}, record); refusal == "" {
 		t.Fatal("a gap quoting the ask's own filename still bought a round while the file sat on disk")
 	}
 	// A gap about the substance inside the file is not a filename and is
 	// judged the ordinary way — the refusal must not swallow it.
-	if refusal := revision.AdmitGapArtifact("a rigorous decision memo", record); refusal != "" {
+	if refusal := revision.AdmitGapArtifact([]string{"a rigorous decision memo"}, record); refusal != "" {
 		t.Fatalf("a gap about the substance was refused as already-produced: %q", refusal)
 	}
 }
@@ -214,7 +214,7 @@ func TestAHintPathThatIsADirectoryIsNeitherOfferedNorClaimedAsWritten(t *testing
 	}
 	// And nothing here excuses the claim: the gap is the file, so the refusal
 	// that closes a produced-file gap must not fire.
-	if refusal := revision.AdmitGapArtifact("write ./docs/decision-memo.md", record); refusal != "" {
+	if refusal := revision.AdmitGapArtifact([]string{"write ./docs/decision-memo.md"}, record); refusal != "" {
 		t.Fatalf("an unwritten file was taken as already produced: %q", refusal)
 	}
 }

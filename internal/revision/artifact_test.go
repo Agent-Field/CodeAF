@@ -81,18 +81,18 @@ func TestAGapTheRunAlreadyClosedBuysNothing(t *testing.T) {
 	}
 	evidence := Evidence{Artifacts: []string{produced}, Observed: true}
 
-	if refusal := AdmitGapArtifact("save the plots to stochastic_fit_plots.png", evidence); refusal == "" {
+	if refusal := AdmitGapArtifact([]string{"save the plots to stochastic_fit_plots.png"}, evidence); refusal == "" {
 		t.Fatal("a gap quoting a produced file still bought work")
 	}
-	if refusal := AdmitGapArtifact("the fit must stay inside the 5-95% band", evidence); refusal != "" {
+	if refusal := AdmitGapArtifact([]string{"the fit must stay inside the 5-95% band"}, evidence); refusal != "" {
 		t.Fatalf("a gap about substance was refused: %q", refusal)
 	}
-	if refusal := AdmitGapArtifact("write summary.md", evidence); refusal != "" {
+	if refusal := AdmitGapArtifact([]string{"write summary.md"}, evidence); refusal != "" {
 		t.Fatalf("a gap naming a file nothing produced was refused: %q", refusal)
 	}
 	// Every name it quotes has to be there. One missing file is a real gap
 	// however many of its siblings landed.
-	if refusal := AdmitGapArtifact("stochastic_fit_plots.png and summary.md", evidence); refusal != "" {
+	if refusal := AdmitGapArtifact([]string{"stochastic_fit_plots.png and summary.md"}, evidence); refusal != "" {
 		t.Fatalf("a partially produced quote was refused: %q", refusal)
 	}
 }
