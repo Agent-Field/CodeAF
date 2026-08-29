@@ -97,6 +97,7 @@ func (f Focus) Within(dir string) Focus {
 func Locate(root string, focus Focus) Focus {
 	wanted := map[string][]int{}
 	located := append(Focus{}, focus...)
+	found := map[int][]string{}
 	for index, entry := range focus {
 		clean := strings.TrimSpace(entry)
 		if clean == "" || strings.ContainsAny(clean, "/\\") || filepath.IsAbs(clean) {
@@ -142,17 +143,47 @@ func Locate(root string, focus Focus) Focus {
 		}
 		for _, key := range []string{locateKey(name), locateKey(stem)} {
 			for _, at := range wanted[key] {
-				// First sighting wins, so two files of one name resolve the same
-				// way twice rather than by whichever the walk reached last.
-				if located[at] == focus[at] {
-					located[at] = slashed
+				// EVERY FILE THAT CARRIES THE NAME, NOT THE FIRST ONE THE WALK
+				// TRIPS OVER. This used to keep one sighting and drop the rest,
+				// and a repository that documents itself shadows its own source:
+				// textual holds `docs/examples/widgets/rich_log.py` beside
+				// `src/textual/widgets/_rich_log.py`, `docs` sorts first, and
+				// every scoped reading of the nemotron n1 run was aimed at the
+				// documentation copy of the widget it was changing. Which of two
+				// files of one name is the implementation is not a question this
+				// can answer by looking at either of them — so it answers none
+				// of it, hands both to Adjacent, and lets the structural ranking
+				// there decide.
+				if len(found[at]) >= locateLimit {
+					continue
 				}
+				found[at] = append(found[at], slashed)
 			}
 		}
 		return nil
 	})
-	return located
+	// Spliced in where the name stood, so the order the request put its subjects
+	// in is the order the selection is built in.
+	resolved := make(Focus, 0, len(located)+len(found))
+	for index, entry := range located {
+		if hits := found[index]; len(hits) > 0 {
+			resolved = append(resolved, hits...)
+			continue
+		}
+		resolved = append(resolved, entry)
+	}
+	return resolved
 }
+
+// locateLimit bounds how many files one name may resolve to.
+//
+// A name is a name because it is distinctive, so a handful is the honest answer
+// for a repository that keeps a source copy, a documentation copy and a stub of
+// one thing; past that the name was not distinctive after all and the focus is
+// better off short. It is memberLimit's size for the same reason — this is the
+// same "how many candidates is a ladder rung worth" question, asked one level
+// down.
+const locateLimit = 4
 
 // locateKey is the one spelling two names are compared in: lowercased, with the
 // word marks a name is written with in one convention and without in another
@@ -164,7 +195,11 @@ func Locate(root string, focus Focus) Focus {
 // answers to, and a focus that resolves to half a repository is no focus.
 func locateKey(name string) string {
 	key := separators.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "")
-	if len(key) < 4 {
+	// Three, because a module named for one segment of a compound the request
+	// also spells is a real name — textual's `Log` beside its `RichLog` — and
+	// two is where a name stops being one. See standaloneSegments, which is the
+	// only caller that reaches down here.
+	if len(key) < 3 {
 		return ""
 	}
 	return key
@@ -250,9 +285,75 @@ func NamedSubjects(text string) []string {
 			if len(named) >= namedSubjectLimit {
 				return named
 			}
+			for _, part := range standaloneSegments(text, match) {
+				if key := strings.ToLower(part); !seen[key] && locateKey(part) != "" {
+					seen[key] = true
+					named = append(named, part)
+					if len(named) >= namedSubjectLimit {
+						return named
+					}
+				}
+			}
 		}
 	}
 	return named
+}
+
+// segmentSpelling is one segment of a CamelCase name: a capital and the small
+// letters and digits after it.
+var segmentSpelling = regexp.MustCompile(`[A-Z][a-z0-9]*`)
+
+// standaloneSegments are the segments of a compound name that the SAME TEXT also
+// uses on their own.
+//
+// A REQUEST THAT SAYS BOTH `RichLog` AND `Log` HAS NAMED TWO THINGS. Only the
+// compound one is spelled distinctively enough to be a subject on sight — a
+// single capitalised word is as likely to be the first word of a sentence — so
+// the short one was dropped, and textual's nemotron run never once resolved
+// `Log` to `widgets/_log.py`: every reading it took was of the RichLog side of a
+// change that touched both, and `tests/test_log.py` reached the selection only
+// after the work, off the diff.
+//
+// What makes the short name admissible is not its length. It is that the text
+// spells it BOTH ways — inside a compound this reader has already accepted, and
+// again on its own as a whole word — which is a structural fact about the
+// request and not a judgement about the word. `Rich` in "with current Rich"
+// qualifies too, and correctly: if the repository holds a file of that name, the
+// request is about it, and if it does not, Locate resolves nothing and the entry
+// costs one map lookup.
+//
+// A segment shorter than three characters is not read. Below that a name is not
+// a name — it is an initial, an article or a unit, and there is no repository
+// where matching it whole means anything.
+func standaloneSegments(text, compound string) []string {
+	parts := segmentSpelling.FindAllString(compound, -1)
+	if len(parts) < 2 {
+		return nil
+	}
+	var standing []string
+	for _, part := range parts {
+		if len([]rune(part)) < 3 {
+			continue
+		}
+		alone := regexp.MustCompile(`\b` + regexp.QuoteMeta(part) + `\b`)
+		for _, at := range alone.FindAllStringIndex(text, -1) {
+			// Inside the compound itself does not count: what is being looked
+			// for is the request using the short name in its own right.
+			if inCompound(text, at[0], at[1]) {
+				continue
+			}
+			standing = append(standing, part)
+			break
+		}
+	}
+	return standing
+}
+
+// inCompound says this occurrence is part of a longer run of name characters —
+// the `Log` inside `RichLog`, which is the compound already accepted rather than
+// a mention of the short name.
+func inCompound(text string, from, to int) bool {
+	return (from > 0 && identifierByte(text[from-1])) || (to < len(text) && identifierByte(text[to]))
 }
 
 // OwnChecks is every check file in a record of what a run left behind, as

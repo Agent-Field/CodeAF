@@ -581,7 +581,9 @@ func textualS10Shape(t *testing.T) string {
 			"async def test_make_renderable_expand_tabs():\n    assert True\n",
 		"tests/test_concurrency.py": "from threading import Thread\nfrom textual.widgets import RichLog\n" +
 			"async def test_call_from_thread():\n    assert True\n",
-		"tests/test_button.py": "def test_pressed():\n    assert True\n",
+		"tests/test_button.py":         "def test_pressed():\n    assert True\n",
+		"src/textual/widgets/_tree.py": "class Tree:\n    pass\n",
+		"tests/test_tree.py":           "from textual.widgets import Tree\ndef test_node():\n    assert True\n",
 	})
 }
 
@@ -618,18 +620,21 @@ func TestTheSecondReadingIsAimedAtTheChangeAndNotOnlyTheRequest(t *testing.T) {
 	if before.Scope == ScopeWhole {
 		t.Fatalf("the first reading is not scoped at all: %#v", before)
 	}
-	// The request reaches the RichLog tests and — this is the whole point — it
-	// cannot reach the Log one, because nothing in the request resolves to
-	// `_log.py`.
-	for _, wanted := range []string{"tests/test_textlog.py", "tests/test_concurrency.py"} {
+	// The request says "Log and RichLog", so the reading it asks for reaches
+	// both widgets: the two files that import RichLog through the package front
+	// door, and the check named after `_log.py` by pytest's own convention.
+	for _, wanted := range []string{
+		"tests/test_textlog.py", "tests/test_concurrency.py", "tests/test_log.py",
+	} {
 		if !strings.Contains(before.Command, wanted) {
 			t.Errorf("the request's own reading missed %s: %q", wanted, before.Command)
 		}
 	}
 
-	// And now the record of what the run left behind, which names both widgets.
+	// And now the record of what the run left behind, which names a widget the
+	// request never mentioned at all.
 	record := []string{
-		"src/textual/widgets/_log.py",
+		"src/textual/widgets/_tree.py",
 		"src/textual/widgets/_rich_log.py",
 		"examples/rich_log_follow_state.py",
 	}
@@ -637,8 +642,8 @@ func TestTheSecondReadingIsAimedAtTheChangeAndNotOnlyTheRequest(t *testing.T) {
 	if !widened {
 		t.Fatal("the checks beside the files the run changed did not join the reading")
 	}
-	if !strings.Contains(after.Command, "tests/test_log.py") {
-		t.Errorf("the second reading still cannot see the checks beside `_log.py`: %q", after.Command)
+	if !strings.Contains(after.Command, "tests/test_tree.py") {
+		t.Errorf("the second reading still cannot see the checks beside `_tree.py`: %q", after.Command)
 	}
 	for _, held := range []string{"tests/test_textlog.py", "tests/test_concurrency.py"} {
 		if !strings.Contains(after.Command, held) {
@@ -697,5 +702,129 @@ func TestAWholeReadingThatDidNotFitIsRetakenOnTheChange(t *testing.T) {
 	}
 	if broke := reading.Regressed(); len(broke) > 0 {
 		t.Errorf("two readings of different things were subtracted: %v", broke)
+	}
+}
+
+// textualN1Shape is textual as the nemotron n1 run stood in it, including the
+// thing that actually broke the reading: the repository DOCUMENTS ITSELF, so
+// `rich_log.py` and `log.py` each exist twice — once under `docs/` where the
+// examples live, and once under `src/` where the widget lives.
+func textualN1Shape(t *testing.T) string {
+	t.Helper()
+	return project(t, map[string]string{
+		"Makefile": "run := poetry run\n\n.PHONY: test\ntest:\n\t$(run) pytest tests/ $(ARGS)\n",
+		"pyproject.toml": "[tool.poetry]\nname = \"textual\"\n\n" +
+			"[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
+		// The documentation copies, which sort first and used to win.
+		"docs/examples/widgets/log.py":      "from textual.widgets import Log\n",
+		"docs/examples/widgets/rich_log.py": "from textual.widgets import RichLog\n",
+		// The widgets themselves, spelled the way python spells a private
+		// module behind a package front door.
+		"src/textual/widgets/__init__.py": "from textual.widgets._log import Log\n" +
+			"from textual.widgets._rich_log import RichLog\n",
+		"src/textual/widgets/_log.py":      "class Log:\n    pass\n",
+		"src/textual/widgets/_rich_log.py": "class RichLog:\n    pass\n",
+		"tests/test_log.py": "from textual.widgets import Log\n" +
+			"async def test_process_line():\n    assert True\n",
+		"tests/test_textlog.py": "from textual.widgets import RichLog\n" +
+			"async def test_make_renderable():\n    assert True\n",
+		"tests/test_button.py": "def test_pressed():\n    assert True\n",
+		"tests/test_tabs.py":   "def test_tabs():\n    assert True\n",
+	})
+}
+
+// A REQUEST THAT SAYS BOTH `RichLog` AND `Log` HAS NAMED TWO THINGS.
+//
+// textual's nemotron n1 run took fourteen readings and the request's own scope
+// was `tests/test_concurrency.py tests/test_textlog.py` — 3 checks — on every
+// one of them, while the change touched `widgets/_log.py` AND
+// `widgets/_rich_log.py`. `tests/test_log.py` reached the selection only after
+// the work, off the diff, and the baseline it was compared against never had it.
+//
+// Two structural faults, and neither is about vocabulary. A single capitalised
+// word is not a subject on sight — it is as likely to be the first word of a
+// sentence — so `Log` was dropped and `_log.py` was never located. And a name
+// that resolved kept the FIRST file the walk tripped over, so a repository that
+// documents itself shadows its own source: `docs/examples/widgets/rich_log.py`
+// sorts before `src/textual/widgets/_rich_log.py` and every reading was aimed at
+// the documentation copy of the widget being changed.
+func TestARequestThatSpellsANameBothWaysReachesBothWidgets(t *testing.T) {
+	root := textualN1Shape(t)
+	subjects := NamedSubjects(textualS10Request)
+	if !contains(subjects, "Log") {
+		t.Fatalf("a request that says `Log and RichLog` named only the compound: %v", subjects)
+	}
+	if !contains(subjects, "RichLog") {
+		t.Fatalf("the compound itself stopped being a subject: %v", subjects)
+	}
+
+	located := Locate(root, Focus(subjects))
+	// EVERY file a name carries, so the implementation is not shadowed by the
+	// documentation of it.
+	for _, wanted := range []string{
+		"src/textual/widgets/_rich_log.py", "src/textual/widgets/_log.py",
+	} {
+		if !contains(located, wanted) {
+			t.Errorf("%s was shadowed by a file of the same name: %v", wanted, located)
+		}
+	}
+
+	paths, core, ok := Adjacent(root, located)
+	if !ok || core == 0 {
+		t.Fatalf("nothing was ranked as beside the change: ok=%v core=%d %v", ok, core, paths)
+	}
+	held := strings.Join(paths, " ")
+	for _, wanted := range []string{"tests/test_log.py", "tests/test_textlog.py"} {
+		if !strings.Contains(held, wanted) {
+			t.Errorf("the reading the request asks for misses %s: %v", wanted, paths)
+		}
+	}
+	// tests/test_log.py is named after `_log.py` by pytest's own convention —
+	// the underscore is the module being private, not part of its name — so it
+	// is in the FIRST rank, which is what survives every cut.
+	if !contains(paths[:core], "tests/test_log.py") {
+		t.Errorf("the check named after the changed module is not in the first rank: %v",
+			paths[:core])
+	}
+	// And nothing this job never touched.
+	for _, elsewhere := range []string{"test_button.py", "test_tabs.py"} {
+		if strings.Contains(held, elsewhere) {
+			t.Errorf("the selection reached work this job never touched: %v", paths)
+		}
+	}
+
+	// End to end: the rung the run would actually have taken.
+	ladder, lok := ReadingStrategies(root, Discover(root), Focus(subjects))
+	if !lok {
+		t.Fatal("a project with a make test target produced no strategy at all")
+	}
+	if !strings.Contains(ladder[0].Command, "tests/test_log.py") {
+		t.Errorf("the first rung still cannot see the Log side of the change: %q",
+			ladder[0].Command)
+	}
+}
+
+// A short name is admitted because the REQUEST spelled it both ways, and never
+// because it is short. The compound alone does not admit it, and a bare word
+// standing on its own is not a subject.
+func TestAShortNameIsOnlyASubjectWhenTheRequestSpellsItBothWays(t *testing.T) {
+	for _, probe := range []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "both ways", text: "Make Log and RichLog expose is_following_end.", want: true},
+		{name: "only inside the compound", text: "RichLog must follow the end.", want: false},
+		{name: "only on its own", text: "The Log must follow the end.", want: false},
+		{name: "an initial is not a name", text: "The Ab and AbCd widgets.", want: false},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			subjects := NamedSubjects(probe.text)
+			got := contains(subjects, "Log") || contains(subjects, "Ab")
+			if got != probe.want {
+				t.Errorf("NamedSubjects(%q) = %v, want the short name admitted=%v",
+					probe.text, subjects, probe.want)
+			}
+		})
 	}
 }
