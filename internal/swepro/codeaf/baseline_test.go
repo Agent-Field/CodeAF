@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
-	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // redSuiteWorkspace stages a Go repository that is ALREADY failing when the
@@ -178,38 +178,6 @@ func TestAlreadyGreen(t *testing.T) {
 	}
 }
 
-func TestFailingTestNamesReadsEveryRunnersVocabulary(t *testing.T) {
-	// The extractor is the whole of the language independence: the engine runs
-	// the checks, this only reads what they printed.
-	for name, sample := range map[string]struct {
-		output string
-		want   string
-	}{
-		"go":       {"--- FAIL: TestThing (0.00s)\n    thing_test.go:9: nope\n", "TestThing"},
-		"pytest":   {"FAILED tests/test_api.py::test_headers - AssertionError\n", "tests/test_api.py::test_headers"},
-		"unittest": {"FAIL: test_headers (tests.api.ApiCase)\n", "test_headers (tests.api.ApiCase)"},
-		"jest":     {"  ✕ renders the header (12 ms)\n", "renders the header"},
-		"cargo":    {"test parser::tests::commas ... FAILED\n", "parser::tests::commas"},
-		"maven":    {"[ERROR] ApiTest.headers Time elapsed: 0.1 s <<< FAILURE!\n", "ApiTest.headers"},
-		"tap":      {"not ok 3 - the header is set\n", "the header is set"},
-	} {
-		names := failingTestNames(sample.output)
-		found := false
-		for _, got := range names {
-			if got == sample.want {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("%s: failingTestNames(%q) = %#v, want %q among them",
-				name, sample.output, names, sample.want)
-		}
-	}
-	if names := failingTestNames("ok  \texample.test/pkg\t0.10s\nPASS\n"); len(names) != 0 {
-		t.Errorf("a green run named failures: %#v", names)
-	}
-}
-
 func TestUnnamedFailureIsNeverAcquitted(t *testing.T) {
 	// The acquittal is only ever granted for a failure that can be NAMED on
 	// both sides. A red entrypoint whose output no runner vocabulary reads —
@@ -218,7 +186,7 @@ func TestUnnamedFailureIsNeverAcquitted(t *testing.T) {
 	// possible acquittal ("the suite was red before, so its being red now
 	// proves nothing"), which is wrong on the one run whose whole job was to
 	// turn that suite green.
-	entrypoint := fullverification.Entrypoint{Kind: fullverification.KindTest, Command: "make check"}
+	entrypoint := verify.Entrypoint{Kind: verify.KindTest, Command: "make check"}
 	record := &baselineRecord{Entries: map[string]baselineEntry{
 		verificationMemoKey(entrypoint): {Command: "make check", Exit: 2},
 	}}
@@ -226,7 +194,7 @@ func TestUnnamedFailureIsNeverAcquitted(t *testing.T) {
 	if same.PreExisting {
 		t.Fatalf("an unnamed failure was acquitted: %#v", same)
 	}
-	build := fullverification.Entrypoint{Kind: fullverification.KindBuild, Command: "make all"}
+	build := verify.Entrypoint{Kind: verify.KindBuild, Command: "make all"}
 	record.Entries[verificationMemoKey(build)] = baselineEntry{
 		Command: "make all", Exit: 2, Failing: []string{"TestFailGenFishCompletionFile"},
 	}

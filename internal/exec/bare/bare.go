@@ -75,6 +75,12 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		return &exec.Outcome{Stop: exec.StopError, Text: err.Error()}, err
 	}
 
+	// The project's own account of whether it still works, read while the tree
+	// is still pristine. It is taken before the tree is photographed because a
+	// test runner's own droppings belong to the world the leaf arrived in and
+	// not to the leaf — see photographBefore.
+	reading := b.photographBefore(ctx)
+
 	// The world's own account of what this leaf leaves behind, opened before the
 	// first turn. The bare loop's four wire tools are pi's, and one of them is a
 	// shell: a leaf here can write a whole deliverable without any write tool
@@ -123,5 +129,10 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 	// cannot say which call wrote it.
 	b.workspace.RecordChanges(leaf)
 	outcome.Artifacts = b.workspace.Artifacts(leaf)
+
+	// The second reading, against the same entrypoint. Whether the tree actually
+	// moved is the workspace's answer, taken from the two tree photographs it
+	// has already compared — this asks it rather than re-stating the world.
+	reading.photographAfter(ctx, cwd, len(outcome.Artifacts) > 0, outcome)
 	return outcome, nil
 }
