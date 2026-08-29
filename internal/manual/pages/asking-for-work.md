@@ -143,3 +143,39 @@ concluded, when it needs more than arrived with the question.
 Which jobs get opened is decided by how well your words match the work itself,
 never by a list of phrases. A greeting or a fresh request opens nothing, and a
 result you were shown a moment ago is not repeated back at you.
+
+## What the review reads before work is handed to you — the files, not the write-up
+
+When a job changed files, the review that decides whether it is done reads **the
+change itself**: every file the work wrote or changed, with what is in them. The
+worker's own write-up sits beside it, marked as what the worker *says* about the
+work. It is never what is judged.
+
+That is deliberate, and it is a fail-safe. A write-up that is thin, oddly
+worded, or that comes back as a lump of data instead of sentences cannot make
+correct work look unfinished; a confident write-up cannot make missing work look
+finished. One measured run lost twenty-eight minutes and 46 cents to exactly
+that — the worker's last message came back as a data structure, and three
+reviews in a row said the work "contains only text describing what was
+supposedly done" while six changed files sat on disk.
+
+So a finding about a job that changed files always names **one of those files**
+and quotes the words of your request it falls short of, and that is how you read
+it:
+
+```
+gate: fail — src/textual/widgets/_rich_log.py — follow_end is declared and never posts FollowChanged
+```
+
+A review that can name neither a file nor your own words is not an answer at
+all. It is asked again, and if it still says nothing the run reports itself
+**short** rather than finished — a check that did not happen is never a check
+that passed.
+
+Where a job produced no files — a question answered in words — the message *is*
+the answer, and the review reads the message, exactly as it always did. A file
+your request named and nothing wrote is still named back to you as missing.
+
+And a write-up that arrives as a lump of data is asked once, before anything
+else, for the answer in plain words. That ask is written down against the job,
+so a run that had to ask twice never looks like one that asked once.
