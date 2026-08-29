@@ -26,6 +26,29 @@
 # not amd64. The verifier still runs with --network none, so grading is
 # unaffected.
 set -uo pipefail
+
+# --- snapshot the rig, then run from the copy -------------------------------
+# Bash reads a script by byte offset as it goes, so editing the rig while a run
+# is in flight makes the running shell resume in the middle of the new text.
+# Two ninety-minute runs were lost to exactly that: one resumed mid-heredoc
+# (`line 145: is: command not found`), never extracted its patch and never
+# graded; the other lost its container to a cleanup trap that fired out of
+# sequence. So every run copies the rig into its own result directory before it
+# does anything else — before lib.sh is even sourced, because a sourced file is
+# read the same incremental way — and re-execs from that copy, which nothing
+# later edits.
+__RIG_SRC="$(cd "$(dirname "$0")" && pwd)"
+if [ -z "${BENCH_SNAPSHOT:-}" ]; then
+  [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
+  __slug="$(printf '%s' "$2" | tr '/:' '--')"
+  export RESULTS="${RESULTS:-$__RIG_SRC/results}"
+  __out="$RESULTS/$1-$__slug-$3"
+  rm -rf "$__out"; mkdir -p "$__out/rig"
+  cp "$__RIG_SRC/run.sh" "$__RIG_SRC/lib.sh" "$__RIG_SRC/report.py" "$__out/rig/"
+  export BENCH_SNAPSHOT="$__out/rig"
+  exec bash "$__out/rig/run.sh" "$@"
+fi
+
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
 [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
@@ -43,7 +66,7 @@ fi
 
 load_task "$TASK" || exit 1
 OUT="$RESULTS/$TASK-$SLUG-$SEED"
-rm -rf "$OUT"; mkdir -p "$OUT"
+mkdir -p "$OUT"   # the snapshot step above already cleared it
 NAME="deepswe-af-$TASK-$SEED"
 
 # An isolated profile, so the run can never read or write the owner's ~/.aforge.
@@ -175,7 +198,12 @@ meta "exit_code=$CODE" "agent_seconds=$WALL" "stage=extract"
 # against the base commit then captures committed and uncommitted work alike.
 docker exec "$NAME" git config --global --add safe.directory /app >/dev/null 2>&1
 docker exec "$NAME" git -C /app add -A >> "$OUT/docker.log" 2>&1
-docker exec "$NAME" git -C /app diff --cached "$TASK_BASE" > "$OUT/model.patch" 2>> "$OUT/docker.log"
+# --binary, because a run that writes a .joblib, a fixture image or any other
+# non-text artifact otherwise produces "Binary files a/x and b/x differ", which
+# `git apply` refuses with "cannot apply binary patch without full index line".
+# The whole patch is then rejected and the run scores 0 for a rig reason. The
+# corpus's own collect command in task.toml uses --binary for this reason.
+docker exec "$NAME" git -C /app diff --cached --binary "$TASK_BASE" > "$OUT/model.patch" 2>> "$OUT/docker.log"
 docker cp "$NAME:/bench/graph.db" "$OUT/graph.db" >> "$OUT/docker.log" 2>&1
 
 # Spend is read from the store's own usage ledger, not from the stream: the
@@ -219,6 +247,32 @@ meta["workers_planned"] = planned
 meta["void"] = "swe" in ran
 json.dump(meta, open(metapath, "w"), indent=2)
 WORKERS
+
+# Liveness evidence, counted off the stream the run just wrote: how often a
+# call was cut and retried, and whether a leaf that restarted came back to
+# banked work rather than a blank page. Recorded rather than judged — the log
+# lines are quoted into meta.json so the claim can be checked.
+python3 - "$OUT/run.log" "$OUT/meta.json" "$OUT/graph.db" <<'LIVENESS'
+import json, os, re, sqlite3, sys
+logpath, metapath, db = sys.argv[1], sys.argv[2], sys.argv[3]
+meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
+lines = open(logpath, errors="replace").read().split("\n") if os.path.exists(logpath) else []
+faults = [l.strip() for l in lines if l.lstrip().startswith("\u2717") and "retr" in l.lower()]
+resumed = [l.strip() for l in lines if re.search(r"resum|banked|picked up where", l, re.I)]
+starts = {}
+try:
+    c = sqlite3.connect(db)
+    for (n,) in c.execute("select node_id from events where kind='node_started'"):
+        starts[n] = starts.get(n, 0) + 1
+except Exception:
+    pass
+meta["fault_retries"] = len(faults)
+meta["fault_retry_lines"] = faults[:12]
+meta["restarted_nodes"] = {n: k for n, k in starts.items() if k > 1}
+meta["resumed_with_transcript"] = bool(resumed)
+meta["resume_lines"] = resumed[:8]
+json.dump(meta, open(metapath, "w"), indent=2)
+LIVENESS
 
 PATCH_BYTES=$(wc -c < "$OUT/model.patch" | tr -d ' ')
 meta "patch_bytes=$PATCH_BYTES" "stage=grade"
