@@ -662,6 +662,44 @@ invented-scope failure the grounding invariant exists to stop — that is why th
 checklist goes through the same door a review's finding does. Too mean and the
 gate is back where s4 left it: passing "All 56 tests pass" at 41 of 47.
 
+## What the gate reads of the tree it judges
+
+The delivery gate's fence holds the CHANGE where a run made one — the changed
+sources and checks, with what is in them — and the worker's message where it did
+not (`internal/revision/subject.go`, FAILSAFE.md's sixteenth chapter). That block
+is the deliverable, so it is bounded like every other block in that prompt: a
+share of the judge's own room, with a literal for a build whose catalog cannot
+place the model.
+
+| number | value | where |
+| --- | --- | --- |
+| the excerpts' share of a known window | **25 of `gateShareTotal`** | `gateTreeShare` |
+| and the bound when the window is unknown | **8 KiB** | `gateTreeBytes` |
+| the least one file's excerpt may be | **160 bytes** | `gateTreeExcerptFloor` |
+| the record that travels as a schema enum | at most **64 paths** | `treeEnumFiles` |
+
+Three properties are what make it safe.
+
+**The share is spent evenly across the changed files, never weighted.** Which of
+six files carries the behaviour a request asked for is precisely the question the
+judge is being paid to answer; a record that decided it in advance would be
+answering it with an arithmetic nobody could see.
+
+**A tree too wide to give every file the floor shows the files it can and SAYS
+how many it could not.** A silent truncation of the deliverable is the one
+clipping this whole mechanism argues against.
+
+**No file is read for its meaning and no file is read twice.** A path that is not
+text — a compiled model, an image — stays a name and a size; the excerpt is a
+bounded `read` of the head, not a walk; and the artifact list the record block
+used to print is dropped where the fence already carries it, so the prompt got
+one block wider and not two.
+
+The enum is a wire-level guard and never the decision: past 64 paths the field
+keeps its meaning and the Go-side check against the same record is what admits
+the verdict, so a run with a large change set is held to the same contract at the
+same price.
+
 ## The repair round's room, which is not a clock and not a count
 
 A run that holds a finding it agrees with, with wall and money left, buys the

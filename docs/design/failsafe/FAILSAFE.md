@@ -877,6 +877,107 @@ partial — no time left for another round of work
 
 Clause 3, again, and it is the third chapter in this document to end on it.
 
+## A sixteenth failure, 2026-08-29: the judge that read a sentence about the tree
+
+*Added against `bench/deepswe/results/textual-richlog-follow-state-nvidia-nemotron-3.5-lightning-n1/`.*
+
+Three delivery gates refused the same job in a row, and all three refusals were
+about a sentence:
+
+> `gate: refused — The deliverable is a single JSON contract string, not the
+> required Python source files. The fenced text between BEGIN DELIVERABLE and
+> END DELIVERABLE contains only {"contract": "..."} — no _log.py, _rich_log.py,
+> or examples/rich_log_follow_state.py.`
+
+> `gate: fail — The deliverable contains only text describing what was
+> supposedly done, not the actual code … The actual code files need to be
+> examined against the requirements.`
+
+Every clause of both is true of the fenced text and false of the run. The
+worktree held forty-two kilobytes of changed Python; the artifact record named
+six files; the run's own footer named them back to the person — *"Whatever the
+account above says, 6 files reached disk and can be opened"*. The judge never
+saw any of it, because the gate handed it the worker's final message as THE
+deliverable and put the tree underneath as a record the message could be checked
+against. `$0.46`, twenty-eight minutes, `partial`.
+
+The proximate cause is a model quirk and worth naming only to dismiss it: this
+worker answered the delivery fence with `{"contract": "…"}`. Fine. **A gate must
+be immune to what the worker SAYS**, and this one was built the other way round.
+
+### Clause 2, in its strictest form
+
+> **A fail-safe sources its evidence from the WORLD, not from the component it
+> is checking.**
+
+The deliverable of a request that changed a repository is the change. The
+worker's message is a CLAIM about that change, and a claim is read beside the
+thing it is about, never in place of it —
+`docs/design/gate/SETTLEMENT.md` §6 had already settled exactly this for what may
+OVERTURN a finding, and the same sentence was still false one step earlier, at
+what the judge is handed in the first place.
+
+So the fence's contents are decided by the record and not by the prompt's
+layout (`internal/revision/subject.go`):
+
+| the record | what the fence holds | what sits below it |
+| --- | --- | --- |
+| holds files | the changed sources and checks, with bounded excerpts of what is in them | the worker's message, headed *"THIS IS A CLAIM ABOUT THE DELIVERABLE AND IS NOT THE DELIVERABLE"* |
+| holds nothing | the worker's message — it IS the artifact | the run records, unchanged |
+
+The split is `verify.ChangedSources` and `verify.OwnChecks`, which is the same
+reading the gate's own verification is taken through; the excerpt budget is one
+share of the judge's room, documented in PERF.md; and what the record NAMES and
+the tree does not hold — a path that is not on disk, a directory wearing a
+file's name — survives in the record block either way, because those two lines
+are the ones that convict.
+
+### And a finding about the fence is unsayable, not discouraged
+
+The prompt already said, in its own words, *"Read the fenced text itself before
+you say anything about it"*. Three verdicts described a JSON object anyway. A
+sentence is not a mechanism.
+
+The shape of a refusal now follows the subject. Over a changed tree a fail
+carries `file` — one entry of the record, with the record itself as the field's
+enum, so a routed endpoint refuses anything else on the wire — plus the span of
+the request that file fails. A verdict that names neither is not a verdict this
+gate can read, and it travels the path every unreadable answer travels:
+`internal/shaped` asks once more with the schema and the model's own words
+quoted back, and when that fails too the gate FAULTS. Which is the only honest
+ending. A judge that cannot say what is wrong with a file the run changed has
+not judged the run, and the floor says a check that did not happen may not be
+the reason a run reports itself whole.
+
+The validation lives in the verdict's own `UnmarshalJSON` on purpose: a verdict
+that is unreadable BY CONTRACT and one that is unreadable by syntax then travel
+one path, get one re-ask, and end in one typed fault. A second repair ladder
+would have been a second contract.
+
+### The fence's shape is a repairable shape
+
+`no structured_repair event fired either` — and that is the third defect. Every
+ask in this system that wants a JSON object and gets prose is repaired by one
+seam. The delivery is the one ask pointing the other way, and it had no repair
+at all, so a model quirk became three silent re-drives.
+
+`internal/shaped.Prose` is `Answer`'s mirror: one re-ask, the model's own object
+quoted back, journaled as `structured_repair` with `lane: delivery`. An answer
+that cannot be reshaped comes back as the original, because a delivery whose
+shape could not be fixed is still the delivery.
+
+### Clause 4, and the line the person reads
+
+`store.DeliveryGate.Subject` carries `tree (6 files)` or `claim`. Without it
+those three refusals are, afterwards, indistinguishable from three refusals over
+a real reading of the world — the only way to tell was to reconstruct the prompt
+from the transcript. And the refusal a person watches now opens with a path in
+the repository rather than with a description of a sentence:
+
+```
+gate: fail — src/textual/widgets/_rich_log.py — follow_end is declared and never posts FollowChanged
+```
+
 ## What is deliberately not here
 
 No new round cap, no new timeout, no new constant of any kind as the lever. The

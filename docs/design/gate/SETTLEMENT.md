@@ -531,3 +531,29 @@ s5 stores holds a row saying a reading had happened, so a project that declares
 no verification and a reading that ran and named nothing were the same silence in
 the journal — the two opposite diagnoses. FAILSAFE clause 4, which this document
 quoted and did not obey.
+
+## Addendum, 2026-08-29: §6 asked one step earlier
+
+§6 settled that the delivered text may overturn a finding ONLY where the text is
+the whole of what the run left behind. It left the same question unasked one seam
+earlier — what the judge is HANDED as the deliverable in the first place — and
+the answer there was still "the worker's message, always".
+
+textual n1 on nemotron is what that cost: three gates in a row refused a job for
+what the message was (`the fenced text … contains only {"contract": "..."}`)
+while 42KB of changed Python sat in the worktree and the artifact record named
+every file of it. The judge convicted a sentence and never saw the tree.
+
+> **THE DELIVERABLE OF A REQUEST THAT CHANGED THE TREE IS THE TREE. The worker's
+> final message is its CLAIM about that change, and a claim is read beside the
+> thing it is about, never in place of it.**
+
+`revision.Evidence.Subject` decides it from the artifact record settled against
+the disk — the same record `completeAgainstTheWorld` already produces — so the
+rule is §6's rule with §6's evidence, and a run that left nothing behind is
+judged on its message exactly as it always was. The fence then carries the
+changed sources and checks with bounded excerpts, the message sits below it under
+a heading that names it a claim, and a refusal must name one file of the record
+and quote the behaviour it fails or it is not a verdict this gate can read.
+FAILSAFE.md's sixteenth chapter has the whole of it, including why the second
+half is a schema and not a sentence.
