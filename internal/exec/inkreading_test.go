@@ -146,3 +146,57 @@ func TestASecondReadingRetakesOnTheBaselinesOwnRung(t *testing.T) {
 		t.Error("the baseline's own rung came back empty")
 	}
 }
+
+// A SUITE THAT FAILED TO COLLECT IS REPORTED AS THAT, END TO END.
+//
+// ofetch's nemotron n1 run took four readings whose suite never ran a check —
+// `vitest run --reporter=json` printed no JSON because an import would not
+// resolve — and each was journaled `named: 1, red: 1` and subtracted against a
+// baseline that had named 28. The gate failed the delivery with `This work broke
+// checks that were passing before it: to.`
+func TestAnAfterReadingWhoseSuiteDidNotCollectSaysSo(t *testing.T) {
+	root := t.TempDir()
+	suite := filepath.Join(root, "suite.sh")
+	script := "#!/bin/sh\n" +
+		"echo ' RUN  v0.34.6 /app'\n" +
+		"echo 'Failed to load url ./circuit-breaker (resolved id: ./circuit-breaker) " +
+		"in /app/test/index.test.ts. Does the file exist?'\n" +
+		"echo ' Test Files  1 failed (1)'\n" +
+		"exit 1\n"
+	if err := os.WriteFile(suite, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	strategy := verify.Strategy{
+		Command: "./suite.sh", Read: verify.FormatNodeJSON, Runner: "vitest",
+		Declared: "pnpm test", Scope: verify.ScopeWhole,
+	}
+	reading := verify.Reading{
+		Taken: true, Budget: 5 * time.Second,
+		Before: verify.Result{
+			Strategy: strategy,
+			Reported: []string{"ofetch 404", "ofetch calls hooks", "ofetch hook errors"},
+		},
+	}
+	outcome := &Outcome{}
+	PhotographAfter(context.Background(), workspace, nil, time.Hour,
+		Task{Goal: t.Name()}, reading, true, false, outcome)
+
+	if outcome.Verification.AfterTaken {
+		t.Fatal("a suite that never ran a check was taken as a reading of the finished tree")
+	}
+	if len(outcome.Regressed) > 0 {
+		t.Errorf("the work was convicted of breaking %v by a suite that ran nothing",
+			outcome.Regressed)
+	}
+	why := outcome.Verification.Unread
+	if !strings.Contains(why, "failed to collect") {
+		t.Errorf("the record does not say the suite failed to collect: %q", why)
+	}
+	if !strings.Contains(why, "Failed to load url") {
+		t.Errorf("the record does not carry the runner's own words: %q", why)
+	}
+}

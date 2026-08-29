@@ -697,6 +697,13 @@ there was no reading, which of the reasons it was: your project declares no way 
 itself, there was no time left to size a reading against, or there was nothing to read.
 Silence used to mean all of those at once.
 
+**A suite that never got as far as running a check is not a suite with a failing check in
+it.** When your project's runner is asked for a machine-readable report and prints none — an
+import that will not resolve, a config that will not load — the record says its suite failed
+to collect and quotes the runner's own words, rather than inventing a result out of the
+error text. Nothing is compared against a reading like that in either direction, so a broken
+import can never be reported as work you broke.
+
 **A reading that is cut keeps what it named, on both sides.** A command killed at its ceiling having
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never

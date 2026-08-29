@@ -44,8 +44,10 @@ var passingTestPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+ok\s*$`),
 	// gradle
 	regexp.MustCompile(`(?m)^\s*(\S+)\s+>\s+\S+\s+PASSED\s*$`),
-	// dotnet test / xunit
-	regexp.MustCompile(`(?m)^\s*Passed\s+(\S+)\s`),
+	// dotnet test / xunit, whose names are fully qualified. Required rather than
+	// assumed, for the reason failingTestPatterns states at its own copy of this
+	// line: after an English word, `\S+` matches an English word.
+	regexp.MustCompile(`(?m)^\s*Passed\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
 	// ctest
 	regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Passed\)`),
 	// TAP

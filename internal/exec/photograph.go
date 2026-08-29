@@ -224,6 +224,18 @@ func PhotographAfter(
 	case !ok:
 		reading.Unread = "the finished tree could not be read: `" +
 			strategy.Command + "` could not be started a second time"
+	case after.Uncollected:
+		// IT RAN AND IT NEVER GOT TO A CHECK. A suite that failed to collect is
+		// not a suite that went red, and the two used to arrive here identical:
+		// vitest printed no JSON, the shared vocabulary scraped one word out of
+		// the error text, and a reading naming a single check was subtracted
+		// against a baseline of twenty-eight. The runner's own words are quoted
+		// so a person is told what actually broke.
+		reading.Unread = "`" + strategy.Command + "` ran on the finished tree and its suite " +
+			"failed to collect, so no check of it ran"
+		if trouble := strings.TrimSpace(after.Error); trouble != "" {
+			reading.Unread += ": " + trouble
+		}
 	case after.TimedOut && len(after.Reported) == 0:
 		// IT RAN. That is a different fact from "nobody could read this tree",
 		// and the sentence says which: a command that started, produced no
@@ -351,6 +363,8 @@ func journalReading(
 		// about that until a reading is cut and says so.
 		Partial:     reading.Partial && when == "before the job's first change",
 		Elapsed:     reading.CutAfter,
+		Uncollected: result.Uncollected,
+		Trouble:     result.Error,
 		ReadAsPlain: result.ReadAsPlain,
 		Exit:        result.Exit,
 		TimedOut:    result.TimedOut,
