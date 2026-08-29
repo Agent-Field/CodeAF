@@ -64,6 +64,53 @@ is written to prevent, moved off the turn path and onto the exit. The bargain is
 the file's own: a spending record is worth less than the turn that earned it, and
 less than the exit as well. Pinned by `TestFlushingUsageGivesUpOnAStalledLedger`.
 
+## The worktree fingerprint's budget
+
+The coding engine's post-audit gate compares two observations of the worktree to
+decide whether the phases that run after an audit changed the work it passed.
+That measurement has exactly **one** budget, and it is a deadline:
+**2 seconds** (`worktreeFingerprintTimeout`, `internal/swepro/codeaf/pipeline.go`).
+
+It is derived from what it guards. A fingerprint is taken at most three times
+around one full project verification, whose own ceiling is
+`fullVerificationTimeoutMS` — ten minutes. Two seconds is a three-hundredth of
+that, so the whole measurement costs under one percent of the cheapest single
+thing it measures.
+
+**There is no file-count budget and no byte budget, and adding one back is a
+regression.** There used to be two — 4,096 files and 8 MiB — spent hashing every
+tracked or unignored file in the repository. aforge's own tree is 3,746 files and
+75 MB, nine times that allowance, and one tracked file in it exceeds the byte
+half on its own. So on this repository every fingerprint came back over budget,
+and over budget answered with a **fresh nonce**: no two observations of an
+untouched tree could agree, the stabilisation loop could never converge, and five
+leaves across two measured runs were failed for "post-audit verification is
+self-mutating or exceeded the fingerprint budget" having mutated nothing.
+
+Two rules replace those numbers, and they are the reason no size budget is
+needed:
+
+- **The fingerprint photographs the change, not the repository.** git is asked
+  what differs from HEAD (`git status --porcelain=v1 -z -uall`) and only those
+  paths are hashed, so the cost is the size of the leaf's own change set rather
+  than the size of somebody's checkout.
+- **A measurement that cannot be taken is not a measurement that came back
+  different.** The snapshot answers with a third state, and the gate resolves it
+  from the world instead — it re-runs the project's own verification and keeps
+  the pass when that is green.
+
+The digest is taken over content and mode. Modification times are the cache key
+only: a formatter that rewrites a file with byte-identical bytes has changed the
+clock and not the tree. `TestAFingerprintOfATreeTooBigForTheOldBudgetIsStableRatherThanAlwaysChanged`
+and `TestAFingerprintReadsContentRatherThanTheClock` pin both.
+
+`maxStableReverifications` (**2**) survives and is not a detector. The detector
+is the comparison across a verification: the leaf is finished, nothing but the
+verification is running, so a tree that differs across it was changed by it. Two
+is how many chances a settling tree gets to settle — one verification that writes
+a file and then reuses it settles on the second, and a tree still moving on the
+third moves every time.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000
