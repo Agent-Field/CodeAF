@@ -928,17 +928,19 @@ func countLabel(count int) string {
 // the slot is left open for it; a caller that never answers leaves the call
 // unverified, which is the truth.
 func structured(ctx context.Context, client Completer, messages []ai.Message, schema json.RawMessage, into any) (*ai.Response, error) {
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(schema))
+	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(schema), ai.WithMaxTokens(structuredReplyTokens))
 	if err != nil {
 		provider.Report(ctx, provider.VerdictProviderFailure)
 		return nil, err
 	}
-	// A reasoning model can burn its entire completion budget thinking and
-	// return no text at all: finish_reason=length with an empty body (seen in
-	// the wild at completion_tokens=32768). One retry with a doubled budget is
-	// the difference between a contract and a dead node; a second empty answer
-	// is the model's problem, not the budget's.
-	if strings.TrimSpace(response.Text()) == "" && finishedForLength(response) {
+	// An answer cut at its ceiling cannot be decoded whether it is empty or
+	// not, and the two causes look the same from here: a reasoning model that
+	// burned the budget thinking and returned nothing (seen in the wild at
+	// completion_tokens=32768), or a model that looped inside the schema and
+	// returned fifty-seven characters of nothing. One retry with a doubled
+	// budget is the difference between a contract and a dead node; a second
+	// cut answer is the model's problem, not the budget's.
+	if finishedForLength(response) {
 		retry, retryErr := client.CompleteWithMessages(ctx, messages,
 			ai.WithSchema(schema), ai.WithMaxTokens(retryTokenBudget(response)))
 		if retryErr == nil {
@@ -951,6 +953,21 @@ func structured(ctx context.Context, client Completer, messages []ai.Message, sc
 	}
 	return response, nil
 }
+
+// structuredReplyTokens is the ceiling on a planning call's first attempt.
+//
+// Every call in this package asks for one JSON object of a known schema — a
+// verdict, a brief, a contract, a panel decision — and the largest of them is a
+// few thousand tokens. Left unset, the ceiling was the client's default, which
+// the headless door raises to the leaf completion reserve (65536): a ceiling
+// for a worker writing code, applied to a call answering a form. The
+// difference is not academic. A model that loops inside a schema runs to
+// whatever ceiling it is given; at 65536 that was four minutes and $0.013 per
+// call on nvidia/nemotron-3.5-lightning, twice in one plan, with the run
+// showing nothing but "still waiting" for the duration. Sized for the answer,
+// the same failure costs thirty seconds, and the retry below still has room
+// to double for a reply that genuinely needed more.
+const structuredReplyTokens = 8192
 
 func finishedForLength(response *ai.Response) bool {
 	return response != nil && len(response.Choices) > 0 &&
