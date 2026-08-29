@@ -320,8 +320,11 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			// The wording the scheduler already reports is kept; what is new is
-			// that the stack now reaches the log instead of nowhere.
-			_ = guard.Note("exec/scheduler leaf", recovered)
+			// that the stack reaches the log and the fault itself reaches the
+			// journal, so a person watching the run learns that the work was
+			// interrupted rather than inferring it from a silence. See
+			// Task.Fault.
+			task.Faulted(guard.Note("exec/scheduler leaf", recovered))
 			failure := fmt.Sprintf("executor panicked: %v", recovered)
 			if terminated := task.control.terminate(); terminated > 0 {
 				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)

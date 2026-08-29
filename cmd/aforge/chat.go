@@ -940,6 +940,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			Progress: leafProgress(graph, resident.PlanAnchor{
 				NodeID: jobRoot, SessionID: node.Provenance.SessionID,
 			}),
+			// A caught fault is the other within-node fact a person needs and
+			// the one that used to reach nothing but a log file. It is filed
+			// against this node rather than the job root, because what a reader
+			// wants to know is which piece of work was interrupted.
+			Fault: leafFault(graph, node.ID),
 		}
 		// The scheduler's quality loop, inline: each attempt is one routable
 		// unit carrying its call shape, a watchdog sits above the leaf's own
@@ -3768,7 +3773,13 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				done <- landing{nil, guard.Note("chat/leaf executor", recovered)}
+				// The fault goes to the log for its stack and to the journal for
+				// the person: a caught panic that only a log file knows about is
+				// what made an escalating run look like a hung one. See
+				// exec.Task.Fault.
+				fault := guard.Note("chat/leaf executor", recovered)
+				task.Faulted(fault)
+				done <- landing{nil, fault}
 			}
 		}()
 		outcome, err := worker.Run(ctx, task)

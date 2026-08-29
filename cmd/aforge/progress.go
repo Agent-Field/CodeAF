@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +80,27 @@ func leafProgress(history *store.Store, anchor resident.PlanAnchor) func(string,
 	}
 	return func(phase string, done, total int, latest string) {
 		report(plan.ProgressUpdate{Phase: phase, Done: done, Total: total, Latest: latest})
+	}
+}
+
+// leafFault is where a recovered panic inside a leaf gets written down.
+//
+// It answers nil when there is no journal or no node to file against, and
+// exec.Task.Faulted is nil-safe, so a caller with nowhere to write carries no
+// channel at all. A failure to record is logged and swallowed: this runs on the
+// unwinding path of a panic, and a failsafe that can itself fail loudly there is
+// a failsafe that will one day replace the fault it exists to report.
+func leafFault(history *store.Store, nodeID string) func(error) {
+	if history == nil || strings.TrimSpace(nodeID) == "" {
+		return nil
+	}
+	return func(err error) {
+		if err == nil {
+			return
+		}
+		if recordErr := history.RecordNodeFault(nodeID, "leaf", err.Error()); recordErr != nil {
+			log.Printf("note: could not journal the fault in %s: %v", nodeID, recordErr)
+		}
 	}
 }
 

@@ -75,6 +75,12 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		return &exec.Outcome{Stop: exec.StopError, Text: err.Error()}, err
 	}
 
+	// The world's own account of what this leaf leaves behind, opened before the
+	// first turn. The bare loop's four wire tools are pi's, and one of them is a
+	// shell: a leaf here can write a whole deliverable without any write tool
+	// hearing about it, which is exactly the evidence gap this closes.
+	b.workspace.WatchTree(leafKey(task))
+
 	cwd := b.workspace.Root()
 	tools := Tools(cwd)
 	system := SystemPrompt(cwd)
@@ -102,9 +108,13 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 
 	outcome := loop.run(ctx)
 
-	// Artifacts: whatever the tools wrote to the workspace, as filed by the
-	// sweep above. The bare loop does not own a git substrate, so this is the
-	// workspace's own record.
+	// Artifacts: whatever this leaf left in the workspace. The bare loop does not
+	// own a git substrate, so this is the workspace's own record — the sweep
+	// after every tool call above (the tools' claims) and the before/after
+	// read of the tree (the world), together. Either alone was narrower than
+	// the disk once: the sweep misses a file a shell command wrote, the diff
+	// cannot say which call wrote it.
+	b.workspace.RecordChanges(leaf)
 	outcome.Artifacts = b.workspace.Artifacts(leaf)
 	return outcome, nil
 }

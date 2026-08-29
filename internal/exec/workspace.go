@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Workspace is the shared directory a run writes into.
@@ -57,7 +58,13 @@ type Workspace struct {
 
 	mutex     sync.Mutex
 	artifacts map[string]map[string]bool
-	jobID     int
+	// baseline is the tree as it stood the moment each leaf started, and
+	// observed is what diffing it afterwards proved that leaf did to the world.
+	// They are the answer to "what did this run leave behind" that no tool has
+	// to volunteer — see [Workspace.WatchTree].
+	baseline map[string]treeBaseline
+	observed map[string]map[string]ArtifactChange
+	jobID    int
 }
 
 func NewWorkspace(root string) (*Workspace, error) {
@@ -75,7 +82,12 @@ func NewWorkspace(root string) (*Workspace, error) {
 	if err != nil {
 		real = absolute
 	}
-	return &Workspace{root: absolute, real: real, scratch: absolute, artifacts: map[string]map[string]bool{}}, nil
+	return &Workspace{
+		root: absolute, real: real, scratch: absolute,
+		artifacts: map[string]map[string]bool{},
+		baseline:  map[string]treeBaseline{},
+		observed:  map[string]map[string]ArtifactChange{},
+	}, nil
 }
 
 // WithScratch sends the harness's own files somewhere other than the workspace.
@@ -350,21 +362,312 @@ func (w *Workspace) nextJobID() int {
 	return w.jobID
 }
 
-// Artifacts lists what a node wrote for the person who asked, in stable order.
-// The harness's own records are held back: they flow into Outcome.Artifacts,
-// from there into the head's files line and into every downstream leaf's
-// "(files: …)" pointer, and none of those is a place to name a log.
+// Artifacts lists what a node left behind for the person who asked, in stable
+// order. It is the union of two independent accounts, and it is a union because
+// each of them alone has been measurably wrong.
+//
+// The CLAIMED account is the write family's: a path is here because a tool
+// recorded it, which is also the worker's own statement that this file is what
+// its work was for. The OBSERVED account is the filesystem's: a path is here
+// because the tree gained or changed it while this leaf was running, whatever
+// wrote it. Neither subsumes the other. A leaf that writes with a shell command
+// is invisible to the first — on 2026-08-28 the delivery gate's audit said "the
+// record shows nothing named out.txt was left behind" while out.txt sat on disk,
+// and convicted a correct deliverable on that. A file rewritten inside one
+// coarse filesystem second at exactly its old length is invisible to the second,
+// and the tool that wrote it is not.
+//
+// The harness's own records are held back whichever account saw them: they flow
+// into Outcome.Artifacts, from there into the head's files line and into every
+// downstream leaf's "(files: …)" pointer, and none of those is a place to name a
+// log. So is a deletion — see [Workspace.ArtifactFacts] for where deletions are
+// kept and why they are not here.
 func (w *Workspace) Artifacts(leaf string) []string {
+	facts := w.ArtifactFacts(leaf)
+	paths := make([]string, 0, len(facts))
+	for _, fact := range facts {
+		if fact.Change == ArtifactDeleted {
+			continue
+		}
+		paths = append(paths, fact.Path)
+	}
+	return paths
+}
+
+// ArtifactChange is what the before-and-after read of the tree proved about one
+// path. The zero value means the diff never saw it, which is the honest state of
+// a file that only the write tool ever mentioned.
+type ArtifactChange string
+
+const (
+	// ArtifactCreated is a path the tree did not hold when the leaf started.
+	ArtifactCreated ArtifactChange = "created"
+	// ArtifactChanged is a path whose length or write time moved under the leaf.
+	ArtifactChanged ArtifactChange = "changed"
+	// ArtifactDeleted is a path the tree held when the leaf started and does not
+	// hold now.
+	ArtifactDeleted ArtifactChange = "deleted"
+)
+
+// ArtifactFact is one path and the two independent things that are known about
+// it: whether a tool claimed it and whether the world was seen to change it.
+//
+// Callers that only want the file list want [Workspace.Artifacts]. This exists
+// for the ones that have to tell the two apart — an audit reporting what the
+// worker said it produced against what the disk says happened cannot do its job
+// from a merged list, and merging them is precisely how "the record shows
+// nothing" came to outrank a file that existed.
+type ArtifactFact struct {
+	// Path is workspace-relative, the spelling everything downstream records.
+	Path string
+	// Claimed is the worker's own statement, through a write tool, that this
+	// file is a deliverable of the work.
+	Claimed bool
+	// Observed is the filesystem's statement, through the before/after diff,
+	// that this file moved while the leaf was running.
+	Observed bool
+	// Change is how it moved, and is empty when Observed is false.
+	Change ArtifactChange
+}
+
+// ArtifactFacts is the whole evidence record for one leaf, in stable path order:
+// every file a tool claimed, every file the tree was seen to gain or change, and
+// every file the tree was seen to LOSE.
+//
+// Deletions live here and deliberately not in [Workspace.Artifacts]. That list
+// is a list of things to open — it becomes the head's files line, a dependent's
+// "(files: …)" pointer, and the gate's roll call of what is on disk — and a path
+// that no longer exists sends every one of those readers to nothing. The fact
+// that the leaf removed it is still evidence about the run, so it is kept, in
+// the one place whose readers are asking what happened rather than what to read.
+func (w *Workspace) ArtifactFacts(leaf string) []ArtifactFact {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	paths := make([]string, 0, len(w.artifacts[leaf]))
+	facts := make(map[string]ArtifactFact, len(w.artifacts[leaf])+len(w.observed[leaf]))
 	for path, deliverable := range w.artifacts[leaf] {
-		if deliverable {
-			paths = append(paths, path)
+		if !deliverable {
+			// Recorded by the harness for itself — a background job's log, an
+			// extracted-document cache. RecordInternal exists to keep these out
+			// of the answer, and a second sighting of the same file by the tree
+			// diff must not smuggle it back in.
+			continue
+		}
+		facts[path] = ArtifactFact{Path: path, Claimed: true}
+	}
+	for path, change := range w.observed[leaf] {
+		if deliverable, recorded := w.artifacts[leaf][path]; recorded && !deliverable {
+			continue
+		}
+		fact := facts[path]
+		fact.Path, fact.Observed, fact.Change = path, true, change
+		facts[path] = fact
+	}
+	ordered := make([]ArtifactFact, 0, len(facts))
+	for _, fact := range facts {
+		ordered = append(ordered, fact)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
+	return ordered
+}
+
+// observedArtifactLimit bounds what one leaf's tree diff may claim, and it is
+// sweArtifactLimit rather than a second number because it bounds the same thing
+// for the same reason: a change set of this size is a tree rather than a
+// deliverable, and a files line naming three hundred paths names nothing. One
+// constant, so the two bounds cannot drift apart.
+const observedArtifactLimit = sweArtifactLimit
+
+// treeBaseline is the workspace as it stood the moment a leaf started.
+type treeBaseline struct {
+	// files is workspace-relative path to stamp. It is a stat and never a read:
+	// this walk happens on the leaf's critical path, and a hash of every file in
+	// a repository is a cost nobody asked for.
+	files map[string]fileStamp
+	// at is when the walk was taken, moved back by producedSlack so a filesystem
+	// that records whole seconds cannot hide a file behind it. It is what a
+	// partial baseline falls back on — see [Workspace.RecordChanges].
+	at time.Time
+	// partial says the walk hit its bound, so absence from files means "not
+	// seen" rather than "not there".
+	partial bool
+}
+
+// fileStamp is how a file is told apart from itself an hour later without
+// opening it. Length plus write time misses exactly one case — a rewrite inside
+// one coarse filesystem second that lands on the identical length — and that is
+// the case the tool-sourced record covers, which is why the two accounts are
+// layered rather than one chosen over the other.
+type fileStamp struct {
+	size     int64
+	modified time.Time
+}
+
+// WatchTree remembers the workspace as it is right now, so that what a leaf
+// changes can be told from what was already sitting there.
+//
+// Every executor calls it once at the top of a run and calls [Workspace.RecordChanges]
+// at landing; between the two, the difference is this leaf's mark on the world.
+// A second run of the same leaf re-baselines, which is correct — the observations
+// already made are kept, and a retry is only asked what IT did — and a leaf that
+// was never watched simply has no observed account, which is the pre-existing
+// behaviour and never a wrong answer, only a narrower one.
+func (w *Workspace) WatchTree(leaf string) {
+	if w == nil || strings.TrimSpace(leaf) == "" {
+		return
+	}
+	at := producedMark(time.Now())
+	files, partial := w.walkTree()
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if w.baseline == nil {
+		w.baseline = map[string]treeBaseline{}
+	}
+	w.baseline[leaf] = treeBaseline{files: files, at: at, partial: partial}
+}
+
+// RecordChanges reads the tree again and files everything that moved since
+// [Workspace.WatchTree] under this leaf's identity. It is the observed half of
+// [Workspace.Artifacts] and the only half that is true of a file written by a
+// shell command, a build, or anything else that never went through a tool.
+//
+// It walks rather than being folded into Artifacts because Artifacts is read on
+// the leaf's hot path — the no-progress guard counts it twice a turn — and a
+// tree walk per turn is a cost that buys nothing there: the toolbox already
+// records what each shell call produced as it goes. This is the whole-leaf
+// backstop for everything that record misses, and it runs once, at landing.
+//
+// Calling it more than once is safe and cheap-ish: each call re-reads the tree
+// and merges, so a leaf that lands and then terminates background jobs can ask
+// again and pick up what those jobs left.
+func (w *Workspace) RecordChanges(leaf string) {
+	if w == nil || strings.TrimSpace(leaf) == "" {
+		return
+	}
+	w.mutex.Lock()
+	baseline, watched := w.baseline[leaf]
+	w.mutex.Unlock()
+	if !watched {
+		return
+	}
+	after, partial := w.walkTree()
+	changes := make(map[string]ArtifactChange, 8)
+	for path, now := range after {
+		before, known := baseline.files[path]
+		if known {
+			if before.size != now.size || !before.modified.Equal(now.modified) {
+				changes[path] = ArtifactChanged
+			}
+			continue
+		}
+		// A path missing from a PARTIAL baseline may be a file the leaf wrote or
+		// a file the bounded walk never reached, and calling the second one
+		// "created" would credit a leaf with a repository it merely stood in. The
+		// file's own write time is the tiebreak, and it is the same evidence the
+		// per-command sweep already trusts.
+		if baseline.partial && now.modified.Before(baseline.at) {
+			continue
+		}
+		changes[path] = ArtifactCreated
+	}
+	// Deletions are only reported when BOTH walks were whole. A path absent from
+	// a bounded second walk is as likely to be beyond the bound as gone, and
+	// reporting a file somebody still has as deleted is a worse error than
+	// staying quiet about one they no longer do.
+	if !baseline.partial && !partial {
+		for path := range baseline.files {
+			if _, still := after[path]; !still {
+				changes[path] = ArtifactDeleted
+			}
 		}
 	}
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if w.observed == nil {
+		w.observed = map[string]map[string]ArtifactChange{}
+	}
+	if w.observed[leaf] == nil {
+		w.observed[leaf] = map[string]ArtifactChange{}
+	}
+	for _, path := range boundedPaths(changes) {
+		w.observed[leaf][path] = changes[path]
+	}
+}
+
+// boundedPaths orders a change set and cuts it to what one leaf may claim. The
+// order is the path's, so the same tree answers the same way twice — a cap that
+// kept a different subset on every read would make two surfaces of one run
+// disagree about which files exist.
+func boundedPaths(changes map[string]ArtifactChange) []string {
+	paths := make([]string, 0, len(changes))
+	for path := range changes {
+		paths = append(paths, path)
+	}
 	sort.Strings(paths)
+	if len(paths) > observedArtifactLimit {
+		paths = paths[:observedArtifactLimit]
+	}
 	return paths
+}
+
+// walkTree stats every file a deliverable could be, and says whether it got to
+// the end. Paths come back workspace-relative, which is the spelling
+// [Workspace.record] keeps and everything downstream reads.
+//
+// What it skips is exactly what the per-command sweep skips, from the same
+// predicate: dot-entries, which are the harness's own machinery (.obs spills,
+// .aforge job logs and traces) and the tooling's (.git, editor state), and the
+// dependency trees producedSkipDir names — node_modules, vendor, site-packages,
+// __pycache__, bower_components, venv. One predicate rather than two, because
+// two lists of "what is not a deliverable" is two answers to one question.
+//
+// THE WALK IS BOUNDED AT producedScanLimit ENTRIES, which is 6000. A workspace
+// is usually a handful of files; a person's repository is not, and this runs at
+// the top and the bottom of every leaf. Past the bound the answer is partial and
+// says so, and RecordChanges reads less into a partial answer than into a whole
+// one.
+func (w *Workspace) walkTree() (map[string]fileStamp, bool) {
+	files := make(map[string]fileStamp, 32)
+	partial := false
+	visited := 0
+	_ = filepath.WalkDir(w.root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			// An unreadable entry is not this walk's to report. What it must not
+			// do is treat "could not look" as "not there", so the answer becomes
+			// partial and deletions go unclaimed.
+			partial = true
+			if entry != nil && entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if visited++; visited > producedScanLimit {
+			partial = true
+			return fs.SkipAll
+		}
+		if path == w.root {
+			return nil
+		}
+		if entry.IsDir() {
+			if producedSkipDir(entry.Name()) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		relative, err := filepath.Rel(w.root, path)
+		if err != nil || strings.HasPrefix(relative, "..") {
+			return nil
+		}
+		files[relative] = fileStamp{size: info.Size(), modified: info.ModTime()}
+		return nil
+	})
+	return files, partial
 }
 
 // Existing lists the files already sitting in the workspace, as absolute paths
