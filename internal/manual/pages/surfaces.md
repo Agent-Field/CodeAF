@@ -242,6 +242,50 @@ count is the point. It continues from what it had reached: an outline of every
 turn it took, the last of them word for word, and the files it had already
 changed. **It does not start over.**
 
+## When a worker catches its own mistake before handing work over
+
+A worker reads the project's own checks and the project's own public names
+before it starts and again when it thinks it has finished. If that second
+reading finds something **the worker itself broke**, the work is not handed over
+yet — the worker is told, while it is still sitting there with the whole job in
+mind, and asked to settle it:
+
+```
+  ↻ Core engine                  — closing its own finding: lost public names (3 names)  1m12s
+```
+
+Four things it will be told about, and they are all things measured off the files
+rather than anybody's opinion:
+
+- **lost public names** — a name the project spelled before this work and does
+  not spell now, in a file this work changed.
+- **unbound names** — a name this work's code reads that nothing anywhere
+  defines. This is the one that breaks every test on import.
+- **its own checks** — the checks this work wrote are red.
+- **checks it turned red** — checks that passed before this work and fail after.
+
+**Why it is done this way.** The alternative is to hand the work over, let the
+review catch it, and put a fresh worker on the repair — and a fresh worker has
+none of the reasoning that caused the mistake. In one measured run three fresh
+workers each deleted what the last one had relied on. The one who made the
+mistake is the cheapest person to ask, and they are still there.
+
+### What it costs, and the two limits on it
+
+**Nothing extra unless something is actually wrong.** A worker whose second
+reading is clean is handed over immediately.
+
+- **Only what the worker had left.** It gets no new time, no new turns and no new
+  money — it spends what it had not spent of its own. A worker that is out of
+  room hands the work over with the finding, exactly as before.
+- **Once per kind of finding.** If the second look is still red, the work is
+  handed over and the finding goes to the review the way it always did. It is
+  never asked about the same thing twice.
+
+The worker may also answer that the finding has to stand — a name it deliberately
+renamed, a check the request asked it to remove — and say so in what it hands
+over. That is a real answer, not a refusal.
+
 ## There is no web surface
 
 Everything is the terminal chat and these commands. If you want aforge running
