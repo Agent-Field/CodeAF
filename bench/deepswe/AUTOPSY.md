@@ -1047,3 +1047,101 @@ igel, ink, ofetch, happy-dom gates carry **no** `unexercised` field at all.
 - **igel / ink** — harness, hard. Zero transcript rows, zero readings, every leaf exhausted on budget twice.
   The gate had no evidence to judge and refused on `no more work could be started on it` (igel) and
   `what the review asked for next is not in the request` (ink).
+
+## s10 — chat-v3-fix 054eac8a (named meters, resume, scoped readings)
+
+| task | f2p | p2p | exit | $ | wall | nodes | usage | transcript | settled |
+|---|---|---|---|---|---|---|---|---|---|
+| ink-grid-box-layout | 17/25 | 49/49 | 2 | 0.538 | 5402s (wall) | 9 | 456 | 1310 | **false** |
+| happy-dom | 11/14 | 9/9 | 2 | 0.135 | 5402s (wall) | 23 | 245 | 608 | **false** |
+| igel | 6/24 | 2/2 | 2 | 0.244 | 3555s | 7 | 243 | 740 | true |
+| ofetch | 42/47 | 13/13 | **0** | 0.070 | 687s | 2 | 62 | 203 | true |
+| textual | 5/20 | 6/6 | **0** | 0.040 | 583s | 1 | 69 | 194 | true |
+
+### What landed
+- **Meters are named.** `leaf_exhausted` now carries `meter`, `reached`, `allowance`, `unit` — e.g. ink
+  `task-2-x2` att1 `meter=cost 238417/186818 turns=29`, happy-dom `task-2` att1 `meter=deadline 854/900 turns=78`.
+- **Resume fired for the first time in the benchmark.** ofetch `run.log:34`
+  `↻ body-read errors — resumed from 19 recorded turns, already holding circuit-breaker.ts, fetch.ts, types.ts and 1 more`.
+  ink resumed 3× (85, 105, 27 turns), happy-dom 2× (78, 49 turns). `leaf_resumed` is now an event kind.
+- **First closing unexercised sequence**: igel 4 → 1 → 1 → 0.
+
+### What is still broken
+- **Two runs still exit 0 on a failing tree.** ofetch exits 0 on 42/47 with a bare `{'pass': True}` gate;
+  textual exits 0 on 5/20 via `refused — what it asked for is already on disk under the name the request used`
+  with `overturned: true`. Both had 5 and 15 hidden tests failing respectively.
+- **ink and happy-dom both burned the full 5400s wall and never settled** — `settled: false`, **0 delivery_gate
+  events**. Whatever the gate would have said was never reached. ink spent $0.538, the most expensive run of the
+  benchmark, on 8 exhausted leaves across 9 nodes.
+- **Readings go blind.** All ten of ink's finished-tree readings are `named=0 red=0 read=False` — the after
+  photograph never parsed. happy-dom's are worse: 3 pairs at `named=4 → 0`, then 5 readings at `scope=whole
+  named=0` with `read=False`. A gate reading `named: 0` has no evidence to stand on.
+- **textual's scoped reading is aimed at the wrong files.** `scope: touched packages (2 files)` running
+  `python3 -m pytest -rA tests/test_concurrency.py tests/test_textlog.py`, `named: 3` — missing `test_log.py`
+  and `test_rich_log.py`, the two files the task is actually about. (Fixed in s11.)
+- **0 tool-call cuts** on all five.
+
+### Rig note — "richest candidate wins" needs a build-artifact filter
+happy-dom s10 selected `worktree.patch` at **335,163,227 bytes** (335 MB). All three other candidates were 0.
+The model had been editing compiled output — its own resume line reads `already holding PropertySymbol.d.ts,
+PropertySymbol.d.ts.map, PropertySymbol.js and 73 more` — so the worktree diff swept the entire build tree.
+It still applied and graded 11/14, but byte-size as the tie-break will pick a build-output diff over a clean
+source diff whenever both exist. ink s10 shows the extraction working as intended: `head` and `branch-grid-layout`
+both 0, `worktree` 58110 → 17/25.
+
+## s11 — chat-v3-fix 5de2f073
+
+| task | f2p | p2p | exit | $ | wall | nodes | usage | transcript | resumes |
+|---|---|---|---|---|---|---|---|---|---|
+| textual | **17/20** | 6/6 | 2 | 0.262 | 2679s | 6 | 311 | 920 | 0 |
+| happy-dom | 12/14 | 9/9 | 2 | 0.181 | 3438s | 4 | 201 | 582 | 3 |
+| ofetch | 42/47 | 13/13 | 2 | 0.144 | 2144s | 4 | 163 | 487 | 3 |
+| igel | **0/24** | 2/2 | 2 | 0.302 | 4422s | 4 | 334 | 1057 | 3 |
+| ink | — | — | — | — | still running | — | — | — | — |
+
+### What landed
+- **Every graded run exits 2.** The `overturned` door is closed: textual `task-2-x1` and igel `task-2-x3` both
+  carry `overturned: true` on `what it asked for is already on disk under the name the request used` — the exact
+  ground that took textual s10 to exit 0 — and both runs still exit 2.
+- **Resume is routine**: 3 resumes each on ofetch, happy-dom, igel, all `resumed_with_transcript: true` and all
+  naming banked turns and held files (e.g. igel `↻ Add missing checks — resumed from 50 recorded turns, already
+  holding configs.py, feature_schema.py, igel.py and 16 more`).
+- **Transcript banking is no longer gated on worker routing.** ofetch s11 has `nodes.subharness` **blank on all
+  five nodes** and still banked 487 transcript rows and resumed 3×. Through s9/s10 a blank node meant 0 rows.
+- **Readings are aimed.** textual's finished-tree readings expand from `(2 files) named 3` to `(18 files)
+  named 282` and `(17 files) named 305`, pulling in `tests/css/`. `named` on happy-dom reaches 377/381.
+- **Unexercised closes on 3 of 4**: textual 4→0, ofetch 26→13→9→7, happy-dom 0→0→2→2 (wrong way), igel 4→4→4→4.
+
+### igel s11 — 0/24, the worst result of the benchmark, and the most instructive
+
+**Every one of the 24 hidden f2p tests fails at collection, not at assertion:**
+```
+E  AttributeError: <class 'igel.igel.Igel'> has no attribute 'results_path'
+ERROR tests/test_igel/test_feature_schema_persistence.py::test_fit_persists_feature_schema_and_description_metadata
+```
+`monkeypatch.setattr(Igel, "results_path", results_dir)` in the hidden fixture `challenge_paths` raises for all
+24. p2p is 2/2 — the project's own two tests never touch that attribute.
+
+- **The patch is not the problem.** `[verifier] model.patch applied (76403 bytes)`, `patch_source: worktree.patch`,
+  candidates `feature_schema-complete: 76403`, `-missing-tests: 69688`, `-tests: 35792`, `-persistence: 19792`,
+  `master: 0`, `head: 76403`. Extraction picked the richest and it applied cleanly. **Rig: clean.**
+- **No regression finding fired.** None of the four gates contains `This work removed checks that existed before
+  it`. The gates all complain about deliverable *shape* (`The deliverable reports on the work rather than carrying
+  it`), and `task-2` did notice the missing artifact — `The request asked for feature_schema.joblib to be written
+  in the results directory after fit, but nothing of that name is among what was left behind` — but nothing
+  blocked on it.
+- **Why the photograph missed it: the regression photograph is over *checks*, not over *symbols*.** The reading
+  is `scope: whole`, `poetry run pytest -rA` — not a scoping miss, it ran everything the project has. The named
+  roster only ever **grew**: 2 → 6 → 10 → 14. A removed-check finding needs the roster to shrink. `Igel.results_path`
+  is a **source attribute**, and no project-owned test exercises it, so deleting it turned nothing red.
+- **The baseline was already red and the run looks like an improvement.** Every `before the job's first change`
+  reading is `named=2 red=2 exit=1` — the project's own suite fails at baseline. The final reading is
+  `named=14 red=0 exit=0`. By the harness's own photograph this run took a red tree green while deleting the
+  attribute all 24 hidden tests depend on.
+- One reading was unreadable: `named=0 red=0 read=False exit=0`.
+- Meters: `task-2-x1` att2 `budget/cost 177066/173184 turns=32`; `task-2-x2` att1 `budget/cost 171821/169726 turns=38`.
+- Workers: `root`(blank) `task-2`=bare `task-2-x1`=linear `task-2-x2`=bare `task-2-x3`=linear. 0 tool-call cuts.
+
+**Layer: MODEL deleted the attribute; HARNESS has no mechanism that could have caught it.** The gap is a
+symbol-level regression photograph — public attributes/methods present at base and absent at delivery — to sit
+alongside the check-level one. Nothing in the check roster can see a deletion that no check covers.
