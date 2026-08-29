@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -153,6 +155,26 @@ type loopState struct {
 	// requestLog records the messages slice sent on each request, for the
 	// golden equivalence test to assert append-only extension.
 	requestLog [][]ai.Message
+
+	// turn is the model request this loop is on, numbered from one. It exists
+	// as state rather than as a parameter because everything that records a
+	// transcript entry — the turn itself, the tools it spawned, a compaction
+	// that fired underneath it — has to file the entry against the same number,
+	// and threading it through four call sites is how they drift apart.
+	turn int
+
+	// transcript is where this run's turns are written down, or nil when
+	// nobody is listening. It is read once, from the context, at the top of
+	// run: the sink belongs to one attempt at one node and the context is what
+	// carries per-attempt facts here (see exec.WithTranscript).
+	//
+	// THE REASON IT EXISTS AT ALL is that this loop used to be unobservable.
+	// messages and requestLog above are in-memory only; they go away with the
+	// process. A leaf that ran this loop billed 1.29M prompt tokens and fifty
+	// cents against one node, wrote no file, and left a record consisting
+	// entirely of the harness's own progress lines — so nobody could say what it
+	// had done, or learn anything from what it cost.
+	transcript exec.TranscriptSink
 }
 
 // providerClient is the narrow slice of provider.Client the loop needs.
@@ -165,6 +187,15 @@ type providerClient interface {
 func (l *loopState) run(ctx context.Context) *exec.Outcome {
 	outcome := &exec.Outcome{Stop: exec.StopDone}
 	started := time.Now()
+
+	// The sink, and the promise that whatever this loop records survives the
+	// way it ends. The flush is deferred rather than written at each return
+	// because there are five ways out of this function and one of them is a
+	// panic unwinding through it — and a panic is precisely the ending whose
+	// record a reader needs most. The runner flushes again on its own side
+	// (cmd/aforge's runLeafWithWatchdog); both are no-ops on an empty buffer.
+	l.transcript = exec.TranscriptFrom(ctx)
+	defer l.flushTranscript()
 
 	// Apply the deadline. bare sends NO cache key — no
 	// provider.WithLeafCacheKey, no provider.WithCall. The provider client
@@ -193,8 +224,10 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			outcome.Stop = exec.StopDeadline
 			outcome.Text = l.lastAssistantText()
 			outcome.Elapsed = time.Since(started)
+			l.fault("the leaf's time ran out before turn " + strconv.Itoa(l.turn+1) + ": " + ctx.Err().Error())
 			return outcome
 		}
+		l.turn++
 
 		// Snapshot the messages for the append-only test assertion.
 		l.requestLog = append(l.requestLog, copyMessages(l.messages))
@@ -209,6 +242,7 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			}
 			outcome.Text = l.lastAssistantText()
 			outcome.Elapsed = time.Since(started)
+			l.fault(err.Error())
 			return outcome
 		}
 
@@ -222,6 +256,7 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 		if len(calls) == 0 {
 			outcome.Text = strings.TrimSpace(response.Text())
 			outcome.Elapsed = time.Since(started)
+			l.say(store.TranscriptAssistant, outcome.Text)
 			return outcome
 		}
 
@@ -232,6 +267,20 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			ToolCalls: calls,
 		}
 		l.messages = append(l.messages, assistantMsg)
+
+		// The turn goes on the record before the tools run, in the order it
+		// happened: what the model said, then what it asked for. A turn whose
+		// tools hang would otherwise be a turn nobody could see the reasoning
+		// for, and a hung tool is one of the two endings this record is for.
+		l.say(store.TranscriptAssistant, strings.TrimSpace(response.Text()))
+		for _, call := range calls {
+			l.record(store.TranscriptEntry{
+				Kind:   store.TranscriptToolCall,
+				Tool:   call.Function.Name,
+				CallID: call.ID,
+				Text:   call.Function.Arguments,
+			})
+		}
 
 		// Execute the tool calls in parallel (pi spec §2: "run in parallel").
 		results := l.executeTools(ctx, calls)
@@ -245,6 +294,14 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: results[i].text}},
 			})
+			l.record(store.TranscriptEntry{
+				Kind:   store.TranscriptToolResult,
+				Tool:   call.Function.Name,
+				CallID: call.ID,
+				Text:   results[i].text,
+				Millis: results[i].elapsed.Milliseconds(),
+				Failed: results[i].isError,
+			})
 		}
 
 		// Compaction check (pi spec §5). Must exist; will not fire on small runs.
@@ -252,10 +309,63 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 	}
 }
 
+// ── the record ───────────────────────────────────────────────────────────────
+//
+// Four one-line helpers rather than four call sites building an entry by hand.
+// Every one of them is a no-op when nothing is listening, and the nil check
+// lives HERE rather than at each call site so that adding a fifth thing worth
+// recording cannot forget it.
+
+// record files one entry under the turn it belongs to.
+func (l *loopState) record(entry store.TranscriptEntry) {
+	if l.transcript == nil {
+		return
+	}
+	entry.Turn = l.turn
+	l.transcript.Record(entry)
+}
+
+// say records the model's own words. Empty is skipped: a turn that was nothing
+// but tool calls said nothing, and an empty row claiming otherwise is a row a
+// reader has to decide to ignore.
+func (l *loopState) say(kind store.TranscriptKind, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	l.record(store.TranscriptEntry{Kind: kind, Text: text})
+}
+
+// fault records how the loop stopped being able to continue. It is the entry
+// an autopsy reads first, and the one an in-memory transcript could never
+// leave behind — the process that could have printed it is the process that
+// went away.
+func (l *loopState) fault(reason string) {
+	l.record(store.TranscriptEntry{Kind: store.TranscriptFault, Text: reason, Failed: true})
+}
+
+// note records the harness talking about its own machinery, marked so it is not
+// read as something the model said.
+func (l *loopState) note(text string) {
+	l.record(store.TranscriptEntry{Kind: store.TranscriptNote, Text: text})
+}
+
+// flushTranscript makes the record durable. It is called from a defer in run,
+// so it must tolerate a nil sink and a second call from the runner.
+func (l *loopState) flushTranscript() {
+	if l.transcript != nil {
+		l.transcript.Flush()
+	}
+}
+
 // toolResult is the output of executing one tool call.
 type toolResult struct {
 	text    string
 	isError bool
+	// elapsed is how long the tool took. It is measured here rather than
+	// derived from the record's timestamps because the batch runs in parallel:
+	// six tools that started together have one journal time between them, and
+	// the one that took four minutes is the only interesting thing about them.
+	elapsed time.Duration
 }
 
 // executeTools runs all tool calls in the batch concurrently and returns
@@ -272,7 +382,10 @@ func (l *loopState) executeTools(ctx context.Context, calls []ai.ToolCall) []too
 			// every sibling behind a Wait that never returns.
 			defer wg.Done()
 			defer guard.Recover("exec/bare tool " + c.Function.Name)
-			results[idx] = l.executeTool(ctx, c)
+			started := time.Now()
+			result := l.executeTool(ctx, c)
+			result.elapsed = time.Since(started)
+			results[idx] = result
 		}(i, call)
 	}
 	wg.Wait()
@@ -363,6 +476,11 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 			}
 			cuts++
 			attempt--
+			// A cut, on the record. Without it a leaf that spent four minutes
+			// asking the same question of an endpoint that had gone quiet reads
+			// back as one turn that simply took four minutes, and the endpoint —
+			// the thing that was actually wrong — is nowhere in the account.
+			l.note("the stream was cut and the turn was asked again: " + err.Error())
 			continue
 		}
 
@@ -382,6 +500,7 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 		// Retryable: wait and retry. The last attempt's delay is not waited.
 		if attempt < maxRetries {
 			delay := retryBaseDelay * (1 << attempt) // 2s, 4s, 8s
+			l.note("retrying after a provider error, waiting " + delay.String() + ": " + errMsg)
 			if waitErr := backoffWait(ctx, delay); waitErr != nil {
 				return nil, waitErr
 			}
@@ -475,6 +594,12 @@ func (l *loopState) maybeCompact(ctx context.Context, response *ai.Response, def
 		Content: []ai.ContentPart{{Type: "text", Text: summary}},
 	})
 	l.messages = append(l.messages, kept...)
+	// Compaction is the single largest thing that can happen to a leaf without
+	// the leaf saying anything, and it is the reason a long run's later turns
+	// stop referring to what its early turns found. A reader who cannot see it
+	// happen reads amnesia as incompetence.
+	l.note("compacted the context: " + strconv.Itoa(len(discarded)) +
+		" messages summarised into one, " + strconv.Itoa(len(kept)) + " kept")
 }
 
 // summarize asks the model to produce a structured summary of the discarded

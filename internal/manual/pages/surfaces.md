@@ -158,6 +158,11 @@ locally.
 - `aforge models` — the router ledger: ratings and how many observations back
   each one
 - `aforge why self` — today's self-spend, itemized
+- `aforge why <node-id>` — what one piece of work actually did: its turns, the
+  tools it called with what arguments, what came back, how long each took, and
+  how it ended. It answers from the record the worker wrote while it ran, so it
+  still answers after the job's working directory is gone. A node whose worker
+  keeps no record says so rather than printing nothing.
 - `aforge plan "<goal>"`, `aforge run <graph.json>`, `aforge revise`,
   `aforge show` — the static pipeline: build a graph to a file, execute exactly
   what the file says, re-plan it from what happened. Reach for these to read or

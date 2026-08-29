@@ -435,13 +435,27 @@ func (s *Store) ActiveSnapshot() (Snapshot, error) {
 
 // Events returns journal entries after afterSeq. A non-positive limit means no
 // limit.
+//
+// IT DOES NOT RETURN LEAF TRANSCRIPTS, and that exclusion is deliberate. Every
+// caller of this function derives a DECISION from the journal — trial verdicts,
+// reversal rates, measured capacity, what the resident learned, what happened
+// while the machine slept — and four of them read the whole journal from
+// sequence one to do it. A leaf's transcript is bulk evidence rather than a
+// decision: it is journaled here so a rebuild can put it back (see
+// [Store.Rebuild], which reads the events table directly and therefore still
+// sees every one of them), it is bounded per execution, and it is still far
+// larger than every decision event in the database put together. Handing it to
+// a full-journal scan would make each of those readers page a megabyte of tool
+// output per leaf to answer a question about none of it. Its own reader is
+// [Store.TranscriptFor].
 func (s *Store) Events(afterSeq int64, limit int) ([]Event, error) {
 	if limit <= 0 {
 		limit = -1
 	}
 	rows, err := s.db.Query(`
 		SELECT seq, ts, node_id, kind, payload
-		FROM events WHERE seq > ? ORDER BY seq LIMIT ?`, afterSeq, limit)
+		FROM events WHERE seq > ? AND kind <> ? ORDER BY seq LIMIT ?`,
+		afterSeq, string(EventTranscriptRecorded), limit)
 	if err != nil {
 		return nil, fmt.Errorf("read events: %w", err)
 	}
@@ -484,6 +498,11 @@ func (s *Store) LatestEventSeq() (int64, error) {
 // memory only to discard it is a cost that grows with tenure forever.
 //
 // A throughSeq at or below afterSeq is an empty window, not an error.
+//
+// It leaves out leaf transcripts for the same reason [Store.Events] does, and it
+// matters more here rather than less: both of this function's callers are
+// summarising what happened to a person, and a worker's tool output is not what
+// happened, it is how.
 func (s *Store) EventsThrough(afterSeq, throughSeq int64) ([]Event, error) {
 	result := make([]Event, 0)
 	if throughSeq <= afterSeq {
@@ -491,7 +510,8 @@ func (s *Store) EventsThrough(afterSeq, throughSeq int64) ([]Event, error) {
 	}
 	rows, err := s.db.Query(`
 		SELECT seq, ts, node_id, kind, payload
-		FROM events WHERE seq > ? AND seq <= ? ORDER BY seq`, afterSeq, throughSeq)
+		FROM events WHERE seq > ? AND seq <= ? AND kind <> ? ORDER BY seq`,
+		afterSeq, throughSeq, string(EventTranscriptRecorded))
 	if err != nil {
 		return nil, fmt.Errorf("read events: %w", err)
 	}

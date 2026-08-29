@@ -178,6 +178,13 @@ const (
 	// separate table because every existing reader counts usage rows to mean
 	// executions; see usage_turns.go.
 	EventTurnUsageRecorded EventKind = "turn_usage_recorded"
+	// EventTranscriptRecorded carries one flush of one leaf's turn-by-turn
+	// record: what the model said, which tools it called with what arguments,
+	// what came back, and how the loop ended. It is a separate kind and a
+	// separate table for the same reason turn usage is — every reader of a
+	// node's messages means "what was said about this work" by them, and a
+	// worker's internal loop is not that. See transcript.go.
+	EventTranscriptRecorded EventKind = "transcript_recorded"
 	// EventSelfReceipt is the cost-and-learning receipt produced when one
 	// self-originated splice settles.
 	EventSelfReceipt EventKind = "self_receipt"
@@ -776,6 +783,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(turnUsageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize turn usage schema: %w", err))
+	}
+	if _, err := db.Exec(transcriptSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize transcript schema: %w", err))
 	}
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
