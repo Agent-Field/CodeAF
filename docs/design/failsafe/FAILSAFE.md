@@ -986,3 +986,41 @@ smaller one would have been the wrong number for every other run. What was
 missing is a detector that could tell fourteen debug files from a fix, a ledger
 that counted the rounds that actually happened, a scope that matched the thing
 being bounded, and a clock the machinery could read.
+
+## The tenth failure: a name read out of a sentence
+
+*ofetch nemotron n1,
+`bench/deepswe/results/ofetch-per-origin-circuit-breaker-nvidia-nemotron-3.5-lightning-n1`,
+2026-08-29.*
+
+The `task-2` gate reads: *This work broke checks that were passing before it:
+**to**. They were measured twice with the project's own command, before the work
+and after it.* The `task-2-x3` gate on the same run names its regressions
+correctly — `ofetch calls hooks, ofetch hook errors` — so the mechanism works;
+this one reading did not.
+
+The baseline is `whole, named 28, red 0`, read through vitest's own JSON. Four
+after-readings come back `named 1, red 1`, every one of them flagged
+`read_as_plain`. The suite had failed to COLLECT — an import that would not
+resolve — so `vitest run --reporter=json` printed no JSON, the reader for that
+format found no record, and `RunReading` fell back to the shared PASS/FAIL
+vocabulary over an error dump. There the dotnet/xunit line
+`^\s*(?:Failed|X)\s+(\S+)\s` met the English sentence *Failed to load url
+./circuit-breaker* and captured `to`.
+
+Two clauses. **Clause 1**, detect by structure: `\S+` after an English word
+matches an English word, and a check name has to come from the runner's own
+test-record grammar. **Clause 2**, source the evidence from the world: a suite
+that never ran a check has no roster, and what a fallback scrapes out of its
+error text is a guess about a suite that did not run — subtracted against a
+baseline of 28 it convicted the work of breaking a check that does not exist.
+
+What it states:
+
+> **A NAME COMES FROM THE RUNNER'S OWN TEST-RECORD GRAMMAR, NEVER FROM A
+> SENTENCE.** The dotnet/xunit patterns require the fully-qualified name that
+> runner actually prints. And **a runner told to print a machine-readable report
+> prints one whenever it ran its tests at all**, so its absence is a fact:
+> `Result.Uncollected`, carrying the runner's own words as `Error`, never
+> subtracted against a reading that did collect, and reported as *its suite
+> failed to collect* rather than as a red check.
