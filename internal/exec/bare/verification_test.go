@@ -85,7 +85,7 @@ func TestALeafWhoseWallCannotAffordTheReadingTakesNoPhotographAtAll(t *testing.T
 	stage := stageSuite(t)
 	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", time.Minute)
 
-	reading := worker.photographBefore(context.Background())
+	reading, _ := worker.photographBefore(context.Background(), exec.Task{Goal: t.Name()})
 
 	if reading.Taken {
 		t.Errorf("a sixty-second leaf took a reading: %#v", reading)
@@ -112,7 +112,7 @@ func TestALeafThatChangedNothingTakesNoSecondPhotograph(t *testing.T) {
 	stage := stageSuite(t)
 	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
 
-	reading := worker.photographBefore(context.Background())
+	reading, _ := worker.photographBefore(context.Background(), exec.Task{Goal: t.Name()})
 	if !reading.Taken {
 		t.Fatalf("the first reading was not taken from a project with a make test target")
 	}
@@ -121,7 +121,7 @@ func TestALeafThatChangedNothingTakesNoSecondPhotograph(t *testing.T) {
 	}
 
 	outcome := &exec.Outcome{}
-	photographAfter(context.Background(), reading, stage.workspace.Root(), false, outcome)
+	worker.photographAfter(context.Background(), exec.Task{Goal: t.Name()}, reading, false, false, outcome)
 
 	if got := stage.readings(t); got != 1 {
 		t.Errorf("the command ran %d time(s) for a leaf that changed nothing; the second "+
@@ -142,7 +142,7 @@ func TestOnlyTheCheckThisWorkTurnedRedIsNamedOnTheOutcome(t *testing.T) {
 	stage.says(t, "FAILED tests/test_env.py::test_needs_root - PermissionError\n", 1)
 	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
 
-	reading := worker.photographBefore(context.Background())
+	reading, _ := worker.photographBefore(context.Background(), exec.Task{Goal: t.Name()})
 	if !reading.Taken {
 		t.Fatalf("the first reading was not taken")
 	}
@@ -151,7 +151,7 @@ func TestOnlyTheCheckThisWorkTurnedRedIsNamedOnTheOutcome(t *testing.T) {
 	stage.says(t, "FAILED tests/test_env.py::test_needs_root - PermissionError\n"+
 		"FAILED tests/test_igel.py::test_results_path - AttributeError\n", 1)
 	outcome := &exec.Outcome{}
-	photographAfter(context.Background(), reading, stage.workspace.Root(), true, outcome)
+	worker.photographAfter(context.Background(), exec.Task{Goal: t.Name()}, reading, true, false, outcome)
 
 	want := []string{"tests/test_igel.py::test_results_path"}
 	if len(outcome.Regressed) != 1 || outcome.Regressed[0] != want[0] {
@@ -163,5 +163,64 @@ func TestOnlyTheCheckThisWorkTurnedRedIsNamedOnTheOutcome(t *testing.T) {
 	}
 	if strings.Contains(outcome.Baseline[0], "test_results_path") {
 		t.Errorf("Baseline names a check this work broke: %q", outcome.Baseline[0])
+	}
+}
+
+// THE BASELINE IS THE JOB'S, AND EVERY ROUND IS MEASURED AGAINST IT. A repair
+// round is a new leaf standing in a tree its own job has already changed, and a
+// round that photographed what IT found took the broken tree as its baseline —
+// so a check the first round turned red subtracted to nothing in the second and
+// was never a finding again. textual s5 walked twenty project checks down to one
+// across four rounds and raised no regression at any of them.
+//
+// The second round also spends no suite run on a baseline it already has, which
+// is where the inherited reading pays for itself.
+func TestARepairRoundIsMeasuredAgainstTheTreeTheJobStartedWith(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+
+	stage := stageSuite(t)
+	stage.says(t, "PASSED tests/test_igel.py::test_results_path\n"+
+		"PASSED tests/test_igel.py::test_fit\n", 0)
+	job := exec.Task{Goal: "persist the feature schema"}
+
+	// Round one breaks a check the repository already had, and its own after
+	// reading names it.
+	first := New(stage.workspace, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
+	reading, inherited := first.photographBefore(context.Background(), job)
+	if !reading.Taken || inherited {
+		t.Fatalf("the first round of a job inherited a baseline: taken=%v inherited=%v",
+			reading.Taken, inherited)
+	}
+	stage.says(t, "PASSED tests/test_igel.py::test_fit\n"+
+		"FAILED tests/test_igel.py::test_results_path - AttributeError\n", 1)
+	outcome := &exec.Outcome{}
+	first.photographAfter(context.Background(), job, reading, true, inherited, outcome)
+	if len(outcome.Regressed) != 1 {
+		t.Fatalf("the round that broke the check did not name it: %#v", outcome.Regressed)
+	}
+	readingsAfterRoundOne := stage.readings(t)
+
+	// Round two is a new leaf, in a new workspace object, on the same tree and
+	// the same job. It repairs something else and leaves the broken check
+	// broken.
+	space, err := exec.NewWorkspace(stage.workspace.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := New(space, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
+	carried, inherited := second.photographBefore(context.Background(), job)
+	if !inherited {
+		t.Fatal("a continuation of the same job in the same tree took its own " +
+			"baseline, so every check an earlier round broke is now invisible")
+	}
+	if got := stage.readings(t); got != readingsAfterRoundOne {
+		t.Errorf("the continuation ran the suite %d time(s) for a baseline it "+
+			"already had", got-readingsAfterRoundOne)
+	}
+	second.photographAfter(context.Background(), job, carried, false, inherited, outcome)
+	if len(outcome.Regressed) != 1 || outcome.Regressed[0] != "tests/test_igel.py::test_results_path" {
+		t.Errorf("Regressed = %#v; the check the job broke two rounds ago is not "+
+			"named against the tree the job started with", outcome.Regressed)
 	}
 }

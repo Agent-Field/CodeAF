@@ -230,21 +230,24 @@ func MapChecks(ctx context.Context, settings config.Config, client *pool.Client,
 // that shipped a deliverable claiming every test passed while a whole family of
 // stated behaviours was exercised by nothing at all.
 //
-// The list is bounded the way its sibling is: eight named and the rest counted,
-// which is regressionsNamed, stated once in this package and read here rather
-// than restated.
+// THE FINDING IS GROUPED BY THE LINE OF THE REQUEST ITS POINTS WERE READ FROM,
+// and that grouping is the bound on its size. A checklist is derived per stated
+// behaviour, so one sentence listing four defaults becomes four points — which
+// is right for the mapping, because four defaults are four things a check either
+// exercises or does not, and wrong for the finding, because a repair round aimed
+// at four halves of one sentence is four rounds aimed at one sentence. The
+// request's own lines are the grouping the person themselves wrote, so the
+// number of things this finding can ask for is bounded by the number of things
+// the person said, and by nothing this program chose. Past that the list is
+// named eight and counted, which is regressionsNamed, stated once in this
+// package and read here rather than restated. See PERF.md, "The acceptance
+// finding's size".
 //
 // ok is false when every point is exercised, when there were no points, or when
 // nothing could be measured — and the caller then judges exactly as it did
 // before this existed.
-func Unexercised(mapping []store.ExercisedPoint) (judgment Judgment, ok bool) {
-	var missing []string
-	for _, row := range mapping {
-		point := strings.TrimSpace(row.Point)
-		if point != "" && strings.TrimSpace(row.Check) == "" {
-			missing = append(missing, point)
-		}
-	}
+func Unexercised(points []plan.Point, mapping []store.ExercisedPoint, grounds Grounds) (judgment Judgment, ok bool) {
+	missing := groupUnexercised(points, mapping, grounds)
 	if len(missing) == 0 {
 		return Judgment{}, false
 	}
@@ -267,6 +270,84 @@ func Unexercised(mapping []store.ExercisedPoint) (judgment Judgment, ok bool) {
 		Pass: false, Gaps: strings.TrimSpace(gap.String()), Quote: joinCitations(named),
 		Citations: named, Sourced: true, Checked: true, Exercises: mapping,
 	}, true
+}
+
+// groupUnexercised collects the behaviours nothing exercises and folds the ones
+// that came from a single line of the request into one entry.
+//
+// The mapping is positional — MapChecks answers in the order the points were
+// given — so a row's point is the point at the same index. Where the two lists
+// have drifted apart the row's own copy of the behaviour is used, which is what
+// it carries the text for.
+func groupUnexercised(points []plan.Point, mapping []store.ExercisedPoint, grounds Grounds) []string {
+	lines := requestLines(grounds)
+	var order []int
+	grouped := map[int][]string{}
+	loose := 0
+	for index, row := range mapping {
+		behaviour := strings.TrimSpace(row.Point)
+		if behaviour == "" || strings.TrimSpace(row.Check) != "" {
+			continue
+		}
+		// A point with no locatable line is its own group. It is keyed by a
+		// descending counter so it can never collide with a line number, and
+		// so two unlocatable points stay two findings rather than merging into
+		// a sentence neither of them says.
+		line := -1
+		if index < len(points) {
+			line = requestLine(points[index].Quote, lines)
+		}
+		if line < 0 {
+			loose--
+			line = loose
+		}
+		if _, seen := grouped[line]; !seen {
+			order = append(order, line)
+		}
+		grouped[line] = append(grouped[line], behaviour)
+	}
+	entries := make([]string, 0, len(order))
+	for _, line := range order {
+		entries = append(entries, strings.Join(grouped[line], "; "))
+	}
+	return entries
+}
+
+// requestLines is the person's own request, one whitespace-normalised entry per
+// line that says anything. It is the same normalisation the grounding rule
+// applies, so a quotation that grounds against the request can be located in it.
+func requestLines(grounds Grounds) []string {
+	var lines []string
+	for _, text := range grounds.texts() {
+		for _, line := range strings.Split(text, "\n") {
+			if key := citationKey(line); key != "" {
+				lines = append(lines, key)
+			}
+		}
+	}
+	return lines
+}
+
+// requestLine finds the line a quotation was read from, or -1.
+//
+// A quotation is a sequence of spans (see quotationGrounded), and the FIRST span
+// that says anything is the one that locates it: a quotation that elides across
+// a line break belongs to the line it starts on, which is the line a person
+// reading the finding would look at.
+func requestLine(quote string, lines []string) int {
+	for _, segment := range elision.Split(quote, -1) {
+		key := citationKey(segment)
+		if key == "" {
+			continue
+		}
+		for index, line := range lines {
+			if strings.Contains(line, key) {
+				return index
+			}
+		}
+		return -1
+	}
+	return -1
 }
 
 // WeakenedChecks is the third mechanism: a check that STOPPED EXISTING between
@@ -308,40 +389,78 @@ func WeakenedChecks(removed, vanished []string) (judgment Judgment, ok bool) {
 	}, true
 }
 
-// settleAcceptance is the whole of this mechanism as the gate reaches it, and it
-// reaches it at ONE moment: after the model judge has said the deliverable is
-// whole. A gate that is already failing the work buys the repair round anyway,
-// so asking the coverage question there would spend a call to reach a conclusion
-// that is already true — and the run this exists for is precisely the one that
-// was about to be called finished.
+// Measured says a reading of the world exists to answer the coverage question
+// with — that somebody looked, whatever they found.
 //
-// It returns pass unchanged when there is nothing to settle: no checklist, no
-// evidence about checks, or every point exercised.
+// It is the distinction the s5 sweep turned on, and the one the first version of
+// this file collapsed. A READING THAT WAS TAKEN AND NAMED NOTHING IS STILL A
+// TAKEN READING: the project was asked how it checks itself, it answered, and
+// nothing it printed exercises anything the request asked for. That is a
+// finding. Only a project that declares no verification at all, run by a worker
+// that derived no diff, leaves the question unanswerable — and that is
+// Unmeasured, which is a different sentence about a different fact.
+func Measured(evidence Evidence) bool {
+	return evidence.Verification.Taken || strings.TrimSpace(evidence.patchSource()) != ""
+}
+
+// settleAcceptance is the whole of this mechanism as the gate reaches it, and it
+// reaches it on EVERY verdict.
+//
+// It used to be asked only of a deliverable the model judge had just called
+// whole, on the reasoning that a failing gate buys its repair round anyway. Ten
+// delivery gates across the s5 sweep failed, so the coverage question was never
+// asked once and no run in the sweep holds a mapping at all. The reasoning was
+// wrong twice over: a repair round is aimed at the gap the gate NAMED, so a
+// round bought for a missing branch name closes the branch name and leaves every
+// unexercised behaviour exactly where it was; and a mechanism that only runs on
+// the happy path is a mechanism nothing exercises, which is the failure this
+// file is named after.
+//
+// It returns the verdict unchanged when there is nothing to settle: no
+// checklist, or every point exercised.
 func settleAcceptance(ctx context.Context, settings config.Config, client *pool.Client,
-	node store.Node, evidence Evidence, grounds Grounds, workerModel string, pass Judgment,
+	node store.Node, evidence Evidence, grounds Grounds, workerModel string, verdict Judgment,
 ) Judgment {
 	points := Held(evidence.Accept, grounds)
 	if len(points) == 0 {
-		return pass
+		return verdict
 	}
-	checks := CheckEvidence(evidence)
-	if len(checks) == 0 {
+	if !Measured(evidence) {
 		// NOBODY LOOKED IS NOT NOTHING WRONG, and it is not a finding either.
 		// A project that declares no verification and a worker that derived no
 		// diff leave this question unanswerable, and a gate that failed every
 		// such delivery would fail every piece of prose this program writes.
-		// The pass says so, so a reader of the record can tell an unchecked
-		// delivery from a checked one.
-		pass.Unmeasured = "nothing in this project's verification could be read, so no check " +
+		// The verdict says so, so a reader of the record can tell an unchecked
+		// delivery from a checked one — and it is carried on the verdict rather
+		// than logged, because a fail-safe that does not reach the person
+		// watching is decoration (FAILSAFE.md clause 3).
+		verdict.Unmeasured = "nothing in this project's verification could be read, so no check " +
 			"could be matched to what the request asked for"
-		return pass
+		return verdict
 	}
+	// The mapping is asked for even when the roster is empty. MapChecks spends
+	// no model call on an empty list — it answers "nothing mapped", which is
+	// its own fail-safe direction — and the empty answer is the true one: a
+	// reading that named no checks has no check that exercises anything. That
+	// branch is the whole of FACT 2 in the s5 autopsy, where an empty roster
+	// short-circuited to a note and fifty-two stated behaviours went unasked.
+	checks := CheckEvidence(evidence)
 	mapping := MapChecks(ctx, settings, client, node, points, checks, workerModel)
-	finding, unexercised := Unexercised(mapping)
+	verdict.Exercises = mapping
+	finding, unexercised := Unexercised(points, mapping, grounds)
 	if !unexercised {
-		pass.Exercises = mapping
-		return pass
+		return verdict
 	}
-	finding.Grounds = grounds
-	return finding
+	if verdict.Pass {
+		finding.Grounds = grounds
+		return finding
+	}
+	// The gate was already failing. The coverage gap joins the gap that was
+	// named rather than replacing it, so the repair brief carries both — and it
+	// joins as TEXT only. Its citations are not merged in and Sourced is not
+	// set: a sourced finding is admitted with no citation weighed, and letting
+	// the judge's own prose ride into a round on the back of that exemption is
+	// exactly the laundering the admission rules exist to prevent.
+	verdict.Gaps = strings.TrimSpace(verdict.Gaps) + "\n\n" + finding.Gaps
+	return verdict
 }

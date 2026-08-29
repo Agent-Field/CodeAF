@@ -340,8 +340,14 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	// tokens under no app — which is exactly what this one did while the
 	// attribution travelled as three copied config fields.
 	barepkg.BareSubharness: func(build leafBuild) exec.Executor {
+		// The journal, so the readings this worker takes of the project's own
+		// checks leave a row an autopsy can read. It is the one piece of
+		// graph-level wiring the bare worker takes, and it changes nothing
+		// about what it does: a fail-safe that leaves no record cannot be
+		// autopsied (docs/design/failsafe/FAILSAFE.md clause 4).
 		return barepkg.New(build.workspace, engineModelID(build.models, build.model),
-			build.settings.APIKey, build.settings.BaseURL, build.deadline)
+			build.settings.APIKey, build.settings.BaseURL, build.deadline).
+			WithStore(build.graph)
 	},
 }
 

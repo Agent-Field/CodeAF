@@ -7,12 +7,11 @@ import (
 )
 
 // THE CAP IS THE REQUEST'S OWN SHAPE. A request cannot state more behaviours
-// than it has lines, so there is no number here for a later wave to tune
-// wrongly: a forty-line request affords forty points and a one-line request
-// affords one. Past that the model has stopped describing the request and
-// started describing the domain, which is exactly the invented scope the whole
+// than it has clauses, so there is no number here for a later wave to tune
+// wrongly. Past that the model has stopped describing the request and started
+// describing the domain, which is exactly the invented scope the whole
 // grounding invariant exists to keep out.
-func TestAChecklistCannotBeLongerThanTheRequestHasLines(t *testing.T) {
+func TestAChecklistCannotBeLongerThanTheRequestHasClauses(t *testing.T) {
 	request := "Add a circuit breaker.\n\nIt must open after five failures."
 	var offered []Point
 	for index := 0; index < 12; index++ {
@@ -132,5 +131,32 @@ func TestTheChecklistLandsOnTheNodeThatDelivers(t *testing.T) {
 			t.Errorf("node %d contributes material and was handed the whole request's "+
 				"checklist: %#v", id, node.Spec.Accept)
 		}
+	}
+}
+
+// A LINE IS NOT A BEHAVIOUR. A person writes "defaults are threshold = 5;
+// cooldown = 30000; halfOpenMaxRequests = 1" on one line and has stated three
+// things a check either exercises or does not. While the ceiling counted lines,
+// the s5 sweep held four points against igel's twenty-four hidden checks and
+// five against textual's twenty, and the mapping had nothing fine enough to
+// match a check to.
+func TestOneLineMayStateSeveralBehaviours(t *testing.T) {
+	request := "When circuitBreaker: true, defaults are threshold = 5; " +
+		"cooldown = 30000. halfOpenMaxRequests = 1.\n"
+	offered := []Point{
+		{Behaviour: "the threshold defaults to 5", Quote: "threshold = 5"},
+		{Behaviour: "the cooldown defaults to 30000", Quote: "cooldown = 30000"},
+		{Behaviour: "halfOpenMaxRequests defaults to 1", Quote: "halfOpenMaxRequests = 1"},
+	}
+	kept := NormalizeAcceptance(request, offered)
+	if len(kept) != 3 {
+		t.Fatalf("one line stating three behaviours afforded %d points: %#v", len(kept), kept)
+	}
+	// And a comma is deliberately not a clause boundary: it sits inside names
+	// and numbers as often as it sits between statements, and counting it would
+	// raise a ceiling the request never earned.
+	commas := "one, two, three, four, five, six, seven, eight\n"
+	if got := len(NormalizeAcceptance(commas, offered)); got != 1 {
+		t.Errorf("a line of commas afforded %d points, want 1", got)
 	}
 }

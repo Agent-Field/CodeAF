@@ -1187,11 +1187,10 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
 		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true, Grounds: grounds}
-		// And the last question, asked only of a delivery that was about to be
-		// called whole: does anything CHECK what the person asked for? A gate
-		// that is already failing the work buys its repair round anyway, so the
-		// coverage question would spend a call to reach a conclusion that is
-		// already true. The run this exists for is the one standing here.
+		// And the last question: does anything CHECK what the person asked
+		// for? On a pass it is the whole verdict — a delivery about to be
+		// called whole with a stated behaviour nothing exercises is the run
+		// this mechanism was built for.
 		return settleAcceptance(ctx, settings, client, node, evidence, grounds, workerModel, pass)
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
@@ -1213,8 +1212,15 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// was. Both fields are written because they are one fact seen from two
 	// sides: what a person reads, and what the admission rules weigh.
 	quote := strings.TrimSpace(verdict.Quote)
-	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
+	failed := Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
 		Checked: true, Grounds: grounds}
+	// And the coverage question on this side too. A repair round is aimed at
+	// the gap the gate NAMED, so a round bought for a missing branch name
+	// closes the branch name and leaves every behaviour nothing checks exactly
+	// where it was; ten gates across the s5 sweep failed and the question was
+	// asked at none of them. The settlement adds its findings to this gap
+	// rather than replacing it — see settleAcceptance.
+	return settleAcceptance(ctx, settings, client, node, evidence, grounds, workerModel, failed)
 }
 
 // faulted is the gate call that produced no verdict, reported as the fault it is.
@@ -2084,7 +2090,11 @@ func (e *Evidence) measureFinalTree(ctx context.Context) {
 	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
 		return
 	}
-	after, ok := verify.RunTests(ctx, e.Workspace, reading.Plan, reading.Budget)
+	// The SAME strategy the first reading was taken with, pinned rather than
+	// re-derived. Two readings taken with two different commands subtract to
+	// noise, and re-deriving here would let a worker that edited its own test
+	// script choose what the gate's reading measures.
+	after, ok := verify.RunReading(ctx, e.Workspace, reading.Before.Strategy, reading.Budget)
 	if !ok || after.TimedOut {
 		return
 	}
