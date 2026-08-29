@@ -88,6 +88,15 @@ material itself rather than wait. That is the only reason requests spoken in
 one breath ever need a second stage.
 
 
+For every stage, list in "needs" the numbers of the earlier stages whose
+output it consumes — the files, results or answers it reads, without which it
+cannot begin. A stage that starts from the goal and the workspace alone lists
+none: []. This list is the schedule, and the order you write the stages in is
+not: stages that need nothing from each other run at the same time whatever
+order they are listed in, and a stage waits for exactly the stages it names.
+Naming a stage because it was written earlier, rather than because its output
+is consumed, makes work wait for strangers.
+
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
 
@@ -106,9 +115,10 @@ var spineSchema = json.RawMessage(`{
         "type": "object",
         "properties": {
           "title":   { "type": "string" },
-          "summary": { "type": "string" }
+          "summary": { "type": "string" },
+          "needs":   { "type": "array", "items": { "type": "integer" } }
         },
-        "required": ["title", "summary"],
+        "required": ["title", "summary", "needs"],
         "additionalProperties": false
       }
     }
@@ -120,10 +130,17 @@ var spineSchema = json.RawMessage(`{
 // SpineChoice records what the sampling saw, so the spread is reportable rather
 // than hidden. The spread is the honest measure of how much of the final graph
 // was decided by luck.
+//
+// Drawn is how many stages each sample wrote and Spread is how many it has
+// once the stages' stated needs are read (see levelled). The two differ
+// exactly when a model laid independent work end to end, which is worth
+// seeing in a report: it is the difference between a plan that ran one worker
+// and a plan that ran seven.
 type SpineChoice struct {
 	Stages  []Stage
 	Samples int
-	Spread  []int // stage count of each sample, ascending
+	Drawn   []int // stage count of each sample as written, ascending
+	Spread  []int // stage count of each sample after levelling, ascending
 	Agreed  bool  // every sample proposed the same number of stages
 }
 
@@ -228,10 +245,18 @@ func spineWithProgress(ctx context.Context, client Completer, goal, terrain stri
 		return nil, usage, joinErrors(failures)
 	}
 
-	choice := &SpineChoice{Stages: medoid(candidates), Samples: len(candidates)}
-	for _, candidate := range candidates {
-		choice.Spread = append(choice.Spread, len(candidate))
+	// Levelled BEFORE the vote: two samples that wrote seven stages naming no
+	// needs and one that wrote a single stage are the same answer, and the
+	// medoid must see them as one so that the list-shaped pair cannot outvote
+	// the one that said it plainly.
+	choice := &SpineChoice{Samples: len(candidates)}
+	for index, candidate := range candidates {
+		choice.Drawn = append(choice.Drawn, len(candidate))
+		candidates[index] = levelled(candidate)
+		choice.Spread = append(choice.Spread, len(candidates[index]))
 	}
+	choice.Stages = medoid(candidates)
+	sort.Ints(choice.Drawn)
 	sort.Ints(choice.Spread)
 	choice.Agreed = choice.Spread[0] == choice.Spread[len(choice.Spread)-1]
 	return choice, usage, nil

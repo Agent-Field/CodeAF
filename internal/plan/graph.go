@@ -46,9 +46,15 @@ const (
 // Stage is one position in the generation spine. Stages are scaffolding, not
 // schedule: they exist so the graph can be produced cheaply and acyclically,
 // and they gate nothing once the real edges are known.
+//
+// Needs is what the spine model said this stage consumes from earlier stages,
+// by 1-based position, and it is read exactly once — by levelled, which turns
+// the list the model wrote into the levels the planner fans out. A stage the
+// planner holds has no Needs left: its position is its level.
 type Stage struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
+	Needs   []int  `json:"needs,omitempty"`
 }
 
 // Node is one unit of work.
