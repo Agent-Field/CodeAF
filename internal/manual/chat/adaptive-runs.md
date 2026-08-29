@@ -661,6 +661,14 @@ no extra reading, and a new test that is red is not reported as something the wo
 a check that did not exist before cannot have been passing before. It is still a leaf that
 has not finished, and the acceptance line is where you see that.
 
+**And the record always says what was read, whoever read it.** The two readings above
+are taken by the worker that does the work; when the work went to a worker that does not
+photograph, the check at the end of the job takes its own reading of the tree it is judging.
+Either way there is a row in the run's record saying what ran, what it named — or, when
+there was no reading, which of the reasons it was: your project declares no way of checking
+itself, there was no time left to size a reading against, or there was nothing to read.
+Silence used to mean all of those at once.
+
 **A reading that is cut keeps what it named.** A command killed at its ceiling having
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never

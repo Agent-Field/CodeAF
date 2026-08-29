@@ -82,12 +82,22 @@ func Held(points []plan.Point, grounds Grounds) []plan.Point {
 // it is the honest one for a project that declares no verification and a worker
 // that derived no diff — a capability that cannot work is ABSENT, not broken.
 func CheckEvidence(ctx context.Context, evidence Evidence, job string) []string {
+	return checkEvidence(evidence, jobReading(ctx, nil, "", evidence, job))
+}
+
+// checkEvidence is the same answer read off a reading the caller already holds.
+//
+// The split exists so the settlement pays for ONE reading and journals ONE row.
+// jobReading is memoised against the job, so calling it twice was free in wall
+// time and not free in the record: the second call would write a second row
+// saying the same thing, and a journal that repeats itself is one an autopsy
+// has to learn to discount.
+func checkEvidence(evidence Evidence, reading verify.Reading) []string {
 	var checks []string
 	if patch := evidence.patchSource(); patch != "" {
 		added, _ := verify.PatchChecks(patch)
 		checks = append(checks, added...)
 	}
-	reading := jobReading(ctx, evidence, job)
 	roster := reading.After.Reported
 	if !reading.AfterTaken {
 		// The before roster is the fallback and not a substitute: it names the
@@ -120,13 +130,31 @@ func CheckEvidence(ctx context.Context, evidence Evidence, job string) []string 
 // baseline is what stands in when it has none, and it can only ever say a
 // behaviour was ALREADY covered — never that a new one is — which is the same
 // asymmetry the before-roster fallback below is written for.
-func jobReading(ctx context.Context, evidence Evidence, job string) verify.Reading {
-	if evidence.Verification.Taken || strings.TrimSpace(evidence.Workspace) == "" ||
-		strings.TrimSpace(job) == "" {
+// AND WHATEVER IT DOES, IT SAYS SO IN THE RECORD. Every reading the gate takes,
+// inherits or refuses is journaled here, because the gate is the ONLY reader on
+// the generalist's path and a run whose leaves never photograph was leaving no
+// row at all. igel s9 and ink s9 put every node on the generalist, reached their
+// gates, and finished with ZERO verification events in the store — not a reading,
+// not a refusal, nothing — while ofetch s9 on the identical binary journaled four,
+// because one of its nodes happened to run under `bare`. From outside, a run that
+// read nothing and a run whose reader is silent are the same run. FAILSAFE.md
+// clause 4.
+func jobReading(ctx context.Context, graph *store.Store, nodeID string,
+	evidence Evidence, job string,
+) verify.Reading {
+	// The worker's own reading stands and is already journaled where it was
+	// taken; a second row for it would say the same thing twice.
+	if evidence.Verification.Taken {
+		return evidence.Verification
+	}
+	if strings.TrimSpace(evidence.Workspace) == "" || strings.TrimSpace(job) == "" {
+		journalGateReading(graph, nodeID, verify.Reading{Unread: "the gate holds no workspace " +
+			"to read, so no reading of the delivered tree could be taken"}, verify.Result{}, false)
 		return evidence.Verification
 	}
 	if held, ok := verify.BaselineFor(evidence.Workspace, job); ok {
 		if held.Taken {
+			journalGateReading(graph, nodeID, held, held.Before, true)
 			return held
 		}
 		if held.Retakeable() {
@@ -138,6 +166,7 @@ func jobReading(ctx context.Context, evidence Evidence, job string) verify.Readi
 				retaken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 					gateFocus(evidence), held.Pace())
 				verify.RememberBaseline(evidence.Workspace, job, retaken)
+				journalGateReading(graph, nodeID, retaken, retaken.Before, false)
 				return retaken
 			}
 		}
@@ -145,8 +174,10 @@ func jobReading(ctx context.Context, evidence Evidence, job string) verify.Readi
 		// Paying for that answer twice is what the baseline memory exists to
 		// stop; the reason it holds is carried up so the verdict can say it.
 		if strings.TrimSpace(evidence.Verification.Unread) == "" {
+			journalGateReading(graph, nodeID, held, held.Before, true)
 			return held
 		}
+		journalGateReading(graph, nodeID, evidence.Verification, evidence.Verification.Before, true)
 		return evidence.Verification
 	}
 	// NOBODY HAS LOOKED AT ALL, AND THE READING IS THE GATE'S TO HOLD. Not every
@@ -161,12 +192,67 @@ func jobReading(ctx context.Context, evidence Evidence, job string) verify.Readi
 	// one reading per job rather than one per round, exactly like the worker's.
 	deadline, timed := ctx.Deadline()
 	if !timed {
+		// A budget is a share of a wall, and there is no wall here to take a
+		// share of. That is a refusal like any other and it is written down
+		// like one: it costs nothing and it is the difference between a gate
+		// that could not look and a gate nobody asked to.
+		journalGateReading(graph, nodeID, verify.Reading{Unread: "the gate's own work had no " +
+			"deadline, so there was no wall to size a reading against"}, verify.Result{}, false)
 		return evidence.Verification
 	}
 	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 		gateFocus(evidence), verify.Pace{})
 	verify.RememberBaseline(evidence.Workspace, job, taken)
+	journalGateReading(graph, nodeID, taken, taken.Before, false)
 	return taken
+}
+
+// journalGateReading writes one row saying what the gate's reading of the
+// delivered tree was, or why there was not one.
+//
+// It is internal/exec/bare's own journal, moved to the reader that has the
+// store: same event, same fields, and a `when` that says which reader took it,
+// so an autopsy can tell the worker's photograph of the tree it arrived in from
+// the gate's photograph of the tree it is judging.
+//
+// It is a MEASUREMENT AND NEVER A GATE. A nil store, a node with no id, a store
+// that refuses the row — none of them change a verdict, and none of them are
+// worth failing a delivery over.
+func journalGateReading(
+	graph *store.Store, nodeID string, reading verify.Reading, result verify.Result, inherited bool,
+) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" {
+		return
+	}
+	strategy := result.Strategy
+	if strategy.Empty() {
+		strategy = reading.Strategy
+	}
+	sample := result.Reported
+	if len(sample) > store.VerificationSample {
+		sample = sample[:store.VerificationSample]
+	}
+	_ = graph.RecordVerification(nodeID, store.VerificationReading{
+		When:        "on the tree the gate is judging",
+		Read:        reading.Taken,
+		Why:         reading.Unread,
+		Command:     strategy.Command,
+		Declared:    strategy.Declared,
+		Runner:      strategy.Runner,
+		Format:      string(strategy.Read),
+		Source:      strategy.Source,
+		Scope:       strategy.Scope,
+		Package:     strategy.Workdir,
+		ReadAsPlain: result.ReadAsPlain,
+		Exit:        result.Exit,
+		TimedOut:    result.TimedOut,
+		Named:       len(result.Reported),
+		Red:         len(result.Failing),
+		Sample:      sample,
+		Partial:     reading.Partial,
+		Elapsed:     reading.CutAfter,
+		Inherited:   inherited,
+	})
 }
 
 // gateFocus is what the gate knows this job is about: the files the request
@@ -664,14 +750,64 @@ func Measured(evidence Evidence) bool {
 //
 // It returns the verdict unchanged when there is nothing to settle: no
 // checklist, or every point exercised.
+// settleUnmeasured says on the verdict whether the world behind this delivery
+// was read, and it is asked of EVERY verdict.
+//
+// NOBODY LOOKED IS NOT NOTHING WRONG, and it is not a finding either. A project
+// that declares no verification and a worker that derived no diff leave the
+// question unanswerable, and a gate that failed every such delivery would fail
+// every piece of prose this program writes. So the verdict SAYS SO, and a reader
+// of the record can tell an unchecked delivery from a checked one — carried on
+// the verdict rather than logged, because a fail-safe that does not reach the
+// person watching is decoration (FAILSAFE.md clause 3).
+//
+// TWO SILENCES, AND ONLY ONE OF THEM IS NOBODY'S FAULT. A project that declares
+// no verification cannot be read and nothing follows from it. A project that
+// declares one this run could not read has left the question UNANSWERED, and a
+// delivery that passes over that is a delivery nothing checked — ink s7 exited 0
+// at 13 of 25 that way. Only the second sets Unreadable, which is what turns a
+// pass into a partial at the door.
+func settleUnmeasured(verdict Judgment, evidence Evidence, reading verify.Reading) Judgment {
+	if Measured(evidence) || reading.Taken {
+		return verdict
+	}
+	verdict.Unreadable = reading.Declared() || evidence.Verification.Declared()
+	verdict.Unmeasured = "this project declares no verification this run could read, so no " +
+		"check could be matched to what the request asked for"
+	if verdict.Unreadable {
+		verdict.Unmeasured = "nothing in this project's verification could be read"
+		if why := strings.TrimSpace(firstOf(reading.Unread, evidence.Verification.Unread)); why != "" {
+			verdict.Unmeasured += ": " + why
+		}
+	}
+	return verdict
+}
+
 func settleAcceptance(ctx context.Context, settings config.Config, client *pool.Client,
-	node store.Node, evidence Evidence, grounds Grounds, workerModel string, verdict Judgment,
+	graph *store.Store, node store.Node, evidence Evidence, grounds Grounds,
+	workerModel string, verdict Judgment,
 ) Judgment {
 	// THE CHECKLIST IS THE JOB'S. A continuation is planned afresh and its spec
 	// carries none, so a round that read only its own spec asked the coverage
 	// question once and never again — ofetch s7 mapped fifty-four points in
 	// round one and none in the three rounds that followed it.
 	job := verify.JobKey(grounds.Intent)
+	// THE WORLD IS READ ON EVERY GATE, AND THE CHECKLIST HAS NO SAY IN IT.
+	//
+	// This used to sit below the checklist, and returning early when a job
+	// stated none took the reading with it — so a node with no checklist was
+	// never asked whether the project could be read at all, `Unreadable` could
+	// not be reached on that path, and the delivery gate settled Whole() over a
+	// verification nothing had looked at. Exit 0, on a run where the one
+	// question that could have said otherwise was never put.
+	//
+	// The two are different questions and only one of them is the checklist's.
+	// A checklist governs whether COVERAGE can be settled — which behaviours are
+	// exercised by nothing. Whether the WORLD was read is a fact about the
+	// project and the run, true or false whether or not anybody wrote a
+	// checklist, and it is what decides whether a pass is whole.
+	reading := jobReading(ctx, graph, node.ID, evidence, job)
+	verdict = settleUnmeasured(verdict, evidence, reading)
 	points := Held(evidence.Accept, grounds)
 	if len(points) == 0 {
 		points = Held(ChecklistFor(job), grounds)
@@ -680,30 +816,7 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 		return verdict
 	}
 	RememberChecklist(job, points)
-	reading := jobReading(ctx, evidence, job)
 	if !Measured(evidence) && !reading.Taken {
-		// NOBODY LOOKED IS NOT NOTHING WRONG, and it is not a finding either.
-		// A project that declares no verification and a worker that derived no
-		// diff leave this question unanswerable, and a gate that failed every
-		// such delivery would fail every piece of prose this program writes.
-		// The verdict says so, so a reader of the record can tell an unchecked
-		// delivery from a checked one — and it is carried on the verdict rather
-		// than logged, because a fail-safe that does not reach the person
-		// watching is decoration (FAILSAFE.md clause 3).
-		// TWO SILENCES, AND ONLY ONE OF THEM IS NOBODY'S FAULT. A project that
-		// declares no verification cannot be read and nothing follows from it.
-		// A project that declares one this run could not read has left the
-		// question UNANSWERED, and a delivery that passes over that is a
-		// delivery nothing checked — ink s7 exited 0 at 13 of 25 that way.
-		verdict.Unreadable = reading.Declared() || evidence.Verification.Declared()
-		verdict.Unmeasured = "this project declares no verification this run could read, so no " +
-			"check could be matched to what the request asked for"
-		if verdict.Unreadable {
-			verdict.Unmeasured = "nothing in this project's verification could be read"
-			if why := strings.TrimSpace(firstOf(reading.Unread, evidence.Verification.Unread)); why != "" {
-				verdict.Unmeasured += ": " + why
-			}
-		}
 		// AND A FINDING ALREADY MEASURED STANDS UNTIL A MEASUREMENT CLOSES IT.
 		// A behaviour an earlier round proved nothing exercises does not become
 		// exercised because this round's worker took no reading. Dropping it
@@ -734,7 +847,7 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// with names that map, and the next mapping is what notices. A round that
 	// skipped the question left the set exactly where it was and called that
 	// progress.
-	checks := CheckEvidence(ctx, evidence, job)
+	checks := checkEvidence(evidence, reading)
 	mapping := MapChecks(ctx, settings, client, node, points, checks, workerModel)
 	verdict.Exercises = mapping
 	finding, unexercised := Unexercised(points, mapping, grounds)

@@ -1217,7 +1217,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// for? On a pass it is the whole verdict — a delivery about to be
 		// called whole with a stated behaviour nothing exercises is the run
 		// this mechanism was built for.
-		return settleAcceptance(ctx, settings, client, node, evidence, grounds, workerModel, pass)
+		return settleAcceptance(ctx, settings, client, graph, node, evidence, grounds, workerModel, pass)
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
@@ -1246,7 +1246,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// where it was; ten gates across the s5 sweep failed and the question was
 	// asked at none of them. The settlement adds its findings to this gap
 	// rather than replacing it — see settleAcceptance.
-	return settleAcceptance(ctx, settings, client, node, evidence, grounds, workerModel, failed)
+	return settleAcceptance(ctx, settings, client, graph, node, evidence, grounds, workerModel, failed)
 }
 
 // faulted is the gate call that produced no verdict, reported as the fault it is.
