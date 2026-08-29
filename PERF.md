@@ -920,3 +920,101 @@ window its successor was handed.
 Whether a claim resumed is journaled (`store.EventLeafResumed`, with the turn
 count and the files) rather than assumed, because this section asserted it for a
 day while it was not true.
+
+### A tool call's room, which is measured and never picked
+
+`internal/exec/bare`'s belt had **no per-command bound at all**: pi's `bash`
+schema says "no default timeout", so a command the model did not think to bound
+inherited the leaf's whole envelope. The ink run of 2026-08-29 (s8) ended on
+`npx ava test/grid.tsx` with fifteen minutes of leaf to spend, the command was
+SIGKILLed when the leaf's context expired, and three separate things went wrong
+in the same instant: the cut was tested for `context.Canceled` and a deadline is
+`DeadlineExceeded`, so a killed command reported a clean success with truncated
+output; the loop's next turn-boundary check found a dead context and stopped, so
+the output never reached the model that had asked for it; and the node watchdog
+two minutes above was already counting, so a leaf that had been working for
+seventeen minutes was recorded as one that never came back.
+
+**There is no per-command timeout constant, and adding one back is a
+regression.** A figure picked here is wrong on every machine it was not picked
+on — these leaves run in amd64 containers under qemu where everything is five to
+ten times slower than the wall-derived arithmetic assumes — and "does this
+command fit a number" is not the question anyway. The question is whether the
+leaf can afford it and still land.
+
+| what | the bound, and where it comes from |
+| --- | --- |
+| one tool batch | `time.Until(deadline) − pace.reserve()`, in `loopState.toolRoom` |
+| **the landing reserve** | `pace.reserve()` = the slowest model call THIS leaf has completed **plus** the slowest transcript flush THIS leaf has taken |
+| the landing itself | one call with no tools on the wire, which is the same shape the reserve was measured as |
+
+Both halves are read rather than chosen. Landing is exactly those two things
+happening once more — one call in which the leaf says where it got to, one write
+that puts it on disk — so a leaf on a slow machine measures a slow machine and
+reserves accordingly, with nothing to configure. The reserve holds the WORST
+observation of each rather than a mean, because the honest answer to "will there
+be enough time" is the worst this leaf has seen; a mean would under-reserve
+exactly on the run where the machine is getting slower. It is zero until the
+first call and the first flush have happened, which is correct: a tool call can
+only be asked for by a model that has already answered once.
+
+A cut command returns `cut after 9m12s; output so far: …` with everything the
+accumulator had — the output is streamed as the command writes it
+(`newOutputAccumulator`, `StreamingShell`), so a runner cut at nine minutes still
+names every check it reached. The duration leads because it is the fact the model
+acts on: "this command is too big for this leaf on this machine" is an
+instruction to scope it, where "aborted" invites the same command again. The
+process GROUP is killed, so a cut leaves no runaway child.
+
+Pinned by `internal/exec/bare/room_test.go`.
+
+### A node watchdog that reads evidence of life
+
+`cmd/aforge`'s `runLeafWithWatchdog` fired on a flat `deadline + 2m` timer and,
+when it fired, **returned without cancelling the leaf** — so the goroutine went
+on spending, went on writing to the workspace, and kept whatever children its
+last command had started, for as long as its own deadline had left.
+
+It now asks the same question the claim reaper asks, one level down. The reaper
+asks whether anybody is working the node; this asks whether THIS worker still is,
+and it reads the same evidence from the same seam: `exec.Working` spans, composed
+onto the context with `exec.AlsoWithLiveness` so the reaper's own listener is not
+displaced. **The window bounds silence.** A worker inside a call, or one that
+closed a span inside the window, re-arms it over the silence that is actually
+left; a worker that has marked nothing is judged exactly as before.
+
+When it does give up, the worker is STOPPED rather than left running — the same
+law the reaper obeys — and then given the longest span it was ever observed
+inside to land, which is measured rather than chosen and is zero for a worker
+that never marked anything. What comes back is then a leaf that landed after
+being stopped, with its spend banked and its record flushed, instead of a nil
+outcome and a sentence about abandonment.
+
+### Money is banked per call, not per landing
+
+A leaf's spend used to reach the journal exactly once, from
+`exec.Outcome.Usage`, on the way out of the run (`resident.recordSpend`) — so
+every ending that returns no outcome returned no money either. Ink s8 made 109
+billed calls in seventeen minutes and left a `usage` table holding one row, the
+planner's; `cost.json` read $0.000228 over a 26 KB patch. The transcript had been
+hardened against exactly those endings a wave earlier, with a flush on each side
+of the abandonment; the money had no equivalent.
+
+`provider.WithBilling` reports each decoded response at the adapter's own door —
+the one seam every outbound call in this process passes through, and the same
+place the call log's per-call row is already written. `cmd/aforge`'s `leafBanker`
+writes one `usage` row per call under the leaf's node as the answers arrive.
+**This adds one durable write per MODEL CALL and not per tool result**, which is
+the line `internal/exec/liveness.go` draws and stays the right side of: a leaf's
+calls are tens, its tool results are hundreds.
+
+The summed row is not written twice. What `resident.recordSpend` journals is the
+REMAINDER — the leaf's total less what the banker already put on disk — so a
+fully banked leaf writes nothing and a leaf that escalated to a worker driving
+another process, whose calls this adapter never sees, still journals that
+worker's spend. It is clamped at zero per field, because two totals summed from
+the same responses in different places must never disagree into a negative row.
+`usage_turns` is written either way, because one row per turn is a different kind
+of record and nothing else carries it. `cost.json` and the settlement's money line both read
+the `usage` table, so both now see an interrupted leaf's spend. Pinned by
+`cmd/aforge/leafbank_test.go`.

@@ -1,0 +1,131 @@
+package provider
+
+import (
+	"context"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+)
+
+// A BILLED RESPONSE IS BANKED WHEN IT ARRIVES, NOT WHEN THE WORK LANDS.
+//
+// THE DEFECT THIS ANSWERS. A leaf's spend used to reach the journal exactly
+// once, from the executor's in-memory total, on the way out of the run
+// (resident.Runner.recordSpend). Every ending that returns no outcome therefore
+// returned no money either: the ink run of 2026-08-29 made a hundred and nine
+// billed calls over seventeen minutes, was given up on by its watchdog, and
+// left a store whose usage table held one row — the planner's — and a cost.json
+// reading $0.000228 for a run that had written a twenty-six kilobyte patch.
+// The transcript had been hardened against exactly these endings a wave
+// earlier, with a flush on each side of the abandonment; the money had no
+// equivalent, so a $0.85 leaf and a free one were the same row.
+//
+// The fix is not another flush on another ending — there is always one more
+// ending. The fact that was missing is that THE PROVIDER ALREADY KNOWS WHAT
+// EACH CALL COST at the moment it decodes the answer, and this adapter is the
+// one door every outbound call in the process passes through (calllog.go says
+// so, and writes its own per-call row here for the same reason). So the row is
+// written where the fact is known, and a turn roll-up becomes a second kind of
+// record rather than the only one.
+//
+// It is reported through the context exactly as the transcript sink and the
+// liveness span already are (exec.WithTranscript, exec.WithLiveness), because
+// the adapter underneath is shared by every agent in the process and the call
+// is the only thing that knows whose call it is. Nobody listening is the
+// ordinary case — a unit test, a bench harness, a client built for one probe —
+// and costs one type assertion.
+
+// Billed is one model response the provider charged for, as the adapter read it
+// off the wire. It carries the node the call belongs to so a listener does not
+// have to re-derive it: the same [WithCallNode] the call log is keyed by names
+// the work, and a call made without one is spend nobody can file.
+type Billed struct {
+	// Node is what [WithCallNode] named, empty when nothing did.
+	Node string
+	// Model is who actually served the call — the rung a panel picked or an
+	// escalation moved to — rather than the name the caller asked for.
+	Model string
+	// The four figures the usage table holds. CachedTokens is the share of
+	// PromptTokens the provider billed at the cached rate.
+	PromptTokens     int
+	CompletionTokens int
+	CachedTokens     int
+	Cost             float64
+}
+
+// Empty reports a response the adapter cannot bill: the provider sent no usage
+// block, or sent one that says nothing was spent. Neither is written down —
+// guessing at a number is worse than a gap, and the gap is visible as a call
+// the ledger did not see rather than as money the ledger invented.
+func (b Billed) Empty() bool {
+	return b.PromptTokens == 0 && b.CompletionTokens == 0 && b.Cost == 0
+}
+
+// BillingSink is told what one response cost, as soon as it is decoded. An
+// implementation must be safe for concurrent use: a leaf's batch of parallel
+// tools can each be waiting on a call of their own.
+type BillingSink func(Billed)
+
+type billingContextKey struct{}
+
+// WithBilling arms one piece of work's banking. Like the transcript sink it
+// belongs to the work rather than to the client, because one client serves
+// every node in the process.
+func WithBilling(ctx context.Context, sink BillingSink) context.Context {
+	if sink == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, billingContextKey{}, sink)
+}
+
+// billingFrom reads back the sink WithBilling armed, or nil.
+func billingFrom(ctx context.Context) BillingSink {
+	if ctx == nil {
+		return nil
+	}
+	sink, _ := ctx.Value(billingContextKey{}).(BillingSink)
+	return sink
+}
+
+// bill reports one decoded response to whoever is banking this work.
+//
+// It is called from the two places a billed answer is decoded — the whole-body
+// completion and the end of a stream — and from nowhere else, so a call that is
+// retried, repaired or relaxed banks once per answer the provider actually
+// returned, which is once per answer it actually charged for.
+//
+// The model named is whoever ANSWERED, read the way the pool's own billing
+// reads it: the slot's model unless the routing lane recorded a served rung,
+// because a row naming the model somebody asked for is a row that cannot be
+// summed per model after an escalation.
+func (c *Client) bill(ctx context.Context, model string, response *ai.Response) {
+	sink := billingFrom(ctx)
+	if sink == nil || response == nil || response.Usage == nil {
+		return
+	}
+	if served := CallFrom(ctx).Model(); served != "" {
+		model = served
+	}
+	billed := Billed{
+		Node:             callNode(ctx),
+		Model:            model,
+		PromptTokens:     response.Usage.PromptTokens,
+		CompletionTokens: response.Usage.CompletionTokens,
+		CachedTokens:     response.Usage.CacheReadTokens(),
+	}
+	if response.Usage.Cost != nil {
+		billed.Cost = *response.Usage.Cost
+	}
+	if billed.Empty() {
+		return
+	}
+	sink(billed)
+}
+
+// BillingSinkFrom and CallNodeFrom read back what a leaf's context was armed
+// with. They exist for the surfaces that arm it and the tests that check they
+// did: arming billing is one line at three call sites, and a call site that
+// silently armed nothing is exactly the shape of the defect this file answers.
+func BillingSinkFrom(ctx context.Context) BillingSink { return billingFrom(ctx) }
+
+// CallNodeFrom is the node WithCallNode named, empty when nothing did.
+func CallNodeFrom(ctx context.Context) string { return callNode(ctx) }

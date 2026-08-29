@@ -1046,6 +1046,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// by one worker serves its siblings.
 		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, workingModel))
 		var outcome *exec.Outcome
+		// Every call this leaf makes, banked under its node as the provider
+		// answers. See leafBanker.
+		banker := newLeafBanker(graph, node.ID)
 		var spent exec.Usage
 		// The same spend with its per-turn shape kept, accumulated across every
 		// attempt this node makes. See leafShape.
@@ -1208,6 +1211,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
 			runCtx = armTranscript(runCtx, graph, node.ID, build.model)
+			runCtx = armBilling(runCtx, banker)
 			// THE REAPER MUST NOT FIRE BELOW THIS LEAF'S OWN WATCHDOG. The
 			// runner's claim reaper is a constant and this figure is not — it
 			// scales with the budget the leaf was granted — so a well-fed leaf
@@ -1262,7 +1266,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
 					outcome.Text, store.UserCancelReason, workerModel)
 			}
-			result := leafSpend(spent, spentShape, workerModel)
+			result := leafSpend(spent, spentShape, workerModel, banker.banked())
 			result.Summary = outcome.Text
 			result.ServiceRequests = outcome.ServiceRequests
 			return result, nil
@@ -1378,7 +1382,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// task twice by the time we arrive here, so this is the most
 			// expensive kind of result there is — and returning a bare zero
 			// value is what made real spend journal as $0.00 on the daily rail.
-			return leafSpend(spent, spentShape, workerModel), failure
+			return leafSpend(spent, spentShape, workerModel, banker.banked()), failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -1404,7 +1408,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// replan was asked to find a remainder rather than whether one exists.
 		// So the judge runs first: a checked "done" ships the result as-is,
 		// and a named gap becomes the replan's target instead of a guess.
-		if !isReflex && outcome.Overran() {
+		// A LEAF THAT RAN OUT OF TIME RAN OUT OF ROOM. Overran deliberately
+		// excludes the clock — it answers "was this leaf too big for its token
+		// envelope" — and reading it here meant the one ending that most needs
+		// more room got none: the ink run of 2026-08-29 spent its whole
+		// deadline, landed with a half-finished implementation, and was
+		// delivered as a failure rather than continued. leafRanOutOfRoom is the
+		// predicate the record already uses for exactly this question, and the
+		// judge below is what stops a finished leaf being continued anyway.
+		if !isReflex && leafRanOutOfRoom(outcome) {
 			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text,
 				exec.MenuTextExcept(promisedWorker(node)), workerModel)
 			if remainder.Checked && remainder.Done {
@@ -1421,9 +1433,24 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if clause := surpriseEvidence(graph, node.ID); clause != "" {
 					gap = strings.TrimSpace(gap + "\n\n" + clause)
 				}
+				// What this attempt actually did, read back from its own
+				// record, so the continuation resumes instead of restarting.
+				// It is the same bank the in-place retry above is handed.
+				carried, carriedTurns := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines())
 				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
-					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
+					resident.Growth{
+						Reason: resident.GrowOverrun, State: resident.LeafState(outcome),
+						// WHATEVER CONTINUES THE WORK IS SEEDED FROM THE RECORD.
+						// The in-place retry and the requeue both read this
+						// bank; the continuation — which is where an exhausted
+						// node actually goes — was the one path that did not,
+						// so the textual run of 2026-08-29 journaled six
+						// exhaustions and not one resumption, and each new node
+						// opened by exploring the repository its predecessor
+						// had spent minutes in. See resident.BankedRun.
+						Transcript: carried.Transcript, Resumed: carriedTurns,
+					},
 					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
@@ -1566,6 +1593,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							})
 							retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 							retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
+							retryCtx = armBilling(retryCtx, banker)
 							polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
 							if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
 								spent.PromptTokens += polished.Usage.PromptTokens
@@ -1761,6 +1789,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						})
 						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
+						retryCtx = armBilling(retryCtx, banker)
 						var polishErr error
 						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
 						if model := provider.CallFrom(retryCtx).Model(); model != "" {
@@ -1947,7 +1976,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			}
 		}
-		result := leafSpend(spent, spentShape, workerModel)
+		result := leafSpend(spent, spentShape, workerModel, banker.banked())
 		result.Summary = text
 		result.Promote = promoted
 		result.ServiceRequests = outcome.ServiceRequests
@@ -2556,7 +2585,7 @@ func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
 		record.Bound = string(exec.StopDeadline)
 		record.Allowed = watchdog.Round(time.Second).String()
 		record.Reason = "the worker did not come back within " + record.Allowed +
-			" and was given up on — its work is recorded and the node goes back on the queue"
+			" and was stopped — its work is recorded and the node goes back on the queue"
 	case err == nil && outcome != nil && leafRanOutOfRoom(outcome):
 		bound := outcome.Stop
 		if bound == exec.StopDone || bound == "" {
@@ -2672,15 +2701,138 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // executor, written by the runner, and never once carried across this seam, so
 // the leaf rows — the ones holding almost all the tokens — journalled a warm
 // prefix as a cold run. Anything added to the ledger belongs here, once.
-func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string) resident.ExecResult {
+func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked exec.Usage) resident.ExecResult {
+	// THE SUMMED ROW IS THE REMAINDER, NEVER THE TOTAL. Calls banked as they
+	// were billed are already on disk, and summing them again here would charge
+	// the node twice for one leaf. What is left over is real spend nobody has
+	// written down: a worker that drives another process makes no call this
+	// adapter can see, so a leaf that escalated from a banking worker to one of
+	// those must still journal the second attempt.
+	//
+	// Clamped at zero per field rather than trusted, because the two totals are
+	// summed from the same responses in different places and an arithmetic
+	// disagreement must not become a negative row in the ledger.
+	left := exec.Usage{
+		PromptTokens:     atLeastZero(spent.PromptTokens - banked.PromptTokens),
+		CompletionTokens: atLeastZero(spent.CompletionTokens - banked.CompletionTokens),
+		CachedTokens:     atLeastZero(spent.CachedTokens - banked.CachedTokens),
+		Cost:             spent.Cost - banked.Cost,
+	}
+	// A residue of tokens nobody spent is a residue of money nobody spent. Cost
+	// is a float summed twice over, so it never lands exactly on zero, and a row
+	// carrying a billionth of a cent and no tokens is noise wearing a receipt.
+	if left.PromptTokens == 0 && left.CompletionTokens == 0 {
+		left.Cost = 0
+	}
+	if left.Cost < 0 {
+		left.Cost = 0
+	}
 	return resident.ExecResult{
-		PromptTokens:     spent.PromptTokens,
-		CompletionTokens: spent.CompletionTokens,
-		CachedTokens:     spent.CachedTokens,
-		Cost:             spent.Cost,
+		PromptTokens:     left.PromptTokens,
+		CompletionTokens: left.CompletionTokens,
+		CachedTokens:     left.CachedTokens,
+		Cost:             left.Cost,
 		Turns:            shape,
 		Model:            model,
+		SpendBanked:      banked.PromptTokens > 0 || banked.CompletionTokens > 0 || banked.Cost > 0,
 	}
+}
+
+// atLeastZero is the clamp above, named so the reason it exists is readable at
+// each of the three places it is applied.
+func atLeastZero(count int) int {
+	if count < 0 {
+		return 0
+	}
+	return count
+}
+
+// leafBanker writes one usage row per billed response, under the leaf's node,
+// at the moment the provider answers.
+//
+// THE MONEY IS DURABLE BEFORE THE WORK IS. The totals above are assembled in
+// memory and reach the journal once, on the way out of the run, which means
+// every ending that returns no outcome returns no money either: the ink run of
+// 2026-08-29 made a hundred and nine billed calls, was given up on by its
+// watchdog, and left a usage table holding the planner's row and nothing else.
+// So the executor's total stops being the only record. See
+// provider.WithBilling for why the row is written at the adapter's own door
+// rather than at one more ending.
+//
+// It is a counter as well as a writer, because the runner has to know whether
+// to write the summed row at all: two records of one call is worse than one,
+// and a leaf whose calls were banked here is a leaf whose total is already on
+// disk (see resident.ExecResult.SpendBanked).
+type leafBanker struct {
+	graph  *store.Store
+	nodeID string
+	mutex  sync.Mutex
+	rows   int
+	// total is what this banker has actually written, so the landing can journal
+	// the REMAINDER rather than the whole — see leafSpend.
+	total exec.Usage
+	// noted keeps a failing journal quiet after the first complaint. A store
+	// that cannot take a usage row will not take the next hundred either, and a
+	// leaf must not spend its log on saying so once per call.
+	noted bool
+}
+
+func newLeafBanker(graph *store.Store, nodeID string) *leafBanker {
+	return &leafBanker{graph: graph, nodeID: nodeID}
+}
+
+// bank writes one call's row. It is called from the provider's decode, which is
+// whatever goroutine the call was made on — a leaf's parallel tool batch can
+// have several open at once — so it holds a lock over the counter.
+func (b *leafBanker) bank(billed provider.Billed) {
+	if b == nil || b.graph == nil || billed.Empty() {
+		return
+	}
+	err := b.graph.RecordUsage(store.NodeUsage{
+		NodeID:           b.nodeID,
+		PromptTokens:     billed.PromptTokens,
+		CompletionTokens: billed.CompletionTokens,
+		CachedTokens:     billed.CachedTokens,
+		Cost:             billed.Cost,
+		Model:            billed.Model,
+	})
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if err != nil {
+		if !b.noted {
+			b.noted = true
+			log.Printf("note: could not bank a call against %s: %v", b.nodeID, err)
+		}
+		return
+	}
+	b.rows++
+	b.total.PromptTokens += billed.PromptTokens
+	b.total.CompletionTokens += billed.CompletionTokens
+	b.total.CachedTokens += billed.CachedTokens
+	b.total.Cost += billed.Cost
+}
+
+// banked is what this leaf's calls have already put on disk, which is what the
+// landing roll-up subtracts so the same money is not journaled twice.
+func (b *leafBanker) banked() exec.Usage {
+	if b == nil {
+		return exec.Usage{}
+	}
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.total
+}
+
+// armBilling points one leaf run's billing at its own node, exactly as
+// armTranscript points its record. Both belong to the attempt rather than to
+// the worker, and both are armed at every place a leaf is run — the attempt
+// loop and the two gate repair rounds — so a repair's spend is banked by the
+// same rule its turns are recorded by.
+func armBilling(ctx context.Context, banker *leafBanker) context.Context {
+	if banker == nil {
+		return ctx
+	}
+	return provider.WithBilling(provider.WithCallNode(ctx, banker.nodeID), banker.bank)
 }
 
 // leafShape accumulates one attempt's per-turn ledger onto whatever earlier
@@ -4203,6 +4355,17 @@ func armTranscript(ctx context.Context, graph *store.Store, nodeID, model string
 // has its own deadline, so this only fires when a worker is wedged past every
 // limit it was given — turning a silent forever-hang into a recorded failure.
 func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
+	// The worker runs on a context THIS function can end, so that giving up on
+	// it is an act rather than a departure. See the watchdog branch below.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	// What the worker is doing, listened to without taking the report away from
+	// the claim reaper that is also listening (exec.AlsoWithLiveness).
+	// The clock starts now, not at the first mark: a worker that never reports
+	// anything must accumulate silence from the moment it started, or the
+	// window would re-arm over it forever.
+	life := &leafLife{last: time.Now()}
+	ctx = exec.AlsoWithLiveness(ctx, life.working)
 	// THE RECORD IS MADE DURABLE ON EVERY WAY OUT OF THIS FUNCTION, and there
 	// are three: the leaf landing, the leaf panicking into the guard below, and
 	// the watchdog giving up on a leaf that is still running. Only the first is
@@ -4245,15 +4408,130 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 	// nothing. One per leaf and one per gate revision, on every job.
 	watchdog := time.NewTimer(timeout)
 	defer watchdog.Stop()
-	select {
-	case result := <-done:
-		return result.outcome, result.err
-	case <-watchdog.C:
-		// Typed, and the sentence is unchanged. What the type carries that the
-		// sentence could not is that this ending is the clock and nothing else,
-		// which is the one fact the retry above must not have to guess at.
-		return nil, &exec.Abandoned{After: timeout}
+	for {
+		select {
+		case result := <-done:
+			return result.outcome, result.err
+		case <-watchdog.C:
+			// A WORKER INSIDE A CALL IS NOT A WORKER THAT DID NOT COME BACK.
+			// The window bounds SILENCE, exactly as the claim reaper's does
+			// (FAILSAFE.md's seventh failure), and this timer is the same
+			// question asked one level down: the reaper asks whether anybody is
+			// working the node, and this asks whether THIS worker still is. A
+			// leaf demonstrably waiting on a model call or a shell command has
+			// answered it, so the window is re-armed over the silence that is
+			// actually left rather than spent on a leaf that is working.
+			if quiet, busy := life.silence(time.Now()); busy || quiet < timeout {
+				remaining := timeout - quiet
+				if busy || remaining <= 0 {
+					remaining = timeout
+				}
+				watchdog.Reset(remaining)
+				continue
+			}
+			// A CLAIM IS NOT TAKEN FROM A WORKER, THE WORKER IS STOPPED. Giving
+			// up used to mean returning and leaving the goroutine running: it
+			// kept spending, kept writing to the workspace, and kept whatever
+			// child processes its last command had started, for as long as its
+			// own deadline had left. Now the context it runs on is ended, which
+			// is the same signal the leaf's own deadline sends and which every
+			// belt already lands on — so what comes back is a leaf that landed
+			// after being stopped, with its spend banked and its record flushed,
+			// rather than a nil outcome and a sentence about abandonment.
+			stop()
+			// How long a stopped worker is given to land: the longest span this
+			// leaf was ever observed inside. It is measured rather than chosen,
+			// and it is the honest bound — a worker that took four minutes to
+			// answer one call may need four minutes to notice it was stopped.
+			// A worker that never marked anything is given nothing, because the
+			// journal is then the only account of it and that is the account
+			// the record already holds.
+			grace := time.NewTimer(life.longest())
+			defer grace.Stop()
+			select {
+			case result := <-done:
+				return result.outcome, result.err
+			case <-grace.C:
+				// Typed, and the sentence is unchanged. What the type carries
+				// that the sentence could not is that this ending is the clock
+				// and nothing else, which is the one fact the retry above must
+				// not have to guess at.
+				return nil, &exec.Abandoned{After: timeout}
+			}
+		}
 	}
+}
+
+// leafLife is what the node watchdog above knows about the worker under it:
+// whether it is inside a call right now, when it was last inside one, and the
+// longest it has ever been inside one.
+//
+// IT IS THE SAME EVIDENCE THE CLAIM REAPER READS, from the same seam. A worker
+// says a call is in flight through the context (exec.Working), for free, from
+// the code that is waiting; the reaper listens because it is deciding whether
+// the NODE is held by anybody, and this listens because the watchdog is
+// deciding whether THIS worker is still working. Both are armed, because
+// exec.AlsoWithLiveness composes rather than displaces.
+type leafLife struct {
+	mutex sync.Mutex
+	// open is how many spans are in flight. A batch of tools runs in parallel,
+	// so several are ordinarily open at once.
+	open int
+	// last is when a span was last opened or closed — the newest moment this
+	// worker demonstrably did something — and, before the first span, the
+	// moment the worker started.
+	last time.Time
+	// longestSpan is the longest completed span, which is what a stopped worker
+	// is given to notice and land.
+	longestSpan time.Duration
+}
+
+// working is the exec.LivenessMark this listener installs.
+func (l *leafLife) working() func() {
+	began := time.Now()
+	l.mutex.Lock()
+	l.open++
+	l.last = began
+	l.mutex.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			ended := time.Now()
+			l.mutex.Lock()
+			defer l.mutex.Unlock()
+			if l.open > 0 {
+				l.open--
+			}
+			l.last = ended
+			if span := ended.Sub(began); span > l.longestSpan {
+				l.longestSpan = span
+			}
+		})
+	}
+}
+
+// silence is how long this worker has shown no sign of life, and whether it is
+// showing one right now.
+//
+// A WORKER THAT HAS NEVER MARKED ANYTHING IS SILENT FOR AS LONG AS IT HAS
+// EXISTED, which is the reading the watchdog had before any of this and the
+// correct one for a belt that reports nothing — so last is seeded with the
+// moment the worker started rather than left zero.
+func (l *leafLife) silence(now time.Time) (time.Duration, bool) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if l.open > 0 {
+		return 0, true
+	}
+	return now.Sub(l.last), false
+}
+
+// longest is the longest span this worker was observed inside, and zero for one
+// that was never observed inside any.
+func (l *leafLife) longest() time.Duration {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	return l.longestSpan
 }
 
 // quorumVerify runs two independent validator calls against a cheap model in

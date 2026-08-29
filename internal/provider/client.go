@@ -735,6 +735,9 @@ func (c *Client) completionInOnePiece(
 		response: &response, reasoningTokens: decoded.Usage.reasoningTokens(),
 		learned: relearned, responseBody: payload,
 	})
+	// The money, banked at the same instant the log row is written and for the
+	// same reason: this is where the fact is known. See billing.go.
+	c.bill(ctx, c.modelFor(request), &response)
 	return &response, len(relearned) > 0, nil
 }
 
@@ -1209,6 +1212,10 @@ func (c *Client) completeWithMessagesStreaming(
 		began: logBegan, status: httpResponse.StatusCode, served: served,
 		response: response, reasoningTokens: reasoningTokens, learned: learned,
 	})
+	// Both paths or neither, exactly as the learning above: a streamed answer
+	// is billed by the provider the same way a whole-body one is, and a ledger
+	// blind to one of the two transports is a ledger nobody can reconcile.
+	c.bill(ctx, c.modelFor(request), response)
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil

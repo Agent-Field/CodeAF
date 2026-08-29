@@ -55,6 +55,20 @@ type ExecResult struct {
 	// escalation moved to, which is not the model anyone asked for. It rides
 	// the spend row because that is the row a receipt already reads.
 	Model string
+	// SpendBanked says this run banked its own calls as they were billed — one
+	// usage row per response, written at the moment the provider answered
+	// (cmd/aforge's leafBanker, provider.WithBilling) — so the three totals
+	// above are the REMAINDER and not the whole. On an ordinary banked run they
+	// are zero and nothing more is written; they are non-zero when part of the
+	// leaf ran on a worker whose calls the adapter never saw, and that part is
+	// journaled exactly as it always was.
+	//
+	// The per-turn shape below is NOT a duplicate and is written either way —
+	// it is a different kind of record, one row per turn rather than one per
+	// call, and nothing else in the journal carries it. Which is why the zero
+	// check above asks this field as well: a fully banked run has nothing left
+	// to sum and its turn ledger still has to reach the journal.
+	SpendBanked bool
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -1225,6 +1239,31 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 			_ = r.graph.Release(claim)
 			return
 		}
+		// AN ENDING THAT IS EXHAUSTION IS NOT A FAILURE, AND A FAILED NODE IS
+		// NEVER OFFERED AGAIN. Store.Ready serves pending rows only, so failing
+		// a node here is the end of it: the ink run of 2026-08-29 journaled
+		// "the node goes back on the queue", settled the node failed in the same
+		// second, and left with exit 1 and no gate verdict over seventy-three
+		// minutes of unspent wall and a twenty-six kilobyte patch on disk.
+		//
+		// The worker ran out of the room it was given. That is the growth
+		// governor's own input and the queue's, not a verdict on the work — so
+		// the claim goes back and the next one RESUMES, seeded from the record
+		// this attempt left (cmd/aforge reads it at claim time through
+		// resident.Bank when node.Attempt is above zero).
+		//
+		// IT IS GATED ON THERE BEING SOMETHING TO RESUME FROM, which is what
+		// keeps this from being an unbounded retry. A re-claim that reads an
+		// empty record is not a resumption, it is the same cold start again;
+		// an attempt that recorded not one turn before the clock stopped it has
+		// told us nothing except that starting it costs the whole envelope, and
+		// that is a failure however it is spelled.
+		if allowed, spent := executor.RanOutOfRoom(err); spent {
+			if _, recorded := BankedRun(r.graph, node.ID); recorded > 0 {
+				_ = r.graph.ReleaseWithReason(claim, exhaustedClaimReason(allowed, recorded))
+				return
+			}
+		}
 		_ = r.graph.Fail(claim, err.Error())
 		if guard.IsFault(err) {
 			r.noteFault(node)
@@ -1343,17 +1382,27 @@ const maxFiringDepth = 32
 // A zero row is skipped: nothing was spent, and an empty row would only make
 // the journal longer.
 func (r *Runner) recordSpend(node store.Node, result ExecResult) {
-	if result.PromptTokens == 0 && result.CompletionTokens == 0 && result.Cost == 0 {
+	spent := result.PromptTokens > 0 || result.CompletionTokens > 0 || result.Cost > 0
+	if !spent && !result.SpendBanked {
 		return
 	}
-	_ = r.graph.RecordUsage(store.NodeUsage{
-		NodeID:           node.ID,
-		PromptTokens:     result.PromptTokens,
-		CompletionTokens: result.CompletionTokens,
-		CachedTokens:     result.CachedTokens,
-		Cost:             result.Cost,
-		Model:            result.Model,
-	})
+	// The three totals are what is LEFT to write: a run that banked its own
+	// calls put them on disk one row per response, as each was billed, and
+	// summing them again here would charge the node twice for one leaf. What
+	// arrives non-zero on a banked run is spend the adapter could not see —
+	// a worker that drives another process — and it is journaled as it always
+	// was. The rows already on disk are the better record either way, because
+	// they survive an ending this function never sees.
+	if spent {
+		_ = r.graph.RecordUsage(store.NodeUsage{
+			NodeID:           node.ID,
+			PromptTokens:     result.PromptTokens,
+			CompletionTokens: result.CompletionTokens,
+			CachedTokens:     result.CachedTokens,
+			Cost:             result.Cost,
+			Model:            result.Model,
+		})
+	}
 	// The same spend with its shape kept, in its own table, beside the summed
 	// row every existing reader counts. It is written after the total and it is
 	// allowed to fail on its own: shape is evidence, and losing the evidence
@@ -1548,4 +1597,26 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 		}
 	}
 	return open, nil
+}
+
+// exhaustedClaimReason is what the journal says when a claim goes back because
+// the worker holding it ran out of room.
+//
+// It names both facts a reader needs and neither of them is machinery: how long
+// the worker was given, and how much of its work survived — because "the node
+// goes back on the queue" is only worth reading if the next claim is going to
+// pick up where this one stopped, and the turn count is the evidence that it
+// can. The headless stream prints it beside the node (see cmd/aforge's
+// narrateOne on store.EventNodeReleased).
+func exhaustedClaimReason(allowed time.Duration, recorded int) string {
+	return fmt.Sprintf("the worker did not come back within %s and was stopped — %s of its work is recorded, and the next one carries on from there",
+		allowed.Round(time.Second), pluralTurns(recorded))
+}
+
+// pluralTurns spells a turn count in a person's words.
+func pluralTurns(turns int) string {
+	if turns == 1 {
+		return "1 turn"
+	}
+	return fmt.Sprintf("%d turns", turns)
 }
