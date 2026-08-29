@@ -952,3 +952,98 @@ is fiction.
 `refused — what it asked for is already on disk under the name the request used`
 with `overturned: true` would have acquitted it, but `task-2-x1-n3` and
 `task-2-x1-n4` are cancelled and `deliveredWhole` fails on a cancelled part.
+
+## s9 — chat-v3-fix c32f9437 (tool-call bounds, requeue+resume, per-call usage banking, structural adjacency, retaken smaller readings)
+
+| task | f2p | p2p | reward | exit | $ | wall | nodes | usage rows | transcript |
+|---|---|---|---|---|---|---|---|---|---|
+| happy-dom-deterministic-intersectionobserver | 12/14 | 9/9 | 0 | 2 | 0.203 | 3665s | 4 | 293 | 540 |
+| ofetch-per-origin-circuit-breaker | 42/47 | 12/13 | 0 | 2 | 0.078 | 902s | 4 | 137 | 118 |
+| textual-richlog-follow-state | 11/20 | 6/6 | 0 | 2 | 0.292 | 2339s | 12 | 410 | 870 |
+| igel-persist-feature-schema | 6/24 | 2/2 | 0 | 2 | 0.115 | 1537s | 4 | 161 | 0 |
+| ink-grid-box-layout | 1/25 | 49/49 | 0 | 2 | 0.046 | 477s | 2 | 57 | 0 |
+
+**Every run exited 2.** No run reached a `pass: true` or an `overturned` gate, so no run took the exit-0 door
+that s5/s7 took. This is the first sweep where the exit code is honest on all five.
+
+### Per-call usage banking landed
+All five runs carry a `usage_recorded` row per model call (57–410 rows) rather than one row per node. Cost is
+now attributable to the call. happy-dom banks 293 rows for 4 nodes; textual 410 for 12.
+
+### Worker kind (nodes.subharness) — recorded on three of five
+- happy-dom: `root`(blank) `task-2`=**bare** `task-2-x1`=**bare** `task-2-x2`=**linear** `task-2-x3`=**linear**
+- ofetch: `root`(blank) `task-2`(blank) `task-2-x1`=**bare** `task-2-x2`=**linear** `task-2-x3`=**linear**
+- textual: 13 nodes, mixed — `task-2`,`-x1-n1`,`-x1-n2`,`-x2-n1..n5`=**bare**; `-x1`,`-x1-n3`,`-x1-n4`,`-x2`=**linear**
+- igel: **all five nodes blank**, transcript rows = 0
+- ink: **both nodes blank**, transcript rows = 0
+
+The correlation holds exactly: a node with a recorded worker produces transcript rows; a blank node produces
+none. igel and ink wrote 0 transcript rows across 218 model calls — nothing banked, nothing resumable.
+
+### Resumes: zero, on all five
+Every `↻` line in s9 is a **worker escalation**, not a transcript resume:
+- happy-dom `run.log:80` `↻ Restore methods — escalated linear → bare: escalated from linear after a failed attempt 31m55s`
+- ofetch `run.log:31` `↻ Fix test mock — handed to bare: escalated from linear after a failed attempt 8m5s`
+- textual `run.log:19` `↻ core-features — handed to bare …`, `run.log:118` `↻ commit-and-verify — escalated linear → bare …`
+
+No run logged `resumed from N recorded turns`. **The requeue+resume path did not fire in s9.**
+
+Verified against the coordinator's challenge: textual's two `leaf_exhausted` events sit on `task-2` (**bare**,
+bound=budget, turns=22) and `task-2-x2-n5` (**bare**, bound=budget, turns=13). Both continuations
+(`task-2-x1-n1`, `task-2-x1-n2`) opened at **turn 1** with cold repo exploration. The only link is
+`job_growth {lineage: task-2, round: 1, adding: 5, allowed: true, reason: gap}` + `subtree_spliced` — no
+resume and no overrun event. A **bare** leaf exhausted and its continuation still started from scratch.
+
+### Exhaustion meters — not yet named
+s9's `leaf_exhausted` payloads carry `bound` but no `meter`/`reached`/`allowance` (that lands in s10):
+- happy-dom: `task-2` att1 **deadline** (15m0s, 97 turns); `-x1` att1 budget/14; `-x2` att1 budget/13, att2 budget/12
+- igel: 8 exhaustions, all budget (22,24,16,14,14,11,14,14 turns) — two attempts on every one of its four nodes
+- ink: 3, all budget (17,16,13)
+- ofetch: 3, all budget (17,15,14)
+- textual: 2, both budget (22,13)
+
+**No tool-call cut fired anywhere** — 0 `cut after Ns` lines in all five run.logs.
+
+### Readings
+- happy-dom: **8 events**, all `scope: touched packages (1 file)`, `package: packages/happy-dom`,
+  `npx vitest run --reporter=json test/intersection-observer/IntersectionObserver.test.ts`, `read: true`,
+  `format: node-json`. before=4 named / after=35 named. One after-reading is **red 3** (task-2 first pass),
+  the rest green. This is the first run in the benchmark where the before/after pair actually moved
+  (4 → 35 named) and the runner parsed.
+- ofetch: **4 events**, `touched packages (3 files)`, named 50 before / 50, 50, **49** after.
+- textual: **18 events**, all `touched packages (2 files)`, named **3** every time — the reading is aimed at
+  2 of the 4 relevant test files, so the named count never moves.
+- igel, ink: **0 verification events**. Nothing was read; the gate had nothing to stand on.
+
+### Regression findings — two, both real, first in the benchmark
+1. **ofetch** `task-2-x1`: `gate: fail — This work removed checks that existed before it: debug debug request
+   object.` Confirmed by the grader: p2p **12/13** (the only p2p regression in the sweep) and by the roster
+   itself, `named: 50 → 49`.
+2. **happy-dom** `task-2` and `task-2-x1`: `This work removed checks that existed before it: IntersectionObserver
+   disconnect() Does nothing, … observe() Does nothing, … takeRecords() Returns empty array, … unobserve() Does
+   nothing.` The model deleted the four stub tests when it replaced the stub implementation. The gate caught it
+   and grew a repair round (`job_growth round 2 adding 1`), and the repair **closed** it: p2p ended **9/9**, and
+   the after-reading went from red 3 to red 0. This is the first repair round in ten sweeps that demonstrably
+   fixed what the gate cited.
+
+happy-dom's 12/14 f2p is its best result of the benchmark; it lost the reward on two hidden f2p tests only.
+
+### Unexercised — textual only, and it never closed
+textual's three gates each carry the same `unexercised` set of **2 behaviour groups** (5 RichLog behaviours +
+8 Log behaviours). Opening 2 → round 2: 2 → round 3: 2. The repair briefs did not carry them: of the 14
+`node_briefed` payloads, **13 name 0 of the 2** behaviour groups and one names 1. The set is remembered in the
+gate but is not reaching the worker that is supposed to close it.
+
+igel, ink, ofetch, happy-dom gates carry **no** `unexercised` field at all.
+
+### Where each run broke
+- **happy-dom** — model. Harness worked: it read, it caught a real regression, it repaired it, it exited 2.
+  Two hidden f2p behaviours were never implemented.
+- **ofetch** — model, with a harness assist that was ignored. The gate named the deleted check; the repair
+  round produced a report instead of a fix (`gap: The deliverable does not contain the actual implementation`),
+  and the third round was refused on `the same words were already worked on once`.
+- **textual** — harness. 12 nodes, 410 calls, $0.292 (the sweep's most expensive) for 11/20, with the
+  unexercised set open the whole way and the readings aimed at the wrong 2 files.
+- **igel / ink** — harness, hard. Zero transcript rows, zero readings, every leaf exhausted on budget twice.
+  The gate had no evidence to judge and refused on `no more work could be started on it` (igel) and
+  `what the review asked for next is not in the request` (ink).
