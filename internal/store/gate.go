@@ -76,6 +76,16 @@ type DeliveryGate struct {
 	// field. Seven of eight measured runs exited 0 over a provenance refusal
 	// while the review that named the missing work was right every time
 	// (2026-08-28, bench/deepswe; see docs/design/gate/SETTLEMENT.md §2).
+	//
+	// THE WORLD IS THE DISK, A READING, OR THE RECORD — NEVER THE DELIVERABLE'S
+	// OWN PROSE. The deliverable is the component the gate is checking, and a
+	// refusal that reads it is FAILSAFE clause 2 broken in the strict sense the
+	// clause states it. One measured run set this field because the words of the
+	// request appeared in a summary the worker had written about work it had not
+	// done, and shipped 1 of 20 hidden checks over exit 0 (2026-08-29,
+	// bench/deepswe textual s5; SETTLEMENT.md §6). The delivered text may settle
+	// a finding only where it IS the whole of what the run left behind — a
+	// question answered in prose, whose message is its own artifact.
 	Overturned bool `json:"overturned,omitempty"`
 
 	// Exercised is the acceptance mapping as the gate settled it: one row per
@@ -108,6 +118,28 @@ type DeliveryGate struct {
 type ExercisedPoint struct {
 	Point string `json:"point"`
 	Check string `json:"check,omitempty"`
+}
+
+// Whole is THE reading of what this gate settled, and it is a method because it
+// had been two readings.
+//
+// Three fields say the delivery stands: the first judgement passed; the one
+// permitted repair was re-judged and passed (PolishClosed); or the finding was
+// weighed against the world and lost (Overturned). Everything else leaves the
+// finding STANDING — a fail nothing repaired, a refusal about where a review got
+// its words, a gap nothing could fund, a promised file the disk does not hold.
+//
+// It lives here, on the event, because two readers spent this differently and
+// disagreed out loud. deliveredWhole in cmd/aforge/do.go combined all three
+// fields to decide the exit code; gateWords, in the same file, built the line a
+// person watching reads from Pass and Refused alone — so ink s5 and ofetch s5
+// printed "gate: fail — The deliverable is a listing of files, not the answer
+// itself" as the last thing anybody saw and left with exit 0
+// (2026-08-29, bench/deepswe; docs/design/gate/SETTLEMENT.md §7). A verdict a
+// person reads and a verdict an exit code carries are one fact, and one fact is
+// one reading.
+func (g DeliveryGate) Whole() bool {
+	return g.Pass || g.PolishClosed || g.Overturned
 }
 
 // Cited is the gate's citations however they were written down. A row recorded

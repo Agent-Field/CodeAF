@@ -936,9 +936,37 @@ const enumerationFloor = 3
 // the items names the substance rather than the item, and reaches it too; a
 // deliverable missing even one of the named items is judged as it always was.
 //
+// AND IT MAY ONLY SPEAK WHERE THE DELIVERED TEXT IS THE WHOLE OF WHAT THE RUN
+// LEFT BEHIND. This acquits a finding — it sets store.DeliveryGate.Overturned,
+// which is the field the exit code turns on — and an acquittal has to be
+// weighed against the world. The deliverable is not the world; it is the
+// component being checked, and a rule that reads it is FAILSAFE clause 2 broken
+// in the strict sense the clause states it. A worker that restates the request
+// back in the request's own words satisfies the containment test below by
+// writing prose about work it did not do, and one did: textual s5 was acquitted
+// on "everything it names is already in the delivered text" over a true finding
+// that an example file had never been written, and shipped 1 of 20 hidden
+// checks under exit 0 (2026-08-29, bench/deepswe; docs/design/gate/SETTLEMENT.md
+// §6).
+//
+// Where the run produced NOTHING BUT THE MESSAGE, that is not a softening of the
+// rule but the same rule: the message is the only artifact the run made, so a
+// citation settled against it is settled against everything there is. That is
+// the twelve-profiles case exactly, and it survives untouched. The moment a file
+// is in the record, the record is the world and the text is a claim about it —
+// which AdmitGapArtifact is the door for, and this one closes.
+//
 // Presence is checked case-insensitively and nowhere else is anything relaxed:
 // this is a containment test, so it can close a gap and can never open one.
-func AdmitGapPresent(citations []string, deliverable string) string {
+func AdmitGapPresent(citations []string, deliverable string, evidence Evidence) string {
+	// The record first, because it decides whether this door exists at all for
+	// this delivery. It is asked of the whole record rather than of the
+	// citation's own file names: a run that left three files behind has a world
+	// to be checked against, and prose does not get to overrule it about any of
+	// them.
+	if len(evidence.Artifacts) > 0 {
+		return ""
+	}
 	// The enumeration is read off the citations as one line. Joining is safe
 	// here and only here: an item of an enumeration cannot span the separator,
 	// because the separator is not a character an item is made of.

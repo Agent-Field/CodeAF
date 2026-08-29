@@ -436,10 +436,15 @@ that before delivering`.
 wrong.**
 
 - **It is already there.** The file the review says is missing is on disk under the name
-  you used, or the things it says are absent are in the text you are about to read. The
-  review was checked against the world and lost, and the answer is handed over as
-  finished: `a review raised this: … — I've delivered as it stands, because what it asked
-  for is already on disk under the name the request used.`
+  you used. The review was checked against the world and lost, and the answer is handed
+  over as finished: `a review raised this: … — I've delivered as it stands, because what
+  it asked for is already on disk under the name the request used.` Where a run wrote no
+  files at all — a question answered in prose — the answer itself is what it left behind,
+  and things named in the text you are about to read count the same way. **Where the run
+  did leave files behind, what the answer SAYS about them is never evidence:** a summary
+  claiming work was done is the thing being checked, not the world it is checked against,
+  and a run once shipped "all three files are implemented and committed" over a file that
+  had never been written.
 - **The review asked for something you never asked for.** Nothing is redone, because a
   round bought against a standard aforge set for itself cannot converge on anything. You
   are told, in the delivery: `— I've delivered as it stands, because what the review asked
@@ -452,16 +457,34 @@ wrong.**
 
 **Only the first of those is a finished run.** The other two hand over something the run
 itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
-exit **2**, not 0. That is the whole difference: a refusal that was checked against the
-filesystem or against the delivered text overturns the finding, and a refusal about where
-the review got its words does not, because no ruling about a quotation makes missing work
-appear.
+**exit 2: the run handed over less than it promised, and the finding it is short of is
+named on the last line.** That is the whole difference: a refusal that was checked against
+the world overturns the finding, and a refusal about where the review got its words does
+not, because no ruling about a quotation makes missing work appear.
 
 Watching a headless run, the line names the finding first and the reason second:
 
 ```
 gate: refused — The deliverable does not contain the code that writes feature_schema.joblib — what the review asked for next is not in the request
 ```
+
+## The last line of a headless run — `partial`, and why the run says it is short
+
+An exit code is what a script reads and it is the one thing you cannot see in a terminal.
+So a run that ends short says it out loud, once, last, under the ✓ rows:
+
+```
+partial — gate: The deliverable does not contain the code that writes feature_schema.joblib (not repaired: the same words were already worked on once)
+```
+
+The finding comes first because the finding is the news; the reason is why nothing further
+ran — a refusal in the review's own words, or `nothing further was started`. A run that
+prints no such line finished whole, and `aforge do` left with 0.
+
+A gap that a repair round closed is **not** short. You see `gate: pass — <what the first
+reading said was missing> — closed by the repair`: the work was redone and re-read, checks
+that were passing before were checked again, and the exit code is 0. Only a finding that
+was still standing when the run stopped makes it partial.
 
 ## When the review itself could not be read — unchecked, and said so
 
