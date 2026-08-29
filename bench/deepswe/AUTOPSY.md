@@ -1145,3 +1145,80 @@ ERROR tests/test_igel/test_feature_schema_persistence.py::test_fit_persists_feat
 **Layer: MODEL deleted the attribute; HARNESS has no mechanism that could have caught it.** The gap is a
 symbol-level regression photograph — public attributes/methods present at base and absent at delivery — to sit
 alongside the check-level one. Nothing in the check roster can see a deletion that no check covers.
+
+## Why ink s10 and happy-dom s10 burned the whole wall with zero gates
+
+Both ran 5401s to the wall with `settled: false`. A gate is only cut at settlement, so a run the wall kills
+mid-round produces **no gate at all** — the 0 gate events are a consequence of never settling, not of a gate
+that passed something through.
+
+The question was whether the re-driving was exhaustion→resume of one lineage (which the growth governor does
+not count as a fruitless round) or real splits. **The two runs answer differently.**
+
+### ink s10 — every round was an overrun, and the fixed-point detector never got a chance
+All **5** `job_growth` events are `reason: overrun`. Not one `gap`, not one `revision`.
+
+| # | node | growth | round | allowed | remainder | produced |
+|---|---|---|---|---|---|---|
+| 1 | task-2 | overrun | 1 | true | `9c6637ca` | 15 |
+| 2 | task-2-x1 | overrun | 2 | true | `d0ef521a` | 5 |
+| 3 | task-2-x2 | overrun | 3 | true | `f804b0fb` | 9 |
+| 4 | task-2-x3 | overrun | 4 | **false** | `18a30ad8` | 4 |
+| 5 | task-2-x3 | overrun | 4 | **false** | `64ae4b6d` | 4 |
+
+Interleaved with the meters:
+`task-2` deadline 888/900 t85 → resume `task-2-x1` (85 turns banked) → `task-2-x1` cost 162084/157718 t21 →
+`task-2-x1` deadline 872/900 t105 → resume `task-2-x2` (105 turns) → `task-2-x2` cost 238417/186818 t29 →
+`task-2-x2` cost 189394/186818 t27 → resume `task-2-x3` (27 turns) → `task-2-x3-n1` deadline 880/900 t108 →
+`task-2-x3-n2` cost 185833/180692 t30 → `task-2-x3-n2` cost 182703/180692 t22.
+
+**Eight exhaustions, three resumes, one continuous lineage, and the standstill detector never fired.** It could
+not: the remainder hash changed on every single round (`9c6637ca` → `d0ef521a` → `f804b0fb` → `18a30ad8` →
+`64ae4b6d`), so the fixed-point test saw motion each time and the governor kept allowing. What finally stopped
+it was the **round cap**, not standstill: `cause: rounds — this work has split as many times as splitting helps`,
+and by then the wall was gone.
+
+The remainder kept moving because the model kept writing *new scratch files* — the resume payloads name
+`debug-grid.ts, debug-grid10.ts, debug-grid11.ts, debug-grid2.ts, debug-grid3.tsx, debug-yoga.ts, debug-yoga2.ts,
+debug-test2.tsx, debug-test3.tsx, debug-grid-pos.tsx …`. Every debug file is a change, so every round looked
+productive to a detector that asks "did anything change" rather than "did anything *relevant* change".
+
+**Route: the governor counts overrun rounds as free.** Eight exhaustions of one lineage cost the whole wall and
+never consumed a fruitless round. An overrun round that resumes the same lineage needs to be counted against
+something — a per-lineage overrun budget, or a remainder computed over files the task named rather than over
+every path touched.
+
+### happy-dom s10 — standstill DID fire, and a sibling lineage carried on regardless
+Growth reasons here are mixed: **3 overrun, 3 revision**.
+
+`task-2` deadline 854/900 t78 → `overrun` round 1 (adding 7, remainder `af471162`, produced 76) → resume
+`task-2-x1` (78 turns) → `task-2-x1-n1` deadline 897/900 t49 → `revision` round 1 (adding 7) → `overrun`
+round 2 (adding 3, `7211f8bb`) → resume `task-2-x2` (49 turns) → `task-2-x2-n1` deadline 896/900 t30 →
+`revision` round 1 (adding 3) → **`task-2-x1` overrun round 3 REFUSED, `cause: standstill`** —
+
+> carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands
+
+— and then `task-2-x2` `revision` round 2 (adding 2) **continues anyway**, because the standstill refusal bound
+only the `task-2-x1` lineage. The run kept going on a sibling until the wall.
+
+**Route: the standstill refusal is per-lineage, but the wall is global.** One lineage being declared a fixed
+point says nothing to its sibling, so a run can be refused for standstill and still spend 40 more minutes.
+
+Two other things wrecked this run, both worth separating from the governor:
+- **The environment was destroyed by the run itself.** `node_cancelled task-2-x2-n2: revision: Node 1 (clean
+  install) did not actually produce a working node_modules with vitest — it only produced a note about trying a
+  different approach. The verification step cannot succeed`. That is why every reading is `named=0` and five are
+  `read=False`: there was no test runner left to read. The model then edited compiled output
+  (`lib/PropertySymbol.d.ts`, `.d.ts.map`, `.js`), which is where the 335 MB patch came from.
+- **One transport failure**, not a model refusal: `node_failed task-2-x2-n4: execute request: Post
+  "https://openrouter.ai/api/v1/chat/completions": context deadline exceeded`.
+
+### ink s11 (5de2f073) repeats the shape, partly
+Wall again (5401s), `settled: false` again, 10/25 f2p, 49/49 p2p, exit 2, $0.459, 12 nodes, 387 usage rows.
+What changed: growth is no longer all-overrun (`gap` 1, `overrun` 2, `revision` 1), and **1 gate was cut**
+before the wall (`task-2`, `pass: false`, ue=6) where s10 cut none. Resumes dropped 3 → 1. Meters:
+`task-2-x1-n1` deadline 870/900 t80, `task-2-x2` cost 162966/157716 t21, `task-2-x1-n2` deadline 850/900 t58.
+
+**The reading blindness on ink is unchanged and is now the standing defect on this task**: every single
+`on the finished tree` reading in both s10 and s11 is `named=0 red=0 read=False`, against a baseline that reads
+fine (`named=44`, later `named=156 red=2`). ink's after-photograph has never once parsed in either sweep.
