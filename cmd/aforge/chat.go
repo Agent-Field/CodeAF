@@ -2594,7 +2594,18 @@ func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
 		record.Bound = string(bound)
 		record.Turns = outcome.Turns
 		record.Allowed = exhaustionAllowance(bound, deadline)
+		// THE BOUND THAT FIRED NAMES ITSELF. Three ceilings shared the
+		// StopReason "budget", so the record could not say which had landed the
+		// leaf and the sentence below quoted a grant the leaf had not reached.
+		// The executor knows; this is where it is written down.
+		if meter := outcome.Meter; meter.Named() {
+			record.Meter, record.Reached = meter.Name, meter.Reached
+			record.Allowance, record.Unit = meter.Allowed, meter.Unit
+		}
 		record.Reason = exhaustionWords(bound, record.Allowed, outcome.Turns)
+		if words := outcome.Meter.Words(); words != "" {
+			record.Reason += " (" + words + ")"
+		}
 	default:
 		return
 	}

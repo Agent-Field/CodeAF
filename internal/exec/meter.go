@@ -91,8 +91,44 @@ func (o *Outcome) contextPressure() int {
 	return total
 }
 
-// reuseCeiling is the leaf's third bound, and the first one written against the
-// model rather than against the money.
+// reuseCeiling WAS the leaf's third bound and is now pressure on the wrap-up
+// warning, because it could not tell the case it was built for from the case it
+// was killing.
+//
+// THE MEASUREMENT THAT RETIRED IT, from ink s9 of 2026-08-29 (three leaves, one
+// store). Every one of the three was landed here and not by its grant, at
+// exactly this ceiling plus the four landing turns:
+//
+//	task-2 attempt 1   crossed 240,000 sent at turn 13, landed at 17
+//	task-2 attempt 2   crossed 240,000 sent at turn 12, landed at 16
+//	task-2-x1          crossed 240,000 sent at turn  9, landed at 13
+//
+// The first of those had spent 104,064 of its 150,000-token grant and 372,941
+// of its 450,000 raw ceiling — it was cut at turn 13 of a 200-turn grant having
+// used 69% of the money. And the journal said "it was still working when it ran
+// out of its tokens", naming 150,000, a number no attempt came near.
+//
+// Two structural reasons, either of which is fatal on its own:
+//
+//   - IT IS TURNS × MEAN-CONTEXT WEARING A TOKEN NAME. A transcript that only
+//     grows re-sends its whole prefix every turn, so Σ sent ≈ N²·s/2 for ANY
+//     loop. The duplication factor it implies is ≈ N/2 whatever the leaf is
+//     doing: ink s9 stopped at 8.9× and the audited runaway this bound was
+//     built for ran 11.2×. No detector lives in a separation of 1.26×.
+//   - IT IS STATED AGAINST THE WINDOW AND CONSUMED AGAINST THE TRANSCRIPT, so
+//     it rewards carrying MORE. A leaf holding 30k of a 96k fill is landed at a
+//     third of the turns a leaf holding 96k gets, for the same work.
+//
+// The runaway it was written for — a warm loop re-reading files it has already
+// read — is the no-progress guard's case, and noprogress.go opens by saying in
+// terms that a magnitude bound cannot separate "many turns because the work is
+// hard" from "many turns because it is stuck", and that a signal which can was
+// what was missing. That signal exists now. This one is kept as evidence and as
+// pressure on the wrap-up warning (budgetUsed), where firing early costs a
+// sentence instead of a leaf's work.
+//
+// What follows is the reasoning it was introduced with, kept because the
+// quantity it names is real even though bounding it was not the answer.
 //
 // The other two are both grants. spent() bounds what a leaf COSTS and weights
 // cache reads at a tenth, which is honest about the bill and blind to runaway;
