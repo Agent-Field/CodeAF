@@ -247,6 +247,14 @@ func pathStem(path string) string {
 type Shortfall struct {
 	Unexercised int
 	Red         int
+	// Lost is how many public names the newest symbol-level reading says the
+	// finished tree no longer spells. It is the check roster's sibling and it
+	// belongs here for the same reason: a round that put back eight deleted
+	// public attributes moved the work whatever the check-level row said, and
+	// on igel s11 the check-level row said the tree had got BETTER on the run
+	// that deleted them. store.SurfaceReading is the reading; nothing here
+	// re-derives it.
+	Lost int
 	// Standing is the review finding that is still open, as a digest. Empty is
 	// a job with nothing standing against it.
 	Standing string
@@ -259,11 +267,33 @@ func ReadShortfall(graph *store.Store, lineage string) Shortfall {
 	shortfall := Shortfall{
 		Unexercised: len(findings.Unexercised),
 		Red:         len(findings.Failing),
+		Lost:        lostPublicNames(graph, lineage),
 	}
 	if findings.Unclosed || strings.TrimSpace(findings.Gap) != "" {
 		shortfall.Standing = RemainderDigest(findings.Gap)
 	}
 	return shortfall
+}
+
+// lostPublicNames is the newest symbol-level reading in a lineage, as a count.
+//
+// The newest and not the union, exactly as failingChecks reads the check
+// roster: a name that was missing three rounds ago and is back is history, not
+// a finding, and handing it to a rule as outstanding is how a round gets spent
+// on something already done.
+func lostPublicNames(graph *store.Store, lineage string) int {
+	nodes, err := graph.LineageNodes(lineage)
+	if err != nil {
+		return 0
+	}
+	for index := len(nodes) - 1; index >= 0; index-- {
+		readings, err := graph.SurfacesFor(nodes[index].ID)
+		if err != nil || len(readings) == 0 {
+			continue
+		}
+		return readings[len(readings)-1].Lost
+	}
+	return 0
 }
 
 // closerThan reports that this shortfall is smaller than the one before it.
@@ -272,6 +302,8 @@ func (s Shortfall) closerThan(previous Shortfall) bool {
 	case previous.Unexercised > 0 && s.Unexercised < previous.Unexercised:
 		return true
 	case previous.Red > 0 && s.Red < previous.Red:
+		return true
+	case previous.Lost > 0 && s.Lost < previous.Lost:
 		return true
 	case previous.Standing != "" && s.Standing == "":
 		return true

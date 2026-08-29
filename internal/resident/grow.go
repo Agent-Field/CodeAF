@@ -659,7 +659,8 @@ func (r GrowRequest) row(reason, lineage string, round int, allowed bool, cause,
 	}
 	row.Moved, row.Wrote = namedFew(r.relevant), namedFew(r.scratch)
 	if r.shortfall != nil {
-		row.Unexercised, row.Red, row.Standing = r.shortfall.Unexercised, r.shortfall.Red, r.shortfall.Standing
+		row.Unexercised, row.Red = r.shortfall.Unexercised, r.shortfall.Red
+		row.Lost, row.Standing = r.shortfall.Lost, r.shortfall.Standing
 	}
 	return row
 }
@@ -820,7 +821,7 @@ func fruitless(rounds []store.JobGrowthRound, before int, row store.JobGrowth) b
 	if !row.Measured || row.Produced > 0 {
 		return false
 	}
-	now := Shortfall{Unexercised: row.Unexercised, Red: row.Red, Standing: row.Standing}
+	now := Shortfall{Unexercised: row.Unexercised, Red: row.Red, Lost: row.Lost, Standing: row.Standing}
 	for i := before - 1; i >= 0; i-- {
 		// The shortfall is compared within the LINEAGE that recorded it: two
 		// lineages read two records, and a count that fell between them is an
@@ -828,7 +829,8 @@ func fruitless(rounds []store.JobGrowthRound, before int, row store.JobGrowth) b
 		if !rounds[i].Allowed || rounds[i].Lineage != row.Lineage {
 			continue
 		}
-		previous := Shortfall{Unexercised: rounds[i].Unexercised, Red: rounds[i].Red, Standing: rounds[i].Standing}
+		previous := Shortfall{Unexercised: rounds[i].Unexercised, Red: rounds[i].Red,
+			Lost: rounds[i].Lost, Standing: rounds[i].Standing}
 		return !now.closerThan(previous)
 	}
 	return true

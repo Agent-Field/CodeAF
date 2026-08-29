@@ -98,9 +98,12 @@ type JobGrowth struct {
 	// after the one that finally started working. Each is compared against the
 	// row before it and only ever for a FALL — a shortfall reworded is not a
 	// shortfall closed, which is the same distinction Remainder draws below.
-	Unexercised int    `json:"unexercised,omitempty"`
-	Red         int    `json:"red,omitempty"`
-	Standing    string `json:"standing,omitempty"`
+	Unexercised int `json:"unexercised,omitempty"`
+	Red         int `json:"red,omitempty"`
+	// Lost is the symbol-level half of the same shortfall: public names the
+	// finished tree no longer spells. See SurfaceReading.
+	Lost     int    `json:"lost,omitempty"`
+	Standing string `json:"standing,omitempty"`
 
 	// Measured says somebody actually looked, so a Produced of zero reads as
 	// "nothing was written" rather than as "nobody counted". A row written
