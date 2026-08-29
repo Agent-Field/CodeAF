@@ -1499,3 +1499,60 @@ And no forcing of a job that has already been judged, and none on a job whose
 pace nothing has measured. With nothing measured there is no honest moment to
 choose, and stopping work early on a guess is the failure the whole mechanism
 exists to avoid.
+
+
+## A twenty-third failure, 2026-08-29: a claim about the plan, overruling a measurement of the world
+
+*ink `grid-box-layout` and igel `persist-feature-schema`, v4-flash s14 and s13,
+`bench/deepswe/results/`, 2026-08-29.*
+
+ink s14's growth journal reads: `overrun 1 allowed`, then **`revision 1 refused
+goal-already-covered`**, **`overrun 2 refused goal-already-covered`**, **`gap 2
+refused goal-already-covered`**. Meanwhile its own readings were running 172
+checks with 18 red, and the one gate it ever cut held six behaviours of the
+request that nothing exercised — "the display style property accepts `grid`",
+"gridTemplateColumns accepts a space-separated string of track sizes…". 11 of 25
+hidden checks. igel s13 refused two revision rounds the same way while the
+surface photograph reported eight deleted public names, on five consecutive
+readings.
+
+**Coverage is a claim about the PLAN. A finding is evidence from the WORLD.**
+The satisfaction question asks a model whether the acceptance points of a plan
+are mapped onto work that has landed or is running. That can be perfectly true
+of a job whose checks are red, whose stated behaviours nothing exercises, whose
+public names the change deleted, and whose callers a reshaped definition left
+behind — because not one of those is a point on the plan. So the two never
+disagreed about anything; they were answering different questions, and the wrong
+one was binding.
+
+The exemption that existed reached for exactly this and was three dimensions too
+narrow: it covered the FIRST GAP round bought by a FILE-CITED finding. An overrun
+round, a revision round, and every round after the first were still refused.
+
+> **A COVERAGE REFUSAL IS IMPOSSIBLE WHILE ANY OPEN FINDING STANDS ON THE JOB**,
+> whatever the round and whatever asked for it: red checks in the latest reading,
+> behaviours nothing exercises or nothing asserts, public names the surface
+> reading says are gone, callers a changed definition left behind, or an
+> unclosed mechanical gap. Where nothing stands, coverage may refuse — that is
+> the question it was built for. The caps are unchanged and remain the only
+> other limiters: rounds, standstill, the finding's own fixed point, the wall.
+
+And it is read AT THE JOB. igel s13's refusal was weighed under `task-2-x1`,
+whose id namespace does not contain `task-2-x1-n1` — which is where the eight
+lost names had been journaled ninety seconds earlier. A repair round is a
+different lineage from the work it repairs; the job has one world.
+
+The question is still PUT, and its answer is still journaled, as
+`store.JobGrowth.CoveredDespite`: a model saying "nothing is left" over a tree
+with eighteen red checks in it is the measurement the row exists to record, and
+a run that skipped the question would have nothing to show for it but a round
+that quietly happened.
+
+### What is deliberately not here
+
+No weakening of coverage where it is right. A job with a clean latest reading, no
+standing gate finding and no lost names is exactly the job this question was
+built to stop, and it still stops it. And no new evidence: every kind read here
+is a structure some other mechanism already journals — `DeliveryGate`,
+`VerificationReading`, `SurfaceReading` — assembled through the account of the
+record every brief is already composed from.

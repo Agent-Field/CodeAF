@@ -111,6 +111,22 @@ type JobGrowth struct {
 	// it: nothing counted anything.
 	Measured bool `json:"measured,omitempty"`
 
+	// CoveredDespite names the standing evidence that stopped the coverage
+	// question from refusing this round: the kinds the WORLD still says are
+	// wrong with the job, when the plan-level reading said everything it is
+	// judged on was already covered.
+	//
+	// It is journaled because the two readings DISAGREED and the disagreement is
+	// the measurement. Coverage is a claim about the plan — acceptance points
+	// mapped onto work that has landed — and it can be perfectly true of a job
+	// whose checks are red and whose stated behaviours nothing exercises,
+	// because none of those is a point on the plan. A row carrying this is a row
+	// where a model said "nothing left" over a tree that was demonstrably not
+	// finished, and an autopsy asking how often that happens has nothing else to
+	// read. Empty is every round where the two agreed or the question was never
+	// put.
+	CoveredDespite []string `json:"covered_despite,omitempty"`
+
 	// Finding is the REVIEW FINDING this round was bought for: what kind of
 	// finding it is and which names it cites, as the structured record holds
 	// them rather than as the review's paragraph spells them.
