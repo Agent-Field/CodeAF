@@ -119,3 +119,100 @@ that meant four things at once.
 `verify.Reading.Unread` carries the sentence, `store.EventVerification` carries
 the row with `read: false`, and the reason is remembered against the job so the
 next round does not spend the wall discovering it again.
+
+---
+
+## A seventh failure, 2026-08-29: the lease that expired on a clock
+
+*Added against `bench/deepswe/results/ink-grid-box-layout-…-s6/` and
+`happy-dom-…-s6/`, the two runs that spent their whole ninety-minute wall.*
+
+ink s6 spent **$0.850 and 38.76M prompt tokens** and scored 22 of 25. Its node
+`task-2` started five times. The releases are a metronome:
+
+```
+07:08:03 node_started  task-2 token=1
+07:30:13 node_released task-2 token=1 → re-claimed token=3, same second
+07:52:23 node_released task-2 token=3 → re-claimed token=5, same second
+08:14:34 node_released task-2 token=5 → re-claimed token=7, same second
+08:36:40 node_released task-2 token=7 → re-claimed token=9, same second
+```
+
+**22m10s, 22m10s, 22m11s, 22m06s.** No `✗` line, no fault, no hung call: the
+leaf had flushed a batch of its own recorded turns thirty seconds before each
+one. It is not a turn or token ceiling either — attempt 1 reached turn 72 and
+attempt 2 reached turn 138 inside the same 22m10s, with `leaf_mode
+{"turns":200,"tokens":150000}` re-emitted unchanged. happy-dom s6 restarted on
+the same cadence (22m11s, 21m59s).
+
+### The arithmetic
+
+Three numbers, none of them wrong on its own:
+
+| | |
+| --- | --- |
+| `exec.SubharnessInfo.Deadline(150_000)` → the linear floor | **15m** |
+| `cmd/aforge/chat.go`'s `watchdog := deadline + 2*time.Minute` | **17m** |
+| `resident.claimReaperPad`, added by `Runner.RaiseStaleAge(watchdog)` | **+5m** |
+| `store.ReleaseSilent`'s window, swept every 500ms | **= 22m** |
+
+Plus up to `runnerQuietCeiling` of dispatch-loop latency: **22m10s**.
+
+### Two defects, one clause each
+
+**Clause 2, source evidence from the world.** The window was measured from
+`nodes.started_at`, which is stamped once, when the claim is granted. So the
+question the reaper actually asked was "how long has this worker been ALIVE" —
+and one claim legitimately carries the executor's own deadline *and* the retry a
+spent deadline earns, which is twice this window. The CAS inside `Release` was
+believed to protect a live worker ("the token has moved and the release fails");
+it does not, because a leaf does not touch its own token between turns. So the
+node was re-claimed inside the same second while its first worker went on
+writing to the same workspace.
+
+> **A CLAIM IS HELD BY EVIDENCE OF LIFE, NOT BY A CLOCK.** A worker leaves
+> durable marks as it works — a billed model call, a recorded turn — and the
+> newest of those, floored at the claim's own start, is when the node was last
+> known to be worked. The window bounds SILENCE. A leaf that keeps calling keeps
+> its claim for as long as it keeps calling; a claim silent through the window is
+> held by nobody, and the release says so in the journal.
+
+**Clause 4, leave a record.** Four different endings arrived as the same silence:
+a worker that hung, a worker whose deadline legitimately expired, a claim the
+reaper took back, and a leaf handed its predecessor's work that started over
+anyway. Exhaustion is not a restart — it is the growth governor's own input —
+and it is now journaled with what ran out and how far it got
+(`store.EventLeafExhausted`), the reaper's release carries its reason, and a
+claim that picked up recorded work says how much (`store.EventLeafResumed`). All
+three reach the headless stream.
+
+### And the restart did not resume
+
+`resident.BankedTranscript` had shipped the day before and the seed still went
+out cold. Two reasons, both structural:
+
+- **The seed was read across every attempt in the record at once.** A node's
+  transcript is every attempt ever made under it, appended, and each attempt
+  numbers its turns from one. "Every entry whose turn is above the last turn
+  minus twelve" is therefore a window on nothing: on the third claim it composed
+  turns 79–90 of one attempt interleaved with turns 34–45 of another. A run is
+  now found by structure — the turn counter only rises inside one attempt, so
+  where it goes backwards a new attempt began.
+- **Twelve turns of 138 is a file dump, not a memory.** The attempt created
+  `src/grid-layout.ts` on turn 25 and was interrupted on turn 45; the twelve-turn
+  window could not see it. The seed now carries an **outline of every turn of the
+  run** — what it said and what it ran, one line each — ahead of the verbatim
+  tail, and the file list is the workspace's own before-and-after reading rather
+  than the directory listing, which on a shared workspace is somebody else's
+  repository.
+
+### What the decomposed leaves cost
+
+Recorded, not acted on. happy-dom s6's `task-2` decomposed into eight leaves
+after its own restarts. **None of the eight ever restarted, and together they
+cost $0.108** — an eighth of what one attempt at the monolithic leaf cost
+($0.224 for 10.66M prompt tokens). Every one of them fit inside a single
+deadline, so none of them met the reaper at all. Whether that is decomposition
+paying for itself or simply small leaves being small is not settled here; it is
+written down because the two runs that hit the wall are the two that never
+decomposed early.
