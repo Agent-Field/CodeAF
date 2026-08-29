@@ -478,6 +478,15 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		subharness: request.subharness,
 		consent:    consent, newClient: request.newClient,
 		produced: produced,
+		// THE WALL THE WATCHER IS WATCHING IS THE WALL THE WORK RUNS UNDER.
+		// Until this line the errand's timeout reached the settlement watcher
+		// and nothing else, so the machinery that decides whether to buy
+		// another round of work was running under context.Background() and
+		// every "is there time left" rule in the program answered yes forever.
+		// Two 5400-second runs ended at the wall mid-round with no gate cut
+		// and settled: false, which is not a slow run — it is a run that was
+		// never told when it had to be finished. See chatBrain.wall.
+		wall: request.timeout,
 	})
 	if err != nil {
 		release()
@@ -732,6 +741,12 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
 				outcome.Deliverable = wallWords(outcome.Artifacts)
 			}
+			// AND THE WALL SAYS WHAT THE GOVERNOR KNEW. A run that reaches its
+			// deadline having already been told it stopped making progress must
+			// not report the clock as the reason: the clock is what it ran into
+			// afterwards. Said here as well as on the settled path because a
+			// run killed mid-round never reaches compose at all.
+			w.sayWallStanding()
 			return outcome, nil
 		case <-ticker.C:
 			moved, err := w.moved()
@@ -1879,6 +1894,18 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 	if w.saidStanding || w.progress == nil {
 		return
 	}
+	// THE GOVERNOR SPEAKS FIRST WHEN IT SPOKE AT ALL. A run the growth
+	// governor stopped is a run that discovered it had stopped working, and
+	// that is a more particular fact than any gate verdict standing beside it:
+	// the gate says what is missing, this says why nothing more was bought to
+	// get it. Two 5400-second runs ended with a standstill refusal sitting in
+	// the journal, on a node nobody opens, and a last line that said nothing
+	// about it (FAILSAFE clause 3).
+	if finding, standing := resident.GovernorStanding(w.graph, node.ID); standing {
+		w.saidStanding = true
+		w.note(partialWords(finding, ""), "")
+		return
+	}
 	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
 	if err != nil || !ok {
 		return
@@ -1889,6 +1916,33 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 	}
 	w.saidStanding = true
 	w.note(partialWords(finding, reason), "")
+}
+
+// sayWallStanding is the closing line for a run the clock ended: what a
+// governor had already found, if one had found anything, over every job this
+// errand owns.
+//
+// It walks the roots rather than being handed one because there is no
+// deliverable at a wall — the run was killed mid-round, so nothing composed a
+// final node — and the fact worth saying belongs to whichever job stopped
+// moving.
+func (w *settlementWatch) sayWallStanding() {
+	if w.saidStanding || w.progress == nil {
+		return
+	}
+	nodes, err := w.sessionNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		w.sayStanding(node)
+		if w.saidStanding {
+			return
+		}
+	}
 }
 
 // artifactsNamed bounds how many paths a grounded closing line spells out. The
