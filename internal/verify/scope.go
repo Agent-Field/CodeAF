@@ -255,6 +255,46 @@ func NamedSubjects(text string) []string {
 	return named
 }
 
+// OwnChecks is every check file in a record of what a run left behind, as
+// workspace-relative paths in stable order.
+//
+// It is the world's own answer to "which of these are checks" — the record is
+// the artifact registry settled against the filesystem, so a file is here
+// because the tree gained or changed it, whatever wrote it — and a path is a
+// check by the runner's own naming convention and by nothing else. It is
+// deliberately not the worker's account of what it tested: that is a claim about
+// checks the same worker wrote, which is the thing the whole gate exists not to
+// weigh.
+func OwnChecks(root string, record []string) Focus {
+	own := make(Focus, 0, len(record))
+	for _, entry := range record {
+		clean := strings.TrimSpace(entry)
+		if clean == "" {
+			continue
+		}
+		if filepath.IsAbs(clean) {
+			relative, err := filepath.Rel(root, clean)
+			if err != nil || strings.HasPrefix(relative, "..") {
+				continue
+			}
+			clean = relative
+		}
+		clean = filepath.ToSlash(filepath.Clean(clean))
+		if clean == "." || strings.HasPrefix(clean, "..") || !testFileName(lastSegment(clean)) {
+			continue
+		}
+		// STILL THERE. A record settled against the world should hold nothing
+		// else, but a scoped command is a list of paths and a runner handed one
+		// that has since been moved or deleted fails to collect ANYTHING — which
+		// would turn a widening meant to see more checks into a reading of none.
+		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(clean))); err != nil || info.IsDir() {
+			continue
+		}
+		own = append(own, clean)
+	}
+	return Focus(sortedUnique(own))
+}
+
 // ScopeWhole is what a reading of everything the entrypoint covers calls itself.
 // It is a word rather than an empty string because a scope that says nothing is
 // indistinguishable from a reading taken before scopes existed, and those are
@@ -370,7 +410,7 @@ func Adjacent(root string, focus Focus) (paths []string, core int, ok bool) {
 	if touched.empty() {
 		return nil, 0, false
 	}
-	var named, importing []string
+	var own, named, importing []string
 	visited, budget, suite := 0, scopeReadBudget, 0
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -395,6 +435,15 @@ func Adjacent(root string, focus Focus) (paths []string, core int, ok bool) {
 		}
 		slashed := filepath.ToSlash(relative)
 		switch {
+		case touched.checks[slashed]:
+			// A CHECK THE JOB ITSELF NAMED IS ALWAYS IN SCOPE, and it leads the
+			// selection rather than joining the rank beside it. The focus carries
+			// the record of what the run left behind, and a test file in that
+			// record is a check this job WROTE — the one thing a scope decided
+			// before the work could never have known about, and the one thing
+			// the coverage mapping most needs to see. Everything below may be
+			// cut back by the eighth rule or by a measured pace; this may not.
+			own = append(own, slashed)
 		case touched.namesAfter(entry.Name()) || touched.dirs[pathDir(slashed)]:
 			named = append(named, slashed)
 		default:
@@ -412,7 +461,8 @@ func Adjacent(root string, focus Focus) (paths []string, core int, ok bool) {
 		}
 		return nil
 	})
-	first := sortedUnique(named)
+	mine := sortedUnique(own)
+	first := dedupe(append(mine, sortedUnique(named)...))
 	selection := dedupe(append(first, sortedUnique(importing)...))
 	if len(selection) == 0 {
 		return nil, 0, false
@@ -441,13 +491,19 @@ func Adjacent(root string, focus Focus) (paths []string, core int, ok bool) {
 	// be worth having: one no larger than the most a scope may name at all is
 	// one where the whole rung directly below costs about the same, and
 	// trimming there buys nothing and loses roster.
+	//
+	// The floor under every cut is the run's OWN checks. They are not a sample
+	// of the suite — they are the work, and a reading that dropped them is the
+	// igel s8 reading that could not see forty of its own new checks.
 	if share := suite / WallShare; suite > scopeSelectionLimit && len(selection) > share {
+		keep := len(selection)
 		switch {
-		case core > 0 && core < len(selection):
-			selection = selection[:core]
-		case share > 0 && share < len(selection):
-			selection = selection[:share]
+		case core > 0 && core < keep:
+			keep = core
+		case share > 0 && share < keep:
+			keep = share
 		}
+		selection = selection[:max(keep, min(len(mine), len(selection)))]
 		core = min(core, len(selection))
 	}
 	return selection, core, true
@@ -474,10 +530,16 @@ type change struct {
 	// files are the touched paths themselves, so a relative JavaScript
 	// specifier can be resolved against them.
 	files map[string]bool
+	// checks are the touched paths that are THEMSELVES check files. They are
+	// held apart because they are not adjacent to the change — they ARE it, and
+	// a scope that left the run's own new tests out has nothing to map a
+	// checklist against.
+	checks map[string]bool
 }
 
 func (c change) empty() bool {
-	return len(c.dirs) == 0 && len(c.stems) == 0 && len(c.identifiers) == 0
+	return len(c.dirs) == 0 && len(c.stems) == 0 && len(c.identifiers) == 0 &&
+		len(c.checks) == 0
 }
 
 // namesAfter says this test file is the one written for a touched file, under
@@ -630,6 +692,7 @@ func focusShape(root string, focus Focus) change {
 	shape := change{
 		dirs: map[string]bool{}, stems: map[string]bool{},
 		identifiers: map[string]bool{}, files: map[string]bool{},
+		checks: map[string]bool{},
 	}
 	for _, entry := range focus {
 		clean := strings.TrimSpace(entry)
@@ -648,6 +711,9 @@ func focusShape(root string, focus Focus) change {
 			continue
 		}
 		dir, base := pathDir(clean), lastSegment(clean)
+		if testFileName(base) {
+			shape.checks[clean] = true
+		}
 		shape.dirs[dir] = true
 		stem := base
 		if index := strings.IndexByte(base, '.'); index > 0 {

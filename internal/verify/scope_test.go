@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -398,5 +399,164 @@ func TestACutReadingKeepsTheChecksItNamed(t *testing.T) {
 		Reported: []string{"opens after five failures"}}, true
 	if got := pair.Vanished(); len(got) != 0 {
 		t.Errorf("a partial roster was subtracted: %#v", got)
+	}
+}
+
+// igelShape is the tree the s8 run stood in: one library package, one test file
+// beside it under tests/, and a Makefile whose test target runs the whole of
+// tests/ through pytest. The new file is what the run itself wrote.
+func igelShape(t *testing.T, withTheRunsOwnTest bool) string {
+	t.Helper()
+	tree := map[string]string{
+		"Makefile":                       "test:\n\tpython3 -m pytest -rA tests/\n",
+		"setup.py":                       "from setuptools import setup\nsetup(name=\"igel\")\n",
+		"igel/__init__.py":               "from igel.igel import Igel\n",
+		"igel/igel.py":                   "class Igel:\n    results_path = None\n",
+		"tests/test_igel/test_igel.py":   "from igel import Igel\ndef test_fit():\n    assert True\n",
+		"tests/test_utils/test_utils.py": "def test_elsewhere():\n    assert True\n",
+		"tests/test_cli/test_cli.py":     "def test_cli():\n    assert True\n",
+	}
+	if withTheRunsOwnTest {
+		tree["tests/test_igel/test_feature_schema.py"] =
+			"from igel import Igel\ndef test_schema_is_persisted():\n    assert True\n"
+	}
+	return project(t, tree)
+}
+
+// THE RUN'S OWN CHECKS ARE ALWAYS IN SCOPE. igel's s8 run scoped every reading
+// of every round to `touched (1 file)` — the one source file the request named —
+// and each reading named the two checks that file's neighbour already held. The
+// run had meanwhile written about forty checks into a NEW file under tests/,
+// and no reading ever saw one of them: the scope was decided before the work
+// existed, so it could not contain anything the work went on to write.
+//
+// That is not a small loss. The coverage mapping is handed the ROSTER of a
+// reading, so a checklist point whose only exercise is a check this round wrote
+// stays unexercised however good the check is, the before/after cannot move, and
+// the round buys a repair for work it has already done.
+//
+// So the after reading's file set is the structural adjacency UNION every check
+// file in the record of what the run left behind — from the world's record of
+// the tree, not from the worker's account of what it tested, which is the one
+// claim this whole gate exists not to weigh.
+func TestTheRunsOwnChecksJoinTheReading(t *testing.T) {
+	before := igelShape(t, false)
+	focus := Focus{"igel/igel.py"}
+	ladder, ok := ReadingStrategies(before, Discover(before), focus)
+	if !ok {
+		t.Fatal("a project with a make test target produced no strategy at all")
+	}
+	scoped := ladder[0]
+	if scoped.Scope == ScopeWhole {
+		t.Fatalf("the reading before the work is not scoped at all: %#v", scoped)
+	}
+	if !strings.Contains(scoped.Command, "tests/test_igel/test_igel.py") {
+		t.Fatalf("the scoped reading missed the checks beside the change: %q", scoped.Command)
+	}
+
+	// And now the tree the run left behind, with its own new test file in it.
+	after := igelShape(t, true)
+	record := []string{
+		"igel/igel.py",
+		"model_results/feature_schema.joblib",
+		"tests/test_igel/test_feature_schema.py",
+	}
+	widened, added := scoped.WithOwnChecks(after, record)
+	if !added {
+		t.Fatal("the check file the run wrote did not join the reading")
+	}
+	if !strings.Contains(widened.Command, "tests/test_igel/test_feature_schema.py") {
+		t.Errorf("the after reading does not name the run's own checks: %q", widened.Command)
+	}
+	if !strings.Contains(widened.Command, "tests/test_igel/test_igel.py") {
+		t.Errorf("the after reading dropped the checks it had before: %q", widened.Command)
+	}
+	// Only checks. A joblib the run also produced is an artifact, not something
+	// to hand a test runner.
+	if strings.Contains(widened.Command, "feature_schema.joblib") {
+		t.Errorf("a produced artifact was handed to the runner as a check: %q", widened.Command)
+	}
+	if strings.Contains(widened.Command, "test_cli.py") {
+		t.Errorf("the widening reached work this job never touched: %q", widened.Command)
+	}
+	if !strings.Contains(widened.Scope, "2 files") {
+		t.Errorf("the reading does not say what it is now a reading of: %q", widened.Scope)
+	}
+
+	// THE SUBTRACTION STILL HOLDS. A wider after reading covers the narrower
+	// before one, so the two are still comparable...
+	if !widened.covers(scoped) {
+		t.Error("the widened reading no longer covers the reading it is subtracted from")
+	}
+	if scoped.covers(widened) {
+		t.Error("the narrower reading claims to cover the wider one")
+	}
+	// ...and a check that did not exist before cannot be a regression, however
+	// red it is now.
+	const (
+		old = "tests/test_igel/test_igel.py::test_fit"
+		new = "tests/test_igel/test_feature_schema.py::test_schema_is_persisted"
+	)
+	reading := Reading{
+		Taken: true, AfterTaken: true,
+		Before: Result{Strategy: scoped, Reported: []string{old}},
+		After: Result{
+			Strategy: widened,
+			Reported: []string{old, new},
+			Failing:  []string{new},
+		},
+	}
+	if broke := reading.Regressed(); len(broke) > 0 {
+		t.Errorf("a check the run wrote itself was reported as a regression: %v", broke)
+	}
+	// A check the project had, green before and red after, still is one.
+	reading.After.Failing = []string{old}
+	if broke := reading.Regressed(); len(broke) != 1 || broke[0] != old {
+		t.Errorf("a real regression stopped being one: %v", broke)
+	}
+}
+
+// And the run's own checks are what every cut is floored at. A scope is capped
+// twice — at an eighth of the suite, and at what a measured pace affords — and
+// both cuts take the tail of a selection. igel s8's new file sorted after the
+// tests the repository already had, so a selection ordered by name alone would
+// hand exactly the run's own checks to the cut. They lead the selection instead:
+// they are not a sample of the suite, they ARE the work.
+func TestTheRunsOwnChecksSurviveEveryCut(t *testing.T) {
+	tree := map[string]string{
+		"Makefile":         "test:\n\tpython3 -m pytest -rA tests/\n",
+		"setup.py":         "from setuptools import setup\nsetup(name=\"igel\")\n",
+		"igel/__init__.py": "from igel.igel import Igel\n",
+		"igel/igel.py":     "class Igel:\n    pass\n",
+		// The check the run wrote, named so that it sorts AFTER every check the
+		// repository already had.
+		"tests/test_zeta_feature_schema.py": "def test_schema():\n    assert True\n",
+	}
+	for i := range 200 {
+		tree[fmt.Sprintf("tests/test_a%03d.py", i)] = "def test_x():\n    assert True\n"
+	}
+	root := project(t, tree)
+
+	paths, core, ok := Adjacent(root, Focus{"igel/igel.py", "tests/test_zeta_feature_schema.py"})
+	if !ok {
+		t.Fatal("a focus naming a source file and a new test selected nothing")
+	}
+	if core == 0 {
+		t.Fatal("nothing was ranked as beside the change")
+	}
+	if paths[0] != "tests/test_zeta_feature_schema.py" {
+		t.Errorf("the run's own check does not lead the selection: %v", paths[:min(4, len(paths))])
+	}
+	if len(paths) >= 200 {
+		t.Errorf("the selection was never cut at all, so this proves nothing: %d files", len(paths))
+	}
+	held := false
+	for _, path := range paths {
+		if path == "tests/test_zeta_feature_schema.py" {
+			held = true
+		}
+	}
+	if !held {
+		t.Errorf("the cut dropped the run's own check: %v", paths)
 	}
 }

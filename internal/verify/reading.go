@@ -11,7 +11,10 @@ package verify
 // photograph's budget", is where this is stated for a person, and the rule is
 // that changing either constant changes that page in the same commit.
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // WallShare is the denominator of the leaf's own wall that ONE reading of the
 // project's own verification may spend.
@@ -122,12 +125,76 @@ func (r Reading) Regressed() []string {
 	if !r.comparable() {
 		return nil
 	}
-	return NewFailures(r.Before.Failing, r.After.Failing)
+	// A REGRESSION IS A CHECK THAT PASSED BEFORE, and the only reading that has
+	// to ask is one that was WIDENED. Where both halves ran the same command
+	// over the same files, subtracting the two failing lists is exactly right
+	// and always was: a runner that names its failures and nothing else says
+	// nothing about its passes, and reading its silence as "that check did not
+	// exist" would excuse every regression in every such project.
+	//
+	// The after reading takes in the check files the run itself wrote
+	// (Strategy.WithOwnChecks), and those are a different matter: they did not
+	// exist when the before reading was taken, so a brand-new failing test
+	// would subtract out as a regression — the work convicted of breaking a
+	// check that did not exist until it wrote it. A red new test is a leaf that
+	// has not finished, which is what the acceptance finding is for.
+	//
+	// Two ways of recognising one, because runners name their checks
+	// differently: the failure names one of the files this reading added
+	// (pytest's `path::test`, go test's package path), or the before reading
+	// kept a roster and that roster never named it. Only checks the widening
+	// brought in are weighed this way; everything else subtracts as it always
+	// did.
+	broke := NewFailures(r.Before.Failing, r.After.Failing)
+	added := r.After.Strategy.Widened
+	if len(added) == 0 {
+		return broke
+	}
+	reportedBefore := make(map[string]bool, len(r.Before.Reported))
+	for _, name := range r.Before.Reported {
+		reportedBefore[name] = true
+	}
+	var stood []string
+	for _, name := range broke {
+		if namesOneOf(name, added) {
+			continue
+		}
+		if len(reportedBefore) > 0 && !reportedBefore[name] {
+			continue
+		}
+		stood = append(stood, name)
+	}
+	return stood
+}
+
+// namesOneOf says a check's name is a check IN one of these files, which is how
+// every runner this program reads spells the check it just ran: pytest's
+// `tests/test_thing.py::test_case`, go test's package path, a TAP line that
+// leads with the file. A runner that names neither the file nor a roster is one
+// this cannot answer for, and there the roster rule above stands alone.
+func namesOneOf(check string, files []string) bool {
+	check = strings.TrimSpace(check)
+	if check == "" {
+		return false
+	}
+	for _, file := range files {
+		if file != "" && strings.Contains(check, file) {
+			return true
+		}
+	}
+	return false
 }
 
 // comparable says this photograph has two halves that are photographs of the
 // SAME thing, which is the only condition under which subtracting them means
 // anything.
+//
+// The after reading must COVER the before one, rather than match it: it is
+// deliberately the wider of the two, because it takes in the checks the run
+// itself wrote and those were not there to be read the first time. Growing a
+// roster can only add names, so nothing extra can vanish; what it could have
+// added is a false regression, and Regressed closes that by requiring a check to
+// have PASSED before it can be said to have broken.
 //
 // Two readings and the same command was the whole of the old test, and it was
 // half of the rule. A reading is of a command IN A PLACE AT A SCOPE — the
@@ -141,7 +208,7 @@ func (r Reading) comparable() bool {
 	// that stopped existing — a finding per untouched test, from a fact about a
 	// ceiling.
 	return r.Taken && r.AfterTaken && !r.Partial &&
-		r.Before.Strategy.comparable(r.After.Strategy)
+		r.After.Strategy.covers(r.Before.Strategy)
 }
 
 // Pace is what a reading that was CUT measured about how fast this project's

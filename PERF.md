@@ -384,6 +384,37 @@ assumes. The reading and its reason are remembered against the job, so **the sam
 blind ceiling is never spent twice**: the tightening that follows a cut is the
 scoped rung, and it happens before the ceiling rather than after it.
 
+**The run's own checks are always in scope, and they lead the selection.** A
+scope is decided before the work exists, so it can hold no test the work goes on
+to WRITE. igel s8 scoped all four of its readings to `touched (1 file)` — the
+one source file the request named — and every one of them named the same **2**
+checks, while the graded patch had put about **40** into a new file under
+`tests/`. Nothing ever read one of them: the coverage mapping is handed the
+ROSTER of a reading, so a checklist point whose only exercise is a check that
+round wrote stays unexercised however good the check is, and the before/after
+cannot move. So the after reading's file set is the structural adjacency UNION
+every check file in the record of what the run left behind — `verify.OwnChecks`
+over `Outcome.Artifacts`/`Evidence.Artifacts`, filtered by the runner's own
+test-file convention and by `os.Stat`, joined on by `Strategy.WithOwnChecks` at
+both seams that take a second reading (`internal/exec/bare` and
+`revision.measureFinalTree`). It is read from the WORLD's record of the tree and
+never from the worker's account of what it tested, which is the claim this whole
+gate exists not to weigh. It costs no extra reading: the same command, a longer
+file list. Two invariants make it safe. The comparison is by COVERING rather
+than matching — `Strategy.covers` reads a superset of the before selection, over
+the same base command in the same workdir, as comparable — and `Reading.Regressed`
+weighs a new failure against `Strategy.Widened`, the paths the widening joined
+on, so a check that did not exist before cannot be convicted as a regression: a
+failure that names one of those files, or that the before roster kept and never
+named, is not one. A reading that was NOT widened subtracts its two failing
+lists exactly as it always did — a runner that prints its failures and nothing
+else says nothing about its passes, and reading that silence as "no such check"
+would excuse every regression in every such project. And the run's own checks lead the selection, ahead of
+both adjacency ranks, so neither the eighth-of-suite cut nor a pace-driven
+retake can take them: igel s8's new file sorts after every check the repository
+already had, and a selection ordered by name alone hands exactly the run's own
+work to the cut.
+
 **The gate takes the job's reading when no worker did.** Not every worker
 photographs — only `internal/exec/bare` does — and textual s7 ran every node
 under the generalist and reached its gates with no reading in the store at all.

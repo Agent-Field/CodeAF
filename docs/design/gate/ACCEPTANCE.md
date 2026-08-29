@@ -319,3 +319,65 @@ Four mechanisms follow, each in `internal/revision/acceptance.go`:
 **And a pass over a suite nobody could read is not whole.** See FAILSAFE's
 seventh failure, clause 5: `store.DeliveryGate.Unreadable`, exit 2, and the last
 line `partial — nothing in this project's verification could be read: <why>`.
+
+## What igel s8 proved: the run's own checks are always in scope
+
+*Added 2026-08-29 against
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s8/graph.db`.*
+
+All four `verification` events in that store read
+`python3 -m pytest -rA tests/test_igel/test_igel.py`, `scope: touched packages
+(1 file)`, `named: 2`, `red: 2`. The graded patch creates
+`tests/test_igel/test_feature_schema.py` and
+`tests/test_igel/test_integration.py`, holding about forty checks between them.
+No reading of that job ever saw one of them.
+
+The scope was not wrong. It was decided from the request, before the work
+existed, which is what makes it the same scope every round inherits (§ "A
+reading is scoped before it is bounded") — and it is exactly why it can never
+contain a test the work itself goes on to write.
+
+What that costs is the whole settlement. The mapping in § 2 is asked *which
+checklist point does each name in this roster exercise*, and it is handed the
+roster of a reading. A point whose only exercise is a check this round wrote is
+therefore unexercised however good the check is; the finding is re-raised, the
+repair round is bought again for work already done, and the before/after cannot
+move because the after reading is running the same two checks the before one
+ran.
+
+> **THE SCOPED READING'S FILE SET IS THE STRUCTURAL ADJACENCY ∪ EVERY CHECK FILE
+> IN THE JOB'S ARTIFACT RECORD. The run's own checks are in scope on every
+> round, taken from the world's record of what the tree gained — never from the
+> worker's account of what it tested.**
+
+`verify.OwnChecks(root, record)` is the whole of the reading: every path in the
+record that is a check file by the runner's own naming convention
+(`testFileName`) and that the tree still holds. `Strategy.WithOwnChecks` joins
+them to the pinned before-strategy's selection at the two seams that take a
+second reading — `internal/exec/bare.photographAfter` over `Outcome.Artifacts`,
+and `revision.measureFinalTree` over `Evidence.Artifacts`, which
+`completeAgainstTheWorld` has already settled against the disk. The gate's own
+fresh reading reaches the same place by the same route: `gateFocus` already
+carries the artifacts, and a focus path that is ITSELF a check file is not
+*adjacent* to the change — it is the change, so it leads the selection ahead of
+both adjacency ranks and no cut can take it.
+
+Widening the after reading is the one difference between the two halves this
+mechanism allows, and two invariants pay for it:
+
+- **The comparison covers rather than matches.** `Strategy.covers` reads a
+  superset of the before selection, over the same base command in the same
+  workdir, as comparable. Subtracting a wider roster from a narrower one is
+  sound in the direction that matters; the reverse is not, and is refused.
+- **A check the run wrote cannot be a check the run broke.** A red new test is a
+  leaf that has not finished — which is what the acceptance finding is for — and
+  not a regression. `Strategy.Widened` keeps the paths the widening joined on,
+  and `Reading.Regressed` drops a new failure that either names one of them
+  (pytest's `path::test`, go test's package path) or that a before roster kept
+  and never mentioned. A reading that was not widened subtracts exactly as it
+  always did: a runner that prints its failures and nothing else says nothing
+  about its passes, and reading that silence as "no such check" would excuse
+  every regression in every such project.
+
+The cost is nothing: the same command against a longer file list, at the same
+rung, on the same budget. See PERF.md, "The verification photograph's budget".
