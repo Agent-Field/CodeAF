@@ -27,6 +27,7 @@ package resident
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -112,7 +113,8 @@ type Bank struct {
 	// every way out of a leaf, a fault included, so what survives is everything
 	// up to the last flush — which is exactly what "resume from where it got to"
 	// means, and is why nothing here tries to invent the result of a tool call
-	// whose answer never arrived. See [BankedTranscript] for how one is rendered.
+	// whose answer never arrived. See [BankedRun] for how one is rendered: an
+	// outline of every turn the run took, and then its end verbatim.
 	Transcript string
 }
 
@@ -312,13 +314,21 @@ func BankedProgress(graph nodeRecord, nodeID string) []string {
 
 const (
 	// BankedTranscriptTurns is how many of the attempt's most recent turns ride
-	// into its successor.
+	// into its successor VERBATIM.
 	//
 	// THE LAST ONES, for the reason [BankedProgressLimit] takes the last progress
 	// rows: work of this kind is cumulative, and the state a resuming leaf needs
 	// is where the previous one had GOT TO. The head of a run is what an autopsy
 	// wants and the store keeps it (store.MaxTranscriptEntries seals from the
 	// front); a continuation wants the other end.
+	//
+	// IT IS NOT THE WHOLE SEED, and treating it as one was the memory half of
+	// the ink run of 2026-08-29: twelve turns out of a hundred and thirty-eight
+	// is a window on one file's contents, and the attempt's successor re-read
+	// the repository because nothing had told it about the other hundred and
+	// twenty-six. The outline above it (see [BankedRun]) carries every turn of
+	// the run at one line each, which is what makes this bound affordable
+	// instead of lossy.
 	BankedTranscriptTurns = 12
 	// BankedTranscriptBytes bounds the whole block, because a dozen turns of a
 	// leaf that ran a test suite is not a dozen short lines.
@@ -343,6 +353,13 @@ type transcriptRecord interface {
 
 // BankedTranscript renders a node's recorded turns as the block a resuming
 // attempt is handed, or "" when this worker left no record.
+func BankedTranscript(graph transcriptRecord, nodeID string) string {
+	block, _ := BankedRun(graph, nodeID)
+	return block
+}
+
+// BankedRun renders the LAST RUN in a node's record as the block a resuming
+// attempt is handed, and says how many turns that run reached.
 //
 // EMPTY IS AN HONEST ANSWER AND A COMMON ONE. Not every worker records a
 // transcript, and a leaf that died before its first flush recorded nothing. In
@@ -355,29 +372,51 @@ type transcriptRecord interface {
 // resuming leaf that believed a command had run and returned nothing would skip
 // the command. So the call is rendered with "(interrupted before it answered)"
 // and the leaf can decide to run it again.
-func BankedTranscript(graph transcriptRecord, nodeID string) string {
+//
+// IT IS ONE RUN AND NOT THE WHOLE TABLE. A node's record is every attempt any
+// worker ever made under it, appended, and each attempt numbers its own turns
+// from one — so "the last twelve turns" read across the table was not a window
+// on anything. On the ink run of 2026-08-29 the third claim's seed was assembled
+// from turns 79-90 of the attempt before it INTERLEAVED with turns 34-45 of the
+// attempt before that, because both satisfied a turn-number cutoff. A run is
+// found by structure instead: the turn counter only ever goes up inside one
+// attempt, so where it goes backwards a new attempt began.
+//
+// AND IT CARRIES AN OUTLINE OF THE WHOLE RUN, not only its tail. The tail is
+// where the work got to and the outline is what it decided on the way there, and
+// handing over the second without the first is what an eleven-million-token
+// re-exploration is made of: twelve turns of one file's contents say nothing
+// about the thirty-eight files the attempt had already read and rejected. The
+// outline is one line per turn over every turn of the run — what it said and
+// what it ran — which is affordable precisely because it is one line.
+func BankedRun(graph transcriptRecord, nodeID string) (string, int) {
 	if graph == nil || strings.TrimSpace(nodeID) == "" {
-		return ""
+		return "", 0
 	}
 	entries, err := graph.TranscriptFor(nodeID, 0)
 	if err != nil || len(entries) == 0 {
-		return ""
+		return "", 0
 	}
-	// Which turns survive, counted from the end. The entries carry their own
-	// turn number, so this is a read of the record rather than an assumption
-	// about how many entries a turn has.
-	answered := make(map[string]bool, len(entries))
-	for _, entry := range entries {
+	run := lastRecordedRun(entries)
+	if len(run) == 0 {
+		return "", 0
+	}
+	reached := run[len(run)-1].Turn
+	answered := make(map[string]bool, len(run))
+	for _, entry := range run {
 		if entry.Kind == store.TranscriptToolResult && entry.CallID != "" {
 			answered[entry.CallID] = true
 		}
 	}
+	// Which turns survive into the verbatim tail, counted from the end of THIS
+	// run. The entries carry their own turn number, so this is a read of the
+	// record rather than an assumption about how many entries a turn has.
 	cutoff := 0
-	if last := entries[len(entries)-1].Turn; last > BankedTranscriptTurns {
-		cutoff = last - BankedTranscriptTurns
+	if reached > BankedTranscriptTurns {
+		cutoff = reached - BankedTranscriptTurns
 	}
-	lines := make([]string, 0, len(entries))
-	for _, entry := range entries {
+	lines := make([]string, 0, len(run))
+	for _, entry := range run {
 		if entry.Turn <= cutoff {
 			continue
 		}
@@ -385,8 +424,133 @@ func BankedTranscript(graph transcriptRecord, nodeID string) string {
 			lines = append(lines, line)
 		}
 	}
-	return trimmedFromTheFront(lines, BankedTranscriptBytes)
+	tail := trimmedFromTheFront(lines, BankedTranscriptBytes)
+	outline := bankedRunOutline(run)
+	var block strings.Builder
+	if outline != "" {
+		block.WriteString(BankedRunOutlineLead)
+		block.WriteString("\n")
+		block.WriteString(outline)
+	}
+	if tail != "" {
+		if block.Len() > 0 {
+			block.WriteString("\n\n")
+		}
+		block.WriteString(BankedRunTailLead)
+		block.WriteString("\n")
+		block.WriteString(tail)
+	}
+	if block.Len() == 0 {
+		return "", 0
+	}
+	return block.String(), reached
 }
+
+// The two leads inside the transcript block. They are separate because the two
+// halves answer different questions and a model handed them under one heading
+// reads the outline as a preamble to the tail rather than as the record of
+// thirty turns it will otherwise repeat.
+const (
+	// BankedRunOutlineLead introduces the one-line-per-turn account of the
+	// WHOLE run.
+	BankedRunOutlineLead = "In outline, every turn that attempt took, oldest first — this is the whole of it, and none of it needs doing again:"
+	// BankedRunTailLead introduces the verbatim end of the run.
+	BankedRunTailLead = "And the end of it verbatim — what you said, what you ran, and what came back:"
+)
+
+// lastRecordedRun is the slice of entries belonging to the most recent attempt.
+//
+// A run boundary is a turn number that goes DOWN, which is structure rather than
+// a guess: within one attempt the counter only ever rises, and a fresh attempt
+// numbers from one. Entries on turn zero — the harness's own notes, the elision
+// marker, a fault recorded before any turn — carry no boundary information and
+// are left attached to whatever they follow.
+func lastRecordedRun(entries []store.TranscriptEntry) []store.TranscriptEntry {
+	start, previous := 0, 0
+	for index, entry := range entries {
+		if entry.Turn <= 0 {
+			continue
+		}
+		if previous > 0 && entry.Turn < previous {
+			start = index
+		}
+		previous = entry.Turn
+	}
+	return entries[start:]
+}
+
+// bankedRunOutline is one line per turn of the run: what the turn ran and what
+// it said, in that order, because the tools are the shorter half and a reader
+// scanning for "did it already try this" is scanning for them.
+//
+// It is clipped from the MIDDLE rather than the front, which is the opposite of
+// what the tail does and correct for the same reason: an outline that keeps only
+// its end has thrown away what the attempt set out to do, and the head of a run
+// is where that is stated.
+func bankedRunOutline(run []store.TranscriptEntry) string {
+	lines := make([]string, 0, 32)
+	turn, said, tools := 0, "", []string(nil)
+	flush := func() {
+		if turn <= 0 || (said == "" && len(tools) == 0) {
+			return
+		}
+		line := fmt.Sprintf("turn %d", turn)
+		if len(tools) > 0 {
+			line += " · ran " + strings.Join(tools, ", ")
+		}
+		if said != "" {
+			line += " · " + said
+		}
+		lines = append(lines, line)
+	}
+	for _, entry := range run {
+		if entry.Turn != turn {
+			flush()
+			turn, said, tools = entry.Turn, "", nil
+		}
+		switch entry.Kind {
+		case store.TranscriptAssistant:
+			if said == "" {
+				said = outlineSentence(entry.Text)
+			}
+		case store.TranscriptToolCall:
+			tool := strings.TrimSpace(entry.Tool)
+			if tool == "" {
+				tool = "a tool"
+			}
+			tools = append(tools, tool)
+		case store.TranscriptFault, store.TranscriptNote:
+			if sentence := outlineSentence(entry.Text); sentence != "" {
+				said = sentence
+			}
+		}
+	}
+	flush()
+	return clipMiddle(strings.Join(lines, "\n"), BankedTranscriptBytes)
+}
+
+// outlineSentence is one turn's words as a single clipped line. A model's turn
+// opens with what it has decided and continues into how it will do it, so the
+// first line is the half worth an outline's budget.
+func outlineSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if cut := strings.IndexByte(text, '\n'); cut >= 0 {
+		text = strings.TrimSpace(text[:cut])
+	}
+	if len(text) > bankedOutlineSentenceBytes {
+		text = strings.TrimSpace(text[:bankedOutlineSentenceBytes]) + "…"
+	}
+	return text
+}
+
+// bankedOutlineSentenceBytes bounds one outline line's prose. It is
+// store.MaxTranscriptTextBytes / 16 and not a fresh figure: a whole recorded
+// step is worth that bound, and one line about a step is worth a sixteenth of
+// one — which is about a sentence, which is what this is.
+const bankedOutlineSentenceBytes = store.MaxTranscriptTextBytes / 16
 
 // bankedTranscriptLine renders one recorded entry, or nothing for a kind whose
 // only reader is an autopsy.

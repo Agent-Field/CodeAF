@@ -207,10 +207,27 @@ means one model call went quiet and was cut. **The call was asked again, not the
 work.** Everything the worker had already done is still in hand, and the endpoint
 that went quiet is set aside for a few minutes so the retry goes somewhere else.
 
-If a piece of work does have to be picked up again — because nothing was holding
-it any more — it continues from what it had reached: its own turns, what it had
-already said, and the files it had already written are all handed back to it. It
-does not start over.
+If a piece of work does have to be picked up again, the stream says so and says
+why. Three lines, and they are three different things:
+
+```
+  ⏳ Core engine                  — it was still working when it ran out of its 15m0s — 72 turns in
+  ✗ Core engine                  — picked up again — no sign of life for 24m3s …
+  ↻ Core engine                  — resumed from 45 recorded turns, already holding styles.ts, grid-layout.ts
+```
+
+`⏳` is work that ran out of the room it was given — its time, its turns or its
+tokens. **Nothing failed**: it was still working, and what it reached is kept.
+
+`✗ picked up again` is the backstop. Work is only taken off a worker that has
+shown **no sign of life** — no model call and no recorded turn — for the whole
+window, which is well past any deadline the worker itself was given. A worker
+that keeps working keeps its work, however long it takes.
+
+`↻ resumed from N recorded turns` is the piece being taken up again, and the
+count is the point. It continues from what it had reached: an outline of every
+turn it took, the last of them word for word, and the files it had already
+changed. **It does not start over.**
 
 ## There is no web surface
 

@@ -1141,6 +1141,39 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		w.note("acceptance", acceptanceWords(len(acceptance.Points)))
 		return true
 
+	case store.EventLeafExhausted:
+		var exhausted store.LeafExhausted
+		if json.Unmarshal(event.Payload, &exhausted) != nil || strings.TrimSpace(exhausted.Reason) == "" {
+			return false
+		}
+		// ⏳ and not ✗: nothing failed. An attempt that was still working when
+		// its budget ended is the one ending this stream had no mark for, and
+		// borrowing the fault mark would have said the opposite of the truth.
+		w.say("⏳", nodeDisplay(node), exhausted.Reason)
+		return true
+
+	case store.EventLeafResumed:
+		var resumed store.LeafResumed
+		if json.Unmarshal(event.Payload, &resumed) != nil || resumed.Turns <= 0 {
+			return false
+		}
+		w.say("↻", nodeDisplay(node), resumedWords(resumed))
+		return true
+
+	case store.EventNodeReleased:
+		var release struct {
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(event.Payload, &release) != nil || strings.TrimSpace(release.Reason) == "" {
+			return false
+		}
+		// Only a release that carries a reason is said. A worker handing its own
+		// node back says everything by handing it back; a claim taken away from
+		// one is the event a person watching a run restart needs, and it was
+		// invisible four times on the ink run of 2026-08-29.
+		w.say("✗", nodeDisplay(node), "picked up again — "+firstLine(release.Reason))
+		return true
+
 	case store.EventDeliveryGate:
 		var gate store.DeliveryGate
 		if json.Unmarshal(event.Payload, &gate) != nil {
@@ -1152,6 +1185,36 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 	}
 	return false
 }
+
+// resumedWords is the line a resumed leaf opens with, and it is a count rather
+// than a claim: "resumed" on its own is exactly the promise that was made and
+// silently not kept, so the number the seed actually carries is the thing said.
+// The files are the world's own reading of what the earlier attempts changed,
+// and they are named up to a few because the point is that the workspace is not
+// empty, not to reprint a diff.
+func resumedWords(resumed store.LeafResumed) string {
+	words := fmt.Sprintf("resumed from %s", plural(resumed.Turns, "recorded turn"))
+	if len(resumed.Files) > 0 {
+		shown := resumed.Files
+		more := 0
+		if len(shown) > resumedFilesShown {
+			more, shown = len(shown)-resumedFilesShown, shown[:resumedFilesShown]
+		}
+		names := make([]string, 0, len(shown))
+		for _, path := range shown {
+			names = append(names, filepath.Base(path))
+		}
+		words += ", already holding " + strings.Join(names, ", ")
+		if more > 0 {
+			words += fmt.Sprintf(" and %d more", more)
+		}
+	}
+	return words
+}
+
+// resumedFilesShown is how many of the files an earlier attempt changed are
+// named on the stream. Three, because the line is one line.
+const resumedFilesShown = 3
 
 // narrateRepair says what the structured-answer seam had to do to get an answer.
 //

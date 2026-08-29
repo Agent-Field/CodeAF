@@ -71,7 +71,7 @@ func TestTheRetryOfALeafThatDiedOnTheClockCarriesItsBank(t *testing.T) {
 	writeFile(t, filepath.Join(jobDir, ".obs", "spill-1.txt"), "machinery")
 
 	// The watchdog's ending: an error that says the clock, and no outcome.
-	bank := leafBank(graph, node, space, jobDir, true, nil, nil)
+	bank, _ := leafBank(graph, node, space, jobDir, true, nil, nil)
 	if bank.Empty() {
 		t.Fatal("a leaf that shared progress and wrote two files banked nothing")
 	}
@@ -142,7 +142,7 @@ func TestAnErrandsOwnDirectoryIsNeverBankedAsProducedWork(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(theirDir, "main.go"), "package main")
 
-	bank := leafBank(graph, node, space, theirDir, false, nil, nil)
+	bank, _ := leafBank(graph, node, space, theirDir, false, nil, nil)
 	if !bank.Empty() {
 		t.Fatalf("an errand banked the person's own project as produced work: %+v", bank)
 	}
@@ -178,7 +178,7 @@ func TestALeafsOwnSharedLinesRideIntoItsRetryEvenWhenTheBoardCannotAttributeThem
 	shared := &sharedLines{}
 	shared.add("the revenue column is duplicated in the source")
 
-	bank := leafBank(graph, node, nil, "", false, nil, shared.lines())
+	bank, _ := leafBank(graph, node, nil, "", false, nil, shared.lines())
 	instruction := bank.Input().Result
 	if !strings.Contains(instruction, "the revenue column is duplicated in the source") {
 		t.Fatalf("the leaf's own shared line did not reach its retry:\n%s", instruction)

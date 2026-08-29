@@ -103,10 +103,15 @@ func TestAPartialTranscriptSaysWhereItWasInterrupted(t *testing.T) {
 	}
 }
 
-// TestATranscriptBlockKeepsTheEndOfTheWork pins which end survives the bound. A
-// continuation needs where the attempt GOT TO; the head of a long run is what an
-// autopsy wants, and the store already keeps that (store.MaxTranscriptEntries
-// seals from the front).
+// TestATranscriptBlockKeepsTheEndOfTheWork pins which end survives the VERBATIM
+// bound. A continuation needs where the attempt GOT TO; the head of a long run
+// is what an autopsy wants, and the store already keeps that
+// (store.MaxTranscriptEntries seals from the front).
+//
+// The outline above it is the other half of the same law and is asserted here
+// too, because the two are only correct together: a tail with no outline is
+// twelve turns of one file's contents, which is what the ink run of 2026-08-29
+// paid eleven million prompt tokens a go to rediscover around.
 func TestATranscriptBlockKeepsTheEndOfTheWork(t *testing.T) {
 	graph := transcriptGraph(t)
 	const turns = BankedTranscriptTurns + 8
@@ -117,15 +122,74 @@ func TestATranscriptBlockKeepsTheEndOfTheWork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	block := BankedTranscript(graph, "leaf")
-	if !strings.Contains(block, "step number "+strconv.Itoa(turns)+" of") {
-		t.Fatalf("the last turn is missing:\n%s", block)
+	block, reached := BankedRun(graph, "leaf")
+	if reached != turns {
+		t.Fatalf("the run reached turn %d, want %d", reached, turns)
 	}
-	if strings.Contains(block, "step number 1 of") {
-		t.Fatalf("the oldest turns must be dropped, not the newest:\n%s", block)
+	outline, tail, split := strings.Cut(block, BankedRunTailLead)
+	if !split {
+		t.Fatalf("the block has no verbatim tail:\n%s", block)
 	}
-	if lines := strings.Count(block, "\n") + 1; lines > BankedTranscriptTurns {
-		t.Fatalf("banked %d turns, want at most %d:\n%s", lines, BankedTranscriptTurns, block)
+	if !strings.Contains(tail, "step number "+strconv.Itoa(turns)+" of") {
+		t.Fatalf("the last turn is missing from the tail:\n%s", tail)
+	}
+	if strings.Contains(tail, "step number 1 of") {
+		t.Fatalf("the oldest turns must be dropped from the tail, not the newest:\n%s", tail)
+	}
+	if lines := strings.Count(strings.TrimSpace(tail), "\n"); lines > BankedTranscriptTurns {
+		t.Fatalf("banked %d verbatim turns, want at most %d:\n%s", lines, BankedTranscriptTurns, tail)
+	}
+	// And the outline carries every turn, including the ones the tail dropped:
+	// one line each, which is what makes the whole run affordable.
+	if !strings.Contains(outline, "step number 1 of") {
+		t.Fatalf("the outline lost the start of the run:\n%s", outline)
+	}
+	for turn := 1; turn <= turns; turn++ {
+		if !strings.Contains(outline, "turn "+strconv.Itoa(turn)+" ·") {
+			t.Fatalf("turn %d is missing from the outline:\n%s", turn, outline)
+		}
+	}
+}
+
+// TestABankedRunIsOneAttemptAndNotTheWholeTable is the memory defect of the ink
+// run of 2026-08-29, in the shape the store actually held it.
+//
+// A node's record is every attempt any worker ever made under it, appended, and
+// each attempt numbers its own turns from one. The seed used to be "every entry
+// whose turn is above the last turn minus twelve", read across the whole table —
+// so a leaf on its second claim was handed an interleaving of two runs, and the
+// turns of its own most recent attempt that fell below the cutoff were dropped
+// while the previous attempt's higher-numbered turns were kept.
+func TestABankedRunIsOneAttemptAndNotTheWholeTable(t *testing.T) {
+	graph := transcriptGraph(t)
+	// The first attempt got a long way and died.
+	for turn := 1; turn <= 72; turn++ {
+		if err := graph.RecordTranscript("leaf", "m", []store.TranscriptEntry{
+			{Turn: turn, Kind: store.TranscriptAssistant, Text: "first attempt, step " + strconv.Itoa(turn)},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The second began again from turn one and is the one being resumed.
+	for turn := 1; turn <= 20; turn++ {
+		if err := graph.RecordTranscript("leaf", "m", []store.TranscriptEntry{
+			{Turn: turn, Kind: store.TranscriptAssistant, Text: "second attempt, step " + strconv.Itoa(turn)},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	block, reached := BankedRun(graph, "leaf")
+	if reached != 20 {
+		t.Fatalf("the run being resumed reached turn %d, want 20 — the count is the second attempt's", reached)
+	}
+	if strings.Contains(block, "first attempt") {
+		t.Fatalf("the seed mixed a previous attempt into the one being resumed:\n%s", block)
+	}
+	if !strings.Contains(block, "second attempt, step 1") {
+		t.Fatalf("the resumed attempt's own first turn was dropped by a cutoff read across both runs:\n%s", block)
+	}
+	if !strings.Contains(block, "second attempt, step 20") {
+		t.Fatalf("the resumed attempt's last turn is missing:\n%s", block)
 	}
 }
 

@@ -699,14 +699,42 @@ only case a reaper can be right about. On 2026-08-28 it was the FIRST thing to
 react, which is why it looked like the problem: its only available reaction is
 the bluntest one there is.
 
+**And the window bounds SILENCE, not work.** `store.ReleaseSilent` measures it
+from the node's last durable sign of life — a billed `usage` row, a `usage_turns`
+row, a `transcript` flush — floored at the claim's own start, and never from
+`started_at` alone. Measured from the start it asked how long the WORKER had
+been alive, and one claim legitimately carries the executor's deadline plus the
+retry a spent deadline earns: on 2026-08-29 that fired at 22m10s, 22m10s, 22m11s
+and 22m06s at a leaf that was calling the model throughout (15m deadline + 2m
+watchdog + 5m pad = 22m, plus one `runnerQuietCeiling` of dispatch latency).
+Every release now carries its reason on the journal.
+
 ### And a reaped node resumes
 
 A node the reaper returns to the queue is claimed again with its attempt counter
 raised, and `cmd/aforge`'s `leafBank` hands the new attempt what the old one
-left: its partial, its progress lines, its files on disk, and — this is the part
-that was missing — **its own recorded turns**, read back from the store through
-`resident.BankedTranscript`. Bounded by `BankedTranscriptTurns` (12, the LAST
-twelve, because a continuation needs where the work got to) and
-`BankedTranscriptBytes` (`8 × store.MaxTranscriptTextBytes`, which is this
-package's own answer to "enough of one step to tell what happened", times a
-handful of steps).
+left: its partial, its progress lines, the files the workspace was SEEN to change
+under this leaf's key, and — this is the part that was missing — **its own
+recorded turns**, read back from the store through `resident.BankedRun`.
+
+`BankedRun` reads ONE run and not the whole table. A node's transcript is every
+attempt ever made under it, appended, each numbering its turns from one, so a
+turn-number cutoff read across all of them is a window on nothing; the run
+boundary is where the counter goes backwards. What comes back is two blocks:
+
+| block | bound | why |
+| --- | --- | --- |
+| the **outline** — every turn of the run, one line each: what it ran and what it said | `BankedTranscriptBytes`, clipped from the MIDDLE | an outline that keeps only its end has thrown away what the attempt set out to do |
+| the **tail** — the end of the run verbatim | `BankedTranscriptTurns` (12) and `BankedTranscriptBytes`, trimmed from the FRONT | a continuation needs where the work got to |
+
+`BankedTranscriptBytes` is `8 × store.MaxTranscriptTextBytes` — this package's
+own answer to "enough of one step to tell what happened", times a handful of
+steps — and one outline line is bounded at `store.MaxTranscriptTextBytes / 16`,
+which is about a sentence. Twelve turns alone was not enough and the shortfall is
+measurable: the ink leaf of 2026-08-29 created `src/grid-layout.ts` on turn 25
+and was interrupted on turn 45, so the file it had just written was outside the
+window its successor was handed.
+
+Whether a claim resumed is journaled (`store.EventLeafResumed`, with the turn
+count and the files) rather than assumed, because this section asserted it for a
+day while it was not true.

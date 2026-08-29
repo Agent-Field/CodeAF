@@ -912,16 +912,32 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		// The pickup bank. A node whose attempt counter is already above zero has
 		// been claimed before, which means a previous run of this leaf ended
-		// without settling it — its process went away, or the whole surface did —
-		// and the startup sweep put it back on the queue. It used to come back to
-		// an empty context and a directory full of its own work, and the surface
-		// said so out loud: "each starts again from the beginning". It does not
-		// have to. What that attempt reached is on its own record and its files are
-		// still on disk, and both ride in as one more input under the same headers
-		// a re-decomposed leaf already gets. See resident.Bank.
+		// without settling it — its process went away, the whole surface did, or
+		// the claim reaper took it back — and it is on the queue again. It used to
+		// come back to an empty context and a directory full of its own work, and
+		// the surface said so out loud: "each starts again from the beginning". It
+		// does not have to. What that attempt reached is on its own record and its
+		// files are still on disk, and both ride in as one more input under the
+		// same headers a re-decomposed leaf already gets. See resident.Bank.
+		//
+		// AND THE RESUMPTION IS JOURNALED, because the promise above was made on
+		// 2026-08-29 and quietly not kept: the seed was assembled from a turn-number
+		// window read across every attempt in the record at once, so a leaf on its
+		// third claim was handed an interleaving of two earlier attempts and opened
+		// by exploring the repository it had spent forty minutes in. Nothing in the
+		// store said whether a claim had resumed or started over, which is why it
+		// took a transcript autopsy to find out. Now the row says so and the
+		// headless stream reads it (store.EventLeafResumed).
 		if node.Attempt > 0 {
-			if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
+			if bank, recorded := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
 				inputs = append(inputs, bank.Input())
+				if recorded > 0 {
+					if resumeErr := graph.RecordLeafResumed(node.ID, store.LeafResumed{
+						Turns: recorded, Files: bank.Artifacts,
+					}); resumeErr != nil {
+						log.Printf("note: could not journal that %s resumed: %v", node.ID, resumeErr)
+					}
+				}
 			}
 		}
 		task := exec.Task{
@@ -1087,7 +1103,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// journal and on disk either way. See resident.Bank.
 			if attempt > 0 {
 				attempted := task
-				if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines()); !bank.Empty() {
+				if bank, _ := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines()); !bank.Empty() {
 					attempted.Inputs = append(append([]exec.Input{}, inputs...), bank.Input())
 				}
 				// The fold is released here and nowhere else. Whatever brought
@@ -1201,6 +1217,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// known, so it is where they are reconciled.
 			runner.RaiseStaleAge(watchdog)
 			outcome, err = runLeafWithWatchdog(runCtx, worker, task, watchdog)
+			// AN ATTEMPT THAT RAN OUT OF ROOM SAYS SO. It is not a failure and it
+			// is not a restart — it is exhaustion, which the growth governor
+			// already weighs — but until this line nothing wrote it down, and the
+			// silence is what made the ink run of 2026-08-29 unreadable: its first
+			// attempt spent its whole fifteen-minute deadline, its retry began
+			// four minutes later inside the same claim, and the store's only
+			// account of either was a gap between two transcript flushes. See
+			// store.EventLeafExhausted.
+			journalLeafExhaustion(graph, node.ID, attempt+1, build.deadline, watchdog, outcome, err)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
 			}
@@ -2457,11 +2482,23 @@ func (s *sharedLines) lines() []string {
 // said almost none of them: on the happy-dom run of 2026-08-28 a leaf ran the
 // project's test file seventy-one times across three starts and handed its
 // successor a partial of "" every time, while every one of those turns sat in the
-// store under its own node. See resident.BankedTranscript.
+// store under its own node. See resident.BankedRun.
 //
-// The directory is only read when it is the job's own. See ownWorkspace.
+// THE FILE LIST IS SOURCED FROM THE WORLD (FAILSAFE.md rule 2). The workspace
+// photographs the tree before a leaf runs and diffs it after, and that reading
+// is true of a file written by a shell command, a build, or anything else that
+// never went through a tool — which on a repository-shaped job is nearly all of
+// them. It is asked for by this leaf's own key, so a shared workspace answers
+// with what THIS node changed rather than with the user's whole checkout, and
+// that is why it is not behind ownWorkspace. Listing the directory is: Existing
+// names every file at the workspace root, which is the job's deliverables when
+// the job owns the directory and somebody else's repository when it does not.
+//
+// The turn count comes back beside the bank because the caller journals it: a
+// leaf that resumed and a leaf that started over are the two things the ink run
+// of 2026-08-29 could not be read to tell apart. See store.EventLeafResumed.
 func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir string,
-	ownWorkspace bool, outcome *exec.Outcome, shared []string) resident.Bank {
+	ownWorkspace bool, outcome *exec.Outcome, shared []string) (resident.Bank, int) {
 	bank := resident.Bank{}
 	if outcome != nil {
 		bank.Partial = outcome.Text
@@ -2473,11 +2510,112 @@ func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir
 		bank = bank.WithArtifacts(absolute...)
 	}
 	bank = bank.WithShared(resident.BankedProgress(graph, node.ID)...).WithShared(shared...)
-	bank.Transcript = resident.BankedTranscript(graph, node.ID)
-	if ownWorkspace && space != nil {
-		bank = bank.WithArtifacts(space.Existing()...)
+	block, turns := resident.BankedRun(graph, node.ID)
+	bank.Transcript = block
+	if space != nil {
+		changed := space.Artifacts(node.ID)
+		absolute := make([]string, 0, len(changed))
+		for _, artifact := range changed {
+			absolute = append(absolute, filepath.Join(jobDir, artifact))
+		}
+		bank = bank.WithArtifacts(absolute...)
+		if ownWorkspace {
+			bank = bank.WithArtifacts(space.Existing()...)
+		}
 	}
-	return bank
+	return bank, turns
+}
+
+// journalLeafExhaustion writes down an attempt that ended because it ran out of
+// the room it was granted, and writes nothing for one that ended any other way.
+//
+// TWO ENDINGS ARE THE SAME FACT and they arrive by different doors. The
+// executor's own loop notices its deadline, its turn cap or its token budget
+// between turns and lands an outcome saying which (exec.Outcome.Overran); the
+// watchdog above it notices a leaf that did not come back at all and returns
+// exec.Abandoned. Both are "the clock, and nothing else", which is precisely
+// what a reader must not have to infer from a gap in the record.
+//
+// A journal write that fails is noted and dropped. This is an account of the
+// work and never a part of it: a leaf that did its job must not be failed
+// because the row about it could not be written.
+func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
+	deadline, watchdog time.Duration, outcome *exec.Outcome, err error) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" {
+		return
+	}
+	record := store.LeafExhausted{Attempt: attempt}
+	var abandoned *exec.Abandoned
+	switch {
+	case errors.As(err, &abandoned):
+		record.Bound = string(exec.StopDeadline)
+		record.Allowed = watchdog.Round(time.Second).String()
+		record.Reason = "the worker did not come back within " + record.Allowed +
+			" and was given up on — its work is recorded and the node goes back on the queue"
+	case err == nil && outcome != nil && leafRanOutOfRoom(outcome):
+		bound := outcome.Stop
+		if bound == exec.StopDone || bound == "" {
+			bound = outcome.Exhausted
+		}
+		record.Bound = string(bound)
+		record.Turns = outcome.Turns
+		record.Allowed = exhaustionAllowance(bound, deadline)
+		record.Reason = exhaustionWords(bound, record.Allowed, outcome.Turns)
+	default:
+		return
+	}
+	if journalErr := graph.RecordLeafExhausted(nodeID, record); journalErr != nil {
+		log.Printf("note: could not journal that %s ran out of room: %v", nodeID, journalErr)
+	}
+}
+
+// leafRanOutOfRoom is exec.Outcome.Overran plus the wall clock.
+//
+// Overran deliberately excludes StopDeadline, because it answers a different
+// question: whether this leaf was too big for its ENVELOPE, which is what the
+// growth governor buys more room against. Running out of TIME is the same fact
+// for the purpose of the record — the attempt was still working when it was told
+// to stop — and it is the one that actually ended the ink run's attempts, so a
+// record built only on Overran would have written down nothing.
+func leafRanOutOfRoom(outcome *exec.Outcome) bool {
+	return outcome.Overran() || outcome.Stop == exec.StopDeadline ||
+		outcome.Exhausted == exec.StopDeadline
+}
+
+// exhaustionAllowance spells the room this attempt was given, in the unit that
+// ran out. Only the wall is known here as a duration; the turn and token caps
+// are the executor's own and it reports what it reached rather than what it was
+// allowed, so those are left unsaid rather than guessed at.
+func exhaustionAllowance(bound exec.StopReason, deadline time.Duration) string {
+	if bound == exec.StopDeadline && deadline > 0 {
+		return deadline.Round(time.Second).String()
+	}
+	return ""
+}
+
+// exhaustionWords is the one sentence a person reads. It names what ran out in
+// ordinary words — the machinery vocabulary law — and it never says "failed",
+// because an attempt that was still working when its budget ended did not.
+func exhaustionWords(bound exec.StopReason, allowed string, turns int) string {
+	subject := "the room it was given"
+	switch bound {
+	case exec.StopDeadline:
+		subject = "its time"
+		if allowed != "" {
+			subject = "its " + allowed
+		}
+	case exec.StopTurnCap:
+		subject = "its turns"
+	case exec.StopBudget:
+		subject = "its tokens"
+	case exec.StopOverrun:
+		subject = "far more than this kind of work usually takes"
+	}
+	words := "it was still working when it ran out of " + subject
+	if turns > 0 {
+		words += fmt.Sprintf(" — %d turns in", turns)
+	}
+	return words
 }
 
 // tasteBriefBytes bounds settled taste inside a leaf's brief. Taste is a short
