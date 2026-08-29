@@ -1231,7 +1231,7 @@ fine (`named=44`, later `named=156 red=2`). ink's after-photograph has never onc
 | igel | 5/24 | 2/2 | 0 | 2 | **false** (wall) | **2.057** | 5402s | 3 | 968 | 0.002125 |
 | textual | 4/20 | 6/6 | 0 | 2 | true | 0.464 | 1699s | 3 | 280 | 0.001655 |
 | ofetch | **0/47** | **5/13** | 0 | 2 | true | 0.853 | 2774s | 4 | 454 | 0.001880 |
-| ink | 10/25 (pending grade) | — | — | 2 | **false** (wall) | 1.305 | 5402s | 4 | 777 | 0.001680 |
+| ink | **0/25** | 49/49 | 0 | 2 | **false** (wall) | 1.305 | 5402s | 4 | 777 | 0.001680 |
 
 **Sweep cost $5.19 — over the $5 kill threshold.** Every nemotron run cost 1.5–2.5× the deepseek run on the
 same task, and igel alone cost $2.06 (968 calls) against deepseek igel s11's $0.302 (334 calls). The per-call
@@ -1275,4 +1275,8 @@ price is the whole story: nemotron averages $0.00168/call against deepseek's ~$0
   (`named=2 red=2`) so the photograph had little to stand on.
 - **textual 4/20** — MODEL. JSON-contract deliverable, three times. Readings never widened past `(4 files) named 6`.
 - **ofetch 0/47** — MODEL, unambiguously. It broke the suite; the harness said so twice and exited 2.
-- **ink 10/25** — HARNESS (reading blindness) + MODEL (72 compiled carriers). Wall, `settled: false`.
+- **ink 0/25** (p2p 49/49) — HARNESS (reading blindness) + MODEL (72 compiled carriers). Wall, `settled: false`.
+  Nothing regressed and nothing was achieved: the model never implemented the grid feature, and both gates said so
+  (`The deliverable does not implement any of the 6 requested grid display behaviours`, ue=6 on both). With every
+  finished-tree reading blind (`named=0 read=False`), the harness could not have told the difference between this
+  and a working run from its own evidence.
