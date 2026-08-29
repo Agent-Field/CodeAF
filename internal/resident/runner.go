@@ -255,7 +255,8 @@ func (r *Runner) WithStaleAge(age time.Duration) *Runner {
 // facts and only one of them is safe.
 
 // leafHold is this process's grip on one dispatched node: how to stop its
-// worker, whether the reaper has asked, and when it asked.
+// worker, what that worker is currently waiting on, whether the reaper has asked
+// it to stop, and when it asked.
 type leafHold struct {
 	// token is the claim this worker holds. A hold is only ever matched against
 	// the token it was created for, so a stale sweep can never cancel the
@@ -263,9 +264,56 @@ type leafHold struct {
 	token  uint64
 	cancel context.CancelFunc
 
+	// inFlight is how many calls this worker is waiting on right now, and
+	// lastSeen is when one of them last began or ended, in Unix nanoseconds.
+	//
+	// THE MARK THE JOURNAL CANNOT CARRY. Every durable sign of life is written
+	// when something FINISHES — a usage row when a call is billed, a transcript
+	// flush when a batch of sixty-four entries fills — so a leaf spending its
+	// window inside three long shell commands writes nothing at all and reads as
+	// a corpse. The fact that was missing is that a call is IN FLIGHT, and it is
+	// known here, for free, by the process that is waiting. See exec.Working.
+	//
+	// Atomics rather than the mutex below because a batch of tools running in
+	// parallel opens several spans at once, on the worker's own goroutines,
+	// while the sweep reads them on the dispatch loop's.
+	inFlight atomic.Int64
+	lastSeen atomic.Int64
+
 	mu      sync.Mutex
 	reason  string
 	askedAt time.Time
+}
+
+// working is the [executor.LivenessMark] this hold hands its worker: a call is
+// starting, and the returned function says it is over.
+func (hold *leafHold) working() func() {
+	hold.inFlight.Add(1)
+	hold.mark()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			hold.inFlight.Add(-1)
+			hold.mark()
+		})
+	}
+}
+
+func (hold *leafHold) mark() { hold.lastSeen.Store(time.Now().UnixNano()) }
+
+// busy reports that this worker is demonstrably at work: it is waiting on
+// something right now, or it finished waiting on something inside the window.
+//
+// A worker that has never marked anything is not busy, and that is the honest
+// answer rather than a generous one: a leaf that made no call and issued no tool
+// has done nothing this process can vouch for, and the journal is then the only
+// account of it — which is exactly the account the sweep already read.
+func (hold *leafHold) busy(now time.Time, window time.Duration) bool {
+	if hold.inFlight.Load() > 0 {
+		return true
+	}
+	seen := hold.lastSeen.Load()
+	return seen > 0 && now.Sub(time.Unix(0, seen)) < window
 }
 
 // reap asks this worker to stop and answers whether this is the first ask. The
@@ -345,10 +393,19 @@ func (r *Runner) reapSilentClaims() bool {
 	if err != nil || len(silent) == 0 {
 		return false
 	}
+	window := r.staleWindow()
 	now := time.Now()
 	freed := false
 	for _, claim := range silent {
 		if hold := r.heldLeaf(claim.ID, claim.Token); hold != nil {
+			// THE JOURNAL IS NOT THE ONLY WITNESS WHEN THE WORKER IS OURS. The
+			// sweep above read what has been written down, and what gets written
+			// down is what has FINISHED; a leaf waiting on one long command has
+			// finished nothing and written nothing. This process is the one
+			// doing the waiting, so it can simply say so.
+			if _, stopping := hold.stopping(); !stopping && hold.busy(now, window) {
+				continue
+			}
 			// Ours, and still running. Ask it to stop and leave the claim
 			// exactly where it is: its own landing releases it, which is the
 			// only release that cannot overtake a live worker. The one
@@ -849,6 +906,10 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 	// instead. See the leafHold block above for what that cost.
 	runCtx, cancel := context.WithCancel(ctx)
 	hold := r.takeHold(node.ID, node.ClaimToken, cancel)
+	// And the worker's own account of what it is waiting on, which is the half
+	// of "is anybody behind this claim" that the journal structurally cannot
+	// answer. See leafHold.busy.
+	runCtx = executor.WithLiveness(runCtx, hold.working)
 	if node.Group == store.PracticeGroup {
 		// Deferred because a fault under this lock would otherwise leave it
 		// held forever — trading a crash for a deadlock is not a rescue.
