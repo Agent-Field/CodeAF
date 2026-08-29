@@ -1056,3 +1056,75 @@ the same responses in different places must never disagree into a negative row.
 of record and nothing else carries it. `cost.json` and the settlement's money line both read
 the `usage` table, so both now see an interrupted leaf's spend. Pinned by
 `cmd/aforge/leafbank_test.go`.
+
+## A leaf's bounds, and the one that is allowed to land it
+
+Written against ink s9 of 2026-08-29, where three leaves were landed early by a
+bound the record could not name.
+
+A leaf carried **five** ceilings. Three of them could land it and all three set
+`Exhausted = StopBudget`, so the journal said *"it was still working when it ran
+out of its tokens"* and the surface printed the grant — which in that run was
+150,000 against three leaves landed at 240,000 by a different meter. The first
+three readings of the store each blamed a different ceiling, and none of them
+could be checked.
+
+| bound | what it counts | may it land the leaf |
+| --- | --- | --- |
+| `spent()` vs the grant | uncached prompt + cached at `cachedTokenWeightPercent` (10, the provider's own discount) + completion — **what the job pays** | **yes** |
+| `maxTurnBackstop` (400) | iterations | **yes** |
+| the no-progress guard | repeated calls, a stagnant window, `noProgressTurnFloor` (60) | **yes** |
+| `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
+| `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
+
+**The two cumulative bounds were retired as stops, and the arithmetic is why.**
+Σ over turns of the prompt is `turns × mean-context` wearing a token name: a
+transcript that only grows re-sends its whole prefix every turn, so the sum
+climbs at the same rate for a leaf doing hard work as for one circling. Two
+measurements settle it:
+
+- **No separation.** ink s9's leaf stopped at a duplication factor of 8.9×; the
+  audited runaway `reuseCeiling` was written for ran 11.2×. No detector lives in
+  a gap of 1.26×.
+- **It rewards carrying more.** The ceiling is stated against the *window* and
+  consumed against the *transcript*, so a leaf holding 30k of a 96k fill is
+  landed at a third of the turns a leaf holding 96k gets, for the same work.
+
+ink s9's first attempt was landed at turn 13 of a 200-turn grant having spent
+104,064 of 150,000 tokens of billed work and 372,941 of its 450,000 raw ceiling
+— 69% of the money, 31% unspent, and thrown away. All three of its leaves were
+landed at exactly `reuseCeiling` plus the four landing turns: crossed at turns
+13, 12 and 9, landed at 17, 16 and 13.
+
+The runaway both were written for — a warm loop re-reading files it has already
+read — is the no-progress guard's case, and `noprogress.go` opens by saying in
+terms that *a magnitude bound cannot separate "many turns because the work is
+hard" from "many turns because it is stuck"*, and that a signal which can was
+what was missing. That signal exists, it fires at turn 60, and it is a fifth of
+where the raw ceiling would have reached. Both numbers survive as pressure on
+`budgetUsed`, where firing early on an honest leaf costs a sentence telling it
+to wrap up rather than the leaf's work.
+
+**And the bound that fires names itself.** `exec.Meter` carries the bound's name,
+its two numbers and their unit; `store.LeafExhausted` journals them beside the
+`StopReason`; the exhaustion sentence quotes them. A record that cannot say which
+of five ceilings stopped a leaf is FAILSAFE.md's fourth clause exactly — an
+absence that means five things at once. Pinned by
+`internal/exec/inks9_test.go`.
+
+## The generalist leaves a record
+
+`exec.TranscriptFrom` had **one reader in the tree** — `internal/exec/bare` — so
+the default worker every unrouted node gets recorded nothing durable at all. ink
+s9 ran three leaves on it and left a store with zero transcript rows, which is
+why `resident.BankedRun` found nothing, why every continuation started cold, and
+why the resumption the lease lane built could never fire on the belt that
+actually runs.
+
+It is wired at the **flight recorder** rather than in each loop, because every
+turn of the generalist and every note the harness writes about itself already
+passes through that one object with the response, the calls and the results in
+hand (`tracer.sink`, `newRecordingTracer`). One seam, and the coding pipeline
+gets it in the same change because it builds a tracer too. The cost is the batch
+the store already imposes — `store.MaxTranscriptBatch` — and not one extra write
+per tool result, which is the line `internal/exec/liveness.go` draws.

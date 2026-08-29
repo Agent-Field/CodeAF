@@ -258,7 +258,22 @@ type Outcome struct {
 	// empty, which reads as "no shape recorded" rather than as a leaf with no
 	// turns.
 	PerTurn []TurnUsage
-	Stop    StopReason
+	// Meter is the bound that actually landed this leaf, with its own two
+	// numbers.
+	//
+	// THREE CEILINGS PRODUCED ONE SENTENCE. A leaf could be landed by its cost
+	// grant, by an undiscounted token ceiling three times that grant, or by a
+	// cumulative bound on prompt sent — and all three set Exhausted to
+	// StopBudget, so the journal said "it ran out of its tokens" and the surface
+	// printed the grant, which in the ink run of 2026-08-29 was a number the
+	// leaf never came near. An autopsy could not tell which ceiling had fired,
+	// and the first three readings of that run each blamed a different one.
+	//
+	// A MEASUREMENT THAT WAS NOT TAKEN IS A FACT ABOUT THE RUN (FAILSAFE.md's
+	// sixth failure) and so is a measurement whose meter nobody can name. Empty
+	// on a leaf that was not landed by a bound.
+	Meter Meter
+	Stop  StopReason
 	// Exhausted is what ran out, when something did. It is separate from Stop
 	// because the two answer different questions and the common case makes them
 	// disagree: a leaf whose budget runs out is told to land, it lands, and it
@@ -747,4 +762,45 @@ func Requeued(err error, record func() int) (allowed time.Duration, recorded int
 		return 0, 0, false
 	}
 	return allowed, recorded, true
+}
+
+// Meter is one bound, named, with what it reached and what it allowed.
+//
+// It is a value rather than a sentence because the two readers want different
+// things from it: the journal wants the figures so a later run can be compared
+// with this one, and the person wants a line. Composing the line from the
+// figures keeps the two from disagreeing, which is the whole of the defect it
+// answers — the ink run of 2026-08-29 printed a grant of 150,000 beside a leaf
+// that had been landed by a different ceiling at 240,000.
+type Meter struct {
+	// Name is the bound in one word, for a reader and for a grep: "cost",
+	// "turns", "deadline", "no-progress", "reuse", "raw".
+	Name string `json:"name,omitempty"`
+	// Reached and Allowed are the bound's own two numbers, in the bound's own
+	// unit. Zero Allowed means the bound has no figure worth printing (a
+	// structural detector rather than a ceiling).
+	Reached int `json:"reached,omitempty"`
+	Allowed int `json:"allowed,omitempty"`
+	// Unit is what those numbers count, so a line can be composed without the
+	// reader having to know which bound spells its allowance in what: "tokens",
+	// "turns", "prompt tokens sent".
+	Unit string `json:"unit,omitempty"`
+}
+
+// Named reports that a bound actually said something.
+func (m Meter) Named() bool { return strings.TrimSpace(m.Name) != "" }
+
+// Words is the bound in a person's own sentence, with its figures.
+func (m Meter) Words() string {
+	if !m.Named() {
+		return ""
+	}
+	if m.Allowed <= 0 {
+		return m.Name
+	}
+	unit := m.Unit
+	if unit == "" {
+		unit = "tokens"
+	}
+	return fmt.Sprintf("%s: %d of %d %s", m.Name, m.Reached, m.Allowed, unit)
 }

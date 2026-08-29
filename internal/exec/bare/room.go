@@ -168,6 +168,13 @@ const landingAsk = "Your time for this task has run out. Do not start anything e
 func (l *loopState) landOnTheWall(ctx context.Context, outcome *exec.Outcome, started time.Time) *exec.Outcome {
 	l.note(landingWords)
 	outcome.Exhausted = exec.StopDeadline
+	// The bound names itself here as it does on the generalist belt, so an
+	// autopsy of either reads the same way. See exec.Meter.
+	if left, bounded := room(ctx); bounded {
+		outcome.Meter = exec.Meter{Name: "deadline", Unit: "seconds",
+			Reached: int(time.Since(started).Seconds()),
+			Allowed: int((time.Since(started) + left).Seconds())}
+	}
 	outcome.Text = l.lastAssistantText()
 	outcome.Elapsed = time.Since(started)
 	// The landing turn itself. It is one call with no tools on the wire, which

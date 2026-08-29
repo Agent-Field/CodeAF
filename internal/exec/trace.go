@@ -2,12 +2,14 @@ package exec
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -52,6 +54,31 @@ type tracer struct {
 	streamWriter *bufio.Writer
 	streamOpened bool
 	streamNoted  bool
+
+	// sink is the store's transcript, when this attempt has one.
+	//
+	// THE RECORD OF A TURN GOES BOTH PLACES OR IT GOES NOWHERE USEFUL. This
+	// recorder writes a file in the workspace scratch: excellent for reading
+	// over a run's shoulder, and useless afterwards — it is not addressable by
+	// node, it is not there when somebody asks a week later, and a continuation
+	// cannot be seeded from it. The store's transcript is the durable half, and
+	// until this it had exactly one writer in the whole tree, in the bare belt
+	// (see exec/transcript.go). So the GENERALIST — the worker every unrouted
+	// node gets — recorded nothing durable at all: the ink run of 2026-08-29
+	// ran three leaves on it and left a store with zero transcript rows, so
+	// BankedRun found nothing, every continuation started cold, and the
+	// resumption the lease lane had built could never fire.
+	//
+	// It is wired HERE rather than in each loop because every turn of the
+	// generalist and every harness note already passes through this one object
+	// — turn() has the response, the calls and the results in hand, and note()
+	// has the machinery's own account of itself. One seam, and the swe belt
+	// gets it in the same change because it builds a tracer too.
+	sink TranscriptSink
+	// turnOf is the turn number a note belongs to, kept because note() is
+	// called between turns and a note filed under turn zero is a note an
+	// autopsy cannot place.
+	turnOf int
 }
 
 // traceBuffer is a batch of lines rather than a page. Small enough that a run
@@ -135,6 +162,16 @@ func TracePath(home, leaf string) string {
 	return current
 }
 
+// newRecordingTracer is newTracer with the attempt's durable transcript wired
+// in. The two are separate constructors because most callers of newTracer are
+// tests and sub-openers with no attempt behind them, and a sink they cannot
+// supply should not become a parameter they have to pass nil for.
+func newRecordingTracer(ctx context.Context, workspace *Workspace, leaf string) *tracer {
+	t := newTracer(workspace, leaf)
+	t.sink = TranscriptFrom(ctx)
+	return t
+}
+
 func newTracer(workspace *Workspace, leaf string) *tracer {
 	full, _, err := workspace.ScratchPath(traceName(leaf))
 	if err != nil {
@@ -157,6 +194,12 @@ func newTracer(workspace *Workspace, leaf string) *tracer {
 }
 
 func (t *tracer) close() {
+	// The durable half first and outside the lock, because it is the half that
+	// matters after the process is gone: a run that ends any way at all — a
+	// landing, a fault, a cancellation — has its turns on disk before the file
+	// handle is let go. The runner flushes again on its own side; both are
+	// no-ops on an empty buffer.
+	t.flushRecord()
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if t.streamWriter != nil {
@@ -240,6 +283,17 @@ const streamNote = "stream: the engine's own event feed is in "
 // note records a free-form line, for run-level facts that belong in the
 // recorder but are not a turn — the contract in force, a nudge, a stop.
 func (t *tracer) note(body string) {
+	// THE DURABLE HALF IS NOT GATED ON THE FILE HALF. newTracer answers three
+	// different failures — no scratch path, no directory, no file — with the
+	// same empty tracer, and every one of them would otherwise take the store's
+	// transcript down with a file nobody was reading. The two records exist for
+	// different readers and they fail independently. It is also written before
+	// the lock, because the sink is required to be safe for concurrent use and
+	// holding a file lock across a database write is how a slow disk becomes a
+	// stalled leaf.
+	t.record(store.TranscriptEntry{
+		Turn: t.turnNumber(), Kind: store.TranscriptNote, Text: body,
+	})
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if t.writer == nil {
@@ -247,6 +301,35 @@ func (t *tracer) note(body string) {
 	}
 	t.writer.WriteString(body)
 	t.writer.WriteByte('\n')
+}
+
+// turnNumber is the turn a note belongs to. A note written between turns
+// belongs to the turn that has just happened, which is what a reader collapsing
+// a transcript by turn expects to find it under.
+func (t *tracer) turnNumber() int {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	return t.turnOf
+}
+
+// record files one entry in the durable transcript, and nothing when this
+// attempt has no sink — which is the ordinary case for a test and for a bench
+// harness with no store. It is called with the tracer's own lock held in note()
+// and without it in turn(), so it takes none of its own: TranscriptSink is
+// required to be safe for concurrent use (see transcript.go).
+func (t *tracer) record(entry store.TranscriptEntry) {
+	if t.sink == nil || strings.TrimSpace(entry.Text) == "" {
+		return
+	}
+	t.sink.Record(entry)
+}
+
+// flushRecord makes the durable half durable. The file half flushes per turn on
+// its own; this is called where a run ends, and it is safe to call twice.
+func (t *tracer) flushRecord() {
+	if t.sink != nil {
+		t.sink.Flush()
+	}
 }
 
 // turn records one round: what the model said, what it called, what came back.
@@ -306,6 +389,11 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	// A turn is a whole record, so it is also a flush point: the linear loop
 	// writes one every few seconds and a trace that is a turn behind is a trace
 	// nobody can read over a run's shoulder.
+	// The durable half first and outside the lock, for the reason note() gives:
+	// a trace file that could not be opened must not silence the record under
+	// the node, and a database write must not be taken with a file lock held.
+	t.setTurn(turn)
+	t.recordTurn(turn, response, calls, results, note)
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if t.writer == nil {
@@ -313,6 +401,53 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	}
 	t.writer.WriteString(block.String())
 	t.writer.Flush()
+}
+
+// setTurn remembers which turn the loop is on, so a note written after it can
+// be filed under it.
+func (t *tracer) setTurn(turn int) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	t.turnOf = turn
+}
+
+// recordTurn is the durable half of turn(): what the model said, what it asked
+// for, and what came back, in the order it happened.
+//
+// The order matters and it is the bare loop's order, deliberately — a reader of
+// two belts' transcripts must not have to learn two shapes. The assistant's
+// words go down before the calls they explain, because a turn whose tools hang
+// is otherwise a turn nobody can see the reasoning for.
+func (t *tracer) recordTurn(turn int, response *ai.Response, calls []ai.ToolCall, results []Result, note string) {
+	if t.sink == nil {
+		return
+	}
+	if response != nil {
+		t.record(store.TranscriptEntry{
+			Turn: turn, Kind: store.TranscriptAssistant,
+			Text: strings.TrimSpace(response.Text()),
+		})
+	}
+	for index, call := range calls {
+		t.record(store.TranscriptEntry{
+			Turn: turn, Kind: store.TranscriptToolCall,
+			Tool: call.Function.Name, CallID: call.ID, Text: call.Function.Arguments,
+		})
+		// A batch that was never executed — a reply cut at the output limit,
+		// a promotion — has calls and no results, and saying so is the honest
+		// record of it. The note carries why.
+		if index >= len(results) {
+			continue
+		}
+		t.record(store.TranscriptEntry{
+			Turn: turn, Kind: store.TranscriptToolResult,
+			Tool: call.Function.Name, CallID: call.ID,
+			Text: results[index].Content, Failed: results[index].IsError,
+		})
+	}
+	if strings.TrimSpace(note) != "" {
+		t.record(store.TranscriptEntry{Turn: turn, Kind: store.TranscriptNote, Text: note})
+	}
 }
 
 // hitPercent is the share of a turn's prompt the provider served from its cache,

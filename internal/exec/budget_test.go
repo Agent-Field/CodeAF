@@ -186,7 +186,7 @@ func TestOneTurnDoesNotCrossTheWrapUpThreshold(t *testing.T) {
 	turn := steadyTurn(calibratedWindow(), false)
 	outcome.Usage.PromptTokens = turn.prompt
 	outcome.Usage.CompletionTokens = turn.completion
-	if used := budgetUsed(outcome, defaultLeafTokens); used > wrapUpAt {
+	if used := budgetUsed(outcome, defaultLeafTokens, 0); used > wrapUpAt {
 		t.Fatalf("a single cold turn reads %.2f used of a %d ceiling, past the %.2f wrap-up mark",
 			used, defaultLeafTokens, wrapUpAt)
 	}
@@ -253,12 +253,20 @@ func (w *warmRunaway) CompleteWithMessages(context.Context, []ai.Message, ...ai.
 // The regression itself, driven through the real loop.
 //
 // A leaf billing at a 98% hit rate spends about a sixth of what it costs the
-// provider to run it, so the cost ceiling alone would let it run until it had
-// pushed roughly a million raw tokens through the model — which is what the
-// traces show, twice, at 1.4M and 1.6M on single nodes. The raw bound has to be
-// what ends it, it has to end it inside the turn backstop rather than at it, and
-// it has to end it the graceful way: a landing that delivers what exists.
-func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
+// provider to run it, so it can push a great many raw tokens through the model
+// before its grant is gone — which is what the traces show, twice, at 1.4M and
+// 1.6M on single nodes.
+//
+// THE MONEY IS WHAT ENDS IT, and this is where that claim is checked rather
+// than asserted. The raw bound used to be what fired here and is now a warning
+// (see meter.go on reuseCeiling for the measurement that demoted both Σ-of-
+// prompt bounds). What must still hold is everything the audit actually cared
+// about: the leaf ends well inside the turn backstop rather than at it, it ends
+// far short of the 1.4M the traces show, it ends the graceful way with a
+// landing that delivers what exists — and it ends having spent the grant, which
+// is the only honest reason to stop a leaf that is being billed for every turn
+// it takes.
+func TestACacheDiscountedRunawayLandsOnItsMoney(t *testing.T) {
 	client := &warmRunaway{window: calibratedWindow(), hitPercent: 98}
 	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, defaultLeafTokens, time.Hour)
 	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
@@ -275,21 +283,29 @@ func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
 		t.Fatal("the landing delivered nothing; the raw bound must wrap up, not kill")
 	}
 
-	// The raw bound, not the turn cap, is what fired. If the cap is what caught
-	// it, the bound is not doing its job and every runaway costs the full 40.
+	// The grant, not the turn cap, is what fired. If the cap is what caught it,
+	// the meter is not doing its job and every runaway costs the full backstop.
 	if outcome.Turns >= maxTurnBackstop {
-		t.Fatalf("ran %d turns of a %d backstop — the raw bound did not fire first",
+		t.Fatalf("ran %d turns of a %d backstop — the grant did not fire first",
 			outcome.Turns, maxTurnBackstop)
 	}
 
-	// And the bound held to its own arithmetic, plus the landing reserve it
-	// grants after crossing.
-	raw := rawSpent(outcome)
-	ceiling := rawCeiling(defaultLeafTokens)
+	// And the grant held to its own arithmetic, plus the landing reserve it
+	// gives after crossing.
 	turn := warmTurn(calibratedWindow(), 98)
-	if slack := (landingTurns + 1) * (turn.prompt + turn.completion); raw > ceiling+slack {
-		t.Fatalf("raw spend %d overran the %d bound by more than the %d its landing reserve costs",
-			raw, ceiling, slack)
+	slack := (landingTurns + 1) * spentOfTurn(turn)
+	if spent(outcome) > defaultLeafTokens+slack {
+		t.Fatalf("billed spend %d overran the %d grant by more than the %d its landing reserve costs",
+			spent(outcome), defaultLeafTokens, slack)
+	}
+
+	// AND IT ENDED FAR SHORT OF THE AUDIT'S OWN CASES. The traces this test was
+	// written from show single nodes at 1.4M and 1.6M raw prompt tokens; a warm
+	// runaway that is billed for every turn runs out of money well before it
+	// reaches either, which is what makes the Σ-of-prompt ceiling that used to
+	// fire here redundant as well as blind.
+	if raw := rawSpent(outcome); raw >= 1_400_000 {
+		t.Fatalf("the runaway pushed %d raw tokens, reaching the audited 1.4M the grant is supposed to forestall", raw)
 	}
 
 	// The whole point, stated as the comparison the audit made: cost alone would
@@ -339,7 +355,12 @@ func TestTheRawBoundHoldsAtEveryHitRate(t *testing.T) {
 // The raw bound is a bound on convergence and never on cost: it may not shorten
 // a leaf that is spending honestly. A cold leaf sees exactly the ceiling it was
 // granted, because three times a number it cannot reach is not a limit.
-func TestTheRawBoundNeverBindsBeforeTheCostCeiling(t *testing.T) {
+//
+// And the raw bound no longer LANDS anything: it reaches the leaf as the
+// wrap-up warning, which is what a bound that cannot tell hard work from
+// circling is worth. The measurement that demoted it is in meter.go against
+// reuseCeiling, and the two are the same quantity.
+func TestTheRawBoundWarnsAndOnlyTheCostCeilingLands(t *testing.T) {
 	cold := &Outcome{Usage: Usage{PromptTokens: defaultLeafTokens - 1, CompletionTokens: 0}}
 	if exhausted(cold, defaultLeafTokens) {
 		t.Fatal("a leaf one token short of its ceiling was called exhausted")
@@ -358,14 +379,18 @@ func TestTheRawBoundNeverBindsBeforeTheCostCeiling(t *testing.T) {
 	if spent(warm) >= defaultLeafTokens {
 		t.Fatalf("the discount stopped discounting: %d of %d", spent(warm), defaultLeafTokens)
 	}
-	if !exhausted(warm, defaultLeafTokens) {
-		t.Fatalf("a leaf at %d raw tokens against a %d bound was not called exhausted",
-			rawSpent(warm), rawCeiling(defaultLeafTokens))
+	// AND IT IS NOT LANDED FOR IT. The raw ceiling was a stop until ink s9 of
+	// 2026-08-29 showed what a Σ-of-prompt bound actually measures — turns ×
+	// mean-context, which climbs identically for a leaf doing hard work and one
+	// circling. It is a warning now. See PERF.md, "A leaf's bounds".
+	if exhausted(warm, defaultLeafTokens) {
+		t.Fatalf("a leaf inside its %d-token grant was landed at %d raw tokens; the money is the only meter that lands work",
+			defaultLeafTokens, rawSpent(warm))
 	}
 	// And the wrap-up warning reaches it, on the bound it is actually near.
-	if budgetUsed(warm, defaultLeafTokens) <= wrapUpAt {
+	if budgetUsed(warm, defaultLeafTokens, 0) <= wrapUpAt {
 		t.Fatalf("a leaf at its raw bound reads %.2f used, under the %.2f wrap-up mark",
-			budgetUsed(warm, defaultLeafTokens), wrapUpAt)
+			budgetUsed(warm, defaultLeafTokens, 0), wrapUpAt)
 	}
 }
 
@@ -402,4 +427,15 @@ func TestTheTurnBackstopCannotBeRaisedByACaller(t *testing.T) {
 	if got := NewLinear(nil, nil, nil, 4, defaultLeafTokens, time.Minute).maxTurns; got != 4 {
 		t.Fatalf("a caller asking for a tighter 4 turns got %d", got)
 	}
+}
+
+// spentOfTurn is one warm turn priced the way the grant prices it, so a test
+// about the grant's slack is written in the grant's own unit rather than in raw
+// tokens that the discount makes incomparable.
+func spentOfTurn(turn turnBilling) int {
+	cached := turn.cached
+	if cached > turn.prompt {
+		cached = turn.prompt
+	}
+	return turn.prompt - cached + cached*cachedTokenWeightPercent/100 + turn.completion
 }
