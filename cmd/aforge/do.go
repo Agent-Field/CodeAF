@@ -1387,6 +1387,15 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 	if gate.Whole() {
 		return "", "", false
 	}
+	// THE COVERAGE SET IS THE FINDING WHERE IT IS THE ONE NOTHING ADDRESSED. A
+	// verdict that passed, that a repair closed, or whose refusal was weighed
+	// against the world and lost has settled everything it was about — and the
+	// behaviours nothing exercises are not among them. Leading with the gate's
+	// own prose there would name the finding that was ACQUITTED as the reason
+	// the run is short, which is the opposite of what happened.
+	if len(gate.Unexercised) > 0 && (gate.Pass || gate.PolishClosed || gate.Overturned) {
+		return uncheckedWords(len(gate.Unexercised)), "", true
+	}
 	finding = firstLine(strings.TrimSpace(gate.Gap))
 	if finding == "" && gate.Unreadable {
 		// A gate that PASSED over a suite nobody could read names no gap,
@@ -1409,6 +1418,20 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 		reason = "nothing further was started"
 	}
 	return finding, reason, true
+}
+
+// uncheckedWords is the coverage shortfall as a count, for the last line of a
+// run that is short of nothing else.
+//
+// A count rather than the behaviours themselves, because unexercisedWords
+// already spells one of them out where the finding is the news, and this line is
+// the run's whole reservation in one clause. The list is on the gate event for
+// whoever opens it.
+func uncheckedWords(groups int) string {
+	if groups == 1 {
+		return "1 behaviour the request states has no check"
+	}
+	return fmt.Sprintf("%d behaviours the request states have no check", groups)
 }
 
 // partialWords is that reservation as the stream's last line.
