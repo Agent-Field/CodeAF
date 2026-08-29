@@ -649,6 +649,13 @@ type settlementWatch struct {
 	// noted remembers which nodes have already had their degradation said, so a
 	// build missing a worker admits it once per node rather than once per beat.
 	noted map[string]bool
+	// waiting is when this watcher first saw a node running with nobody named
+	// as running it. The claim is granted and the row is stamped a fraction of
+	// a second before the dispatch path builds the worker and writes it down,
+	// so a poll can land in the gap; holding the line for that fraction is what
+	// lets every ▶ say who. See runningWorkerGrace for what happens when the
+	// fact never arrives.
+	waiting map[string]time.Time
 	// structured records that the "understood" line has been said. Without it
 	// the first thing stderr ever carried was a leaf changing status, so a run
 	// that compiled and then hung showed nothing at all.
@@ -946,15 +953,78 @@ func (w *settlementWatch) report(nodes []store.Node) bool {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
 			continue
 		}
+		if w.holdForWorker(node) {
+			// Said on a later beat, with the worker in it. Not counted as
+			// movement: the quiet line's whole job is to speak when nothing is
+			// known, and a node whose record never arrives must not silence it.
+			continue
+		}
 		changed = true
 		w.seen[node.ID] = node.Status
+		delete(w.waiting, node.ID)
 		if node.Status == store.Pending {
 			continue
 		}
-		fmt.Fprintf(w.progress, "  %s %-28s %s\n", statusMark(node.Status),
-			clip(firstLine(nodeDisplay(node)), 28), time.Since(w.started).Round(time.Second))
+		fmt.Fprintf(w.progress, "  %s %-28s%s %s\n", statusMark(node.Status),
+			clip(firstLine(nodeDisplay(node)), 28), ranWords(node),
+			time.Since(w.started).Round(time.Second))
 	}
 	return changed
+}
+
+// runningWorkerGrace is how long a ▶ waits for the store to say who is running
+// the node. A claim is granted, the row is stamped running, and the dispatch
+// path writes the worker down a few milliseconds later, so a poll landing in
+// that gap would otherwise print the one line that cannot answer the question
+// the whole stream is there to answer.
+//
+// It is a grace and not a requirement, which is the point of having a figure at
+// all: after it the line prints anyway, without the worker. A node whose record
+// never arrives is a node that has still started, and losing its ▶ would trade
+// a missing word for a missing line.
+const runningWorkerGrace = 3 * time.Second
+
+// holdForWorker answers whether this node's line should wait a beat. Only a
+// node that has just started running waits, only while nobody has said what is
+// running it, and only until the grace above runs out.
+func (w *settlementWatch) holdForWorker(node store.Node) bool {
+	if statusMark(node.Status) != "▶" {
+		// A held claim goes back to pending and may be granted again later. The
+		// grace is per run of the node and not per errand, so the clock is
+		// dropped the moment the node stops running.
+		delete(w.waiting, node.ID)
+		return false
+	}
+	if strings.TrimSpace(node.Ran) != "" {
+		return false
+	}
+	if w.waiting == nil {
+		w.waiting = make(map[string]time.Time, 1)
+	}
+	first, seen := w.waiting[node.ID]
+	if !seen {
+		w.waiting[node.ID] = time.Now()
+		return true
+	}
+	return time.Since(first) < runningWorkerGrace
+}
+
+// ranWords is the worker in parentheses, on every line this stream writes about
+// a node rather than only on the interesting ones. The ▶ says who took the work
+// and the ✓ says who finished it, which on an escalated node are two different
+// answers and are the whole reason the escalation line between them is there.
+//
+// The compile summary has named a specialist since it existed, and that was the
+// wrong half of the rule: the runs worth reading afterwards are the ones where
+// nobody routed anything, and those printed a stream of ▶ marks over a table of
+// blanks. The generalist says "linear" here for the same reason it says it in
+// the store — an unnamed worker and a worker nobody recorded look identical,
+// and telling them apart cost the s9 sweep a day.
+func ranWords(node store.Node) string {
+	if ran := strings.TrimSpace(node.Ran); ran != "" {
+		return " (" + ran + ")"
+	}
+	return ""
 }
 
 // errandWorker is the specialist this errand was given, if it was given one. It
