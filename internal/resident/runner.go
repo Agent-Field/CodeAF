@@ -103,8 +103,12 @@ type Runner struct {
 	passFaults atomic.Int64
 	craft      *CraftRunner
 	// staleAge bounds how long a claim may sit running before the tick
-	// reaper returns it to pending; defaults to staleClaimAge.
-	staleAge  time.Duration
+	// reaper returns it to pending; defaults to staleClaimAge and is raised by
+	// [Runner.RaiseStaleAge] as leaves with longer deadlines are dispatched.
+	// The lock is because the raise happens on a leaf's goroutine and the read
+	// happens on the dispatch loop's.
+	staleMu  sync.Mutex
+	staleAge time.Duration
 	// expand is the depth loop, moved out of the plan build and into the
 	// schedule. Nil is the whole rollback: with no hook, a claimed node goes
 	// straight to its worker exactly as it did before claim-time division
@@ -216,6 +220,44 @@ func (r *Runner) WithStaleAge(age time.Duration) *Runner {
 	return r
 }
 
+// RaiseStaleAge lifts the reaper's window so it stays above a leaf whose own
+// deadline has just been decided, and never lowers it.
+//
+// It exists because the window is a CONSTANT and the deadline is not. A leaf's
+// deadline scales with the budget it was granted (cmd/aforge's leafDeadline: a
+// minute per fifty thousand tokens above the floor), so a well-fed leaf is
+// entitled to run for longer than the reaper's default window — and the reaper
+// would then take a node away from a worker that was still working, which is the
+// one thing a backstop must never do. The surface that decides a deadline is the
+// only party that knows it, so it says so here.
+//
+// MONOTONIC, AND ON PURPOSE. Several leaves of different sizes run at once and
+// the sweep is one query over the whole store, so the window has to clear the
+// widest deadline in flight rather than the newest. It is never lowered again:
+// the cost of a window left wide is a dead claim noticed later, and the cost of
+// one narrowed under a live leaf is the leaf.
+//
+// It is called from the leaf-building goroutine and read by the dispatch loop,
+// which is why it is guarded.
+func (r *Runner) RaiseStaleAge(deadline time.Duration) {
+	if deadline <= 0 {
+		return
+	}
+	window := deadline + claimReaperPad
+	r.staleMu.Lock()
+	defer r.staleMu.Unlock()
+	if window > r.staleAge {
+		r.staleAge = window
+	}
+}
+
+// staleWindow is the reaper's window as it stands now.
+func (r *Runner) staleWindow() time.Duration {
+	r.staleMu.Lock()
+	defer r.staleMu.Unlock()
+	return r.staleAge
+}
+
 // WithDailyBudgetUSD installs the policy rail checked immediately before each
 // claim. Zero is unlimited and preserves the old scheduling path.
 func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
@@ -252,14 +294,44 @@ const runnerTickFailures = 10
 // so no clock-driven readiness can ever be more than one ceiling late.
 const runnerQuietCeiling = 15 * time.Second
 
-// staleClaimAge is how long a node may sit running before the reaper returns
-// it to pending. It is deliberately far above the leaf executor's own
-// deadline (15 minutes) so a legitimately long leaf is never touched: the
-// reaper's whole job is the claim that outlived every possible worker behind
-// it — a stalled model call, a tool that never returned — and the DAG that
-// gates on it waiting forever. The CAS inside Release means a live worker
-// keeps its claim: the token has moved and the release fails.
-const staleClaimAge = 20 * time.Minute
+// ── the claim reaper's window, and why it is a backstop ─────────────────────
+//
+// IT IS NOT THE DETECTOR, AND ON 2026-08-28 IT WAS ACTING AS ONE. A provider
+// call hung; nothing in the call path noticed, because the guard that watches a
+// stream for silence was armed only when somebody was watching the stream
+// (internal/provider's CompleteWithMessages, and the law stated there). So the
+// first thing in the whole system to react was this reaper, twenty minutes
+// later, whose only available reaction is the bluntest one there is: take the
+// node away from the worker holding it and let somebody claim it again. It did
+// that three times to one leaf and the run produced nothing.
+//
+// The detector belongs where the failure is: the guard cuts a silent call in
+// ninety seconds, the ledger routes around the endpoint that went quiet, and the
+// worker's own loop asks the CALL again with everything it had still in hand. By
+// the time a claim is old enough to interest this reaper, every one of those has
+// been tried and the claim is genuinely held by nobody — which is the only case
+// a reaper can be right about.
+//
+// So the window is sized to be OUT OF THE WAY rather than to be timely. It is
+// the leaf executor's own deadline plus a landing pad, and it is RAISED by
+// [Runner.RaiseStaleAge] whenever a surface grants a leaf a longer one, because
+// a reaper that fires below a worker's own deadline is not a backstop — it is
+// the thing that fires first. The CAS inside Release means a live worker keeps
+// its claim anyway: the token has moved and the release fails.
+const (
+	// leafDeadlineFloor is the shortest deadline any surface grants a leaf
+	// (cmd/aforge's leafDeadline and the headless runner both start here), and
+	// the figure this window is measured from.
+	leafDeadlineFloor = 15 * time.Minute
+	// claimReaperPad is how far above a worker's own deadline the reaper sits:
+	// the room a leaf told to land needs to write its result and release its
+	// claim. Five minutes, which is the landing reserve a leaf at its deadline
+	// is already given, doubled — a claim released a minute late costs nothing,
+	// and a claim reaped a minute early costs the whole leaf.
+	claimReaperPad = 5 * time.Minute
+	// staleClaimAge is the window as a fresh runner starts with it.
+	staleClaimAge = leafDeadlineFloor + claimReaperPad
+)
 
 // runnerQuietGate is the dispatch loop's proof that a timed pass would find
 // nothing. A negative seq means it is disarmed and the next pass runs.
@@ -488,7 +560,7 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 	// is never touched; only a claim that has outlived any possible worker
 	// behind it is returned to pending. The CAS inside Release means a live
 	// worker keeps its claim — the token has moved and the release fails.
-	if released, err := r.graph.ReleaseStale(r.staleAge); err == nil && len(released) > 0 {
+	if released, err := r.graph.ReleaseStale(r.staleWindow()); err == nil && len(released) > 0 {
 		// A released node reopens the ready set, so the pass that freed it
 		// should look again immediately rather than at the tick.
 		defer r.nudge()

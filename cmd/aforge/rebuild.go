@@ -31,7 +31,7 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	yes := flags.Bool("yes", false, "skip the confirmation prompt")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

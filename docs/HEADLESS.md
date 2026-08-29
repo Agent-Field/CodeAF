@@ -52,6 +52,40 @@ Flags may appear after the task text; `do` reorders its own arguments. Naming
 neither context flag touches the environment at all, so a wrapper script that
 exported `AFORGE_CONTEXT_FILL_PCT` for a whole campaign stays in charge of it.
 
+### The brief may begin with anything, including `-`
+
+**A flag is a flag because this command declares one by that name.** Everything
+else is the brief, whatever it starts with — so a task written as a bullet list
+is a task:
+
+```sh
+aforge do "- Update the display style property
+- Keep the grid measurable"
+```
+
+That used to die in one second with `flag provided but not defined: - Update the
+display style property…` and a usage dump, because the reordering above decided
+by shape and a leading dash meant a flag. It decides by the flag set now, and a
+flag name holds no whitespace, so a bullet, a sentence and a multi-line brief are
+all text. A **misspelt** flag is still refused by name — `--dbb /tmp/x` is an
+error, not a brief — which is the reason the rule is not "anything with a dash is
+text". `--` ends the flags in the usual way, for a brief that really is one word
+beginning with a dash.
+
+### The brief may arrive on stdin
+
+Pass `-` as the task, or pass no task at all when something is piped in:
+
+```sh
+aforge do - < brief.md
+cat brief.md | aforge do --json
+generate-brief | aforge do -w /repo -
+```
+
+`aforge do` with no task and a terminal attached prints the usage rather than
+reading your keyboard forever. Everything after the brief is unchanged: the text
+is taken byte for byte, exactly as a quoted argument is.
+
 ### The task is the task — verbatim fidelity
 
 **What you pass to `do` becomes the goal, byte for byte.** The compile stage
@@ -170,6 +204,24 @@ The quiet line is a structural read of the graph (no model call, one line)
 emitted after 30 seconds of silence, because a wedged run and a run thinking
 hard look identical from outside. Redirect stderr if you want it; do not parse
 stdout around it, because it is never there.
+
+A **fault line** appears on stderr when something interrupted a leaf and the run
+carried on anyway — a recovered panic, and now a provider call the guard cut:
+
+```
+  ✗ Core engine                  — nothing came back from the model in 1m30s → the call was retried, routed away from deepinfra  4m12s
+```
+
+Read `the call was retried` literally. What is asked again is the CALL, with
+everything the leaf had already done still in hand; the leaf is not restarted and
+its work is not thrown away. A stalled endpoint also loses its lane for five
+minutes, so the retry goes somewhere else — which is what `routed away from` says
+when the wire named who was serving.
+
+A leaf that IS restarted — because the claim reaper found a claim nobody was
+holding — resumes rather than starting over: it is handed its own recorded turns,
+what it had already said, and the files it had already written. See PERF.md's
+liveness laws for the bounds.
 
 ### The store, and how state survives
 
