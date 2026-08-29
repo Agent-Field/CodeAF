@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -79,13 +81,13 @@ func Held(points []plan.Point, grounds Grounds) []plan.Point {
 // Empty means nothing can be concluded about coverage. That is a real answer and
 // it is the honest one for a project that declares no verification and a worker
 // that derived no diff — a capability that cannot work is ABSENT, not broken.
-func CheckEvidence(evidence Evidence) []string {
+func CheckEvidence(ctx context.Context, evidence Evidence, job string) []string {
 	var checks []string
 	if patch := evidence.patchSource(); patch != "" {
 		added, _ := verify.PatchChecks(patch)
 		checks = append(checks, added...)
 	}
-	reading := evidence.Verification
+	reading := jobReading(ctx, evidence, job)
 	roster := reading.After.Reported
 	if !reading.AfterTaken {
 		// The before roster is the fallback and not a substitute: it names the
@@ -99,6 +101,187 @@ func CheckEvidence(evidence Evidence) []string {
 		checks = append(checks, roster...)
 	}
 	return verify.Subtract(checks, nil)
+}
+
+// jobReading is THE PHOTOGRAPH THE JOB TOOK, not the one this round's worker
+// happened to take.
+//
+// It is the same law verify.BaselineFor states for the regression comparison,
+// read from the coverage side. A job is worked by more than one worker: ofetch
+// s7 opened with `bare`, which photographs, and every repair round after it ran
+// under `linear`, which does not — so rounds two, three and four arrived at the
+// gate with an empty reading and the coverage question could not be asked of
+// them at all, while the roster the first round measured was sitting in the
+// job's own memory. A READING IS A FACT ABOUT A TREE AND A JOB, AND EVERY ROUND
+// OF THAT JOB MAY READ IT.
+//
+// The round's own reading wins whenever it has one: it is the later measurement,
+// and a round that ran the suite has measured the tree the gate is judging. The
+// baseline is what stands in when it has none, and it can only ever say a
+// behaviour was ALREADY covered — never that a new one is — which is the same
+// asymmetry the before-roster fallback below is written for.
+func jobReading(ctx context.Context, evidence Evidence, job string) verify.Reading {
+	if evidence.Verification.Taken || strings.TrimSpace(evidence.Workspace) == "" ||
+		strings.TrimSpace(job) == "" {
+		return evidence.Verification
+	}
+	if held, ok := verify.BaselineFor(evidence.Workspace, job); ok {
+		if held.Taken {
+			return held
+		}
+		// The job already found out it could not read this project, and why.
+		// Paying for that answer twice is what the baseline memory exists to
+		// stop; the reason it holds is carried up so the verdict can say it.
+		if strings.TrimSpace(evidence.Verification.Unread) == "" {
+			return held
+		}
+		return evidence.Verification
+	}
+	// NOBODY HAS LOOKED AT ALL, AND THE READING IS THE GATE'S TO HOLD. Not every
+	// worker photographs: textual s7 went through the planner's fallback, ran
+	// every node under the generalist, and reached its gates with no reading in
+	// the store — no roster, no reason, nothing. A verdict reached there is a
+	// verdict reached on the deliverable's own prose, which is the defect this
+	// whole mechanism is named after.
+	//
+	// It is taken on the wall this gate has left, through the same arithmetic
+	// the worker is held to, and it is REMEMBERED AGAINST THE JOB — so it costs
+	// one reading per job rather than one per round, exactly like the worker's.
+	deadline, timed := ctx.Deadline()
+	if !timed {
+		return evidence.Verification
+	}
+	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
+		gateFocus(evidence))
+	verify.RememberBaseline(evidence.Workspace, job, taken)
+	return taken
+}
+
+// gateFocus is what the gate knows this job is about: the files the request
+// named and the files the work left behind. It is the same question
+// internal/exec/bare answers from the task, asked by the reader that has the
+// record instead of the brief.
+func gateFocus(evidence Evidence) verify.Focus {
+	focus := verify.Focus(append([]string{}, evidence.Named...))
+	return append(focus, evidence.Artifacts...)
+}
+
+// ── the checklist and the finding are the JOB'S ──────────────────────────────
+//
+// Both used to live on one node's spec, which is one round of one job, and that
+// is where ofetch s7 lost them. Its first round mapped fifty-four points, found
+// eighteen unexercised, named them and bought a repair — and rounds two, three
+// and four hold ZERO mapping rows. The continuation nodes are planned afresh, so
+// their specs carry no checklist; the gates that judged them raised prose gaps
+// about the deliverable's wording; and the run ended at 41 of 47 with the same
+// four defaults untested that round one had named out loud.
+//
+// THE CHECKLIST IS A READING OF THE REQUEST, AND EVERY ROUND OF A JOB HAS THE
+// SAME REQUEST. So it is remembered against the job — the identical key
+// verify.BaselineFor remembers a tree's photograph against, and for the identical
+// reason — and a round whose own spec carries none inherits it.
+//
+// And so is what the job is still short of. A behaviour measured once as
+// exercised by nothing does not stop being unexercised because the next round's
+// worker took no reading; it stops when a measurement says a check now covers
+// it. Carrying the set is what makes each round's brief say what REMAINS rather
+// than restating the whole list or, as s7 did, saying nothing at all.
+
+// rememberedJobs bounds how many jobs this holds a checklist for at once. It is
+// verify's rememberedTrees for the same reason and at the same size: a checklist
+// is a few dozen short strings, sixteen concurrent jobs is more than any surface
+// in this program opens, and past it the oldest is dropped — which costs a round
+// its inherited checklist rather than giving it a wrong one.
+const rememberedJobs = 16
+
+type jobAcceptance struct {
+	points []plan.Point
+	// open is what the last measurement said nothing exercises, and stated is
+	// how many behaviours were weighed to find it. Both are zero until a
+	// mapping has actually been taken.
+	open    []string
+	stated  int
+	settled bool
+}
+
+var checklists = struct {
+	mutex sync.Mutex
+	held  map[string]jobAcceptance
+	order []string
+}{held: map[string]jobAcceptance{}}
+
+// RememberChecklist records the behaviours this job is judged against, for every
+// round of it that follows.
+func RememberChecklist(job string, points []plan.Point) {
+	if strings.TrimSpace(job) == "" || len(points) == 0 {
+		return
+	}
+	checklists.mutex.Lock()
+	defer checklists.mutex.Unlock()
+	held := admitJob(job)
+	held.points = append([]plan.Point{}, points...)
+	checklists.held[job] = held
+}
+
+// ChecklistFor is what an earlier round of this job settled it would be judged
+// against, or nothing.
+func ChecklistFor(job string) []plan.Point {
+	if strings.TrimSpace(job) == "" {
+		return nil
+	}
+	checklists.mutex.Lock()
+	defer checklists.mutex.Unlock()
+	return checklists.held[job].points
+}
+
+// RememberUnexercised records what the LAST MEASUREMENT of this job found
+// nothing exercising — including the empty answer, which is the news that a
+// round closed the gap and is exactly what must not be lost.
+func RememberUnexercised(job string, open []string, stated int) {
+	if strings.TrimSpace(job) == "" {
+		return
+	}
+	checklists.mutex.Lock()
+	defer checklists.mutex.Unlock()
+	held := admitJob(job)
+	held.open, held.stated, held.settled = append([]string{}, open...), stated, true
+	checklists.held[job] = held
+}
+
+// UnexercisedFor is the finding this job is still carrying: what a measurement
+// found nothing exercising, and how many behaviours were weighed to find it.
+func UnexercisedFor(job string) (open []string, stated int) {
+	if strings.TrimSpace(job) == "" {
+		return nil, 0
+	}
+	checklists.mutex.Lock()
+	defer checklists.mutex.Unlock()
+	held := checklists.held[job]
+	return held.open, held.stated
+}
+
+// ForgetChecklists drops everything remembered. Its only callers are tests,
+// which share a process and would otherwise inherit one another's jobs.
+func ForgetChecklists() {
+	checklists.mutex.Lock()
+	defer checklists.mutex.Unlock()
+	checklists.held = map[string]jobAcceptance{}
+	checklists.order = nil
+}
+
+// admitJob makes room for a job and returns what is already held for it. The
+// caller holds the lock.
+func admitJob(job string) jobAcceptance {
+	held, known := checklists.held[job]
+	if known {
+		return held
+	}
+	checklists.order = append(checklists.order, job)
+	for len(checklists.order) > rememberedJobs {
+		delete(checklists.held, checklists.order[0])
+		checklists.order = checklists.order[1:]
+	}
+	return jobAcceptance{}
 }
 
 // mapPrompt asks one question and takes no position on the answer.
@@ -251,6 +434,20 @@ func Unexercised(points []plan.Point, mapping []store.ExercisedPoint, grounds Gr
 	if len(missing) == 0 {
 		return Judgment{}, false
 	}
+	judgment = unexercisedFinding(missing, len(points))
+	judgment.Exercises = mapping
+	return judgment, true
+}
+
+// unexercisedFinding is the finding itself, built from the grouped behaviours
+// and from nothing else.
+//
+// It is a function rather than four lines inside Unexercised because the finding
+// has to be REBUILDABLE. When the gate is already failing the coverage gap joins
+// the verdict as text, and when the judge's own citation is then refused the
+// measured half has to stand back up on its own — same words, same citations,
+// same bound. Two places that each wrote the sentence would be two sentences.
+func unexercisedFinding(missing []string, stated int) Judgment {
 	named := missing
 	if len(named) > regressionsNamed {
 		named = named[:regressionsNamed]
@@ -266,10 +463,47 @@ func Unexercised(points []plan.Point, mapping []store.ExercisedPoint, grounds Gr
 		fmt.Fprintf(&gap, "And %d more.\n", len(missing)-len(named))
 	}
 	gap.WriteString("Write the check for each, and make it pass.")
+	// AND THE LAST LINE IS THE SCORE. A repair round is aimed at what REMAINS,
+	// and a brief that restates the whole list every round tells the worker
+	// nothing about whether the last round moved anything. ofetch s7 named
+	// eighteen behaviours in round one and then said nothing at all in rounds
+	// two, three and four, so the run's own record of its progress against its
+	// own checklist was a single sentence at minute nine.
+	if stated > 0 {
+		fmt.Fprintf(&gap, " %d of the %s this request states are still exercised by nothing.",
+			len(missing), countedBehaviours(stated))
+	}
 	return Judgment{
 		Pass: false, Gaps: strings.TrimSpace(gap.String()), Quote: joinCitations(named),
-		Citations: named, Sourced: true, Checked: true, Exercises: mapping,
-	}, true
+		Citations: named, Sourced: true, Checked: true, Unexercised: missing, Stated: stated,
+	}
+}
+
+// countedBehaviours spells the denominator of that score once, so a job with one
+// stated behaviour never reads "1 of the 1 behaviours".
+func countedBehaviours(stated int) string {
+	if stated == 1 {
+		return "1 behaviour"
+	}
+	return fmt.Sprintf("%d behaviours", stated)
+}
+
+// measuredHalf is this judgement with everything a judge wrote taken off it: the
+// coverage finding, alone, as though it had been raised on its own.
+//
+// It is what a refused citation leaves standing. The admission rules weigh where
+// a review got its WORDS, and a coverage gap has none to weigh — nobody has to
+// ask for the behaviours they stated to be checked — so refusing the judge's
+// span settles nothing about it. igel s6 ended with three behaviours nothing
+// exercised and a refusal of a sentence about a test file, and the second took
+// the first down with it.
+//
+// The mapping rides along because it is the evidence the finding is a conclusion
+// of, and the grounds because every door downstream weighs against the same ask.
+func (j Judgment) measuredHalf() Judgment {
+	rebuilt := unexercisedFinding(j.Unexercised, j.Stated)
+	rebuilt.Exercises, rebuilt.Grounds, rebuilt.Unmeasured = j.Exercises, j.Grounds, j.Unmeasured
+	return rebuilt
 }
 
 // groupUnexercised collects the behaviours nothing exercises and folds the ones
@@ -421,11 +655,21 @@ func Measured(evidence Evidence) bool {
 func settleAcceptance(ctx context.Context, settings config.Config, client *pool.Client,
 	node store.Node, evidence Evidence, grounds Grounds, workerModel string, verdict Judgment,
 ) Judgment {
+	// THE CHECKLIST IS THE JOB'S. A continuation is planned afresh and its spec
+	// carries none, so a round that read only its own spec asked the coverage
+	// question once and never again — ofetch s7 mapped fifty-four points in
+	// round one and none in the three rounds that followed it.
+	job := verify.JobKey(grounds.Intent)
 	points := Held(evidence.Accept, grounds)
+	if len(points) == 0 {
+		points = Held(ChecklistFor(job), grounds)
+	}
 	if len(points) == 0 {
 		return verdict
 	}
-	if !Measured(evidence) {
+	RememberChecklist(job, points)
+	reading := jobReading(ctx, evidence, job)
+	if !Measured(evidence) && !reading.Taken {
 		// NOBODY LOOKED IS NOT NOTHING WRONG, and it is not a finding either.
 		// A project that declares no verification and a worker that derived no
 		// diff leave this question unanswerable, and a gate that failed every
@@ -434,8 +678,35 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 		// delivery from a checked one — and it is carried on the verdict rather
 		// than logged, because a fail-safe that does not reach the person
 		// watching is decoration (FAILSAFE.md clause 3).
-		verdict.Unmeasured = "nothing in this project's verification could be read, so no check " +
-			"could be matched to what the request asked for"
+		// TWO SILENCES, AND ONLY ONE OF THEM IS NOBODY'S FAULT. A project that
+		// declares no verification cannot be read and nothing follows from it.
+		// A project that declares one this run could not read has left the
+		// question UNANSWERED, and a delivery that passes over that is a
+		// delivery nothing checked — ink s7 exited 0 at 13 of 25 that way.
+		verdict.Unreadable = reading.Declared() || evidence.Verification.Declared()
+		verdict.Unmeasured = "this project declares no verification this run could read, so no " +
+			"check could be matched to what the request asked for"
+		if verdict.Unreadable {
+			verdict.Unmeasured = "nothing in this project's verification could be read"
+			if why := strings.TrimSpace(firstOf(reading.Unread, evidence.Verification.Unread)); why != "" {
+				verdict.Unmeasured += ": " + why
+			}
+		}
+		// AND A FINDING ALREADY MEASURED STANDS UNTIL A MEASUREMENT CLOSES IT.
+		// A behaviour an earlier round proved nothing exercises does not become
+		// exercised because this round's worker took no reading. Dropping it
+		// here is precisely how ofetch s7's eighteen named behaviours turned
+		// into three rounds of prose about the deliverable's wording.
+		if open, stated := UnexercisedFor(job); len(open) > 0 {
+			standing := unexercisedFinding(open, stated)
+			standing.Unmeasured, standing.Grounds = verdict.Unmeasured, grounds
+			standing.Unreadable = verdict.Unreadable
+			if verdict.Pass {
+				return standing
+			}
+			verdict.Gaps = strings.TrimSpace(verdict.Gaps) + "\n\n" + standing.Gaps
+			verdict.Unexercised, verdict.Stated = standing.Unexercised, standing.Stated
+		}
 		return verdict
 	}
 	// The mapping is asked for even when the roster is empty. MapChecks spends
@@ -444,10 +715,20 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// reading that named no checks has no check that exercises anything. That
 	// branch is the whole of FACT 2 in the s5 autopsy, where an empty roster
 	// short-circuited to a note and fifty-two stated behaviours went unasked.
-	checks := CheckEvidence(evidence)
+	//
+	// AND IT IS ASKED ON EVERY ROUND. The mapping is one model call against a
+	// reading the job has already paid for, and it is the only thing that can
+	// SHRINK the set: a round that wrote the missing checks grows the roster
+	// with names that map, and the next mapping is what notices. A round that
+	// skipped the question left the set exactly where it was and called that
+	// progress.
+	checks := CheckEvidence(ctx, evidence, job)
 	mapping := MapChecks(ctx, settings, client, node, points, checks, workerModel)
 	verdict.Exercises = mapping
 	finding, unexercised := Unexercised(points, mapping, grounds)
+	// Measured either way. An empty set is the news that this round closed the
+	// gap, and it is exactly the answer that must not be lost.
+	RememberUnexercised(job, finding.Unexercised, len(points))
 	if !unexercised {
 		return verdict
 	}
@@ -462,5 +743,24 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// the judge's own prose ride into a round on the back of that exemption is
 	// exactly the laundering the admission rules exist to prevent.
 	verdict.Gaps = strings.TrimSpace(verdict.Gaps) + "\n\n" + finding.Gaps
+	// And the finding travels as a LIST beside the paragraph, which is the whole
+	// of what "journaled, said, and able to buy its own round" needs. Merged into
+	// prose it was none of the three: nothing recorded it as a finding, the
+	// stream's line is the first line of the gap and never reached it, and the
+	// round it rode on could be — and was — refused out from under it. See
+	// Judgment.Unexercised and measuredHalf.
+	verdict.Unexercised, verdict.Stated = finding.Unexercised, finding.Stated
 	return verdict
+}
+
+// firstOf is the first of these sentences that says anything. Two readings can
+// each hold a reason — the round's own and the job's — and the reason a person
+// is owed is whichever one exists.
+func firstOf(sentences ...string) string {
+	for _, sentence := range sentences {
+		if trimmed := strings.TrimSpace(sentence); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

@@ -481,6 +481,15 @@ The finding comes first because the finding is the news; the reason is why nothi
 ran — a refusal in the review's own words, or `nothing further was started`. A run that
 prints no such line finished whole, and `aforge do` left with 0.
 
+One shortfall has no repair to explain, and drops the `gate:` and the reason with it: a run
+whose project declares a suite that could not be read. Nothing was refused and nothing was
+short — the check itself never happened, which is why the line names the measurement rather
+than a finding:
+
+```
+partial — nothing in this project's verification could be read: `npx ava --tap` was killed at its ceiling of 1m53s without finishing
+```
+
 A gap that a repair round closed is **not** short. You see `gate: pass — <what the first
 reading said was missing> — closed by the repair`: the work was redone and re-read, checks
 that were passing before were checked again, and the exit code is 0. Only a finding that
@@ -569,7 +578,9 @@ goal — which is the same shape every single-step ask already gets. You see:
 ```
 
 One worker on the whole job is worse than a plan and enormously better than nothing, and
-the run goes on to deliver, be reviewed, and land like any other.
+the run goes on to deliver, be reviewed, and land like any other — **with the acceptance
+checklist it already read off your request**, so a job that fell back here is still held to
+the behaviours you stated rather than only to how its answer reads.
 
 ## What the review is allowed to hold you to — the request, the method, and what was promised
 
@@ -607,6 +618,30 @@ report was "`pnpm test` exited 1 and named 0 checks" of a suite that was green. 
 invocation names nothing — a flag aimed at a plugin this machine lacks — the runner is asked
 again in its plainest form, inside the same budget. A runner aforge has not met is invoked
 as your project declares it and read as plain text, as everything was before.
+
+**It reads the package your work is in, not the whole workspace.** A repository that
+declares what it is made of — `workspaces` in a `package.json`, `packages:` in
+`pnpm-workspace.yaml`, `lerna.json`, `[workspace] members` in `Cargo.toml`, `use` in a
+`go.work`, or a manifest in each package under a turbo/nx/rush root — is read in the package
+the work touched, found by the nearest manifest above the files that changed. A root command
+whose whole job is to fan out over packages says nothing about any of them: measured at one
+project's own base commit, the declared root command exited 1 in five seconds naming no
+check, and the same reading taken inside the package named 173.
+
+**And it reads the checks next to your change before it reads the whole suite.** The test
+files your work is in, the ones beside it, and the ones that name what it touched are run
+first; the whole suite is what is tried if that names nothing. A reading is scoped before it
+is bounded, because a budget cannot rescue a measurement of the wrong size: one project's
+whole suite is 3,422 checks and takes over thirteen minutes, against the five and a half
+minutes its run could afford, so the only reading it had was one that could never finish.
+The line in the record says which it was — `scope: touched packages (3 files)` or
+`whole` — and the two are never compared with each other, because a whole reading minus a
+scoped one would report every check that was not selected as one that had disappeared.
+
+**A reading that is cut keeps what it named.** A command killed at its ceiling having
+already printed some of its checks is a partial reading: it can say a check for something
+exists, and it is never used to say the work broke something, because the checks it never
+reached are missing from it for a reason that has nothing to do with your change.
 
 **Repair rounds are measured against the tree the job started with.** The first reading
 belongs to the whole job, not to one attempt: a second or third round inherits it rather
@@ -699,8 +734,28 @@ Write the check for each, and make it pass.
 
 Like a broken check, nothing is weighed about where it came from — it is a measurement of
 the repository rather than a reading of your words — so it buys the repair round straight
-away, and the round is asked to write the check and make it pass. If nothing closes it the
-run lands partial rather than finished.
+away, and the round is asked to write the check and make it pass. It buys that round **even
+when the review's own finding is refused**: a ruling about where a review got its words says
+nothing about a behaviour nothing exercises. If nothing closes it the run lands partial
+rather than finished.
+
+Watching a headless run, it is one line under the verdict — the first behaviour named, the
+rest counted:
+
+```
+  gate: fail — The deliverable is a report about the work rather than the work.  14m39s
+  no check exercises — A half-open probe holds its slot across internal retries — and 2 more  14m39s
+```
+
+**The question is asked again on every round, and the answer is the job's.** The checklist
+was read off your request, and every round of the job has the same request — so a repair
+round whose own plan carries no checklist inherits it rather than asking nothing. What the
+last measurement found nothing exercising is carried the same way: **a behaviour measured
+once as unexercised stays that way until a measurement says otherwise**, so a round whose
+worker took no reading cannot quietly drop it. The set only shrinks on evidence — a round
+that wrote the missing checks grows the project's own roster, and the next mapping is what
+notices. The finding's last line is the score: `3 of the 17 behaviours this request states
+are still exercised by nothing.`
 
 **Why this exists.** Two measured runs handed over wrong answers at exit 0 because the
 review believed the worker's own sentence about its own checks. One claimed all 56 of them
@@ -717,6 +772,22 @@ produced no readable diff, nothing can be matched, and the answer is handed over
 finished rather than failed — nobody looked is not the same as something is wrong; the run
 says so rather than passing in silence. Behaviours you stated on one line are gathered into
 one thing to go and check, and eight of those are named at most; the rest are counted.
+
+**But a project that HAS a suite nobody could read is a different answer.** Where the
+project declares a way of checking itself and this run could not read it — the command was
+killed at its ceiling, or the run's time was too short to hold a reading — the review has
+been left with nothing but the answer's own words, and a run does not call that finished. It
+lands partial, exit 2, and the last line says so:
+
+```
+partial — nothing in this project's verification could be read: `npx ava --tap` was killed at its ceiling of 1m53s without finishing
+```
+
+The two silences are told apart deliberately. A project with nothing to read leaves the
+question unanswerable and finishes; a project whose suite could not be read leaves it
+unanswered, and that is a fact about the run rather than about your request. Where no worker
+took a reading at all, the review takes one itself before it decides, on the same share of
+the time everything else here is held to, and remembers it for the rest of the job.
 
 ## When a check the work deleted stops existing
 

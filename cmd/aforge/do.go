@@ -1148,9 +1148,45 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		}
 		verdict, detail := gateWords(gate)
 		w.note("gate: "+verdict, detail)
+		// The coverage finding gets its own line, because it is a different
+		// fact from the verdict and it is the one the acceptance line above
+		// promised. A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS
+		// (FAILSAFE clause 3): igel s6 printed "acceptance — 17 points from the
+		// request" at 23 seconds and never said another word about them, while
+		// three of the seventeen went to the end of the run unexercised. It
+		// could not: the finding was a paragraph in the middle of the gap, and
+		// the line above it is the gap's FIRST line.
+		if words := unexercisedWords(gate.Unexercised); words != "" {
+			w.note("no check exercises", words)
+		}
 		return true
 	}
 	return false
+}
+
+// unexercisedWords is the coverage finding in one line: what it is short of,
+// named once and counted after that.
+//
+// One behaviour spelled out and the rest counted is the same shape
+// describeChecks and regressionsNamed already use on a list of names, and for
+// the same reason — this is a line in a stream beside ▶ and ✓, and seventeen
+// behaviours printed one per line is seventeen lines nobody reads. The whole
+// list is on the gate event for whoever opens it.
+func unexercisedWords(points []string) string {
+	named := make([]string, 0, len(points))
+	for _, point := range points {
+		if point = strings.TrimSpace(point); point != "" {
+			named = append(named, point)
+		}
+	}
+	if len(named) == 0 {
+		return ""
+	}
+	words := firstLine(named[0])
+	if len(named) > 1 {
+		words += fmt.Sprintf(" — and %d more", len(named)-1)
+	}
+	return words
 }
 
 // narrateRepair says what the structured-answer seam had to do to get an answer.
@@ -1273,6 +1309,12 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 		return "", "", false
 	}
 	finding = firstLine(strings.TrimSpace(gate.Gap))
+	if finding == "" && gate.Unreadable {
+		// A gate that PASSED over a suite nobody could read names no gap,
+		// because the judge found none. What the run is short of is the
+		// measurement itself, and that sentence is the finding.
+		return firstLine(strings.TrimSpace(gate.Unmeasured)), "", true
+	}
 	if finding == "" {
 		return "", "", false
 	}
@@ -1298,6 +1340,12 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 // thing a person carries away from a ninety-minute run is the thing the run
 // itself says it did not do.
 func partialWords(finding, reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		// The shortfall is the measurement rather than a finding a repair could
+		// have closed, so there is nothing to say about why nothing was
+		// repaired. "gate:" comes off with it: no gate said this.
+		return "partial — " + finding
+	}
 	return fmt.Sprintf("partial — gate: %s (not repaired: %s)", finding, reason)
 }
 
