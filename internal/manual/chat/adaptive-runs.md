@@ -679,10 +679,13 @@ there was no reading, which of the reasons it was: your project declares no way 
 itself, there was no time left to size a reading against, or there was nothing to read.
 Silence used to mean all of those at once.
 
-**A reading that is cut keeps what it named.** A command killed at its ceiling having
+**A reading that is cut keeps what it named, on both sides.** A command killed at its ceiling having
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never
-reached are missing from it for a reason that has nothing to do with your change.
+reached are missing from it for a reason that has nothing to do with your change. That holds
+for the reading taken after the work as much as for the one before it — and when a command
+ran but printed nothing a check could be read out of, the record says that, rather than the
+same words it would use for a project it could not read at all.
 
 **And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
 reading is a fact about your project or about the time available, and a later round inherits
