@@ -52,6 +52,12 @@ type JobGrowth struct {
 	// it is at a standstill, and no round after that buys anything.
 	Produced int `json:"produced,omitempty"`
 
+	// Measured says somebody actually looked, so a Produced of zero reads as
+	// "nothing was written" rather than as "nobody counted". A row written
+	// before this field existed decodes false, which is the honest reading of
+	// it: nothing counted anything.
+	Measured bool `json:"measured,omitempty"`
+
 	// Remainder is a digest of the work this round was planned to finish. Two
 	// consecutive rounds handed the same remainder are a fixed point: the round
 	// that just ran was aimed at exactly this and did not move it. The digest
