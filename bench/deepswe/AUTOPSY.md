@@ -526,3 +526,36 @@ worker escalation (`↻ follow-state — handed to bare: escalated from linear a
 a failed attempt`, line 26). Every structured call this sweep came back readable,
 so the seam had nothing to do — untested, not broken. s4's two failures of this
 kind (planner fan-out, delivery gate) did not recur.
+
+## happy-dom s5 (appended)
+
+| task | reward | f2p | p2p | cost | wall | exit | nodes | acceptance points | `no check exercises` | `↻` shaped |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| happy-dom-…-intersectionobserver | 0 | **13/14** | 9/9 | $0.074 | 1961s | **2** | 3 | 16 | 0 | 0 |
+
+Three gates on three nodes (`run.log` 49, 79, 86), and it ends the way igel does.
+
+- **L49 `task-2`, fail** — "The deliverable states 'All 38 tests pass' but the
+  project's own verification (`npm run test`) exited 1 and **named 0 checks** —
+  the tests did not pass." True, and the second independent sighting of the
+  reading: two runs, two runners, both rosters empty.
+- **L79 `task-2-x1`, fail** — "The deliverable is a plan for what to do next, not
+  the finished work itself … only a message about checking whether vitest works."
+  True.
+- **L86 `task-2-x2`, refused** — `the same words were already worked on once`,
+  `pass=false, polish_closed=false`, no `Overturned` → `deliveredWhole` false →
+  **exit 2**. The finding it left standing ("the deliverable does not report what
+  came back — whether tests passed or failed") is true.
+
+So the exit-code fix fires on two of five runs, and both times through the
+provenance door rather than a repaired gap. Acceptance derived 16 points against
+14 hidden tests — the closest match in the set — and still raised nothing,
+because no gate passed and the roster was empty. One test short of a solve.
+
+### s5 in one line
+
+Two runs exit 2 honestly (igel 23/24, happy-dom 13/14). Three exit 0: two on
+`PolishClosed` (a repair ran, the gap was never re-judged) and one on
+`Overturned` by word-containment over a false file finding. Every run's roster
+was empty or unread, so no coverage finding was reachable and no regression was
+visible.
