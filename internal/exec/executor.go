@@ -365,6 +365,20 @@ type Outcome struct {
 	// §4, FAILSAFE.md clause 2).
 	Regressed []string
 
+	// Removed names the PUBLIC names this work deleted: a name the tree spelled
+	// before the job's first change that the finished tree does not, in the
+	// files the run's own record says it changed.
+	//
+	// It is Regressed's other half and it is the half a suite cannot see. A
+	// check proves something is exercised; it never proves nothing else exists.
+	// igel s11 deleted eight public class attributes off `Igel` and its own
+	// reading of the finished tree came back BETTER — named 2 → 14, red 2 → 0 —
+	// while all twenty-four hidden tests failed at setup on `Igel.results_path`.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim and never as nothing removed. See verify.Surface.
+	Removed []string
+
 	// Verification is the whole photograph the two readings above came out of:
 	// the entrypoint that was run, the budget it was run on, and both readings'
 	// complete rosters rather than only their red halves.

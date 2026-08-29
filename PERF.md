@@ -477,6 +477,44 @@ lets a patch that deleted an attribute the repository already had ship as whole
 going red; both are read off a run, which is why the numbers are written down
 here.
 
+## What the symbol-level photograph costs
+
+The check-level reading answers *what does this project's suite say*. It cannot
+answer *what did this work delete*, because a project only owns checks for what
+somebody wrote checks for. igel s11 removed eight public class attributes off
+`Igel` and its own reading of the finished tree came back BETTER — named **2 →
+14**, red **2 → 0** — while all **24** hidden tests failed at setup on
+`Igel.results_path`.
+
+`verify.PublicSurface` reads the tree's public names once per photograph, beside
+the check-level reading and on every path that reading can refuse on — a project
+that declares no verification, a wall too short for a suite, a suite killed at
+its ceiling all still get this half. `verify.SurfaceOf` re-reads only the files
+the run's own record says it changed.
+
+| number | value | what it bounds |
+| --- | --- | --- |
+| `surfaceFileLimit` | 2000 | source files one baseline reads; textual is ~700 python files, ofetch ~90 typescript ones |
+| `surfaceReadBudget` | 8MB | bytes one baseline reads — four times the scope walk's, spent once per JOB rather than once per reading |
+| `surfaceFileBytes` | 512KB | one file, so a generated module cannot spend the budget alone |
+| `surfaceNamesReported` | 8 | names one finding spells out; `store.VerificationSample`'s sibling |
+
+Past either bound the walk stops and the surface is PARTIAL, which degrades in
+the safe direction: a file with no baseline entry can never be reported as having
+lost a name. No model call and no second suite run — it is two file reads and a
+set difference.
+
+**What the readers deliberately do not read.** Go goes through the standard
+library's own parser, and a file that does not parse contributes NOTHING rather
+than a partial reading — a syntax error mid-edit would otherwise read as half a
+package disappearing. Python, TypeScript/JavaScript and Rust go through
+line-and-indent readers that only ever read a DECLARATION AT THE START OF A LINE,
+which is the one thing each language's own formatter guarantees. A name assigned
+inside a conditional, a class built by a decorator, an export re-exported through
+a barrel file, a symbol behind a macro: none of those is read, on purpose. The
+cost of a name invented here is a false blocker on real work; the cost of a name
+missed is the silence this was written in.
+
 ## What grounding the acceptance mapping costs
 
 `revision.GroundMapping` spends no model call. It reads the file each mapped

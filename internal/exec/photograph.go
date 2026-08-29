@@ -160,6 +160,12 @@ func PhotographAfter(
 	if outcome == nil || workspace == nil {
 		return
 	}
+	// THE SYMBOL-LEVEL HALF IS SETTLED FIRST, AND IT IS SETTLED WHETHER OR NOT A
+	// CHECK EVER RAN. It needs no runner, no budget and no declaration — only
+	// the two readings of the tree — so it is the one measurement a project with
+	// no suite, a wall too short for one, or a suite killed at its ceiling still
+	// gets. See verify.Surface.
+	surfaceRemoved(workspace, history, task, reading, outcome)
 	// The photograph rides the outcome whether or not a reading was taken,
 	// because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT FACTS
 	// and only the run that stood there before the work can tell them apart.
@@ -319,4 +325,63 @@ func describeChecks(names []string) string {
 		return strings.Join(names[:8], ", ") + " and " + strconv.Itoa(len(names)-8) + " more"
 	}
 	return strings.Join(names, ", ")
+}
+
+// surfaceRemoved settles the public names this work deleted, and journals what
+// it found either way.
+//
+// The comparison is scoped to the run's OWN RECORD of what it changed, which is
+// what keeps it a measurement of the work rather than of the repository: a name
+// that vanished from a file nobody touched vanished some other way, and a
+// finding about that would be a finding about something this leaf never did.
+//
+// It is a measurement and never a gate. A baseline nobody took, a record that
+// names no source file, a file that cannot be read — each leaves the outcome
+// exactly as it arrived, which reads downstream as NO CLAIM and never as nothing
+// removed.
+func surfaceRemoved(
+	workspace *Workspace, history *store.Store, task Task,
+	reading verify.Reading, outcome *Outcome,
+) {
+	if len(reading.Surface) == 0 {
+		return
+	}
+	root := workspace.Root()
+	changed := verify.ChangedSources(root, outcome.Artifacts)
+	// A file the record names and the tree no longer holds is not in
+	// ChangedSources, which only keeps what is still there — so the deletion of
+	// a whole module is added back from the record itself. Losing a public
+	// module is losing every public name in it.
+	for _, path := range verify.MissingFrom(root, outcome.Artifacts) {
+		if _, held := reading.Surface[path]; held {
+			changed = append(changed, path)
+		}
+	}
+	if len(changed) == 0 {
+		return
+	}
+	removed := reading.Surface.Removed(verify.SurfaceOf(root, changed), changed)
+	if len(removed) > 0 {
+		outcome.Removed = removed
+	}
+	journalSurface(history, task, len(changed), removed)
+}
+
+// journalSurface writes what the symbol-level reading found, INCLUDING when it
+// found nothing.
+//
+// A row saying "sixteen files were compared and no public name was lost" is the
+// difference between a run that checked and a run whose reader never ran, and
+// those two were the same silence in every store this mechanism was built from
+// (FAILSAFE.md clause 4). It is a measurement: a store that refuses the row
+// changes nothing about what the leaf does.
+func journalSurface(history *store.Store, task Task, compared int, removed []string) {
+	if history == nil || strings.TrimSpace(task.StoreNodeID) == "" {
+		return
+	}
+	_ = history.RecordSurface(task.StoreNodeID, store.SurfaceReading{
+		Compared: compared,
+		Lost:     len(removed),
+		Names:    verify.SurfaceNamed(removed),
+	})
 }
