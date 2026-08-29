@@ -137,3 +137,27 @@ func TestAssertionsAreSilentWhereThereIsNoReader(t *testing.T) {
 		t.Errorf("a check the file does not declare was reported found")
 	}
 }
+
+// ofetch s16: forty-seven mapped pairings, every vitest identity printed as its
+// describe blocks and its case name joined by spaces, and the assertion door
+// found not one of them.
+func TestAnIdentityWithNoSeparatorFindsItsCaseBySuffix(t *testing.T) {
+	body := `
+describe('circuit breaker', () => {
+  describe('origin keying', () => {
+    it('keys by origin, not path', () => {
+      expect(calls).toHaveLength(2);
+    });
+  });
+});
+`
+	read := AssertionsIn("test/breaker.test.ts", body)
+	text, found := read.Named("circuit breaker origin keying keys by origin, not path")
+	if !found || !strings.Contains(text, "toHaveLength") {
+		t.Fatalf("the case behind a space-joined identity was not found: %q %v", text, found)
+	}
+	// One trailing word is a coincidence, not a case.
+	if _, found := read.Named("something entirely else path"); found {
+		t.Errorf("a one-word suffix matched a case")
+	}
+}

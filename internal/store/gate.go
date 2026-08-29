@@ -260,6 +260,15 @@ type ExercisedPoint struct {
 	Point string `json:"point"`
 	Check string `json:"check,omitempty"`
 
+	// Observables is what the behaviour was weighed against: the identifiers the
+	// request spelled, bound, or named in words against the tree's own public
+	// surface. It is journaled beside the finding because the RESOLUTION is the
+	// half an autopsy cannot reconstruct — "vertical scrollbar position" became
+	// `ScrollBar.position` by a reading of a tree that has since moved on, and
+	// without the row there is no way to ask whether the door was asking about
+	// the right thing at all.
+	Observables []string `json:"observables,omitempty"`
+
 	// Unasserted is the behaviour's own observables — the identifiers the
 	// request spelled — that the mapped check's ASSERTIONS never name. A row
 	// with a check and an unasserted list is a pairing the world admits and the

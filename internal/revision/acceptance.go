@@ -1018,7 +1018,7 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// or does it only visit it. See WeighAssertions — a check that calls
 	// `write(expand=True)` and asserts the widget has some lines names every
 	// symbol the behaviour names and weighs none of them.
-	mapping := WeighAssertions(evidence.Workspace, evidence.Artifacts, points,
+	mapping := WeighAssertions(evidence.Workspace, job, evidence.Artifacts, points,
 		GroundMapping(evidence.Workspace, evidence.Artifacts, points,
 			MapChecks(ctx, settings, client, node, points, checks, workerModel)))
 	verdict.Exercises = mapping

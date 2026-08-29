@@ -695,6 +695,13 @@ the check keeps what it has, which can only leave a point OPEN and never close
 one. `revision.observablesNamed` **4** bounds the observables one finding line
 names.
 
+The tree's vocabulary (`verify.IndexSurface`) is built from the surface the
+JOB'S BASELINE already holds — `verify.BaselineFor`, one walk per job under
+`surfaceReadBudget` — so no gate re-walks the tree, and a job with no baseline
+gets an empty index and behaves as it did before this existed. Matching is
+bounded by `verify.spokenWindow` **4**: a run of more than four of a sentence's
+words is a clause, not a name.
+
 ## What the acceptance checklist costs
 
 The gate's acceptance settlement (`docs/design/gate/ACCEPTANCE.md`) adds no suite
@@ -706,6 +713,7 @@ run to the common path and one bounded model call to two seams.
 | the acceptance finding's size | **one entry per REQUEST LINE, 8 named then a count** | `revision.groupUnexercised`, `revision.groupUnasserted` |
 | observables one finding line names | **4** | `revision.observablesNamed` |
 | one check's captured assertion text | **16KB** | `verify.assertionTextBytes` |
+| words of a sentence read as one name | **4** | `verify.spokenWindow` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 

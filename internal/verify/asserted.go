@@ -78,6 +78,32 @@ func (a Assertions) Text(check string) (string, bool) {
 	return text, found
 }
 
+// Named is Text for a runner identity that a runner printed with its groups
+// JOINED BY SPACES rather than by a separator this program can see.
+//
+// vitest prints `circuit breaker origin keying keys by origin, not path` for a
+// case declared `it("keys by origin, not path")` inside two nested `describe`
+// blocks, and nothing in that string says where the groups end and the case
+// begins. So the identity's own trailing words are tried, longest first, and the
+// first that is a case this file declares is the case. A suffix of one word is
+// not tried: one word matching one case name is a coincidence, and the cost of
+// the wrong case here is a finding about a check nobody wrote.
+//
+// ofetch s16 is what this is for: forty-seven mapped pairings, every identity in
+// that shape, and the assertion door found not one of them.
+func (a Assertions) Named(identity string) (string, bool) {
+	if text, found := a.Text(identity); found {
+		return text, true
+	}
+	words := strings.Fields(strings.TrimSpace(identity))
+	for start := 1; start+1 < len(words); start++ {
+		if text, found := a.Text(strings.Join(words[start:], " ")); found {
+			return text, true
+		}
+	}
+	return "", false
+}
+
 // gather accumulates one declaration's assertion text inside the cap.
 type gather struct {
 	held map[string]*strings.Builder
