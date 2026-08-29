@@ -75,6 +75,10 @@ func blockQuotesAfter(document, heading string) []string {
 // end-to-end…" into every compile.
 func TestSWEMenuEntryIsNotSaidTwice(t *testing.T) {
 	defer exec.ForgetSubharnesses()
+	// A profile nobody has written, so the worker roster is its default —
+	// every worker this build has. Without this the test would be reading the
+	// roster of whoever's machine it happens to run on.
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
 	installSubharnesses()
 	menu := exec.MenuText()
 	if strings.Contains(menu, "swe — swe —") {
@@ -96,6 +100,10 @@ func TestSWEMenuEntryIsNotSaidTwice(t *testing.T) {
 // worker is half-installed in a way nothing would notice until a run.
 func TestInstallingSWEReachesEveryReaderOfARegistration(t *testing.T) {
 	defer exec.ForgetSubharnesses()
+	// A profile nobody has written, so the worker roster is its default —
+	// every worker this build has. Without this the test would be reading the
+	// roster of whoever's machine it happens to run on.
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
 	installSubharnesses()
 
 	if !exec.KnownSubharness("swe") {
@@ -131,6 +139,10 @@ func TestInstallingSWEReachesEveryReaderOfARegistration(t *testing.T) {
 // construction and from the headless registry both, on its own budget shape.
 func TestSWEIsReachableFromBothDispatchPaths(t *testing.T) {
 	defer exec.ForgetSubharnesses()
+	// A profile nobody has written, so the worker roster is its default —
+	// every worker this build has. Without this the test would be reading the
+	// roster of whoever's machine it happens to run on.
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
 	installSubharnesses()
 
 	directory := t.TempDir()

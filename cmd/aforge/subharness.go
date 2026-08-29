@@ -36,13 +36,83 @@ import (
 // have arrived as a rewrite of every dispatch path instead of a registration.
 // swe is the proof — it is two lines here and one file beside this one.
 
+// buildWorkers is every worker this binary can construct, in the order it
+// declares them. It is the ONE list: [installSubharnesses] registers from it,
+// the roster row's receipt reports it, and the roster is filtered against it —
+// so adding a worker is still a line here and a line in leafExecutors, and the
+// new worker is on every profile's roster the day it is declared.
+func buildWorkers() []exec.SubharnessInfo {
+	return []exec.SubharnessInfo{sweInfo(), bareInfo()}
+}
+
 // installSubharnesses declares this build's workers to the whole process. It is
 // called once, before any command runs, so every surface — chat, do, run, wake
-// — sees the same menu and the same rulers. Adding a worker is a line here and
-// a line in leafExecutors, and nothing else.
+// — sees the same menu and the same rulers.
+//
+// IT REGISTERS THE ROSTER AND NOT THE BUILD. A profile that names a subset gets
+// that subset registered and nothing else, and the absence does the rest with no
+// help from anybody: an unregistered worker is off exec.MenuText, so the
+// compiler never sees it; exec.KnownSubharness says no, so the resident's
+// escalation ladder cannot climb to it and executorFor degrades to the
+// generalist; and `--subharness <name>` answers with the flag's own
+// not-in-this-build sentence. A capability that cannot work is absent, not
+// broken, and this is that law applied to a whole worker.
 func installSubharnesses() {
-	exec.RegisterSubharness(sweInfo())
-	exec.RegisterSubharness(bareInfo())
+	installWorkerRoster(config.WorkersAt(os.Getenv("AFORGE_PROFILE_DIR")), os.Stderr)
+}
+
+// installWorkerRoster is [installSubharnesses] with its two inputs named, so a
+// test can hand it a roster without writing a profile or the environment.
+//
+// The catalog hook is seated FIRST and from the whole build rather than from the
+// roster: the settings row exists so somebody can see which worker they turned
+// off and turn it back on, and a row that could only list what is already
+// installed would be a row that hides the name a person needs.
+func installWorkerRoster(roster string, stderr io.Writer) {
+	workers := buildWorkers()
+	config.UseInstalledWorkers(func() []string { return workerNames(buildWorkers()) })
+
+	// The generalist is a name the roster may say and never a worker the roster
+	// installs: it is not a registered subharness at all (internal/plan's
+	// size.go — the baseline every node is judged against, never an entry on a
+	// menu), so it is always there whatever this line says. It is on the known
+	// list only so that a person who writes "linear" is answered with the
+	// generalist rather than with a note about a name nobody recognises.
+	known := append([]string{exec.LinearSubharness}, workerNames(workers)...)
+	kept, unknown := config.WorkerRoster(roster, known)
+	if len(unknown) > 0 && stderr != nil {
+		fmt.Fprintf(stderr, "note: no worker named %s — this build has: %s\n",
+			strings.Join(quoteAll(unknown), ", "), strings.Join(workerNames(workers), ", "))
+	}
+
+	install := map[string]bool{}
+	for _, name := range kept {
+		install[name] = true
+	}
+	for _, info := range workers {
+		if install[info.Name] {
+			exec.RegisterSubharness(info)
+		}
+	}
+}
+
+// workerNames is the build's workers as the names a person writes.
+func workerNames(workers []exec.SubharnessInfo) []string {
+	names := make([]string, 0, len(workers))
+	for _, info := range workers {
+		names = append(names, info.Name)
+	}
+	return names
+}
+
+// quoteAll puts a person's own spelling in quotes, so a roster line with a
+// stray word reads back as the word rather than dissolving into the sentence.
+func quoteAll(names []string) []string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, fmt.Sprintf("%q", name))
+	}
+	return quoted
 }
 
 // leafBuild is everything a worker needs to be constructed for one leaf. It is

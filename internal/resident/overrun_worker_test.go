@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -43,7 +44,15 @@ func twoNodeRemainder(_ context.Context, _, prefix string) (store.Subtree, error
 // and the answer has to be durable: the continuation is a real node, claimed
 // minutes or a restart later, and a promise the splice did not journal is a
 // promise nobody keeps.
+//
+// A JUDGED SPECIALIST IS HONOURED ONLY WHEN THIS INSTALL HAS IT, which is why
+// the worker is registered here rather than merely named. The judgment is a
+// claim about the work; the profile's roster says whether there is anything to
+// act on it with, and the test for the other answer is
+// TestAJudgedWorkerThisInstallDoesNotHaveIsTheGeneralist below.
 func TestAJudgedContinuationCarriesItsWorkerDurably(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
 	graph, node := overrunWorkerFixture(t)
 	spliced, sink, err := ReplanOverrunOn(context.Background(), graph, node,
 		"partial", "", nil, 0, "swe", twoNodeRemainder)
@@ -106,8 +115,11 @@ func TestAnUnjudgedContinuationStaysOnTheBaselineWorker(t *testing.T) {
 }
 
 // The rail is a pause, not a decision unmade: a repair held for consent resumes
-// on the worker it was planned for.
+// on the worker it was planned for — an installed one, for the reason the test
+// above states.
 func TestADeferredContinuationRemembersItsWorker(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
 	graph, node := overrunWorkerFixture(t)
 	// A rail already reached: the repair is journaled and nothing is spliced.
 	if err := graph.RecordUsage(store.NodeUsage{NodeID: "job-a", Cost: 99}); err != nil {

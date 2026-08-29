@@ -277,6 +277,19 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
+	// WHICH HANDS THIS INSTALL HAS. It is on Workspace and not on Session
+	// because it is not about one conversation's work: a worker takes leaves on
+	// every surface there is, and the roster is a fact about the install. It is
+	// a text row rather than a cycle because it is a SET and not a choice — a
+	// person turning one specialist off keeps the rest — and it is written as
+	// the workers rather than as the machinery, because "specialist" is the
+	// word somebody uses and "subharness" is the word the code uses.
+	config.KeyWorkers: {
+		tab: tabWorkspace, label: "workers", widget: widgetText,
+		about: "which workers may be handed a piece of work, separated by commas. " +
+			"Blank is all of them. The general-purpose worker is always there and is " +
+			"never on the list.",
+	},
 	// THE CREW LIVES ON THE PROVIDERS TAB, with the model it answers under.
 	//
 	// It was on Session for four waves, one tab away from the row that says which
