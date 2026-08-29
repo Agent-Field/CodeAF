@@ -388,3 +388,42 @@ func TestGroundingAMappingNeverMatchesInsideAnotherName(t *testing.T) {
 		t.Error("a name beside a brace was not matched")
 	}
 }
+
+// A PUBLIC NAME THIS WORK DELETED IS A FINDING, AND IT IS THE GATE'S OWN.
+//
+// igel s11: the check-level photograph read the finished tree as better — named
+// 2 → 14, red 2 → 0 — while all twenty-four hidden tests failed at setup on
+// `Igel.results_path`. The suite was not lying. A project only owns checks for
+// what somebody wrote checks for, and nobody had written one for that attribute.
+func TestARemovedPublicNameIsASourcedFinding(t *testing.T) {
+	lost, removed := RemovedPublicNames([]string{"Igel.results_path", "Igel.description_file"})
+	if !removed {
+		t.Fatal("two deleted public attributes raised nothing")
+	}
+	if lost.Pass {
+		t.Error("a delivery that deleted a public name passed")
+	}
+	if !strings.Contains(lost.Gaps,
+		"This work removed a public name that existed before it: Igel.results_path") {
+		t.Errorf("the finding does not name what was lost:\n%s", lost.Gaps)
+	}
+	// SOURCED, so it is admitted with no citation weighed — exactly as a check
+	// regression is, and for the same reason: nobody has to ask for the public
+	// names their repository already had.
+	if !lost.Sourced {
+		t.Error("the finding would have to quote a request that never mentioned it")
+	}
+	if !lost.Checked {
+		t.Error("a measured finding was recorded as unchecked")
+	}
+	if len(lost.Citations) == 0 {
+		t.Error("the finding travels with no list for a repair to aim at")
+	}
+	// Nothing removed is no claim, not an acquittal.
+	if _, any := RemovedPublicNames(nil); any {
+		t.Error("a run that measured nothing raised a finding anyway")
+	}
+	if _, any := RemovedPublicNames([]string{"  "}); any {
+		t.Error("whitespace was read as a lost name")
+	}
+}

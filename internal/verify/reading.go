@@ -117,6 +117,19 @@ type Reading struct {
 	After      Result `json:"after,omitzero"`
 	Taken      bool   `json:"taken,omitempty"`
 	AfterTaken bool   `json:"after_taken,omitempty"`
+	// Surface is the OTHER half of the photograph: the public names the tree
+	// spelled before the job's first change, by file.
+	//
+	// It is here rather than beside itself because it is one measurement of one
+	// tree at one moment, taken with the check-level reading and inherited by
+	// every round of the job for the identical reason — a repair round standing
+	// in a tree its own job already changed must be compared against what the
+	// JOB found, not against what the previous round left.
+	//
+	// It never reaches the journal whole: a repository's public surface is tens
+	// of thousands of short strings and what a reader wants is the DIFFERENCE.
+	// See Surface.Removed, and store.EventSurface.
+	Surface Surface `json:"-"`
 }
 
 // Regressed names the checks that were green before this work and are red after

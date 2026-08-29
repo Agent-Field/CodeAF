@@ -726,3 +726,39 @@ The headless stream says it too — every `▶` and every `✓` now carries its 
 in parentheses, the generalist included — so the reading that cost a day is a
 line a person watching already has. Clause 3 and clause 4 are one fix here: a
 record nobody can read and a stream that does not say it are the same silence.
+
+## The ninth failure: the reading that read something and reported nothing
+
+*ink s10 and s11, `bench/deepswe/results/ink-grid-box-layout-*`, 2026-08-29.*
+
+Every leaf of both sweeps journals the same pair. The baseline: `npx ava --tap`,
+`read: true`, **44** checks named (156 on one node), `exit: -1` — killed at its
+ceiling with a roster already in hand. The finished tree: the same command, the
+same workdir, `read: false`, `named: 0`, `exit: 0`, and the sentence *the
+finished tree was not read: `npx ava --tap` was killed at its ceiling without
+finishing*.
+
+Three things that sentence is not. It is not the reader: the same reader named 44
+checks off the same command minutes earlier. It is not the scope: both rungs are
+`whole`, and nothing had narrowed anything. It is not the room: the runner ran
+and streamed.
+
+**The after path discarded a roster it had already read.** `verify.RunReading`
+returns the names it parsed whether or not the ceiling fired — that is the ink s7
+repair — and `photograph()` keeps them on the before side. `PhotographAfter` had
+its own `case after.TimedOut` that set `Unread` and threw the result away.
+
+Three clauses this breaks. **Clause 4**, a record that can be autopsied: two
+sweeps of stores say *nobody could read this tree* about a tree that was read.
+**Clause 3**, reaching the person: the gate is handed *was not read* and cannot
+tell it from a project that declares no verification. And **clause 5**'s floor,
+because the coverage settlement spends the after roster and there was none.
+
+What it states:
+
+> **A READING THAT PRODUCED OUTPUT PRODUCED A READING.** A cut roster is kept and
+> marked partial — it answers *does a check for this exist* and never *did this
+> work break something*. A command that RAN and named nothing says that, in those
+> words, rather than borrowing the sentence for a tree nobody could read. And a
+> rung this program DERIVED that names nothing is retaken on the rung the baseline
+> proved, once, before anything is reported unreadable.
