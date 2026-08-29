@@ -451,6 +451,25 @@ per round: `jobReading` remembers against `verify.JobKey`, so later rounds
 inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
 remaining wall as every other reading here.
 
+**A cut second reading keeps what it named, and a derived rung retakes on the
+baseline's.** The before half has kept a partial roster since ink s7; the after
+half discarded it, so ink's second reading came back `read: false, named: 0` on
+EVERY leaf of two whole sweeps (s10 and s11) while the baseline of the same run,
+on the same `npx ava --tap` at the same workdir, named **44** checks — 156 on one
+node. Nothing was wrong with the reader, the scope or the room: the runner
+streamed its checks in TAP, the ceiling fired, and the after path threw away what
+it had already read. It is kept now, marked `Partial` so the subtraction is
+refused (`Reading.comparable` already reads it that way) while the roster the
+coverage settlement spends survives. Two further corrections came with it: the
+failure path journals the result the runner actually left — its exit status and
+whatever it printed — rather than a zero value, which is how a command that ran
+and exited 1 was written down as `exit: 0`; and `exec.readFinishedTree` retakes
+on the BASELINE'S OWN RUNG before reporting a tree unreadable, because the two
+ways an after reading may differ from a before one (widened by the run's own
+work, aimed at the diff) both choose a command the baseline never proved could
+run, and that is the one thing here a retake fixes. One retake, only when the
+command actually differs, and whichever attempt said more is the one kept.
+
 **The second reading is aimed at the change as well as at the request.** The
 first reading's scope has to come from the request — there is no diff yet — and
 textual s10 is what that costs on its own: the request said *Log and RichLog*,
