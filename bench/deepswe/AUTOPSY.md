@@ -647,3 +647,91 @@ $0.413 and also hit the wall, ending `settled: false`. The repair machinery now
 buys rounds that the run cannot finish inside its budget, which is a new failure
 shape: s5's runs stopped too early, s6's two largest stop only because time ran
 out.
+
+## Forensics: where s6's largest two runs spent their money
+
+ink s6 cost $0.850 and 38.76M prompt tokens; happy-dom s6 cost $0.413. Both hit
+the wall. The question is whether that is restarts starting over, or repair
+rounds each re-reading the repository. **It is the first, and the second is not
+what it looked like.**
+
+### ink s6 — `task-2` restarted four times, each from turn 1
+
+Not a watchdog and not a hung call: the run has **zero `✗` lines** and no reaper,
+stale or timeout marker anywhere. Each restart is a release immediately followed
+by a re-claim under a new token, in the same second:
+
+```
+07:08:03 node_started  task-2 token=1
+07:30:13 node_released task-2 token=1 next=2   →  node_claimed token=3  →  node_started
+07:52:23 node_released task-2 token=3 next=4   →  node_claimed token=5  →  node_started
+08:14:34 node_released task-2 token=5 next=6   →  node_claimed token=7  →  node_started
+08:36:40 node_released task-2 token=7 next=8   →  node_claimed token=9  →  node_started
+```
+
+The gaps are **22m10s, 22m10s, 22m11s, 22m06s** — a fixed ceiling, not an event.
+It is not a turn or token ceiling: attempt 1 reached turn 72 and attempt 2
+reached turn 138 in the same 22m10s, and `leaf_mode {"mode":"open","turns":200,
+"tokens":150000}` is re-emitted unchanged on every claim. The first restart
+happened at 07:30:13, **before any `job_growth`** (round 1 was granted at
+07:42:04), so the restarts are not caused by the repair rounds.
+
+**Nothing is banked.** Turn numbers reset to 1 four times, and attempt 2's
+turn 1 is, verbatim:
+
+> "I'll start by exploring the codebase to understand the current structure and
+> how styles are handled" → `cd /app && git branch -a && git log --oneline -5`
+
+| attempt | started | turns reached | prompt tokens | cached | cost |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 07:08:03 | 1–72 | 5,557 | 0 | $0.000 |
+| 2 | 07:30:13 | 1–138 | 11,106,468 | 10,634,752 | $0.231 |
+| 3 | 07:52:23 | 1–98 | 11,063,439 | 10,423,808 | $0.247 |
+| 4 | 08:14:34 | 1–97 | 11,898,991 | 11,081,984 | $0.270 |
+| 5 | 08:36:40 | 0–21 | 4,683,243 | 4,442,880 | $0.101 |
+
+Three full attempts at ~11M prompt tokens each, every one of them beginning by
+re-reading the repository it had already read.
+
+### happy-dom s6 — same shape, and the rounds are cheap
+
+`task-2` restarted twice on the same cadence (22m11s, 21m59s) with five turn-1
+resets in its transcript, and its second attempt alone spent **10,663,109** of
+the run's prompt tokens. It then decomposed into eight leaves, and those leaves
+are the cheap part:
+
+| node | prompt tokens | cost |
+| --- | --- | --- |
+| `task-2` attempt 2 | 10,663,109 | $0.224 |
+| `task-2` attempt 3 | 2,735,372 | $0.082 |
+| `task-2-x3` | 242,793 | $0.008 |
+| `task-2-x2` | 221,476 | $0.007 |
+| `task-2-x1-n6` | 1,409,262 | $0.044 |
+| `task-2-x1-n5` | 645,957 | $0.019 |
+| `task-2-x1-n2` | 608,403 | $0.017 |
+| `task-2-x1-n7` | 414,967 | $0.013 |
+| `n1`, `n3`, `n4` | 0 | $0.000 |
+
+None of the eight leaves restarted. Together they cost $0.108 — an eighth of what
+one monolithic leaf's single attempt cost.
+
+### The verdict
+
+**Restarts from scratch, not acceptance rounds.** The repair machinery is not
+re-reading the repo; the decomposed leaves it produces are small and cheap. What
+is expensive is one undecomposed leaf that is cut at a ~22-minute ceiling, thrown
+away, and started again from "let me explore the codebase" — three times in ink,
+twice in happy-dom, at ~11M prompt tokens a go.
+
+Two things follow. The ceiling is a **liveness defect wearing a budget's
+clothes**: nothing was hung, so nothing needed restarting, and the cut is on a
+timer rather than on evidence. And the restart is a **memory defect**: the leaf
+is re-claimed with the workspace it already changed but with none of the
+transcript that says what it changed or why, so it pays the exploration cost
+again and can contradict its own earlier decisions — which is the most plausible
+reading of igel falling from 23/24 to 6/24 between sweeps.
+
+Caching hides most of the price (≈95% of these prompt tokens were cached, which
+is why $38.76M of ink's tokens cost 85 cents rather than $3), so the cost signal
+understates how much work is being repeated. The wall does not: both runs spent
+their entire 90 minutes and neither finished.
