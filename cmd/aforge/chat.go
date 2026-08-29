@@ -1225,6 +1225,24 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if opts.produced != nil && len(absolute) > 0 {
 			opts.produced(absolute...)
 		}
+		// Work that is finished and is NOT in the workspace is the one thing a
+		// person cannot find for themselves: there is no file to open, the
+		// artifact list is correctly empty, and the checkout it is in is under
+		// aforge's own state root under a digest of a path. So it is said here,
+		// above the failure branch and above the happy one, because a gate
+		// failure is exactly the ending that produces it — and it is said with a
+		// progress payload, which is what carries it out of the record and into
+		// the headless stream beside the ✗.
+		withheld := ""
+		if outcome != nil {
+			withheld = outcome.Account.WithheldWords()
+		}
+		if withheld != "" {
+			_, _ = thread.Record(graph, store.Message{
+				Role: store.RoleSystem, NodeID: node.ID, Body: withheld,
+				Progress: &store.MessageProgress{Phase: "work left behind", Latest: withheld},
+			})
+		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
 		// which edits the job's unstarted remainder only when this result
 		// contradicts a specific assumption in a specific node. Its default
@@ -1271,7 +1289,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// path to find. Naming them in the error text is enough — the error
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
-			failure := humanFailure(node, err, absolute)
+			failure := humanFailure(node, err, absolute, withheld)
 			// A sibling's failure is the board note nobody should have to
 			// remember to write: the workers still running are about to lean on
 			// a result that is not coming, and the reason it died is the fact
@@ -3068,7 +3086,7 @@ func leafCause(node store.Node, err error) string {
 //
 // The partial files ride below too, for the retry and for the person who wants
 // them, not for the notification.
-func humanFailure(node store.Node, err error, artifacts []string) error {
+func humanFailure(node store.Node, err error, artifacts []string, withheld string) error {
 	if err == nil {
 		return nil
 	}
@@ -3079,6 +3097,13 @@ func humanFailure(node store.Node, err error, artifacts []string) error {
 	body := clipUTF8Bytes(firstLine(cause), failureCauseBytes) + "\n\n" + strings.TrimSpace(err.Error())
 	if len(artifacts) > 0 {
 		body += "\n\nFiles it left behind:\n" + strings.Join(artifacts, "\n")
+	}
+	// A leaf that worked in its own view and did not deliver leaves an empty
+	// artifact list and a full checkout, so the line above is silent on exactly
+	// the ending that has the most to say. The error is what a failed node
+	// records and what every reader downstream opens, so the sentence rides it.
+	if withheld = strings.TrimSpace(withheld); withheld != "" {
+		body += "\n\n" + withheld
 	}
 	return errors.New(body)
 }

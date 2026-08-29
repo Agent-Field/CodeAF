@@ -120,12 +120,17 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 	// Repair leaves may split for MaxOverrunRounds rounds; the counter
 	// replaces the old suffix instead of stacking markers.
 	repair, _, _ := graph.Node("job-a-x1-n5")
-	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "more partial", "the docker half is missing", nil, 20, planned)
+	// Each round names a file it wrote: a lineage that changes nothing twice
+	// running is refused before the round counter is reached, and this test is
+	// about the counter and the splice.
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "more partial", "the docker half is missing",
+		[]string{"docker/Dockerfile"}, 20, planned)
 	if err != nil || spliced != 2 || sink != "job-a-x2-n9" {
 		t.Fatalf("round two: spliced=%d sink=%q err=%v", spliced, sink, err)
 	}
 	repair, _, _ = graph.Node("job-a-x2-n5")
-	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "last partial", "", nil, 20, planned)
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "last partial", "",
+		[]string{"docker/compose.yml"}, 20, planned)
 	if err != nil || spliced != 2 || sink != "job-a-x3-n9" {
 		t.Fatalf("round three: spliced=%d sink=%q err=%v", spliced, sink, err)
 	}

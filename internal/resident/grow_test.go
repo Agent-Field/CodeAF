@@ -128,8 +128,14 @@ func TestApplyRevisionAdmitsAndJournalsGrowthThatFits(t *testing.T) {
 // sibling's repair spend another sibling's allowance.
 func TestGrowthRoundsAreCountedPerLineage(t *testing.T) {
 	graph := crowdedJob(t, "s4", 3)
-	first := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n1"), Lineage: "job-n1", Reason: GrowOverrun, Adding: 1}
-	second := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n2"), Lineage: "job-n2", Reason: GrowOverrun, Adding: 1}
+	// Both lineages are getting somewhere — a file written each round — because
+	// that is what "three legitimate rounds" means and it is what the counter is
+	// being tested about. A lineage that changes nothing twice running is
+	// refused before the counter is ever reached; that rule has its own tests.
+	first := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n1"), Lineage: "job-n1",
+		Reason: GrowOverrun, Adding: 1, Produced: 1}
+	second := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n2"), Lineage: "job-n2",
+		Reason: GrowOverrun, Adding: 1, Produced: 1}
 
 	for round := 1; round <= MaxOverrunRounds; round++ {
 		verdict, err := growJob(context.Background(), graph, nil, first)

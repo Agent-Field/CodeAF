@@ -37,7 +37,7 @@ func TestTheIncidentsErrorReachesPeopleAsASentence(t *testing.T) {
 		ID: "craft-3799~launch", Title: "Launch", Brief: "Launch the analysis fan",
 		Provenance: store.Provenance{Intent: "put together a deep dive on the Q3 numbers"},
 	}
-	recorded := humanFailure(node, wrapped, nil).Error()
+	recorded := humanFailure(node, wrapped, nil, "").Error()
 	headline := firstLine(recorded)
 
 	if headline != "No endpoints found that support tool use." {
