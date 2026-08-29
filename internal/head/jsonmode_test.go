@@ -48,3 +48,27 @@ func TestTheCompileAsksForJSONOnTheWireBothTimes(t *testing.T) {
 		t.Fatalf("response formats = %v, want json_object on both attempts", client.formats)
 	}
 }
+
+// A brief with no "assumptions" key is a complete brief. The compile used to
+// refuse it outright, which ended a whole headless run at the first call.
+func TestABriefWithoutAssumptionsCompiles(t *testing.T) {
+	client := &formatClient{replies: []string{`{"structure":"enumerates","goal":"Build seven tools","title":"Seven tools","scale":"project","parts":["a","b"]}`}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "Build seven tools", "")
+	if err != nil {
+		t.Fatalf("compile refused a brief with no assumptions: %v", err)
+	}
+	if brief.Assumptions != nil && len(brief.Assumptions) != 0 {
+		t.Fatalf("assumptions = %q, want none", brief.Assumptions)
+	}
+}
+
+func TestBlankAssumptionsAreDroppedNotRefused(t *testing.T) {
+	client := &formatClient{replies: []string{`{"structure":"single_act","goal":"Rename the file","scale":"task","assumptions":["  ","the file exists"]}`}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "Rename the file", "")
+	if err != nil {
+		t.Fatalf("compile refused a brief with a blank assumption: %v", err)
+	}
+	if len(brief.Assumptions) != 1 || brief.Assumptions[0] != "the file exists" {
+		t.Fatalf("assumptions = %q, want just the real one", brief.Assumptions)
+	}
+}
