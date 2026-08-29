@@ -714,3 +714,37 @@ func RanOutOfRoom(err error) (time.Duration, bool) {
 	}
 	return 0, false
 }
+
+// Requeued is the whole rule an exhausted node is judged by, and it is asked by
+// both schedulers: the resident's, which drives `aforge do` and the chat, and
+// the one-shot [Scheduler] that drives `aforge run`.
+//
+// AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK. The worker ran out
+// of the room it was given; that is the queue's input and the growth governor's,
+// so the node is offered again and the next claim carries on from the record
+// this one left. The ink run of 2026-08-29 journaled exactly that sentence and
+// then settled the node failed in the same second, over a twenty-six kilobyte
+// patch and seventy-three minutes of unspent wall — because the sentence was in
+// one place and the decision was in another.
+//
+// IT IS GATED ON THERE BEING SOMETHING TO RESUME FROM, which is what keeps it
+// from being an unbounded retry: a claim that reads an empty record is the same
+// cold start again, and an attempt that recorded not one turn before the clock
+// stopped it has told us the only thing it is going to.
+//
+// The record is read through a function rather than passed in because reading it
+// costs a query on the resident's side, and the question is only reached for an
+// ending that is exhaustion in the first place — a run whose leaves fail for
+// ordinary reasons must not pay for a record it will never consult. What comes
+// back is the room the worker was given and how much of its work survived, which
+// is what the release sentence and the stream line are both composed from.
+func Requeued(err error, record func() int) (allowed time.Duration, recorded int, requeue bool) {
+	allowed, spent := RanOutOfRoom(err)
+	if !spent || record == nil {
+		return 0, 0, false
+	}
+	if recorded = record(); recorded <= 0 {
+		return 0, 0, false
+	}
+	return allowed, recorded, true
+}
