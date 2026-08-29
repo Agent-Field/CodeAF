@@ -123,3 +123,58 @@ func TestHedgeLoserReasoningNeverReachesTheWinningStep(t *testing.T) {
 		t.Fatalf("kept reasoning = %q, want only winner", got)
 	}
 }
+
+// The journal names the model each piece of working came from, so a resumed
+// conversation that has switched models hands the provider a sidecar it can
+// keep home (provider.MessageReasoning.Model) rather than a 404 to discover.
+func TestJournaledReasoningRemembersWhichModelProducedIt(t *testing.T) {
+	dir := t.TempDir()
+	transcript := filepath.Join(dir, "transcript.jsonl")
+	details := json.RawMessage(`[{"type":"reasoning.text","text":"resume"}]`)
+	firstClient := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.EmitReasoning(ctx, "reasoning_content", "durable thought", details)
+			return toolResponse("read-1", "read", `{"path":"note.txt"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Done. What next?"), nil
+		},
+	}}
+	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("answer"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{Workspace: dir, Model: "test/model", System: "SYSTEM", SessionFile: transcript}
+	first, err := newAgent(config, firstClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, first, "read it"))
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	switched := config
+	switched.Model = "test/other-model"
+	secondClient := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		tagged := 0
+		for _, carried := range provider.MessageReasoningFrom(ctx) {
+			if carried.Text == "" && len(carried.Details) == 0 {
+				continue
+			}
+			if carried.Model != "test/model" {
+				t.Fatalf("carried working is tagged %q, want the model that produced it", carried.Model)
+			}
+			tagged++
+		}
+		if tagged == 0 {
+			t.Fatal("the journaled working did not come back at all")
+		}
+		return textResponse("Still here."), nil
+	}}}
+	second, err := newAgent(switched, secondClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	collect(t, mustSubmit(t, second, "continue"))
+}

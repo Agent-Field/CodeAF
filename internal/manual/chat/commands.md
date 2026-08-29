@@ -664,6 +664,12 @@ name in the status line opens the same picker.
 that the slug exists in any list. If the slug is in no known list, the context window is
 left alone.
 
+A switch carries the conversation's words and nothing of the previous model's private
+thinking. A model's reasoning is its own — the router encrypts it and refuses to replay it
+to any other model — so the new model reads what was said and continues from there. If a
+switch mid-conversation is ever refused with "encrypted reasoning … produced under a
+different model", the request is repaired and sent again on its own; nothing is lost.
+
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
 12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the model
 under the cursor through off → low → medium → high → off reasoning effort. enter

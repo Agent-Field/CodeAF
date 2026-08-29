@@ -87,3 +87,74 @@ func TestAReasoningReplayRefusalIsLearnedForOnlyThatModel(t *testing.T) {
 		}
 	}
 }
+
+// A /model switch mid-conversation. The transcript carries the old model's
+// working, and OpenRouter answers a replay of it to anyone else with a 404 —
+// "encrypted payloads can only be replayed to the endpoint that created them".
+// The words go to the new model; the thinking stays home.
+func TestAnotherModelsReasoningStaysHome(t *testing.T) {
+	client, recorded := newCachingClient(t, "http://provider.test", "reasoning/replay")
+	own := WithMessageReasoning(context.Background(), []MessageReasoning{
+		{}, {Field: "reasoning_content", Text: "mine", Model: "reasoning/replay"}, {},
+	})
+	foreign := WithMessageReasoning(context.Background(), []MessageReasoning{
+		{}, {Field: "reasoning_content", Text: "theirs", Model: "other/model"}, {},
+	})
+	for _, ctx := range []context.Context{own, foreign} {
+		if _, err := client.CompleteWithMessages(ctx, reasoningTranscript()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := wireMessages(t, recorded.body(0))[1]["reasoning_content"]; got != "mine" {
+		t.Fatalf("own working = %#v, want it replayed", got)
+	}
+	theirs := wireMessages(t, recorded.body(1))[1]
+	if _, present := theirs["reasoning_content"]; present {
+		t.Fatalf("another model's working travelled: %#v", theirs)
+	}
+	if got := theirs["content"]; got != "looking" {
+		t.Fatalf("the message itself must still go, got %#v", got)
+	}
+}
+
+// The journal written before the sidecar carried a model has no tag to filter
+// on, so the first request after a switch is refused. It is repaired in flight
+// and NOT remembered: this model does replay — just not somebody else's.
+func TestAModelSwitchIsRepairedWithoutTeachingTheMemoAnything(t *testing.T) {
+	const model = "reasoning/switched-to"
+	quirksAt(t, model)
+	recorded := &capture{}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		messages := wireMessages(t, recorded.body(recorded.count()-1))
+		if _, present := messages[1]["reasoning_content"]; present {
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusNotFound)
+			_, _ = writer.Write([]byte(`{"error":{"message":"Your request contains encrypted reasoning or compaction content that was produced under a different model. Encrypted payloads can only be replayed to the endpoint that created them.","code":404}}`))
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	})
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "http://provider.test", Model: model, HTTPClient: handlerClient(handler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	untagged := WithMessageReasoning(context.Background(), []MessageReasoning{{}, {Field: "reasoning_content", Text: "carry"}})
+	response, err := client.CompleteWithMessages(untagged, reasoningTranscript()[:2])
+	if err != nil {
+		t.Fatalf("a switch must be repaired, not returned: %v", err)
+	}
+	if got := response.Text(); got != "ok" {
+		t.Fatalf("answer = %q", got)
+	}
+	if recorded.count() != 2 {
+		t.Fatalf("requests = %d, want the refusal and its repair", recorded.count())
+	}
+	if _, present := wireMessages(t, recorded.body(1))[1]["reasoning_content"]; present {
+		t.Fatalf("the repair still carried the other model's working: %#v", recorded.body(1))
+	}
+	if reasoningReplayRefused(model) {
+		t.Fatal("a refusal about ANOTHER model's working must not be learned as this model refusing replay")
+	}
+}

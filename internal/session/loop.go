@@ -1218,7 +1218,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// interrupt during the next one would otherwise record the two halves
 		// concatenated as one answer.
 		partial.reset()
-		reasoning.reset()
+		reasoning.begin(model)
 		// And so does the warm batch. A retry is a NEW response — its calls are
 		// its own, ids and all — so nothing the dead attempt started may be
 		// paired with it. The reads that already ran are simply thrown away and

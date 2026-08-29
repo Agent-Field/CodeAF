@@ -86,6 +86,10 @@ type sessionEntry struct {
 	ReasoningField   string          `json:"reasoningField,omitempty"`
 	Reasoning        string          `json:"reasoning,omitempty"`
 	ReasoningDetails json.RawMessage `json:"reasoningDetails,omitempty"`
+	// ReasoningModel is the slug the working above was produced under, so a
+	// resumed conversation that has since switched models does not replay
+	// one endpoint's encrypted thinking to another. Absent in older files.
+	ReasoningModel string `json:"reasoningModel,omitempty"`
 
 	// Parts are the message's non-text content parts as durable references, in
 	// the order they sit in the message AFTER its text. Absent on every message
@@ -1210,6 +1214,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			reasoning = append(reasoning, provider.MessageReasoning{
 				Field: entry.ReasoningField, Text: entry.Reasoning,
 				Details: append(json.RawMessage(nil), entry.ReasoningDetails...),
+				Model:   entry.ReasoningModel,
 			})
 		case "compaction":
 			// THE REGION THIS MARKER REPLACES IS KEPT BEFORE IT IS THROWN AWAY,
@@ -1835,6 +1840,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		ReasoningField:   reasoning.Field,
 		Reasoning:        reasoning.Text,
 		ReasoningDetails: append(json.RawMessage(nil), reasoning.Details...),
+		ReasoningModel:   reasoning.Model,
 		Parts:            refs,
 		Note:             note,
 		ReplyTags:        firstReplyTags(tagSets),

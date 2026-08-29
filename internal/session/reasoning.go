@@ -14,6 +14,11 @@ import (
 // half-reasoned continuation.
 type reasoningBuffer struct {
 	reasoning provider.MessageReasoning
+	// model is the slug the attempt in progress was sent to. It is stamped
+	// per attempt (loop.go) because a step can hop models mid-loop, and it
+	// rides out on the snapshot so a later /model switch knows whose working
+	// this was and leaves it home.
+	model string
 }
 
 func (a *Agent) alignReasoningLocked() {
@@ -27,6 +32,12 @@ func (a *Agent) alignReasoningLocked() {
 }
 
 func (b *reasoningBuffer) reset() { b.reasoning = provider.MessageReasoning{} }
+
+// begin resets the buffer for one attempt and names the model it is going to.
+func (b *reasoningBuffer) begin(model string) {
+	b.reset()
+	b.model = model
+}
 
 func (b *reasoningBuffer) write(event provider.StreamEvent) {
 	if b == nil || event.Kind != provider.StreamReasoning {
@@ -45,6 +56,9 @@ func (b *reasoningBuffer) snapshot() provider.MessageReasoning {
 	}
 	kept := b.reasoning
 	kept.Details = append(json.RawMessage(nil), kept.Details...)
+	if kept.Text != "" || len(kept.Details) > 0 {
+		kept.Model = b.model
+	}
 	return kept
 }
 
