@@ -626,11 +626,7 @@ func complete(ctx context.Context, c Completer, messages []ai.Message, budget in
 // stream also has no text, but only a length finish at the requested ceiling
 // says that more answer room can change the result.
 func emptyAtCeiling(response *ai.Response, budget int) bool {
-	if response == nil || strings.TrimSpace(response.Text()) != "" ||
-		!strings.EqualFold(strings.TrimSpace(provider.FinishReason(response)), "length") {
-		return false
-	}
-	return response.Usage == nil || response.Usage.CompletionTokens >= budget
+	return provider.EmptyAtCeiling(response, budget)
 }
 
 // EmptyAtCeiling exposes the failure signature to the accounting wrapper that

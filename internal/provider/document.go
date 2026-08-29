@@ -162,10 +162,13 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 		Plugins: []documentPlugin{plugin},
 		Usage:   ai.RequestUsage{Include: true},
 	}
+	// The same room the chat route leaves (wire.go's thinkingCeiling): a
+	// document read on an always-thinking model is cut the same way.
+	ceiling := thinkingCeiling(model, maxTokens)
 	if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
-		wire.MaxCompletionTokens = &maxTokens
+		wire.MaxCompletionTokens = &ceiling
 	} else {
-		wire.MaxTokens = &maxTokens
+		wire.MaxTokens = &ceiling
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {
