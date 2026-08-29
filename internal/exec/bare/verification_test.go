@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // suiteWorkspace stages a project that says how it is checked — a Makefile with
@@ -86,7 +87,7 @@ func TestALeafWhoseWallCannotAffordTheReadingTakesNoPhotographAtAll(t *testing.T
 
 	reading := worker.photographBefore(context.Background())
 
-	if reading.taken {
+	if reading.Taken {
 		t.Errorf("a sixty-second leaf took a reading: %#v", reading)
 	}
 	if got := stage.readings(t); got != 0 {
@@ -95,10 +96,10 @@ func TestALeafWhoseWallCannotAffordTheReadingTakesNoPhotographAtAll(t *testing.T
 	}
 	// The same project, on a wall that can afford it, is photographed — so the
 	// refusal above is about the wall and not about the discovery.
-	if _, affordable := verificationBudget(90 * time.Minute); !affordable {
+	if _, affordable := verify.ReadingBudget(90 * time.Minute); !affordable {
 		t.Errorf("a ninety-minute wall cannot afford a reading; the share is wrong")
 	}
-	if budget, _ := verificationBudget(90 * time.Minute); budget != 11*time.Minute+15*time.Second {
+	if budget, _ := verify.ReadingBudget(90 * time.Minute); budget != 11*time.Minute+15*time.Second {
 		t.Errorf("a ninety-minute wall affords %v a reading, want 11m15s", budget)
 	}
 }
@@ -112,7 +113,7 @@ func TestALeafThatChangedNothingTakesNoSecondPhotograph(t *testing.T) {
 	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
 
 	reading := worker.photographBefore(context.Background())
-	if !reading.taken {
+	if !reading.Taken {
 		t.Fatalf("the first reading was not taken from a project with a make test target")
 	}
 	if got := stage.readings(t); got != 1 {
@@ -120,7 +121,7 @@ func TestALeafThatChangedNothingTakesNoSecondPhotograph(t *testing.T) {
 	}
 
 	outcome := &exec.Outcome{}
-	reading.photographAfter(context.Background(), stage.workspace.Root(), false, outcome)
+	photographAfter(context.Background(), reading, stage.workspace.Root(), false, outcome)
 
 	if got := stage.readings(t); got != 1 {
 		t.Errorf("the command ran %d time(s) for a leaf that changed nothing; the second "+
@@ -142,7 +143,7 @@ func TestOnlyTheCheckThisWorkTurnedRedIsNamedOnTheOutcome(t *testing.T) {
 	worker := New(stage.workspace, "model", "key", "http://127.0.0.1:1", 90*time.Minute)
 
 	reading := worker.photographBefore(context.Background())
-	if !reading.taken {
+	if !reading.Taken {
 		t.Fatalf("the first reading was not taken")
 	}
 
@@ -150,7 +151,7 @@ func TestOnlyTheCheckThisWorkTurnedRedIsNamedOnTheOutcome(t *testing.T) {
 	stage.says(t, "FAILED tests/test_env.py::test_needs_root - PermissionError\n"+
 		"FAILED tests/test_igel.py::test_results_path - AttributeError\n", 1)
 	outcome := &exec.Outcome{}
-	reading.photographAfter(context.Background(), stage.workspace.Root(), true, outcome)
+	photographAfter(context.Background(), reading, stage.workspace.Root(), true, outcome)
 
 	want := []string{"tests/test_igel.py::test_results_path"}
 	if len(outcome.Regressed) != 1 || outcome.Regressed[0] != want[0] {

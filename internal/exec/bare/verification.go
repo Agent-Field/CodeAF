@@ -23,64 +23,17 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
-// verificationWallShare is the denominator of the leaf's own wall that ONE
-// reading of the project's own verification may spend. See PERF.md, "The
-// verification photograph's budget", which is where this arithmetic is stated
-// for a person.
-//
-// It is a share and not a duration because the thing being bounded is not a
-// suite — it is the fraction of a leaf's life spent measuring instead of
-// working. An eighth each way is a quarter of the wall at the very worst, and
-// the worst is rare: the second reading is taken only when the tree changed.
-const verificationWallShare = 8
-
-// shortestUsefulReading is the floor under that share, and it is the refusal
-// this file exists to state as a law: A LEAF WHOSE WALL CANNOT AFFORD A REAL
-// READING TAKES NO READING AT ALL, rather than spending an eighth of its life
-// on a command that will be killed before it says anything.
-//
-// One minute is derived from the fastest whole suite measured in the sweep this
-// work comes from — igel's two passing project tests, "2 passed in 27.86s" —
-// doubled to leave room for an interpreter, an import graph and a compile. A
-// budget under that cannot hold even the cheapest observed project suite, so a
-// reading taken with it would time out, name nothing, and cost the leaf an
-// eighth of its wall for a Result that says nothing at all.
-const shortestUsefulReading = time.Minute
-
-// verificationBudget is what one reading of the project's own verification may
-// spend, given the whole wall the leaf was granted.
-//
-// ok is false when the leaf is too short to afford the measurement, which is
-// the refusal above. A ninety-minute wall affords 11m15s a reading; a
-// sixty-second wall affords 7.5s, which is under the floor, so it photographs
-// nothing. The shortest wall that photographs at all is eight minutes.
-func verificationBudget(wall time.Duration) (time.Duration, bool) {
-	if wall <= 0 {
-		return 0, false
-	}
-	budget := wall / verificationWallShare
-	if budget < shortestUsefulReading {
-		return 0, false
-	}
-	return budget, true
-}
-
-// verificationReading is the before half of the comparison, held across the
-// loop. A zero value — which is what an unaffordable wall, an undiscoverable
-// entrypoint or a hung first reading all produce — is a reading that was never
-// taken, and the after half declines to run against it.
-type verificationReading struct {
-	plan   verify.Plan
-	budget time.Duration
-	before verify.Result
-	taken  bool
-}
+// The budget both readings are taken on, the floor under it and the arithmetic
+// between them are verify.ReadingBudget. They used to be three constants in this
+// file, where only this worker could reach them; the delivery gate weighs the
+// same photograph and takes one of its own where none exists, and two readers of
+// one cap is how a number in this repository drifts. See PERF.md, "The
+// verification photograph's budget".
 
 // photographBefore takes the first reading, if this leaf can afford one and
 // this project says how it is checked.
@@ -90,10 +43,10 @@ type verificationReading struct {
 // after the tree was photographed would file every one of them as something
 // this leaf produced. Taken first, they are part of the world the leaf arrived
 // in, which is what they are.
-func (b *Bare) photographBefore(ctx context.Context) verificationReading {
-	budget, affordable := verificationBudget(b.deadline)
+func (b *Bare) photographBefore(ctx context.Context) verify.Reading {
+	budget, affordable := verify.ReadingBudget(b.deadline)
 	if !affordable {
-		return verificationReading{}
+		return verify.Reading{}
 	}
 	plan := verify.Discover(b.workspace.Root())
 	result, ok := verify.RunTests(ctx, b.workspace.Root(), plan, budget)
@@ -102,9 +55,9 @@ func (b *Bare) photographBefore(ctx context.Context) verificationReading {
 		// there is nothing to subtract a second reading from, and a subtraction
 		// against an unknown baseline would name the repository's own
 		// pre-existing reds as this change's doing.
-		return verificationReading{}
+		return verify.Reading{}
 	}
-	return verificationReading{plan: plan, budget: budget, before: result, taken: true}
+	return verify.Reading{Plan: plan, Budget: budget, Before: result, Taken: true}
 }
 
 // photographAfter takes the second reading and writes what the two readings say
@@ -115,30 +68,39 @@ func (b *Bare) photographBefore(ctx context.Context) verificationReading {
 // the world. A leaf that changed nothing cannot have regressed anything, and
 // re-running a suite to prove it costs an eighth of the wall for an answer that
 // is known.
-func (reading verificationReading) photographAfter(
-	ctx context.Context, root string, changed bool, outcome *exec.Outcome,
+func photographAfter(
+	ctx context.Context, reading verify.Reading, root string, changed bool, outcome *exec.Outcome,
 ) {
-	if !reading.taken || outcome == nil {
+	if !reading.Taken || outcome == nil {
 		return
 	}
 	// The pre-existing reds are owed to the judge whether or not this leaf
 	// changed anything: it is the one worker that photographed the repository
 	// before the work started, and the judge two processes away cannot rerun
 	// anything.
-	if len(reading.before.Failing) > 0 {
-		outcome.Baseline = append(outcome.Baseline, "`"+reading.before.Entrypoint.Command+
+	if len(reading.Before.Failing) > 0 {
+		outcome.Baseline = append(outcome.Baseline, "`"+reading.Before.Entrypoint.Command+
 			"` was ALREADY failing at this commit before the run touched the workspace ("+
-			describeChecks(reading.before.Failing)+"). This is the repository's pre-existing "+
+			describeChecks(reading.Before.Failing)+"). This is the repository's pre-existing "+
 			"state, not this change's doing.")
 	}
+	// The photograph rides the outcome whether or not a second reading was
+	// taken, because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT
+	// FACTS and only the worker that stood there before the work can tell them
+	// apart. The delivery gate reads it: the roster it holds is what says which
+	// checks exist, and its Taken flag is what stops the gate inventing a
+	// finding out of a project that declares no verification at all.
+	outcome.Verification = reading
 	if !changed {
 		return
 	}
-	after, ok := verify.RunTests(ctx, root, reading.plan, reading.budget)
+	after, ok := verify.RunTests(ctx, root, reading.Plan, reading.Budget)
 	if !ok || after.TimedOut {
 		return
 	}
-	outcome.Regressed = verify.NewFailures(reading.before.Failing, after.Failing)
+	reading.After, reading.AfterTaken = after, true
+	outcome.Verification = reading
+	outcome.Regressed = reading.Regressed()
 }
 
 // describeChecks names a bounded handful of checks for a reader. It is

@@ -117,19 +117,30 @@ func normalizeTestName(raw string) string {
 // nothing" is the broadest possible acquittal and it is exactly wrong on the
 // run whose whole job was to turn that red suite green. The CALLER weighs the
 // exit statuses and decides; this function only subtracts.
-func NewFailures(before, after []string) []string {
-	known := make(map[string]bool, len(before))
-	for _, name := range before {
+func NewFailures(before, after []string) []string { return Subtract(after, before) }
+
+// Subtract is that arithmetic with the meaning left out: the names in `from`
+// that `remove` does not hold, order-stable in `from`'s own order, deduped, and
+// pure.
+//
+// It is exported and separate because three questions in this system turn out to
+// be one subtraction — which checks this work turned red, which checks stopped
+// being reported, and which check declarations a diff only takes away — and
+// three copies of a four-line loop is how they come to disagree about the empty
+// case. Every caller states the meaning; this states none.
+func Subtract(from, remove []string) []string {
+	known := make(map[string]bool, len(remove))
+	for _, name := range remove {
 		known[name] = true
 	}
-	seen := make(map[string]bool, len(after))
-	var fresh []string
-	for _, name := range after {
+	seen := make(map[string]bool, len(from))
+	var rest []string
+	for _, name := range from {
 		if known[name] || seen[name] {
 			continue
 		}
 		seen[name] = true
-		fresh = append(fresh, name)
+		rest = append(rest, name)
 	}
-	return fresh
+	return rest
 }

@@ -167,9 +167,15 @@ killed the run. So this measurement is bounded three ways, and the bound is
 
 | number | value | where |
 | --- | --- | --- |
-| `verificationWallShare` | **8** | `internal/exec/bare/verification.go` |
-| `shortestUsefulReading` | **1 minute** | `internal/exec/bare/verification.go` |
+| `verify.WallShare` | **8** | `internal/verify/reading.go` |
+| `verify.ShortestUsefulReading` | **1 minute** | `internal/verify/reading.go` |
 | `capturedOutputLimit` | **4 MiB** | `internal/verify/run.go` |
+
+The two share constants moved out of `internal/exec/bare` on 2026-08-29. Two
+things read them now — the worker that photographs before the work, and the
+delivery gate, which takes the reading of the tree it is about to judge when
+nobody else did — and two copies of one cap is how a number in this repository
+drifts.
 
 The arithmetic is one line: **one reading may spend `deadline / 8`, and a
 reading worth less than a minute is not taken at all.** A ninety-minute leaf
@@ -208,6 +214,43 @@ lets a patch that deleted an attribute the repository already had ship as whole
 — the measured failure in `docs/design/gate/SETTLEMENT.md` §4. Neither is a test
 going red; both are read off a run, which is why the numbers are written down
 here.
+
+## What the acceptance checklist costs
+
+The gate's acceptance settlement (`docs/design/gate/ACCEPTANCE.md`) adds no suite
+run to the common path and one bounded model call to two seams.
+
+| number | value | where |
+| --- | --- | --- |
+| the checklist's length | **one point per non-empty line of the request** | `plan.NormalizeAcceptance` |
+| behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
+| the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
+
+**The checklist's length is derived from the request and not typed.** A request
+cannot state more behaviours than it has lines, so a forty-line request affords
+forty points and a one-line request affords one. There is no constant here for a
+later wave to tune wrongly, and past that ceiling a model has stopped describing
+the request and started describing the domain.
+
+**One call at plan time**, on the request alone, beside the compile that already
+read it. **One call at the gate**, and only on a delivery the model judge was
+about to pass — a gate that is already failing the work buys its repair round
+anyway, so asking the coverage question there would spend a call to reach a
+conclusion that is already true. Both are absent, not broken, where the request
+states nothing checkable or the project declares no verification.
+
+**No second suite run.** The reading the gate weighs is the one the leaf's own
+verification photograph already took of the final tree. It runs `verify.RunTests`
+itself only where that photograph has no after half — a repair that rewrote the
+account rather than the code, or a worker whose wall could not afford the second
+reading — and it runs it on the same `verify.ReadingBudget` share as everything
+else. So the quarter-of-the-wall worst case above is unchanged.
+
+**What a person would see if this were wrong.** Too generous a checklist and
+every delivery fails on behaviours the person never asked for, which is the
+invented-scope failure the grounding invariant exists to stop — that is why the
+checklist goes through the same door a review's finding does. Too mean and the
+gate is back where s4 left it: passing "All 56 tests pass" at 41 of 47.
 
 ## The repair round's room, which is not a clock and not a count
 

@@ -137,6 +137,6 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 	// The second reading, against the same entrypoint. Whether the tree actually
 	// moved is the workspace's answer, taken from the two tree photographs it
 	// has already compared — this asks it rather than re-stating the world.
-	reading.photographAfter(ctx, cwd, len(outcome.Artifacts) > 0, outcome)
+	photographAfter(ctx, reading, cwd, len(outcome.Artifacts) > 0, outcome)
 	return outcome, nil
 }

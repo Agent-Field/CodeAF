@@ -65,6 +65,12 @@ type Result struct {
 	TimedOut bool
 	// Failing is every test identity the runner named, read by [FailingTests].
 	Failing []string
+	// Reported is every test identity the runner named at all, red or green,
+	// read by [ReportedTests]. It is the roster, and it answers the question
+	// redness cannot: WHICH CHECKS EXIST. A check in one reading's roster and
+	// absent from the next stopped existing between them, which is the one
+	// signal that catches a worker deleting the test that was failing it.
+	Reported []string
 }
 
 // RunTests runs the project's own test entrypoint once and reads the failing
@@ -138,7 +144,9 @@ func RunTests(
 			result.Exit = exitErr.ExitCode()
 		}
 	}
-	result.Failing = FailingTests(captured.String())
+	output := captured.String()
+	result.Failing = FailingTests(output)
+	result.Reported = ReportedTests(output)
 	return result, true
 }
 
