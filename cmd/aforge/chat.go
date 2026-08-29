@@ -1139,6 +1139,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				task = attempted
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
+			runCtx = armTranscript(runCtx, graph, node.ID, build.model)
 			outcome, err = runLeafWithWatchdog(runCtx, worker, task, watchdog)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
@@ -1420,6 +1421,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								"\n\n" + revision.GateRevisionContract,
 						})
 						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
 						polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
 						if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
 							spent.PromptTokens += polished.Usage.PromptTokens
@@ -1578,6 +1580,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								"\n\n" + revision.GateRevisionContract,
 						})
 						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
 						var polishErr error
 						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
 						if model := provider.CallFrom(retryCtx).Model(); model != "" {
@@ -3761,16 +3764,43 @@ func nodeDisplay(node store.Node) string {
 	return firstLine(node.Brief)
 }
 
+// armTranscript gives one leaf attempt somewhere to write its turns down.
+//
+// It is a fresh recorder per attempt rather than one per node: a retried leaf
+// appends a second run behind the first, and merging the two would make a
+// record that reads as one impossible run. Every surface that launches a leaf
+// goes through here, which is what makes `aforge do` and the chat's own leaves
+// equally readable afterwards — the defect this answers was found on the
+// headless one, and the interactive one was no better off.
+func armTranscript(ctx context.Context, graph *store.Store, nodeID, model string) context.Context {
+	return exec.WithTranscript(ctx, exec.NewTranscriptRecorder(graph, nodeID, model))
+}
+
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
 // has its own deadline, so this only fires when a worker is wedged past every
 // limit it was given — turning a silent forever-hang into a recorded failure.
 func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
+	// THE RECORD IS MADE DURABLE ON EVERY WAY OUT OF THIS FUNCTION, and there
+	// are three: the leaf landing, the leaf panicking into the guard below, and
+	// the watchdog giving up on a leaf that is still running. Only the first is
+	// an ending the worker itself can write about, which is exactly why the
+	// flush is here rather than left to the worker — a leaf that dies mid-loop
+	// is the case the transcript exists for, and its turns up to the fault must
+	// survive it. Flushing an empty buffer costs nothing, so it is safe that
+	// the worker also flushes on its own way out.
+	defer exec.FlushTranscript(ctx)
 	type landing struct {
 		outcome *exec.Outcome
 		err     error
 	}
 	done := make(chan landing, 1)
 	go func() {
+		// The abandoned leaf's own flush. When the watchdog fires this
+		// goroutine keeps running with nobody waiting for it, and the defer
+		// above has already fired; without this, everything the leaf did after
+		// being given up on would be lost, and the minutes after the watchdog
+		// are exactly what a reader wants to see.
+		defer exec.FlushTranscript(ctx)
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				// The fault goes to the log for its stack and to the journal for

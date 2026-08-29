@@ -412,6 +412,7 @@ esac
 | `aforge wake [--max-seconds N]` | One full resident pass — evaluate sentinels, fire what is due, journal it, exit. What the standing watch timer runs. |
 | `aforge doctor` | Five rows: brain and size, who is resident, watch state, today's spend against the rail, active goals and pending questions. |
 | `aforge competence` / `aforge why self` | The measured competence map; today's self-spend receipts. |
+| `aforge why <node-id>` | One leaf's turn-by-turn record: what it said, which tools it called with what arguments, what came back, and how it ended. |
 | `aforge notebook [retract\|restore <seq>]` | Inspect, search, and retract beliefs. |
 | `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
 | `aforge models` | The router ledger — ratings and how many observations back each. |

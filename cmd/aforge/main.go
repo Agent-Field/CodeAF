@@ -245,6 +245,9 @@ const usageText = `aforge — build and revise task graphs
                                 question for scripts. Conversations are never touched.
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
+  aforge why <node-id> [--db path]  show what one leaf actually did: its turns, the
+                                tools it called with what arguments, what came back,
+                                and how it ended
   aforge version                print the build this binary was cut from
                                 (--version and -v say the same thing)
 

@@ -24,8 +24,8 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	if err := flags.Parse(reorder(args, map[string]bool{"db": true})); err != nil {
 		return err
 	}
-	if flags.NArg() != 1 || flags.Arg(0) != "self" {
-		return fmt.Errorf("usage: aforge why self [--db path]")
+	if flags.NArg() != 1 {
+		return fmt.Errorf("usage: aforge why self|<node-id> [--db path]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -43,6 +43,14 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 		return err
 	}
 	defer graph.Close()
+
+	// `why self` is the day's self-spend; `why <node-id>` is one leaf's own
+	// account of itself. They are the same question at two scales — what did
+	// this cost and what did it buy — which is why they are one command rather
+	// than a second verb nobody would think to look for.
+	if flags.Arg(0) != "self" {
+		return writeNodeTranscript(output, graph, flags.Arg(0))
+	}
 
 	local := now.In(time.Local)
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
@@ -105,4 +113,71 @@ func formatReceiptDollars(cost float64) string {
 
 func oneLineReceipt(value string) string {
 	return strings.Join(strings.Fields(value), " ")
+}
+
+// writeNodeTranscript prints one leaf's turn-by-turn record: what the model
+// said, what it asked its tools for, what came back, and how it ended.
+//
+// It is the reader for the table internal/store/transcript.go writes, and it
+// exists because a record nobody can get at is not a record. Before it, the
+// only account of a leaf that had cost fifty cents was the harness's own two
+// progress lines.
+func writeNodeTranscript(output io.Writer, graph *store.Store, nodeID string) error {
+	nodeID = strings.TrimSpace(nodeID)
+	entries, err := graph.TranscriptFor(nodeID, 0)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		// Two different silences, said as one sentence, because a person
+		// holding an empty answer needs to know which of them they have.
+		fmt.Fprintf(output, "%s has no transcript: either nothing has run it yet, or the worker that ran it keeps no record.\n", nodeID)
+		return nil
+	}
+	for _, entry := range entries {
+		fmt.Fprintln(output, transcriptHeadline(entry))
+		if body := strings.TrimRight(entry.Text, "\n"); body != "" {
+			for _, line := range strings.Split(body, "\n") {
+				fmt.Fprintln(output, "    "+line)
+			}
+		}
+	}
+	return nil
+}
+
+// transcriptHeadline is the one line above each entry's body. The turn number
+// leads every line so a reader can see a turn's shape — one thought, four
+// tools, four results — without counting.
+func transcriptHeadline(entry store.TranscriptEntry) string {
+	turn := fmt.Sprintf("turn %d", entry.Turn)
+	switch entry.Kind {
+	case store.TranscriptAssistant:
+		return turn + " · said"
+	case store.TranscriptToolCall:
+		return turn + " · " + entry.Tool + " ←"
+	case store.TranscriptToolResult:
+		line := turn + " · " + entry.Tool + " → " + transcriptDuration(entry.Millis)
+		if entry.Failed {
+			line += " · error"
+		}
+		return line
+	case store.TranscriptFault:
+		return turn + " · stopped"
+	case store.TranscriptNote:
+		return turn + " · the harness"
+	case store.TranscriptElided:
+		return turn + " · the record stops here"
+	}
+	return turn + " · " + string(entry.Kind)
+}
+
+// transcriptDuration renders a tool's wall time. Sub-second work says so in
+// milliseconds because a tool that took 4ms and one that took 900ms are
+// different animals, and everything longer rounds to tenths of a second — past
+// a second nobody is counting milliseconds.
+func transcriptDuration(millis int64) string {
+	if millis < 1000 {
+		return fmt.Sprintf("%dms", millis)
+	}
+	return fmt.Sprintf("%.1fs", float64(millis)/1000)
 }
