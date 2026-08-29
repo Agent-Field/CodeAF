@@ -175,3 +175,61 @@ func (s *Store) appendLeafRun(nodeID string, kind EventKind, payload any, what s
 	}
 	return nil
 }
+
+// EventLeafSelfClose is one leaf reading its own finished work, finding a fault
+// it caused, and being held back to fix it before it lands.
+//
+// IT IS NOT A ROUND AND IT IS NOT A RETRY. The finding the leaf's own closing
+// photograph raises — a public name it deleted, a name it reads that nothing
+// binds, its own checks red, a check it turned red — used to reach nobody until
+// the leaf had landed, a gate had weighed it, and the growth governor had bought
+// a repair round: a COLD leaf with a fresh brief and none of the context that
+// made the mistake. igel s14 bought three of them and every one deleted what the
+// last had relied on. This row is the other answer: the leaf that caused it is
+// still standing, still holds its own transcript, and is asked once.
+//
+// Nothing reads it to decide anything. It is a record, so that a run where the
+// leaf fixed its own work and a run where nobody looked stop being the same
+// silence (FAILSAFE.md clause 4).
+const EventLeafSelfClose EventKind = "leaf_self_close"
+
+// LeafSelfClose is one leaf's own closing reading, and what was done about it.
+type LeafSelfClose struct {
+	// Kinds names the findings the leaf raised against itself, in this
+	// program's own vocabulary: "lost public names", "unbound names",
+	// "its own checks", "checks it turned red".
+	Kinds []string `json:"kinds"`
+	// Names is a bounded sample of what the findings are ABOUT. A kind alone
+	// sends a reader to run a suite; the name is the whole diagnosis, and it
+	// was readable off the tree for nothing.
+	Names []string `json:"names,omitempty"`
+	// Turns is how many turns the leaf had taken when it read its own work. It
+	// is the turns USED and not the turns a close was granted: the room a close
+	// may spend is whatever the leaf has left of its own meter, so subtracting
+	// this row from the leaf's final turn count is what says how much one cost.
+	Turns int `json:"turns,omitempty"`
+	// Closed says the leaf was actually held back and asked. False is the floor
+	// arm and is journaled just as loudly: the finding stands, the leaf lands
+	// with it, and the gate weighs it exactly as it did before — because the
+	// leaf had already closed this kind once, or because its meter was spent.
+	Closed bool `json:"closed"`
+	// Why is the one sentence saying which of those it was, for a person and
+	// for an autopsy. Empty on the arm that closed.
+	Why string `json:"why,omitempty"`
+}
+
+// RecordLeafSelfClose appends one leaf's reading of its own work. A row naming
+// no finding is refused: this record exists to say what the leaf found against
+// itself, and "it found nothing" is what the surface, unbound and verification
+// rows beside it already say.
+func (s *Store) RecordLeafSelfClose(nodeID string, record LeafSelfClose) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record leaf self-close: %w: empty node id", ErrInvalid)
+	}
+	if len(record.Kinds) == 0 {
+		return fmt.Errorf("record leaf self-close: %w: no finding to close", ErrInvalid)
+	}
+	record.Why = bounded(strings.TrimSpace(record.Why), MaxDigestBytes)
+	return s.appendLeafRun(nodeID, EventLeafSelfClose, record, "record leaf self-close")
+}
