@@ -419,6 +419,12 @@ type GrowVerdict struct {
 	// already asked in its own words elsewhere.
 	Refused string
 	Cause   string
+	// CoveredDespite is the standing evidence that stopped the coverage
+	// question from refusing this round, when it would have. It travels on the
+	// verdict so the ADMISSION can journal it: the row that records a round is
+	// written after the splice, by a caller holding the request it was decided
+	// from, and this is the one fact about the decision that request never had.
+	CoveredDespite []string
 }
 
 // growJob is the one gate every execution-time add passes through.
@@ -627,7 +633,19 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	//    nothing as done because two of its own checks would not speak to each
 	//    other. See ExtendForGap for what happens when a LATER round is refused
 	//    this way, which is the case where the contradiction is real.
+	//
+	//    AND IT MAY NOT REFUSE A JOB THE WORLD HAS SOMETHING STANDING AGAINST,
+	//    WHATEVER THE ROUND AND WHATEVER ASKED FOR IT. The exemption above was
+	//    the first gap round bought by a file-cited finding, and it was too
+	//    narrow by three dimensions: an overrun round, a revision round, and any
+	//    round after the first were all still refused by a claim about the plan
+	//    while the record held red checks, unexercised behaviours, deleted
+	//    public names or callers left behind. ink s14 lost three rounds that way
+	//    with 18 of 172 checks red; igel s13 lost two with eight public names
+	//    gone. See StandingEvidence, which is the general form of the same rule
+	//    the narrow exemption was reaching for.
 	grounded := req.Grounded && round <= 1
+	covered := []string(nil)
 	if gate := growthAsk(ask); GrowthGate && gate != nil && !req.Rechecking && !req.Ungated && !grounded {
 		criterion := req.Criterion
 		if criterion.Empty() {
@@ -643,12 +661,22 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 				// bound the damage, and they already held.
 				log.Printf("note: could not ask whether %s still needs work: %v", jobRoot, err)
 			case verdict.Complete:
+				// The question is still PUT when evidence stands, and its answer
+				// is still journaled — because the answer is the finding. A
+				// model saying "nothing is left" over a tree with eighteen red
+				// checks in it is the measurement this row exists to record, and
+				// a run that skipped the question would have nothing to show for
+				// it but a round that quietly happened.
+				if standing := StandingEvidence(graph, jobRoot); len(standing) > 0 {
+					covered = standing
+					break
+				}
 				return refuse(CauseCovered, RefusedCovered)
 			}
 		}
 	}
 
-	return GrowVerdict{Allow: true, Round: round}, nil
+	return GrowVerdict{Allow: true, Round: round, CoveredDespite: covered}, nil
 }
 
 // admitGrowth journals a round that actually landed. It is called after the
@@ -679,6 +707,7 @@ func admitGrowth(graph *store.Store, req GrowRequest, verdict GrowVerdict, splic
 	// it.
 	row := req.weighed(graph, jobRoot, lineage).row(reason, lineage, verdict.Round, true, "", "")
 	row.Adding = spliced
+	row.CoveredDespite = verdict.CoveredDespite
 	noteGrowth(graph, growthJournal(jobRoot), row)
 }
 

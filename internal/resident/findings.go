@@ -54,6 +54,18 @@ type OpenFindings struct {
 	// Unreadable says the last gate passed over a tree whose checks nobody
 	// could read, which is not a pass over a checked delivery.
 	Unreadable bool
+	// Consumers is the changed-definition finding: one line per definition this
+	// run reshaped that the rest of the project still uses the old way. It is a
+	// reading of the world like Failing and unlike Gap — no suite and no name
+	// comparison can make it, because the name is still there.
+	// store.DeliveryGate.Consumers.
+	Consumers []string
+	// Mechanical says the standing gap is the MECHANICAL half's: a file the
+	// plan promised and the disk does not hold. It is beside Gap rather than
+	// inside it because the two are answered by different evidence — one is a
+	// judge's sentence about a delivery, the other is a stat of the filesystem —
+	// and nothing that reads a claim about the plan may overrule the second.
+	Mechanical bool
 }
 
 // Empty reports that the record names nothing outstanding, in which case no
@@ -61,7 +73,7 @@ type OpenFindings struct {
 // tokens and teaches the model that the heading means nothing.
 func (f OpenFindings) Empty() bool {
 	return len(f.Unexercised) == 0 && len(f.Unasserted) == 0 && len(f.Failing) == 0 &&
-		strings.TrimSpace(f.Gap) == "" && !f.Unclosed && !f.Unreadable
+		len(f.Consumers) == 0 && strings.TrimSpace(f.Gap) == "" && !f.Unclosed && !f.Unreadable
 }
 
 // OpenFindingsHeader introduces the section. It is one wording, exported, and
@@ -95,6 +107,11 @@ func (f OpenFindings) Words() string {
 		section.WriteString("\n\nBehaviours the request asks for that NO check in the tree exercises. " +
 			"Each needs a check that would fail if the behaviour were removed:\n")
 		section.WriteString(bulleted(f.Unexercised))
+	}
+	if len(f.Consumers) > 0 {
+		section.WriteString("\n\nDefinitions this work reshaped that the rest of the project still uses " +
+			"the old way. Each needs the callers brought with it, or the definition put back:\n")
+		section.WriteString(bulleted(f.Consumers))
 	}
 	if len(f.Unasserted) > 0 {
 		section.WriteString("\n\nBehaviours the request asks for that a check NAMES and no assertion " +
@@ -163,13 +180,17 @@ func ReadOpenFindings(graph *store.Store, lineage string) OpenFindings {
 			if len(gate.Unasserted) > 0 {
 				findings.Unasserted = append([]string(nil), gate.Unasserted...)
 			}
+			if len(gate.Consumers) > 0 {
+				findings.Consumers = append([]string(nil), gate.Consumers...)
+			}
 			if gate.Pass {
 				// A gate that passed answers the gap before it. What it cannot
 				// answer is the coverage above, which is a measurement rather
 				// than a judgement and stands until it is re-measured.
-				findings.Gap, findings.Unclosed = "", false
+				findings.Gap, findings.Unclosed, findings.Mechanical = "", false, false
 			} else if strings.TrimSpace(gate.Gap) != "" {
 				findings.Gap, findings.Unclosed = strings.TrimSpace(gate.Gap), gate.Unclosed
+				findings.Mechanical = gate.Mechanical
 			}
 			findings.Unreadable = gate.Unreadable
 		}
@@ -219,4 +240,83 @@ func failingChecks(graph *store.Store, lineage string) []string {
 		return newest
 	}
 	return nil
+}
+
+// ── what the world still says is wrong ───────────────────────────────────────
+
+// The kinds of standing evidence, as the journal spells them. They are the
+// vocabulary of store.JobGrowth.CoveredDespite and they name READINGS, never
+// judgements: each one is something a mechanism measured on the tree and has
+// not since measured away.
+const (
+	EvidenceFailing     = "failing-checks"
+	EvidenceUnexercised = "unexercised"
+	EvidenceUnasserted  = "unasserted"
+	EvidenceConsumers   = "consumers"
+	EvidenceLost        = "lost-names"
+	EvidenceMechanical  = "mechanical-gap"
+)
+
+// StandingEvidence is what the WORLD still says is wrong with this job, as the
+// kinds that stand.
+//
+// COVERAGE IS A CLAIM ABOUT THE PLAN; A FINDING IS EVIDENCE FROM THE WORLD. The
+// satisfaction question asks a model whether the acceptance points of a plan are
+// mapped onto work that has landed or is running. That is a reading of the
+// PLAN, and it can be true of a job whose checks are red, whose stated
+// behaviours nothing exercises, whose public names the change deleted, and whose
+// callers were left behind by a definition it reshaped — because none of those
+// is a point on the plan. ink v4-flash s14 refused three rounds as
+// goal-already-covered while its own readings ran 172 checks with 18 red and its
+// own gate held six behaviours nothing exercised; igel s13 refused two while the
+// surface photograph reported eight deleted public names, five times running.
+//
+// So a claim about the plan may never overrule a measurement of the world. What
+// coverage is still allowed to do is refuse a job the world has nothing standing
+// against — which is the question it was built for.
+//
+// IT IS READ AT THE JOB AND NOT AT THE LINEAGE THAT ASKED. A repair round is a
+// different lineage from the work it repairs, and the readings sit on the nodes
+// that took them: igel s13's refusal was weighed under `task-2-x1`, whose id
+// namespace does not contain `task-2-x1-n1`, which is where the eight lost names
+// had been journaled ninety seconds earlier. The job has one world.
+//
+// A read that fails answers nothing standing, which lets coverage speak. That is
+// the direction the caps are under: the round cap, the standstill, the finding
+// fixed point and the wall all still hold whatever this says.
+func StandingEvidence(graph *store.Store, jobRoot string) []string {
+	if graph == nil {
+		return nil
+	}
+	root, _ := OverrunLineage(strings.TrimSpace(jobRoot))
+	if root == "" {
+		return nil
+	}
+	findings := ReadOpenFindings(graph, root)
+	standing := make([]string, 0, 6)
+	if len(findings.Failing) > 0 {
+		standing = append(standing, EvidenceFailing)
+	}
+	if len(findings.Unexercised) > 0 {
+		standing = append(standing, EvidenceUnexercised)
+	}
+	if len(findings.Unasserted) > 0 {
+		standing = append(standing, EvidenceUnasserted)
+	}
+	if len(findings.Consumers) > 0 {
+		standing = append(standing, EvidenceConsumers)
+	}
+	if lostPublicNames(graph, root) > 0 {
+		standing = append(standing, EvidenceLost)
+	}
+	// A mechanical gap is a file the plan promised and the disk does not hold.
+	// It stands while it is unclosed, and no ruling about coverage makes a
+	// missing file appear.
+	if findings.Mechanical && findings.Unclosed {
+		standing = append(standing, EvidenceMechanical)
+	}
+	if len(standing) == 0 {
+		return nil
+	}
+	return standing
 }

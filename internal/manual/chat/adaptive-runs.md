@@ -509,6 +509,24 @@ because its wall could not hold another round of work says `partial — no time 
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
 
+## When aforge decides there is nothing left to do — and when it may not
+
+Before buying more work, aforge asks whether everything the request is judged on is
+already covered by work that has landed or is running. When the answer is yes, it stops
+and says `everything this job is judged on is already covered by work that has landed or
+is already running — handing over what's done`.
+
+**That answer never wins over something measured.** It is a reading of the plan, and a plan
+can look complete over a tree that is not: checks can be failing, a behaviour the request
+asks for can have no check at all, a change can have deleted public names or left the
+callers of something it rewrote behind. While any of those stands on the job, the work
+carries on regardless of what the coverage reading said — and it makes no difference
+whether the round is a repair, a continuation of work that ran out, or a reaction to a
+result that contradicted the plan.
+
+What still stops the work is the rest of it: the round cap, a job that has stopped changing
+anything, one finding worked on twice, and the wall.
+
 ## When one finding is worked on twice and still stands
 
 A review finding buys work. **It buys at most two rounds.** If the first round ends and
