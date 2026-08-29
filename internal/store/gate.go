@@ -57,6 +57,26 @@ type DeliveryGate struct {
 	// "Deliverable is empty - contains no implementation" over exit 0 because
 	// the two were one field (2026-08-28, meta/muse-spark-1.1).
 	Unclosed bool `json:"unclosed,omitempty"`
+
+	// Overturned says the refusal was CHECKED AGAINST THE WORLD and the finding
+	// lost: the file the review says is missing is on disk under the name the
+	// request used, or the things it says are absent are in the delivered text.
+	//
+	// It is the other half of the distinction Unclosed opened, and it is the one
+	// the exit code should have been reading all along. Refused holds refusals
+	// of two categorically different kinds. One looks at the filesystem or at
+	// the deliverable and finds the review wrong — that acquits, and charging it
+	// a non-zero code would teach a harness to distrust the gate's own
+	// corrections. The other looks only at where the review's words came from
+	// and declines to BUY a round; it settles nothing about whether the work
+	// landed, because no ruling on a citation makes missing work appear.
+	//
+	// Recorded rather than inferred from the sentence, for the reason every
+	// other field here is: the exit code turns on it, and a sentence is not a
+	// field. Seven of eight measured runs exited 0 over a provenance refusal
+	// while the review that named the missing work was right every time
+	// (2026-08-28, bench/deepswe; see docs/design/gate/SETTLEMENT.md §2).
+	Overturned bool `json:"overturned,omitempty"`
 }
 
 // Cited is the gate's citations however they were written down. A row recorded

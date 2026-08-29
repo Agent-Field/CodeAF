@@ -28,6 +28,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -234,6 +235,25 @@ type Judgment struct {
 	// reports is a fact about the filesystem, which no admission rule is
 	// competent to overturn. See deliveredWhole in cmd/aforge/do.go.
 	Mechanical bool
+	// Grounds are the promises this run made before it began working, and they
+	// travel on the judgement because every rule that weighs this gap must weigh
+	// it against the same three things. They were assembled at two different
+	// seams from two different sets of fields for a while, and the measured cost
+	// of that was a finding admitted by the revision door and refused by the
+	// extension door one round later — the same asymmetry FAILSAFE names in the
+	// row about the mechanical gate and the citation invariant.
+	Grounds Grounds
+	// Sourced says this finding is a MEASUREMENT OF THE WORLD rather than a
+	// reading of the request, and it is what lifts a finding clear of the
+	// citation invariant altogether.
+	//
+	// A regression is the case it exists for. A check that passed before the
+	// work and fails after it is a fact the run gathered for itself, and there
+	// is no span of the request to cite because the person never had to ask for
+	// their repository to keep working. Grounding such a finding would refuse
+	// it every time, which is the shape of the two runs that shipped a patch
+	// deleting an attribute the repository already had. See FAILSAFE clause 2.
+	Sourced bool
 	// Exercised is the gate's separate answer about evidence: it saw the
 	// finished thing run the way it will be used, and hold. A pass without it
 	// is a pass — it is simply not a verified one, and the difference is the
@@ -956,7 +976,13 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// is a fact about the filesystem. When the criterion named no files, or
 	// every named file is present and non-empty, this returns ok=false and the
 	// path is byte-identical to before it existed.
+	// The promises this run made before it began working, assembled once and
+	// carried on every judgement below. Both admission doors read them off the
+	// judgement rather than rebuilding them from whatever fields their own
+	// caller happened to hold, which is how they came to disagree.
+	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
 	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
+		mechanical.Grounds = grounds
 		return mechanical
 	}
 	ask := node.Provenance.Intent
@@ -1050,7 +1076,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
-		return Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true}
+		return Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true, Grounds: grounds}
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
@@ -1071,7 +1097,8 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// was. Both fields are written because they are one fact seen from two
 	// sides: what a person reads, and what the admission rules weigh.
 	quote := strings.TrimSpace(verdict.Quote)
-	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}), Checked: true}
+	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
+		Checked: true, Grounds: grounds}
 }
 
 // unjudged is the fail-open pass, said out loud.
@@ -1122,8 +1149,8 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // of are the user's own. The residual it does not close is a real span cited
 // for an invented requirement — bounded by the round cap, and by the plan's own
 // rule that no piece of work may exist to check another's product.
-func AdmitGapCitation(intent string, citations, spent []string) string {
-	if refusal := admitGapCitations(citations, intent); refusal != "" {
+func AdmitGapCitation(grounds Grounds, citations, spent []string) string {
+	if refusal := admitGapCitations(citations, grounds); refusal != "" {
 		return refusal
 	}
 	// The ledger keys per citation and not on the joined line, which is the one
@@ -1133,8 +1160,17 @@ func AdmitGapCitation(intent string, citations, spent []string) string {
 	// fresh one would be refused wholesale — the first buys unbounded rounds,
 	// the second abandons real work. Per citation, a round is admitted only if
 	// it names something no earlier round did, and every citation it names is
-	// spent by it. The unspent set therefore falls by at least one on every
-	// admitted round, which is exactly the guarantee the single span gave.
+	// spent by it.
+	//
+	// WHAT COUNTS AS SPENT IS DECIDED BY EVIDENCE, NOT BY A COUNT. SpentCitations
+	// hands back only the words whose round left nothing new in the world; a
+	// round that moved the tree and still did not close what it was aimed at
+	// leaves its words unspent, and the growth journal's standstill and fixed
+	// point are what stop the lineage after that. The two bounds divide the work
+	// cleanly: this one bounds SCOPE against a finite ask, the journal bounds
+	// REPETITION against measured change. A count of one standing in for the
+	// second is how a run with eighty-six minutes and ninety-nine per cent of its
+	// money left stopped holding a finding it agreed with.
 	for _, citation := range trimmedCitations(citations) {
 		if !citationSpent(citation, spent) {
 			return ""
@@ -1165,89 +1201,6 @@ func citationSpent(citation string, spent []string) bool {
 	return false
 }
 
-// admitGapCitations is the citation invariant's core, and the one door every
-// reader of it goes through. A gap is admitted when EVERY citation it carries
-// is grounded in something nobody in this system wrote for itself during the
-// run: the user's ask, or the working method this kind of job was held to
-// before anything was produced. Everything else — the compiled goal, the
-// working decisions, the previous round's own output — is aforge talking to
-// aforge, and a gap that can only quote those is a preference rather than a
-// failure.
-//
-// Every citation, and not merely one of them, because a list that smuggles an
-// invented requirement in among four real ones is still an invention, and the
-// round it would buy is a round against a standard the run wrote for itself.
-//
-// A citation is grounded two ways, and the second exists because the first
-// alone made the mechanical half of this gate unusable.
-//
-// It is grounded when it is a verbatim span of a ground. Whitespace is
-// normalised on both sides and nothing else is: a model that re-wraps a quoted
-// line has still quoted it, and a model that invents a requirement has still
-// invented it.
-//
-// It is also grounded when it NAMES A FILE that a ground names — the same file,
-// under either spelling, by the identity law namesSameFile states once for this
-// whole package. A person writes "there is a breakpoints_test.go, update it"
-// and the plan resolves that to internal/tui3/breakpoints_test.go; the file the
-// review is missing is the file the person asked for, and a rule that could
-// only compare the two spellings letter by letter called it an invention. That
-// refusal is not hypothetical: it delivered a run that had written no file at
-// all as done, with a note explaining that the review had overreached
-// (2026-08-28, meta/muse-spark-1.1 on the spacing ladder). This second door is
-// narrow in the direction that matters — it opens only for a citation that IS a
-// file name rather than a sentence mentioning one, and only against a file the
-// ask or the method actually names — so it can admit a gap the person really
-// asked for and cannot admit one they did not.
-func admitGapCitations(citations []string, grounds ...string) string {
-	citations = trimmedCitations(citations)
-	if len(citations) == 0 {
-		return "the review could not point at anything in the request that is missing"
-	}
-	// The grounds are keyed and read for names once rather than per citation:
-	// they are the same two strings for every element of the list, and a gap
-	// naming five files would otherwise re-scan the whole request five times.
-	keyed := make([]string, 0, len(grounds))
-	named := make([][]string, 0, len(grounds))
-	for _, ground := range grounds {
-		key := citationKey(ground)
-		if key == "" {
-			continue
-		}
-		keyed = append(keyed, key)
-		named = append(named, NamedFiles(ground))
-	}
-	for _, citation := range citations {
-		if !citationGrounded(citation, keyed, named) {
-			return "what the review asked for next is not in the request"
-		}
-	}
-	return ""
-}
-
-// citationGrounded applies both doors of the rule above to one citation, span
-// first because it is the cheaper question and the one that answers for prose.
-func citationGrounded(citation string, keyed []string, named [][]string) bool {
-	key := citationKey(citation)
-	for _, ground := range keyed {
-		if strings.Contains(ground, key) {
-			return true
-		}
-	}
-	cited, ok := citedFile(citation)
-	if !ok {
-		return false
-	}
-	for _, files := range named {
-		for _, file := range files {
-			if namesSameFile(cited, file) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // AdmitGapRevision applies that same grounding one layer earlier than the
 // extension does: to the paid revision round a failed gate buys.
 //
@@ -1259,15 +1212,16 @@ func citationGrounded(citation string, keyed []string, named [][]string) bool {
 // a self-authored standard cannot converge on anything, because the standard
 // moves with each round that is written against it.
 //
-// The working method is admitted as a second ground because it is the one
-// standard besides the ask that was fixed before the work started and that the
-// worker was actually held to. It is not self-authored in the sense that
-// matters: it does not move in response to what the work produced.
+// It weighs the finding against the same Grounds the extension does, which for
+// a while it did not: this door admitted the working method and the extension's
+// did not, so a run could pay for a repair against a standard and then be told
+// the same standard was an invention. ink s1 spent both of its gates that way
+// and settled at four minutes of ninety.
 //
 // A refusal is not a pass. The gap is journaled, it is said in the thread, and
 // it rides the delivery — it simply does not redo the work.
-func AdmitGapRevision(intent, method string, citations []string) string {
-	return admitGapCitations(citations, intent, method)
+func AdmitGapRevision(grounds Grounds, citations []string) string {
+	return admitGapCitations(citations, grounds)
 }
 
 // GapNote is what an ungrounded gap gets instead of a round: the reviewer's
@@ -1364,6 +1318,16 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	unmet Judgment, artifacts []string, dailyBudgetUSD float64,
 	planRemainder resident.OverrunPlanFunc, records ...string) Extension {
 	base, round := resident.OverrunLineage(node.ID)
+	// The grounds ride on the judgement, which is where the gate assembled them.
+	// A judgement built by a caller that predates them — or by one holding only a
+	// gap and a citation — still gets the ask, because the node carries it and
+	// the store stamps the same verbatim intent on every node of every splice.
+	// One value, filled from one place, so the two doors cannot drift apart
+	// again.
+	grounds := unmet.Grounds
+	if strings.TrimSpace(grounds.Intent) == "" {
+		grounds.Intent = node.Provenance.Intent
+	}
 	cited := unmet.Cited()
 	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
 		Mechanical: unmet.Mechanical}
@@ -1374,8 +1338,28 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// Admissibility is decided before any planning call: an ungrounded gap must
 	// cost nothing at all, or the refusal is only a refusal to splice what has
 	// already been bought.
-	if refusal := AdmitGapCitation(node.Provenance.Intent, extension.Citations, SpentCitations(graph, base)); refusal != "" {
-		extension.Refused = refusal
+	//
+	// A finding the run MEASURED skips the question entirely. The invariant asks
+	// whose words a finding is a failure of, and a check that passed before the
+	// work and fails after it is nobody's words — it is the world, reported. See
+	// Judgment.Sourced.
+	if !unmet.Sourced {
+		if refusal := AdmitGapCitation(grounds, extension.Citations, SpentCitations(graph, base)); refusal != "" {
+			extension.Refused = refusal
+			return extension
+		}
+	}
+	// ROOM, NOT ROUNDS. A repair the wall will kill mid-flight spends money to
+	// deliver nothing, and there is no honest way to call the result whole. The
+	// floor is derived rather than typed: a repair is about the size of the
+	// attempt that produced the finding, so the run must still hold at least
+	// that much wall. A run whose deadline nobody set, or whose attempt was
+	// never timed, is not refused on a clock it cannot read — the fail-safe
+	// direction here is to try, because the alternative is the defect this whole
+	// change is about: eight runs that stopped at a tenth of their wall by
+	// choice. See PERF.md and docs/design/gate/SETTLEMENT.md §3.
+	if refusal := outOfWall(ctx, node); refusal != "" {
+		extension.Refused, extension.Unclosed = refusal, true
 		return extension
 	}
 	// The reason travels rather than being inherited: this is quality failure
@@ -1400,9 +1384,25 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 }
 
 // SpentCitations is the ledger: the spans of the ask that earlier rounds of this
-// job already commissioned work against. A read failure returns nothing, which
-// is the fail-safe direction for a bound on new work only in company with the
-// round cap — which is exactly what that cap is for.
+// job already commissioned work against AND GOT NOTHING FOR. A read failure
+// returns nothing, which is the fail-safe direction for a bound on new work only
+// in company with the round cap — which is exactly what that cap is for.
+//
+// The second half of that sentence is the change, and it is what turns a count
+// into a measurement. Spending words on a round that moved nothing is what the
+// bound exists to stop happening twice; spending them on a round that rewrote
+// half the repository and still left the thing genuinely undone is the system
+// working, and refusing the next round over it is a count of one wearing an
+// invariant's clothes. The growth journal already records, per round, how many
+// files the work actually left behind (store.JobGrowth.Produced, with Measured
+// saying somebody looked) — so the evidence exists and was simply not being
+// read here.
+//
+// EVERYTHING UNKNOWN IS SPENT. A round with no journal row, a row nobody
+// measured, or a row that measured zero all leave their citations on the ledger.
+// That keeps the bound's direction unchanged wherever the evidence is missing,
+// and it means this can only ever release words the journal positively says were
+// productive.
 func SpentCitations(graph *store.Store, baseID string) []string {
 	if graph == nil {
 		return nil
@@ -1412,16 +1412,66 @@ func SpentCitations(graph *store.Store, baseID string) []string {
 		log.Printf("note: could not read the gap ledger for %s: %v", baseID, err)
 		return nil
 	}
+	productive := productiveRounds(graph, baseID)
 	// Flattened across gates, because the ledger is a set of citations and not
 	// a set of rounds: what bounds the next round is which of the ask's words
 	// and files have already been worked on, whichever round spent them.
 	var spent []string
 	for _, gate := range gates {
-		if gate.Extended {
+		if gate.Extended && !productive[gate.Round] {
 			spent = append(spent, gate.Cited()...)
 		}
 	}
 	return spent
+}
+
+// productiveRounds names the rounds of this lineage that the growth journal says
+// left something new in the world.
+//
+// It reads the journal the growth governor writes, keyed by the job root, and
+// keeps only the rows for this lineage: a sibling lineage's productivity is not
+// evidence about this one, and a bound that borrowed it would let one branch of
+// a job buy the other's rounds. A read that fails, or a job with no journal at
+// all, answers "nothing was productive", which leaves every citation spent.
+func productiveRounds(graph *store.Store, baseID string) map[int]bool {
+	growths, err := graph.JobGrowths(baseID)
+	if err != nil {
+		log.Printf("note: could not read the growth journal for %s: %v", baseID, err)
+		return nil
+	}
+	productive := make(map[int]bool, len(growths))
+	for _, growth := range growths {
+		if lineage := strings.TrimSpace(growth.Lineage); lineage != "" && lineage != baseID {
+			continue
+		}
+		if growth.Allowed && growth.Measured && growth.Produced > 0 {
+			productive[growth.Round] = true
+		}
+	}
+	return productive
+}
+
+// outOfWall answers whether this run still holds enough time to be worth buying
+// a repair in, and names the shortfall in the words the person is told.
+//
+// The measure is the attempt that produced the finding: a repair aimed at one
+// gap is about the size of the work that left the gap, so a run that cannot
+// afford that much again cannot afford the repair. Both halves are read off
+// things that already exist — the errand's own deadline, which the headless run
+// sets from --timeout, and the node's start, which the store stamps — so nothing
+// here is a new knob and nothing is a typed number. An unknown answers empty,
+// which buys the round: this is a floor under settlement, never a new reason to
+// settle early.
+func outOfWall(ctx context.Context, node store.Node) string {
+	deadline, ok := ctx.Deadline()
+	if !ok || node.StartedAt.IsZero() {
+		return ""
+	}
+	attempt := time.Since(node.StartedAt)
+	if attempt <= 0 || time.Until(deadline) >= attempt {
+		return ""
+	}
+	return "there is not enough time left on the run to finish it"
 }
 
 // ── who takes the next attempt ───────────────────────────────────────────────
