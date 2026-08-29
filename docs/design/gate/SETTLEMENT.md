@@ -278,3 +278,40 @@ shorter. No new models and no new calls on the common path: the grounding work i
 string shape, the settlement work is a field, and the regression work is the
 project's own command, which the run was already running by hand nine times an
 hour without ever comparing two readings of it.
+
+---
+
+## Addendum, 2026-08-29: the photograph had no memory
+
+§4 above built a photograph with a before half and an after half, and the bare
+worker took both. What it could not do is see across a repair round.
+
+Every round is a new leaf holding a new workspace object, so every round
+photographed the tree IT found — which, from the second round on, is a tree the
+job has already changed. A check the first round turned red is red in the second
+round's baseline, subtracts to nothing, and is never a finding again. textual s5
+walked twenty of the repository's own checks down to one across four rounds and
+raised no regression at any of them.
+
+> **THE BASELINE IS THE TREE BEFORE THE JOB'S FIRST CHANGE, TAKEN ONCE AND
+> INHERITED BY EVERY CONTINUATION.** Every round's after reading is subtracted
+> from that one.
+
+`verify.BaselineFor` / `verify.RememberBaseline`. It is remembered against the
+tree's own path, because that is what the baseline is a reading of, and against
+the job — a digest of the person's own request, the one thing every leaf of a job
+holds identically and no two jobs share — because a second job in the same
+directory is measuring different work, and the first job's changes are its
+world. A job arriving at a root somebody else's job baselined re-baselines it.
+
+Two consequences beyond the finding. The second reading is now owed whenever the
+JOB has moved the tree, not only when this leaf did — a continuation that only
+rewrote its account still hands over a tree an earlier round may have broken. And
+a repair round runs the suite once rather than twice, because the baseline it
+would have spent an eighth of its wall on is one it already has.
+
+And the readings are journaled (`store.EventVerification`). Not one of the five
+s5 stores holds a row saying a reading had happened, so a project that declares
+no verification and a reading that ran and named nothing were the same silence in
+the journal — the two opposite diagnoses. FAILSAFE clause 4, which this document
+quoted and did not obey.

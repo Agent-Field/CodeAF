@@ -555,6 +555,22 @@ verification command declared in its `package.json` scripts, its `Makefile` targ
 workflow, `go.mod`, `Cargo.toml`, or a Python project with a suite — and takes two readings
 of it: one before it touches anything, and one after, when the tree actually changed.
 
+**It reads the runner, not the script around it.** A `test` script that lints and
+typechecks before it reaches the suite is followed into its own body, and the test runner
+found there is asked for its own machine-readable account of every check it ran — vitest and
+jest print JSON, `go test` prints JSON, pytest is asked for the line-per-check summary it
+otherwise keeps to itself, mocha is asked for TAP. Your own flags on that runner are kept.
+This is why a formatting complaint no longer reads as a failed suite: it used to exit ahead
+of the tests and the run reported "`pnpm test` exited 1 and named 0 checks" of a suite that
+was green. A runner this program has not met is run exactly as your project declares it and
+read as plain text, which is what everything was read as before.
+
+**Repair rounds are measured against the tree the job started with.** The first reading
+belongs to the whole job, not to one attempt: a second or third round inherits it rather
+than photographing a tree its own earlier round has already changed. Without that, a check
+broken in round one is red in round two's baseline and is never reported again. It also
+means a repair round runs the suite once rather than twice.
+
 A check that passed before and fails after is a finding the run raises about itself, and it
 is a blocker. Nothing is weighed about where it came from: you never have to ask for your
 repository to keep working. It reads:
@@ -576,9 +592,9 @@ green, and reported success while every one of the repository's own checks faile
 — there is nothing to run. A piece of work whose whole time budget is too short to hold a
 real reading takes none at all, rather than spending an eighth of its life on a command
 that would be killed before it said anything: below about eight minutes of wall, nothing is
-measured. A tree nothing changed is not read a second time. In every one of those cases the
-run behaves exactly as it would have without this, and says nothing about checks it did not
-run.
+measured. A tree the job has not changed is not read a second time. In every one of those
+cases the run behaves exactly as it would have without this, and says nothing about checks
+it did not run.
 
 ## What "acceptance" means — the checklist read off your request before the work starts
 
@@ -599,7 +615,11 @@ Nothing can get onto the list that is not yours. Every point has to quote your r
 the same rule a review's finding does — a verbatim span, a quotation that skips a middle, a
 file you named, or the distinctively spelled names you used. A point this program wrote for
 itself is dropped before the review ever sees it. And the list can never be longer than
-your request has lines: past that it has stopped describing what you asked for.
+your request has clauses — text either side of a full stop, semicolon, colon, question or
+exclamation mark: past that it has stopped describing what you asked for. It counts clauses
+rather than lines because one line of yours often states several things at once, and a
+checklist that read "defaults are threshold = 5, cooldown = 30000, halfOpenMaxRequests = 1"
+as one behaviour had nothing fine enough to match a check to.
 
 **When there is no list.** A request that states no checkable behaviour — a question, a
 lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
@@ -607,9 +627,11 @@ exactly as it would have without any of this.
 
 ## When nothing checks what you asked for — "no check exercises …"
 
-At the end, the review asks one more question of work it was otherwise about to accept: for
-each behaviour on the checklist, **is there a check that would fail if this were absent or
-wrong?**
+At the end, the review asks one more question of every verdict it reaches — whether it was
+about to accept the work or has already found something else missing: for each behaviour on
+the checklist, **is there a check that would fail if this were absent or wrong?** Where the
+review has already named a gap, both gaps travel together, so the repair round is told about
+each of them.
 
 It answers that from two places, and the worker's own account of its checking is not one of
 them. It reads the check declarations in the change itself, and it reads the identities the
@@ -637,10 +659,15 @@ passed and failed 6 of 47 hidden ones; the other claimed 31 of 31 and was one hi
 short of a complete solve. In both, the behaviours that failed were stated
 in the request and exercised by nothing the worker wrote.
 
+A reading that **ran and named nothing** is still a reading: the project was asked how it
+checks itself, it answered, and nothing it printed exercises anything you asked for. That is
+the finding above, for every behaviour on the list.
+
 **When it does not happen.** If the project declares no way to check itself and the change
 produced no readable diff, nothing can be matched, and the answer is handed over as
-finished rather than failed — nobody looked is not the same as something is wrong. Eight
-behaviours are named at most; the rest are counted.
+finished rather than failed — nobody looked is not the same as something is wrong; the run
+says so rather than passing in silence. Behaviours you stated on one line are gathered into
+one thing to go and check, and eight of those are named at most; the rest are counted.
 
 ## When a check the work deleted stops existing
 

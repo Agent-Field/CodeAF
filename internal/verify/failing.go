@@ -35,6 +35,14 @@ var failingTestPatterns = []*regexp.Regexp{
 	// jest / vitest / mocha
 	regexp.MustCompile(`(?m)^\s*[✕✗×]\s+(.+?)\s*$`),
 	regexp.MustCompile(`(?m)^\s*●\s+(.+?)\s*$`),
+	// A failure banner naming a file and the chain of names inside it. The
+	// shape is the whole of the match — a path, then " > ", then the names the
+	// check is nested under — and it is here because a runner that prints its
+	// failures this way prints them NOWHERE ELSE: vitest's default reporter
+	// names its red checks in this banner and its green ones only per file, so
+	// a reading of a failing suite through the old vocabulary named nothing at
+	// all. Measured on the ofetch s5 run, whose five red checks were invisible.
+	regexp.MustCompile(`(?m)^\s+FAIL\s+(\S+\s+>\s+.+?)\s*$`),
 	// cargo test
 	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+FAILED`),
 	// maven surefire / gradle
