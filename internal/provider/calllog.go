@@ -184,9 +184,9 @@ func logNow() time.Time { return time.Now() }
 // record writes one row. It is the only writer, and it never fails a call:
 // everything under it is best-effort by construction (internal/calllog).
 func (c *Client) record(facts recordFacts) {
-	if calllog.Path() == "" {
-		return
-	}
+	// Built even when the file is off: the log's in-memory half (calllog.Last)
+	// is what the headless waiting line reads, and the file's own switch is
+	// read where the file is written.
 	model := c.modelFor(facts.request)
 	record := calllog.Record{
 		Time:   logNow().Format("2006-01-02T15:04:05.000Z07:00"),
@@ -235,7 +235,7 @@ func (c *Client) record(facts recordFacts) {
 		// about one attempt already said which attempt it was.
 		record.Attempt = facts.knobs.trace.attempts
 	}
-	if calllog.Bodies() {
+	if calllog.Bodies() && calllog.Path() != "" {
 		if facts.knobs.trace != nil {
 			record.RequestBody = string(facts.knobs.trace.body)
 		}

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
@@ -665,6 +666,34 @@ func TestTheWaitingLineNamesTheLastModelCall(t *testing.T) {
 	// The run's own clock still closes the line, and it is still the run's.
 	if !strings.Contains(said, "\u2014 ") {
 		t.Fatalf("the elapsed left the line: %q", said)
+	}
+
+	// A call the process heard back from a moment ago outranks the journal's
+	// row: a bare leaf books its usage only when it finishes, and the line is
+	// for the ten minutes before that.
+	calllog.Append(calllog.Record{
+		Time:  time.Now().Format("2006-01-02T15:04:05.000Z07:00"),
+		Model: "nvidia/nemotron-3.5-lightning", Tag: "leaf", Node: "task-1", Status: 200,
+	})
+	progress.Reset()
+	watcher.lastSaid = time.Time{}
+	if err := watcher.saySomethingIfQuiet(); err != nil {
+		t.Fatal(err)
+	}
+	if said := progress.String(); !strings.Contains(said, "last call nvidia/nemotron-3.5-lightning 0s ago") {
+		t.Fatalf("the line did not read the call the process just heard:\n%s", said)
+	}
+
+	// A call heard before this errand started is another errand's, and the
+	// journal's row — which is scoped to this one — is what the line reads.
+	watcher.started = time.Now().Add(time.Minute)
+	progress.Reset()
+	watcher.lastSaid = time.Time{}
+	if err := watcher.saySomethingIfQuiet(); err != nil {
+		t.Fatal(err)
+	}
+	if said := progress.String(); !strings.Contains(said, "z-ai/glm-5.3-flash") {
+		t.Fatalf("a call from before the errand outranked the journal:\n%s", said)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
@@ -1285,6 +1286,15 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 // call writes a usage row carrying the model that served it, so the newest row
 // this errand caused is the last thing that demonstrably happened.
 //
+// THE FRESHEST ACCOUNT IS THE PROCESS'S OWN. The journal's usage row is written
+// when a node's work is booked, and a bare leaf books its usage when it
+// FINISHES — so a leaf ten minutes into its work read as "last call … 10m ago"
+// while calls were landing every second. The call log (internal/calllog) hears
+// every answer the moment it arrives, in this process, whether or not its file
+// is on; the journal is the fallback for a run whose calls happen elsewhere.
+// Only a call since this errand started counts, which is the same rule the
+// journal read applies with its sequence number.
+//
 // A run with no call recorded yet says nothing about calls at all, rather than
 // "0s ago" or "none". A model that has not been reached and a model that
 // answered a moment ago are different situations, and a zero invented for the
@@ -1292,6 +1302,12 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 // the same reason and never ends the run: this line is an account of the work,
 // never a part of it.
 func (w *settlementWatch) lastCallWords() string {
+	// The log stamps to the millisecond and the watch started on the
+	// nanosecond, so the comparison is made at the log's own precision — a
+	// call answered in the same millisecond the errand began is this errand's.
+	if heard, found := calllog.Last(); found && !heard.At.Before(w.started.Truncate(time.Millisecond)) {
+		return fmt.Sprintf(" · last call %s %s ago", heard.Model, time.Since(heard.At).Round(time.Second))
+	}
 	if w.graph == nil {
 		return ""
 	}
