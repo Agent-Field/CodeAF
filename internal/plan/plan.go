@@ -481,8 +481,22 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	var spineErr, groundErr error
 	var opening sync.WaitGroup
 	opening.Add(2)
+	// A PLAN WITH NO SPINE HAS NO USE FOR ITS GROUNDING. The two run together,
+	// but only the spine can fail the build; when it does, the grounding call
+	// is cut rather than waited for, because the wait is the grounding call's
+	// own ceiling and nothing is read off the answer. Measured on 2026-08-29:
+	// deepseek-flash's three spine samples were reset by the peer at 55s and
+	// the run then sat a further fifteen minutes on a grounding reply nobody
+	// would read, before printing the failure it had known since 55s.
+	groundCtx, stopGrounding := context.WithCancel(ctx)
+	defer stopGrounding()
 	go func() {
 		defer opening.Done()
+		defer func() {
+			if spineErr != nil {
+				stopGrounding()
+			}
+		}()
 		// Both openers carry their fault out in the error the caller below
 		// already reads: a faulted spine fails the build, as a failed one does,
 		// and a faulted grounding is joined into the returned error while the
@@ -501,7 +515,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				groundErr = guard.Note("plan/build ground", recovered)
 			}
 		}()
-		grounding, usage, err := GroundWith(ctx, client, goal, terrain, asked, options.Recall)
+		grounding, usage, err := GroundWith(groundCtx, client, goal, terrain, asked, options.Recall)
 		groundUsage.merge(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()

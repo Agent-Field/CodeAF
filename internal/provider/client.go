@@ -615,7 +615,17 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 
 	payload, err := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
 	if err != nil {
-		return nil, false, fmt.Errorf("read response: %w", err)
+		// EVERY ATTEMPT THAT FAILED LEAVES A ROW (retry.go), and a body that
+		// broke off after the headers landed is an attempt that failed. It
+		// used to leave none: three planning calls reset by the peer on
+		// 2026-08-29 sat in the log as three starts with no partner, which
+		// reads as three calls still in flight a quarter of an hour later.
+		err = fmt.Errorf("read response: %w", err)
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs,
+			began: logBegan, status: httpResponse.StatusCode, err: err,
+		})
+		return nil, false, err
 	}
 	if httpResponse.StatusCode >= 400 {
 		refusal := apiError(httpResponse.StatusCode, payload)
@@ -938,7 +948,15 @@ func (c *Client) completeWithMessagesStreaming(
 				})
 				return nil, cut
 			}
-			return nil, fmt.Errorf("decode stream: %w", decodeErr)
+			// A stream that broke off for any reason but a cut — the caller
+			// gave up on it, or the connection went — still ends its row;
+			// without one the log shows the call in flight forever.
+			decodeErr = fmt.Errorf("decode stream: %w", decodeErr)
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: true,
+				began: logBegan, status: httpResponse.StatusCode, served: served, err: decodeErr,
+			})
+			return nil, decodeErr
 		}
 		if response.ID == "" {
 			response.ID = chunk.ID
