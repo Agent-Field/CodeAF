@@ -447,9 +447,19 @@ func (l *loopState) maybeCompact(ctx context.Context, response *ai.Response, def
 	}
 
 	// Rebuild: system, summary (as a user message), kept tail.
-	kept := l.messages[cut:]
+	//
+	// THE SYSTEM MESSAGE AND THE TAIL ARE READ BEFORE l.messages IS REPLACED,
+	// and that ordering is the whole of this block's correctness. The rebuild
+	// used to assign the fresh slice first and then reach for l.messages[0] to
+	// copy the system message across — but by then l.messages WAS the fresh
+	// slice, empty, and the read panicked with "index out of range [0] with
+	// length 0". It took a leaf long enough to actually compact before anything
+	// ran this line, which is why a crash on the first line of the rebuild
+	// survived: the short runs never got here.
+	system := l.messages[0]
+	kept := append([]ai.Message(nil), l.messages[cut:]...)
 	l.messages = make([]ai.Message, 0, 2+len(kept))
-	l.messages = append(l.messages, l.messages[0]) // system
+	l.messages = append(l.messages, system)
 	l.messages = append(l.messages, ai.Message{
 		Role:    "user",
 		Content: []ai.ContentPart{{Type: "text", Text: summary}},
