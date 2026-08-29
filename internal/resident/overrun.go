@@ -71,7 +71,7 @@ const overrunMarker = store.SplitNamespace
 // from — a leaf handed the second under the first's heading reads a path as a
 // thing it already has rather than as a thing it has to open.
 func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state string, records ...string) string {
-	return overrunGoal(node, partial, artifacts, gap, state, "", records...)
+	return overrunGoal(node, partial, artifacts, gap, state, "", OpenFindings{}, records...)
 }
 
 // overrunGoal is OverrunGoal with the exhausted attempt's own turns as well.
@@ -82,7 +82,7 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state
 // attempt itself, so a reader that ran out of attention before reaching it has
 // already been told what it needed. See Bank.Continuation, which composes the
 // same four blocks in the same order for the in-place retry.
-func overrunGoal(node store.Node, partial string, artifacts []string, gap, state, transcript string, records ...string) string {
+func overrunGoal(node store.Node, partial string, artifacts []string, gap, state, transcript string, findings OpenFindings, records ...string) string {
 	var goal strings.Builder
 	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
@@ -131,6 +131,12 @@ func overrunGoal(node store.Node, partial string, artifacts []string, gap, state
 			"answer is that the record does not name it — never an inference from the fact that the " +
 			"work succeeded, and never an example of what the answer might have been:\n")
 		goal.WriteString(strings.Join(records, "\n"))
+	}
+	// The measured shortfall, verbatim from the record, so the planner sizes the
+	// remainder against what the job is actually short of rather than against
+	// the prose of a review. See OpenFindings.
+	if section := findings.Words(); section != "" {
+		goal.WriteString("\n\n" + section)
 	}
 	// Last, and longest — the attempt itself rather than its account of itself.
 	// It carries Bank's own header so that all three ways unfinished work is
@@ -360,9 +366,23 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	planCtx = withPlanRecords(planCtx, growth.Records)
 	// The caller's own phrasing when it has one; see Growth.Goal for why an
 	// exhaustion's words are not a template.
+	// WHAT THE JOB HAS ALREADY DONE IS READ HERE, AT THE SPLICE, AND NOT PASSED
+	// IN BY WHOEVER ASKED FOR IT.
+	//
+	// This is the one seam every growing job passes through — the overrun round,
+	// the gate's gap round, the cooperative split and the deferred resumption
+	// all reach the graph through this function — and until now the seed rode in
+	// on the caller's Growth. So it worked on the one caller that had been wired
+	// for it and on none of the others: the textual run of 2026-08-29 grew three
+	// times on `reason: gap`, spliced fourteen fresh ids, and every one of them
+	// opened by exploring a repository the lineage had been editing for minutes.
+	// A property of the work cannot be a property of the caller, or it is a
+	// property of whichever caller somebody remembered.
+	recorded, resumed := LineageBank(graph, lineage, "")
+	findings := ReadOpenFindings(graph, lineage)
 	goal := strings.TrimSpace(growth.Goal)
 	if goal == "" {
-		goal = overrunGoal(node, partial, artifacts, gap, growth.State, growth.Transcript, growth.Records...)
+		goal = overrunGoal(node, partial, artifacts, gap, growth.State, recorded, findings, growth.Records...)
 	}
 	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
@@ -436,11 +456,11 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	// node with a long brief, indistinguishable from a cold start. The row is
 	// written against the sink because the sink is the node that carries the
 	// whole remainder; the stream reads it and says so (`↻ … resumed`).
-	if growth.Resumed > 0 {
+	if resumed > 0 {
 		if err := graph.RecordLeafResumed(sink, store.LeafResumed{
-			Turns: growth.Resumed, Files: artifacts,
+			Turns: resumed, Files: artifacts,
 		}); err != nil {
-			log.Printf("note: could not journal that %s resumed %s's work: %v", sink, node.ID, err)
+			log.Printf("note: could not journal that %s resumed %s's lineage: %v", sink, lineage, err)
 		}
 	}
 
