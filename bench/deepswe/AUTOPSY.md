@@ -559,3 +559,91 @@ Two runs exit 2 honestly (igel 23/24, happy-dom 13/14). Three exit 0: two on
 `Overturned` by word-containment over a false file finding. Every run's roster
 was empty or unread, so no coverage finding was reachable and no regression was
 visible.
+
+---
+
+# s6 — one reading, four blind spots (`b8af707b`)
+
+| task | reward | f2p | p2p | cost | wall | exit | nodes | acceptance points | reading events | `unmeasured` gates | last line |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ofetch-per-origin-circuit-breaker | 0 | **44/47** | 13/13 | $0.313 | 2808s | **2** | 13 | 47 | 0 | 0 | `partial —` |
+| ink-grid-box-layout | 0 | **22/25** | 49/49 | $0.850 | 5403s | **2** | 8 | 9 (×5 rounds) | 0 | 4 | `partial —` |
+| textual-richlog-follow-state | 0 | **18/20** | 6/6 | $0.085 | 1204s | 0 | 2 | — | 0 | 0 | — (exit 0) |
+| igel-persist-feature-schema | 0 | 6/24 | 2/2 | $0.226 | 2222s | **2** | 4 | 17 | **8** | 0 | `partial —` |
+| happy-dom-…-intersectionobserver | 0 | **13/14** | 9/9 | $0.413 | 5407s | **2** | 12 | 21 (×3 rounds) | 0 | 3 | — (`settled: false`, wall) |
+
+Four of five now exit 2. Every task is within a few tests of a solve except igel,
+which fell from 23/24 to 6/24. Nothing has scored 1.
+
+## What landed
+
+**(a) The exit code and the gate line share one reading.** Three runs end with
+the new line, suffix intact:
+
+> `partial — gate: … The missing element is the file itself. (not repaired: what the review asked for next is not in the request)` — igel, `run.log:94`
+
+**(c) A repair that moved nothing cannot close a world-grounded finding.**
+`unmoved: true` appears on igel's last gate and on two of happy-dom's, and
+`unclosed: true` on happy-dom's and ink's — the two fields the exit code turns
+on, now being set rather than inferred.
+
+**(g) The checklist derives per behaviour.** igel 4 → 17 points, ofetch 52 → 47
+— exactly the number of hidden fail-to-pass tests. ink 7 → 9 and happy-dom
+16 → 21 against 25 and 14.
+
+**(e) Acceptance settles on a failing verdict, and Unmeasured reaches the record.**
+igel's first gate carries `exercises: 17 rows, 3 unmapped`, fourteen of them
+mapped to real `tests/test_igel/test_feature_schema.py::TestFeatureSchema::…`
+identities. ink and happy-dom carry the other half of the mechanism on seven
+gates between them:
+
+> `unmeasured: "nothing in this project's verification could be read, so no check could be matched to what the request asked for"`
+
+**(b) A file finding is no longer overturned by prose.** textual's last gate is
+`refused — what it asked for is already on disk under the name the request used`,
+`overturned: true` — and it is TRUE: the files are in the graded diff. The s5
+failure (a false "nothing of that name was produced" acquitted because the words
+appeared in the summary) did not recur in that form.
+
+## What did not land
+
+**(d) The runner-native reading fired on one project in five.** Only igel
+journaled anything — eight events, and they are exactly the record that was
+missing:
+
+| when | runner | command | declared | exit | named | red | inherited |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| before the job's first change | pytest | `python3 -m pytest -rA` | `make test` | 1 | 2 | 2 | — |
+| on the finished tree | pytest | `python3 -m pytest -rA` | `make test` | 1 | 33 | 2 | — |
+| before (round 2) | pytest | same | `make test` | 1 | 2 | 2 | **true** |
+| on the finished tree (round 3) | pytest | same | `make test` | 1 | 36 | 5 | — |
+
+The baseline is taken once and correctly `inherited` into each repair round —
+mechanism (f) working. It also shows the reader going behind the project's own
+spelling: declared `make test`, ran `python3 -m pytest -rA`.
+
+**textual (pytest), ofetch (vitest), ink (ava) and happy-dom (turbo monorepo)
+journaled nothing at all** — not a reading, and not a row saying why one could
+not be taken. ink and happy-dom at least surfaced `unmeasured` on their gates;
+ofetch and textual recorded neither, so from their stores alone a project that
+declares no verification is still indistinguishable from a reader that failed.
+
+**No `no check exercises` finding was raised in any run**, including igel's,
+whose mapping had three unmapped points sitting in the gate record. And **no
+regression finding fired anywhere** — igel's own readings show red going 2 → 5
+on the finished tree, but those three are tests the run itself added, so the
+subtraction is correctly empty. The mechanism is untested rather than wrong.
+
+**One false file finding survived.** igel `run.log:41`: "The request asked for
+feature_schema.joblib to be written in the results directory after fit. The
+record shows nothing of that name was left behind — the file was not produced."
+`model_results/feature_schema.joblib` is in the graded diff.
+
+## The cost of the rounds
+
+ink spent **$0.850 and its whole 90-minute wall** across five acceptance rounds
+and five restarts of `task-2`, for 22/25 — 38.7M prompt tokens. happy-dom spent
+$0.413 and also hit the wall, ending `settled: false`. The repair machinery now
+buys rounds that the run cannot finish inside its budget, which is a new failure
+shape: s5's runs stopped too early, s6's two largest stop only because time ran
+out.
