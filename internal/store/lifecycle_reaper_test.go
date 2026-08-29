@@ -38,15 +38,18 @@ func TestReleaseSilentReleasesOnlySilentRunningNodes(t *testing.T) {
 		t.Fatalf("backdate: %v", err)
 	}
 
-	released, err := graph.ReleaseSilent(20 * time.Minute)
+	silent, err := graph.SilentClaims(20 * time.Minute)
 	if err != nil {
-		t.Fatalf("ReleaseSilent: %v", err)
+		t.Fatalf("SilentClaims: %v", err)
 	}
-	if len(released) != 1 || released[0].ID != "task-stale" {
-		t.Fatalf("released = %v, want [task-stale]", released)
+	if len(silent) != 1 || silent[0].ID != "task-stale" {
+		t.Fatalf("silent = %v, want [task-stale]", silent)
 	}
-	if released[0].Reason == "" {
-		t.Fatal("the reaper released a claim without saying why")
+	if silent[0].Reason == "" {
+		t.Fatal("the sweep found a silent claim without saying why")
+	}
+	if err := graph.ReleaseWithReason(silent[0].Claim(), silent[0].Reason); err != nil {
+		t.Fatalf("release: %v", err)
 	}
 
 	// task-stale is pending again and claimable; task-fresh is untouched.
