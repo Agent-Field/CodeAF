@@ -933,14 +933,19 @@ func structured(ctx context.Context, client Completer, messages []ai.Message, sc
 		provider.Report(ctx, provider.VerdictProviderFailure)
 		return nil, err
 	}
-	// An answer cut at its ceiling cannot be decoded whether it is empty or
-	// not, and the two causes look the same from here: a reasoning model that
-	// burned the budget thinking and returned nothing (seen in the wild at
-	// completion_tokens=32768), or a model that looped inside the schema and
-	// returned fifty-seven characters of nothing. One retry with a doubled
-	// budget is the difference between a contract and a dead node; a second
-	// cut answer is the model's problem, not the budget's.
-	if finishedForLength(response) {
+	// THE VERDICT ON A CUT REPLY IS WHETHER IT DECODES, NEVER THE FINISH
+	// REASON ALONE. Two failures look the same on the wire — a reasoning model
+	// that burned the budget thinking and returned nothing (seen at
+	// completion_tokens=32768), and a model that looped inside the schema and
+	// returned fifty-seven characters of nothing — and for both, one retry with
+	// a doubled budget is the difference between a contract and a dead node; a
+	// second cut answer is the model's problem, not the budget's. But a third
+	// shape exists that is not a failure at all: nvidia/nemotron-3.5-lightning
+	// answers the panel question with a complete object and finish_reason
+	// "length", the counter having reached the ceiling on tokens that never
+	// became text. A retry taken on the finish reason alone spent forty-five
+	// seconds fetching a second copy of an answer that was already in hand.
+	if finishedForLength(response) && !decodesAsObject(response.Text()) {
 		retry, retryErr := client.CompleteWithMessages(ctx, messages,
 			ai.WithSchema(schema), ai.WithMaxTokens(retryTokenBudget(response)))
 		if retryErr == nil {
@@ -968,6 +973,13 @@ func structured(ctx context.Context, client Completer, messages []ai.Message, sc
 // the same failure costs thirty seconds, and the retry below still has room
 // to double for a reply that genuinely needed more.
 const structuredReplyTokens = 8192
+
+// decodesAsObject is the probe structured uses before it spends a retry: it
+// asks only whether the text holds one complete JSON object, into a target
+// that accepts any, so the caller's destination is written exactly once.
+func decodesAsObject(text string) bool {
+	return decodeJSON(text, &struct{}{}) == nil
+}
 
 func finishedForLength(response *ai.Response) bool {
 	return response != nil && len(response.Choices) > 0 &&

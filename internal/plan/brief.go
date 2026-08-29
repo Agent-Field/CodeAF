@@ -435,7 +435,11 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 	}
 
 	system := briefPrompt
-	var options []ai.Option
+	// A brief is a few paragraphs of instruction for one worker; it travels
+	// under the same ceiling as every other planning call, because left unset
+	// the ceiling is the leaf completion reserve and a model that loops runs
+	// to it (see structuredReplyTokens).
+	options := []ai.Option{ai.WithMaxTokens(structuredReplyTokens)}
 	if Criterion {
 		system = briefWithCriterion
 		options = append(options, ai.WithSchema(briefSchema))
