@@ -1121,3 +1121,25 @@ that built one, and a judgement is built at thirteen places. It is now stamped
 once, at the single exit of `JudgeDeliverable`, over whatever comes back —
 including a fault. **A field set by every constructor is a field the next
 constructor forgets.**
+
+**And clause 4 once more, one seed later.** textual v4-flash s13 journaled both
+gates correctly — `subject: tree (3 files)`, `tree (4 files)`, and a refusal
+quoting a verbatim behaviour — and an autopsy still could not tell whether the
+quote had PASSED the checklist enum or there had been no checklist to pass. Two
+`reasked` rows on lane `gate` had the same problem in the other direction: "the
+answer was not readable" is a model reasoning out loud and a caller's own
+contract refusing a well-formed answer, and one word was journaled for both.
+Settling it meant reading completion-token counts out of the usage table three
+events either side (294 and 258 rejected, 12 accepted — prose, both times, so
+the re-ask was doing real work).
+
+> **A FAIL-SAFE THAT FIRED WITHOUT SAYING WHICH DOOR IT WAS IS HALF A RECORD.**
+
+`store.DeliveryGate.HeldPoint` carries the behaviour a verdict was held to — the
+matched span, `checklist: N behaviours` on a pass, or `checklist: empty` where
+the request states none and the requirement was off — derived at the same single
+exit `Subject` is. `store.StructuredRepair.Note` carries the decode error
+verbatim, which is where the two rejection doors already differ: `response
+contains no JSON object` against `parse response: a fail must quote one of the
+behaviours this request states …`. Nothing classifies anything; the readers that
+already disagree are simply quoted.
