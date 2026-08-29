@@ -853,15 +853,33 @@ finish what is running and be judged — and the bound is derived, never typed:
 
 | term | value | where |
 | --- | --- | --- |
-| the pace | the **longest** interval between two admitted rounds of THIS job | `jobPace`, `internal/resident/grow.go` |
+| the round | the **median** interval between two admitted rounds of THIS job | `jobPace`, `internal/resident/grow.go` |
+| the reading | the **longest** reading this job has been observed taking | `readingPace`, `store.VerificationReading.Elapsed` |
+| the pace | the round plus the reading | `JobPace` |
 | the clock | the run context's deadline, which is the errand's own `--timeout` | `chatBrain.wall`, `cmd/aforge/chat.go` |
-| the rule | refuse when `time.Until(deadline) < pace` | `CauseOutOfWall` |
+| the rule | refuse when `time.Until(deadline) < pace`, and stop the job's queued work | `CauseOutOfWall`, `Runner.CloseOut` |
+| the floor | the settlement watch forces a verdict at the same distance | `settlementWatch.forceJudgement`, `cmd/aforge/do.go` |
 
-The longest and not the mean, because the question is whether the wall can hold
-ANOTHER round: a round the clock cuts in half delivers nothing and costs the run
-its verdict. Fewer than two admitted rounds is a job that has not shown its pace,
-and it answers zero, which refuses nothing — the same direction `outOfWall` takes
-above, and for the same reason (`SETTLEMENT.md` §3).
+The median and no longer the longest. Rounds are long-tailed: one round of ofetch
+v4-flash s13 took twenty minutes while the median of its five was under four, so
+the longest taught the governor to refuse everything after the first outlier
+rather than at the wall. What makes it safe to relax is that the estimate is no
+longer the only thing holding — the settlement watch forces a verdict at this
+same distance from the wall whether or not any rule here noticed
+(`FAILSAFE.md`, the twenty-second chapter).
+
+A round is not the whole of what another round costs: what follows it is a
+reading of the tree and a judgement on it. The reading is the ONE THING A RUN
+MEASURES ABOUT THE MACHINE IT IS ON — the benchmarks run amd64 containers under
+qemu, where a suite that takes eight seconds natively takes forty-five, and a
+reading killed at its ceiling journals how long it ran before that happened. So
+the pace is the median round plus that reading, and one derivation serves both
+readers: a run that stops growing at one estimate and is judged against another
+is a run whose two clocks disagree about the same wall.
+
+Fewer than two admitted rounds is a job that has not shown its pace, and it
+answers zero, which refuses nothing and forces nothing — the same direction
+`outOfWall` takes above, and for the same reason (`SETTLEMENT.md` §3).
 
 **The clock reaches the machinery.** `aforge do` used to build its timeout
 context for the settlement watcher alone while the brain ran on

@@ -365,10 +365,16 @@ func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testi
 func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *testing.T) {
 	graph := crowdedJob(t, "s1", 3)
 	node := jobNode(t, graph, "job-n1")
+	// An empty tree the rounds are read against. It is named rather than
+	// asserted because MEASURED IS A FACT ABOUT THE WORLD HAVING BEEN READ: a
+	// request that hands neither an artifact list nor a workspace has not read
+	// anything, whatever it says about itself, and the governor correctly
+	// declines to weigh it. See GrowRequest.weighed.
+	tree := t.TempDir()
 
 	first, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
-		Measured: true, Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+		Workspace: tree, Remainder: RemainderDigest("nothing has been written yet"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -378,12 +384,12 @@ func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *tes
 	}
 	admitGrowth(graph, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun,
-		Measured: true, Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+		Workspace: tree, Remainder: RemainderDigest("nothing has been written yet"),
 	}, first, 1)
 
 	second, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
-		Measured: true, Produced: 0, Remainder: RemainderDigest("still nothing on disk, in different words"),
+		Workspace: tree, Remainder: RemainderDigest("still nothing on disk, in different words"),
 	})
 	if err != nil {
 		t.Fatal(err)

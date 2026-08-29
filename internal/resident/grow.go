@@ -792,23 +792,32 @@ func (r GrowRequest) weighed(graph *store.Store, jobRoot, lineage string) GrowRe
 		return r
 	}
 	r.read = true
-	if len(r.Artifacts) > 0 {
-		workspace := strings.TrimSpace(r.Workspace)
-		if workspace == "" {
-			workspace = JobWorkspace(jobRoot)
-		}
-		if change := MeasureRound(graph, jobRoot, workspace, r.Artifacts); change.Measured {
-			r.Measured, r.Produced = true, len(change.Relevant)
-			r.relevant, r.scratch = change.Relevant, change.Scratch
-		} else {
-			// NOTHING TO NARROW BY IS NOT THE SAME AS NOTHING RELEVANT. A
-			// caller that read the tree but cannot say which tree keeps the
-			// meaning this had before the focus existed — every file counts —
-			// which is the same fail-safe direction an empty focus takes one
-			// layer down. Narrowing on a workspace nobody named would refuse a
-			// round for the harness's own silence.
-			r.Produced, r.relevant = len(r.Artifacts), namedFew(r.Artifacts)
-		}
+	workspace := strings.TrimSpace(r.Workspace)
+	if workspace == "" {
+		workspace = JobWorkspace(jobRoot)
+	}
+	// THE READING DECIDES WHETHER ANYBODY LOOKED, NOT THE CALLER. Measured is a
+	// fact about the world having been read, and the splice path asserts it on
+	// every round it makes — so a caller that handed no reading at all used to
+	// be taken at its word and journal "somebody looked and found nothing",
+	// which is the exact confusion the field exists to prevent, pointing the
+	// other way. Asked here, an empty artifact list against a workspace nobody
+	// named answers "nobody looked" and weighs nothing.
+	if change := MeasureRound(graph, jobRoot, workspace, r.Artifacts); change.Measured {
+		r.Measured, r.Produced = true, len(change.Relevant)
+		r.relevant, r.scratch = change.Relevant, change.Scratch
+	} else if len(r.Artifacts) > 0 {
+		// NOTHING TO NARROW BY IS NOT THE SAME AS NOTHING RELEVANT. A caller
+		// that read the tree but cannot say which tree keeps the meaning this
+		// had before the focus existed — every file counts — which is the same
+		// fail-safe direction an empty focus takes one layer down. Narrowing on
+		// a workspace nobody named would refuse a round for the harness's own
+		// silence.
+		r.Produced, r.relevant = len(r.Artifacts), namedFew(r.Artifacts)
+	} else {
+		// And nothing to narrow AND nothing to narrow it FROM is nobody having
+		// looked at all.
+		r.Measured, r.Produced = false, 0
 	}
 	if r.shortfall == nil {
 		read := ReadShortfall(graph, lineage)
