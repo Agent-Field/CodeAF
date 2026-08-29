@@ -849,6 +849,41 @@ rest counted:
   no check exercises — A half-open probe holds its slot across internal retries — and 2 more  14m39s
 ```
 
+## When a check names what you asked for and asserts nothing about it
+
+A check can run a behaviour and weigh nothing about it. One run was asked that
+`RichLog.write(expand=True)` keep its full-width rendering; it wrote a check that called
+`write("short", expand=True)` and then asserted only that the widget had more than zero
+lines. The check was real, it ran, it passed, and it would have passed just as happily with
+the behaviour broken.
+
+So there is a second question, asked of every pairing the first one accepts: **do the
+check's own assertions name any of the identifiers your request spelled?** Those
+identifiers are read out of your words by shape — a name with a dot, an underscore or an
+interior capital in it (`is_following_end`, `RichLog.write`, `max_scroll_y`), and a name
+you bound to something (`expand=True`, `follow_end(animate: bool = False)`). The
+assertions are read out of the file the same way: `assert` and `pytest.raises` in Python,
+`expect(...)` and `assert.*` in JavaScript, the `if` beside a `t.Fatalf` in Go, `assert!`
+in Rust. Setup is not an assertion, so a name that appears only in the call is a name the
+check mentions rather than one it checks.
+
+Where no assertion names any of them, the behaviour stays open and reads:
+
+```
+1 behaviour the request states is asserted by no check. A check names each of these and runs it, and then asserts nothing about the identifiers the request spelled — so it would pass whether the behaviour is right or wrong:
+asserted by no check: RichLog.write(expand=True) no longer preserves full-width justified rendering — observables never asserted: richlog.write, full-width, expand
+Write the check for each, and make it pass.
+```
+
+Under a headless run it is its own line, `asserted by no check — …`, and it buys the
+repair round exactly as an unexercised behaviour does.
+
+**Every silence here favours the check.** A behaviour of yours with no identifier in it —
+"normal scrolling must still update the visible viewport" — is asked nothing; only checks
+the run itself wrote are read; a file in a language this program has no reader for, or a
+check whose declaration it cannot find, is left alone; and **one** identifier named in
+**one** assertion clears the behaviour outright.
+
 **The question is asked again on every round, and the answer is the job's.** The checklist
 was read off your request, and every round of the job has the same request — so a repair
 round whose own plan carries no checklist inherits it rather than asking nothing. What the
@@ -856,8 +891,8 @@ last measurement found nothing exercising is carried the same way: **a behaviour
 once as unexercised stays that way until a measurement says otherwise**, so a round whose
 worker took no reading cannot quietly drop it. The set only shrinks on evidence — a round
 that wrote the missing checks grows the project's own roster, and the next mapping is what
-notices. The finding's last line is the score: `3 of the 17 behaviours this request states
-are still exercised by nothing.`
+notices. The finding's last line is the score, over both halves: `3 of the 17 behaviours
+this request states still have no check that asserts them.`
 
 **Why this exists.** Two measured runs handed over wrong answers at exit 0 because the
 review believed the worker's own sentence about its own checks. One claimed all 56 of them

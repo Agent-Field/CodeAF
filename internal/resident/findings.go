@@ -39,6 +39,9 @@ type OpenFindings struct {
 	// Unexercised are the behaviours the request stated that no check in the
 	// tree exercises, in the words the request used. store.DeliveryGate.
 	Unexercised []string
+	// Unasserted are the behaviours a check in the tree NAMES and no assertion
+	// WEIGHS, each carrying the observables nothing asserted. store.DeliveryGate.
+	Unasserted []string
 	// Failing are the named checks the last reading of the project's own tests
 	// found red. store.VerificationReading.Sample.
 	Failing []string
@@ -57,7 +60,7 @@ type OpenFindings struct {
 // composer should write a section: a heading announcing no findings costs
 // tokens and teaches the model that the heading means nothing.
 func (f OpenFindings) Empty() bool {
-	return len(f.Unexercised) == 0 && len(f.Failing) == 0 &&
+	return len(f.Unexercised) == 0 && len(f.Unasserted) == 0 && len(f.Failing) == 0 &&
 		strings.TrimSpace(f.Gap) == "" && !f.Unclosed && !f.Unreadable
 }
 
@@ -92,6 +95,12 @@ func (f OpenFindings) Words() string {
 		section.WriteString("\n\nBehaviours the request asks for that NO check in the tree exercises. " +
 			"Each needs a check that would fail if the behaviour were removed:\n")
 		section.WriteString(bulleted(f.Unexercised))
+	}
+	if len(f.Unasserted) > 0 {
+		section.WriteString("\n\nBehaviours the request asks for that a check NAMES and no assertion " +
+			"WEIGHS. Each already has a check that runs it; what each needs is an assertion on the " +
+			"identifiers named after it, so the check would fail if the behaviour were wrong:\n")
+		section.WriteString(bulleted(f.Unasserted))
 	}
 	if gap := strings.TrimSpace(f.Gap); gap != "" {
 		section.WriteString("\n\nWhat the last review found missing:\n")
@@ -150,6 +159,9 @@ func ReadOpenFindings(graph *store.Store, lineage string) OpenFindings {
 		for _, gate := range gates {
 			if len(gate.Unexercised) > 0 {
 				findings.Unexercised = append([]string(nil), gate.Unexercised...)
+			}
+			if len(gate.Unasserted) > 0 {
+				findings.Unasserted = append([]string(nil), gate.Unasserted...)
 			}
 			if gate.Pass {
 				// A gate that passed answers the gap before it. What it cannot

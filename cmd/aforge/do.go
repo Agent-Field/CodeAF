@@ -1293,6 +1293,12 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		if words := unexercisedWords(gate.Unexercised); words != "" {
 			w.note("no check exercises", words)
 		}
+		// And the behaviours a check names and no assertion weighs get theirs.
+		// It is a separate line because it asks for a separate thing: not
+		// another check, but an assertion on the identifier the request spelled.
+		if words := unexercisedWords(gate.Unasserted); words != "" {
+			w.note("asserted by no check", words)
+		}
 		// AND THE CHECKS THIS WORK WROTE THAT ARE RED GET THEIR OWN LINE, in
 		// their own words. They used to be printed as `gate: fail — This work
 		// broke checks that were passing before it: …`, which is a sentence
@@ -1488,8 +1494,9 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 	// behaviours nothing exercises are not among them. Leading with the gate's
 	// own prose there would name the finding that was ACQUITTED as the reason
 	// the run is short, which is the opposite of what happened.
-	if len(gate.Unexercised) > 0 && (gate.Pass || gate.PolishClosed || gate.Overturned) {
-		return uncheckedWords(len(gate.Unexercised)), "", true
+	if open := len(gate.Unexercised) + len(gate.Unasserted); open > 0 &&
+		(gate.Pass || gate.PolishClosed || gate.Overturned) {
+		return uncheckedWords(open), "", true
 	}
 	finding = firstLine(strings.TrimSpace(gate.Gap))
 	if finding == "" && gate.Unreadable {

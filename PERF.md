@@ -587,6 +587,18 @@ and `mappingBodyBudget` **2MB** for one settlement — `verify`'s `scopeReadBudg
 at the same size and for the same reason. It degrades in the safe direction: a
 body it could not read grounds nothing, so the point stays unexercised.
 
+## What weighing the acceptance mapping's assertions costs
+
+`revision.WeighAssertions` spends no model call and reads no file the names door
+above has not already paid for: it shares that door's `checkBodies`, so
+`mappingBodyBytes` **512KB** per file and `mappingBodyBudget` **2MB** per
+settlement bound both readers together. Each file is parsed for its assertions
+once per settlement and cached, and one check's captured assertion text is bound
+by `verify.assertionTextBytes` **16KB** — past it the reader stops appending and
+the check keeps what it has, which can only leave a point OPEN and never close
+one. `revision.observablesNamed` **4** bounds the observables one finding line
+names.
+
 ## What the acceptance checklist costs
 
 The gate's acceptance settlement (`docs/design/gate/ACCEPTANCE.md`) adds no suite
@@ -595,7 +607,9 @@ run to the common path and one bounded model call to two seams.
 | number | value | where |
 | --- | --- | --- |
 | the checklist's length | **one point per clause of the request** | `plan.NormalizeAcceptance` |
-| the acceptance finding's size | **one entry per REQUEST LINE, 8 named then a count** | `revision.groupUnexercised` |
+| the acceptance finding's size | **one entry per REQUEST LINE, 8 named then a count** | `revision.groupUnexercised`, `revision.groupUnasserted` |
+| observables one finding line names | **4** | `revision.observablesNamed` |
+| one check's captured assertion text | **16KB** | `verify.assertionTextBytes` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 

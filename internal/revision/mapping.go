@@ -153,16 +153,25 @@ type checkBodies struct {
 // most often asked about.
 func (b *checkBodies) forCheck(check string) string {
 	var bodies strings.Builder
-	if named := checkFile(check); named != "" {
-		bodies.WriteString(b.read(named))
-	}
-	if bodies.Len() > 0 {
-		return bodies.String()
-	}
-	for _, path := range b.record {
+	for _, path := range b.filesFor(check) {
 		bodies.WriteString(b.read(path))
 	}
 	return bodies.String()
+}
+
+// filesFor is WHICH files those are, named rather than concatenated.
+//
+// The two readers of a check's text want it differently. The names door reads
+// one haystack and asks whether a symbol is anywhere in it; the assertion door
+// (observable.go) has to parse each file with the reader its language calls for,
+// and a concatenation of a python file and a typescript one is neither. So the
+// choice of files is stated once, here, and each caller takes it in its own
+// shape.
+func (b *checkBodies) filesFor(check string) []string {
+	if named := checkFile(check); named != "" && b.read(named) != "" {
+		return []string{named}
+	}
+	return b.record
 }
 
 // checkFile is the file a check identity names, if it names one.

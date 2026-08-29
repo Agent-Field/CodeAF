@@ -131,6 +131,25 @@ type DeliveryGate struct {
 	// could not reach it and no repair round was ever aimed at it.
 	Unexercised []string `json:"unexercised,omitempty"`
 
+	// Unasserted is the behaviours the request stated that a check NAMES and no
+	// assertion WEIGHS, one entry per line of the request they were read from,
+	// each naming the observables nothing asserted.
+	//
+	// It is a finding of its own beside Unexercised because the two are answered
+	// by different evidence and a repair round is aimed at them differently.
+	// Unexercised says write a check; this says the check you wrote runs the
+	// behaviour and asserts nothing about it, and names which identifier to
+	// assert on. textual s13's gate had said `no check exercises:
+	// RichLog.write(expand=True) …` in round one; round two wrote a check that
+	// called `write("short", expand=True)` and asserted `len(lines) > 0`, the
+	// mapping paired the two, and the run passed at exit 0 with the hidden check
+	// for that behaviour red.
+	//
+	// It stands exactly as Unexercised does — it leaves the delivery short in
+	// Whole below, and it empties the one way a measurement empties: a later
+	// reading finds an assertion that names the observable.
+	Unasserted []string `json:"unasserted,omitempty"`
+
 	// OwnFailing is the checks THIS WORK WROTE that are red: names the baseline
 	// roster never held, so nothing that was working stopped.
 	//
@@ -186,6 +205,20 @@ type DeliveryGate struct {
 type ExercisedPoint struct {
 	Point string `json:"point"`
 	Check string `json:"check,omitempty"`
+
+	// Unasserted is the behaviour's own observables — the identifiers the
+	// request spelled — that the mapped check's ASSERTIONS never name. A row
+	// with a check and an unasserted list is a pairing the world admits and the
+	// check does not earn: the check runs the behaviour and weighs nothing about
+	// it.
+	//
+	// It is journaled beside the pairing rather than reduced to the finding it
+	// produces, for the reason Exercises itself is. textual s13 shipped at exit
+	// 0 with three such rows, and afterwards there was no way to ask which
+	// observable had been skipped — `expand` and `min_width` were named in the
+	// request, called in the check, and asserted nowhere, and the mapping said
+	// only that a check existed. See revision.WeighAssertions.
+	Unasserted []string `json:"unasserted,omitempty"`
 }
 
 // Whole is THE reading of what this gate settled, and it is a method because it
@@ -246,6 +279,14 @@ func (g DeliveryGate) Whole() bool {
 	// it, because a person does not have to ask for the behaviour they asked for
 	// to be checked.
 	if len(g.Unexercised) > 0 {
+		return false
+	}
+	// And the same is true of a behaviour a check merely visits. A pairing the
+	// assertion door emptied is a measurement of the repository too — the check
+	// is on disk, its assertions are on disk, and neither of them names the
+	// identifier the request spelled — so an acquittal of one refusal settles
+	// nothing about it either.
+	if len(g.Unasserted) > 0 {
 		return false
 	}
 	return g.Pass || g.PolishClosed || g.Overturned
@@ -309,6 +350,16 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	gate.Unexercised = unexercised
 	if len(gate.Unexercised) == 0 {
 		gate.Unexercised = nil
+	}
+	unasserted := make([]string, 0, len(gate.Unasserted))
+	for _, point := range gate.Unasserted {
+		if point = bounded(strings.TrimSpace(point), MaxDigestBytes); point != "" {
+			unasserted = append(unasserted, point)
+		}
+	}
+	gate.Unasserted = unasserted
+	if len(gate.Unasserted) == 0 {
+		gate.Unasserted = nil
 	}
 	if len(gate.Quotes) == 0 {
 		// An empty list and a nil one are the same fact, and only one of them
