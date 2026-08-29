@@ -14,6 +14,8 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/processgroup"
@@ -75,6 +77,21 @@ type Result struct {
 	// roster that came back through the fallback is a roster whose runner did
 	// not answer the way this program expected.
 	ReadAsPlain bool
+	// Uncollected says the runner produced NO TEST RECORD OF ITS OWN: this
+	// strategy asked for a machine-readable report and the reader for that
+	// format found none in what came back.
+	//
+	// It is the shape a suite that failed to COLLECT has — an import that will
+	// not resolve, a config that will not load, a syntax error in a test file —
+	// and it is a different fact from a suite that ran and went red. ofetch's
+	// nemotron n1 run hit it four times: `vitest run --reporter=json` printed no
+	// JSON, the shared vocabulary scraped one word out of the error text, and a
+	// reading naming ONE check was subtracted against a baseline that named 28.
+	//
+	// Error is the tail of what the runner said instead, so the record carries
+	// the reason rather than a count of nothing.
+	Uncollected bool
+	Error       string
 	// Failing is every test identity the runner named, read by [FailingTests].
 	Failing []string
 	// Reported is every test identity the runner named at all, red or green,
@@ -179,6 +196,17 @@ func RunReading(
 		// back the long way is legible as such.
 		reported, failing = ReportedTests(output), FailingTests(output)
 		result.ReadAsPlain = true
+		// AND WHERE THE STRATEGY ASKED FOR A MACHINE-READABLE REPORT, ITS
+		// ABSENCE IS A FACT AND NOT A ROSTER. A runner told to print JSON prints
+		// it whenever it ran its tests at all; no JSON means it never got that
+		// far, which is what a collection failure looks like from out here.
+		// Whatever the shared vocabulary scrapes out of an error dump is a guess
+		// about a suite that did not run, and it was read as one red check
+		// against a baseline of twenty-eight.
+		if strategy.Read != FormatPlain {
+			result.Uncollected = true
+			result.Error = runnerTrouble(output)
+		}
 	}
 	result.Failing = failing
 	result.Reported = reported
@@ -208,3 +236,39 @@ func (t *tailBuffer) Write(chunk []byte) (int, error) {
 }
 
 func (t *tailBuffer) String() string { return t.buf.String() }
+
+// uncollectedTail bounds how much of a runner's own error travels with the
+// reading. Enough for the first thing that went wrong and nothing like a whole
+// stack: the reason is one sentence in a record, not a log.
+const uncollectedTail = 400
+
+// runnerTrouble is what the runner said instead of a test record.
+//
+// The first line that carries something a reader would recognise as trouble —
+// which is read by SHAPE, as the first non-empty line that is not part of the
+// runner's own banner. Nothing here interprets it; it is quoted so a person
+// reading the record sees the runner's own words rather than this program's
+// summary of a suite it could not read.
+func runnerTrouble(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "}") {
+			continue
+		}
+		// A runner's start-up banner names itself and its version and says
+		// nothing about what went wrong. It is the one line before the trouble
+		// that is always there, and it is skipped by the shape every runner
+		// prints it in: a word, a version, and a path.
+		if bannerLine.MatchString(trimmed) {
+			continue
+		}
+		if len(trimmed) > uncollectedTail {
+			trimmed = trimmed[:uncollectedTail]
+		}
+		return trimmed
+	}
+	return ""
+}
+
+// bannerLine is a runner announcing itself: `RUN v0.34.6 /app`, `DEV v1.2.3`.
+var bannerLine = regexp.MustCompile(`^[A-Z]{2,}\s+v?\d+\.\d`)

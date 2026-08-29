@@ -220,7 +220,16 @@ func (r Reading) comparable() bool {
 	// did, so every check the suite had not reached would subtract out as one
 	// that stopped existing — a finding per untouched test, from a fact about a
 	// ceiling.
+	// AND A READING WITH NO TEST RECORD IS NOT ONE EITHER. A suite that failed
+	// to collect never ran a check, so it holds no roster to subtract — and what
+	// the shared vocabulary scrapes out of an error dump is a guess about a
+	// suite that did not run. ofetch's nemotron n1 run subtracted one such guess
+	// against a baseline of 28 named checks and failed the delivery over a check
+	// called `to`. Either half is enough to refuse: a baseline that could not
+	// collect cannot acquit, and an after reading that could not collect cannot
+	// convict.
 	return r.Taken && r.AfterTaken && !r.Partial &&
+		!r.Before.Uncollected && !r.After.Uncollected &&
 		r.After.Strategy.covers(r.Before.Strategy)
 }
 

@@ -95,6 +95,16 @@ type VerificationReading struct {
 	// until a reading is cut and says so.
 	Partial bool          `json:"partial,omitempty"`
 	Elapsed time.Duration `json:"elapsed,omitempty"`
+	// Uncollected says the runner produced no test record of its own — a suite
+	// that failed to COLLECT rather than one that ran and went red — and Trouble
+	// is what it said instead, in its own words.
+	//
+	// They are journaled because the two were the same row: ofetch's nemotron n1
+	// run wrote `named: 1, red: 1` four times over a suite that never ran a
+	// check, and an autopsy reading that row had no way to tell it from a suite
+	// with one failing test in it.
+	Uncollected bool   `json:"uncollected,omitempty"`
+	Trouble     string `json:"trouble,omitempty"`
 	// Inherited says this reading was not taken here: it is the baseline this
 	// job took before its first change, carried forward into a later round.
 	Inherited bool `json:"inherited,omitempty"`
@@ -124,6 +134,7 @@ func (s *Store) RecordVerification(nodeID string, reading VerificationReading) e
 	reading.Command = bounded(strings.TrimSpace(reading.Command), MaxDigestBytes)
 	reading.Declared = bounded(strings.TrimSpace(reading.Declared), MaxDigestBytes)
 	reading.Why = bounded(strings.TrimSpace(reading.Why), MaxDigestBytes)
+	reading.Trouble = bounded(strings.TrimSpace(reading.Trouble), MaxDigestBytes)
 	if reading.Command == "" && reading.Why == "" {
 		return nil
 	}

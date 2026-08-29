@@ -451,6 +451,16 @@ per round: `jobReading` remembers against `verify.JobKey`, so later rounds
 inherit it, and it is bounded by the same `ReadingBudget` share of the gate's own
 remaining wall as every other reading here.
 
+**A suite that failed to collect is not a suite that went red.** A runner told to
+print a machine-readable report prints one whenever it ran its tests at all, so
+its absence is a fact rather than an empty roster: `Result.Uncollected` records
+it, `Result.Error` quotes what the runner said instead, `Reading.comparable`
+refuses the subtraction from either side, and the second reading is reported as
+*its suite failed to collect* with the runner's own words. It costs nothing — the
+same output, read once — and it closes FAILSAFE's tenth failure, where a check
+named `to`, scraped out of *Failed to load url ./circuit-breaker*, was subtracted
+against a baseline of 28.
+
 **A cut second reading keeps what it named, and a derived rung retakes on the
 baseline's.** The before half has kept a partial roster since ink s7; the after
 half discarded it, so ink's second reading came back `read: false, named: 0` on

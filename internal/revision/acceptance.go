@@ -251,6 +251,8 @@ func journalGateReading(
 		Sample:      sample,
 		Partial:     reading.Partial,
 		Elapsed:     reading.CutAfter,
+		Uncollected: result.Uncollected,
+		Trouble:     result.Error,
 		Inherited:   inherited,
 	})
 }

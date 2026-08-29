@@ -48,8 +48,15 @@ var failingTestPatterns = []*regexp.Regexp{
 	// maven surefire / gradle
 	regexp.MustCompile(`(?m)^\[ERROR\]\s+(\S+)\s+Time elapsed`),
 	regexp.MustCompile(`(?m)^\s*(\S+)\s+>\s+\S+\s+FAILED\s*$`),
-	// dotnet test / xunit
-	regexp.MustCompile(`(?m)^\s*(?:Failed|X)\s+(\S+)\s`),
+	// dotnet test / xunit. The name is FULLY QUALIFIED — that is the runner's
+	// own grammar, and it is required rather than assumed, because `\S+` after
+	// an English word matches an English word. ofetch's nemotron n1 run read
+	// vitest's collection failure — `Failed to load url ./circuit-breaker …` —
+	// as one red check named `to`, subtracted it against a baseline of 28, and
+	// failed the delivery with `This work broke checks that were passing before
+	// it: to.` A NAME COMES FROM THE RUNNER'S OWN TEST-RECORD GRAMMAR AND NEVER
+	// FROM A SENTENCE.
+	regexp.MustCompile(`(?m)^\s*(?:Failed|X)\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
 	// rspec
 	regexp.MustCompile(`(?m)^rspec\s+(\./\S+:\d+)`),
 	// ctest
