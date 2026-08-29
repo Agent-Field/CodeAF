@@ -413,6 +413,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// closed last night is still running this morning, and its remaining plan
 	// is still editable.
 	plans := newJobPlans(graph)
+	brain.plans, brain.ledger = plans, graph
 	// The craft repository lives beside the graph it serves. Without git or
 	// with a broken repo, craft is dormant — never a startup failure.
 	// An ephemeral store has no craft: the repository would be born in a
@@ -2010,6 +2011,12 @@ type chatBrain struct {
 	runCancel  context.CancelFunc
 	runDone    chan struct{}
 	stopOnce   sync.Once
+	// plans and ledger are what stop needs to settle a bill the heartbeats
+	// never will: a plan that was rejected has no job to land, and a process
+	// that is stopping has no next landing. Both may be nil on a brain a test
+	// assembles by hand, which is why the flush checks.
+	plans  *jobPlans
+	ledger *store.Store
 	closeOnce  sync.Once
 }
 
@@ -2149,6 +2156,14 @@ func (b *chatBrain) stop() {
 			b.runCancel()
 		}
 		waitWithGrace(&b.background, 5*time.Second)
+		// The last landing has happened. A planning bill still parked here was
+		// waiting for a splice that is not coming — a rejected plan, or a
+		// process wall — and the heartbeats that would have billed the spine
+		// after four beats are over too. Before this line, a headless run
+		// whose plan was refused reported $0.0016 for $0.04 on the wire.
+		if b.plans != nil && b.ledger != nil {
+			b.plans.flushOwedPlanSpend(b.ledger)
+		}
 		b.closeAll()
 	})
 }
@@ -4180,6 +4195,27 @@ func (j *jobPlans) settleOwedPlanSpend(graph *store.Store) {
 		held.bill.NodeID = store.RootID
 		if err := graph.RecordUsage(held.bill); err != nil {
 			log.Printf("note: could not journal abandoned planning spend: %v", err)
+		}
+		delete(j.owed, job)
+	}
+}
+
+// flushOwedPlanSpend bills every parked plan to the spine now. It is the
+// shutdown's version of settleOwedPlanSpend: the patience that method counts
+// in landings has nothing left to count, and money that was spent is written
+// down before the ledger closes rather than being lost with the process.
+func (j *jobPlans) flushOwedPlanSpend(graph *store.Store) {
+	if j == nil || graph == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for job, held := range j.owed {
+		if err := graph.RecordUsage(held.bill); err != nil {
+			held.bill.NodeID = store.RootID
+			if err := graph.RecordUsage(held.bill); err != nil {
+				log.Printf("note: could not journal planning spend at shutdown: %v", err)
+			}
 		}
 		delete(j.owed, job)
 	}

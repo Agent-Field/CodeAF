@@ -307,3 +307,40 @@ func TestPlanSpendFallsBackToTheSpineWhenTheJobNeverLands(t *testing.T) {
 		t.Fatalf("the abandoned bill was paid twice: %v %v", spend, err)
 	}
 }
+
+// A ONE-SHOT PROCESS HAS NO HEARTBEATS TO SPARE. `aforge do` exits the moment
+// its plan is refused, and the four landings the parked bill was waiting for
+// never come: a run that spent $0.04 on the wire reported $0.0016. Stopping
+// the brain is the last landing there will be, so it is where the bill goes
+// to the spine.
+func TestStoppingTheBrainBillsAPlanThatNeverLanded(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "oneshot.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	plans := newJobPlans(graph)
+	client := adoptLiveClient(config.Config{}, "plan/slot", &billedClient{model: "plan/slot"})
+	journalPlanSpend(graph, plans, client, "task-11",
+		plan.Usage{Calls: 61, PromptTokens: 90000, CompletionTokens: 131072, Cost: 0.0395})
+	if spend, err := graph.SpendToday(); err != nil || spend != 0 {
+		t.Fatalf("an unspliced job was billed early: %v %v", spend, err)
+	}
+
+	plans.flushOwedPlanSpend(graph)
+	spend, err := graph.SpendToday()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend < 0.039 || spend > 0.040 {
+		t.Fatalf("today's spend = %v, want the refused plan's whole bill on the rail", spend)
+	}
+	if jobs, err := graph.TopLevelJobUsage(); err != nil || len(jobs) != 0 {
+		t.Fatalf("a job that never existed acquired a bill: %+v %v", jobs, err)
+	}
+	// Once. A flush after the flush finds nothing to bill.
+	plans.flushOwedPlanSpend(graph)
+	if spend, err := graph.SpendToday(); err != nil || spend > 0.040 {
+		t.Fatalf("the bill was paid twice: %v %v", spend, err)
+	}
+}
