@@ -470,6 +470,26 @@ work, aimed at the diff) both choose a command the baseline never proved could
 run, and that is the one thing here a retake fixes. One retake, only when the
 command actually differs, and whichever attempt said more is the one kept.
 
+**A name resolves to every file that carries it, and a compound the request also
+spells short names two things.** textual's nemotron n1 run took **14** readings
+and every one the request asked for was
+`pytest tests/test_concurrency.py tests/test_textlog.py` — 3 checks — while the
+change touched `widgets/_log.py` and `widgets/_rich_log.py`. Two structural
+faults, neither about vocabulary. `Locate` kept the FIRST file the walk tripped
+over, so a repository that documents itself shadows its own source:
+`docs/examples/widgets/rich_log.py` sorts before
+`src/textual/widgets/_rich_log.py`, and every reading was aimed at the
+documentation copy of the widget being changed. It keeps all of them now, capped
+at `locateLimit` **4** per name — which of two files of one name is the
+implementation is not a question this can answer by looking at either, so it
+answers none of it and lets `Adjacent`'s ranking decide. And a single capitalised
+word is not a subject on sight, so `Log` was dropped and `_log.py` was never
+located at all; `standaloneSegments` admits a segment of an already-accepted
+compound when the SAME TEXT also uses it as a whole word on its own, which is a
+fact about the request rather than a judgement about the word. `locateKey`'s floor
+moves from 4 to 3 for that caller alone. The selection stays bounded by the
+eighth-of-suite cap it always was.
+
 **The second reading is aimed at the change as well as at the request.** The
 first reading's scope has to come from the request — there is no diff yet — and
 textual s10 is what that costs on its own: the request said *Log and RichLog*,

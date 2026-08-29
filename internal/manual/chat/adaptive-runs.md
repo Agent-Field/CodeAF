@@ -652,7 +652,11 @@ package's `__init__.py` is the only thing that says so. Only import lines are re
 whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
 does not have to spell a path**: a name it uses that this repository has a file for — an
 `IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
-decides which package is read.
+decides which package is read. It resolves to **every** file of that name rather than the
+first one found, so a repository that keeps a documented example beside the real widget does
+not send the reading to the example. And when your request writes a name both ways — `Log`
+and `RichLog` in one sentence — the short one counts as a name too, so a change to both is
+read on both sides. A short word you only ever write on its own is not treated as a name.
 
 If the selection still comes to more than an eighth of the suite it is not a scope any more,
 so it is cut back to the checks your change is actually in. The whole suite is what is tried
