@@ -82,3 +82,25 @@ func TestASecondCutReplyIsTheModelsProblemNotTheBudgets(t *testing.T) {
 		t.Fatalf("calls = %d, want exactly two — the budget is not the problem", len(client.ceilings))
 	}
 }
+
+// A complete object under a "length" finish is an answer, not a cut reply.
+// nvidia/nemotron-3.5-lightning does this on the panel question — the token
+// counter reaches the ceiling on tokens that never became text — and the
+// retry taken on the finish reason alone cost forty-five seconds for a second
+// copy of an answer already in hand.
+func TestACompleteReplyUnderALengthFinishIsNotRetried(t *testing.T) {
+	client := &ceilingClient{replies: []*ai.Response{cutReply(`{"mode":"decompose","reason":"one subject"}`, structuredReplyTokens)}}
+	var out struct {
+		Mode   string `json:"mode"`
+		Reason string `json:"reason"`
+	}
+	if _, err := structured(context.Background(), client, nil, json.RawMessage(`{}`), &out); err != nil {
+		t.Fatalf("structured: %v", err)
+	}
+	if len(client.ceilings) != 1 {
+		t.Fatalf("calls = %d, want exactly one — the answer was already in hand", len(client.ceilings))
+	}
+	if out.Mode != "decompose" || out.Reason != "one subject" {
+		t.Fatalf("decoded %+v, want the complete object", out)
+	}
+}

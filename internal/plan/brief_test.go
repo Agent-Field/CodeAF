@@ -254,7 +254,7 @@ func TestCriterionOffSendsTheOldPrompt(t *testing.T) {
 	if _, err := Briefs(context.Background(), client, graph); err != nil {
 		t.Fatal(err)
 	}
-	if client.sawOptions() {
+	if client.sawSchema() {
 		t.Fatal("a schema was still attached with the criterion off")
 	}
 	if system := client.system(); system != briefPrompt {
@@ -269,21 +269,29 @@ type briefJSONClient struct {
 	body    string
 	mutex   sync.Mutex
 	systems []string
-	options int
+	schemas int
 }
 
 func (c *briefJSONClient) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	c.mutex.Lock()
 	c.systems = append(c.systems, textOf(messages[0]))
-	c.options += len(options)
+	// Applied to a request the way the adapter applies them, so a ceiling
+	// option is not mistaken for a schema.
+	request := &ai.Request{}
+	for _, option := range options {
+		_ = option(request)
+	}
+	if request.ResponseFormat != nil {
+		c.schemas++
+	}
 	c.mutex.Unlock()
 	return response(c.body), nil
 }
 
-func (c *briefJSONClient) sawOptions() bool {
+func (c *briefJSONClient) sawSchema() bool {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	return c.options > 0
+	return c.schemas > 0
 }
 
 func (c *briefJSONClient) system() string {
