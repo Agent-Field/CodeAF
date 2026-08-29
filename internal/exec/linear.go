@@ -468,7 +468,10 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 		maxTokens = defaultLeafTokens
 	}
 	if deadline <= 0 {
-		deadline = 15 * time.Minute
+		// A caller that said nothing about time gets the generalist's own
+		// floor, asked for rather than written out again: this loop IS the
+		// generalist, so the shape registered under its name is the answer.
+		deadline = linearInfo.Deadline(0)
 	}
 	return &Linear{client: client, workspace: workspace, web: web,
 		maxTurns: maxTurns, maxTokens: maxTokens, deadline: deadline}

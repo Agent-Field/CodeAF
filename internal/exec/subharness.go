@@ -69,10 +69,12 @@ type SubharnessInfo struct {
 }
 
 // linearInfo is the shape the whole system ran on before there was a second
-// one: fifteen minutes floor, one minute per fifty thousand tokens above it
-// (cmd/aforge leafDeadline, and the headless runner it was copied from). Its
-// Purpose and PriorAnchors are deliberately empty — linear is the baseline
-// every node is already judged against, not an entry on a menu.
+// one: fifteen minutes floor, one minute per fifty thousand tokens above it.
+// Every surface that grants a leaf its room reads it through [SubharnessFor],
+// which answers with this registration for the generalist and for any name
+// nobody registered. Its Purpose and PriorAnchors are deliberately empty —
+// linear is the baseline every node is already judged against, not an entry on
+// a menu.
 var linearInfo = SubharnessInfo{
 	Name:              LinearSubharness,
 	DeadlineFloor:     15 * time.Minute,
@@ -81,6 +83,17 @@ var linearInfo = SubharnessInfo{
 }
 
 // Deadline is the budget shape applied to one leaf's token grant.
+//
+// THIS IS THE ONLY PLACE IN THE PROCESS THAT DOES THIS ARITHMETIC, and that is
+// the law rather than a tidiness. The same fifteen-minute floor and the same
+// minute per fifty thousand tokens were written out longhand in four places —
+// the chat surface, the headless runner, the linear loop's own fallback and the
+// claim reaper's window — and the four then had to be kept in step by hand
+// across a change none of them could see. The reaper's window is derived from
+// this figure two additions along, so a floor that moved here and nowhere else
+// put the backstop BELOW the deadline it is meant to sit above, which is not a
+// backstop but the thing that fires first. `TestOnlyTheSubharnessTableSizesALeafsRoom`
+// fails the build on a fifth copy.
 func (s SubharnessInfo) Deadline(budgetTokens int) time.Duration {
 	floor, step, per := s.DeadlineFloor, s.DeadlineStep, s.DeadlinePerTokens
 	if floor <= 0 {
@@ -93,6 +106,34 @@ func (s SubharnessInfo) Deadline(budgetTokens int) time.Duration {
 		return scaled
 	}
 	return floor
+}
+
+// watchdogPad is how far above a leaf's own deadline the node watchdog sits.
+//
+// It is the room a leaf told to land needs to notice and finish: one more model
+// call and one more transcript flush. Two minutes, unchanged from the figure
+// every surface wrote out for itself, and it lives beside the deadline it is
+// added to because the two are one bound in two parts — the worker's own clock,
+// and the backstop that must never fire below it.
+const watchdogPad = 2 * time.Minute
+
+// WatchdogAbove is the node watchdog over a deadline that has already been
+// decided — a retry running on the shape its first attempt was given, a leaf
+// whose worker changed under it.
+//
+// It is derived here rather than at each dispatch site for the reason stated on
+// [SubharnessInfo.Deadline]: `deadline + 2*time.Minute`, written out by hand in
+// seven places across three files, is a pad that disagrees with itself the first
+// time one of them is edited.
+func WatchdogAbove(deadline time.Duration) time.Duration {
+	return deadline + watchdogPad
+}
+
+// Watchdog is the node watchdog above one leaf's token grant: its own deadline
+// plus the landing pad. The executor has a deadline of its own, so this only
+// fires when a worker is wedged past every limit it was given.
+func (s SubharnessInfo) Watchdog(budgetTokens int) time.Duration {
+	return WatchdogAbove(s.Deadline(budgetTokens))
 }
 
 // linearManifest is the baseline under the new contract: the same cost shape,
