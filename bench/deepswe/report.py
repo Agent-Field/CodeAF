@@ -37,6 +37,14 @@ def row(d):
     cost = read(os.path.join(d, "cost.json"))
     reward = read(os.path.join(d, "reward.json"), default=None)
     note = ""
+    if meta.get("void"):
+        # A specialist worker took the run over, so it is not a measurement of
+        # the path under test. Never averaged in, never silently dropped.
+        return {"dir": os.path.basename(d), "task": meta.get("task", "?"),
+                "lang": meta.get("language", ""), "reward": "VOID", "partial": "",
+                "cost": read(os.path.join(d, "cost.json")).get("cost_usd", 0.0) or 0.0,
+                "wall": meta.get("agent_seconds", 0), "exit": meta.get("exit_code", ""),
+                "note": "ran on worker " + ",".join(meta.get("workers_ran", []))}
     if reward is None:
         score, partial = "rig", ""
         note = meta.get("stage", "?")
@@ -65,8 +73,11 @@ def row(d):
 
 def main(dirs):
     if not dirs:
+        # gold/ directories are the control, not a measurement — gold.sh reports
+        # them, and averaging them in here would flatter every sweep by five
+        # guaranteed ones. Name one explicitly to see it.
         dirs = [os.path.join(RESULTS, e) for e in sorted(os.listdir(RESULTS))
-                if os.path.isdir(os.path.join(RESULTS, e))]
+                if os.path.isdir(os.path.join(RESULTS, e)) and not e.endswith("-gold")]
     rows = [row(d) for d in dirs]
     print(f"{'TASK':46} {'LANG':11} {'REWARD':>6} {'PARTIAL':>8} {'COST$':>8} "
           f"{'WALL(s)':>8} {'EXIT':>5}  NOTE")
