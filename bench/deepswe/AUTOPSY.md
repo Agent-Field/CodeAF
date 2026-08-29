@@ -825,3 +825,107 @@ corpus's own collect command has the same shape, so this is inherited rather tha
 invented — but it is a hole, and a run that hits the wall mid-branch falls into
 it. Recorded, not yet fixed; the container was already gone when the empty patch
 was noticed, so the run is reported as ungraded rather than as a zero.
+
+---
+
+# s8 — the coverage loop closes, and the ceiling stops being silent (`6a9a5a53`)
+
+| task | reward | f2p | p2p | cost | wall | exit | nodes | readings (read/total) | scope | unexercised open→close | `leaf_exhausted` | last line |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| igel-persist-feature-schema | 0 | **22/24** | 2/2 | $0.274 | 3190s | **2** | 7 | **10 / 10** | touched (1 file) | **4 → 0** | 9 | `partial —` |
+| ofetch-per-origin-circuit-breaker | 0 | **42/47** | 13/13 | $0.462 | 2644s | **2** | 37 | **8 / 9** | touched (1 file) + whole | **18 → 15** | 32 | `partial —` |
+| happy-dom-…-intersectionobserver | 0 | **12/14** | 9/9 | $0.162 | 1803s | **2** | 1 | 0 / 2 | whole | — | 1 | `partial —` |
+| textual-richlog-follow-state | 0 | 10/20 | 6/6 | $0.093 | 1205s | **2** | 6 | 0 / 1 | touched (40 files) | — | 6 | — (cancelled parts) |
+| ink-grid-box-layout | 0 | 9/25 | 49/49 | **$0.000\*** | 1037s | **1** | 1 | 1 / 1 | whole | — | 1 | — (abandoned) |
+
+\* the ledger, not the truth — see below.
+
+**Five of five exit non-zero.** No run in this sweep claimed to be whole.
+
+## The coverage loop closed for the first time
+
+**igel: 4 unexercised → 0.** Round 1's gate named four behaviours no check
+exercised; round 2's gate carries an empty set. The stream says it plainly at
+`run.log:47` and the run ends:
+
+> `partial — gate: feature_schema.joblib, description.json (not repaired: no more work could be started on it)`
+
+**ofetch: 18 → 15**, three genuinely closed — `Count a circuit failure for
+response statuses listed in failureStatusCodes`, `Non-listed 4xx/5xx … must not
+increment`, `One external call is one logical request`. The open set now persists
+across rounds as its own `unexercised` array on the gate event, and
+`no check exercises` is its own journaled line rather than buried in a gap:
+
+```
+L60   22m48s  no check exercises — Circuit breaker is opt-in per origin … — and 17 more
+L194  44m3s   no check exercises — Circuit breaker is opt-in per origin … — and 14 more
+```
+
+ofetch's findings also drove the work: **37 nodes**, one leaf per unexercised
+behaviour, titled verbatim from the points (`when circuitBreaker: true, …`,
+`behavior works consistently…`). That is where its $0.462 went.
+
+## Scoping is implemented and mis-aimed in both directions
+
+| run | scope chosen | what it ran | named | verdict |
+| --- | --- | --- | --- | --- |
+| ofetch | touched packages (1 file) | `pnpm exec vitest run --reporter=json test/circuit-breaker.test.ts` | 30, red 6 → red 0 | **right** |
+| igel | touched packages (1 file) | `python3 -m pytest -rA tests/test_igel/test_igel.py` | 2, red 2 → red 0 | **too narrow** — never sees the ~40 tests the run wrote |
+| textual | touched packages (**40 files**) | `pytest … tests/animations/ tests/command_palette/ tests/css/ tests/input/ …` | 0 | **too wide** — killed at 1m53s |
+| happy-dom | whole | `npx vitest run --reporter=json` | 0 | **not scoped at all** — never found `packages/happy-dom` |
+| ink | whole | `npx ava --tap` | **44, partial** | cut, roster kept |
+
+ink is the one clear win of the partial-roster change: cut at the same 112.6s,
+`read: true, named: 44, partial: true` where s7 recorded `read: false, named: 0`.
+
+## Unreadable no longer ships as whole
+
+happy-dom's single gate:
+
+```
+pass: false   polish_closed: true   unreadable: true
+unmeasured: "nothing in this project's verification could be read: `npx vitest
+             run --reporter=json` was killed at its ceiling of 1m53s …"
+```
+
+`polish_closed: true` is the exact door that let ofetch and ink out at exit 0 in
+s6. `unreadable: true` now overrides it → `partial —` line, exit 2.
+
+## Exhaustion is journaled on three axes; resumption is not
+
+49 `leaf_exhausted` events across the sweep, and the reason is legible:
+
+```
+⏳ Log API      — it was still working when it ran out of its tokens — 25 turns in
+⏳ Synthesis    — it was still working when it ran out of its tokens — 20 turns in
+⏳ Happy DOM …  — it was still working when it ran out of its 15m0s — 108 turns in
+```
+
+Leaves now stop on tokens (8–28 turns) or on a 15-minute budget, and s6's silent
+22-minute re-claim is gone. **But `↻ … resumed from N recorded turns` appears in
+not one run of the five.** The half that ends a leaf landed; the half that brings
+it back has not been observed.
+
+## Where it still broke
+
+**ink s8 lost its run to a hung call, and then lost its ledger.**
+
+```
+16m44s  still waiting: 0 tasks pending, 1 running · last call deepseek/deepseek-v4-flash 16m44s ago
+17m17s  ⏳ CSS Grid layout support — the worker did not come back within 17m0s and was given up on
+17m17s  ✗ CSS Grid layout support
+        deliverable: "executor did not return within 17m0s; abandoned"
+```
+
+`leaf_exhausted` then `node_failed`, no gate ever ran, exit 1. The claim-by-
+evidence-of-life change converted s6's silent re-claim into an honest give-up,
+but nothing retried the hung call — the liveness defect from s1 is still the root
+cause. And **`cost.json` reports $0.000228 across one usage row for 17 minutes of
+work that left a 26,248-byte patch**: usage is banked on turn completion, so an
+abandoned leaf's spend disappears. Any cost figure for a run that ends this way
+is fiction.
+
+**textual's two cancelled parts are why it exits 2**, not its gate — the gate
+`refused — what it asked for is already on disk under the name the request used`
+with `overturned: true` would have acquitted it, but `task-2-x1-n3` and
+`task-2-x1-n4` are cancelled and `deliveredWhole` fails on a cancelled part.
