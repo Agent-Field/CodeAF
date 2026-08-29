@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -37,7 +38,23 @@ import (
 // rule is stated as a reading of the inputs rather than as a number — follow the
 // enumeration the material presents, and leave whole what it does not present
 // as standing apart.
-const fanoutPrompt = `You list the parts of one stage that all run at the same time.
+// fanOutWidth is the most parts one stage may come back as, and it is stated
+// once for two readers.
+//
+// The prompt below interpolates it, so the model is told the number; the ceiling
+// derivation is handed the same number, so the reply is given the room for that
+// many parts. Those two were separate before — a sentence in a prompt saying
+// five, and a completion cap sized for one object — and the gap between them is
+// how the s4 sweep's textual run died with the fan-out's second stage cut off
+// mid-part and no node ever created. A count a model is asked for and a count a
+// model is given room for are one fact; this is where it lives.
+const fanOutWidth = 5
+
+// fanOutWidthWord is fanOutWidth as the prompt spells it. A prompt is text and
+// a ceiling is arithmetic; this is the one line that makes them the same figure.
+var fanOutWidthWord = strconv.Itoa(fanOutWidth)
+
+var fanoutPrompt = `You list the parts of one stage that all run at the same time.
 
 ` + agentPremise + `
 
@@ -95,7 +112,7 @@ piece would have found, or where the answer depends on holding the whole set
 together, the enumeration is not a split and the work stays whole.
 
 Default to fewer parts. Only split out a part when you can say what makes it
-doable by an agent that knows nothing about the others. Give 1 to 5 parts, and
+doable by an agent that knows nothing about the others. Give 1 to ` + fanOutWidthWord + ` parts, and
 return a single part when the stage is genuinely one piece of work — that is a
 correct answer, not a failure to decompose.
 
@@ -235,7 +252,7 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		Parts []Node `json:"parts"`
 	}
 	var usage Usage
-	response, err := structured(ctx, client, messages, fanoutSchema, &decoded)
+	response, err := structuredParts(ctx, client, messages, fanoutSchema, fanOutWidth, &decoded)
 	usage.Add(usageOf(response))
 	if err != nil {
 		return nil, usage, fmt.Errorf("fan-out stage %d: %w", stage, err)
@@ -252,7 +269,7 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		var again struct {
 			Parts []Node `json:"parts"`
 		}
-		retry, retryErr := structured(ctx, client, messages, fanoutSchema, &again)
+		retry, retryErr := structuredParts(ctx, client, messages, fanoutSchema, fanOutWidth, &again)
 		usage.Add(usageOf(retry))
 		if retryErr == nil {
 			if retried := fanOutNodes(stage, again.Parts); len(retried) > 0 && worthSplitting(retried, enumerated) == "" {

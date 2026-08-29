@@ -1037,6 +1037,16 @@ func (w *settlementWatch) narrate(nodes []store.Node) {
 	said := false
 	for _, event := range events {
 		w.narrated = event.Seq
+		// A REPAIR OF A MODEL CALL IS A FACT ABOUT THE RUN AND NOT ABOUT ONE
+		// NODE, so it is the one kind read without asking whether the errand
+		// owns the node it is filed under. It has to be: the planner's repairs
+		// happen against the job root before a single node exists, which is
+		// precisely the moment the s4 sweep's textual run died in silence with
+		// nothing on the stream but "still waiting".
+		if event.Kind == store.EventStructuredRepair {
+			said = w.narrateRepair(event) || said
+			continue
+		}
 		node, ours := member[event.NodeID]
 		if !ours {
 			continue
@@ -1136,6 +1146,26 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		return true
 	}
 	return false
+}
+
+// narrateRepair says what the structured-answer seam had to do to get an answer.
+//
+// The words are the seam's own, kept verbatim off the journal rather than
+// rebuilt here, so a person watching and a person reading the record afterwards
+// are looking at one sentence: "plan: answer cut at the ceiling — continued".
+// The mark is ↻ because that is what this stream already means by it — something
+// was tried again — and it is the same register the escalation line uses.
+func (w *settlementWatch) narrateRepair(event store.Event) bool {
+	var repair store.StructuredRepair
+	if json.Unmarshal(event.Payload, &repair) != nil {
+		return false
+	}
+	line := strings.TrimSpace(repair.Line)
+	if line == "" {
+		return false
+	}
+	fmt.Fprintf(w.progress, "  ↻ %s  %s\n", line, time.Since(w.started).Round(time.Second))
+	return true
 }
 
 // say writes one narration line about a node, in the register the status lines

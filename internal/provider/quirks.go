@@ -62,7 +62,21 @@ type quirksStore struct {
 	// fields. It is per model because one incompatible endpoint must not erase
 	// continuity for every reasoning model routed through this process.
 	noReasoningReplay map[string]time.Time
-	loaded            bool
+	// answerCut is the sixth learned fact and the only one that is a NUMBER
+	// rather than a date: how many completion tokens a model spent before its
+	// structured answer was cut off, keyed by model and by the lane that asked.
+	//
+	// It is here rather than beside the seam that reads it because it is the
+	// same kind of fact as its neighbours — something a provider will not
+	// publish and only a call's answer can teach — and because being here it
+	// survives the process, which is the whole difference between a harness
+	// that learns and one that rediscovers. The lane is part of the key for the
+	// reason the router's call classes are per class: a model that cuts on a
+	// fan-out of five parts says nothing about the same model answering a
+	// one-object verdict, and a memo that pooled them would raise the ceiling
+	// on every call in the system because one of them is wide.
+	answerCut map[string]int
+	loaded    bool
 
 	// writes counts saves in flight. The save is deliberately off the request
 	// path — the call that learned the fact is waiting to be re-sent and must
@@ -80,6 +94,7 @@ var quirks = &quirksStore{
 	noCacheControl:    map[string]time.Time{},
 	noReasoningBudget: map[string]time.Time{},
 	noReasoningReplay: map[string]time.Time{},
+	answerCut:         map[string]int{},
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
@@ -128,6 +143,13 @@ type quirksWire struct {
 	// ReasoningReplayRejected maps a model to when its endpoint refused
 	// assistant reasoning carried back for tool-loop continuity.
 	ReasoningReplayRejected map[string]time.Time `json:"reasoning_replay_rejected,omitempty"`
+
+	// AnswerCutAt maps "<model>\n<lane>" to the widest completion, in tokens,
+	// that lane has seen this model spend before being cut off mid-answer. It
+	// only ever grows, and it is read as evidence rather than as policy: the
+	// seam that sizes a structured request asks it what actually happened here
+	// and refuses to send a ceiling it has already watched this model overrun.
+	AnswerCutAt map[string]int `json:"answer_cut_at,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -148,6 +170,11 @@ func (q *quirksStore) load(path string) {
 	seed(q.noCacheControl, wire.CacheControlRejected)
 	seed(q.noReasoningBudget, wire.ReasoningBudgetRejected)
 	seed(q.noReasoningReplay, wire.ReasoningReplayRejected)
+	for key, spent := range wire.AnswerCutAt {
+		if spent > q.answerCut[key] {
+			q.answerCut[key] = spent
+		}
+	}
 }
 
 // seed folds a loaded set into a live one without ever dropping a fact learned
@@ -209,6 +236,56 @@ func (q *quirksStore) knowsNoReasoningReplay(model string) bool {
 	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningReplay }, model)
 }
 
+// NoteAnswerCut records that a model ran out of room mid-answer on one lane,
+// and reports whether that is wider than anything already known. Only a wider
+// cut is worth a write: a model that cuts on every call of a lane costs the
+// profile one save, not one per call.
+//
+// The figure recorded is what the model actually SPENT, never what it was
+// allowed — a provider that stops short of the ceiling has told us where its
+// own wall is, and that is the more useful of the two numbers.
+func NoteAnswerCut(model, lane string, spent int) bool {
+	key := answerCutKey(model, lane)
+	if key == "" || spent <= 0 {
+		return false
+	}
+	quirks.mutex.Lock()
+	if spent <= quirks.answerCut[key] {
+		quirks.mutex.Unlock()
+		return false
+	}
+	quirks.answerCut[key] = spent
+	quirks.mutex.Unlock()
+	quirks.persist()
+	return true
+}
+
+// WidestAnswerCut answers what this model has been seen to spend before being
+// cut off on this lane, zero when it has never been cut off here. Zero means
+// "nothing was learned", which is the honest reading and the one that leaves the
+// derived ceiling standing alone.
+func WidestAnswerCut(model, lane string) int {
+	key := answerCutKey(model, lane)
+	if key == "" {
+		return 0
+	}
+	quirks.mutex.Lock()
+	defer quirks.mutex.Unlock()
+	return quirks.answerCut[key]
+}
+
+// answerCutKey joins the two halves of the memo's key. A call with no model
+// named — every path that runs without a router — has nothing to learn about and
+// nothing to remember, so it keys to nothing and both sides above no-op.
+func answerCutKey(model, lane string) string {
+	name := normalizeModel(model)
+	lane = strings.TrimSpace(lane)
+	if name == "" || lane == "" {
+		return ""
+	}
+	return name + "\n" + lane
+}
+
 func (q *quirksStore) record(set func(*quirksStore) map[string]time.Time, model string, at time.Time) bool {
 	key := normalizeModel(model)
 	if key == "" {
@@ -247,6 +324,10 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 		CacheControlRejected:    make(map[string]time.Time, len(q.noCacheControl)),
 		ReasoningBudgetRejected: make(map[string]time.Time, len(q.noReasoningBudget)),
 		ReasoningReplayRejected: make(map[string]time.Time, len(q.noReasoningReplay)),
+		AnswerCutAt:             make(map[string]int, len(q.answerCut)),
+	}
+	for key, spent := range q.answerCut {
+		wire.AnswerCutAt[key] = spent
 	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt

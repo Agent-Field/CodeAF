@@ -39,6 +39,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -923,85 +924,41 @@ func countLabel(count int) string {
 // pass that hand-rolled the sequence would sooner or later report a parse
 // failure as a success, and nothing reading the verdict could tell.
 //
+// The sending and the decoding are no longer this package's own. They are
+// internal/shaped, which is the seam every structured call in the harness goes
+// through: it sizes the ceiling from the ask, continues an answer that ran out
+// of room rather than re-buying it, asks once more for a reply that was not an
+// object, and hands back a typed fault when neither worked. What is left here is
+// the part that was always the planner's — WHICH ask, and what its answer means.
+//
 // It reports only the two verdicts it can determine by itself. Whether a reply
 // that parsed is actually *right* is a question only the caller can answer, so
 // the slot is left open for it; a caller that never answers leaves the call
 // unverified, which is the truth.
 func structured(ctx context.Context, client Completer, messages []ai.Message, schema json.RawMessage, into any) (*ai.Response, error) {
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(schema), ai.WithMaxTokens(structuredReplyTokens))
-	if err != nil {
-		provider.Report(ctx, provider.VerdictProviderFailure)
-		return nil, err
-	}
-	// THE VERDICT ON A CUT REPLY IS WHETHER IT DECODES, NEVER THE FINISH
-	// REASON ALONE. Two failures look the same on the wire — a reasoning model
-	// that burned the budget thinking and returned nothing (seen at
-	// completion_tokens=32768), and a model that looped inside the schema and
-	// returned fifty-seven characters of nothing — and for both, one retry with
-	// a doubled budget is the difference between a contract and a dead node; a
-	// second cut answer is the model's problem, not the budget's. But a third
-	// shape exists that is not a failure at all: nvidia/nemotron-3.5-lightning
-	// answers the panel question with a complete object and finish_reason
-	// "length", the counter having reached the ceiling on tokens that never
-	// became text. A retry taken on the finish reason alone spent forty-five
-	// seconds fetching a second copy of an answer that was already in hand.
-	if finishedForLength(response) && !decodesAsObject(response.Text()) {
-		retry, retryErr := client.CompleteWithMessages(ctx, messages,
-			ai.WithSchema(schema), ai.WithMaxTokens(retryTokenBudget(response)))
-		if retryErr == nil {
-			response = retry
-		}
-	}
-	if err := decodeJSON(response.Text(), into); err != nil {
-		provider.Report(ctx, provider.VerdictFormatFailure)
-		return response, annotate(err, response)
-	}
-	return response, nil
+	return structuredParts(ctx, client, messages, schema, 1, into)
 }
 
-// structuredReplyTokens is the ceiling on a planning call's first attempt.
+// structuredParts is structured for an ask that expects a LIST back, and the
+// count is the one the prompt itself states.
 //
-// Every call in this package asks for one JSON object of a known schema — a
-// verdict, a brief, a contract, a panel decision — and the largest of them is a
-// few thousand tokens. Left unset, the ceiling was the client's default, which
-// the headless door raises to the leaf completion reserve (65536): a ceiling
-// for a worker writing code, applied to a call answering a form. The
-// difference is not academic. A model that loops inside a schema runs to
-// whatever ceiling it is given; at 65536 that was four minutes and $0.013 per
-// call on nvidia/nemotron-3.5-lightning, twice in one plan, with the run
-// showing nothing but "still waiting" for the duration. Sized for the answer,
-// the same failure costs thirty seconds, and the retry below still has room
-// to double for a reply that genuinely needed more.
-const structuredReplyTokens = 8192
-
-// decodesAsObject is the probe structured uses before it spends a retry: it
-// asks only whether the text holds one complete JSON object, into a target
-// that accepts any, so the caller's destination is written exactly once.
-func decodesAsObject(text string) bool {
-	return decodeJSON(text, &struct{}{}) == nil
-}
-
-func finishedForLength(response *ai.Response) bool {
-	return response != nil && len(response.Choices) > 0 &&
-		response.Choices[0].FinishReason == "length"
-}
-
-// retryTokenBudget doubles what the truncated attempt actually spent, bounded
-// so one pathological node cannot demand an absurd completion.
-func retryTokenBudget(response *ai.Response) int {
-	const ceiling = 96_000
-	spent := 0
-	if response != nil && response.Usage != nil {
-		spent = response.Usage.CompletionTokens
-	}
-	budget := spent * 2
-	if budget < 16_000 {
-		budget = 16_000
-	}
-	if budget > ceiling {
-		budget = ceiling
-	}
-	return budget
+// It exists because the ceiling on a reply is a property of the ask and not of
+// the pass: the fan-out asks for up to five parts, each with a title, a summary
+// and its own list of sources, and it was being given the room for one verdict.
+// The s4 sweep's textual run died exactly there — cut at the ceiling, cut again
+// on the retry, and the run exited with zero nodes on a task it had scored 17/20
+// on a sweep earlier. The number passed here is the same constant the prompt
+// interpolates, so the sentence the model reads and the room it is given cannot
+// disagree.
+func structuredParts(ctx context.Context, client Completer, messages []ai.Message,
+	schema json.RawMessage, parts int, into any) (*ai.Response, error) {
+	return shaped.Answer(ctx, client, shaped.Ask{
+		Lane:     "plan",
+		Messages: messages,
+		Schema:   schema,
+		Routed:   true,
+		Answers:  parts,
+	}, into)
 }
 
 // decodeJSON reads a structured reply. The tolerance is not a nicety: a router
@@ -1085,4 +1042,21 @@ func userMessage(text string) ai.Message {
 
 func systemMessage(text string) ai.Message {
 	return ai.Message{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: text}}}
+}
+
+// targetCount is how many nodes of one stage a per-node pass is about to ask
+// about, and therefore how many objects its reply has to hold.
+//
+// The three passes that use it — size, bind and audit — each list a stage's
+// nodes into a prompt and get one row back per node. Their reply grows with the
+// graph and their ceiling did not, which is the same mistake the fan-out made
+// with a number the caller could simply have counted.
+func targetCount(graph *Graph, stage int) int {
+	count := 0
+	for _, node := range graph.Nodes {
+		if node.Stage == stage {
+			count++
+		}
+	}
+	return count
 }

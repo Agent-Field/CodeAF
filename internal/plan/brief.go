@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -439,7 +440,7 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 	// under the same ceiling as every other planning call, because left unset
 	// the ceiling is the leaf completion reserve and a model that loops runs
 	// to it (see structuredReplyTokens).
-	options := []ai.Option{ai.WithMaxTokens(structuredReplyTokens)}
+	options := []ai.Option{ai.WithMaxTokens(shaped.ObjectRoom())}
 	if Criterion {
 		system = briefWithCriterion
 		options = append(options, ai.WithSchema(briefSchema))
