@@ -3,8 +3,10 @@ package plan
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -26,8 +28,11 @@ func (c *ceilingClient) CompleteWithMessages(_ context.Context, _ []ai.Message, 
 		ceiling = *request.MaxTokens
 	}
 	c.ceilings = append(c.ceilings, ceiling)
-	reply := c.replies[len(c.ceilings)-1]
-	return reply, nil
+	index := len(c.ceilings) - 1
+	if index >= len(c.replies) {
+		index = len(c.replies) - 1
+	}
+	return c.replies[index], nil
 }
 
 func cutReply(text string, spent int) *ai.Response {
@@ -41,45 +46,59 @@ func wholeReply(text string) *ai.Response {
 	return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}}, FinishReason: "stop"}}}
 }
 
-// A planning call asks for a form, and its first attempt is sized for one.
-// Left to the client's default the ceiling was the leaf completion reserve,
-// and a model that looped inside the schema ran to it: four minutes and
-// $0.013 for fifty-seven characters, twice in one plan. A reply cut at the
-// ceiling — empty or not — gets exactly one retry with room to double.
-func TestAStructuredCallIsSizedForItsAnswerAndRetriesACutReplyOnce(t *testing.T) {
-	client := &ceilingClient{replies: []*ai.Response{
-		cutReply(`{"mode": "ens`, structuredReplyTokens),
-		wholeReply(`{"mode":"ensemble","reason":"fine"}`),
-	}}
+// A planning call asks for a form, and it is sized for one. Left to the
+// client's default the ceiling was the leaf completion reserve, and a model
+// that looped inside the schema ran to it: four minutes and $0.013 for
+// fifty-seven characters, twice in one plan.
+func TestAStructuredCallIsSizedForOneFormsWorth(t *testing.T) {
+	client := &ceilingClient{replies: []*ai.Response{wholeReply(`{"mode":"ensemble","reason":"fine"}`)}}
 	var panel Panel
 	if _, err := structured(context.Background(), client, nil, json.RawMessage(`{}`), &panel); err != nil {
-		t.Fatalf("a cut reply must be retried, not returned: %v", err)
+		t.Fatalf("structured: %v", err)
 	}
-	if panel.Mode != "ensemble" {
-		t.Fatalf("decoded %+v, want the retry's answer", panel)
-	}
-	if len(client.ceilings) != 2 {
-		t.Fatalf("calls = %d, want the attempt and one retry", len(client.ceilings))
-	}
-	if client.ceilings[0] != structuredReplyTokens {
-		t.Fatalf("first ceiling = %d, want %d — a form's worth, never the leaf reserve", client.ceilings[0], structuredReplyTokens)
-	}
-	if want := retryTokenBudget(client.replies[0]); client.ceilings[1] != want {
-		t.Fatalf("retry ceiling = %d, want %d", client.ceilings[1], want)
+	if want := shaped.ObjectRoom(); client.ceilings[0] != want {
+		t.Fatalf("ceiling = %d, want %d — a form's worth, never the leaf reserve", client.ceilings[0], want)
 	}
 }
 
-func TestASecondCutReplyIsTheModelsProblemNotTheBudgets(t *testing.T) {
-	client := &ceilingClient{replies: []*ai.Response{
-		cutReply(`{"mode": "ens`, structuredReplyTokens),
-		cutReply(`{"mode": "ensemble", "reas`, 16_000),
-	}}
-	var panel Panel
-	if _, err := structured(context.Background(), client, nil, json.RawMessage(`{}`), &panel); err == nil {
-		t.Fatal("two cut replies must surface as the decode failure they are")
+// THE FAN-OUT'S CEILING IS THE FAN-OUT'S OWN WIDTH. A stage may come back as up
+// to fanOutWidth parts, each with a title, a summary and its own source list,
+// and it was being given the room for one verdict. That is what killed the s4
+// sweep's textual run: cut at the ceiling, cut again on the retry, exit 1 with
+// zero nodes on a task that had scored 17/20 a sweep earlier.
+func TestAFanOutIsSizedForTheWidthItsPromptPermits(t *testing.T) {
+	client := &ceilingClient{replies: []*ai.Response{wholeReply(`{"parts":[]}`)}}
+	var decoded struct {
+		Parts []Node `json:"parts"`
 	}
-	if len(client.ceilings) != 2 {
-		t.Fatalf("calls = %d, want exactly two — the budget is not the problem", len(client.ceilings))
+	if _, err := structuredParts(context.Background(), client, nil, fanoutSchema, fanOutWidth, &decoded); err != nil {
+		t.Fatalf("structuredParts: %v", err)
+	}
+	if one := shaped.ObjectRoom(); client.ceilings[0] <= one {
+		t.Fatalf("a %d-part ask got %d, the room for one object (%d)", fanOutWidth, client.ceilings[0], one)
+	}
+	// And the number the model is told is the number the room is sized for.
+	// Two spellings of one figure is the drift this interpolation prevents.
+	if !strings.Contains(fanoutPrompt, "Give 1 to "+fanOutWidthWord+" parts") {
+		t.Fatal("the fan-out prompt no longer states the width its ceiling is derived from")
+	}
+}
+
+// A fan-out cut mid-part is CONTINUED, and the plan survives it. Before the
+// seam, the whole run did not.
+func TestACutFanOutIsContinuedAndTheStageStillLands(t *testing.T) {
+	client := &ceilingClient{replies: []*ai.Response{
+		cutReply(`{"parts":[{"title":"read the failing test","summary":"find why follow state resets","sources":["a"]},{"title":"fix the fol`, 8192),
+		wholeReply(`low state","summary":"keep the flag across resize","sources":["b"]}]}`),
+	}}
+	var decoded struct {
+		Parts []Node `json:"parts"`
+	}
+	if _, err := structuredParts(context.Background(), client, nil, fanoutSchema, fanOutWidth, &decoded); err != nil {
+		t.Fatalf("a cut fan-out must be continued, not surfaced as a dead plan: %v", err)
+	}
+	if len(decoded.Parts) != 2 || decoded.Parts[1].Title != "fix the follow state" {
+		t.Fatalf("the halves were not joined: %+v", decoded.Parts)
 	}
 }
 
@@ -89,7 +108,7 @@ func TestASecondCutReplyIsTheModelsProblemNotTheBudgets(t *testing.T) {
 // retry taken on the finish reason alone cost forty-five seconds for a second
 // copy of an answer already in hand.
 func TestACompleteReplyUnderALengthFinishIsNotRetried(t *testing.T) {
-	client := &ceilingClient{replies: []*ai.Response{cutReply(`{"mode":"decompose","reason":"one subject"}`, structuredReplyTokens)}}
+	client := &ceilingClient{replies: []*ai.Response{cutReply(`{"mode":"decompose","reason":"one subject"}`, 8192)}}
 	var out struct {
 		Mode   string `json:"mode"`
 		Reason string `json:"reason"`
@@ -102,5 +121,19 @@ func TestACompleteReplyUnderALengthFinishIsNotRetried(t *testing.T) {
 	}
 	if out.Mode != "decompose" || out.Reason != "one subject" {
 		t.Fatalf("decoded %+v, want the complete object", out)
+	}
+}
+
+// A model that will not answer in shape at all leaves the planner with a typed
+// fault rather than a quiet success — the door above it turns that into the
+// smallest admissible plan instead of ending the run.
+func TestAPlannerAnswerThatIsNeverJSONIsATypedFault(t *testing.T) {
+	client := &ceilingClient{replies: []*ai.Response{wholeReply("I'd start by reading the test."), wholeReply("Still just prose.")}}
+	var decoded struct {
+		Parts []Node `json:"parts"`
+	}
+	_, err := structuredParts(context.Background(), client, nil, fanoutSchema, fanOutWidth, &decoded)
+	if !shaped.Unreadable(err) {
+		t.Fatalf("want the typed fault, got %v", err)
 	}
 }

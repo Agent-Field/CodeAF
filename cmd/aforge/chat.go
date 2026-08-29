@@ -1471,8 +1471,30 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
 			records := gateEvidence(node, task.Spec, outcome, absolute, true, jobDir)
-			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
+			// Whatever the gate's own call has to be repaired to get an answer is
+			// journaled against this node, so a delivery that took three model
+			// calls to judge says so rather than looking like one that took one.
+			gateCtx := withRepairJournal(ctx, graph, node.ID)
+			gate := revision.JudgeDeliverable(gateCtx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
+			if gate.Fault != "" {
+				// THE GATE FAULTED, AND A RUN WHOSE CHECK DID NOT HAPPEN IS NOT
+				// A RUN THAT PASSED ITS CHECK.
+				//
+				// This is the s4 sweep's second fatal shape, closed. The gate
+				// answered with something no reader could parse; the seam
+				// continued it, asked again, and still got nothing; and the old
+				// path took that for an abstention and delivered the work as
+				// done over exit 0. What is recorded instead is a delivery whose
+				// gap was never closed — Unclosed, which is the field the exit
+				// code turns on — so the run ends PARTIAL with the reason on the
+				// stream, and the reservation rides the delivery so the person
+				// reading it knows nothing confirmed this.
+				_ = graph.RecordDeliveryGate(node.ID, store.DeliveryGate{
+					Gap: revision.GateFaultWords(gate.Fault), Unclosed: true,
+				})
+				notes = append(notes, revision.GateFaultHandover(gate.Fault))
+			}
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
 					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
@@ -1713,7 +1735,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						}
 					}
 					if polished != nil {
-						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
+						closed := revision.JudgeDeliverable(withRepairJournal(ctx, graph, node.ID),
+							settings, planClient, graph, node, text, task.Contract,
 							gateEvidence(node, task.Spec, outcome, absolute, true, jobDir), polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
@@ -4398,6 +4421,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// each branch is what makes it impossible for one exit to journal a
 		// shape and leave the reason behind.
 		structure := plans.takeReading(compiled.Goal)
+		// Every structured call this planner makes reports what it had to do to
+		// get an answer, against the id this job's nodes will be minted under —
+		// which is filed before a single one of them exists, and is therefore
+		// the only anchor that covers the planner at all. See withRepairJournal.
+		ctx = withRepairJournal(ctx, history, prefix)
 		// Built before the scale gate rather than after it. A one-node job still
 		// buys a contract call, and that call was the last structuring round-trip
 		// in the system that reported nothing at all — the poster used to be
@@ -4436,12 +4464,46 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 				plans.put(prefix, document, prefix, "", nil)
 			}
 			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteSingleLeaf, 1)
-			return store.Subtree{Nodes: []store.NodeSpec{{
-				ID:    prefix,
-				Brief: compiled.Goal,
-				Stage: 1,
-				Spec:  resident.EncodeSpec(leaf),
-			}}}, nil
+			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
+		}
+		// THE SMALLEST ADMISSIBLE PLAN, for when the planner cannot draw one.
+		//
+		// A planning pass that fails before any node exists used to end the run:
+		// exit 1, zero nodes, a third of a cent spent, and nothing attempted on
+		// work the same harness had scored 17/20 on a sweep earlier. That is the
+		// clause FAILSAFE.md puts hardest — a fail-safe never fails a run before
+		// any work has started when something is still possible — and something
+		// always is here, because the shape it falls back to is not invented for
+		// the occasion: it is the same one leaf every non-project ask already
+		// gets, three screens up, with the compiled goal as its brief.
+		//
+		// It is reached only after the structured-answer seam has spent its own
+		// repairs on the failing call, so what arrives here is a planner that was
+		// continued, asked again, and still could not answer. One worker on the
+		// whole goal is worse than a plan and enormously better than nothing.
+		smallest := func(err error) (store.Subtree, error) {
+			log.Printf("note: the planner could not draw a plan for %s (%v); running it as one piece of work", prefix, err)
+			if progress != nil {
+				// The person watching a plan take shape is told the shape
+				// changed, in the same replaceable row every other planning
+				// phase uses. Silence here is how the s4 run read as a hang.
+				progress(plan.ProgressUpdate{Phase: plannerFellBack})
+			}
+			journalRepair(history, prefix, store.StructuredRepair{
+				Lane: "plan", Kind: "fell back", Line: plannerFellBack,
+			})
+			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteSingleLeaf, 1)
+			// The working method rides along when the compile already wrote one.
+			// Buying a fresh structuring call here would be asking the same
+			// model family, one breath after it failed to answer, for a second
+			// thing nobody is waiting on — and the leaf runs perfectly well
+			// without one, which is what an unplannable job used to get instead
+			// of a leaf at all.
+			leaf := plan.Spec{}
+			if method := strings.TrimSpace(compiled.Contract); method != "" {
+				leaf = taskSpecGraph(compiled.Goal, method).Nodes[0].Spec
+			}
+			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
 		}
 		// Structuring runs on the plan slot; the retained snapshot is the work
 		// slot, because that is who the leaves run on and whose model the
@@ -4522,7 +4584,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			Progress:   progress,
 		})
 		if err != nil {
-			return store.Subtree{}, err
+			return smallest(err)
 		}
 		gatePlanDivision(graph, compiled.Goal)
 		// The acceptance checklist, on the one node that hands the finished
@@ -4547,11 +4609,44 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
-			return store.Subtree{}, err
+			return smallest(err)
 		}
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		journalScaleGate(history, prefix, compiled, structure, store.ScaleRoutePlanned, len(subtree.Nodes))
 		return subtree, nil
+	}
+}
+
+// plannerFellBack is what a person is told when the planner could not draw a
+// plan and the work went ahead as one piece anyway. It names what happened and
+// what is happening instead, in that order, because the second half is the part
+// that decides whether anyone needs to do anything.
+const plannerFellBack = "the planner could not lay this out — running it as one piece of work"
+
+// singleLeafPlan is the whole job as one node: the smallest plan this system
+// admits, and the shape every non-project ask already takes.
+//
+// It is a function rather than four lines written twice because its second
+// caller is the planner's fail-safe, and a fallback that built its own slightly
+// different shape would be a second answer to "what is the smallest plan" —
+// which is exactly the kind of drift the one-source-of-truth law is about.
+func singleLeafPlan(prefix, goal string, leaf plan.Spec) store.Subtree {
+	return store.Subtree{Nodes: []store.NodeSpec{{
+		ID:    prefix,
+		Brief: goal,
+		Stage: 1,
+		Spec:  resident.EncodeSpec(leaf),
+	}}}
+}
+
+// journalRepair files one row about a model call this run had to repair. Failing
+// to write it is a note and never a job: this is an account of the work.
+func journalRepair(history *store.Store, node string, repair store.StructuredRepair) {
+	if history == nil {
+		return
+	}
+	if err := history.RecordStructuredRepair(node, repair); err != nil {
+		log.Printf("note: could not journal a repair for %s: %v", node, err)
 	}
 }
 

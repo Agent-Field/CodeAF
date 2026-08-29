@@ -463,6 +463,72 @@ Watching a headless run, the line names the finding first and the reason second:
 gate: refused — The deliverable does not contain the code that writes feature_schema.joblib — what the review asked for next is not in the request
 ```
 
+## When the review itself could not be read — unchecked, and said so
+
+The review is a model call like any other, and a model can answer with something that is
+not an answer: prose where an object was asked for, or a reply cut off before it finished.
+When that happens the answer is asked for again, once, with the format stated and the
+offending reply quoted back. If the second attempt is unreadable too, **the review did not
+happen** — and a run whose own check did not happen is not a run that passed its check.
+
+The work is still handed over: it was done, and it is yours. What it carries is a
+reservation naming what is missing, which is the check and not the work:
+
+```
+I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for.
+```
+
+Watching a headless run you see it as the review's own line:
+
+```
+gate: fail — the review could not be read, so this delivery was never checked
+```
+
+**The run lands partial.** `aforge do` leaves with exit **2**, not 0. This used to be exit
+0 with the work reported as done — the review was treated as having no opinion rather than
+as having failed to give one — and that is the single difference. Nothing is being said
+about the work; nobody looked at it.
+
+## When a model's answer is cut off or comes back as prose — the ↻ lines
+
+Every place aforge asks a model for a structured answer — planning a job, compiling your
+request, reviewing a delivery — the reply is given room sized to what was asked for, and
+repaired when it does not fit. Two things go wrong and both are said out loud:
+
+```
+  ↻ plan: answer cut at the ceiling — continued
+  ↻ gate: the answer was not readable — asked again
+  ↻ compile: the answer was still not readable — giving up on it
+```
+
+- **cut at the ceiling** means the model ran out of output room mid-answer. The half that
+  arrived is kept and the rest is asked for, joined onto it. It is not bought a second
+  time; a re-ask spends the same tokens to hit the same wall.
+- **not readable** means nothing usable came back at all. The model is asked once more with
+  the shape stated and its own reply quoted, so it can correct rather than start over.
+- **giving up on it** is the third line and the only one that changes the outcome. What
+  happens next depends on which call it was: a review that gives up hands the work over
+  unchecked, above; planning that gives up runs the job as one piece of work, below.
+
+The word before the colon is the call: `plan`, `gate`, or `compile`. Every one of these
+lines is also kept with the job, so a run can be read back afterwards and its repairs
+counted.
+
+## When the planner cannot lay a job out — one worker instead of nothing
+
+Planning is itself a model call, and it can fail before any piece of work exists. It used
+to end the run there: no tasks, nothing attempted, and an error where an answer should be.
+
+It now falls back to **the smallest plan there is** — one worker, given the whole compiled
+goal — which is the same shape every single-step ask already gets. You see:
+
+```
+  the planner could not lay this out — running it as one piece of work
+```
+
+One worker on the whole job is worse than a plan and enormously better than nothing, and
+the run goes on to deliver, be reviewed, and land like any other.
+
 ## What the review is allowed to hold you to — the request, the method, and what was promised
 
 A review may only ask for things that were promised **before the work started**: your own

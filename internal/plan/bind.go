@@ -249,7 +249,9 @@ func bindStage(ctx context.Context, client Completer, shared string, graph *Grap
 		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets.String())),
 	}
 	var reply bindReply
-	response, err := structured(ctx, client, messages, bindSchema, &reply)
+	// One row per node being bound: the ask's own cardinality, read off the same
+	// loop that wrote the list.
+	response, err := structuredParts(ctx, client, messages, bindSchema, targetCount(graph, stage), &reply)
 	if err != nil {
 		return bindReply{}, usageOf(response), fmt.Errorf("bind stage %d: %w", stage, err)
 	}

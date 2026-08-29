@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -180,23 +181,23 @@ func MapChecks(ctx context.Context, settings config.Config, client *pool.Client,
 	// wants the two beside each other.
 	mapCtx = provider.WithCallTag(mapCtx, "gate")
 	mapCtx = pool.WithSpendNode(mapCtx, node.ID)
-	var request []ai.Option
-	if client.Routed() {
-		request = append(request, ai.WithSchema(mapSchema))
-	}
-	response, err := askVerdict(mapCtx, client, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: mapPrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body.String()}}},
-	}, request)
-	if err != nil || response == nil {
-		provider.Report(mapCtx, provider.VerdictProviderFailure)
-		return mapping
-	}
 	var answer struct {
 		Mapped []store.ExercisedPoint `json:"mapped"`
 	}
-	if err := provider.DecodeJSONObject(response.Text(), &answer); err != nil {
-		provider.Report(mapCtx, provider.VerdictFormatFailure)
+	// The seam owns the wire: the schema travels only where a router carries
+	// it, a cut answer is continued and a prose one re-asked once, and what
+	// comes back is either the object or a typed refusal — the mapping never
+	// reads the model's text itself.
+	response, err := askVerdict(mapCtx, client, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: mapPrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body.String()}}},
+	}, mapSchema, &answer)
+	if err != nil || response == nil {
+		if shaped.Unreadable(err) {
+			provider.Report(mapCtx, provider.VerdictFormatFailure)
+		} else {
+			provider.Report(mapCtx, provider.VerdictProviderFailure)
+		}
 		return mapping
 	}
 	provider.Report(mapCtx, provider.VerdictVerifiedSuccess)
