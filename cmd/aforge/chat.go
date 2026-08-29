@@ -1514,7 +1514,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// evidence behind the verdict rather than the verdict, and a
 					// pass with every point exercised has to be tellable apart
 					// from a pass over an empty checklist.
-					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured}
+					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured,
+					// And its conclusion. The mapping is the evidence; this is
+					// the finding, and it is recorded as a list of its own so
+					// the stream can say it and an autopsy can find it without
+					// reading a paragraph out of the middle of the gap.
+					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable}
 				if gate.Pass {
 					outcome.Verdict = revision.GateVerdict(gate)
 					// Quorum: two cheap validators independently verify the pass.
@@ -4602,6 +4607,14 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			if method := strings.TrimSpace(compiled.Contract); method != "" {
 				leaf = taskSpecGraph(compiled.Goal, method).Nodes[0].Spec
 			}
+			// AND THE CHECKLIST TRAVELS DOWN THIS PATH TOO. It was already read
+			// — the compile call that failed to draw a plan read the request and
+			// wrote it — and dropping it here is the difference between a run
+			// the gate can hold to what was asked and one it can only read the
+			// deliverable's prose against. textual s7 fell back here, derived no
+			// acceptance checklist, journaled no `acceptance` event at all, and
+			// its gates weighed nothing but wording.
+			leaf.Accept = compiled.Accept
 			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
 		}
 		// Structuring runs on the plan slot; the retained snapshot is the work

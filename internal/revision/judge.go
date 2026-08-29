@@ -268,12 +268,47 @@ type Judgment struct {
 	// that passed with every point covered must be tellable apart from one that
 	// passed because there was no checklist. See acceptance.go.
 	Exercises []store.ExercisedPoint
+	// Unexercised is the acceptance finding as a LIST rather than as a
+	// paragraph: one entry per line of the request whose behaviours no check
+	// exercises, already grouped and already bounded (see Unexercised).
+	//
+	// It is a field of its own because the finding kept arriving as prose glued
+	// onto somebody else's gap, and prose glued onto a gap is invisible three
+	// ways at once. igel s6 mapped seventeen points, left three unexercised, and
+	// the run's whole record of that is a paragraph in the middle of the gate
+	// event's `gap` string: nothing journaled it as a finding, the stream's own
+	// line is firstLine(gap) and never reached it, and the round it bought was
+	// bought on the judge's citation, so a refusal of that citation took the
+	// measurement down with it.
+	//
+	// It travels beside Gaps rather than instead of it, and it is set on a
+	// FAILING verdict too — the acceptance question is asked on every verdict,
+	// and a run that failed for a missing file is not a run whose stated
+	// behaviours are covered.
+	Unexercised []string
+	// Stated is how many behaviours were weighed to reach Unexercised, so the
+	// finding can say what a repair round most needs to know: how much of the
+	// checklist is still open, out of how much there was.
+	Stated int
 	// Unmeasured says this judgement held an acceptance checklist and could
 	// settle none of it, because nothing in the project's own verification and
 	// nothing in the change could be read as a check. It is separate from
 	// Unjudged, which says the GATE never answered: here the gate answered and
 	// one half of its question had no evidence to answer from.
 	Unmeasured string
+	// Unreadable says the project DECLARED a way of checking itself and this run
+	// could not read it — a suite killed at its ceiling, a shell the preamble
+	// cannot be trusted in, a wall that could not afford the reading.
+	//
+	// It is the half of Unmeasured that must not deliver as whole, and the two
+	// were one field. ink s7 journaled its cut reading correctly — `npx ava
+	// --tap` killed at 1m53s — and then passed the round-2 gate over a tree with
+	// no roster at all and left with exit 0 at 13 of 25 hidden checks. A project
+	// with NO verification leaves the coverage question unanswerable and nobody
+	// is at fault; a project with a suite nobody could read leaves it unanswered,
+	// which is FAILSAFE clause 5 — a floor that cannot deliver nothing as done.
+	// See store.DeliveryGate.Whole.
+	Unreadable bool
 	Checked    bool
 	// Unjudged names, in one line, why there is no verdict behind this value.
 	// Every failure of the gate itself is fail-open — the deliverable ships —
@@ -824,32 +859,17 @@ func doneBlock(done plan.Done) string {
 	return strings.TrimRight(body.String(), "\n")
 }
 
-// namedFile matches a token that reads as a filename: a stem, a dot, and a
-// two-to-eight character alphanumeric extension opening with a letter. The
-// extension's shape is what keeps prose out — "e.g.", "i.e.", "vs." and version
-// numbers all fail it — and the stem's character class is what lets a path
-// through, because "docs/JOURNEY.md" names a file exactly as "report.md" does.
-// It is the same shape the delivery law's file-shaped bit is decided on, for the
-// same reason: the two questions are one question asked at either end.
-var namedFile = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
-
 // NamedFiles lists, in order and without repeats, the files a piece of text
 // names. It is exported because the gate's caller holds the request and the
 // gate holds the record, and the answer they need is the same list.
-func NamedFiles(text string) []string {
-	var names []string
-	seen := map[string]bool{}
-	for _, match := range namedFile.FindAllString(text, -1) {
-		clean := strings.Trim(strings.TrimSpace(match), "/")
-		clean = strings.TrimPrefix(clean, "./")
-		if clean == "" || seen[strings.ToLower(clean)] {
-			continue
-		}
-		seen[strings.ToLower(clean)] = true
-		names = append(names, clean)
-	}
-	return names
-}
+//
+// The shape rule itself is verify.NamedPaths and is deliberately not repeated
+// here. Which text names a file is one question asked at three ends — which
+// files a request is about, which decides where a reading is taken; which files
+// a request named, which the delivery record settles against the disk; and which
+// file a produces entry IS — and a regular expression written down twice is a
+// regular expression that will differ.
+func NamedFiles(text string) []string { return verify.NamedPaths(text) }
 
 // ProducedFile answers whether one named file is among the files a run left
 // behind, and returns the path it landed at.
@@ -1067,6 +1087,12 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// answer exists wherever a verdict is being reached rather than only where a
 	// worker happened to be able to take one.
 	evidence.measureFinalTree(ctx)
+	// AND THE RECORD OF WHAT WAS LEFT BEHIND IS SETTLED AGAINST THE WORLD BEFORE
+	// ANYTHING IS ASKED OF IT. Every reader below — the mechanical gate, the
+	// block the judge is shown, the door that refuses a gap the disk has already
+	// closed — reads one list, and until this call that list was an ACCOUNT of
+	// what leaves reported rather than an observation of the tree.
+	evidence.completeAgainstTheWorld()
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
 	// measurement the run made of the world, and it outranks every other reading
@@ -1507,8 +1533,21 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// Judgment.Sourced.
 	if !unmet.Sourced {
 		if refusal := AdmitGapCitation(grounds, extension.Citations, SpentCitations(graph, base)); refusal != "" {
-			extension.Refused = refusal
-			return extension
+			// A MEASURED FINDING RIDING ON A REFUSED ONE IS STILL A MEASURED
+			// FINDING. The citations weighed here are the judge's, and refusing
+			// them says the judge's words were not the person's. It says nothing
+			// whatever about a coverage gap the run MEASURED, which has no
+			// citation to weigh and is admitted with none — so a round is still
+			// bought, aimed at the half that survives. Without this, igel s6's
+			// three unexercised behaviours died with a refusal of a sentence
+			// about something else entirely.
+			if len(unmet.Unexercised) == 0 {
+				extension.Refused = refusal
+				return extension
+			}
+			unmet = unmet.measuredHalf()
+			extension.Quote, extension.Citations = unmet.Quote, unmet.Cited()
+			extension.Mechanical = false
 		}
 	}
 	// ROOM, NOT ROUNDS. A repair the wall will kill mid-flight spends money to
