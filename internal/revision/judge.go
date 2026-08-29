@@ -379,6 +379,15 @@ type Judgment struct {
 	// there had been no checklist at all — which are the mechanism working and
 	// the mechanism absent, wearing the same event.
 	HeldPoint string
+
+	// Consumers is the finding the changed-definition reading produced: one line
+	// per definition this run reshaped that the rest of the project still uses,
+	// naming the shape its callers expect and how many of them there are.
+	//
+	// It is a field of its own for the reason Unexercised and Unasserted are:
+	// a finding that travels as prose inside somebody else's gap is journaled by
+	// nothing and reachable by nothing. See consumers.go.
+	Consumers []string
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -1212,6 +1221,10 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// always was. The readings this reads are taken by the caller above, once.
 	// See subject.go.
 	subject := evidence.Subject()
+	// The changed definitions this gate was shown, held so the refusal below can
+	// say WHICH one a consumer-grounded quote belongs to. Nil everywhere the
+	// reading found nothing, which is most runs.
+	var consumers []verify.ChangedDefinition
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
 	// measurement the run made of the world, and it outranks every other reading
@@ -1311,6 +1324,26 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 			body += "\n\n" + behavioursBlock(spans)
 		}
 	}
+	// And the definitions this run reshaped that the rest of the project still
+	// uses, beside the behaviours because it belongs to the same half of the
+	// prompt: how to judge, read from the world, rather than what is judged. It
+	// is the one fact that catches a name kept and a shape moved, which is the
+	// hole igel s12 went through with all twenty-four hidden checks red. See
+	// consumers.go.
+	var consumerFiles, consumerLines []string
+	if subject == SubjectTree {
+		if changed := evidence.changedDefinitions(); len(changed) > 0 {
+			consumers = changed
+			consumerFiles, consumerLines = consumerGrounds(changed)
+			if block := consumersBlock(changed, budget); block != "" {
+				body += "\n\n" + block
+			}
+		}
+		// Journaled either way, INCLUDING the reading that found nothing: an
+		// autopsy asking whether this door was open on a run has nothing else to
+		// read (FAILSAFE.md clause 4).
+		journalConsumers(graph, node.ID, consumers)
+	}
 	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(judged)
 	// The worker's own account, below the fence, named for what it is. It is
 	// first among the records because it is the most useful of them for the one
@@ -1348,7 +1381,8 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	schema := deliverableSchema
 	if subject == SubjectTree {
 		verdict.behaviours = behaviours
-		schema = treeVerdictSchema(record, behaviours)
+		verdict.consumerFiles, verdict.consumerLines = consumerFiles, consumerLines
+		schema = treeVerdictSchema(record, behaviours, consumerFiles, consumerLines)
 	}
 	// One seam for every structured reply in the system. This used to send, then
 	// scan for braces, then decide — and a failed decode here was a silent pass.
@@ -1419,6 +1453,19 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	gaps = treeGapWords(verdict.File, gaps)
 	failed := Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
 		Checked: true, Grounds: grounds, File: verdict.File}
+	// A CONSUMER-GROUNDED REFUSAL IS ITS OWN FINDING, AND IT IS SOURCED. There
+	// is no span of the request to weigh, because nobody writes down that the
+	// thing behind a name must keep answering to how it is used — the same
+	// reason a regression carries no citation (FAILSAFE clause 2). So it says
+	// what moved and who is still using it, in front of the judge's own words,
+	// and it buys the repair round every other measured finding buys.
+	if verdict.Consumer {
+		if finding, ok := ConsumerFinding(quote, consumers); ok {
+			failed.Consumers = []string{finding}
+			failed.Sourced = true
+			failed.Gaps = treeGapWords(verdict.File, finding+". "+gaps)
+		}
+	}
 	// And the coverage question on this side too. A repair round is aimed at
 	// the gap the gate NAMED, so a round bought for a missing branch name
 	// closes the branch name and leaves every behaviour nothing checks exactly

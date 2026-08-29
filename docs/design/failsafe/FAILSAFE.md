@@ -1188,3 +1188,111 @@ clears the point. A floor that refuses everything is not a floor — which is wh
 position`, a true sentence of the same request with no identifier in it, is
 asked nothing by this door even though two hidden checks about scrollbar
 position failed.
+
+## A twentieth failure, 2026-08-29: the name that stayed and the shape that moved
+
+*igel v4-flash s12,
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s12`.*
+
+The presence photograph worked, and worked twice. Round one:
+
+```
+surface {"compared": 8, "lost": 8,
+         "names": ["Igel.results_path", "Igel.default_model_path", …]}
+gate    This work removed a public name that existed before it: Igel.results_path, …
+```
+
+That refusal bought a repair round; the round put the eight class attributes
+back; the next reading came back `lost: 0`. Then all **24** hidden tests failed:
+
+```
+E       TypeError: 'Configs' object does not support item assignment
+```
+
+The run had rewritten `igel/configs.py`. The module used to bind `configs` to a
+dict; it now binds it to an instance of a small class the run wrote, with `get`,
+`__getitem__` and `__contains__` — and no `__setitem__`. The name `configs` was
+there before and there after. Every door in this harness was looking somewhere
+else:
+
+| door | what it asked | what it said |
+| --- | --- | --- |
+| check-level reading | what does this project's suite say | green |
+| presence photograph | is the name still there | `lost: 0` — and true |
+| assertion door | do the run's checks weigh the behaviours the REQUEST states | those behaviours, unaffected |
+
+Nobody writes down "and the config object must still support item assignment",
+so no behaviour of any request could ever have carried this finding, and the
+citation invariant would refuse it if one tried.
+
+> **A NAME IS NOT A CONTRACT.** A definition whose DECLARATION this run's own
+> diff rewrote, beside the places the rest of the project still uses that name
+> and the syntactic SHAPE of each use, is a fact about the world measured
+> without a model — and it is the only fact that catches a name kept and a shape
+> moved.
+
+`verify.ChangedDefinitions` intersects the hunks of the run's own diff with the
+declaration spans the surface reader already locates, scoped to the run's own
+record; `verify.Consumers` walks the project for whole-identifier usage sites
+outside those hunks, one walk for all the names, and reads each site's shape
+from the token beside it — a closed set (`call(N args)`, `subscript`,
+`subscript-assign`, `attribute .x`, `iterate`, `instantiate`, and `use` for
+everything it cannot name). Nothing here resolves a type or follows an import.
+The judge is shown the definition, its span on either side of the work, and its
+consumers grouped by shape with a sampled site, its line number and the line's
+own text; whether a class with `__getitem__` and no `__setitem__` survives
+twenty callers that subscript-assign it is left to the reader that is paid to
+make judgements. Clause 1 for the reading, clause 2 for where it comes from.
+
+### The one reader that could not see it
+
+`configs` is a module-level binding, and the python surface reader read class
+bodies and module `def`/`class` and **not** module-level assignments — alone
+among the four. Go reports an exported `var`, TypeScript an exported `const`,
+Rust a `pub static`; python's singleton, table or path handed out by a package
+was read by nothing, which is why the name that moved in s12 was never in the
+photograph at all. It is read now, by the same underscore rule everything else
+in that file uses.
+
+### And the refusal has a ground of its own
+
+Over a changed tree a fail must name a file and quote a span the judge was
+shown. The record is what the run WROTE; a consumer is somewhere else in the
+same repository the run broke without touching. So the `file` enum gains the
+consumer files and the `quote` enum gains the consumer lines — the sampled ones,
+never one held back — and only where there was already an enum to join, because
+a request that states no behaviour leaves the quote free and narrowing it here
+would be the opposite of what this door is for. The HeldPoints rule is
+unmoved: a refusal quoting neither a stated behaviour nor a line it was shown is
+still not a verdict this gate can read, and still faults.
+
+A consumer-grounded refusal is **Sourced** — there is no span of the request to
+cite, for the same reason a regression has none — and it is its own line, its
+own journal field (`store.DeliveryGate.Consumers`) and its own event
+(`store.EventConsumers`, journaled whether or not anything was found):
+
+```
+gate: fail — tests/test_igel.py — configs changed and its 2 consumers still use it as subscript-assign: tests/test_igel.py:5, tests/test_igel.py:6. Configs implements __getitem__ and no __setitem__, so this line raises TypeError.
+```
+
+### What this would and would not have caught
+
+Said plainly, because a fail-safe that is oversold is a fail-safe nobody
+re-measures. **In igel's own repository at that commit there are zero
+subscript-assign sites for `configs`.** Run against the s12 tree and its own
+patch, this reads the changed declaration as `configs` (`igel/configs.py`: the
+diff replaced lines 3–44 of the file as it was; the declaration now stands at
+line 73) and finds **23** usage sites elsewhere — 20 of them `attribute .get`,
+3 of them `use` — and the assignment that actually broke the run is
+`monkeypatch.setitem(configs, …)` inside a HIDDEN test this harness never sees.
+So what this would have put in front of the s12 judge is that a definition it
+had just rewritten is used in twenty-three places it did not touch, and left the
+judgement there. It closes the class of failure; it does not promise this
+instance.
+
+### What is deliberately not here
+
+No type checker, no import resolution, no semantic model of what a shape means.
+Every one of those would need a toolchain per language in a container this
+harness does not control, and would fail closed the moment it could not run —
+which is the shape of a fail-safe that becomes a false blocker on real work.

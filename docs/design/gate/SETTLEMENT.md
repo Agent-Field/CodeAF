@@ -557,3 +557,32 @@ a heading that names it a claim, and a refusal must name one file of the record
 and quote the behaviour it fails or it is not a verdict this gate can read.
 FAILSAFE.md's seventeenth chapter has the whole of it, including why the second
 half is a schema and not a sentence.
+
+## Addendum, 2026-08-29: the third reading of the same tree
+
+§4 settled that a regression is a blocker and that its evidence comes from the
+world. The addendum above it added the half a suite cannot make — a public name
+that was there before the work and is not there now. Both compare a repository
+to itself and both are answered by a difference: a check that flipped, a name
+that vanished.
+
+igel s12 is the case neither of them can reach. The run rebound `configs` from a
+dict to an instance of a class it wrote; the suite stayed green, the names
+compared eight and lost none, and the twenty-four hidden tests failed on
+`'Configs' object does not support item assignment`. **A retained name whose
+definition was rewritten is not a difference either reading can see.**
+
+> **A NAME IS NOT A CONTRACT. A definition whose declaration this run's own diff
+> rewrote, and the places the rest of the project still uses that name, are one
+> fact and the judge is handed both.**
+
+`verify.ChangedDefinitions` and `verify.Consumers`, read from the diff and the
+disk with no model in the loop, sampled into the gate's prompt on a share of its
+own so a consumer list can never be the reason a changed file went unprinted.
+The verdict schema admits a refusal grounded on a consumer's own file and line
+beside one grounded on a behaviour of the request — §6's rule is unchanged for
+behaviours, and this is a second ground rather than a loosening of that one,
+because no behaviour of any request will ever say "and it must still support
+item assignment". Such a refusal is Sourced, buys the repair round every measured
+finding buys, and is journaled as a finding of its own. FAILSAFE.md's twentieth
+chapter has the whole of it, including what it does not promise.

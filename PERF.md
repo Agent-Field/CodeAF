@@ -578,6 +578,54 @@ a barrel file, a symbol behind a macro: none of those is read, on purpose. The
 cost of a name invented here is a false blocker on real work; the cost of a name
 missed is the silence this was written in.
 
+**What the readers deliberately do not read, one correction.** A module-level
+binding — python's `configs = {...}`, the singleton or table a package hands out
+— IS a name the module publishes, by the same underscore rule everything else in
+that reader uses, and it is read now. It was the one shape python's reader missed
+while Go reported an exported `var`, TypeScript an exported `const` and Rust a
+`pub static`, and it is the shape igel s12 moved (FAILSAFE.md's twentieth
+chapter). It costs nothing extra: the same walk, the same line, one more regex
+that was already compiled.
+
+## What the changed-definition reading costs
+
+The presence photograph answers *is the name still there*. It cannot answer *does
+the thing behind the name still work the way it is used*, and igel s12 is the
+run that turned on the difference: `configs` was rebound from a dict to an
+instance of a class the run wrote, `surface` read `compared: 8, lost: 0`, and all
+**24** hidden tests failed on `'Configs' object does not support item
+assignment`.
+
+`verify.ChangedDefinitions` intersects the hunks of the run's own diff with the
+declaration spans `verify.DeclarationsIn` already locates — no extra parse: the
+spans come off the same walk that decides a name is public. `verify.Consumers`
+then walks the project ONCE for every name at the same time, because the walk is
+what this costs and a settlement weighing eight definitions must not read the
+tree eight times.
+
+| number | value | what it bounds |
+| --- | --- | --- |
+| `consumerScanLimit` | 6000 | directory entries one walk visits; `scopeScanLimit`'s sibling |
+| `consumerReadBudget` | 2MB | bytes one settlement reads looking for sites; `scopeReadBudget`'s figure |
+| `consumerSites` | 200 | sites one name keeps |
+| `consumerNamesWeighed` | 8 | changed definitions one settlement carries; `surfaceNamesReported`'s sibling |
+| `revision.consumerSamples` | 3 | sites one shape spells out for a reader |
+| `revision.consumerQuotes` | 24 | consumer lines that travel as the verdict schema's enum |
+| `revision.gateConsumersShare` | **6 of `gateShareTotal`**, 3 KiB unknown | the block's room in the judge's prompt |
+
+Per file it reuses `surfaceFileBytes` **512KB** and skips nothing a source walk
+would not skip. No model call, no second suite run, no toolchain: it is a diff
+already on disk, one walk, and `strings.Index` with an identifier-boundary test.
+
+Past any bound the reading is PARTIAL, which degrades in the safe direction every
+time: fewer sites can only UNDERSTATE a count, never invent one, and a definition
+with no consumer found is not carried at all. **The block has a share of its
+own**, never a slice of the tree block's, because the tree block IS the
+deliverable — a consumer list must never be the reason a changed file went
+unprinted — and inside that share a definition's sites are printed whole or the
+definition appears with its counts and no sites, which is the tree block's
+whole-or-named rule read one level down.
+
 ## What grounding the acceptance mapping costs
 
 `revision.GroundMapping` spends no model call. It reads the file each mapped
@@ -715,6 +763,7 @@ place the model.
 | and the bound when the window is unknown | **8 KiB** | `gateTreeBytes` |
 | the record that travels as a schema enum | at most **64 paths** | `treeEnumFiles` |
 | the stated behaviours a refusal may quote | **6 of `gateShareTotal`**, 4 KiB unknown | `gateAcceptShare`, `gateAcceptBytes` |
+| the consumer lines a refusal may quote | at most **24**, from what was shown | `consumerQuotes` |
 
 **NO FILE IS EVER PRINTED IN PART.** A file's contents appear entire or the file
 appears by name and size only, and the block says which. This is the law, not the

@@ -202,37 +202,154 @@ func surfaceLanguage(name string) string {
 	return ""
 }
 
-// publicNames is the file's public surface, read by whichever reader its
-// language shape calls for.
-func publicNames(file, body string) []string {
+// Declaration is one public name and WHERE the tree spells it: the line the
+// declaration opens on, and the last line of it, both 1-based and inclusive.
+//
+// The span is read by the SAME walk that reads the name, and that is the whole
+// reason it lives here rather than in a reader of its own. A second walk that
+// decided where a declaration sits would eventually disagree with the one that
+// decided the name exists, and everything downstream that asks whether a run
+// touched a DEFINITION rather than a file has to be able to trust that the two
+// answers are about the same thing.
+//
+// It is as conservative as the names are. Where a reader cannot see where a
+// declaration ends it says the declaration's own line, which can only make an
+// overlap harder to find — the safe direction, because the cost of a definition
+// invented here is a finding about work nobody did.
+type Declaration struct {
+	Name string
+	Line int
+	End  int
+}
+
+// Spans answers whether this declaration covers a line of the file.
+func (d Declaration) Spans(line int) bool {
+	return line >= d.Line && line <= d.End
+}
+
+// Overlaps answers whether this declaration covers any line of a range.
+func (d Declaration) Overlaps(from, to int) bool {
+	return from <= d.End && to >= d.Line
+}
+
+// DeclarationsIn is one file's public declarations with their spans, read by
+// whichever reader its language shape calls for.
+//
+// A language with no reader here declares NOTHING rather than something guessed
+// at, which is the same silence publicNames keeps and for the same reason.
+func DeclarationsIn(file, body string) []Declaration {
 	switch surfaceLanguage(lastSegment(file)) {
 	case "go":
-		return goPublicNames(file, body)
+		return goDeclarations(file, body)
 	case "python":
-		return pythonPublicNames(body)
+		return pythonDeclarations(body)
 	case "script":
-		return scriptPublicNames(body)
+		return scriptDeclarations(body)
 	case "rust":
-		return rustPublicNames(body)
+		return rustDeclarations(body)
 	}
 	return nil
 }
 
+// publicNames is the file's public surface: the names of its declarations.
+func publicNames(file, body string) []string {
+	found := DeclarationsIn(file, body)
+	names := make([]string, 0, len(found))
+	for _, declaration := range found {
+		names = append(names, declaration.Name)
+	}
+	return sortedUnique(names)
+}
+
+// opened is one declaration a line reader has found and not yet closed: its
+// name, the index of the line it opens on, and the indentation that decides
+// where it ends.
+type opened struct {
+	name   string
+	line   int
+	indent int
+}
+
+// withSpans closes every declaration a line reader opened.
+//
+// It is one pass per declaration rather than a stack, because the readers above
+// already open declarations in the order the file spells them and a nested one
+// is closed by exactly the same rule as its parent. Both are reported: a class
+// and an attribute inside it are two names a caller can reach, and a change to
+// either is a change to something somebody may be using.
+func withSpans(lines []string, found []opened) []Declaration {
+	declarations := make([]Declaration, 0, len(found))
+	for _, entry := range found {
+		if entry.name == "" || entry.line < 0 || entry.line >= len(lines) {
+			continue
+		}
+		declarations = append(declarations, Declaration{
+			Name: entry.name, Line: entry.line + 1, End: spanEnd(lines, entry.line, entry.indent) + 1})
+	}
+	return declarations
+}
+
+// spanEnd is the index of the last line of a declaration that opens at `from`
+// and is indented at `indent`.
+//
+// Two rules, and neither of them knows a language. A declaration continues while
+// its BRACKETS ARE OPEN, which is how every language here spells a literal or a
+// signature that runs over several lines — `configs = {` opens a span that ends
+// at the `}` forty lines later, and reading only the first line of it would say
+// this run changed nothing when it replaced the whole thing. And a declaration
+// continues while the lines under it are INDENTED PAST IT, which is how every
+// language here spells a body. A closing bracket standing alone at the
+// declaration's own indent is the end OF it and not the start of the next thing,
+// so it is taken in rather than treated as a sibling.
+//
+// Blank lines belong to nobody and are skipped without closing anything.
+func spanEnd(lines []string, from, indent int) int {
+	end, depth := from, openBrackets(lines[from], 0)
+	for index := from + 1; index < len(lines); index++ {
+		line := lines[index]
+		if depth > 0 {
+			end, depth = index, openBrackets(line, depth)
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if indentOf(line) <= indent {
+			if trimmed[0] != '}' && trimmed[0] != ')' && trimmed[0] != ']' {
+				return end
+			}
+		}
+		end, depth = index, openBrackets(line, 0)
+	}
+	return end
+}
+
 // ── Go: the standard library reads it, so nothing here guesses ───────────────
 
-// goPublicNames is every exported identifier the file declares at package level,
-// plus exported methods and exported struct fields.
+// goDeclarations is every exported identifier the file declares at package
+// level, plus exported methods and exported struct fields, each with the span
+// the parser itself reports.
 //
 // It is the one language in this file with a real parser, because the standard
-// library ships one. A file that does not parse contributes NOTHING rather than
-// a partial reading: a syntax error mid-edit would otherwise read as half the
+// library ships one — so the span here is exact rather than read off
+// indentation. A file that does not parse contributes NOTHING rather than a
+// partial reading: a syntax error mid-edit would otherwise read as half the
 // package's surface disappearing.
-func goPublicNames(file, body string) []string {
-	parsed, err := parser.ParseFile(token.NewFileSet(), file, body, parser.SkipObjectResolution)
+func goDeclarations(file, body string) []Declaration {
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, file, body, parser.SkipObjectResolution)
 	if err != nil {
 		return nil
 	}
-	var names []string
+	var found []Declaration
+	span := func(name string, node ast.Node) {
+		if name == "" || node == nil {
+			return
+		}
+		found = append(found, Declaration{Name: name,
+			Line: fset.Position(node.Pos()).Line, End: fset.Position(node.End()).Line})
+	}
 	for _, declaration := range parsed.Decls {
 		switch node := declaration.(type) {
 		case *ast.FuncDecl:
@@ -240,50 +357,49 @@ func goPublicNames(file, body string) []string {
 				continue
 			}
 			if node.Recv == nil || len(node.Recv.List) == 0 {
-				names = append(names, node.Name.Name)
+				span(node.Name.Name, node)
 				continue
 			}
 			if receiver := goReceiver(node.Recv.List[0].Type); receiver != "" {
-				names = append(names, receiver+"."+node.Name.Name)
+				span(receiver+"."+node.Name.Name, node)
 			}
 		case *ast.GenDecl:
 			for _, spec := range node.Specs {
-				names = append(names, goSpecNames(spec)...)
+				goSpecSpans(spec, span)
 			}
 		}
 	}
-	return sortedUnique(names)
+	return found
 }
 
-// goSpecNames is one declaration's exported names: a type and its exported
-// fields, or the exported names of a var or const block.
-func goSpecNames(spec ast.Spec) []string {
-	var names []string
+// goSpecSpans hands one declaration's exported names and their spans to the
+// recorder: a type and its exported fields, or the exported names of a var or
+// const block.
+func goSpecSpans(spec ast.Spec, span func(string, ast.Node)) {
 	switch node := spec.(type) {
 	case *ast.TypeSpec:
 		if !node.Name.IsExported() {
-			return nil
+			return
 		}
-		names = append(names, node.Name.Name)
+		span(node.Name.Name, node)
 		structure, ok := node.Type.(*ast.StructType)
 		if !ok || structure.Fields == nil {
-			return names
+			return
 		}
 		for _, field := range structure.Fields.List {
 			for _, ident := range field.Names {
 				if ident.IsExported() {
-					names = append(names, node.Name.Name+"."+ident.Name)
+					span(node.Name.Name+"."+ident.Name, field)
 				}
 			}
 		}
 	case *ast.ValueSpec:
 		for _, ident := range node.Names {
 			if ident.IsExported() {
-				names = append(names, ident.Name)
+				span(ident.Name, node)
 			}
 		}
 	}
-	return names
 }
 
 // goReceiver is the type a method hangs off, with the pointer star taken off.
@@ -337,11 +453,12 @@ var (
 // name is spelled `Igel.results_path`, the way it is reached, and an instance
 // name is spelled `Igel().results_path`, the way THAT is reached. They are two
 // facts and this keeps them two names.
-func pythonPublicNames(body string) []string {
-	var names []string
+func pythonDeclarations(body string) []Declaration {
+	lines := strings.Split(body, "\n")
+	var found []opened
 	class, classIndent, bodyIndent := "", -1, -1
 	inMethod := false
-	for _, line := range strings.Split(body, "\n") {
+	for index, line := range lines {
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
@@ -354,7 +471,7 @@ func pythonPublicNames(body string) []string {
 		case pythonClass.MatchString(line):
 			match := pythonClass.FindStringSubmatch(line)
 			if len(match[1]) == 0 && public(match[2]) {
-				names = append(names, match[2])
+				found = append(found, opened{name: match[2], line: index})
 				class, classIndent, bodyIndent, inMethod = match[2], 0, -1, false
 			}
 			continue
@@ -363,7 +480,7 @@ func pythonPublicNames(body string) []string {
 			switch {
 			case len(match[1]) == 0:
 				if public(match[2]) {
-					names = append(names, match[2])
+					found = append(found, opened{name: match[2], line: index})
 				}
 				class, classIndent, bodyIndent, inMethod = "", -1, -1, false
 			case class != "":
@@ -373,13 +490,27 @@ func pythonPublicNames(body string) []string {
 				if len(match[1]) == bodyIndent {
 					inMethod = true
 					if public(match[2]) {
-						names = append(names, class+"."+match[2])
+						found = append(found, opened{
+							name: class + "." + match[2], line: index, indent: bodyIndent})
 					}
 				}
 			}
 			continue
 		}
 		if class == "" {
+			// A NAME A MODULE BINDS AT ITS TOP LEVEL IS A NAME THE MODULE
+			// PUBLISHES, and this reader was the only one of the four that did
+			// not say so. Go reports an exported var, typescript an exported
+			// const, rust a `pub static`; python's own equivalent — the
+			// singleton, the table, the path a package hands out — was read by
+			// nothing. igel s12 is what that cost: the module bound `configs` to
+			// a dict, the run rebound it to an instance of a class it wrote, and
+			// the photograph compared eight names and lost none because the one
+			// that moved was never in the reading at all.
+			if match := pythonAssign.FindStringSubmatch(line); match != nil &&
+				len(match[1]) == 0 && public(match[2]) {
+				found = append(found, opened{name: match[2], line: index})
+			}
 			continue
 		}
 		if inMethod && pythonSelfAssign.MatchString(line) {
@@ -387,7 +518,8 @@ func pythonPublicNames(body string) []string {
 			// method sets it is not read, because a name reachable on an
 			// instance is public whether __init__ or a setter put it there.
 			if name := pythonSelfAssign.FindStringSubmatch(line)[1]; public(name) {
-				names = append(names, class+"()."+name)
+				found = append(found, opened{
+					name: class + "()." + name, line: index, indent: indent})
 			}
 			continue
 		}
@@ -396,11 +528,12 @@ func pythonPublicNames(body string) []string {
 				bodyIndent = len(match[1])
 			}
 			if len(match[1]) == bodyIndent && public(match[2]) {
-				names = append(names, class+"."+match[2])
+				found = append(found, opened{
+					name: class + "." + match[2], line: index, indent: bodyIndent})
 			}
 		}
 	}
-	return sortedUnique(names)
+	return withSpans(lines, found)
 }
 
 // scriptExport and its siblings read the shapes typescript and javascript spell
@@ -427,10 +560,11 @@ var (
 // which is why the private marker is what is looked for rather than the public
 // one. `#name` is javascript's own private field and is skipped for the same
 // reason a leading underscore is in python.
-func scriptPublicNames(body string) []string {
-	var names []string
+func scriptDeclarations(body string) []Declaration {
+	lines := strings.Split(body, "\n")
+	var found []opened
 	class, classIndent, bodyIndent := "", -1, -1
-	for _, line := range strings.Split(body, "\n") {
+	for index, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
 			continue
@@ -440,12 +574,12 @@ func scriptPublicNames(body string) []string {
 			class, classIndent, bodyIndent = "", -1, -1
 		}
 		if match := scriptClass.FindStringSubmatch(line); match != nil {
-			names = append(names, match[2])
+			found = append(found, opened{name: match[2], line: index, indent: len(match[1])})
 			class, classIndent, bodyIndent = match[2], len(match[1]), -1
 			continue
 		}
 		if match := scriptExport.FindStringSubmatch(line); match != nil {
-			names = append(names, match[1])
+			found = append(found, opened{name: match[1], line: index, indent: indentOf(line)})
 			class, classIndent, bodyIndent = "", -1, -1
 			continue
 		}
@@ -457,7 +591,10 @@ func scriptPublicNames(body string) []string {
 				if len(fields) == 0 {
 					continue
 				}
-				names = append(names, strings.TrimSpace(fields[len(fields)-1]))
+				// A re-export names something declared elsewhere, so the span
+				// is the line that names it and nothing more.
+				found = append(found, opened{name: strings.TrimSpace(fields[len(fields)-1]),
+					line: index, indent: indentOf(line)})
 			}
 			continue
 		}
@@ -469,11 +606,12 @@ func scriptPublicNames(body string) []string {
 				bodyIndent = len(match[1])
 			}
 			if len(match[1]) == bodyIndent && !scriptKeyword(match[2]) {
-				names = append(names, class+"."+match[2])
+				found = append(found, opened{
+					name: class + "." + match[2], line: index, indent: bodyIndent})
 			}
 		}
 	}
-	return sortedUnique(names)
+	return withSpans(lines, found)
 }
 
 // scriptKeyword keeps the member reader off the statements that look like one.
@@ -504,10 +642,11 @@ var (
 // A `pub fn` inside an `impl Type` is spelled `Type::name`, the way it is
 // reached. An impl block for a trait is read as the type's surface too, because
 // removing it removes a name callers use.
-func rustPublicNames(body string) []string {
-	var names []string
+func rustDeclarations(body string) []Declaration {
+	lines := strings.Split(body, "\n")
+	var found []opened
 	scope, scopeIndent := "", -1
-	for _, line := range strings.Split(body, "\n") {
+	for index, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -521,24 +660,26 @@ func rustPublicNames(body string) []string {
 			continue
 		}
 		if match := rustBlock.FindStringSubmatch(line); match != nil {
-			names = append(names, match[2])
+			found = append(found, opened{name: match[2], line: index, indent: len(match[1])})
 			scope, scopeIndent = match[2], len(match[1])
 			continue
 		}
 		if match := rustPub.FindStringSubmatch(line); match != nil {
 			if scope != "" && len(match[1]) > scopeIndent {
-				names = append(names, scope+"::"+match[2])
+				found = append(found, opened{
+					name: scope + "::" + match[2], line: index, indent: len(match[1])})
 			} else {
-				names = append(names, match[2])
+				found = append(found, opened{name: match[2], line: index, indent: len(match[1])})
 				scope, scopeIndent = "", -1
 			}
 			continue
 		}
 		if match := rustField.FindStringSubmatch(line); match != nil && scope != "" {
-			names = append(names, scope+"."+match[2])
+			found = append(found, opened{
+				name: scope + "." + match[2], line: index, indent: len(match[1])})
 		}
 	}
-	return sortedUnique(names)
+	return withSpans(lines, found)
 }
 
 // public is python's own privacy rule and javascript's convention both: a
