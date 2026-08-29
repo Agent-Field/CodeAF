@@ -300,3 +300,70 @@ func TestAFailedAttemptLeavesItsOwnRowBeforeTheOneThatLanded(t *testing.T) {
 		t.Errorf("the answer's row should say it took two attempts: %+v", done[1])
 	}
 }
+
+// A body that breaks off after the headers is an attempt that failed, and it
+// leaves its end row like any other; three peer resets used to read as three
+// calls still in flight.
+func TestABodyThatBreaksOffStillEndsItsRow(t *testing.T) {
+	read := loggingTo(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "500")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("test server cannot hijack")
+		}
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn.Close()
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err == nil {
+		t.Fatal("a body cut mid-read should fail the call")
+	}
+	rows := ended(read())
+	if len(rows) == 0 {
+		t.Fatal("the broken call left no end row")
+	}
+	if rows[len(rows)-1].Error == "" || !strings.Contains(rows[len(rows)-1].Error, "read response") {
+		t.Fatalf("the end row should carry the read failure: %+v", rows[len(rows)-1])
+	}
+}
+
+// A stream the caller abandons ends its row too.
+func TestAnAbandonedStreamStillEndsItsRow(t *testing.T) {
+	read := loggingTo(t)
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-started
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	if _, err := client.CompleteWithMessages(WithStreamObserver(ctx, func(StreamEvent) {}), userMessages("hello")); err == nil {
+		t.Fatal("an abandoned stream should fail the call")
+	}
+	rows := ended(read())
+	if len(rows) == 0 || !rows[len(rows)-1].Stream {
+		t.Fatalf("the abandoned stream left no end row: %+v", rows)
+	}
+}
