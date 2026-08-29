@@ -735,3 +735,93 @@ Caching hides most of the price (≈95% of these prompt tokens were cached, whic
 is why $38.76M of ink's tokens cost 85 cents rather than $3), so the cost signal
 understates how much work is being repeated. The wall does not: both runs spent
 their entire 90 minutes and neither finished.
+
+---
+
+# s7 — the reading arrives on two runners, and the ceiling becomes the wall (`9fcd4675`)
+
+| task | reward | f2p | p2p | cost | wall | exit | nodes | acceptance pts | readings (read/total) | last line |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| igel-persist-feature-schema | 0 | **23/24** | 2/2 | $0.148 | 2210s | 0 | 5 | 17 | **8 / 8** | — (gate passed) |
+| ofetch-per-origin-circuit-breaker | 0 | 41/47 | 13/13 | $0.113 | 1206s | **2** | 4 | 54 | **4 / 4** | `partial —` |
+| ink-grid-box-layout | 0 | 13/25 | 49/49 | $0.195 | 1248s | 0 | 2 | 9 | 0 / 2 | — (gate passed) |
+| textual-richlog-follow-state | 0 | 2/20 | 2/6 | $0.109 | 956s | **2** | 4 | — | 0 / 0 | `partial —` |
+| happy-dom-…-intersectionobserver | **did not grade** | — | — | $0.466 | 5404s | 2 | 7 | — | 0 / 3 | — (`settled: false`, wall) |
+
+## The reading works, on two runners, and it goes behind the project's spelling
+
+| run | runner | declared | what it actually ran | exit | named before → after |
+| --- | --- | --- | --- | --- | --- |
+| ofetch | vitest | `pnpm test` | `pnpm exec vitest run --coverage --reporter=json` | 0 | 28 → 56 |
+| igel | pytest | `make test` | `poetry run pytest -rA` | 1 | 2 → 41 (43 by round 3) |
+
+Both take the baseline once and mark it `inherited: true` in every later round —
+igel carries it into child nodes `task-2-x1-n1` and `task-2-x1-n2` as well, so
+mechanism (f) holds across a whole job tree, not just one leaf's repairs. Red
+stays flat in both, so no regression finding was due and none fired.
+
+## The first coverage finding in the benchmark
+
+ofetch round 1, `run.log:41`, from a gate carrying `exercises: 54 rows, 18 unmapped`:
+
+> The request asks for behaviours that no check exercises. Nothing in this
+> project's own verification would fail if each of these were absent or wrong…
+> `no check exercises: When circuitBreaker: true, defaults are threshold = 5`
+> `no check exercises: … cooldown = 30000`
+> `no check exercises: … halfOpenMaxRequests = 1`
+> `no check exercises: … failureStatusCodes = [408, 409, 425, 429, 500, …]`
+> `no check exercises: Request option circuitBreaker accepts true`
+> `no check exercises: Behavior must work consistently for $fetch`
+> **And 10 more. Write the check for each, and make it pass.**
+
+The finding is **correct**: the run added 28 tests (roster 28 → 56) and none of
+them exercised the defaults, which is exactly where the hidden suite still fails
+it at 41/47.
+
+**Whether the round closed it is not recorded.** Rounds 2, 3 and 4 carry zero
+`exercises` rows — the mapping ran once and the coverage question was never asked
+again. igel is the mirror image: its round-1 gate carried `17 rows, 2 unmapped`
+and the coverage finding never reached the stream at all, because a different gap
+won the verdict.
+
+## Where it still breaks
+
+**The exit-0 door moved to a plain `pass: true`.** ink (13/25) and igel (23/24)
+both exit 0 because, after a failing round-1 gate, a later gate returns a bare
+passing verdict. Not `PolishClosed`, not `Overturned` — the gate simply accepted
+a deliverable the hidden suite fails.
+
+**Two projects could not be read, and it is one cause on two runners.**
+
+| run | runner | command | why |
+| --- | --- | --- | --- |
+| ink | ava | `npx ava --tap` | killed at its ceiling of 1m53s without finishing |
+| happy-dom | vitest | `npx vitest run --reporter=json` | killed at its ceiling of 1m53s without finishing |
+
+happy-dom's is the answer to the monorepo question: the reader **did** go behind
+the turbo lifecycle script to `npx vitest` directly. It is the **113-second
+ceiling**, not the project shape, and every container here is emulated under
+qemu — so this blind spot is part harness and part host.
+
+**textual's journal was empty.** The planner failed
+(`fan-out stage 3: the model stopped answering: context deadline exceeded`), the
+new fallback caught it (`the planner could not lay this out — running it as one
+piece of work`) and the run still produced a 17,300-byte patch — but the store
+holds **zero transcript rows, zero acceptance events and zero readings**. Work
+happened and nothing about how was recorded. It scored 2/20, down from 18/20.
+
+**One shaped repair, finally observed:** ink `run.log:4`,
+`↻ plan: answer cut at the ceiling — continued`. The seam continued a cut plan
+rather than losing the run — the failure that killed textual in s4.
+
+## A rig defect this sweep exposed
+
+happy-dom s7 ran the full 90 minutes, spent $0.466 across 7 nodes with 3 restarts
+of `task-2`, and produced a **0-byte `model.patch`**, so it could not be graded.
+The rig takes the diff as `git add -A && git diff --cached <base_commit>`, which
+reads the index. A run that commits its work to a branch and leaves the worktree
+back on the default branch therefore grades as though it wrote nothing. The
+corpus's own collect command has the same shape, so this is inherited rather than
+invented — but it is a hole, and a run that hits the wall mid-branch falls into
+it. Recorded, not yet fixed; the container was already gone when the empty patch
+was noticed, so the run is reported as ungraded rather than as a zero.
