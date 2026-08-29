@@ -1222,3 +1222,57 @@ before the wall (`task-2`, `pass: false`, ue=6) where s10 cut none. Resumes drop
 **The reading blindness on ink is unchanged and is now the standing defect on this task**: every single
 `on the finished tree` reading in both s10 and s11 is `named=0 red=0 read=False`, against a baseline that reads
 fine (`named=44`, later `named=156 red=2`). ink's after-photograph has never once parsed in either sweep.
+
+## n1 — nvidia/nemotron-3.5-lightning on 5de2f073 (second model, same binary as s11)
+
+| task | f2p | p2p | reward | exit | settled | $ | wall | nodes | calls | $/call |
+|---|---|---|---|---|---|---|---|---|---|---|
+| happy-dom | 10/14 | 9/9 | 0 | 2 | true | 0.511 | 3951s | 4 | 375 | 0.001364 |
+| igel | 5/24 | 2/2 | 0 | 2 | **false** (wall) | **2.057** | 5402s | 3 | 968 | 0.002125 |
+| textual | 4/20 | 6/6 | 0 | 2 | true | 0.464 | 1699s | 3 | 280 | 0.001655 |
+| ofetch | **0/47** | **5/13** | 0 | 2 | true | 0.853 | 2774s | 4 | 454 | 0.001880 |
+| ink | 10/25 (pending grade) | — | — | 2 | **false** (wall) | 1.305 | 5402s | 4 | 777 | 0.001680 |
+
+**Sweep cost $5.19 — over the $5 kill threshold.** Every nemotron run cost 1.5–2.5× the deepseek run on the
+same task, and igel alone cost $2.06 (968 calls) against deepseek igel s11's $0.302 (334 calls). The per-call
+price is the whole story: nemotron averages $0.00168/call against deepseek's ~$0.00085.
+
+### MODEL defects — nemotron-specific, all three kinds the harness names
+1. **Structured-output failures.** happy-dom fired both repair kinds inside 25s:
+   `{"lane":"compile","kind":"continued","spent":451,"ceiling":9219,"line":"compile: answer cut at the ceiling — continued"}`
+   and `{"lane":"compile","kind":"reasked","line":"compile: the answer was not readable — asked again"}`.
+   Deepseek never triggered either in eleven sweeps. **The harness recovered both times.**
+2. **Planner fallback on 3 of 5 runs** (ofetch, happy-dom, igel):
+   `{"lane":"plan","kind":"fell back","line":"the planner could not lay this out — running it as one piece of work"}`.
+   Nemotron could not emit a usable plan graph. The fallback is the harness handling it correctly.
+3. **Deliverable shape.** textual `task-2-x2`: `The deliverable is a single JSON contract string, not the
+   required Python source files.` It answered the delivery prompt with an object instead of the artifact.
+4. **Scratch churn**, same failure family as deepseek's ink: igel's resume payloads name `igel.py.bak,
+   igel.py.bak2`; ink's name 72 compiled `.d.ts`/`.js`/`.js.map` carriers. igel ran a **262-turn** attempt.
+
+### HARNESS behaviour — mostly correct, two defects worth routing
+- **ofetch: the regression photograph worked perfectly.** The model broke 8 passing tests (p2p 5/13) and the
+  gate named them: `This work broke checks that were passing before it: ofetch calls hooks, ofetch hook errors`.
+  The readings tracked it exactly — baseline `whole named=28 red=0` every time, finished-tree collapsing to
+  `named=1 red=1` four times, then recovering to `named=28` with red 2/7/2. This is the mechanism igel s11
+  needed and could not have, because there the loss was a bare symbol rather than a check.
+- **DEFECT (known, pre-fix): own-checks counted as regressions.** happy-dom's gate says `This work broke checks
+  that were passing before it: IntersectionObserver initial observation queuing Queues an entr…` while **p2p is
+  9/9**. Baseline roster named 4; the delivery roster named 33, because the model wrote the other 29. The check
+  named was never in the baseline roster. Under `9e65f627` this becomes `DeliveryGate.OwnFailing` — *the checks
+  this work wrote fail*. Recorded here as the known pre-fix defect, not a new finding.
+- **DEFECT: ink's after-photograph still never parses.** Ten finished-tree readings, every one
+  `named=0 red=0 read=False`, against a baseline that reads fine (`named=45`). Identical to ink s10 and s11 —
+  three sweeps, two models, same blindness. This is a task-level runner defect, not a model effect.
+- Resumes fired on all five (igel from 261 and 135 turns; ink from 116, 189, 194). Exit 2 on all five, honest.
+- The source-bytes patch rule held: `patch_generated_warning: null` everywhere, and happy-dom — the run that
+  produced the 335 MB mis-selection in s10 — selected a clean 25559-byte `worktree.patch` with all three other
+  candidates at 0.
+
+### Where each run broke
+- **happy-dom 10/14** — MODEL. Harness read, caught, repaired shape twice, exited 2. Four hidden behaviours unmet.
+- **igel 5/24** — MODEL + wall. 262-turn attempt, `.bak` churn, never settled; baseline suite red at base
+  (`named=2 red=2`) so the photograph had little to stand on.
+- **textual 4/20** — MODEL. JSON-contract deliverable, three times. Readings never widened past `(4 files) named 6`.
+- **ofetch 0/47** — MODEL, unambiguously. It broke the suite; the harness said so twice and exited 2.
+- **ink 10/25** — HARNESS (reading blindness) + MODEL (72 compiled carriers). Wall, `settled: false`.
