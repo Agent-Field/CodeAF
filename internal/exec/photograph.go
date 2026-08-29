@@ -160,6 +160,22 @@ func PhotographAfter(
 	if outcome == nil || workspace == nil {
 		return
 	}
+	// A SECOND READING REPLACES THE FIRST; IT DOES NOT ADD TO IT.
+	//
+	// A leaf can now be photographed twice — once when it offers an answer, so
+	// its own finding can be put to it while it is still standing, and once when
+	// it actually lands (see selfclose.go). Every field below is THIS reading's
+	// answer to a question the tree has already been asked, so a finding the
+	// first reading raised and the second does not must stop being a finding.
+	// Left standing, a name a leaf deleted and then restored would ride the
+	// outcome to a gate that would buy a round to fix something that is already
+	// fixed — which is the twenty-first chapter's rule, one seam earlier.
+	//
+	// Nil here is what it is everywhere else: NO CLAIM, nobody looked. Each
+	// reader below leaves it nil when it could not compare, and writes an empty
+	// answer only where it actually compared and found nothing.
+	outcome.Baseline, outcome.Removed, outcome.Unbound = nil, nil, nil
+	outcome.Regressed, outcome.OwnFailing = nil, nil
 	// THE SYMBOL-LEVEL HALF IS SETTLED FIRST, AND IT IS SETTLED WHETHER OR NOT A
 	// CHECK EVER RAN. It needs no runner, no budget and no declaration — only
 	// the two readings of the tree — so it is the one measurement a project with

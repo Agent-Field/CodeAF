@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // BareSubharness is this worker's name, matching the registration in
@@ -137,20 +138,63 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 	// deliberately attaches nothing else to the context (see loop.go on why it
 	// sends no cache key), and this is not a knob: it changes no request, it
 	// only names the work on the way past.
-	outcome := loop.run(provider.WithCallNode(provider.WithCallTag(ctx, "leaf"), task.NodeKey))
+	// The leaf's own closing, armed for the one exit where this loop finishes
+	// under its own power. The decision, its bound and its journal are
+	// exec.SelfCloser's — shared with the generalist belt, because a mechanism
+	// only one worker has is one the run does not. What is local here is the
+	// reading itself, and the answer to "is the outcome in hand already
+	// photographed", which is what keeps a leaf that lands cleanly from paying
+	// for a second reading it does not need.
+	closer := exec.NewSelfCloser(b.history, task)
+	photographed := false
+	closing := func(outcome *exec.Outcome) string {
+		b.readFinished(leaf, task, ctx, reading, inherited, outcome)
+		// The bare loop meters neither turns nor tokens; its whole envelope is
+		// the wall, and what is left of it is what it was granted less what it
+		// has spent. A loop running with no deadline at all says so rather than
+		// reading as a clock that has run out. The reserve is the loop's own
+		// measured landing cost — the room already set aside for this leaf to
+		// finish safely, and not one second more.
+		wall := exec.NoWall
+		if b.deadline > 0 {
+			wall = b.deadline - outcome.Elapsed
+		}
+		note, _ := closer.Close(outcome, exec.RoomLeft(outcome, 0, 0, wall, loop.measured.reserve()))
+		photographed = note == ""
+		return note
+	}
 
-	// Artifacts: whatever this leaf left in the workspace. The bare loop does not
-	// own a git substrate, so this is the workspace's own record — the sweep
-	// after every tool call above (the tools' claims) and the before/after
-	// read of the tree (the world), together. Either alone was narrower than
-	// the disk once: the sweep misses a file a shell command wrote, the diff
-	// cannot say which call wrote it.
+	outcome := loop.runClosing(
+		provider.WithCallNode(provider.WithCallTag(ctx, "leaf"), task.NodeKey), closing)
+
+	// Every other way out of the loop — the wall, a provider that stopped
+	// answering, a context that ended — reaches here with no reading taken, and
+	// a reading nobody took is the silence exec.PhotographAfter exists to end.
+	if !photographed {
+		b.readFinished(leaf, task, ctx, reading, inherited, outcome)
+	}
+	return outcome, nil
+}
+
+// readFinished is what this worker does with a finished tree, in one place
+// because it is now done at two moments: when the loop offers an answer, so the
+// leaf can be shown its own finding while it is still standing, and on every
+// other way out, where nobody offered anything.
+//
+// Artifacts are whatever this leaf left in the workspace. The bare loop does not
+// own a git substrate, so this is the workspace's own record — the sweep after
+// every tool call (the tools' claims) and the before/after read of the tree (the
+// world), together. Either alone was narrower than the disk once: the sweep
+// misses a file a shell command wrote, the diff cannot say which call wrote it.
+//
+// Then the second reading, against the same entrypoint. Whether the tree
+// actually moved is the workspace's answer, taken from the two tree photographs
+// it has already compared — this asks it rather than re-stating the world.
+func (b *Bare) readFinished(
+	leaf string, task exec.Task, ctx context.Context,
+	reading verify.Reading, inherited bool, outcome *exec.Outcome,
+) {
 	b.workspace.RecordChanges(leaf)
 	outcome.Artifacts = b.workspace.Artifacts(leaf)
-
-	// The second reading, against the same entrypoint. Whether the tree actually
-	// moved is the workspace's answer, taken from the two tree photographs it
-	// has already compared — this asks it rather than re-stating the world.
 	b.photographAfter(ctx, task, reading, len(outcome.Artifacts) > 0, inherited, outcome)
-	return outcome, nil
 }

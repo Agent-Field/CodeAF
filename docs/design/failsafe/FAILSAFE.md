@@ -1863,3 +1863,133 @@ are not observables, because under *every-observable* they would be findings
 nothing could close; and a behaviour that still names nothing is asked nothing.
 Measured on the s16 tree: one of thirteen points gains an observable, four lose
 a spurious one, none gains a false one.
+
+## A twenty-sixth failure, 2026-08-29: the leaf that was still standing
+
+*igel v4-flash s14,
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s14`;
+the ofetch nemotron-lightning n1 run beside it.*
+
+Read the event order of that job and the shape is not a bad worker, it is a bad
+seam:
+
+```
+surface task-2        lost=0          the original leaf, clean
+surface task-2        lost=0          and clean again
+growth  overrun rnd 1
+surface task-2-x1-n4  lost=3          init_file_path, res_path, temp_post_req_data_path
+growth  revision rnd 1
+surface task-2-x1-n3  lost=3
+surface task-2-x1-n1  lost=3
+```
+
+All twenty-four hidden tests failed on
+`ImportError: cannot import name 'temp_post_req_data_path' from 'igel.configs'`.
+
+Every one of those `lost=3` rows was **measured at the end of the leaf that
+caused it**, by that leaf's own after-photograph, while that leaf was still
+running. And every one of them then travelled: to the outcome, to a gate, to the
+growth governor, and back down as a REPAIR ROUND — which is a new leaf, in a new
+workspace object, with a fresh brief and none of the reasoning that produced the
+fault. **Each repair was a cold splice, and each one deleted what the last one
+had relied on.** The run spent three rounds walking away from a working tree.
+
+Compare the same harness on the same day: s7 closed in sixteen calls at gate 2,
+and s16 scored 23 of 24 with `lost: 0` on every leaf. Nothing about the model
+changed. What changed was whether any leaf ever produced a finding at all.
+
+And ofetch's nemotron-lightning n1 is the same failure in the other kind: a leaf
+broke eight checks that had been passing, the gate named them correctly, and the
+repair was again a fresh leaf that had never seen the code it was fixing.
+
+> **A FINDING A LEAF RAISED AGAINST ITSELF IS PUT TO THAT LEAF BEFORE IT IS PUT
+> TO A GATE.** At the moment the measurement is taken, the cheapest and
+> best-informed reader of it is still standing there: it holds the transcript,
+> the reasoning and the prefix cache that produced the fault, and the room it did
+> not spend. Buying a stranger to fix it is the expensive answer and it is also
+> the worse one.
+
+### What it is
+
+`exec.PhotographAfter` already runs on a finished leaf on both belts. When it
+yields a **Sourced** finding the leaf itself caused — a public name it deleted
+against its own before-photograph, a name its changed sources read that nothing
+binds, its own checks red, a baseline check it turned red — the leaf is **not
+landed**. It is resumed on the transcript it is already holding, with the finding
+as the note, in the person-facing register:
+
+```
+Before this lands, your own reading of the finished tree found this:
+
+- this work removed public names that the tree spelled before it —
+  init_file_path, res_path, temp_post_req_data_path. Restore them, or say in
+  your delivery why the request requires their removal.
+
+This is your own work and it is still open, so settle it now rather than handing
+it on. Use what is left of your room on this and start nothing new; then say
+plainly what you changed, or why what you found has to stand.
+```
+
+It offers the honest alternative on purpose. A measurement can be right about the
+tree and wrong about the request — a rename is a removal to this reader, and
+correctly — and a worker with no way to say so will invent work rather than
+contradict the machine.
+
+### Every bound in it is derived, and the floor is the gate
+
+The room a close may spend is what the leaf has left of **its own** meter: turns
+against its turn cap, billed tokens against its cost grant, wall against its
+lease less the landing reserve it already keeps back. There is no new constant
+and there must never be one — a close with its own grant would be a second budget
+riding on top of the one the scheduler leased. A leaf whose meter is spent, or
+that was already told to land, gets none and lands with the finding exactly as it
+did before.
+
+One close per finding KIND per leaf. The second photograph, if it is still red,
+lands: the finding rides the outcome to the gate and is weighed as it always was.
+The gate path is unchanged, and the growth governor sees a close as part of the
+leaf and never as a round — it is inside `Executor.Run`, so `MaxOverrunRounds`,
+the standstill reading and the fixed-point reading are all untouched.
+
+### Both belts get it from one place
+
+The decision, its bound, its note and its journal are `exec.SelfCloser`. The
+generalist belt asks at the one exit where a leaf finishes under its own power,
+right after `Linear.land` takes the reading; the bare loop asks at the turn that
+came back with no tool call, through `loopState.runClosing`. **A mechanism only
+one worker has is one the run does not** — that is the eleventh chapter's rule,
+and the same file it was written about is the one this rides on.
+
+`exec.PhotographAfter` now clears the four fields it owns before it writes them,
+because a leaf can be photographed twice: a name a first reading said was lost
+and a second reading finds restored must stop being a finding, which is the
+twenty-first chapter's rule one seam earlier.
+
+### The record, and the line
+
+`store.EventLeafSelfClose` carries the kinds, the names, the turns the leaf had
+taken when it read its own work, and whether the close was taken. **Both arms are
+journaled** — the close, and the finding that stood with the reason it stood
+(`its turns were spent`, `it had already closed lost public names once`) —
+because a leaf that fixed its own work and a run where nobody looked were
+otherwise the same silence (clause 4). Nothing reads the row to decide anything.
+
+The headless stream says the arm that reopens the work, because a leaf held back
+is still running when the person expected it to be finished (clause 3):
+
+```
+  ↻ task-2  — closing its own finding: lost public names (3 names)  1m12s
+```
+
+The arm that stood says nothing there: the gate line below it already carries the
+finding in its own words, and saying it twice reads as two findings.
+
+### What is deliberately not here
+
+No judge, no model call, and no second opinion about whether the finding is true
+— all four kinds are measurements of the world with no citation to weigh, which
+is exactly why a leaf can be handed one directly. No retry, no new attempt, no
+requeue: the leaf never released its claim, so nothing above it observes an
+ending it did not have. And no close on a leaf that was cancelled, paused,
+faulted, promoted or split — none of those is a leaf being asked to deliver
+anything.

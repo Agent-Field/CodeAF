@@ -893,6 +893,44 @@ spends money to deliver nothing, and a run that stopped for want of time is
 **partial** (exit 2), never whole. An unknown deadline or an untimed attempt
 answers empty and buys the round: this makes runs longer, not shorter.
 
+## The leaf's own closing, whose room is what it did not spend
+
+A finding a leaf's own after-photograph raises against that leaf — a public name
+it deleted, a name it reads that nothing binds, its own checks red, a check it
+turned red — is put to the leaf before it lands (`internal/exec/selfclose.go`).
+The alternative was the only one there was: land, gate, and a repair ROUND, which
+is a cold leaf with a fresh brief and none of the context that made the mistake.
+igel v4-flash s14 bought three of those and each deleted what the last relied on.
+
+**There is no number here and there must never be one.** The room a close may
+spend is what the leaf has left of the meter it was already granted, and nothing
+else:
+
+| meter | what is left | where the grant comes from |
+| --- | --- | --- |
+| turns | `turnCap - outcome.Turns` | `Linear.maxTurns`, clamped by `FoldTurns` for a fold |
+| billed tokens | `maxTokens - spent(outcome)` | `Linear.maxTokens` |
+| wall | `time.Until(deadline) - landingReserve` | the leaf's own lease, less the reserve it already keeps back to land in |
+
+A meter a belt does not have is not a meter that ran out: the bare loop passes
+zero for turns and tokens and `exec.NoWall` when it has no deadline, and a
+non-positive grant reads as *this belt does not bound that*. A leaf whose figures
+are all fine but whose `Exhausted` is set — a straggler hand-back, a deadline
+reserve it entered — has no room either, because it was told to land.
+
+**What a close costs is one extra reading of the finished tree**, on the same
+budget as every other (`verify.ReadingBudget`, an eighth of the wall). It is
+bounded by the FINDING KINDS a leaf can raise against itself — four — asked once
+each, so a leaf pays at most one extra reading per kind it actually raised and a
+leaf that photographs clean pays nothing at all. The second reading is the one
+that lands, and `exec.PhotographAfter` clears the four fields it owns on entry so
+a finding the first reading raised and the second does not stops being a finding.
+
+**The governor sees a close as part of the leaf and never as a round.** It is
+inside `Executor.Run`, so `MaxOverrunRounds`, the standstill reading and the
+fixed-point reading above are all untouched, and `store.EventLeafSelfClose` is
+inert — nothing reads it to decide anything.
+
 ## What a round of a job costs, measured on that job
 
 A job still growing when its wall arrives is a job that never settles, so no gate
