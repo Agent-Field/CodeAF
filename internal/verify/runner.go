@@ -110,6 +110,11 @@ type Strategy struct {
 	// to the ones that merely import what it touched. It is the floor a reading
 	// cut at its ceiling narrows back to.
 	Core int `json:"-"`
+	// Widened are the paths WithOwnChecks joined on: the check files the run
+	// itself left behind, which the before reading cannot have read because
+	// they did not exist when it was taken. They are kept so the subtraction
+	// can tell a check this work broke from a check this work WROTE.
+	Widened []string `json:"-"`
 }
 
 // retakeSize is how many checks this rung should be retaken over, given the
@@ -155,15 +160,94 @@ func (s Strategy) narrowedTo(count int) (Strategy, bool) {
 // comparable says two readings are readings of the SAME thing, which is the
 // only condition under which subtracting one from the other means anything.
 //
-// Command and workdir and scope, all three, because each of them alone has
+// Place and runner and selection, all three, because each of them alone has
 // changed what a reading covers: a different rung of the ladder is a different
 // command, a different package of a monorepo is a different workdir, and the
 // same command scoped to three files is a different suite from the same command
 // scoped to none. A before reading of a whole suite minus an after reading of
 // three files is a hundred checks that "disappeared", and every one of them
 // would be a finding.
-func (s Strategy) comparable(other Strategy) bool {
-	return s.Command == other.Command && s.Workdir == other.Workdir && s.Scope == other.Scope
+//
+// COVERING, NOT MATCHING. The after reading is deliberately allowed to be the
+// wider of the two: it takes in the checks the run itself wrote (WithOwnChecks),
+// which by definition were not there when the first reading was taken. A wider
+// selection can only add names to a roster, so nothing extra can vanish, and the
+// one thing it could have added — a new check that is red — is not a regression
+// and Reading.Regressed says so.
+func (s Strategy) covers(other Strategy) bool {
+	if s.Workdir != other.Workdir {
+		return false
+	}
+	if len(s.Selected) == 0 || len(other.Selected) == 0 {
+		// One of them is a reading of everything the entrypoint covers. Then
+		// the only honest comparison is that they are the same reading, which
+		// is what the command and the scope say.
+		return s.Command == other.Command && s.Scope == other.Scope
+	}
+	if s.Base == "" || s.Base != other.Base {
+		return false
+	}
+	held := make(map[string]bool, len(s.Selected))
+	for _, path := range s.Selected {
+		held[path] = true
+	}
+	for _, path := range other.Selected {
+		if !held[path] {
+			return false
+		}
+	}
+	return true
+}
+
+// WithOwnChecks widens a scoped reading to take in the checks THE RUN ITSELF
+// WROTE, named from the record of what it left behind.
+//
+// It is the one thing a scope decided before the work cannot know, and igel s8
+// is what it costs. That job's focus resolved to one file, so both its readings
+// were `pytest tests/test_igel/test_igel.py` and both named the same two checks
+// — while the run wrote `tests/test_igel/test_feature_schema.py` and
+// `tests/test_igel/test_integration.py`, about forty checks, and no reading ever
+// ran one of them. The coverage mapping had a roster of two to match a whole
+// checklist against, and the before-and-after could not move because the only
+// thing that changed was invisible to both halves.
+//
+// > THE RUN'S OWN CHECKS ARE ALWAYS IN SCOPE, ON EVERY ROUND, AND THEY COME
+// > FROM THE WORLD'S RECORD RATHER THAN FROM THE WORKER'S ACCOUNT.
+//
+// record is the artifact record — every file the run created or changed,
+// whatever wrote it — and a path in it is a check by the runner's own naming
+// convention and by nothing else. Adding files can only GROW the roster, which
+// is why the after reading may be wider than the before one and the comparison
+// still holds: see covers, and Reading.Regressed, where a check the before
+// reading never ran cannot have regressed.
+//
+// ok is false for a reading of the whole suite, which already holds them, and
+// when the record names no check this reading is not already running.
+func (s Strategy) WithOwnChecks(workspace string, record []string) (Strategy, bool) {
+	if s.Base == "" || len(s.Selected) == 0 {
+		return s, false
+	}
+	held := make(map[string]bool, len(s.Selected))
+	for _, path := range s.Selected {
+		held[path] = true
+	}
+	var added []string
+	for _, path := range OwnChecks(workspace, record).Within(s.Workdir) {
+		if held[path] {
+			continue
+		}
+		held[path] = true
+		added = append(added, path)
+	}
+	if len(added) == 0 {
+		return s, false
+	}
+	sort.Strings(added)
+	s.Widened = added
+	s.Selected = append(append([]string{}, s.Selected...), added...)
+	s.Command = s.Base + " " + strings.Join(s.Selected, " ")
+	s.Scope = fmt.Sprintf("touched packages (%d %s)", len(s.Selected), plural(len(s.Selected), "file"))
+	return s, true
 }
 
 // Empty reports a strategy that names no command, which is what an undiscovered

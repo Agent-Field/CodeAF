@@ -2133,7 +2133,21 @@ func (e *Evidence) measureFinalTree(ctx context.Context) {
 	// re-derived. Two readings taken with two different commands subtract to
 	// noise, and re-deriving here would let a worker that edited its own test
 	// script choose what the gate's reading measures.
-	after, ok := verify.RunReading(ctx, e.Workspace, reading.Before.Strategy, reading.Budget)
+	//
+	// It is widened by exactly one thing, and only outward: the check files the
+	// run itself left behind, taken from the record of the tree rather than from
+	// anybody's account of what was tested. A scope is chosen before the work
+	// exists and so can never hold a test the work wrote — igel's s8 read the two
+	// checks its one touched file already had and never the forty the run put in
+	// a new file — and a checklist point exercised only by such a check is
+	// unexercised for as long as it is out of scope. Widening cannot forge a
+	// regression: Reading.Regressed counts only checks the before roster
+	// reported green, and these did not exist then.
+	strategy := reading.Before.Strategy
+	if widened, added := strategy.WithOwnChecks(e.Workspace, e.Artifacts); added {
+		strategy = widened
+	}
+	after, ok := verify.RunReading(ctx, e.Workspace, strategy, reading.Budget)
 	if !ok || after.TimedOut {
 		return
 	}
