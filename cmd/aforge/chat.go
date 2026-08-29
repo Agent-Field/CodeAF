@@ -154,6 +154,10 @@ type brainOptions struct {
 	// cannot let the choice be the variable it is measuring. Empty is the
 	// ordinary path, where the compiler chooses and usually chooses nothing.
 	subharness string
+	// wall is how long this brain's work has to finish in. Zero is a window,
+	// which has no wall; an errand's is its own timeout, and it is handed on so
+	// the work can see the clock it is being judged against.
+	wall time.Duration
 	// produced is the job's record of what its work left behind: told, as each
 	// leaf lands, the absolute paths that leaf's workspace recorded it writing.
 	// It is the registry's own list rather than anything read back out of prose,
@@ -199,7 +203,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 // taken off. Nothing here starts a goroutine or holds the terminal; start does
 // that, once, on a brain that has already been built.
 func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, error) {
-	brain := &chatBrain{window: w, session: session}
+	brain := &chatBrain{window: w, session: session, wall: opts.wall}
 	path, database, graph := w.path, w.database, w.graph
 	newClient := opts.newClient
 	if newClient == nil {
@@ -594,6 +598,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
+		// WHERE THIS JOB'S WORK HAPPENS IS A PROPERTY OF THE JOB, said once,
+		// here, by the only code that decides it. Four paths grow a running job
+		// and every one of them has to weigh what the last round changed
+		// against what the job is about — which cannot be read without knowing
+		// which tree to read it in. Threading it through four signatures owned
+		// by four waves is how a fact comes to be true on whichever caller
+		// somebody remembered. See resident.RememberJobWorkspace.
+		resident.RememberJobWorkspace(graph, node, jobDir)
 		jobSpace = jobSpace.WithScratch(scratchRoot)
 		if opts.sharedWorkspace {
 			// Whose directory this is, said as its own fact. The engine reads it
@@ -941,6 +953,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					}); resumeErr != nil {
 						log.Printf("note: could not journal that %s resumed: %v", node.ID, resumeErr)
 					}
+					// AND IT IS A ROUND. A leaf resumed in place spends a body
+					// of work exactly as a spliced repair does, and the growth
+					// ledger never saw one — so eight exhaustions of one lineage
+					// cost ink s10 its whole wall while the standstill rule,
+					// which counts rounds out of that ledger, weighed five.
+					resident.NoteResumedRound(graph, node, bank.Artifacts)
 				}
 			}
 		}
@@ -2194,6 +2212,19 @@ type chatBrain struct {
 	// caller, and every test that does not ask otherwise — cancels at once,
 	// which is what a one-shot's wall means.
 	leafGrace time.Duration
+	// wall is when this brain's work has to be over, for the callers that have
+	// one. Zero is a window, which has none.
+	//
+	// IT IS THE SAME WALL THE ERRAND IS WATCHING AND THAT IS THE POINT. The
+	// wall used to live only in the settlement watcher's own context while the
+	// brain ran on context.Background() — so every rule in the program that
+	// asks "is there time left to finish another round of work" was reading a
+	// deadline that did not exist, and answering no-limit. revision's outOfWall
+	// is one such rule and it has never fired in a headless run; the growth
+	// governor's is the other, and between them ink s10 and happy-dom s10 spent
+	// 5401 seconds each and settled nothing. A clock the machinery cannot see
+	// bounds nothing but the person's patience.
+	wall time.Duration
 
 	closers    []func()
 	background sync.WaitGroup
@@ -2239,6 +2270,16 @@ func (b *chatBrain) closeAll() {
 func (b *chatBrain) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	runCtx, runCancel := context.WithCancel(context.Background())
+	if b.wall > 0 {
+		// The deadline rides the RUN context — the loops that claim, execute
+		// and grow — and not the background one, which owns the housekeeping a
+		// shutdown is entitled to finish. A caller that sets it cancels at the
+		// wall anyway (see the errand's settle()); what this adds is that the
+		// work can SEE the wall coming while there is still time to act on it.
+		walled, releaseWall := context.WithDeadline(runCtx, time.Now().Add(b.wall))
+		release := runCancel
+		runCtx, runCancel = walled, func() { releaseWall(); release() }
+	}
 	b.cancel, b.runCancel = cancel, runCancel
 	b.runDone = make(chan struct{})
 	graph, session := b.window.graph, b.session
