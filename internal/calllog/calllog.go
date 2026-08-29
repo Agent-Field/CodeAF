@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
@@ -294,8 +295,60 @@ func Path() string {
 // anything but the mutex and the write itself: its callers are model calls, and
 // nothing about a model call may depend on a disk.
 func Append(record Record) {
+	noteLast(record)
 	shared.write(record)
 }
+
+// LastCall is the newest call this process has heard back from: the model that
+// answered and the moment it did. It is the in-memory half of the log, kept
+// whether or not the file is being written.
+type LastCall struct {
+	Model string
+	Tag   string
+	Node  string
+	At    time.Time
+}
+
+// last is the one fact the log keeps in memory as well as on disk. The headless
+// waiting line used to read it from the journal's usage rows, and a bare leaf
+// writes its usage row when it FINISHES — so a leaf ten minutes into its work
+// reported "last call … 10m ago" while calls were landing every second, which
+// is the opposite of what the line exists to say. Every end row passes through
+// Append; this is the same record, read a moment sooner.
+var last struct {
+	mutex sync.Mutex
+	call  LastCall
+	found bool
+}
+
+func noteLast(record Record) {
+	// A start row is a call that has not answered yet, and a row with no model
+	// cannot say who answered — neither is the fact a waiting line wants.
+	if record.Phase != "" || record.Model == "" {
+		return
+	}
+	at, err := time.Parse(timeLayout, record.Time)
+	if err != nil {
+		return
+	}
+	last.mutex.Lock()
+	last.call = LastCall{Model: record.Model, Tag: record.Tag, Node: record.Node, At: at}
+	last.found = true
+	last.mutex.Unlock()
+}
+
+// Last reports the newest finished call this process made, and false when there
+// has not been one — a process that has not reached a model and one that heard
+// back a moment ago are different situations, and no zero is invented for the
+// first.
+func Last() (LastCall, bool) {
+	last.mutex.Lock()
+	defer last.mutex.Unlock()
+	return last.call, last.found
+}
+
+// timeLayout is how Record.Time is spelled, on the way out and on the way back.
+const timeLayout = "2006-01-02T15:04:05.000Z07:00"
 
 func (l *log) write(record Record) {
 	line, err := json.Marshal(record)

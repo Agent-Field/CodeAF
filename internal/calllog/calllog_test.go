@@ -229,3 +229,24 @@ func TestAPairingTokenIsShortAndDifferentEveryTime(t *testing.T) {
 		t.Fatalf("ids should be eight characters and unique: %q %q", first, second)
 	}
 }
+
+// The log's in-memory half: the newest finished call is readable in-process
+// with the file off, a start row is not an answer, and a row with no model
+// cannot say who answered.
+func TestLastIsTheNewestFinishedCallEvenWithTheFileOff(t *testing.T) {
+	t.Setenv(EnvVar, OffValue)
+	Open(t.TempDir())
+	Append(Record{Time: "2026-08-28T23:00:00.000-04:00", Phase: "start", Model: "a/one"})
+	if call, found := Last(); found && call.Model == "a/one" && call.At.Year() == 2026 && call.Tag == "" && call.Node == "" {
+		t.Fatalf("a start row was read as an answer: %+v", call)
+	}
+	Append(Record{Time: "2026-08-28T23:00:01.000-04:00", Model: "a/one", Tag: "leaf", Node: "task-2", Status: 200})
+	Append(Record{Time: "2026-08-28T23:00:02.000-04:00", Status: 200})
+	call, found := Last()
+	if !found || call.Model != "a/one" || call.Tag != "leaf" || call.Node != "task-2" {
+		t.Fatalf("Last() = %+v, %v; want the finished leaf call", call, found)
+	}
+	if call.At.Format(timeLayout) != "2026-08-28T23:00:01.000-04:00" {
+		t.Fatalf("At = %s, want the end row's own time", call.At.Format(timeLayout))
+	}
+}

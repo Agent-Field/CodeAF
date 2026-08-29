@@ -1340,6 +1340,12 @@ taught aforge about that model.
 a call goes *out* as well as when it comes back: a planning call four minutes into a
 65,536-token ceiling used to look exactly like a machine doing nothing.
 
+**The headless waiting line reads the same record.** When `aforge do` has nothing new to
+say it prints `still waiting: … · last call <model> <n> ago`, and that `last call` is the
+newest answer this process has heard — the call log's own memory, kept even with the file
+switched off — not the moment the work was booked. A worker ten minutes into its work says
+`last call … 1s ago`, because that is what is true.
+
 The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. `aforge doctor` names
 the file and its size. Set `AFORGE_CALL_LOG=off` to write nothing at all, or
 `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere you can watch.
