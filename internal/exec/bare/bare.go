@@ -113,6 +113,10 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		user:     userText,
 		cwd:      cwd,
 		deadline: b.deadline,
+		// Where an interruption goes so somebody watching the run hears about
+		// it. It is the task's own seam, so a bare leaf's cut stream lands in
+		// the journal beside a recovered panic's and reads the same way.
+		faulted: task.Faulted,
 	}
 
 	// The node these calls belong to, for the model-call log. The bare loop

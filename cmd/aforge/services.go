@@ -13,7 +13,7 @@ import (
 func runServices(args []string) error {
 	flags := flag.NewFlagSet("services", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	path, err := expandHome(strings.TrimSpace(*database))

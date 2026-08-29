@@ -55,7 +55,7 @@ func runChat(args []string) error {
 	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -543,7 +543,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// which not starting the work is still free.
 	desk := newConsentDesk(graph).WithHeadless(opts.consent)
 	desk.Rehydrate()
-	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
+	// Declared before it is built so the leaf builder inside can reach it. The
+	// one thing it says back to the runner is how long this leaf's own watchdog
+	// is, which is what keeps the claim reaper above every deadline actually
+	// granted (resident.Runner.RaiseStaleAge).
+	var runner *resident.Runner
+	runner = resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
 		// Nothing above this line spends anything, which is the whole point of
 		// its position: a job whose estimate crosses the threshold is held and
@@ -1164,6 +1169,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
 			runCtx = armTranscript(runCtx, graph, node.ID, build.model)
+			// THE REAPER MUST NOT FIRE BELOW THIS LEAF'S OWN WATCHDOG. The
+			// runner's claim reaper is a constant and this figure is not — it
+			// scales with the budget the leaf was granted — so a well-fed leaf
+			// could be entitled to run longer than the reaper's window and be
+			// taken off its own work by the one mechanism that exists to notice
+			// work nobody is doing. This is the only place both numbers are
+			// known, so it is where they are reconciled.
+			runner.RaiseStaleAge(watchdog)
 			outcome, err = runLeafWithWatchdog(runCtx, worker, task, watchdog)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
@@ -2343,15 +2356,22 @@ func (s *sharedLines) lines() []string {
 
 // leafBank is everything a dead attempt of this leaf leaves for the next one.
 //
-// Three sources, one composition. What the attempt had in hand comes from its
+// Four sources, one composition. What the attempt had in hand comes from its
 // outcome when there is one — a leaf abandoned by the watchdog has none, which
-// is exactly the case the other two exist for. What it said as it went comes
+// is exactly the case the others exist for. What it said as it went comes
 // from its own record in the journal (the progress rows a long worker posts,
 // which for a top-level or craft-rooted leaf are anchored to itself) joined with
 // whatever it shared to the board in this process, which the journal cannot
 // attribute back to one leaf of a job. What it wrote comes from the outcome's
 // artifact list and from the directory itself, because a register that died with
 // its process remembers nothing and the files are still there.
+//
+// AND WHAT IT ACTUALLY DID comes from its recorded transcript. The three sources
+// above are all things the attempt CHOSE to say, and an attempt killed mid-turn
+// said almost none of them: on the happy-dom run of 2026-08-28 a leaf ran the
+// project's test file seventy-one times across three starts and handed its
+// successor a partial of "" every time, while every one of those turns sat in the
+// store under its own node. See resident.BankedTranscript.
 //
 // The directory is only read when it is the job's own. See ownWorkspace.
 func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir string,
@@ -2367,6 +2387,7 @@ func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir
 		bank = bank.WithArtifacts(absolute...)
 	}
 	bank = bank.WithShared(resident.BankedProgress(graph, node.ID)...).WithShared(shared...)
+	bank.Transcript = resident.BankedTranscript(graph, node.ID)
 	if ownWorkspace && space != nil {
 		bank = bank.WithArtifacts(space.Existing()...)
 	}

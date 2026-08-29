@@ -54,6 +54,11 @@ const (
 	// Empty when the leaf left no structured record, which is the ordinary
 	// case for a generalist that produced only prose.
 	ContinuationStateHeader = "What the previous agent actually did — files it touched, checks it ran, and its last calls. Resume from here; do not re-discover what this already found."
+	// ContinuationTranscriptHeader introduces the dead attempt's own turns as
+	// they were recorded: what it said, what it ran, and what came back. It is
+	// the last block of the continuation because it is the longest and the most
+	// specific — the three above are the summary, this is the working.
+	ContinuationTranscriptHeader = "Your own turns from the attempt that was interrupted, oldest first — what you said, what you ran, and what came back. This work is already done and already paid for; carry on from the end of it."
 )
 
 // BankSharedLead introduces the shared progress lines inside the partial block.
@@ -91,6 +96,24 @@ type Bank struct {
 	// case for a generalist that produced only prose — and an empty state is
 	// simply left out of the composition.
 	State string
+	// Transcript is the dead attempt's OWN TURNS, read back from the record it
+	// wrote as it worked (internal/store/transcript.go): the assistant text, the
+	// tool calls and the results they returned, in the order they happened.
+	//
+	// THIS IS THE FIELD THAT MAKES A RESTART A RESUMPTION. The three above are
+	// what the attempt CHOSE to announce — a partial result, some progress rows,
+	// a structured summary — and a leaf abandoned mid-turn announced almost
+	// nothing, because announcing is what a leaf does when it is finishing. Its
+	// work is nonetheless all there: seventy-one runs of one test file, on the
+	// happy-dom run of 2026-08-28, every one recorded under the node and every
+	// one discarded when the claim reaper started the leaf over.
+	//
+	// It is expected to be PARTIAL. The recorder flushes on a full batch and on
+	// every way out of a leaf, a fault included, so what survives is everything
+	// up to the last flush — which is exactly what "resume from where it got to"
+	// means, and is why nothing here tries to invent the result of a tool call
+	// whose answer never arrived. See [BankedTranscript] for how one is rendered.
+	Transcript string
 }
 
 // Empty reports that there is nothing to hand on, in which case no caller should
@@ -98,6 +121,7 @@ type Bank struct {
 // is a sentence that costs tokens and teaches the model that the work has
 func (b Bank) Empty() bool {
 	return strings.TrimSpace(b.Partial) == "" && strings.TrimSpace(b.State) == "" &&
+		strings.TrimSpace(b.Transcript) == "" &&
 		len(b.trimmedShared()) == 0 && len(b.Artifacts) == 0
 }
 
@@ -125,6 +149,17 @@ func (b Bank) Continuation() string {
 		body.WriteString(ContinuationStateHeader)
 		body.WriteString("\n")
 		body.WriteString(state)
+	}
+	// Last, and longest. The three blocks above are the attempt's account of
+	// itself; this is the attempt itself, and a reader that ran out of attention
+	// before reaching it has already been told the summary.
+	if transcript := strings.TrimSpace(b.Transcript); transcript != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n\n")
+		}
+		body.WriteString(ContinuationTranscriptHeader)
+		body.WriteString("\n")
+		body.WriteString(transcript)
 	}
 	return body.String()
 }
@@ -256,6 +291,168 @@ func BankedProgress(graph nodeRecord, nodeID string) []string {
 		lines = lines[len(lines)-BankedProgressLimit:]
 	}
 	return lines
+}
+
+// ── the attempt's own turns ─────────────────────────────────────────────────
+//
+// THE DEFECT THIS ANSWERS. On the happy-dom run of 2026-08-28 the node
+// `task-2-x1-n2` started three times, twenty minutes apart to the minute. Each
+// start was a provider call that hung for fifteen minutes, a claim reaper that
+// took the node back, and a leaf that began again — with an empty context, in a
+// workspace already holding its own edits, having already run the project's test
+// file seventy-one times. Every one of those turns was in the store: the leaflog
+// recorder writes them under the node and flushes on every way out of a leaf.
+// Nothing read them back.
+//
+// The bank already knew how to hand a dead attempt's work to its successor. What
+// it could hand over was only what the attempt had ANNOUNCED — a partial result,
+// its progress rows, its structured findings — and an attempt killed mid-turn
+// announces almost nothing, because announcing is the last thing a leaf does.
+// Its turns are the work.
+
+const (
+	// BankedTranscriptTurns is how many of the attempt's most recent turns ride
+	// into its successor.
+	//
+	// THE LAST ONES, for the reason [BankedProgressLimit] takes the last progress
+	// rows: work of this kind is cumulative, and the state a resuming leaf needs
+	// is where the previous one had GOT TO. The head of a run is what an autopsy
+	// wants and the store keeps it (store.MaxTranscriptEntries seals from the
+	// front); a continuation wants the other end.
+	BankedTranscriptTurns = 12
+	// BankedTranscriptBytes bounds the whole block, because a dozen turns of a
+	// leaf that ran a test suite is not a dozen short lines.
+	//
+	// It is store.MaxTranscriptTextBytes × 8 and not a fresh figure: one entry's
+	// bound is what this package already accepts as "enough of one step to tell
+	// what happened", and this block is a handful of steps. Reached first, it
+	// wins over the turn count and the block is trimmed from the FRONT, so what
+	// survives is always the end of the work.
+	BankedTranscriptBytes = 8 * store.MaxTranscriptTextBytes
+	// bankedResultBytes bounds one tool result inside the block. A test run's
+	// output is the largest thing a leaf ever holds and the least of it is worth
+	// re-reading: what the resuming leaf needs is that the command ran and how it
+	// ended, which is its tail (store.TruncateTranscriptText keeps both ends).
+	bankedResultBytes = 1200
+)
+
+// transcriptRecord is the one read this needs of the journal.
+type transcriptRecord interface {
+	TranscriptFor(nodeID string, limit int) ([]store.TranscriptEntry, error)
+}
+
+// BankedTranscript renders a node's recorded turns as the block a resuming
+// attempt is handed, or "" when this worker left no record.
+//
+// EMPTY IS AN HONEST ANSWER AND A COMMON ONE. Not every worker records a
+// transcript, and a leaf that died before its first flush recorded nothing. In
+// both the bank simply has one fewer block, which is what it already does with
+// every other field it does not have.
+//
+// A TOOL CALL WITH NO RESULT IS SAID TO HAVE NO RESULT. That is the shape a
+// partial record takes — the attempt was interrupted between asking and being
+// answered — and it is the one fact about it that must not be smoothed over: a
+// resuming leaf that believed a command had run and returned nothing would skip
+// the command. So the call is rendered with "(interrupted before it answered)"
+// and the leaf can decide to run it again.
+func BankedTranscript(graph transcriptRecord, nodeID string) string {
+	if graph == nil || strings.TrimSpace(nodeID) == "" {
+		return ""
+	}
+	entries, err := graph.TranscriptFor(nodeID, 0)
+	if err != nil || len(entries) == 0 {
+		return ""
+	}
+	// Which turns survive, counted from the end. The entries carry their own
+	// turn number, so this is a read of the record rather than an assumption
+	// about how many entries a turn has.
+	answered := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		if entry.Kind == store.TranscriptToolResult && entry.CallID != "" {
+			answered[entry.CallID] = true
+		}
+	}
+	cutoff := 0
+	if last := entries[len(entries)-1].Turn; last > BankedTranscriptTurns {
+		cutoff = last - BankedTranscriptTurns
+	}
+	lines := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Turn <= cutoff {
+			continue
+		}
+		if line := bankedTranscriptLine(entry, answered); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return trimmedFromTheFront(lines, BankedTranscriptBytes)
+}
+
+// bankedTranscriptLine renders one recorded entry, or nothing for a kind whose
+// only reader is an autopsy.
+func bankedTranscriptLine(entry store.TranscriptEntry, answered map[string]bool) string {
+	text := strings.TrimSpace(entry.Text)
+	switch entry.Kind {
+	case store.TranscriptAssistant:
+		if text == "" {
+			return ""
+		}
+		return "you said: " + text
+	case store.TranscriptToolCall:
+		line := "you ran " + entry.Tool
+		if text != "" {
+			line += " with " + text
+		}
+		if entry.CallID != "" && !answered[entry.CallID] {
+			line += " (interrupted before it answered)"
+		}
+		return line
+	case store.TranscriptToolResult:
+		outcome := "it returned"
+		if entry.Failed {
+			outcome = "it failed with"
+		}
+		if text == "" {
+			return outcome + " nothing"
+		}
+		return outcome + ": " + store.TruncateTranscriptText(clipMiddle(text, bankedResultBytes))
+	case store.TranscriptNote, store.TranscriptFault:
+		// The harness talking about its own machinery, and how the attempt
+		// ended. Both are worth carrying — "the stream was cut and the turn was
+		// asked again" explains a gap the turns themselves cannot — and both are
+		// marked as the harness speaking so they are not read as the model's.
+		if text == "" {
+			return ""
+		}
+		return "(the harness noted: " + text + ")"
+	default:
+		return ""
+	}
+}
+
+// clipMiddle keeps a value's head and tail with the gap named, which is what
+// store.TruncateTranscriptText does at its own bound; this applies the tighter
+// bound a continuation can afford before that one is asked.
+func clipMiddle(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	head := limit * 1 / 3
+	tail := limit - head
+	return text[:head] + "\n… … …\n" + text[len(text)-tail:]
+}
+
+// trimmedFromTheFront joins the lines and drops them from the OLD end until the
+// block fits. The end of the work is what a continuation is for.
+func trimmedFromTheFront(lines []string, limit int) string {
+	for len(lines) > 0 {
+		block := strings.Join(lines, "\n")
+		if len(block) <= limit {
+			return block
+		}
+		lines = lines[1:]
+	}
+	return ""
 }
 
 // bankedLine reads one record row as a progress line, or says it is not one.

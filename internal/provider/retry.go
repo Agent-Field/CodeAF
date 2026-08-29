@@ -334,8 +334,16 @@ func backoffFor(attempt int, providerWait time.Duration) time.Duration {
 // stream at the budget however healthily it was delivering. What bounds a
 // stream is silence: the header deadline on the streaming transport and the
 // idle watchdog send wraps the body in.
+//
+// AND AN ENDPOINT THAT ANSWERS WHOLE IS BOUNDED IN TOTAL WHATEVER IT WAS ASKED
+// FOR. A gateway that takes `stream: true` and generates the entire reply before
+// it sends a header has no silence to measure and no first token to wait for, so
+// the streaming transport's header deadline would be a deadline on the
+// generation rather than on a stall. [Client.unstreamable] is that endpoint
+// having said so on the wire, and from then on its calls are bounded the way an
+// answer with no inside can be.
 func (c *Client) clientFor(stream bool, maxTokens int) http.Client {
-	if stream {
+	if stream && !c.unstreamable.Load() {
 		client := *c.stream
 		client.Timeout = 0
 		return client

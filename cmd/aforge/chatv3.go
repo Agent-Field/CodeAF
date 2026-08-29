@@ -73,9 +73,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)")
 	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"model": true, "once": true, "session": true, "reasoning": true, "host": true, "at": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

@@ -3,6 +3,7 @@ package bare
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -180,6 +181,35 @@ type loopState struct {
 	// entirely of the harness's own progress lines — so nobody could say what it
 	// had done, or learn anything from what it cost.
 	transcript exec.TranscriptSink
+
+	// faulted carries one interruption of this loop out to the surface that
+	// owns the journal, so a person watching a headless run is told about it
+	// while it is happening (exec.Task.Fault, and internal/store/fault.go for
+	// the law).
+	//
+	// THE TRANSCRIPT IS NOT ENOUGH ON ITS OWN. A note recorded under the node is
+	// durable and readable afterwards, which answers the autopsy; it reaches
+	// nobody who is watching the run now, and a stalled provider call that costs
+	// fifteen minutes is exactly the fact an operator has to see while there is
+	// still a run to save. FAILSAFE.md's third clause: a fail-safe propagates to
+	// the verdict the person reads. Nil is a loop with nowhere to write, which
+	// is what the tests and the bench harness run.
+	faulted func(error)
+}
+
+// tell reports one interruption of this loop to whoever can write it down, and
+// reports nothing when nobody can. The nil check lives here rather than at the
+// call sites for the reason exec.Task.progress gives about its own.
+//
+// It is the sibling of [loopState.fault], and the pair is deliberate: fault
+// writes the RECORD, under the node, for whoever reads the run afterwards; this
+// writes the LINE, now, for whoever is watching it. The two answer different
+// questions and a cut that only did one of them was the defect.
+func (l *loopState) tell(err error) {
+	if l.faulted == nil || err == nil {
+		return
+	}
+	l.faulted(err)
 }
 
 // providerClient is the narrow slice of provider.Client the loop needs.
@@ -480,6 +510,7 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 				rerouted = true
 			}
 			if cuts >= cutBudget(cut, rerouted) {
+				l.tell(fmt.Errorf("%w — this leaf has no attempts left for it", err))
 				return nil, err
 			}
 			cuts++
@@ -489,6 +520,13 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 			// back as one turn that simply took four minutes, and the endpoint —
 			// the thing that was actually wrong — is nowhere in the account.
 			l.note("the stream was cut and the turn was asked again: " + err.Error())
+			// AND ON THE STREAM SOMEBODY IS WATCHING. The note above is the
+			// record; this is the line. What it says is the whole of what a
+			// person needs while it is happening — what stalled, and that THE
+			// CALL was retried rather than the leaf restarted, because a run
+			// whose leaf keeps starting over is the shape this was mistaken for
+			// on 2026-08-28.
+			l.tell(errors.New(cutWords(cut, rerouted)))
 			continue
 		}
 
@@ -787,4 +825,25 @@ func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 		return blindRetries
 	}
 	return silentRetries
+}
+
+// cutWords is the one line a person watching a headless run is given when the
+// guard cuts a call.
+//
+// It says three things and no more: WHAT went wrong, WHO it was routed away
+// from when the ledger could act, and — the part the reader most needs — that
+// what was retried is THE CALL. A run whose leaves restart reads, from outside,
+// exactly like a run whose calls retry, and the difference between them is
+// whether the work already paid for still exists. Naming it here is what stops
+// the two being confused again.
+//
+// The provider's name is included only when the wire actually said it: a cut
+// stream that never named its endpoint has nothing to name, and inventing one
+// would be the phrase-matching mistake FAILSAFE.md's first rule is about.
+func cutWords(cut *provider.StreamCut, rerouted bool) string {
+	words := cut.Error() + " → the call was retried"
+	if rerouted && strings.TrimSpace(cut.Provider) != "" {
+		words += ", routed away from " + strings.TrimSpace(cut.Provider)
+	}
+	return words
 }
