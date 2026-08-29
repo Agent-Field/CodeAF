@@ -163,11 +163,30 @@ func (b *Bare) photographAfter(
 	// noise, and re-deriving would hand a worker that edited its own test
 	// script the power to choose what the after reading measures — which is the
 	// tamper the photograph exists to catch.
-	after, ok := verify.RunReading(ctx, b.workspace.Root(), reading.Before.Strategy, reading.Budget)
+	strategy := reading.Before.Strategy
+	// WITH THE RUN'S OWN CHECKS ADDED, and that is the one thing about the
+	// after reading that is allowed to differ from the before one. A scope is
+	// decided before the work exists, so it cannot contain a test file the work
+	// itself wrote; igel's s8 run scoped every reading to the one source file it
+	// was told about, named the two checks that file already had, and never saw
+	// the forty the run had just written into a new file under tests/. The
+	// coverage mapping is handed the roster of a reading — a checklist point
+	// whose only exercise is a check this round wrote is unexercised for as long
+	// as that check is out of scope. So the record of what the run left behind
+	// is read for check files by the runner's own convention, and they join the
+	// selection. It widens the after reading and never narrows it, which is why
+	// the subtraction still holds: Strategy.covers reads a superset as
+	// comparable, and Reading.Regressed counts only a check the before roster
+	// reported GREEN, so a check that did not exist before cannot be a
+	// regression.
+	if widened, added := strategy.WithOwnChecks(b.workspace.Root(), outcome.Artifacts); added {
+		strategy = widened
+	}
+	after, ok := verify.RunReading(ctx, b.workspace.Root(), strategy, reading.Budget)
 	switch {
 	case !ok:
 		reading.Unread = "the finished tree could not be read: `" +
-			reading.Before.Strategy.Command + "` could not be started a second time"
+			strategy.Command + "` could not be started a second time"
 	case after.TimedOut:
 		reading.Unread = "the finished tree was not read: `" + after.Strategy.Command +
 			"` was killed at its ceiling without finishing"
@@ -182,7 +201,7 @@ func (b *Bare) photographAfter(
 	// what is lost is the subtraction, and a run that cannot say a check went
 	// red must not be able to say one did not either.
 	outcome.Verification = reading
-	b.journal(task, reading, verify.Result{Strategy: reading.Before.Strategy}, "on the finished tree", false)
+	b.journal(task, reading, verify.Result{Strategy: strategy}, "on the finished tree", false)
 }
 
 // journal writes one reading — or one reading that could not be taken — into the

@@ -650,6 +650,17 @@ The line in the record says which it was — `scope: touched packages (3 files)`
 `whole` — and the two are never compared with each other, because a whole reading minus a
 scoped one would report every check that was not selected as one that had disappeared.
 
+**And the checks the run wrote itself are always read.** A scope is worked out from your
+request, before any work exists, so it can never contain a test file the run goes on to
+create — one run wrote about forty checks into a new file and every reading it took named
+the same two checks the old file already had, so nothing it had just written was ever
+measured and nothing it had just covered stopped being reported as covered by nothing. The
+second reading therefore takes the checks next to your change plus **every test file the run
+left behind**, read off the tree rather than off the run's own account of itself. It costs
+no extra reading, and a new test that is red is not reported as something the work broke —
+a check that did not exist before cannot have been passing before. It is still a leaf that
+has not finished, and the acceptance line is where you see that.
+
 **A reading that is cut keeps what it named.** A command killed at its ceiling having
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never
