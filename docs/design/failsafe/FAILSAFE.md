@@ -1373,3 +1373,129 @@ removal finding is unchanged by all of this. And no attempt to decide whether th
 replacement is as strong as what it replaced: that is a judgement, the gate has a
 judge for judgements, and a mechanism that tried it by counting assertions would
 be back to reading vocabulary.
+
+
+## A twenty-second failure, 2026-08-29: four rounds for one finding, and the gate that never happened
+
+*happy-dom `deterministic-intersectionobserver` and ofetch `per-origin-circuit-breaker`,
+v4-flash s13, `bench/deepswe/results/`, 2026-08-29.*
+
+Two runs, one wall each, two different ways of spending it on nothing.
+
+happy-dom s13 raised **one finding four times**. Four consecutive delivery
+judgements carried `This work removed checks that existed before it:
+IntersectionObserver disconnect() Does nothing, IntersectionObserver observe()
+Does nothing, …` — the same four names, in the same order, word for word — and
+each one bought a repair round. The run ended `settled: true` at 2663 seconds and
+$0.135 with 9 of 14 hidden checks; the same task on the previous seed, working
+the same problem, reached 12.
+
+ofetch s13 spent 5407 seconds, 422 model calls and eight growth rounds and
+journaled **not one delivery judgement**. Its own governor had already said the
+wall was too near — twice, `cause: out-of-wall`, inside the last ninety seconds —
+and both times the run kept going, because a refusal declines to ADD work and
+says nothing whatever about the work already queued. Thirteen pending leaves and
+a pending job root at the wall, `settled: false`, and nothing judged.
+
+### 1. The journal lost its memory at the one moment it exists for
+
+A repair of a top-level job is spliced BESIDE the job and not beneath it — a
+delivery law, so the finished remainder is announced like any other deliverable —
+which makes its sink a top-level node and therefore, to `jobRootID`, its own job
+root. The growth journal was keyed by whichever node asked. So happy-dom's four
+rounds wrote four journals of one row each, under `task-2`, `task-2-x1`,
+`task-2-x2`, `task-2-x3`, and every rule that weighs a round against the one
+before it read back an empty journal.
+
+The evidence was there and unreadable. All four rows carry the IDENTICAL
+remainder digest `dc919e4e34171c4a` — which is the fixed-point rule's entire
+subject, invisible to it because no two of those rows were ever read together.
+The round counter survived only by accident: the splice derives it from id
+arithmetic rather than from the journal, which is why `cause: rounds` eventually
+fired and nothing else ever did. `revision.SpentCitations` and
+`coverageOverturned` had meanwhile always read this journal under the LINEAGE
+root, so the writer and two of its readers disagreed about the name of the thing.
+
+> **A JOB'S GROWTH JOURNAL IS THE JOB'S.** It is keyed by the lineage root — the
+> "-x" law asked of `OverrunLineage` rather than re-spelled — so a repair that
+> continues as a top-level job is the same job it continues.
+
+### 2. A round is bought FOR something, and that is what has to move
+
+Every rule the governor had asks a question about the round: did the tree change
+(standstill), did the reviewer type the same sentence (fixed point), how many
+have there been (the cap). None of them asks about the thing the round was BOUGHT
+for. happy-dom's rounds each changed a file the job was about, so the standstill
+rule correctly saw motion on every one — while the finding they were bought for
+did not move at all.
+
+> **A FINDING HAS ITS OWN FIXED POINT.** The finding a round is bought to close
+> travels with the round, is journaled beside it (`store.JobGrowth.Finding`), and
+> is compared against the next round's — the KIND the measurement gives itself
+> (`store.DeliveryGate.Finding`) and a digest of the names it cites, never the
+> paragraph. Two rounds bought for one finding that both ended with it standing
+> are a standstill of that finding, and no third is bought for it: it is handed
+> over named instead. The floor is clause 5's and is unchanged — the first round
+> a finding buys is never refused — and a finding of another kind is another
+> finding, which buys its own.
+
+The prose digest stands aside where a structured finding exists. The two disagree
+in both directions: a finding reworded escapes the digest entirely, and two
+genuinely different findings a reviewer happened to phrase alike are refused by
+it. Where the record can say which finding a round was bought for, the record
+decides.
+
+### 3. A gate always precedes the wall
+
+`CauseOutOfWall` did exactly what it was written to do in ofetch s13 and it
+bought nothing, because refusing to grow a job is not stopping one. The scheduler
+kept claiming the leaves that were already queued, the clock killed the last of
+them mid-flight, the job root never became ready, and no gate was ever cut.
+
+> **A REFUSAL TAKEN WITH THE WALL NEARER THAN ONE MEASURED ROUND STOPS THE JOB'S
+> QUEUED WORK.** Every part that has not started is retired, every part this
+> process is behind is asked to stop and cancelled, and the job root then has
+> nothing left to wait for — so it runs, is judged, and the verdict exists.
+> `resident.Runner.CloseOut`, reached through the seam every governor decision
+> already passes (`SetJobCloser`), so it is a property of the refusal and not of
+> whichever caller was wired for it.
+
+And the guarantee does not rest on anybody asking. A job only asks to grow when
+something in it ENDS, and a job whose queued leaves keep starting never asks —
+which is precisely the job that reaches the wall unjudged. So the settlement
+watch holds the same grip and uses it on the clock alone: at the job's own pace
+from the wall, a job with no verdict anywhere in its lineage is driven to one. A
+job that already has a verdict keeps its last minutes; the guarantee is that a
+verdict EXISTS, not that a second is bought at the price of the work that would
+have earned it.
+
+### And the estimate is no longer load-bearing
+
+`jobPace` was the LONGEST interval between two admitted rounds. Rounds are
+long-tailed — one round of ofetch s13 took twenty minutes while the median of its
+five was under four — so a single slow round taught the governor to refuse
+everything for the rest of the run. It is the median now, plus the reading pace,
+which is the one thing a run ever measures about the machine it is on
+(`store.VerificationReading.Elapsed`: forty-five seconds for a suite that takes
+eight natively, in an amd64 container under qemu). What makes it safe to relax a
+bound is that the bound is no longer the only thing holding: the settlement watch
+forces a verdict at the same distance from the wall whether or not any rule here
+noticed. PERF.md carries the derivation.
+
+```
+partial — IntersectionObserver disconnect() Does nothing and 3 more stood through 2 rounds of repair
+```
+
+### What is deliberately not here
+
+No new cap, no new timeout, no new constant of any kind. The round cap stopped
+happy-dom s13 and it was two rounds and eight minutes too late; a smaller one
+would be the wrong number for every other run. What was missing is a journal that
+remembered across the boundary it exists to weigh, an identity for the thing a
+round was bought for, and a refusal that stops a job rather than only declining
+to enlarge it.
+
+And no forcing of a job that has already been judged, and none on a job whose
+pace nothing has measured. With nothing measured there is no honest moment to
+choose, and stopping work early on a guess is the failure the whole mechanism
+exists to avoid.

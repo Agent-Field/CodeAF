@@ -67,6 +67,16 @@ const (
 // FindingOf reads one delivery judgement as the finding a repair round would be
 // bought to close.
 //
+// THE MEASUREMENT NAMES ITSELF WHERE IT CAN. store.DeliveryGate.Finding is the
+// verification lane's own word for which measurement raised a gap —
+// `removed-checks`, `regression`, `own-checks-failing`, `removed-public-name` —
+// and where the record carries it, it IS the kind: a reading of the world says
+// what it is, and nothing here gets to guess a better answer from the fields it
+// happened to fill in. The cases below are for the gaps no measurement raised —
+// a model judge reading the request, a coverage mapping — which have no such
+// word and still need an identity, because a round bought for one of those is
+// bought for something just as particular.
+//
 // A gate that PASSED raises nothing: there is no finding, and a round bought
 // after it is bought for something else. So is a gate whose refusal was
 // overturned — the finding was weighed against the world and lost, and a lost
@@ -82,6 +92,10 @@ const (
 func FindingOf(gate store.DeliveryGate) store.GrowthFinding {
 	if gate.Pass || gate.Overturned {
 		return store.GrowthFinding{}
+	}
+	if measured := strings.TrimSpace(gate.Finding); measured != "" {
+		cited := gate.Cited()
+		return store.GrowthFinding{Kind: measured, Names: findingDigest(cited), Cited: namedFew(cited)}
 	}
 	kind, names := "", []string(nil)
 	switch {

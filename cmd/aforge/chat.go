@@ -1912,6 +1912,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							unmet = closed
 							evidence.Gap, evidence.Quote = closed.Gaps, closed.Quote
 							evidence.Quotes, evidence.Mechanical = closed.Citations, closed.Mechanical
+							// And WHICH MEASUREMENT raised it, for the same
+							// reason and in the same breath. It is what makes
+							// the finding comparable across rounds, so a
+							// reading taken over the revised text that carried
+							// the first reading's word would tell the governor
+							// the job is still working on something it has
+							// moved on from. See store.DeliveryGate.Finding.
+							evidence.Finding = closed.Finding
 						}
 					} else {
 						outcome.Verdict = provider.VerdictSemanticFailure

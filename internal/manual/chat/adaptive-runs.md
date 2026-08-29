@@ -509,6 +509,47 @@ because its wall could not hold another round of work says `partial — no time 
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
 
+## When one finding is worked on twice and still stands
+
+A review finding buys work. **It buys at most two rounds.** If the first round ends and
+the same thing is still missing, a second round is bought and aimed at it; if that one ends
+and it is STILL missing, no third round is bought — the finding is handed over named
+instead of repaired, and the last line says so:
+
+```
+partial — IntersectionObserver disconnect() Does nothing and 3 more stood through 2 rounds of repair
+```
+
+"The same thing" is not the same sentence. Two findings are the same when they are the same
+KIND of finding — a check that used to pass and now fails, a check that was removed, a
+public name the change deleted, a behaviour nothing exercises — over the same names. A
+review that rewords itself has not found anything new; a review that names one more check
+has, and that one buys its own rounds. So a run can be stopped on one finding and still
+working on another, and only a finding that has been worked on twice is closed off.
+
+The wording you see on the work's own record when it happens is `the same thing is still
+missing after two rounds of work aimed straight at it, so it is handed over named rather
+than repaired`.
+
+## When the wall gets close — the work is checked before the clock stops
+
+A job that has not finished when its wall arrives is a job nothing ever judged: the review
+happens when a job finishes, and a job cut off mid-step never finishes. So aforge stops
+buying new work while there is still room to check what it did. Two things do it, and they
+answer the same question from opposite ends:
+
+- Work that would need another round is not bought. The line is `partial — no time left
+  for another round of work`.
+- A job that has never been reviewed at all is wound up: the parts that have not begun are
+  retired, the parts in flight are asked to stop, and the job is handed over to be checked
+  as it stands. You see `handing this over to be checked while there is still time`, and
+  the parts that were retired say `there was not enough time left on this run to finish
+  this, so it was handed over to be checked as it stands`.
+
+How close is "close" is measured on the errand itself — the pace this job's own rounds have
+kept, plus what this project's own checks cost to read on this machine. It is not a fixed
+number of seconds, and a job that has not yet shown a pace is never wound up early.
+
 ## When the repair only rewrote the summary — a round that changed nothing on disk
 
 Sometimes the work has already landed and what is wrong is the account of it, so instead
