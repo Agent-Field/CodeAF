@@ -321,6 +321,25 @@ func RememberChecklist(job string, points []plan.Point) {
 	checklists.held[job] = held
 }
 
+// RememberChecklistForRequest is the same memory, keyed from the request itself,
+// for the seam that has the checklist BEFORE any gate does.
+//
+// It exists because the memory was only ever written by the gate, and a job
+// whose first node never reaches one leaves it empty. ofetch s10 is that shape
+// exactly: the planner read 47 points onto `task-2`'s spec and journaled them,
+// `task-2` was handed over without a delivery gate, and the continuation
+// `task-2-x1` — planned afresh, so carrying no `Accept` — reached the only gate
+// of the run with no checklist at all. Its event holds `pass: true` and nothing
+// else: no mapping, no finding, no `unmeasured`. The coverage question was not
+// answered wrongly; it was never asked, and the run left at 42 of 47.
+//
+// THE CHECKLIST IS A READING OF THE REQUEST, so the moment it is read is the
+// moment it can be remembered, and every round of the job — gate or no gate —
+// inherits it from there.
+func RememberChecklistForRequest(request string, points []plan.Point) {
+	RememberChecklist(verify.JobKey(request), points)
+}
+
 // ChecklistFor is what an earlier round of this job settled it would be judged
 // against, or nothing.
 func ChecklistFor(job string) []plan.Point {
@@ -848,7 +867,13 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// skipped the question left the set exactly where it was and called that
 	// progress.
 	checks := checkEvidence(evidence, reading)
-	mapping := MapChecks(ctx, settings, client, node, points, checks, workerModel)
+	// AND WHAT COMES BACK GOES THROUGH THE SAME DOOR A CITATION GOES THROUGH.
+	// The mapping is one model call, and a pairing it makes on vocabulary alone
+	// is a behaviour declared covered by a check that is merely about the same
+	// subject. See GroundMapping: a check may satisfy a point only where the
+	// names the point spells distinctively are names the check spells too.
+	mapping := GroundMapping(evidence.Workspace, evidence.Artifacts, points,
+		MapChecks(ctx, settings, client, node, points, checks, workerModel))
 	verdict.Exercises = mapping
 	finding, unexercised := Unexercised(points, mapping, grounds)
 	// Measured either way. An empty set is the news that this round closed the

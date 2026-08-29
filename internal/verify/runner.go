@@ -199,8 +199,43 @@ func (s Strategy) covers(other Strategy) bool {
 	return true
 }
 
-// WithOwnChecks widens a scoped reading to take in the checks THE RUN ITSELF
-// WROTE, named from the record of what it left behind.
+// ChangedWorkStrategy is a reading aimed at the DIFF and nothing else: the
+// checks the run wrote, and the checks beside the source files it changed.
+//
+// It is the second reading's fallback for a job whose first reading was of the
+// WHOLE suite and could not finish it. A whole rung that was killed at its
+// ceiling has proved this project's suite does not fit the wall; running it
+// again on the finished tree spends the same eighth to learn the same thing, and
+// the run ends with no roster of the work it just did. ofetch s10 took six
+// readings, every one of them `whole`, because the request's focus resolved to
+// nothing the workspace held. The change itself always resolves — it is a list
+// of files that exist — so where the whole reading does not fit, the diff is the
+// reading that does.
+//
+// The pair it produces is deliberately NOT comparable: a reading of a handful of
+// files is a subset of a reading of everything, covers refuses it in that
+// direction, and Reading.Regressed answers nothing rather than reporting every
+// check outside the selection as vanished. What it buys is the ROSTER — which
+// checks exist for the work that was just done — which is the half the coverage
+// settlement spends and the half a cut whole reading has none of.
+//
+// ok is false when the record names nothing the tree still holds, or when this
+// project's runner cannot be told what to run.
+func ChangedWorkStrategy(workspace string, plan Plan, record []string) (Strategy, bool) {
+	focus := append(OwnChecks(workspace, record), ChangedSources(workspace, record)...)
+	if len(focus) == 0 {
+		return Strategy{}, false
+	}
+	ladder, ok := ReadingStrategies(workspace, plan, focus)
+	if !ok || ladder[0].Scope == ScopeWhole {
+		return Strategy{}, false
+	}
+	return ladder[0], true
+}
+
+// WithChangedWork widens a scoped reading to take in the work THE RUN ITSELF
+// DID, named from the record of what it left behind: the checks it wrote, and
+// the checks that sit next to the source files it changed.
 //
 // It is the one thing a scope decided before the work cannot know, and igel s8
 // is what it costs. That job's focus resolved to one file, so both its readings
@@ -214,6 +249,19 @@ func (s Strategy) covers(other Strategy) bool {
 // > THE RUN'S OWN CHECKS ARE ALWAYS IN SCOPE, ON EVERY ROUND, AND THEY COME
 // > FROM THE WORLD'S RECORD RATHER THAN FROM THE WORKER'S ACCOUNT.
 //
+// AND SO ARE THE CHECKS BESIDE WHAT IT CHANGED. The first reading's scope is a
+// reading of the REQUEST — it has to be, because at the moment it is taken there
+// is no diff — and a request is not a diff. textual s10 asked for `Log and
+// RichLog`; `RichLog` resolved to `_rich_log.py` and `Log` resolved to nothing,
+// so both readings ran `tests/test_concurrency.py tests/test_textlog.py` while
+// the change touched `_log.py` and `_rich_log.py` and `tests/test_log.py` — a
+// file the repository already had, sitting beside the one the work changed — was
+// read on neither side. By the time the second reading is taken the diff exists,
+// and it is the only account of where the work actually went. The source files
+// in the record go back through the same structural adjacency the scope was
+// built with (Adjacent), so what joins is the checks named after them and the
+// checks whose imports resolve to them, and never a name that merely looks alike.
+//
 // record is the artifact record — every file the run created or changed,
 // whatever wrote it — and a path in it is a check by the runner's own naming
 // convention and by nothing else. Adding files can only GROW the roster, which
@@ -222,8 +270,8 @@ func (s Strategy) covers(other Strategy) bool {
 // reading never ran cannot have regressed.
 //
 // ok is false for a reading of the whole suite, which already holds them, and
-// when the record names no check this reading is not already running.
-func (s Strategy) WithOwnChecks(workspace string, record []string) (Strategy, bool) {
+// when the record adds nothing this reading is not already running.
+func (s Strategy) WithChangedWork(workspace string, record []string) (Strategy, bool) {
 	if s.Base == "" || len(s.Selected) == 0 {
 		return s, false
 	}
@@ -231,8 +279,20 @@ func (s Strategy) WithOwnChecks(workspace string, record []string) (Strategy, bo
 	for _, path := range s.Selected {
 		held[path] = true
 	}
+	joining := OwnChecks(workspace, record).Within(s.Workdir)
+	// The checks beside the source files the run changed, found by the same walk
+	// the scope was built by rather than by a second rule of its own.
+	if changed := ChangedSources(workspace, record).Within(s.Workdir); len(changed) > 0 {
+		place := workspace
+		if s.Workdir != "" {
+			place = filepath.Join(workspace, filepath.FromSlash(s.Workdir))
+		}
+		if beside, _, ok := Adjacent(place, changed); ok {
+			joining = append(joining, beside...)
+		}
+	}
 	var added []string
-	for _, path := range OwnChecks(workspace, record).Within(s.Workdir) {
+	for _, path := range joining {
 		if held[path] {
 			continue
 		}

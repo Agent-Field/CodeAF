@@ -6244,4 +6244,10 @@ func journalAcceptance(graph *store.Store, node store.Node, spec plan.Spec) {
 	if err := graph.RecordAcceptance(node.ID, store.Acceptance{Points: points}); err != nil {
 		log.Printf("note: could not journal what %s is to be accepted on: %v", node.ID, err)
 	}
+	// AND IT IS REMEMBERED AGAINST THE JOB HERE, WHERE IT IS READ. The gate was
+	// the only writer of that memory, so a job whose first node is handed over
+	// without a delivery gate left it empty and the continuation — planned
+	// afresh, carrying no Accept of its own — reached the run's only gate with
+	// no checklist to settle. See revision.RememberChecklistForRequest.
+	revision.RememberChecklistForRequest(node.Provenance.Intent, spec.Accept)
 }

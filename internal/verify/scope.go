@@ -266,7 +266,35 @@ func NamedSubjects(text string) []string {
 // checks the same worker wrote, which is the thing the whole gate exists not to
 // weigh.
 func OwnChecks(root string, record []string) Focus {
-	own := make(Focus, 0, len(record))
+	return recordPaths(root, record, true)
+}
+
+// ChangedSources is the other half of the same record: every file the run left
+// behind that is NOT a check.
+//
+// It is what the second reading is aimed at. The scope of the first is a reading
+// of the REQUEST, settled before the work existed and inherited by every round —
+// and a request is not a diff. textual s10 asked for `Log and RichLog`, which
+// resolved to `_rich_log.py` and could not resolve `Log` at all, so both readings
+// ran `tests/test_concurrency.py tests/test_textlog.py`; the change touched
+// `_log.py` and `_rich_log.py`, and `tests/test_log.py` — which the repository
+// already had, beside the file the work changed — was never read on either side.
+// The diff is the one account of where the work actually went, and it exists by
+// the time the second reading is taken.
+func ChangedSources(root string, record []string) Focus {
+	return recordPaths(root, record, false)
+}
+
+// recordPaths is the record read as workspace-relative paths the tree still
+// holds, split by whether they are checks.
+//
+// STILL THERE is the condition both halves share. A record settled against the
+// world should hold nothing else, but a scoped command is a list of paths and a
+// runner handed one that has since been moved or deleted fails to collect
+// ANYTHING — which would turn a widening meant to see more checks into a reading
+// of none.
+func recordPaths(root string, record []string, checks bool) Focus {
+	held := make(Focus, 0, len(record))
 	for _, entry := range record {
 		clean := strings.TrimSpace(entry)
 		if clean == "" {
@@ -280,19 +308,16 @@ func OwnChecks(root string, record []string) Focus {
 			clean = relative
 		}
 		clean = filepath.ToSlash(filepath.Clean(clean))
-		if clean == "." || strings.HasPrefix(clean, "..") || !testFileName(lastSegment(clean)) {
+		if clean == "." || strings.HasPrefix(clean, "..") ||
+			testFileName(lastSegment(clean)) != checks {
 			continue
 		}
-		// STILL THERE. A record settled against the world should hold nothing
-		// else, but a scoped command is a list of paths and a runner handed one
-		// that has since been moved or deleted fails to collect ANYTHING — which
-		// would turn a widening meant to see more checks into a reading of none.
 		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(clean))); err != nil || info.IsDir() {
 			continue
 		}
-		own = append(own, clean)
+		held = append(held, clean)
 	}
-	return Focus(sortedUnique(own))
+	return Focus(sortedUnique(held))
 }
 
 // ScopeWhole is what a reading of everything the entrypoint covers calls itself.

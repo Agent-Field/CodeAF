@@ -461,7 +461,7 @@ func TestTheRunsOwnChecksJoinTheReading(t *testing.T) {
 		"model_results/feature_schema.joblib",
 		"tests/test_igel/test_feature_schema.py",
 	}
-	widened, added := scoped.WithOwnChecks(after, record)
+	widened, added := scoped.WithChangedWork(after, record)
 	if !added {
 		t.Fatal("the check file the run wrote did not join the reading")
 	}
@@ -558,5 +558,144 @@ func TestTheRunsOwnChecksSurviveEveryCut(t *testing.T) {
 	}
 	if !held {
 		t.Errorf("the cut dropped the run's own check: %v", paths)
+	}
+}
+
+// textualS10Shape is the tree textual s10 stood in, as its task image holds it:
+// two log widgets side by side, a package front door that re-exports both, and
+// three test files — one named after `_log.py` by pytest's own convention, and
+// two that reach `_rich_log.py` only through the front door.
+func textualS10Shape(t *testing.T) string {
+	t.Helper()
+	return project(t, map[string]string{
+		"Makefile": "run := poetry run\n\n.PHONY: test\ntest:\n\t$(run) pytest tests/ $(ARGS)\n",
+		"pyproject.toml": "[tool.poetry]\nname = \"textual\"\n\n" +
+			"[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
+		"src/textual/widgets/__init__.py": "from textual.widgets._log import Log\n" +
+			"from textual.widgets._rich_log import RichLog\n",
+		"src/textual/widgets/_log.py":      "class Log:\n    pass\n",
+		"src/textual/widgets/_rich_log.py": "class RichLog:\n    pass\n",
+		"tests/test_log.py": "from textual.app import App\nfrom textual.widgets import Log\n" +
+			"async def test_process_line():\n    assert True\n",
+		"tests/test_textlog.py": "from rich.text import Text\nfrom textual.widgets import RichLog\n" +
+			"async def test_make_renderable_expand_tabs():\n    assert True\n",
+		"tests/test_concurrency.py": "from threading import Thread\nfrom textual.widgets import RichLog\n" +
+			"async def test_call_from_thread():\n    assert True\n",
+		"tests/test_button.py": "def test_pressed():\n    assert True\n",
+	})
+}
+
+// textualS10Request is the request that job was given, verbatim in the parts
+// that matter: it names `Log` and `RichLog` and spells no source path at all.
+const textualS10Request = "RichLog still snaps back to the newest entry after users scroll up, " +
+	"unlike Log, and RichLog.write(expand=True) no longer preserves full-width justified " +
+	"rendering with current Rich. Make Log and RichLog expose is_following_end: bool, " +
+	"follow_end(animate: bool = False), and a FollowChanged message carrying widget, " +
+	"is_following_end, scroll_y, and max_scroll_y."
+
+// THE SECOND READING IS AIMED AT THE CHANGE, NOT ONLY AT THE REQUEST.
+//
+// A scope has to be a reading of the REQUEST, because at the moment the first
+// reading is taken there is no diff to read — and a request is not a diff.
+// textual s10 asked for "Log and RichLog": `RichLog` resolves to `_rich_log.py`,
+// `Log` is a single word that resolves to nothing, and both readings therefore
+// ran `tests/test_concurrency.py tests/test_textlog.py` — the two files that
+// import RichLog through the package front door. The change touched `_log.py`
+// AND `_rich_log.py`, and `tests/test_log.py` — a file the repository already
+// had, named after the file the work changed by pytest's own convention — was
+// read on neither side of the photograph.
+//
+// By the time the second reading is taken the diff exists, and it is the only
+// account of where the work actually went.
+func TestTheSecondReadingIsAimedAtTheChangeAndNotOnlyTheRequest(t *testing.T) {
+	root := textualS10Shape(t)
+	focus := Focus(NamedSubjects(textualS10Request))
+	ladder, ok := ReadingStrategies(root, Discover(root), focus)
+	if !ok {
+		t.Fatal("a project with a make test target produced no strategy at all")
+	}
+	before := ladder[0]
+	if before.Scope == ScopeWhole {
+		t.Fatalf("the first reading is not scoped at all: %#v", before)
+	}
+	// The request reaches the RichLog tests and — this is the whole point — it
+	// cannot reach the Log one, because nothing in the request resolves to
+	// `_log.py`.
+	for _, wanted := range []string{"tests/test_textlog.py", "tests/test_concurrency.py"} {
+		if !strings.Contains(before.Command, wanted) {
+			t.Errorf("the request's own reading missed %s: %q", wanted, before.Command)
+		}
+	}
+
+	// And now the record of what the run left behind, which names both widgets.
+	record := []string{
+		"src/textual/widgets/_log.py",
+		"src/textual/widgets/_rich_log.py",
+		"examples/rich_log_follow_state.py",
+	}
+	after, widened := before.WithChangedWork(root, record)
+	if !widened {
+		t.Fatal("the checks beside the files the run changed did not join the reading")
+	}
+	if !strings.Contains(after.Command, "tests/test_log.py") {
+		t.Errorf("the second reading still cannot see the checks beside `_log.py`: %q", after.Command)
+	}
+	for _, held := range []string{"tests/test_textlog.py", "tests/test_concurrency.py"} {
+		if !strings.Contains(after.Command, held) {
+			t.Errorf("the second reading dropped %s: %q", held, after.Command)
+		}
+	}
+	// A file the change never touched and nothing imports is still out.
+	if strings.Contains(after.Command, "tests/test_button.py") {
+		t.Errorf("the widening reached work this job never touched: %q", after.Command)
+	}
+	// The subtraction still holds: wider covers narrower, never the reverse.
+	if !after.covers(before) {
+		t.Error("the widened reading no longer covers the reading it is subtracted from")
+	}
+	if before.covers(after) {
+		t.Error("the narrower reading claims to cover the wider one")
+	}
+}
+
+// AND A WHOLE READING THAT DID NOT FIT DOES NOT FIT TWICE. Where the request
+// resolved to nothing — ofetch s10 took six readings and every one of them was
+// `whole` — the first rung is the whole suite, and a whole suite killed at its
+// ceiling has proved it is bigger than the wall. The change always resolves: it
+// is a list of files that exist.
+func TestAWholeReadingThatDidNotFitIsRetakenOnTheChange(t *testing.T) {
+	root := textualS10Shape(t)
+	// A job that named nothing the workspace holds: every rung is whole.
+	ladder, ok := ReadingStrategies(root, Discover(root), nil)
+	if !ok || ladder[0].Scope != ScopeWhole {
+		t.Fatalf("a job that named nothing did not get a whole reading: %#v", ladder)
+	}
+	record := []string{"src/textual/widgets/_log.py", "src/textual/widgets/_rich_log.py"}
+	// A whole rung has nothing to widen — it already runs everything.
+	if _, widened := ladder[0].WithChangedWork(root, record); widened {
+		t.Error("a reading of the whole suite was widened, which means nothing")
+	}
+	narrowed, ok := ChangedWorkStrategy(root, Discover(root), record)
+	if !ok {
+		t.Fatal("the change resolved to no reading at all")
+	}
+	if narrowed.Scope == ScopeWhole {
+		t.Fatalf("the reading aimed at the change is still whole: %#v", narrowed)
+	}
+	if !strings.Contains(narrowed.Command, "tests/test_log.py") {
+		t.Errorf("the reading aimed at the change misses the checks beside it: %q", narrowed.Command)
+	}
+	// It is a SUBSET of the whole reading, so the pair is deliberately not
+	// comparable and nothing is subtracted from it.
+	if narrowed.covers(ladder[0]) {
+		t.Error("a reading of a handful of files claims to cover a reading of everything")
+	}
+	reading := Reading{
+		Taken: true, AfterTaken: true,
+		Before: Result{Strategy: ladder[0], Failing: []string{"tests/test_button.py::test_pressed"}},
+		After:  Result{Strategy: narrowed, Failing: []string{"tests/test_log.py::test_process_line"}},
+	}
+	if broke := reading.Regressed(); len(broke) > 0 {
+		t.Errorf("two readings of different things were subtracted: %v", broke)
 	}
 }
