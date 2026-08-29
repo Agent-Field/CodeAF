@@ -51,7 +51,7 @@ NAME="deepswe-af-$TASK-$SEED"
 # a single model's behaviour, and any unpinned role silently escalates.
 PROFILE="$OUT/profile"; mkdir -p "$PROFILE"
 python3 - "$PROFILE/config.json" "$MODEL" "$KEY" <<'PY'
-import json, sys
+import json, os, sys
 path, model, key = sys.argv[1], sys.argv[2], sys.argv[3]
 roles = ["auditor", "careful", "compaction", "consolidate", "designer", "division",
          "guardian", "handoff", "imagegen", "intake", "markreader", "planner",
@@ -60,6 +60,10 @@ roles = ["auditor", "careful", "compaction", "consolidate", "designer", "divisio
 json.dump({
     "api_key": key,
     "tools.approvalMode": "allow",
+    # The roster. `aforge do`'s own path is what this rig measures, so the
+    # specialist workers are not installed at all: a run one of them took over
+    # would be a measurement of the specialist wearing the harness's name.
+    "work.workers": os.environ.get("BENCH_WORKERS", "bare"),
     "models.roles": "\n".join(f"{r}:{model}" for r in roles),
     "model.talk": model,
     "models.tiers.low": model,
