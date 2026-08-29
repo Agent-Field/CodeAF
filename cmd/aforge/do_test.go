@@ -535,6 +535,207 @@ func TestTheWaitingLinesElapsedNeverGoesBackwards(t *testing.T) {
 	}
 }
 
+// A JOURNAL THAT IS MOVING IS NOT A JOB THAT IS MOVING.
+//
+// The quiet line used to be the else-branch of the watermark: any event at all
+// reset the clock, and on a store where something else is journaling — a
+// sibling errand billing usage rows, a resident writing its own history — the
+// accounting was never reached at all. The run that reported this was wedged on
+// one node for its whole life while the journal grew steadily beside it, and it
+// printed nothing. So the clock belongs to this errand's own nodes, and events
+// that are nobody's business here may not silence it.
+func TestTheWaitingLineSurvivesAJournalThatIsMovingElsewhere(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	session := "headless-noisy"
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: session, Kind: store.CommandSplice, Instruction: "fix the failing test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two tasks: the one that is wedged, and the sibling whose chatter used to
+	// silence the watcher on its behalf.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-1", Brief: "fix the failing test", Stage: 0},
+		{ID: "task-2", Parent: "task-1", Brief: "keep the fixtures current", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "fix the failing test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress strings.Builder
+	watcher := &settlementWatch{
+		graph: graph, session: session, commandSeq: command.Seq,
+		refused: make(chan planEstimate, 1), progress: &progress,
+		started: time.Now(), quiet: 20 * time.Millisecond,
+	}
+	// The journal grows the whole time the watcher is waiting, and not one row
+	// of it is a node changing state.
+	noise, stop := context.WithCancel(context.Background())
+	defer stop()
+	go func() {
+		for noise.Err() == nil {
+			_ = graph.RecordUsage(store.NodeUsage{
+				NodeID: "task-2", PromptTokens: 10, CompletionTokens: 1,
+				Cost: 0.0001, Model: "z-ai/glm-5.3-flash",
+			})
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer cancel()
+	if _, err := watcher.wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if said := progress.String(); !strings.Contains(said, "still waiting") {
+		t.Fatalf("the journal moved beside a wedged node and the watcher said nothing:\n%s", said)
+	}
+}
+
+// The line that says nothing useful is barely better than no line. A run that
+// spent fifteen minutes inside one model call reported "1 task pending, 1
+// running" and then exited 2, and neither the model nor when it had last been
+// heard from appeared anywhere. Both are already in the journal: the usage row
+// carries the name of the model that served the call.
+//
+// The other half is the emptiness law. Before any call has been recorded there
+// is nothing to say about calls, and the line says nothing — never "none",
+// never "0s ago".
+func TestTheWaitingLineNamesTheLastModelCall(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	session := "headless-lastcall"
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: session, Kind: store.CommandSplice, Instruction: "fix the failing test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-1", Brief: "fix the failing test", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "fix the failing test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress strings.Builder
+	watcher := &settlementWatch{
+		graph: graph, session: session, commandSeq: command.Seq,
+		refused: make(chan planEstimate, 1), progress: &progress,
+		started: time.Now(), quiet: time.Millisecond,
+	}
+	watcher.lastMoved, watcher.lastSaid = time.Time{}, time.Time{}
+	if err := watcher.saySomethingIfQuiet(); err != nil {
+		t.Fatal(err)
+	}
+	beforeAnyCall := progress.String()
+	if !strings.Contains(beforeAnyCall, "still waiting") {
+		t.Fatalf("the watcher said nothing at all:\n%s", beforeAnyCall)
+	}
+	if strings.Contains(beforeAnyCall, "last call") {
+		t.Fatalf("a run with no call recorded invented one: %q", beforeAnyCall)
+	}
+
+	if err := graph.RecordUsage(store.NodeUsage{
+		NodeID: "task-1", PromptTokens: 900, CompletionTokens: 40,
+		Cost: 0.0021, Model: "z-ai/glm-5.3-flash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	progress.Reset()
+	watcher.lastSaid = time.Time{}
+	if err := watcher.saySomethingIfQuiet(); err != nil {
+		t.Fatal(err)
+	}
+	said := progress.String()
+	for _, phrase := range []string{"last call", "z-ai/glm-5.3-flash", " ago"} {
+		if !strings.Contains(said, phrase) {
+			t.Fatalf("the waiting line never said %q:\n%s", phrase, said)
+		}
+	}
+	// The run's own clock still closes the line, and it is still the run's.
+	if !strings.Contains(said, "\u2014 ") {
+		t.Fatalf("the elapsed left the line: %q", said)
+	}
+}
+
+// --JSON IS ONE OBJECT ON STDOUT, ON EVERY PATH INCLUDING THE ONES THAT FAILED.
+//
+// A store that will not open, a directory that cannot be made, a resident that
+// never picks the command up: each of those returned an error that main printed
+// as "error: ..." on stderr with nothing whatsoever on stdout — which is exactly
+// what a crashed process looks like to the thing reading the pipe. A caller
+// could not tell a bad path from a segfault. So the failure is an outcome like
+// any other: the object is there, the sentence is in its error field, and the
+// exit code is 1, the same 1 the table has always promised for a run that
+// produced nothing usable.
+func TestJSONPrintsAnObjectWhenTheErrandCannotEvenStart(t *testing.T) {
+	// A regular file where the store's directory would have to be. Nothing
+	// about this run reaches a model, a lease or a journal.
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("in the way"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task: "write the release note", database: filepath.Join(blocked, "graph.db"),
+		asJSON: true, timeout: 10 * time.Second,
+		stdout: &stdout, stderr: &stderr,
+	})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitFailed {
+		t.Fatalf("a run that could not start exited %v, want exit status 1", err)
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if strings.TrimSpace(outcome.Error) == "" {
+		t.Fatalf("the object carries no error: %s", stdout.String())
+	}
+	if !strings.Contains(outcome.Error, "store directory") {
+		t.Fatalf("the error does not say what went wrong: %q", outcome.Error)
+	}
+	if outcome.Settled {
+		t.Fatal("a run that never started reported itself settled")
+	}
+	if strings.TrimSpace(outcome.Deliverable) != "" {
+		t.Fatalf("a failure was dressed up as an answer: %q", outcome.Deliverable)
+	}
+}
+
+// The same failure without --json is the same failure it always was: a sentence
+// on stderr from main, and no half-JSON on the stream a person is reading.
+func TestAFailedErrandWithoutJSONStillJustReturnsTheError(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("in the way"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task: "write the release note", database: filepath.Join(blocked, "graph.db"),
+		timeout: 10 * time.Second, stdout: &stdout, stderr: &stderr,
+	})
+	if err == nil || !strings.Contains(err.Error(), "store directory") {
+		t.Fatalf("the error did not reach main: %v", err)
+	}
+	var status exitStatus
+	if asExitStatus(err, &status) {
+		t.Fatalf("a plain run invented an exit code for a failure: %v", err)
+	}
+	if strings.TrimSpace(stdout.String()) != "" {
+		t.Fatalf("stdout carried something on a run that failed: %q", stdout.String())
+	}
+}
+
 // The factoring itself: one construction, two shapes. A chat window still gets
 // every piece it ever had, and headless differs by exactly the conversational
 // half — no head, no commander, no stream, no arrival brief — over an
