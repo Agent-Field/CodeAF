@@ -477,7 +477,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		model:           request.model, planModel: request.planModel,
 		subharness: request.subharness,
 		consent:    consent, newClient: request.newClient,
-		produced: produced.add,
+		produced: produced,
 	})
 	if err != nil {
 		release()
@@ -640,7 +640,12 @@ type settlementWatch struct {
 	produced *errandRegistry
 
 	watermark int64
-	seen      map[string]store.Status
+	// saidStanding remembers that the closing reservation has been printed. The
+	// compose that prints it is reached once on the settled path and once on the
+	// timeout path, and a person told twice why their run was short reads the
+	// second line as a second finding.
+	saidStanding bool
+	seen         map[string]store.Status
 	// noted remembers which nodes have already had their degradation said, so a
 	// build missing a worker admits it once per node rather than once per beat.
 	noted map[string]bool
@@ -1232,7 +1237,61 @@ func gateWords(gate store.DeliveryGate) (verdict, detail string) {
 	if gate.Pass {
 		return "pass", ""
 	}
+	// A GATE A REPAIR CLOSED IS A PASS, AND SAYING "fail" OF IT WAS THE LINE
+	// THAT DISAGREED WITH THE EXIT CODE. Pass is the FIRST reading of the work;
+	// a delivery that failed it, was repaired and was re-judged carries the
+	// second reading in PolishClosed, and this said only the first. Three of the
+	// five s5 runs ended on "gate: fail — …" and left with exit 0 over it. The
+	// settled verdict has one reading — store.DeliveryGate.Whole — and both this
+	// and deliveredWhole spend it (SETTLEMENT.md §7). The gap is still named,
+	// because what was wrong and then fixed is worth one clause.
+	if gate.Whole() {
+		if gap == "" {
+			return "pass", ""
+		}
+		return "pass", gap + " — closed by the repair"
+	}
 	return "fail", gap
+}
+
+// gateStanding is the finding a settled run is still short of, and why nothing
+// closed it, for the one line a person reads at the end.
+//
+// It answers nothing for a gate that settled whole: a delivery that passed, that
+// a repair closed, or whose finding was weighed against the world and lost owes
+// the person no reservation. What it names otherwise is the gap first and the
+// reason second, in the gate's own words off the journal, for the reason
+// gateWords does it in that order — THE FINDING IS THE NEWS.
+//
+// The reason is the refusal sentence when there is one, and otherwise the
+// structural fact that nothing further ran. A run that failed its gate and had
+// no round left says so; a run refused on where its review got its words says
+// that; and either way the person is told what the run itself believes it did
+// not do (FAILSAFE clause 3).
+func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
+	if gate.Whole() {
+		return "", "", false
+	}
+	finding = firstLine(strings.TrimSpace(gate.Gap))
+	if finding == "" {
+		return "", "", false
+	}
+	reason = firstLine(strings.TrimSpace(gate.Refused))
+	if reason == "" {
+		reason = "nothing further was started"
+	}
+	return finding, reason, true
+}
+
+// partialWords is that reservation as the stream's last line.
+//
+// The exit code is the contract a pipeline reads and it is invisible to a person
+// watching a terminal, so a run that ends short says it in the register every
+// other line here uses. It is one line and it is last, after the ✓ rows, so the
+// thing a person carries away from a ninety-minute run is the thing the run
+// itself says it did not do.
+func partialWords(finding, reason string) string {
+	return fmt.Sprintf("partial — gate: %s (not repaired: %s)", finding, reason)
 }
 
 // acceptanceWords says how many behaviours the request states, in the register
@@ -1478,6 +1537,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// pipeline reads — recorded them as work that stands.
 			if !w.deliveredWhole(*final) {
 				outcome.status = exitPartial
+				w.sayStanding(*final)
 			}
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
@@ -1547,11 +1607,17 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 // (2026-08-28, meta/muse-spark-1.1). Exit 2, partial, is the honest code for a
 // job that delivered less than it promised.
 //
+// THE READING IS store.DeliveryGate.Whole AND IT IS NOT REPEATED HERE. This
+// combined the three fields inline for a while and gateWords, forty lines up,
+// built the line a person watching reads out of two of them — so ink s5 and
+// ofetch s5 printed "gate: fail" as the last thing anybody saw and left with
+// exit 0, the exit code and the stream disagreeing about the same event
+// (2026-08-29, bench/deepswe; SETTLEMENT.md §7).
+//
 // An unreadable store answers whole. This decides an exit code, not the work,
 // and a failed read is not evidence of a shortfall.
 func (w *settlementWatch) deliveredWhole(node store.Node) bool {
-	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
-		!gate.Pass && !gate.PolishClosed && !gate.Overturned {
+	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok && !gate.Whole() {
 		return false
 	}
 	parts, err := w.graph.SubtreeNodes(node.ID)
@@ -1567,6 +1633,35 @@ func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 		}
 	}
 	return true
+}
+
+// sayStanding writes the one line that tells a person watching WHY the run is
+// short, at the end, where the answer is.
+//
+// The exit code is the contract every pipeline reads and it is the one thing a
+// person at a terminal cannot see. Five headless runs of ninety minutes ended
+// with their last visible line being a ✓ on a node, and what the run itself
+// believed it had not done was in the journal and nowhere a person could read it
+// (2026-08-29, bench/deepswe; FAILSAFE clause 3, and SETTLEMENT.md §7).
+//
+// It says nothing when the store cannot be read, when there is no gate, or when
+// the gate settled whole — a run that is short for a structural reason instead,
+// a part that failed or was cancelled, already carries that in the deliverable's
+// own words.
+func (w *settlementWatch) sayStanding(node store.Node) {
+	if w.saidStanding || w.progress == nil {
+		return
+	}
+	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
+	if err != nil || !ok {
+		return
+	}
+	finding, reason, standing := gateStanding(gate)
+	if !standing {
+		return
+	}
+	w.saidStanding = true
+	w.note(partialWords(finding, reason), "")
 }
 
 // artifactsNamed bounds how many paths a grounded closing line spells out. The

@@ -1,0 +1,17 @@
+{
+ "note": "textual-richlog-follow-state, deepseek-v4-flash s5, node task-2-x3, 2026-08-29. The gate refused a true finding because every item it named appeared in the deliverable's own prose; the three files were on disk the whole time.",
+ "citations": [
+  "Add examples/rich_log_follow_state.py with RichLogFollowStateApp, Buttons #follow-log, #follow-rich, #write-expanded, #append-log, #append-rich, and #clear-events, and a RichLog with id events that records lines containing FollowChanged. ... RichLog.write(..., expand=True) must honor expansion and justification for deferred writes, explicit writes, and existing expanded entries after resizes or min_width changes."
+ ],
+ "deliverable": "The work is complete. All three files are implemented and committed on `follow-state-v3`:\n\n**`src/textual/widgets/_log.py`** — Added `is_following_end` reactive var, `FollowChanged` message (with `widget`, `is_following_end`, `scroll_y`, `max_scroll_y`), `follow_end(animate=False)` method, `watch_is_following_end` (posts only on actual change), `watch_scroll_y` (restores follow on scroll-to-end, breaks on scroll-away), auto-scroll only when `is_following_end` is True, and viewport-stable `_prune_max_lines`.\n\n**`src/textual/widgets/_rich_log.py`** — Same follow-end state tracking as Log, plus `ExpandedLine` NamedTuple, `_expanded_lines` and `_line_to_write` tracking, `write(expand=True)` with `justify=\"full\"`, `_re_render_expanded_lines()` for resize/min_width re-rendering, `watch_min_width` trigger, and viewport-stable max_lines pruning with expanded-line index rebuild.\n\n**`examples/rich_log_follow_state.py`** — `RichLogFollowStateApp` with all six buttons (`#follow-log`, `#follow-rich`, `#write-expanded`, `#append-log`, `#append-rich`, `#clear-events`), events `RichLog` recording `FollowChanged` messages from both Log and RichLog, and guarded `if __name__ == \"__main__\":` entrypoint.\n\na review raised this: The deliverable reports that examples/rich_log_follow_state.py exists and is committed, but the run record shows nothing of that name was produced — it is absent from what was left behind. The deliverable also reports that RichLog.write(expand=True) with full-width justified rendering is implemented in src/textual/widgets/_rich_log.py, but the run record shows nothing of that name was produced either. Both are elements of the request that are absent or unsupported by evidence. — I've delivered as it stands, because everything it names is already in the delivered text, in the words the request used.",
+ "artifacts": [
+  "/app/examples/rich_log_follow_state.py",
+  "/app/src/textual/widgets/_log.py",
+  "/app/src/textual/widgets/_rich_log.py"
+ ],
+ "request_named": [
+  "examples/rich_log_follow_state.py"
+ ],
+ "refusal_recorded": "everything it names is already in the delivered text, in the words the request used",
+ "overturned_recorded": true
+}
