@@ -102,8 +102,8 @@ type Runner struct {
 	// is not allowed to mistake for "nothing to do."
 	passFaults atomic.Int64
 	craft      *CraftRunner
-	// staleAge bounds how long a claim may sit running before the tick
-	// reaper returns it to pending; defaults to staleClaimAge and is raised by
+	// staleAge bounds how long a claim may sit SILENT before the tick reaper
+	// returns it to pending; defaults to staleClaimAge and is raised by
 	// [Runner.RaiseStaleAge] as leaves with longer deadlines are dispatched.
 	// The lock is because the raise happens on a leaf's goroutine and the read
 	// happens on the dispatch loop's.
@@ -211,7 +211,7 @@ func (r *Runner) FreeSlots() int {
 	return cap(r.slots) - len(r.slots)
 }
 
-// WithStaleAge sets how long a claim may sit running before the tick reaper
+// WithStaleAge sets how long a claim may sit SILENT before the tick reaper
 // returns the node to pending. Callers that know their longest possible leaf
 // deadline set it just above it; the default (staleClaimAge) covers jobs with
 // no deadline to compare against.
@@ -316,8 +316,19 @@ const runnerQuietCeiling = 15 * time.Second
 // the leaf executor's own deadline plus a landing pad, and it is RAISED by
 // [Runner.RaiseStaleAge] whenever a surface grants a leaf a longer one, because
 // a reaper that fires below a worker's own deadline is not a backstop — it is
-// the thing that fires first. The CAS inside Release means a live worker keeps
-// its claim anyway: the token has moved and the release fails.
+// the thing that fires first.
+//
+// AND ON 2026-08-29 THAT WAS STILL NOT ENOUGH, because a window is only as good
+// as what it is measured against. The window below came out at twenty-two
+// minutes — fifteen for the executor's own deadline, two for the watchdog above
+// it, five for the pad — and the reaper measured it from the claim's start. So
+// it fired on the ink run at 22m10s, 22m10s, 22m11s and 22m06s, four times, at a
+// leaf that was calling the model throughout: one claim legitimately carries the
+// executor's deadline AND the retry a spent deadline earns, which is twice this
+// window, and the clock could not tell that from a corpse. The window is now
+// measured from the node's last SIGN OF LIFE (store.ReleaseSilent), so it bounds
+// SILENCE rather than work, and a leaf that keeps calling keeps its claim for as
+// long as it keeps calling.
 const (
 	// leafDeadlineFloor is the shortest deadline any surface grants a leaf
 	// (cmd/aforge's leafDeadline and the headless runner both start here), and
@@ -329,7 +340,8 @@ const (
 	// is already given, doubled — a claim released a minute late costs nothing,
 	// and a claim reaped a minute early costs the whole leaf.
 	claimReaperPad = 5 * time.Minute
-	// staleClaimAge is the window as a fresh runner starts with it.
+	// staleClaimAge is the window as a fresh runner starts with it. It bounds
+	// SILENCE, not work: see [Runner.Tick] and store.ReleaseSilent.
 	staleClaimAge = leafDeadlineFloor + claimReaperPad
 )
 
@@ -551,16 +563,18 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 	if err := r.preemptPracticeForUserWork(); err != nil {
 		return 0, err
 	}
-	// The stale-claim reaper. A worker that hangs mid-run — a stalled model
-	// call, a tool that never returns — leaves its node running forever, and
-	// every downstream node gated on it waits behind a claim nobody holds.
-	// The runner heartbeats the whole time and finds nothing to do: that is
-	// the live-lock a long-horizon run dies of. The threshold is well above
-	// the leaf executor's own deadline (15min), so a legitimately long leaf
-	// is never touched; only a claim that has outlived any possible worker
-	// behind it is returned to pending. The CAS inside Release means a live
-	// worker keeps its claim — the token has moved and the release fails.
-	if released, err := r.graph.ReleaseStale(r.staleWindow()); err == nil && len(released) > 0 {
+	// The silent-claim reaper. A worker that dies mid-run — a process killed, a
+	// goroutine wedged past every deadline it was given — leaves its node
+	// running forever, and every downstream node gated on it waits behind a
+	// claim nobody holds. The runner heartbeats the whole time and finds nothing
+	// to do: that is the live-lock a long-horizon run dies of.
+	//
+	// A CLAIM IS HELD BY EVIDENCE OF LIFE, NOT BY A CLOCK. What the window is
+	// measured against is the node's last durable sign that somebody is working
+	// it — a billed model call, a recorded turn — and never how long the claim
+	// has existed, which is a fact about the wall and not about the worker. See
+	// store.ReleaseSilent for the four restarts the old reading cost.
+	if released, err := r.graph.ReleaseSilent(r.staleWindow()); err == nil && len(released) > 0 {
 		// A released node reopens the ready set, so the pass that freed it
 		// should look again immediately rather than at the tick.
 		defer r.nudge()
