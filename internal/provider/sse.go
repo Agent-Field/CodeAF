@@ -187,7 +187,10 @@ type streamChunk struct {
 	// attributable to anything.
 	Provider string         `json:"provider,omitempty"`
 	Choices  []streamChoice `json:"choices"`
-	Usage    *ai.Usage      `json:"usage,omitempty"`
+	// Usage is the SDK's own block plus the one figure its type has no field
+	// for; see [usageWire]. The stream's usage arrives in a terminal frame, so
+	// this is decoded once per stream rather than once per delta.
+	Usage *usageWire `json:"usage,omitempty"`
 	// Error is a REFUSAL DELIVERED INSIDE A 200, which is how a router reports
 	// an upstream that broke after the headers were already sent. It is raw
 	// because it is the same object an error response carries and it is decoded

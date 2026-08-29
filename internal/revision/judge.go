@@ -1005,6 +1005,10 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	}
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	// "gate", not the routing class's own "audit": the class pools this call
+	// with the planner's audits because they rate alike, and the model-call log
+	// is read by a person who wants to know which of them refused a deliverable.
+	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// The gate is part of what this deliverable cost, not part of the day's
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
@@ -1511,6 +1515,10 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	}
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "retry-worker")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	// "gate", not the routing class's own "audit": the class pools this call
+	// with the planner's audits because they rate alike, and the model-call log
+	// is read by a person who wants to know which of them refused a deliverable.
+	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
 	var request []ai.Option
 	if client.Routed() {
@@ -1636,6 +1644,10 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	// "gate", not the routing class's own "audit": the class pools this call
+	// with the planner's audits because they rate alike, and the model-call log
+	// is read by a person who wants to know which of them refused a deliverable.
+	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
 	var request []ai.Option

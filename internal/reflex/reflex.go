@@ -573,6 +573,9 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 // later calls and later processes; a second empty answer abandons this session's
 // reflex model and asks the configured low tier once. There is no loop.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
+	// Every reflex request in the process passes through here, so this is the
+	// one place its rows in the model-call log get their word.
+	ctx = provider.WithCallTag(ctx, "reflex")
 	ctx = provider.WithRequiredReasoningEffort(provider.WithoutStream(ctx), provider.EffortOff)
 	budget := answerBudget(c)
 	response, err := complete(ctx, c, messages, budget)

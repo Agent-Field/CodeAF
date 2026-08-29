@@ -26,6 +26,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// The model-call log: the file every outbound call writes a line to.
+		// Both spellings people actually use — one asks for the file, the other
+		// asks what was on the wire.
+		{"where are the logs", "models-and-cost"},
+		{"what did you send the model", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},

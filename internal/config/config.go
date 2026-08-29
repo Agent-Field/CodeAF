@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -336,6 +337,11 @@ func load(requireKey bool) (Config, error) {
 	// memo costs one rejected call per quirk, which is how the memo was written
 	// in the first place.
 	provider.LoadQuirks(config.ProfileDir)
+	// And the model-call log, beside the memo, because the two are the same
+	// kind of thing: what this process knows about how its calls actually went
+	// (internal/calllog). It opens no file here — the first call does — so a
+	// process that never talks to a model leaves nothing behind.
+	calllog.Open(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
 	// THE FIVE CAPABILITY SLOTS ARE ONE KNOB EACH, and this is the older
 	// surfaces' end of it (docs/MULTIMODAL.md Decision 5). They used to read

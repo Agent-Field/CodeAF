@@ -1306,3 +1306,67 @@ low, half at medium, four fifths at high), and the wait for the reply is sized f
 same ceiling. If a model's list does not say how much it thinks, the first time an answer
 comes back empty with the whole ceiling spent, aforge remembers that model thinks
 regardless and leaves room from then on; it never remembers it on a guess.
+
+## Where are the logs of what aforge sent the model — the model-call log, and reading it with `aforge logs`
+
+Every call aforge makes to a model writes a line to one file, always, with nothing to
+switch on first. It lives at `~/.aforge/logs/calls.jsonl` — beside the rest of what aforge
+keeps, and under `AFORGE_PROFILE_DIR` when you have moved that. Read it with:
+
+```
+aforge logs                 the last 40 calls, newest last
+aforge logs --tail 200      more of them
+aforge logs --follow        keep printing calls as they happen
+aforge logs --path          print the file and nothing else
+```
+
+One line per call, and it reads like this:
+
+```
+21:12:53  compile  z-ai/glm-5.3-flash  low  max 10240  → 200  12.7s  stop  466 tok  $0.0003
+21:12:41  compile  z-ai/glm-5.3-flash  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
+21:13:04  leaf  #build  z-ai/glm-5.3  high  max 65536  ⋯ in flight 3m12s
+```
+
+What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
+`compile`, `brief`, `contract`, `gate`, `reflex`), which model was asked and which endpoint
+actually answered, the thinking level and the **ceiling that really travelled** — which is
+larger than the one asked for, because the thinking pass is given room in front of the
+answer — how many messages and tools the request carried, the status it came back with,
+how long it took, how it finished, the tokens and the cost, and anything the refusal
+taught aforge about that model.
+
+**A call still running shows as `⋯ in flight`.** That is the reason a line is written when
+a call goes *out* as well as when it comes back: a planning call four minutes into a
+65,536-token ceiling used to look exactly like a machine doing nothing.
+
+The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. `aforge doctor` names
+the file and its size. Set `AFORGE_CALL_LOG=off` to write nothing at all, or
+`AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere you can watch.
+
+## What did you send the model — the prompts are not in the log unless you ask for them
+
+The model-call log records the **shape** of every request and never its contents. It says
+how many messages went, how many tools were offered, which knobs were set and what came
+back — and nothing of what you wrote, what your files say, or what the model answered.
+That is deliberate: a debugging record that quietly accumulated your prompts would be a
+liability rather than a tool.
+
+When you genuinely need the exact bytes — a request the endpoint refused for a reason
+nothing else explains, a reply that came back malformed — run one session with:
+
+```
+AFORGE_CALL_LOG_BODIES=1 aforge
+```
+
+Every line then also carries `request_body` and `response_body`, whole and unedited: your
+prompts, your attached file contents, the model's whole reply. Turn it on for the run you
+are debugging and off again afterwards, and treat the file as you would the conversation
+itself.
+
+**Why did that call fail?** The line says. A `→ 400` carries the endpoint's own first
+sentence; a line with no status at all is a request that never reached an endpoint; a line
+marked `empty at the ceiling` is the thinking pass having spent the whole reply room
+before the answer began, which is the one failure a larger ceiling actually fixes. Failed
+attempts get their own lines, so a call that was rate limited four times before it landed
+is five lines rather than one slow one.

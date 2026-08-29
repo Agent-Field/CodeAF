@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -117,6 +118,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// call that has been held from the start does not.
 	var pacedSince time.Time
 	attempts := 0
+	// The body this call is carrying, kept for the model-call log and ONLY when
+	// somebody asked for bodies (calllog.go). On every ordinary run this is nil
+	// and the person's prompts never leave the process.
+	if knobs.trace != nil && calllog.Bodies() {
+		knobs.trace.body = body
+	}
 	// Rate limits get more patience than faults: they are the provider
 	// pacing us, not failing, and abandoning work over pacing is the one
 	// outcome the concurrency doctrine forbids. A patient call takes that much
@@ -129,6 +136,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			break
 		}
 		attempts = attempt + 1
+		// What the CALL has spent, for the row the completed answer writes at
+		// the end of it (calllog.go). The count lives on the knobs rather than
+		// here because a call that is repaired or relaxed comes back through
+		// this loop with a new body and the same trace.
+		knobs.trace.begin()
 		if attempt > 0 {
 			delay := backoffFor(attempt, providerWait)
 			// Spent. It described one moment to come back at, and coming back
@@ -155,10 +167,29 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		attemptBegan := logNow()
+		// THE ROW THAT SAYS A CALL IS IN FLIGHT, written before the wait rather
+		// than after it. Without it a planning call four minutes into a
+		// 65,536-token ceiling is indistinguishable from an idle process: the
+		// log's newest line is the call BEFORE it, and everything a person can
+		// see says "nothing since four minutes ago". Its partner is whichever
+		// row ends this attempt, paired by the id they share.
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
+		})
 		response, err := httpClient.Do(httpRequest)
 		if err != nil {
 			sharedLimiter.release(false, 0)
 			cancelAttempt()
+			// EVERY ATTEMPT THAT FAILED LEAVES A ROW, not only the last one. A
+			// call that was paced four times and then landed reads as one slow
+			// call in any surface above this; the four rows are the whole of
+			// why it was slow (calllog.go).
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: attempts, began: attemptBegan, err: err,
+			})
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
@@ -214,6 +245,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 		}
 		lastErr = apiError(response.StatusCode, peek)
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			attempt: attempts, began: attemptBegan,
+			status: response.StatusCode, err: lastErr, responseBody: peek,
+		})
 		// A 5xx that names its upstream is that upstream failing, not this model:
 		// the lane goes so the next encode routes around it (velocity.go's
 		// refuseUpstream). A 429 was already answered above with the wait the

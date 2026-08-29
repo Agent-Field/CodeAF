@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -356,6 +357,12 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	// try at double room — a compile is the cheapest call in the job and the
 	// only one whose loss forfeits everything after it.
 	compileTokens := compileReplyTokens(instruction)
+	// What this call is FOR, for the model-call log (provider.WithCallTag). It
+	// is set here rather than at each of the two sends below because the retry
+	// is the same call asked twice, and a reader chasing a lost compile wants
+	// both rows under one word. There is no node to name: the compile happens
+	// before the graph it will produce exists.
+	ctx = provider.WithCallTag(ctx, "compile")
 	// The system message is the constant and nothing else, for every process
 	// this compiler runs in: measured content that moves within a session is
 	// added below, in the user message, never here.
