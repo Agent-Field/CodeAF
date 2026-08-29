@@ -283,6 +283,11 @@ func newBashTool(cwd string) Tool {
 		Description: bashDescription,
 		Schema:      json.RawMessage(bashSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			// When the call was asked for, so a cut can say how long it ran
+			// rather than merely that it was cut. It is the only figure a leaf
+			// ever learns about the pace of the machine it is on, and it is what
+			// tells the model whether to scope the command or abandon it.
+			began := time.Now()
 			var p struct {
 				Command string   `json:"command"`
 				Timeout *float64 `json:"timeout"`
@@ -439,8 +444,20 @@ func newBashTool(cwd string) Tool {
 				return appendStatus(text, fmt.Sprintf("Command timed out after %d seconds", timeoutSecs)), true, nil
 			}
 
-			if ctx.Err() == context.Canceled {
-				return appendStatus(text, "Command aborted"), true, nil
+			// A CUT COMMAND SAYS SO, AND SAYS WHAT IT HAD. The test used to be
+			// for cancellation alone, and the bound that actually fires here is
+			// a DEADLINE — the leaf's remaining room, narrowed onto this call by
+			// loopState.toolRoom — so a SIGKILLed command came back as a clean
+			// success with truncated output and the model reasoned from it.
+			//
+			// The output so far is the point. It is accumulated as the command
+			// writes it (newOutputAccumulator, and StreamingShell so the bytes
+			// actually arrive), so a test runner cut at nine minutes still names
+			// every check it reached; that answers "does a check for this exist"
+			// even when it can never answer "did this work break something". The
+			// model reads the cut, sees the pace, and can scope the next one.
+			if ctx.Err() != nil {
+				return commandCutWords(began, text), true, nil
 			}
 
 			exitCode := exitCodeFromWait(waitErr)
@@ -992,3 +1009,17 @@ func formatBashTruncationFooter(snap accumulatorSnapshot) string {
 
 // _ keeps strconv imported for potential future use.
 var _ = strconv.Itoa
+
+// cutWords is how a command that ran out of the leaf's room reports itself.
+//
+// The duration leads because it is the fact the model has to act on: "cut after
+// 9m12s" says the command is too big for this leaf on this machine, which is an
+// instruction to scope it — run one test file, not the suite — where "aborted"
+// says only that something went wrong and invites the same command again.
+func commandCutWords(began time.Time, text string) string {
+	head := "cut after " + time.Since(began).Round(time.Second).String() + "; output so far:"
+	if strings.TrimSpace(text) == "" || text == "(no output)" {
+		return head + " nothing had been written yet"
+	}
+	return head + "\n" + text
+}

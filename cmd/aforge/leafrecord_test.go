@@ -56,7 +56,7 @@ func TestALeafsCachedTokensReachTheJournal(t *testing.T) {
 			CachedTokens: 600_000, Cost: 0.14}, Sent: 657_154},
 	}
 	runner := resident.NewRunner(graph, func(context.Context, store.Node) (resident.ExecResult, error) {
-		result := leafSpend(spent, shape, "worker/model")
+		result := leafSpend(spent, shape, "worker/model", exec.Usage{})
 		result.Summary = "done"
 		return result, nil
 	}, "meter-runner", 1)

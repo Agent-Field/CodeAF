@@ -211,6 +211,24 @@ type Growth struct {
 	// admitted with no edge to the work they were replacing.
 	After store.Node
 
+	// Transcript is the exhausted attempt's OWN TURNS, read back from the
+	// record it wrote as it worked (BankedRun). It is the field that makes a
+	// continuation a resumption rather than a restart, for the same reason the
+	// in-place retry's bank has it: an attempt stopped mid-turn ANNOUNCED
+	// almost nothing, because announcing is what a leaf does when it is
+	// finishing, and everything it actually did is nonetheless in the record.
+	//
+	// The textual run of 2026-08-29 is the measurement: six exhaustions, six
+	// continuations, and not one resumption line — every successor opened by
+	// exploring the repository its predecessor had already spent minutes in,
+	// because State carried what the leaf chose to summarise and nothing
+	// carried what it did.
+	Transcript string
+	// Resumed is how many turns Transcript was read from, journaled against the
+	// continuation so the record can tell a claim that picked up work from one
+	// that started over. Zero writes no row. See store.EventLeafResumed.
+	Resumed int
+
 	// Records are files the finished work left behind that the remainder must
 	// READ rather than reuse: the text of a change, a measurement, a transcript.
 	//
