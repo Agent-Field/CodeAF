@@ -363,3 +363,166 @@ reach that stage this sweep.
 
 Nothing has scored 1 yet. Two tasks are now within three tests of it, and the
 run that is furthest from it is the one that never started.
+
+---
+
+# s5 — acceptance and shaped answers (`b910ccf8`)
+
+Same five tasks, same model, roster `bare`, rig snapshotting. happy-dom was still
+running when this was written and is appended below.
+
+| task | reward | f2p | p2p | cost | wall | exit | nodes | acceptance points | `no check exercises` | `↻` shaped |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| igel-persist-feature-schema | 0 | **23/24** | 2/2 | $0.107 | 1470s | **2** | 3 | 4 | 0 | 0 |
+| ofetch-per-origin-circuit-breaker | 0 | **44/47** | 13/13 | $0.132 | 1190s | 0 | 2 | 52 | 0 | 0 |
+| ink-grid-box-layout | 0 | 7/25 | 49/49 | $0.135 | 1207s | 0 | 1 | 7 | 0 | 0 |
+| textual-richlog-follow-state | 0 | **1/20** | 2/6 | $0.152 | 1189s | 0 | 4 | 5 | 0 | 1 (escalation, not a shaped repair) |
+
+Two runs are now within three hidden tests of a solve — igel at 23/24 is the
+closest anything has come. Nothing has scored 1.
+
+## (a) Every gate line, its evidence, and whether the evidence was true
+
+**igel** (`run.log` 40, 49, 71)
+
+| line | node | verdict | evidence cited | true? |
+| --- | --- | --- | --- | --- |
+| 40 | `task-2` | fail | "the record shows no branch was created or committed — `git status` was run multiple times and `git diff master --stat` was attempted, but no `git checkout -b` or `git commit` appears" | **true** at that point |
+| 49 | `task-2-x1` | fail | "the named files (feature_schema.joblib, description.json) were not produced" | **false** — `igel/feature_schema.py`, `igel/igel.py`, `igel/servers/fastapi_server.py` and `tests/test_igel/test_feature_schema.py` are all in the graded diff; the gate was reading the *current node's* record, and the files were written by `task-2` |
+| 71 | `task-2-x2` | refused | "the run record shows no pytest output — the last command ran pytest but its output is not shown (only the command and a timeout flag)" | **true** |
+
+**ofetch** (43, 53)
+
+| line | node | verdict | evidence cited | true? |
+| --- | --- | --- | --- | --- |
+| 43 | `task-2` | fail | "The project's own verification (`pnpm test`) exited 1 and named 0 checks — tests did not pass. The deliverable claims 'all tests pass' but the record shows the test suite failed." | **true, and this is the mechanism working exactly as designed** — the claim bought nothing, the gate read the run |
+| 53 | `task-2-x1` | fail | "it does not contain the test output, the verdict on whether tests pass, or any evidence that the work was exercised" | **true** |
+
+**ink** (47) — one gate, `task-2`, fail: "The deliverable is a listing of files, not the answer itself … The fenced text contains only a file listing and a line 'Now let me rebuild and test:'". **True.**
+
+**textual** (45, 55, 71, 75) — four gates on four nodes. The first three are true
+("the fenced text is a summary of what was done, not the code itself"). The
+fourth is the important one:
+
+> `gate: refused — The deliverable reports that examples/rich_log_follow_state.py exists and is committed, but the run record shows nothing of that name was produced — it is absent from what was left behind.`
+
+**False.** The graded diff contains `diff --git a/examples/rich_log_follow_state.py`,
+and the run's own artifact list names it. The reading it used was the **last
+node's** record: `task-2-x3` ("Deliver code") produced nothing, because every
+`write`/`edit` in the whole run belongs to `task-2`. The gate asked "what did
+this node leave behind" and reported the answer as "what exists". The same
+per-node reading produced igel's false finding at line 49.
+
+## (b) The refusal grounds, and the code that produced them
+
+Two `gate: refused` lines this sweep, and they take **different paths with
+opposite consequences**:
+
+| run | refusal ground | code | `Overturned` | exit |
+| --- | --- | --- | --- | --- |
+| igel | `the same words were already worked on once` | provenance refusal — declines to buy a round, checks nothing in the world | false | **2** |
+| textual | `everything it names is already in the delivered text, in the words the request used` | `internal/revision/judge.go:967`, `AdmitGapPresent` | **true** | **0** |
+
+`AdmitGapPresent` reads the gate's citations, extracts enumeration items
+(`enumerationItem` regex, `enumerationFloor = 3`), lowercases both sides, and if
+**every** item is a substring of the deliverable it returns that sentence and
+sets `Overturned`. `store/gate.go` documents `Overturned` as "CHECKED AGAINST THE
+WORLD … the file the review says is missing is on disk under the name the request
+used". For textual it was checked against **the deliverable's prose, not the
+filesystem** — and the deliverable is a summary that names the file it claims to
+have written. So a *false* finding about a file was overturned by confirming the
+words for that file appear in the text that claims it. The one check that would
+have settled it — is `examples/rich_log_follow_state.py` on disk? — is the check
+that was not run, and it would have said the file is there and the finding is
+wrong for a different reason.
+
+## (c) Why exit 0 after a fail
+
+`cmd/aforge/do.go:1552` — `deliveredWhole` returns false only when the last gate
+is `!Pass && !PolishClosed && !Overturned`. The four last-gate records:
+
+| run | pass | polish_closed | refused | overturned | unclosed | mechanical | ⇒ exit |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| igel | false | false | "the same words were already worked on once" | — | — | — | **2** |
+| ofetch | false | **true** | — | — | — | — | 0 |
+| ink | false | **true** | — | — | — | — | 0 |
+| textual | false | false | "everything it names…" | **true** | — | — | 0 |
+
+igel is the fix working: a provenance refusal leaves the finding standing and the
+run exits 2. The other three exit 0 through two different doors:
+
+- **`PolishClosed` (ofetch, ink)** — "A gap the one polish pass closed delivers
+  whole because the work was redone." But *redone* is not *closed*: ofetch's
+  polish round moved 41→44 of 47 and ink's left 7 of 25, and neither gap was
+  re-judged. The flag records that a repair ran, not that it worked.
+- **`Overturned` (textual)** — the word-containment acquittal above, on a run
+  that scored 1/20.
+
+No `Unclosed` and no `Mechanical` was set on any run this sweep.
+
+## (d) The verification readings
+
+The photograph is real but **leaves no record in the store**: there is no
+`reading`, `roster` or `verification` event kind in any s5 graph.db, and
+`verify.Reading` is carried in the gate's in-memory `Evidence` only. The only
+place it surfaces is gate prose, and it surfaced exactly once:
+
+> ofetch, line 43: "The project's own verification (`pnpm test`) exited 1 and
+> **named 0 checks**"
+
+Command `pnpm test`, exit 1, roster **empty**. No other run's stream mentions a
+reading, a before/after pair, or a check turning red.
+
+**textual lost 16 fail-to-pass tests between s3 (17/20) and s5 (1/20), and
+nothing in the run saw it.** The regression mechanism subtracts `Before.Failing`
+from `After.Failing` and needs `Taken && AfterTaken`; with no reading recorded
+and no roster reported, `Regressed()` returns nothing by construction. The
+photograph that would have caught it was never developed.
+
+## (e) Why zero `no check exercises` findings
+
+Structural, and it is one line of control flow. `settleAcceptance`
+(`internal/revision/acceptance.go:311`) is reached **at one moment: after the
+model judge has said the deliverable is whole.**
+
+> "A gate that is already failing the work buys the repair round anyway, so
+> asking the coverage question there would spend a call to reach a conclusion
+> that is already true."
+
+**Not one gate passed in s5** — all ten `delivery_gate` events across the four
+runs carry `pass: false`. So `settleAcceptance` was never entered, `MapChecks`
+was never called, no `exercises` field appears on any gate event, and
+`no check exercises` was unreachable for the whole sweep.
+
+It would have been unreachable a second time even if a gate had passed. The
+mapping needs `CheckEvidence`, which is `verify.PatchChecks(patch)` plus the
+reading's roster — and ofetch's roster was **0 checks**. With `len(checks) == 0`
+the function returns early with
+
+> `pass.Unmeasured = "nothing in this project's verification could be read, so no check could be matched to what the request asked for"`
+
+which is a note on a pass, not a finding.
+
+The checklist itself is built and journaled on every run, and its point counts
+are uneven against the graded surface in a way worth recording:
+
+| run | acceptance points | hidden f2p | note |
+| --- | --- | --- | --- |
+| ofetch | 52 | 47 | tracks the request clause for clause |
+| happy-dom | 16 | 14 | close |
+| ink | 7 | 25 | one point per bullet; the bullets are coarse |
+| textual | 5 | 20 | stops after the second paragraph's first two clauses |
+| igel | 4 | 24 | covers only the first paragraph |
+
+Three of five derive a checklist far coarser than what is graded, so even a
+working mapping could not have raised a finding about most of what these runs
+missed.
+
+## Shaped answers: not exercised
+
+No `↻ … answer cut at the ceiling — continued` line, no re-ask, and no
+`response contains no JSON object` in any s5 run. The single `↻` is textual's
+worker escalation (`↻ follow-state — handed to bare: escalated from linear after
+a failed attempt`, line 26). Every structured call this sweep came back readable,
+so the seam had nothing to do — untested, not broken. s4's two failures of this
+kind (planner fan-out, delivery gate) did not recur.
