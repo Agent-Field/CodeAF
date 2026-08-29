@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -62,6 +63,13 @@ A behaviour is something that must be observably true of the finished work: a
 rule it must follow, a case it must handle, a transition it must make, an input
 it must accept, an outcome it must produce. One point per behaviour the request
 states, in the request's own vocabulary, short enough to read in one breath.
+
+ONE POINT PER BEHAVIOUR, NOT PER SENTENCE. A sentence that names four defaults
+states four behaviours; a clause that lists three accepted inputs states three; a
+rule with an exception states the rule and the exception. Split them, and let
+each point quote its own clause. A point that carries several behaviours at once
+is a point no single check can be matched to, and the whole use of this list is
+matching checks to it one at a time.
 
 Every point carries the words of the request it comes from. Quote them verbatim
 — you may skip a middle with "..." and quote both halves, but every character
@@ -139,18 +147,25 @@ func Acceptance(ctx context.Context, client Completer, request string) ([]Point,
 // NormalizeAcceptance bounds and cleans what a model returned.
 //
 // THE CAP IS DERIVED FROM THE REQUEST ITSELF AND NOT TYPED. A request cannot
-// state more behaviours than it has lines: past one point per non-empty line the
-// model has stopped describing the request and started describing the domain,
-// and the checklist has become the thing this whole invariant exists to keep out.
-// It needs no constant, it scales with the ask — the ofetch circuit-breaker
-// request is forty-two lines and states about that many behaviours; a one-line
-// request states one — and there is no number for a later wave to tune wrongly.
+// state more behaviours than it has CLAUSES: past one point per clause the model
+// has stopped describing the request and started describing the domain, and the
+// checklist has become the thing this whole invariant exists to keep out. It
+// needs no constant, it scales with the ask, and there is no number for a later
+// wave to tune wrongly.
+//
+// It was one point per LINE, and that was the wrong unit measured twice. A
+// person writes "defaults are threshold = 5, cooldown = 30000, halfOpenMaxRequests
+// = 1" on one line and has stated three behaviours a check either exercises or
+// does not; the s5 sweep's igel run held four points against twenty-four hidden
+// checks and textual five against twenty, because the ceiling and the prompt
+// agreed that a line was a behaviour. A clause is the smallest unit a person
+// writes one behaviour in, so it is the unit the cap counts.
 //
 // Points are deduplicated on their quote, because two readings of one sentence
 // are one behaviour said twice, and a checklist that counted them twice would
 // buy two repair rounds for one gap.
 func NormalizeAcceptance(request string, points []Point) []Point {
-	ceiling := statedLines(request)
+	ceiling := statedClauses(request)
 	if ceiling == 0 {
 		return nil
 	}
@@ -180,17 +195,34 @@ func NormalizeAcceptance(request string, points []Point) []Point {
 	return clean
 }
 
-// statedLines counts the lines of a request that say anything. It is the whole
-// of the cap above, and it is a count of the person's own text rather than of
-// anything this system produced.
-func statedLines(request string) int {
-	lines := 0
+// statedClauses counts the clauses of a request that say anything. It is the
+// whole of the cap above, and it is a count of the person's own text rather than
+// of anything this system produced.
+//
+// A clause boundary is a mark the person themselves wrote to separate one
+// statement from the next — a full stop, a semicolon, a colon, a question or an
+// exclamation — followed by more text. Nothing else counts: a comma is as often
+// inside a name or a number as it is between two statements, and counting it
+// would raise a ceiling the request never earned. A line with no such mark is
+// one clause, which is exactly the count this used to return for every line.
+func statedClauses(request string) int {
+	clauses := 0
 	for _, line := range strings.Split(request, "\n") {
-		if strings.TrimSpace(line) != "" {
-			lines++
+		if strings.TrimSpace(line) == "" {
+			continue
 		}
+		clauses += clausesInLine(line)
 	}
-	return lines
+	return clauses
+}
+
+// clauseBreak is a statement-ending mark with text after it. The mark must be
+// followed by whitespace so a decimal, a version number and a namespaced symbol
+// are not read as two statements.
+var clauseBreak = regexp.MustCompile(`[.;:!?]\s+\S`)
+
+func clausesInLine(line string) int {
+	return 1 + len(clauseBreak.FindAllString(strings.TrimSpace(line), -1))
 }
 
 // AcceptanceQuotes is the checklist's citations, in the form every grounding

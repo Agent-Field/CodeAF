@@ -63,6 +63,18 @@ type Result struct {
 	// names nothing, so nothing can be subtracted from it and nothing can be
 	// attributed to it.
 	TimedOut bool
+	// Strategy is HOW this reading was taken: the command that ran, the runner
+	// underneath it, and the way its output was read. It is carried so the
+	// second reading can be taken the same way as the first — two readings
+	// taken with two different commands subtract to noise — and so an autopsy
+	// of a run that named nothing can see where the reader looked.
+	Strategy Strategy
+	// ReadAsPlain says the strategy's own reader found nothing it recognised
+	// and the shared PASS/FAIL vocabulary read the same bytes instead. It is
+	// the fail-safe firing, and it is recorded rather than silent because a
+	// roster that came back through the fallback is a roster whose runner did
+	// not answer the way this program expected.
+	ReadAsPlain bool
 	// Failing is every test identity the runner named, read by [FailingTests].
 	Failing []string
 	// Reported is every test identity the runner named at all, red or green,
@@ -73,31 +85,38 @@ type Result struct {
 	Reported []string
 }
 
-// RunTests runs the project's own test entrypoint once and reads the failing
-// test names out of what it printed.
+// RunTests takes one reading of the project's own checks: it decides HOW the
+// reading is taken from what the project declares (see [ReadingStrategy]), runs
+// that, and reads the identities out of what it printed.
 //
-// ok is false when the plan declares no test entrypoint at all, or when this
-// machine has no shell the preamble can be trusted in. A PROJECT THAT DOES NOT
-// SAY HOW IT IS CHECKED IS NOT A PROJECT THIS CAN CHECK, and a capability that
-// cannot work is ABSENT rather than broken (CLAUDE.md) — the caller gets no
-// reading rather than an empty one it would have to tell apart from a green
-// suite.
-//
-// [Discover] selects at most one entrypoint per kind, so the first KindTest
-// entrypoint is the only one, and taking the first is a statement about that
-// precedence rather than a guess among several.
+// ok is false when the plan declares no test entrypoint at all. A PROJECT THAT
+// DOES NOT SAY HOW IT IS CHECKED IS NOT A PROJECT THIS CAN CHECK.
 func RunTests(
 	ctx context.Context, workspace string, plan Plan, timeout time.Duration,
 ) (Result, bool) {
-	var entrypoint Entrypoint
-	found := false
-	for _, candidate := range plan.Entrypoints {
-		if candidate.Kind == KindTest {
-			entrypoint, found = candidate, true
-			break
-		}
+	strategy, ok := ReadingStrategy(workspace, plan)
+	if !ok {
+		return Result{}, false
 	}
-	if !found {
+	return RunReading(ctx, workspace, strategy, timeout)
+}
+
+// RunReading takes one reading with a strategy that is already decided.
+//
+// It exists separately from [RunTests] because the SECOND reading of a pair must
+// be taken exactly as the first was. Re-deriving the strategy there would let a
+// worker that edited its own test script change what the after-reading measures,
+// which is the tamper the photograph exists to catch, and it would silently
+// re-scope a comparison whenever a project's declarations moved under it.
+//
+// ok is false when the strategy names no command, or when this machine has no
+// shell the preamble can be trusted in. A CAPABILITY THAT CANNOT WORK IS ABSENT
+// RATHER THAN BROKEN (CLAUDE.md) — the caller gets no reading rather than an
+// empty one it would have to tell apart from a green suite.
+func RunReading(
+	ctx context.Context, workspace string, strategy Strategy, timeout time.Duration,
+) (Result, bool) {
+	if strategy.Empty() {
 		return Result{}, false
 	}
 	shell, err := exec.LookPath(readingShell)
@@ -108,8 +127,8 @@ func RunTests(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, shell, "-c", strictPreamble+entrypoint.Command)
-	command.Dir = filepath.Join(workspace, entrypoint.Workdir)
+	command := exec.CommandContext(ctx, shell, "-c", strictPreamble+strategy.Command)
+	command.Dir = filepath.Join(workspace, strategy.Workdir)
 	// A suite spawns children — a test server, a browser, a compiler — and
 	// killing only the shell leaves them holding the pipe this reading is being
 	// read from. The whole group goes, and WaitDelay bounds the wait on the
@@ -128,7 +147,14 @@ func RunTests(
 	command.Stdout = captured
 	command.Stderr = captured
 
-	result := Result{Entrypoint: entrypoint, Exit: -1}
+	result := Result{
+		Entrypoint: Entrypoint{
+			Kind: KindTest, Command: strategy.Command,
+			Workdir: strategy.Workdir, Source: strategy.Source,
+		},
+		Strategy: strategy,
+		Exit:     -1,
+	}
 	err = command.Run()
 	switch {
 	case err == nil:
@@ -145,8 +171,17 @@ func RunTests(
 		}
 	}
 	output := captured.String()
-	result.Failing = FailingTests(output)
-	result.Reported = ReportedTests(output)
+	reported, failing, read := strategy.Read.Read(output)
+	if !read {
+		// The strategy's own reader found nothing it recognised. The same bytes
+		// are read with the shared vocabulary, which is where every reading in
+		// this program started, and the fall is recorded so a roster that came
+		// back the long way is legible as such.
+		reported, failing = ReportedTests(output), FailingTests(output)
+		result.ReadAsPlain = true
+	}
+	result.Failing = failing
+	result.Reported = reported
 	return result, true
 }
 

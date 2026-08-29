@@ -185,3 +185,67 @@ harness of what the hidden tests are or that hidden tests exist. No phrase list:
 a check is recognised by shape and a point by grounding. No new retry, no new
 clock, and no cap that is not derived from something the request or the wall
 already fixed.
+
+---
+
+## What s5 proved, and the three things it changed
+
+*Added 2026-08-29 against the five stores under `bench/deepswe/results/*-s5/`,
+taken on `b910ccf8` with every mechanism above already wired.*
+
+Every mechanism above fired zero times in five graded runs. Each of the three
+reasons is FAILSAFE's own rule broken again, one clause each.
+
+### 1. A reading is of the RUNNER, not of the script around it
+
+ofetch's gate said, in its own words:
+
+> The project's own verification (`pnpm test`) exited 1 and named 0 checks.
+
+`pnpm test` is `pnpm lint && vitest run --coverage`. A prettier complaint exits
+1 in front of a suite that never ran, so the sentence is true of the script and
+says nothing whatever about the tests. And even where the suite does run, the
+roster was file-level: vitest's default reporter prints `✓ test/index.test.ts
+(28 tests)` for the green half and names the red half only in a banner the
+vocabulary did not know. pytest is worse — measured in textual's own image,
+forty-seven green checks print as forty-seven dots and name nothing at all.
+
+So the reading is taken from the runner underneath, asked for its own
+machine-readable output, and the runner is found in what the project itself
+declares: the body of its own test script or make recipe, its manifest's
+dependencies, its runner's config file, its lockfile. `verify.ReadingStrategy`.
+`--reporter=json` for vitest, `--json` for jest, `-json` for go test, `-rA` for
+pytest (a flag, not a parser — its summary lines are already in the shared
+vocabulary), TAP for mocha. Every strategy falls back to that shared vocabulary
+over the same bytes when its own reader recognises nothing, so a runner nobody
+here has met is read exactly as well as it was before, and the strategy that was
+used is recorded on the reading.
+
+### 2. A reading that named nothing is still a reading
+
+With an empty roster `CheckEvidence` returned nothing and `settleAcceptance`
+recorded `Unmeasured` — a note, on a pass. Fifty-two grounded points went
+unasked. **A point with no check exercising it is a finding whenever the reading
+was TAKEN, even when it named nothing.** Only a project that declares no
+verification and a worker that derived no diff leave the question unanswerable,
+and that is `Unmeasured`, which reaches the verdict and the stream as such.
+
+And the settlement runs on EVERY verdict. It used to be asked only of a delivery
+the model judge was about to pass; all ten gates in the sweep failed, so it was
+asked at none of them. A repair round is aimed at the gap the gate NAMED, so a
+round bought for a missing branch name leaves every unexercised behaviour where
+it was. On a failing verdict the acceptance gap joins the gap already named — as
+text only, never as citations, because a sourced finding is admitted with no
+citation weighed and letting the judge's own prose ride in on that exemption is
+the laundering the admission rules exist to prevent.
+
+### 3. The checklist is per clause; the finding is per line
+
+igel held four points against twenty-four hidden checks, textual five against
+twenty. The ceiling and the prompt agreed that a LINE was a behaviour, and a
+person writes three defaults on one line. Points are now derived per clause,
+which is the unit a check is matched to.
+
+The finding is grouped the other way, back onto the request's own lines, because
+four halves of one sentence must not become four repair rounds. Both derivations
+are in PERF.md, "What the acceptance checklist costs".
