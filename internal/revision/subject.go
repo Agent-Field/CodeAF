@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/shaped"
@@ -143,14 +145,27 @@ const (
 	gateTreeBytes = 8 << 10
 )
 
-// gateTreeExcerptFloor is the least a file's excerpt may be and still be worth
-// sending. A hundred and sixty bytes is about two lines of source: enough to
-// show what a file IS, and the point below which a wider list stops carrying
-// information and starts carrying ellipses. A tree too wide to give every file
-// that much shows the files it can and SAYS how many it could not, because a
-// silent truncation of the deliverable is the one clipping this whole file
-// exists to argue against.
-const gateTreeExcerptFloor = 160
+// NO FILE IS EVER SHOWN IN PART. A file's contents appear in full or the file
+// appears by name only, and the block says which. That rule is the whole of two
+// measured refusals:
+//
+//	"src/circuit-breaker.ts — The deliverable does not include the actual
+//	 content of the circuit breaker module … the fenced text shows only a
+//	 truncated excerpt ending mid-sentence"    (ofetch v4-flash s12, 4/47)
+//	"src/textual/widgets/_rich_log.py — The file is truncated — it cuts off
+//	 before the implementation of write(expand=True) …"  (textual v4-flash s12, 15/20)
+//
+// Both are true of the READING and false of the run — the files were whole on
+// disk and the changes were large — and both were reached the same way: a
+// reader shown the opening of a file judged the opening. Saying "this is an
+// excerpt" in front of it was tried and is not enough; a model reading source
+// that stops mid-function concludes the source stops mid-function.
+//
+// So the percept is removed rather than annotated. A file shown whole cannot
+// read as truncated, and a file shown only by name cannot read as truncated
+// either — it reads as what it is, a file on disk that there was no room to
+// print. The diff still travels underneath (Evidence.Patch), which is where a
+// change too large for this block is read.
 
 // treeBlock is the deliverable when the subject is the tree: what the run
 // changed, split into the sources and the checks, with what is in them.
@@ -165,6 +180,9 @@ const gateTreeExcerptFloor = 160
 // model, an image, a joblib — is listed with its size and no excerpt, because
 // the record's job is to say what the run produced and a byte dump of a PNG
 // says it worse than the name does.
+//
+// EVERY FILE SAYS ITS FULL SIZE ON DISK, AND WHAT IS PRINTED IS PRINTED WHOLE.
+// See the block above readableWhole for the two runs that bought that rule.
 func (e Evidence) treeBlock(budget ctxbudget.Budget) string {
 	files := e.recordFiles()
 	if len(files) == 0 {
@@ -175,7 +193,13 @@ func (e Evidence) treeBlock(budget ctxbudget.Budget) string {
 	var body strings.Builder
 	body.WriteString("This deliverable is the CHANGE THIS RUN MADE TO THE TREE — " +
 		plural(len(files), "file") + ", listed here with what is in them. " +
-		"It is the whole of what the person is being handed.\n")
+		"It is the whole of what the person is being handed.\n\n" +
+		"EVERY FILE BELOW IS ON DISK, WHOLE, AT THE SIZE STATED BESIDE IT. Where a file's " +
+		"contents are printed, they are printed ENTIRE — nothing here is an excerpt and " +
+		"nothing here stops early. Where a file appears in the list and its contents do not, " +
+		"there was no room to print them: that file is whole on disk and no less part of the " +
+		"deliverable, and its contents not being in front of you is a fact about this page " +
+		"and never about the work.\n")
 	writeNames := func(head string, names []string) {
 		if len(names) == 0 {
 			return
@@ -187,7 +211,7 @@ func (e Evidence) treeBlock(budget ctxbudget.Budget) string {
 	}
 	writeNames("Sources the run wrote or changed:", sources)
 	writeNames("Checks the run wrote or changed:", checks)
-	if excerpts := e.treeExcerpts(root, append(append([]string{}, sources...), checks...), budget); excerpts != "" {
+	if excerpts := e.treeContents(root, append(append([]string{}, sources...), checks...), budget); excerpts != "" {
 		body.WriteString("\n" + excerpts)
 	}
 	return strings.TrimRight(body.String(), "\n")
@@ -244,85 +268,84 @@ func (e Evidence) treePath(root, name string) string {
 	return filepath.Join(root, filepath.FromSlash(name))
 }
 
-// treeExcerpts is what is IN the changed files, bounded by one share of the
-// prompt and divided evenly between them.
+// treeContents is what is IN the changed files — every one of them that fits,
+// entire, in the order the record spells them.
 //
-// Evenly, rather than by size or by any guess about which file matters: which
-// of six changed files carries the behaviour a request asked for is precisely
-// the question the judge is being paid to answer, and a record that decided it
-// in advance would be answering it with an arithmetic nobody could see.
-func (e Evidence) treeExcerpts(root string, names []string, budget ctxbudget.Budget) string {
+// The room is derived from the judge's own window (PERF.md), so on the windows
+// this system runs on an ordinary change arrives whole. A file too large for
+// what is left of the room is not opened, not sliced and not summarised: it
+// stays in the list above with its size, where it reads as a file on disk
+// rather than as a file that stops.
+//
+// Order is the record's own and never a weighting. Which of six changed files
+// carries the behaviour a request asked for is precisely the question the judge
+// is being paid to answer, and a record that decided it in advance would be
+// answering it with an arithmetic nobody could see.
+func (e Evidence) treeContents(root string, names []string, budget ctxbudget.Budget) string {
 	if len(names) == 0 {
 		return ""
 	}
-	room := budget.Share(gateTreeShare, gateShareTotal, gateTreeBytes)
-	shown, each := len(names), room/len(names)
-	if each < gateTreeExcerptFloor {
-		shown, each = room/gateTreeExcerptFloor, gateTreeExcerptFloor
-	}
-	if shown <= 0 {
-		return ""
-	}
-	if shown > len(names) {
-		shown = len(names)
-	}
+	left := budget.Share(gateTreeShare, gateShareTotal, gateTreeBytes)
 	var body strings.Builder
-	for _, name := range names[:shown] {
-		text, ok := readableHead(e.treePath(root, name), each)
+	shown := 0
+	for _, name := range names {
+		text, size, ok := readableWhole(e.treePath(root, name), left)
 		if !ok {
 			continue
 		}
-		body.WriteString("\n── " + name + " ──\n" + text + "\n")
+		left -= size
+		shown++
+		body.WriteString("\n── " + name + " — " + strconv.Itoa(size) +
+			" bytes on disk, shown in full ──\n" + text + "\n")
 	}
-	if body.Len() == 0 {
+	if shown == 0 {
 		return ""
 	}
-	head := "What is in them:"
+	head := "What is in them, in full:"
 	if shown < len(names) {
-		head = "What is in the first " + strconv.Itoa(shown) + " of them (" +
-			strconv.Itoa(len(names)-shown) + " more are listed above and not excerpted here):"
+		head = "What is in " + strconv.Itoa(shown) + " of them, in full. The other " +
+			strconv.Itoa(len(names)-shown) + " are named above with their sizes: they are on disk, " +
+			"they are whole, they are part of what is being handed over, and there was no room " +
+			"to print them here. NOTHING BELOW IS AN EXCERPT AND NOTHING ABOVE IS MISSING:"
 	}
 	return head + strings.TrimRight(body.String(), "\n") + "\n"
 }
 
-// readableHead is the first bytes of a file, and only where those bytes are
-// text a model can read. It answers false for anything else, which is how a
-// binary artifact stays a NAME in the record rather than becoming noise in it.
-func readableHead(path string, limit int) (string, bool) {
-	if limit <= 0 {
-		return "", false
+// readableWhole is a file's entire text, and only where the file is text a
+// model can read and small enough to arrive whole.
+//
+// Three answers are one answer here — too big, unreadable, not text — because
+// the block above does the same thing with all three: leaves the file in the
+// list, with its size, saying nothing about its contents. That is how a
+// compiled model, an image and a nine-thousand-line module all stay NAMES in
+// the record rather than becoming either noise in it or a truncation somebody
+// judges.
+func readableWhole(path string, room int) (text string, size int, ok bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() == 0 || info.Size() > int64(room) {
+		return "", 0, false
 	}
-	handle, err := os.Open(path)
-	if err != nil {
-		return "", false
+	body, err := os.ReadFile(path)
+	if err != nil || len(body) != int(info.Size()) {
+		return "", 0, false
 	}
-	defer handle.Close()
-	buffer := make([]byte, limit)
-	read, err := handle.Read(buffer)
-	if read <= 0 || (err != nil && read == 0) {
-		return "", false
-	}
-	head := buffer[:read]
 	// A NUL byte is the one thing no source file has and every compiled
-	// artifact has early. Valid UTF-8 is the other half of the same question,
-	// asked after the head is trimmed back to a rune boundary so a file cut
-	// mid-character is not mistaken for a binary one.
-	for _, b := range head {
+	// artifact has early; valid UTF-8 is the other half of the same question.
+	// Neither is a judgement about the file — only about whether printing it
+	// tells a reader anything.
+	for _, b := range body {
 		if b == 0 {
-			return "", false
+			return "", 0, false
 		}
 	}
-	for len(head) > 0 && !utf8.Valid(head) {
-		head = head[:len(head)-1]
+	if !utf8.Valid(body) {
+		return "", 0, false
 	}
-	text := strings.TrimRight(string(head), "\n")
-	if strings.TrimSpace(text) == "" {
-		return "", false
+	trimmed := strings.TrimRight(string(body), "\n")
+	if strings.TrimSpace(trimmed) == "" {
+		return "", 0, false
 	}
-	if read == limit {
-		text += "\n…"
-	}
-	return text, true
+	return trimmed, len(body), true
 }
 
 // ── THE VERDICT THE TREE SUBJECT ADMITS ──────────────────────────────────────
@@ -356,11 +379,24 @@ const treeEnumFiles = 64
 // treeVerdictSchema is the delivery verdict's shape when the subject is the
 // tree. It is the claim schema plus the one field that makes a finding about
 // anything other than a changed file impossible to state.
-func treeVerdictSchema(files []string) json.RawMessage {
+func treeVerdictSchema(files, behaviours []string) json.RawMessage {
 	file := `{"type": "string"}`
 	if len(files) > 0 && len(files) <= treeEnumFiles {
 		if names, err := json.Marshal(files); err == nil {
 			file = `{"type": "string", "enum": ` + string(names) + `}`
+		}
+	}
+	// AND THE QUOTE IS A BEHAVIOUR OF THE REQUEST, FROM THE LIST THE JUDGE WAS
+	// SHOWN. Where the request states checkable behaviours, they are the only
+	// spans a refusal over a changed tree may be built on — which is what makes
+	// "the deliverable does not include the actual content of this file"
+	// unsayable rather than merely wrong. Where it states none, the field is
+	// what it always was, because a contract nobody was shown is a contract
+	// nobody can satisfy.
+	quote := `{"type": "string"}`
+	if len(behaviours) > 0 {
+		if spans, err := json.Marshal(behaviours); err == nil {
+			quote = `{"type": "string", "enum": ` + string(spans) + `}`
 		}
 	}
 	return json.RawMessage(`{
@@ -369,12 +405,104 @@ func treeVerdictSchema(files []string) json.RawMessage {
     "pass": {"type": "boolean"},
     "file": ` + file + `,
     "gaps": {"type": "string"},
-    "quote": {"type": "string"},
+    "quote": ` + quote + `,
     "exercised": {"type": "boolean"}
   },
   "required": ["pass"],
   "additionalProperties": false
 }`)
+}
+
+// gateAcceptShare is what a known window spends on the behaviours a refusal may
+// be built on, and gateAcceptBytes is the bound when the window is unknown.
+// PERF.md carries both.
+//
+// A checklist too long for the room sends none, and sending none turns the
+// requirement off: this is the fail-safe direction and the only honest one. A
+// judge held to a list it was never shown would fault every refusal it made,
+// which is a gate that has stopped existing.
+const (
+	gateAcceptShare = 6
+	gateAcceptBytes = 4 << 10
+)
+
+// behaviourSpans is the checklist as the schema admits it: each point's own
+// verbatim span of the request, deduplicated, in the order the request states
+// them — or nothing at all when they will not fit the room.
+func behaviourSpans(points []plan.Point, budget ctxbudget.Budget) []string {
+	room := budget.Share(gateAcceptShare, gateShareTotal, gateAcceptBytes)
+	seen := make(map[string]bool, len(points))
+	spans := make([]string, 0, len(points))
+	spent := 0
+	for _, point := range points {
+		span := strings.TrimSpace(point.Quote)
+		if span == "" {
+			span = strings.TrimSpace(point.Behaviour)
+		}
+		if span == "" || seen[span] {
+			continue
+		}
+		seen[span] = true
+		if spent += len(span) + 4; spent > room {
+			// PART OF A CHECKLIST IS NOT A CHECKLIST. A list clipped to fit
+			// would refuse every refusal built on the behaviours that fell off
+			// it, which is the same defect as a list nobody was shown.
+			return nil
+		}
+		spans = append(spans, span)
+	}
+	return spans
+}
+
+// behavioursBlock puts those spans in front of the judge, above the fence with
+// the rest of what a delivery is held to. The schema can admit a span and the
+// model still has to be able to read one.
+func behavioursBlock(spans []string) string {
+	if len(spans) == 0 {
+		return ""
+	}
+	var body strings.Builder
+	body.WriteString("The behaviours this request states, read from it before any work existed. " +
+		"A gap over a changed tree is a failure of ONE of these, quoted exactly:\n")
+	for _, span := range spans {
+		body.WriteString("- " + span + "\n")
+	}
+	return strings.TrimRight(body.String(), "\n")
+}
+
+// behaviourNamed answers whether a verdict's quote is one of the behaviours:
+// that span, or a piece of it.
+//
+// THE CONTAINMENT ONLY RUNS ONE WAY, AND THAT IS THE WHOLE RULE. A quote that
+// is part of a listed behaviour is that behaviour, quoted shorter, and a model
+// asked for a verbatim span may reasonably give less than the whole of one. A
+// quote that CONTAINS a listed behaviour is a longer span of the request that
+// happens to have a behaviour inside it — which is precisely the s12 verdict:
+// "Create a circuit breaker state machine module (src/circuit-breaker.ts) that
+// implements … and shared state keyed by origin" swallows a real behaviour
+// whole while being a sentence about producing a file. Admitting that direction
+// would leave the door it is meant to close standing open.
+//
+// Whitespace and case are folded because a span re-wrapped by a model is the
+// same words, and nothing else is forgiven.
+func behaviourNamed(quote string, spans []string) bool {
+	want := foldedSpan(quote)
+	if want == "" {
+		return false
+	}
+	for _, span := range spans {
+		if have := foldedSpan(span); have != "" && strings.Contains(have, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// foldedSpan is the form those comparisons are made in: lower case, with every
+// run of whitespace collapsed, because a quote re-wrapped by a model is the
+// same words.
+func foldedSpan(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }
 
 // treeVerdict is the answer, with the record it has to be true of carried
@@ -398,6 +526,11 @@ type treeVerdict struct {
 	// case because nothing outside this package may hand a verdict a record
 	// that is not the one the gate was assembled from.
 	files []string
+	// behaviours are the spans a refusal may be built on, and they are set only
+	// where the judge was actually shown them. Empty means the request states
+	// no checkable behaviour, or states more of them than the room holds, and
+	// either way the requirement is off.
+	behaviours []string
 }
 
 func (v *treeVerdict) UnmarshalJSON(data []byte) error {
@@ -443,6 +576,18 @@ func (v *treeVerdict) UnmarshalJSON(data []byte) error {
 	if named == "" {
 		return fmt.Errorf("a fail must name one of the files this run changed, and %q is not one of them",
 			strings.TrimSpace(raw.File))
+	}
+	// AND THE QUOTE IS A BEHAVIOUR THE FILE FAILS, NOT A SENTENCE ABOUT THE
+	// FILE'S EXISTENCE. ofetch s12 satisfied every rule above it: the file was
+	// a record path, the quote was a verbatim span of the request, the gap was
+	// prose. What it said was that the module's content was absent — a claim
+	// about how much of the file this reading showed, wearing a citation about
+	// producing it. A refusal built on a behaviour the request states cannot be
+	// that claim, because the record already answers whether a file exists and
+	// no behaviour is about its being on disk.
+	if len(v.behaviours) > 0 && !behaviourNamed(v.Quote, v.behaviours) {
+		return fmt.Errorf("a fail must quote one of the behaviours this request states, and %q is not one of them",
+			clipUTF8Bytes(v.Quote, 120))
 	}
 	v.File = named
 	return nil

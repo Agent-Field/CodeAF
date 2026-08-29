@@ -1925,6 +1925,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
 						evidence.Unclosed = extension.Unclosed
+						// AND A FINDING THE JOB'S OWN COVERAGE READING CONTRADICTED
+						// IS A FINDING THAT LOST. The gate said the delivery was
+						// short; the reading of what this job is judged on, taken
+						// over everything that landed, said nothing is left
+						// uncovered. Two readings of one world, and the broader
+						// measurement settles it — so the verdict is taken again
+						// from the settled fields (store.DeliveryGate.Whole) rather
+						// than handed over as a partial nobody can act on.
+						evidence.Overturned = extension.Overturned
 						if extension.Spliced > 0 {
 							extended = true
 							// The receipt on the summary is what tells every reader

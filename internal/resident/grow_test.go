@@ -442,3 +442,54 @@ func TestALineageThatChangedFilesKeepsGrowing(t *testing.T) {
 		t.Fatalf("a lineage that wrote two files was refused its next round: %+v", second)
 	}
 }
+
+// ofetch s12, in one test. The delivery gate read the tree it was handing over
+// and named src/circuit-breaker.ts; the first repair round that finding bought
+// asked to be planned; and the coverage question answered "everything this job
+// is judged on is already covered", so nothing ran and the run ended partial
+// after 145 calls. Two readings of one job, refusing each other in silence.
+//
+// The first round after a finding that names a file of the record is not the
+// coverage question's to refuse — the finding IS a reading of the world, and a
+// narrower one.
+func TestTheFirstRoundAFindingBuysIsNotRefusedOnCoverage(t *testing.T) {
+	graph := crowdedJob(t, "s12", 3)
+	criterion := plan.Done{
+		Produces:   []string{"the circuit breaker"},
+		Conditions: []plan.Check{{Kind: plan.CheckRun, Check: "pnpm test", Expect: "it exits 0"}},
+	}
+	asked := 0
+	gate := SatisfierFunc(func(context.Context, plan.Done, []plan.Landed, []plan.Spec) (plan.Satisfaction, error) {
+		asked++
+		return plan.Satisfaction{Complete: true}, nil
+	})
+
+	verdict, err := growJob(context.Background(), graph, gate, GrowRequest{
+		JobRoot: "job", Node: jobNode(t, graph, "job"), Reason: GrowGap, Adding: 1,
+		Criterion: criterion, Grounded: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != 0 {
+		t.Fatalf("the coverage question was bought for a grounded first round: asked %d times", asked)
+	}
+	if !verdict.Allow {
+		t.Fatalf("the round a review finding bought was refused: %+v", verdict)
+	}
+}
+
+// And the caps are untouched by it: a grounded round is exempt from the one
+// question that contradicts its own evidence and from nothing else.
+func TestAGroundedRoundStillObeysTheCaps(t *testing.T) {
+	graph := crowdedJob(t, "s12", maxJobNodes)
+	verdict, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: jobNode(t, graph, "job"), Reason: GrowGap, Adding: 1, Grounded: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Allow || verdict.Cause != CauseCeiling {
+		t.Fatalf("a grounded round walked through the ceiling: %+v", verdict)
+	}
+}

@@ -332,7 +332,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	request := GrowRequest{
 		JobRoot: jobRootID(graph, node), Node: node, Lineage: lineage,
 		Reason: growth.reason(), Round: round, DailyBudgetUSD: dailyBudgetUSD,
-		Ungated: growth.Ungated,
+		Ungated: growth.Ungated, Grounded: growth.Grounded,
 		// The two facts the governor weighs this round against, both taken from
 		// outside the work being weighed. The artifact list is the workspace's
 		// own before-and-after reading of the tree, not the leaf's account of

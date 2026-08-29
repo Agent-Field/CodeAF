@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -274,5 +276,316 @@ func TestAProseDeliverableIsNeverReshaped(t *testing.T) {
 
 	if repaired || reshaped != answer || len(worker.sent) != 0 {
 		t.Fatalf("prose was reshaped: repaired=%v calls=%d", repaired, len(worker.sent))
+	}
+}
+
+// ── ofetch s12: the excerpt that was judged as the deliverable ───────────────
+
+// ofetchNode is the s12 shape: a request that states behaviours, and a change
+// whose largest file is a module the request named.
+func circuitNode() store.Node {
+	return store.Node{ID: "task-2", Brief: "add a per-origin circuit breaker",
+		Provenance: store.Provenance{Intent: "Create a circuit breaker state machine module " +
+			"(src/circuit-breaker.ts) that implements the state model, transitions, half-open rules, " +
+			"failure accounting, and shared state keyed by origin. " +
+			"The circuit must prevent repeated calls to unhealthy origins."}}
+}
+
+func circuitPoints() []plan.Point {
+	return []plan.Point{
+		{Behaviour: "The circuit must prevent repeated calls to unhealthy origins",
+			Quote: "The circuit must prevent repeated calls to unhealthy origins"},
+		{Behaviour: "Circuit state is keyed by URL origin (not path)",
+			Quote: "shared state keyed by origin"},
+	}
+}
+
+// bigTreeFixture is a change whose one source is far larger than the room, so
+// the block has to open it rather than show it whole.
+func bigTreeFixture(t *testing.T, bytes int) (root string, record []string) {
+	t.Helper()
+	root = t.TempDir()
+	body := strings.Repeat("export function step() { return 1 }\n", bytes/36+1)
+	path := filepath.Join(root, "src", "circuit-breaker.ts")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return root, []string{path}
+}
+
+// A file shown whole says so. A file too large for the room says its full size,
+// how much of it is shown, and that the rest exists — because the reading's
+// bound reported as a fact about the work is what refused ofetch s12.
+func TestNoFileIsEverShownInPart(t *testing.T) {
+	root, record := bigTreeFixture(t, 60_000)
+	evidence := Evidence{Artifacts: record, Workspace: root, Observed: true}
+
+	oversize := evidence.treeBlock(ctxbudget.Budget{})
+	if !strings.Contains(oversize, "EVERY FILE BELOW IS ON DISK, WHOLE, AT THE SIZE STATED BESIDE IT") {
+		t.Fatalf("the block does not say the files exist in whole:\n%s", oversize)
+	}
+	if strings.Contains(oversize, "export function step") {
+		t.Fatalf("a file too large for the room was printed in part:\n%s", oversize)
+	}
+	if !strings.Contains(oversize, "src/circuit-breaker.ts (") {
+		t.Fatalf("a file too large to print lost its name and size:\n%s", oversize)
+	}
+
+	small, smallRecord := treeFixture(t)
+	whole := (Evidence{Artifacts: smallRecord, Workspace: small, Observed: true}).treeBlock(ctxbudget.Budget{})
+	if !strings.Contains(whole, "bytes on disk, shown in full") ||
+		!strings.Contains(whole, "is_following_end = True") {
+		t.Fatalf("a change that fits the room was not shown whole:\n%s", whole)
+	}
+}
+
+// A REFUSAL IS A BEHAVIOUR THE FILE FAILS, NEVER A CLAIM ABOUT HOW MUCH OF IT
+// WAS SHOWN. The s12 verdict named a record file and quoted the request
+// verbatim — and what it quoted was the sentence asking for the module to
+// exist, not a behaviour the request states. It is not a verdict this gate can
+// read, so it is asked again and, unanswered, faults.
+func TestARefusalThatQuotesNoStatedBehaviourIsNotAVerdict(t *testing.T) {
+	root, record := bigTreeFixture(t, 60_000)
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{`{"pass":false,` +
+		`"file":"src/circuit-breaker.ts",` +
+		`"gaps":"The deliverable does not include the actual content of the circuit breaker module — the fenced text shows only a truncated excerpt ending mid-sentence.",` +
+		`"quote":"Create a circuit breaker state machine module (src/circuit-breaker.ts) that implements the state model, transitions, half-open rules, failure accounting, and shared state keyed by origin.",` +
+		`"exercised":false}`}}
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, circuitNode(), "done", "",
+		Evidence{Artifacts: record, Workspace: root, Observed: true, Accept: circuitPoints()},
+		"worker/model")
+
+	if len(judge.sent) != 2 {
+		t.Fatalf("the verdict about the excerpt was not retaken: %d calls", len(judge.sent))
+	}
+	if judgment.Fault == "" || judgment.Checked {
+		t.Fatalf("a finding about how much of a file was shown was accepted: %+v", judgment)
+	}
+	// And the judge was shown the behaviours it is held to, so the contract is
+	// one it could have satisfied.
+	first := judge.sent[0][len(judge.sent[0])-1].Content[0].Text
+	if !strings.Contains(first, "The behaviours this request states") ||
+		!strings.Contains(first, "The circuit must prevent repeated calls to unhealthy origins") {
+		t.Fatalf("the judge was held to a list it was never shown:\n%s", first)
+	}
+}
+
+// The refusal the same shape admits: a record file, and one of the behaviours
+// the request states.
+func TestARefusalQuotingAStatedBehaviourStands(t *testing.T) {
+	root, record := bigTreeFixture(t, 60_000)
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{`{"pass":false,` +
+		`"file":"src/circuit-breaker.ts",` +
+		`"gaps":"nothing in it opens the circuit after consecutive failures",` +
+		`"quote":"The circuit must prevent repeated calls to unhealthy origins","exercised":false}`}}
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, circuitNode(), "done", "",
+		Evidence{Artifacts: record, Workspace: root, Observed: true, Accept: circuitPoints()},
+		"worker/model")
+
+	if len(judge.sent) != 1 {
+		t.Fatalf("a readable verdict was asked again: %d calls", len(judge.sent))
+	}
+	if !judgment.Checked || judgment.Pass || judgment.File != "src/circuit-breaker.ts" {
+		t.Fatalf("the refusal did not stand: %+v", judgment)
+	}
+}
+
+// A request that states no behaviour turns the requirement off rather than
+// faulting every refusal: a contract nobody was shown is a contract nobody can
+// satisfy.
+func TestWithNoStatedBehavioursTheQuoteRequirementIsOff(t *testing.T) {
+	root, record := bigTreeFixture(t, 60_000)
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{`{"pass":false,"file":"src/circuit-breaker.ts",` +
+		`"gaps":"it never opens the circuit","quote":"prevent repeated calls","exercised":false}`}}
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, circuitNode(), "done", "",
+		Evidence{Artifacts: record, Workspace: root, Observed: true}, "worker/model")
+
+	if len(judge.sent) != 1 || !judgment.Checked {
+		t.Fatalf("a refusal was faulted over a list nobody was shown: %d calls, %+v",
+			len(judge.sent), judgment)
+	}
+}
+
+// THE SUBJECT IS STAMPED ON WHATEVER COMES BACK, AT ONE EXIT. A field written
+// by each constructor is a field the next constructor forgets, and ofetch s12
+// journaled a gate whose subject was empty.
+func TestEveryJudgementCarriesWhatItJudged(t *testing.T) {
+	root, record := treeFixture(t)
+	settings := config.Config{Model: "worker/model"}
+	tree := Evidence{Artifacts: record, Workspace: root, Observed: true}
+
+	for name, judged := range map[string]struct {
+		reply    string
+		evidence Evidence
+		want     string
+	}{
+		"a pass":           {`{"pass":true,"exercised":true}`, tree, "tree (3 files)"},
+		"a fault":          {`not an object at all`, tree, "tree (3 files)"},
+		"a claim":          {`{"pass":true,"exercised":true}`, Evidence{Observed: true}, "claim"},
+		"a mechanical gap": {`{"pass":true}`, Evidence{Done: plan.Done{Produces: []string{"report.md"}}, Workspace: t.TempDir()}, "claim"},
+	} {
+		judge := &recordingJudge{replies: []string{judged.reply}}
+		judgment := JudgeDeliverable(context.Background(), settings,
+			pool.Adopt(settings, judge.Model(), judge), nil, textualNode(),
+			"x", "", judged.evidence, "worker/model")
+		if judgment.Subject != judged.want {
+			t.Errorf("%s did not record what it judged: %q, want %q", name, judgment.Subject, judged.want)
+		}
+	}
+}
+
+// ── The two readings that refused each other ────────────────────────────────
+
+// ofetch s12 again, at the other seam. The gate refused the delivery over
+// src/circuit-breaker.ts; the repair round it bought was refused because "the
+// goal is already covered"; and the run reported `partial — no more work could
+// be started on it` after 145 calls. That sentence is neither answer, and a
+// person reading it cannot tell which of the two readings to believe.
+//
+// The broader measurement settles it: coverage is asked of the whole job's
+// criterion against everything that landed, and the finding is one judge's
+// opinion about one file. So the finding is OVERTURNED and the run settles on
+// the fields, rather than handing over a shortfall nobody can act on.
+func TestACoverageRefusalOverturnsTheFindingItContradicts(t *testing.T) {
+	graph := gateStore(t)
+	if err := graph.RecordJobGrowth("task-2", store.JobGrowth{Reason: "gap", Lineage: "task-2",
+		Round: 1, Allowed: false, Cause: resident.CauseCovered,
+		Refused: "everything this job is judged on is already covered"}); err != nil {
+		t.Fatal(err)
+	}
+	node, ok, err := graph.Node("task-2")
+	if err != nil || !ok {
+		t.Fatalf("node: ok=%v err=%v", ok, err)
+	}
+	unmet := Judgment{Gaps: "src/circuit-breaker.ts — it never opens the circuit",
+		Quote: "persist the feature schema", Citations: []string{"persist the feature schema"},
+		File: "src/circuit-breaker.ts", Checked: true,
+		Grounds: Grounds{Intent: node.Provenance.Intent}}
+
+	extension := ExtendForGap(context.Background(), graph, node, "done", unmet, nil, 0,
+		func(context.Context, string, string) (store.Subtree, error) {
+			return store.Subtree{}, nil
+		})
+
+	if !extension.Overturned {
+		t.Fatalf("the contradiction was handed over as a shortfall: %+v", extension)
+	}
+	if extension.Unclosed {
+		t.Fatalf("an overturned finding was also left standing: %+v", extension)
+	}
+	if !strings.Contains(extension.Refused, "found nothing left uncovered") {
+		t.Fatalf("the person is not told which reading won: %q", extension.Refused)
+	}
+}
+
+// And a refusal that merely declines to FUND the round leaves the gap standing,
+// exactly as it did: rounds, the ceiling, the wall and the rail all say "not
+// now" and settle nothing about whether the work landed.
+func TestARefusalThatOnlyDeclinesToFundLeavesTheGapStanding(t *testing.T) {
+	graph := gateStore(t)
+	if err := graph.RecordJobGrowth("task-2", store.JobGrowth{Reason: "gap", Lineage: "task-2",
+		Round: 4, Allowed: false, Cause: resident.CauseRounds,
+		Refused: "this work has split as many times as splitting helps"}); err != nil {
+		t.Fatal(err)
+	}
+	node, _, err := graph.Node("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmet := Judgment{Gaps: "src/circuit-breaker.ts — it never opens the circuit",
+		Quote: "persist the feature schema", Citations: []string{"persist the feature schema"},
+		File: "src/circuit-breaker.ts", Checked: true,
+		Grounds: Grounds{Intent: node.Provenance.Intent}}
+
+	extension := ExtendForGap(context.Background(), graph, node, "done", unmet, nil, 0,
+		func(context.Context, string, string) (store.Subtree, error) {
+			return store.Subtree{}, nil
+		})
+
+	if extension.Overturned || !extension.Unclosed {
+		t.Fatalf("a cap was read as the gate being wrong: %+v", extension)
+	}
+}
+
+// ── textual v4-flash s12: the same defect, twice more ───────────────────────
+
+// Both of that run's gates refused the reading rather than the work:
+//
+//	"src/textual/widgets/_rich_log.py — The file is truncated — it cuts off
+//	 before the implementation of write(expand=True) …"
+//	"— The deliverable does not contain the actual content of the files it
+//	 claims to have changed. The fenced material is a description of what the
+//	 files contain, not the files themselves."
+//
+// And two structured repairs on lane `gate` say the shape check fired twice and
+// the re-ask came back with the same complaint wearing a file and a quote. A
+// verdict cannot be argued out of a percept; the percept has to go. A file is
+// printed whole or named only, and a refusal has to quote a behaviour.
+func TestTheTruncationPerceptCannotBeReached(t *testing.T) {
+	root := t.TempDir()
+	small := filepath.Join(root, "src", "textual", "widgets", "_log.py")
+	if err := os.MkdirAll(filepath.Dir(small), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(small, []byte("class Log:\n    is_following_end = True\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	big := filepath.Join(root, "src", "textual", "widgets", "_rich_log.py")
+	if err := os.WriteFile(big, []byte(strings.Repeat("def write(self, expand=False):\n    return self\n", 900)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	evidence := Evidence{Artifacts: []string{small, big}, Workspace: root, Observed: true}
+
+	block := evidence.treeBlock(ctxbudget.Budget{})
+	// The file that fits is entire; the one that does not is a name and a size
+	// and nothing a reader could call truncated.
+	if !strings.Contains(block, "src/textual/widgets/_log.py — 39 bytes on disk, shown in full") {
+		t.Fatalf("the file that fits was not shown whole:\n%s", block)
+	}
+	if strings.Count(block, "def write(self, expand=False)") != 0 {
+		t.Fatalf("the file too large for the room leaked into the page in part:\n%s", block)
+	}
+	if !strings.Contains(block, "NOTHING BELOW IS AN EXCERPT AND NOTHING ABOVE IS MISSING") {
+		t.Fatalf("the page does not say what it is not showing:\n%s", block)
+	}
+
+	// And the verdict shape refuses the complaint even so. The quote here is a
+	// span of the request that is not one of the behaviours it states, which is
+	// what both s12 refusals had.
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{`{"pass":false,` +
+		`"file":"src/textual/widgets/_rich_log.py",` +
+		`"gaps":"The file is truncated — it cuts off before the implementation of write(expand=True).",` +
+		`"quote":"changes to src/textual/widgets/_rich_log.py","exercised":false}`}}
+	evidence.Accept = []plan.Point{
+		{Behaviour: "RichLog.write(expand=True) preserves full-width justified rendering",
+			Quote: "RichLog.write(expand=True) no longer preserves full-width justified rendering"},
+	}
+	node := textualNode()
+	node.Provenance.Intent += " RichLog.write(expand=True) no longer preserves " +
+		"full-width justified rendering with current Rich, and the change must " +
+		"cover changes to src/textual/widgets/_rich_log.py."
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, node, "done", "",
+		evidence, "worker/model")
+
+	if len(judge.sent) != 2 {
+		t.Fatalf("the complaint about the reading was not retaken: %d calls", len(judge.sent))
+	}
+	if judgment.Fault == "" || judgment.Checked {
+		t.Fatalf("a complaint about the page was accepted as a finding: %+v", judgment)
 	}
 }

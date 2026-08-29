@@ -37,6 +37,23 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// HeldPoints is THE checklist this delivery is judged against: the behaviours
+// the request states, from the spec the round carries or from the job's own
+// remembered list, each still grounded in what was actually asked for.
+//
+// It is a function because two readers need the identical answer and had been
+// computing it in one place only. The settlement below reads it to decide what
+// nothing exercises; the delivery gate reads it to decide which quotes a
+// refusal may be built on (subject.go). A checklist that differed between the
+// two would be a gate refusing a verdict for citing a behaviour the settlement
+// was about to count.
+func HeldPoints(evidence Evidence, grounds Grounds) []plan.Point {
+	if points := Held(evidence.Accept, grounds); len(points) > 0 {
+		return points
+	}
+	return Held(ChecklistFor(verify.JobKey(grounds.Intent)), grounds)
+}
+
 // Held is the checklist the gate may actually hold somebody to: the points whose
 // quotation is grounded in what this run promised before it began working.
 //
@@ -829,10 +846,7 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// checklist, and it is what decides whether a pass is whole.
 	reading := jobReading(ctx, graph, node.ID, evidence, job)
 	verdict = settleUnmeasured(verdict, evidence, reading)
-	points := Held(evidence.Accept, grounds)
-	if len(points) == 0 {
-		points = Held(ChecklistFor(job), grounds)
-	}
+	points := HeldPoints(evidence, grounds)
 	if len(points) == 0 {
 		return verdict
 	}

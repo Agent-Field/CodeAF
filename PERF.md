@@ -690,39 +690,46 @@ gate is back where s4 left it: passing "All 56 tests pass" at 41 of 47.
 
 The delivery gate's fence holds the CHANGE where a run made one — the changed
 sources and checks, with what is in them — and the worker's message where it did
-not (`internal/revision/subject.go`, FAILSAFE.md's seventeenth chapter). That block
-is the deliverable, so it is bounded like every other block in that prompt: a
-share of the judge's own room, with a literal for a build whose catalog cannot
+not (`internal/revision/subject.go`, FAILSAFE.md's seventeenth chapter). That
+block is the deliverable, so it is bounded like every other block in that prompt:
+a share of the judge's own room, with a literal for a build whose catalog cannot
 place the model.
 
 | number | value | where |
 | --- | --- | --- |
-| the excerpts' share of a known window | **25 of `gateShareTotal`** | `gateTreeShare` |
+| the change's share of a known window | **25 of `gateShareTotal`** | `gateTreeShare` |
 | and the bound when the window is unknown | **8 KiB** | `gateTreeBytes` |
-| the least one file's excerpt may be | **160 bytes** | `gateTreeExcerptFloor` |
 | the record that travels as a schema enum | at most **64 paths** | `treeEnumFiles` |
+| the stated behaviours a refusal may quote | **6 of `gateShareTotal`**, 4 KiB unknown | `gateAcceptShare`, `gateAcceptBytes` |
 
-Three properties are what make it safe.
+**NO FILE IS EVER PRINTED IN PART.** A file's contents appear entire or the file
+appears by name and size only, and the block says which. This is the law, not the
+budget: two graded runs refused a correct delivery for what the READING did —
+*"the fenced text shows only a truncated excerpt ending mid-sentence"* (ofetch
+v4-flash s12, 4/47) and *"The file is truncated — it cuts off before the
+implementation of write(expand=True)"* (textual v4-flash s12, 15/20). Annotating
+the excerpt was tried first and is not enough; a model reading source that stops
+mid-function concludes the source stops mid-function. The percept is removed
+rather than argued with. The diff still travels underneath (`Evidence.Patch`,
+12%), which is where a change too large for this block is read.
 
-**The share is spent evenly across the changed files, never weighted.** Which of
-six files carries the behaviour a request asked for is precisely the question the
-judge is being paid to answer; a record that decided it in advance would be
+**Files are taken in the record's own order, never weighted.** Which of six
+changed files carries the behaviour a request asked for is precisely the question
+the judge is being paid to answer; a record that decided it in advance would be
 answering it with an arithmetic nobody could see.
 
-**A tree too wide to give every file the floor shows the files it can and SAYS
-how many it could not.** A silent truncation of the deliverable is the one
-clipping this whole mechanism argues against.
-
 **No file is read for its meaning and no file is read twice.** A path that is not
-text — a compiled model, an image — stays a name and a size; the excerpt is a
-bounded `read` of the head, not a walk; and the artifact list the record block
-used to print is dropped where the fence already carries it, so the prompt got
-one block wider and not two.
+text — a compiled model, an image — stays a name and a size; the read is one
+`ReadFile` of a file already known to fit; and the artifact list the record block
+used to print is dropped where the fence carries it, so the prompt got one block
+wider and not two.
 
-The enum is a wire-level guard and never the decision: past 64 paths the field
-keeps its meaning and the Go-side check against the same record is what admits
-the verdict, so a run with a large change set is held to the same contract at the
-same price.
+**Both enums are guards, never the decision.** Past 64 paths the `file` field
+keeps its meaning and the Go-side check against the same record admits the
+verdict. The behaviour list is all-or-nothing — a checklist too long for its
+share sends none, and sending none turns the quote requirement off — because part
+of a checklist would refuse every refusal built on the behaviours that fell off
+it, which is the same defect as a list nobody was shown.
 
 ## The repair round's room, which is not a clock and not a count
 

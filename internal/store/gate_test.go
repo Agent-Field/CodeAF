@@ -344,3 +344,50 @@ func TestTheSymbolLevelComparisonIsJournaled(t *testing.T) {
 		t.Errorf("the journal kept %d names, want the sample bound of %d", got, VerificationSample)
 	}
 }
+
+// What a gate JUDGED has to read back out of the journal under the name a
+// reader looks it up by. ofetch s12 journaled a refusal whose `subject` was
+// absent, and the one question an autopsy of that mechanism asks — did the
+// review read the world or a sentence — had no answer on the run that needed
+// it. The field is checked on the wire, in the key it is spelled with, because
+// a struct field that never reaches the payload is a field that does not exist.
+func TestTheGateJournalsWhatItJudged(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "task-2", Brief: "add the circuit breaker", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s12", Intent: "add a circuit breaker"}); err != nil {
+		t.Fatal(err)
+	}
+	written := DeliveryGate{Pass: false, Gap: "src/circuit-breaker.ts — it never opens the circuit",
+		Subject: "tree (6 files)"}
+	if err := graph.RecordDeliveryGate("task-2", written); err != nil {
+		t.Fatal(err)
+	}
+	read, ok, err := graph.DeliveryGateFor("task-2")
+	if err != nil || !ok {
+		t.Fatalf("the gate did not read back: ok=%v err=%v", ok, err)
+	}
+	if read.Subject != written.Subject {
+		t.Fatalf("what the gate judged did not survive the journal: %q", read.Subject)
+	}
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Kind != EventDeliveryGate {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["subject"] != "tree (6 files)" {
+			t.Fatalf("the payload does not spell the subject where a reader looks: %v", payload)
+		}
+	}
+}
