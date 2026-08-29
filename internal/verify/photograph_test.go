@@ -34,7 +34,7 @@ func textualShape(t *testing.T) string {
 // minutes later, silently.
 func TestARecipeReachesItsRunnerThroughVariablesAndLaunchers(t *testing.T) {
 	root := textualShape(t)
-	ladder, ok := ReadingStrategies(root, Discover(root))
+	ladder, ok := ReadingStrategies(root, Discover(root), nil)
 	if !ok {
 		t.Fatal("a project with a make test target produced no strategy at all")
 	}
@@ -112,7 +112,7 @@ func TestTheLastRungsEmptyRosterIsStillAReading(t *testing.T) {
 // zero value.
 func TestEveryWayOfHavingNoReadingCarriesItsReason(t *testing.T) {
 	// A project that declares nothing.
-	bare := Photograph(context.Background(), t.TempDir(), 90*time.Minute)
+	bare := Photograph(context.Background(), t.TempDir(), 90*time.Minute, nil)
 	if bare.Taken || !strings.Contains(bare.Unread, "no way of checking itself") {
 		t.Errorf("a project that declares no verification said %q", bare.Unread)
 	}
@@ -120,7 +120,7 @@ func TestEveryWayOfHavingNoReadingCarriesItsReason(t *testing.T) {
 	// A wall too short to afford one. The command must be named — the sentence
 	// is about what was NOT run — and it must not have run.
 	root := textualShape(t)
-	short := Photograph(context.Background(), root, time.Minute)
+	short := Photograph(context.Background(), root, time.Minute, nil)
 	if short.Taken {
 		t.Fatal("a sixty-second leaf took a reading")
 	}

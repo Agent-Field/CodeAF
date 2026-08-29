@@ -30,7 +30,7 @@ func TestAProjectThatSaysNothingAboutHowItIsCheckedIsNotChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := Discover(root)
-	if _, ok := RunTests(context.Background(), root, plan, time.Minute); ok {
+	if _, ok := RunTests(context.Background(), root, plan, time.Minute, nil); ok {
 		t.Errorf("a directory of loose files was reported as checked; plan = %#v", plan.Entrypoints)
 	}
 }
@@ -38,7 +38,7 @@ func TestAProjectThatSaysNothingAboutHowItIsCheckedIsNotChecked(t *testing.T) {
 func TestTheProjectsOwnTestCommandIsRunAndTheNamesItPrintedAreRead(t *testing.T) {
 	root := stageProject(t, "@echo 'FAILED tests/test_api.py::test_headers - AssertionError'; exit 1")
 
-	result, ok := RunTests(context.Background(), root, Discover(root), time.Minute)
+	result, ok := RunTests(context.Background(), root, Discover(root), time.Minute, nil)
 
 	if !ok {
 		t.Fatalf("a Makefile with a test target was not recognised as a checkable project")
@@ -64,7 +64,7 @@ func TestASuiteKilledAtTheCeilingIsAnIncompleteObservationAndNotARedOne(t *testi
 	root := stageProject(t, "@sleep 30")
 
 	start := time.Now()
-	result, ok := RunTests(context.Background(), root, Discover(root), 300*time.Millisecond)
+	result, ok := RunTests(context.Background(), root, Discover(root), 300*time.Millisecond, nil)
 
 	if !ok {
 		t.Fatalf("the entrypoint was not discovered")
@@ -94,7 +94,7 @@ func TestThePipelineFailureThePreambleGuardsAgainstIsNotReadAsGreen(t *testing.T
 	root := t.TempDir()
 	plan := Plan{Entrypoints: []Entrypoint{{Kind: KindTest, Command: "false | cat"}}}
 
-	result, ok := RunTests(context.Background(), root, plan, time.Minute)
+	result, ok := RunTests(context.Background(), root, plan, time.Minute, nil)
 
 	if !ok {
 		t.Fatalf("the entrypoint was not discovered")

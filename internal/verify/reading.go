@@ -85,7 +85,28 @@ type Reading struct {
 	// It is empty when Taken is true. NOBODY LOOKED IS A FACT, AND A FACT
 	// ABOUT THE RUN REACHES THE RECORD (FAILSAFE.md clause 4).
 	Unread string `json:"unread,omitempty"`
-	Before Result `json:"before,omitzero"`
+	// Partial says the reading that was taken was CUT: the command was killed
+	// at its ceiling having already named some checks. It is a real roster and
+	// it is not a comparable one — the checks it never reached are missing
+	// because the clock ran out, and subtracting them would report the whole
+	// tail of a suite as checks that disappeared.
+	//
+	// It exists because throwing the names away was worse. ink s7's `npx ava
+	// --tap` was killed at 1m53s having streamed part of its 922 checks; the
+	// whole reading was discarded, the round-2 gate had no roster at all, and a
+	// deliverable at 13 of 25 hidden checks passed with nothing to weigh. A
+	// PARTIAL ROSTER ANSWERS "DOES A CHECK FOR THIS EXIST" PERFECTLY WELL; it
+	// answers "did this work break something" not at all, and those are two
+	// questions.
+	Partial bool `json:"partial,omitempty"`
+	// CutAfter is how long the cut reading ran before it was killed. It is what
+	// the run learned about this project's PACE, and it is remembered against
+	// the job for the same reason the refusal is: a container running amd64
+	// under qemu is five to ten times slower than the machine the budget's
+	// arithmetic assumes, and a job that discovered that must not spend another
+	// eighth of its wall discovering it again.
+	CutAfter time.Duration `json:"cut_after,omitempty"`
+	Before   Result        `json:"before,omitzero"`
 	// After is the second reading, of the tree as it was handed over. It is
 	// separate from Before rather than replacing it because the whole value of
 	// a photograph is the subtraction, and a run holding one reading cannot
@@ -98,10 +119,46 @@ type Reading struct {
 // Regressed names the checks that were green before this work and are red after
 // it, or nothing when there is no pair of readings to subtract.
 func (r Reading) Regressed() []string {
-	if !r.Taken || !r.AfterTaken {
+	if !r.comparable() {
 		return nil
 	}
 	return NewFailures(r.Before.Failing, r.After.Failing)
+}
+
+// comparable says this photograph has two halves that are photographs of the
+// SAME thing, which is the only condition under which subtracting them means
+// anything.
+//
+// Two readings and the same command was the whole of the old test, and it was
+// half of the rule. A reading is of a command IN A PLACE AT A SCOPE — the
+// package of a monorepo it ran in, and the checks it was told to run — and two
+// of those three moved when readings learned to be scoped. A before reading of
+// a whole suite minus an after reading of three files is every check that was
+// not selected reported as one that disappeared. See Strategy.comparable.
+func (r Reading) comparable() bool {
+	// A CUT READING IS NOT A COMPARABLE ONE. Its roster stops where the clock
+	// did, so every check the suite had not reached would subtract out as one
+	// that stopped existing — a finding per untouched test, from a fact about a
+	// ceiling.
+	return r.Taken && r.AfterTaken && !r.Partial &&
+		r.Before.Strategy.comparable(r.After.Strategy)
+}
+
+// Declared says the project SAID how it is checked, whether or not a reading was
+// taken of it.
+//
+// It is the difference between the two silences that used to be one. A project
+// with no verification at all leaves the coverage question unanswerable and
+// nobody is at fault; a project that declares a suite this run could not read
+// leaves it unanswered, which is a fact about the run and must not deliver as
+// whole. ink s7 passed at 13 of 25 hidden checks on the second of those.
+func (r Reading) Declared() bool {
+	for _, entrypoint := range r.Plan.Entrypoints {
+		if entrypoint.Kind == KindTest {
+			return true
+		}
+	}
+	return false
 }
 
 // Vanished names the checks the suite reported before this work and did not
@@ -114,7 +171,7 @@ func (r Reading) Regressed() []string {
 // project whose runner is quiet on success. Same fail-safe direction as
 // NewFailures, for the same reason.
 func (r Reading) Vanished() []string {
-	if !r.Taken || !r.AfterTaken {
+	if !r.comparable() {
 		return nil
 	}
 	before, after := r.Before.Reported, r.After.Reported

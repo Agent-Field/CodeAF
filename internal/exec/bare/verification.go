@@ -65,10 +65,39 @@ func (b *Bare) photographBefore(ctx context.Context, task exec.Task) (reading ve
 		b.journal(task, held, held.Before, "before the job's first change", true)
 		return held, true
 	}
-	reading = verify.Photograph(ctx, b.workspace.Root(), b.deadline)
+	reading = verify.Photograph(ctx, b.workspace.Root(), b.deadline, focusOf(task))
 	verify.RememberBaseline(b.workspace.Root(), job, reading)
 	b.journal(task, reading, reading.Before, "before the job's first change", false)
 	return reading, false
+}
+
+// focusOf is what this job is about, as paths: the files the person's own request
+// names, and the files the work this leaf continues left behind.
+//
+// It is what decides HOW MUCH of the project a reading covers and WHERE it is
+// taken — the checks next to the change rather than the whole repository, and
+// the package of a monorepo the change is in rather than the fan-out at its root
+// (verify.Focus, verify.Members). Both of those were the difference between a
+// reading and no reading at all: textual's whole-repository suite is 793 seconds
+// against a budget of 5m30s, and happy-dom's root command dies inside turbo
+// having named no check of any package.
+//
+// IT IS DERIVED FROM THE REQUEST AND NOT FROM THE DIFF, and that is forced
+// rather than chosen. The baseline is the tree BEFORE the job's first change, so
+// at the moment it is taken there is no diff to read; the request is the only
+// account of what the work is about that exists yet. It is also the right one —
+// the request is what every round of the job shares, so the scope it decides is
+// the scope every round inherits, which is exactly what the comparison rule
+// needs (verify.Reading.comparable). A continuation's inputs are read too,
+// because the files an earlier round left behind are the same job's own record
+// of where it has been working.
+func focusOf(task exec.Task) verify.Focus {
+	focus := verify.Focus(verify.NamedPaths(
+		strings.Join([]string{task.Title, task.Goal, task.Brief}, "\n")))
+	for _, input := range task.Inputs {
+		focus = append(focus, input.Artifacts...)
+	}
+	return focus
 }
 
 // photographAfter takes the second reading and writes what the two readings say
@@ -171,14 +200,26 @@ func (b *Bare) journal(
 		sample = sample[:store.VerificationSample]
 	}
 	_ = b.history.RecordVerification(task.StoreNodeID, store.VerificationReading{
-		When:        when,
-		Read:        taken,
-		Why:         reading.Unread,
-		Command:     strategy.Command,
-		Declared:    strategy.Declared,
-		Runner:      strategy.Runner,
-		Format:      string(strategy.Read),
-		Source:      strategy.Source,
+		When:     when,
+		Read:     taken,
+		Why:      reading.Unread,
+		Command:  strategy.Command,
+		Declared: strategy.Declared,
+		Runner:   strategy.Runner,
+		Format:   string(strategy.Read),
+		Source:   strategy.Source,
+		// WHERE and HOW MUCH, beside WHAT and HOW. A roster of forty means one
+		// thing for a small project read whole and another for a large one read
+		// next to the change, and the row could not say which.
+		Scope:   strategy.Scope,
+		Package: strategy.Workdir,
+		// And what a cut reading learned before it was cut: that its roster
+		// stops where the clock did, and how long it took to get that far. The
+		// second is the only thing this run ever measures about the PACE of the
+		// machine it is on, and a ceiling derived from a wall knows nothing
+		// about that until a reading is cut and says so.
+		Partial:     reading.Partial && when == "before the job's first change",
+		Elapsed:     reading.CutAfter,
 		ReadAsPlain: result.ReadAsPlain,
 		Exit:        result.Exit,
 		TimedOut:    result.TimedOut,

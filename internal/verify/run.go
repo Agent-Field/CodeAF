@@ -92,9 +92,9 @@ type Result struct {
 // ok is false when the plan declares no test entrypoint at all. A PROJECT THAT
 // DOES NOT SAY HOW IT IS CHECKED IS NOT A PROJECT THIS CAN CHECK.
 func RunTests(
-	ctx context.Context, workspace string, plan Plan, timeout time.Duration,
+	ctx context.Context, workspace string, plan Plan, timeout time.Duration, focus Focus,
 ) (Result, bool) {
-	strategy, ok := ReadingStrategy(workspace, plan)
+	strategy, ok := ReadingStrategy(workspace, plan, focus)
 	if !ok {
 		return Result{}, false
 	}

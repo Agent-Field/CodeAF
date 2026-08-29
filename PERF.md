@@ -172,6 +172,13 @@ killed the run. So this measurement is bounded three ways, and the bound is
 | `capturedOutputLimit` | **4 MiB** | `internal/verify/run.go` |
 | `verify.scriptExpansions` | **4** | `internal/verify/runner.go` |
 | `verify.rememberedTrees` | **16** | `internal/verify/baseline.go` |
+| `verify.memberScanLimit` | **3** | `internal/verify/workspaces.go` |
+| `verify.memberLimit` | **4** | `internal/verify/workspaces.go` |
+| `verify.scopeScanLimit` | **6000** | `internal/verify/scope.go` |
+| `verify.scopeReadBudget` | **2 MiB** | `internal/verify/scope.go` |
+| `verify.scopeSelectionLimit` | **40** | `internal/verify/scope.go` |
+| `revision.rememberedJobs` | **16** | `internal/revision/acceptance.go` |
+| `revision.producedSweepLimit` | **6000** | `internal/revision/produces.go` |
 | `store.VerificationSample` | **8** | `internal/store/verification.go` |
 
 The two share constants moved out of `internal/exec/bare` on 2026-08-29. Two
@@ -261,6 +268,83 @@ five and a half minutes had been spent. Each now carries its own sentence on
 `verify.Reading.Unread` and is journaled as a `verification` event with
 `read: false`. It costs one row.
 
+**A READING IS SCOPED BEFORE IT IS BOUNDED, AND THAT IS WHERE THE SAVING IS.**
+The budget above was doing exactly what it was written to do and it still
+produced no reading, because nothing had decided WHAT to measure before deciding
+how long to measure it. textual's whole-repository `pytest` collects 3,422 tests
+and takes **793s** in its own task image, against the **5m30s** its wall
+afforded: the only rung the ladder had was one that could not finish. So
+`verify.ReadingStrategies` now puts a SCOPED rung in front of the whole ones —
+the runner handed the checks adjacent to the change — and the whole suite is what
+is below it.
+
+The scope is derived from the job's own `verify.Focus`: the paths the person's
+request names and the paths the record shows the work touched. `verify.Adjacent`
+turns those into the test files the focus names outright, the test files beside
+what it touched, and the test files that name what it touched, bounded three
+ways — `scopeScanLimit` **6000** entries walked (`internal/exec`'s
+`producedScanLimit` at the other end of the same question), `scopeReadBudget`
+**2 MiB** read to find the checks that IMPORT a touched module, and
+`scopeSelectionLimit` **40** paths on one command line. Past any of them the
+answer is "no adjacent checks", the ladder falls to the whole rung, and nothing
+is wrong except that a very large repository paid for a scoped reading it did not
+get. A job that named nothing gets `scope: whole`, which is what every reading
+here was before this existed.
+
+**The scope is part of the reading's identity, so the comparison compares like
+with like.** `Strategy.comparable` is command AND workdir AND scope, and
+`Reading.Regressed`/`Vanished` refuse to subtract when the two halves disagree
+about any of them — a before reading of a whole suite minus an after reading of
+three files is every unselected check reported as one that stopped existing. The
+strategy is pinned on the first reading and re-used verbatim for the second, so
+in practice they always agree; the test is the fail-safe, not the mechanism.
+
+**A rung is entitled to its share of the budget or it is not started.**
+`verify.photograph` walks the ladder inside ONE `ReadingBudget` and refuses any
+rung past the first with less than `budget / len(ladder)` left. It is
+`ShortestUsefulReading`'s rule one level in — the thing being divided is the
+reading's budget rather than the wall — and it stops a scoped rung that spent
+most of the budget handing the whole-suite rung a scrap and a certain timeout.
+
+**A monorepo is read in the package the work touched, not at its root.**
+`verify.Members` reads what the repository declares itself to be made of —
+`workspaces` in package.json, `packages:` in pnpm-workspace.yaml, `packages` in
+lerna.json, `[workspace] members` in Cargo.toml, `use` in go.work, and (for a
+turbo/nx/rush repository that declares no member list) a bounded walk for nested
+manifests at `memberScanLimit` **3** levels. `verify.MemberFor` files a touched
+path under the nearest manifest above it, and `TouchedMembers` orders the
+packages most-touched first and cuts at `memberLimit` **4**, which is the
+ladder's own shape. Measured in happy-dom's task image at its base commit on
+2026-08-29: the root's declared `npm test` (`turbo run test`) exits 1 in **5.3s**
+with 0 of 4 tasks successful and names **no check of any package**; `npx vitest
+run --reporter=json` at the ROOT is killed at a 180s ceiling naming **nothing**;
+and the reading this change takes — vitest inside `packages/happy-dom`, scoped to
+the touched test file — exits 0 and names **173 checks**.
+
+**A cut reading keeps what it named, and the run learns the pace.** A command
+killed at its ceiling used to return nothing at all; ink s7's `npx ava --tap` was
+cut at **1m53s** having already streamed part of its 922 checks, the whole
+reading was discarded, and the next round's gate passed a deliverable at 13 of 25
+hidden checks with no roster to weigh. What the runner named before the cut is
+now kept as `Reading.Partial` — a partial roster answers "does a check for this
+exist" and answers "did this work break something" not at all, so it is legible
+to the acceptance settlement and refused by the comparison. `Reading.CutAfter`
+records how long it ran, journaled as `elapsed` on the `verification` event; it
+is the only thing a run ever measures about the PACE of the machine it is on,
+which matters because these readings are taken in amd64 containers under qemu
+where everything is five to ten times slower than the wall-derived arithmetic
+assumes. The reading and its reason are remembered against the job, so **the same
+blind ceiling is never spent twice**: the tightening that follows a cut is the
+scoped rung, and it happens before the ceiling rather than after it.
+
+**The gate takes the job's reading when no worker did.** Not every worker
+photographs — only `internal/exec/bare` does — and textual s7 ran every node
+under the generalist and reached its gates with no reading in the store at all.
+`revision.jobReading` reads the job's remembered baseline first (free), and takes
+one itself on `ReadingBudget(time until the gate's own deadline)` only when
+nothing anywhere has looked, remembering it against the job so it costs one
+reading per job rather than one per round.
+
 **What a person would see if this were wrong.** Too generous, and short leaves
 stop doing work — a `do` run whose nodes each sit for minutes with nothing in
 the stream but the suite they are running, which is exactly the failure that got
@@ -333,6 +417,36 @@ itself only where that photograph has no after half — a repair that rewrote th
 account rather than the code, or a worker whose wall could not afford the second
 reading — and it runs it on the same `verify.ReadingBudget` share as everything
 else. So the quarter-of-the-wall worst case above is unchanged.
+
+**The checklist and its finding are the JOB'S, and that is what keeps the cost at
+one call a round.** Both used to live on one node's spec. A continuation is
+planned afresh and its spec carries none, so ofetch s7 mapped fifty-four points
+in round one, named eighteen behaviours nothing exercised, bought a repair — and
+rounds two, three and four hold ZERO mapping rows and raised prose gaps about the
+deliverable's wording instead. The run ended at 41 of 47 with the same defaults
+untested that round one had named out loud. So the checklist is remembered
+against the job (`revision.RememberChecklist`, keyed by `verify.JobKey` — the
+identical key `verify.BaselineFor` uses, for the identical reason), and so is
+what the last measurement found nothing exercising. `rememberedJobs` is **16**,
+`rememberedTrees`' sibling and a bound on memory rather than on behaviour.
+
+Two rules follow, and neither costs a call. **A finding measured once stands
+until a measurement closes it** — a round whose worker took no reading inherits
+the open set rather than passing over it. And **the set can only shrink by
+world evidence**: a round that wrote the missing checks grows the roster with
+names the mapping then matches, and the next mapping is what notices. The
+finding's last line is the score, `N of the M behaviours this request states are
+still exercised by nothing`, so a repair brief says what REMAINS rather than
+restating the list.
+
+**A pass over a suite nobody could read is not whole.** `store.DeliveryGate.
+Unreadable` says the project DECLARED a way of checking itself and this run could
+not read it, and `Whole()` spends it: the run settles partial, exit 2, with
+`partial — nothing in this project's verification could be read: <why>` as its
+last line. ink s7 journaled its cut `npx ava --tap` correctly and then passed the
+next gate over an empty roster at 13 of 25 hidden checks. A project that declares
+NO verification is deliberately not charged for it — the question is unanswerable
+rather than unanswered — and which of the two it was is journaled either way.
 
 **What a person would see if this were wrong.** Too generous a checklist and
 every delivery fails on behaviours the person never asked for, which is the

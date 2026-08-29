@@ -54,7 +54,7 @@ func TestTheReadingReachesPastTheLifecycleScriptToTheRunner(t *testing.T) {
   "devDependencies": {"vitest": "^4.0.5", "eslint": "^9"}
 }`,
 	})
-	strategy, ok := ReadingStrategy(root, Discover(root))
+	strategy, ok := ReadingStrategy(root, Discover(root), nil)
 	if !ok {
 		t.Fatal("a project that declares a test script produced no strategy")
 	}
@@ -95,14 +95,14 @@ func TestAWatchingRunnerIsAskedForASingleRun(t *testing.T) {
 	root := project(t, map[string]string{
 		"package.json": `{"scripts": {"test": "vitest"}, "devDependencies": {"vitest": "^3"}}`,
 	})
-	strategy, _ := ReadingStrategy(root, Discover(root))
+	strategy, _ := ReadingStrategy(root, Discover(root), nil)
 	if !strings.Contains(strategy.Command, "vitest run") {
 		t.Errorf("a watching runner was asked to watch: %q", strategy.Command)
 	}
 	root = project(t, map[string]string{
 		"package.json": `{"scripts": {"test": "vitest bench"}, "devDependencies": {"vitest": "^3"}}`,
 	})
-	strategy, _ = ReadingStrategy(root, Discover(root))
+	strategy, _ = ReadingStrategy(root, Discover(root), nil)
 	if strings.Contains(strategy.Command, "run") {
 		t.Errorf("a subcommand the project chose was overridden: %q", strategy.Command)
 	}
@@ -120,7 +120,7 @@ func TestPytestIsAskedForItsWholeRoster(t *testing.T) {
 		"Makefile":            "test:\n\tpytest --cov=src tests/\n",
 		"tests/test_thing.py": "def test_thing():\n    assert True\n",
 	})
-	strategy, ok := ReadingStrategy(root, Discover(root))
+	strategy, ok := ReadingStrategy(root, Discover(root), nil)
 	if !ok {
 		t.Fatal("a python project with a test target produced no strategy")
 	}
@@ -242,7 +242,7 @@ func TestAProjectWithNoKnownRunnerKeepsItsOwnCommand(t *testing.T) {
 		"Makefile":          "test:\n\t./run-the-checks.sh\n",
 		"run-the-checks.sh": "#!/bin/sh\nexit 0\n",
 	})
-	strategy, ok := ReadingStrategy(root, Discover(root))
+	strategy, ok := ReadingStrategy(root, Discover(root), nil)
 	if !ok {
 		t.Fatal("a project with a test target produced no strategy")
 	}
@@ -257,7 +257,7 @@ func TestAProjectWithNoKnownRunnerKeepsItsOwnCommand(t *testing.T) {
 // A tree with nothing to run produces no strategy, which is the same silence
 // RunTests answers a project with no test entrypoint with.
 func TestATreeThatSaysNothingProducesNoStrategy(t *testing.T) {
-	if _, ok := ReadingStrategy(t.TempDir(), Plan{}); ok {
+	if _, ok := ReadingStrategy(t.TempDir(), Plan{}, nil); ok {
 		t.Error("a plan with no test entrypoint produced a strategy to run")
 	}
 }
@@ -296,7 +296,7 @@ func TestARunnerBehindTwoLintGatesIsStillFound(t *testing.T) {
   "ava": {"files": ["test/*.tsx"]}
 }`,
 	})
-	strategy, ok := ReadingStrategy(root, Discover(root))
+	strategy, ok := ReadingStrategy(root, Discover(root), nil)
 	if !ok {
 		t.Fatal("a project that declares a test script produced no strategy")
 	}
