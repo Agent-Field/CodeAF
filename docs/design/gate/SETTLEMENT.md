@@ -406,8 +406,93 @@ partial — gate: <the finding> (not repaired: <the reason nothing more ran>)
 FAILSAFE clause 3: a fail-safe that does not reach the person watching is
 decoration, and an exit code nobody sees is the quietest decoration there is.
 
+## 8. A repair that moved nothing may not close a finding about the world
+
+§7 left `PolishClosed` alone on the grounds that it is set only from a second
+full `JudgeDeliverable` that answered pass, and that judgement re-runs the whole
+world half first. Both halves of that are true and the conclusion was still
+wrong, because of what the repair in front of it had been.
+
+A failed gate buys one repair and there are two kinds. One re-runs the worker: it
+can edit files, run checks, and change what the world says. The other —
+`revision.Compose`, taken whenever `Composable` holds, which is every change
+worker whose change already landed — rewrites the ACCOUNT of the work and runs
+nothing at all. Its own comment says so: *"the outcome is kept, not replaced …
+the composition did none of it; only the words are new."*
+
+So the second gate reads a better-written summary of the identical world the
+first gate failed. ink s5 and ofetch s5 are both that:
+
+| run | what the first reading said was missing | what the repair did | settled |
+| --- | --- | --- | --- |
+| ink s5 `task-2` | "the substance of the work: the implemented code, the branch created, and the confirmation that it compiles" | composed a summary | whole, 7 of 25 |
+| ofetch s5 `task-2-x1` | "the test results and the confirmation that `pnpm test` exits 0" | composed a summary | whole, 44 of 47 |
+
+ofetch's own FIRST gate had already journaled what the world said —
+"the project's own verification (`pnpm test`) exited 1 and named 0 checks" — and
+a sentence cannot make a suite exit 0.
+
+> **A REPAIR THAT PROVABLY DID NOT MOVE THE TREE MAY NOT CLOSE A FINDING WHOSE
+> GROUND IS THE TREE OR A READING. It may still close a finding whose only ground
+> is the delivered text, because writing is what closes that one.**
+
+Both halves are measured, not asserted.
+
+**Did the tree move?** `revision.TreeStamp` over the job's artifact record —
+path, size, modification time, folded to a digest — taken as the finding is
+raised and again at the re-judgement. Two equal stamps are a round that changed
+nothing, which a composition is by construction and an engine re-run that edited
+no file is in fact. It is size-and-mtime rather than content because that is the
+question every build system in existence answers this way, and content-hashing a
+repository's build output would buy the same answer for megabytes. The fact is
+journaled as `store.DeliveryGate.Unmoved`, for the reason `Unclosed` and
+`Overturned` are journaled: a settlement that turns on it cannot read it out of a
+sentence.
+
+**Is the finding's ground the world?** `revision.GroundedInTheWorld`, four doors,
+every one of them reading the record rather than a list of words:
+
+1. The gate already settled it against the world — `Mechanical` (the disk) or
+   `Sourced` (a measurement). Neither has an opinion in it.
+2. It names a file, by `NamedFiles`' own shape rule.
+3. It names a command the RECORD says the run ran, or the verification
+   entrypoint. Matched as whole strings, not as symbols, and deliberately: a
+   command is usually plain words with a space in it — `pnpm test`, `make check`,
+   `go test ./...` — which `symbolShaped` rightly refuses to call a
+   distinctively-spelled name. Nothing is inferred from prose, because the string
+   being matched is one the record supplied. This is the door ofetch trips.
+4. **The run left a tree behind and nothing says the tree is good.** This is the
+   door that carries the weight and it is written on the fail-safe side. A run
+   that produced files was doing work, not writing an answer; a finding against
+   it is a finding about that work unless the world says otherwise, and the only
+   thing that can say otherwise is the project's own checks, run on the tree
+   being handed over, coming back green. A red reading is the world convicting;
+   an ABSENT reading is nobody having looked, and NOBODY LOOKED IS NOT NOTHING
+   WRONG — the same rule `DeliveryGate.Unmeasured` already writes down one seam
+   along. This is the door ink trips.
+
+What stays false — a finding a rewritten account may honestly close — is
+therefore the two cases where writing IS the work. A run that left nothing but
+its message: the message is the artifact, which is §6's line reused rather than a
+second rule, and the twelve-profiles case goes on closing exactly as it did. And
+a run whose change the project's own checks PASS, where what is wrong is the
+account of it: happy-dom s4's "the deliverable is a list of file paths, not the
+implementation itself", over a green suite, is precisely what `Compose` was built
+for and it still closes.
+
+The rule is one function, `revision.RepairClosed`, because it had been an
+expression at a wiring seam where it was not visible enough to be got wrong.
+A repair whose pass does not count falls through to `ExtendForGap` exactly as a
+failed one does — so the run tries to BUY the work that closes the finding rather
+than settling — and if nothing can be bought it ends partial, with the reason
+named on the last line: `(not repaired: the repair rewrote the account and
+changed nothing on disk)`.
+
 ## What is deliberately not here
 
-No new judge call, no new clock, no new field on the gate event that is not a
-reading of fields already on it. The record union costs a slice; the acquittal
-rule costs a length check; the verdict costs a method.
+No new judge call, no new clock, no new model round: the stamp is a `stat` per
+recorded path and the classification is string shape over strings the record
+already holds. No knowledge anywhere of what a test framework is called. And no
+rule that a composed repair is worthless — it improves the account that ships in
+every case, and it still closes the gate in the two where the account was the
+only thing wrong.

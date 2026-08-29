@@ -88,6 +88,25 @@ type DeliveryGate struct {
 	// question answered in prose, whose message is its own artifact.
 	Overturned bool `json:"overturned,omitempty"`
 
+	// Unmoved says the repair round that was judged here LEFT THE TREE EXACTLY AS
+	// THE FINDING FOUND IT: same files, same sizes, same modification times, stamped
+	// on either side of the round.
+	//
+	// It is recorded because it is the fact that explains a PolishClosed which is
+	// absent — and, on the runs that made this necessary, one which is present and
+	// should not have been. A composed repair (revision.Compose) rewrites the
+	// account of work that already landed and runs nothing, so it cannot change what
+	// the world says; ink s5 and ofetch s5 both composed a better summary over a
+	// finding about the substance of the work, were re-judged on the summary, and
+	// settled whole at 7 of 25 and 44 of 47 hidden checks (2026-08-29,
+	// bench/deepswe; docs/design/gate/SETTLEMENT.md §8).
+	//
+	// A round that moved nothing may still close a finding whose only ground was the
+	// delivered text — that is what writing can honestly fix — so this is a fact
+	// about the round and never a verdict on its own. The verdict is PolishClosed,
+	// which the wiring sets only where the two agree.
+	Unmoved bool `json:"unmoved,omitempty"`
+
 	// Exercised is the acceptance mapping as the gate settled it: one row per
 	// behaviour the request stated, naming the check that exercises it, or
 	// naming nothing when no check does.
