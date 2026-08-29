@@ -396,3 +396,25 @@ against a catalog endpoint that refuses immediately.
 for nothing else. Each is one atomic counter behind a door that already existed,
 because "the launch does not wait for the catalog" is a claim about the shape of
 the code and a stopwatch would test the network instead.
+
+## The liveness laws
+
+The laws above are about work a machine does. These four are about work it is
+WAITING FOR, and they were written after a headless run spent ninety minutes and
+sixty-three cents producing nothing (`bench/deepswe/AUTOPSY.md`, happy-dom s1).
+The shape was one hung provider call, three times over: fifteen minutes on a
+socket, a twenty-minute claim reaper taking the node away, and a leaf that began
+again from nothing beside a workspace holding its own work.
+
+**Every bound here is derived from something the process already measured.** Not
+one of them is a new figure, and that is the point: the detectors already existed
+and the run met none of them.
+
+| Law | The bound, and where it comes from | Where it is pinned |
+| --- | --- | --- |
+| **A completion is asked for as a STREAM whether or not anybody is watching it.** The observer decides who is TOLD; it never decided whether the call is guarded, and until this it silently did. | No bound of its own. It is what arms the three below on a headless call. | `internal/provider/unwatched_test.go` |
+| **A request that has produced no token is cut.** | `firstDeltaBound`, 90s — past every healthy first token this adapter has measured, and under the streaming transport's `responseHeaderTimeout` so a stall is named rather than surfacing as a torn connection. | `internal/provider/streamguard_test.go` |
+| **A stream that has gone quiet is cut**, with keepalives buying bounded patience and no more. | `midStreamGapBound`, 45s, half the first bound because a model that has started writing has finished deciding; `bufferedQuietBound`, 150s, which covers every buffered delivery measured on 2026-08-24. | `internal/provider/streamguard_test.go` |
+| **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallFloor`…`streamWallCeiling`. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go` |
+| **An endpoint that STALLS is treated exactly like one that REFUSES**: its lane is struck, memoized for `ignoreCooldown`, and every request encoded afterwards routes around it. | `velocityLedger.pace`, per model, sourced from the endpoint the wire itself named. | `internal/provider/unwatched_test.go` |
+| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/exec/bare/loop.go` |

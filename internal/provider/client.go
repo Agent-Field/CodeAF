@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -125,6 +126,23 @@ type Client struct {
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
 	encodes encodeMemo
+	// unstreamable is this endpoint admitting, from the wire, that it does not
+	// speak server-sent events: a gateway that took `stream: true` and answered
+	// one whole JSON completion anyway. It is set once, from what actually
+	// happened.
+	//
+	// IT CHANGES THE TRANSPORT AND NEVER THE REQUEST. The bytes on the wire stay
+	// byte-identical call to call — that determinism is a law of this adapter and
+	// a memo that rewrote the body would break it — and what the memo buys is the
+	// only thing worth buying: an endpoint that generates the whole answer before
+	// it sends a header must not be read through the streaming transport, whose
+	// header deadline would then be a deadline on the generation. Such a call is
+	// bounded in total instead, by [adaptiveCompletionTimeout], because a total
+	// deadline is the only bound an answer with no inside can have.
+	//
+	// It is a fact about the BASE URL rather than about a model, which is why it
+	// lives on the client and not in the velocity ledger.
+	unstreamable atomic.Bool
 }
 
 // ErrNoAPIKey is what a request meets on a client built without a key and not
@@ -532,33 +550,56 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 	return request, nil
 }
 
-// CompleteWithMessages performs one completion. Interactive callers may attach
-// a stream observer while retaining the accumulated response contract.
+// CompleteWithMessages performs one completion.
+//
+// ── THE GUARD IS ARMED BY THE CALL, NEVER BY AN AUDIENCE ────────────────────
+//
+// Every completion is asked for as a STREAM, whether or not anybody attached an
+// observer to watch it. The observer decides who is TOLD what arrives; it has
+// never had anything to do with whether the call is watched, and until 2026-08
+// it silently decided exactly that.
+//
+// What that cost, measured: a headless `aforge do` leaf attaches no observer, so
+// every one of its calls took the request/response path, whose only bound is
+// [adaptiveCompletionTimeout] — a total deadline that caps at fifteen minutes. A
+// DeepSeek endpoint accepted a request and never answered; the leaf sat on it
+// for 15m24s, a twenty-minute claim reaper then took the node away, and the run
+// spent ninety minutes and $0.63 producing nothing. Every detector that would
+// have caught it in ninety seconds already existed — streamguard.go's first
+// delta bound, its mid-stream gap, its wall derived from the lane's own measured
+// history — and every one of them was dormant because a stream nobody was
+// reading was not a stream at all.
+//
+// A fail-safe that arms only when a person is looking is decoration
+// (docs/design/failsafe/FAILSAFE.md). So the shape of the request is decided
+// here, by what the adapter needs in order to see, and the observer is optional
+// throughout the streamed path.
+//
+// The accumulated *ai.Response is byte-identical either way, which is what makes
+// this a change of transport and not of contract. The one endpoint that cannot
+// be served this way says so on the wire — a gateway that takes `stream: true`
+// and answers one whole JSON completion — and [Client.unstreamable] remembers it
+// from what actually happened, so the fallback is a memo rather than a guess.
 func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	if observer := streamObserverFrom(ctx); observer != nil {
-		return c.completeWithMessagesStreaming(ctx, observer, messages, options...)
-	}
-	request, err := c.newRequest(messages, options)
+	observer := streamObserverFrom(ctx)
+	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 	if err != nil {
 		return nil, err
 	}
-	response, relearned, err := c.completeOnce(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	// AN EMPTY ANSWER AT THE CEILING IS A FACT, NOT A RESULT. The 400 path above
-	// learns a model that refuses the disable; this is the other way the same
-	// thing shows — the endpoint accepted the disable, thought anyway, and the
-	// whole ceiling went to the pass. Learned once, the next encode leaves room
-	// (wire.go's thinkingCeiling), so the call is made again with the answer it
-	// was always going to need. Once, because a second empty answer WITH the
-	// room is a model that has nothing to say, and that is the caller's to hear.
+	// AN EMPTY ANSWER AT THE CEILING IS A FACT, NOT A RESULT. The 400 path
+	// elsewhere learns a model that refuses the disable; this is the other way
+	// the same thing shows — the endpoint accepted the disable, thought anyway,
+	// and the whole ceiling went to the pass. Learned once, the next encode
+	// leaves room (wire.go's thinkingCeiling), so the call is made again with the
+	// answer it was always going to need. Once, because a second empty answer
+	// WITH the room is a model that has nothing to say, and that is the caller's
+	// to hear.
 	//
-	// The reading is done inside completeOnce so that the row it writes can SAY
-	// what the answer taught; the decision to do it twice is still made here.
+	// The reading is done inside the call so that the row it writes can SAY what
+	// the answer taught; the decision to do it twice is made here.
 	if relearned {
-		response, _, err := c.completeOnce(ctx, request)
-		return response, err
+		again, _, againErr := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
+		return again, againErr
 	}
 	return response, nil
 }
@@ -631,6 +672,31 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 		c.refuseUpstream(c.modelFor(request), refusal)
 		return nil, false, refusal
 	}
+	return c.completionInOnePiece(ctx, request, knobs, payload, httpResponse.StatusCode, began, logBegan, false)
+}
+
+// completionInOnePiece parses a whole-completion body and folds it into every
+// record and measurement one answer feeds.
+//
+// It is shared by the two paths that can meet one, and it is shared rather than
+// copied because the divergence is what this fix is about: the request/response
+// path always meets one, and the streamed path meets one when the endpoint
+// ignored `stream: true` and answered anyway. Two copies of "read the answer,
+// name who served it, rate it, learn from it, write the row" is two places for
+// the next fact about an answer to be added to only one of.
+//
+// stream says which shape the request went out in, so the model-call row says
+// what actually happened rather than what the parse looked like.
+func (c *Client) completionInOnePiece(
+	ctx context.Context,
+	request *ai.Request,
+	knobs callKnobs,
+	payload []byte,
+	status int,
+	began time.Time,
+	logBegan time.Time,
+	stream bool,
+) (*ai.Response, bool, error) {
 	// ONE PARSE. The answer and the router's annotation on it come out of the
 	// same decode, because the alternative was reading a megabyte of completion
 	// twice to recover one short string from the second pass.
@@ -643,7 +709,7 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 	// came with it; it goes straight back on the response, where every reader
 	// below and above this adapter expects to find it.
 	response.Usage = decoded.Usage.usage()
-	// A non-streamed answer has no first token to wait for — the whole thing
+	// An answer delivered whole has no first token to wait for — the whole thing
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
 	// than "instant" (velocity.go).
@@ -664,8 +730,8 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 	// can carry it. The caller decides whether to ask again.
 	relearned := c.learnFromAnswer(c.modelFor(request), request, &response)
 	c.record(recordFacts{
-		ctx: ctx, request: request, knobs: knobs,
-		began: logBegan, status: httpResponse.StatusCode, served: served,
+		ctx: ctx, request: request, knobs: knobs, stream: stream,
+		began: logBegan, status: status, served: served,
 		response: &response, reasoningTokens: decoded.Usage.reasoningTokens(),
 		learned: relearned, responseBody: payload,
 	})
@@ -791,18 +857,32 @@ func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text s
 	cut.Tokens = outputTokens(nil, text)
 }
 
-// completeWithMessagesStreaming preserves the completion interface while
-// exposing each text delta to an interactive observer. The accumulated
-// response is the same shape callers already parse after the stream closes.
+// completeWithMessagesStreaming performs one completion over a GUARDED stream:
+// the silence bounds, the wall and the degeneration guard in streamguard.go all
+// ride on it. The accumulated response is the same shape callers already parse
+// after the stream closes.
+//
+// The observer may be nil, and on every headless run it is. Whether a person is
+// watching decides who is TOLD what arrives and nothing else — see the law on
+// [Client.CompleteWithMessages] — so it is filled in with a no-op here rather
+// than guarded at forty call sites inside the read loop.
+//
+// The second return value is the relearn flag [Client.learnFromAnswer] produces:
+// this answer taught the adapter that the model ignores the reasoning disable,
+// so the caller should ask once more with the room left for it.
 func (c *Client) completeWithMessagesStreaming(
 	ctx context.Context,
 	observer StreamObserver,
 	messages []ai.Message,
 	options ...ai.Option,
-) (*ai.Response, error) {
+) (*ai.Response, bool, error) {
+	if observer == nil {
+		observer = func(StreamEvent) {}
+	}
+	relearned := false
 	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	request.Stream = true
 	began := c.clock()
@@ -823,7 +903,7 @@ func (c *Client) completeWithMessagesStreaming(
 	knobs := knobsFrom(ctx)
 	httpResponse, err := c.sendShaped(guardCtx, request, knobs, true)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode >= 400 {
@@ -835,7 +915,28 @@ func (c *Client) completeWithMessagesStreaming(
 			err: refusal, responseBody: payload,
 		})
 		c.refuseUpstream(c.modelFor(request), refusal)
-		return nil, refusal
+		return nil, false, refusal
+	}
+	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
+	// CONTENT TYPE. A gateway behind AFORGE_BASE_URL may take `stream: true` and
+	// serve a whole completion anyway; feeding that body to the SSE decoder finds
+	// no `data:` frames and would hand the caller an empty answer for a call it
+	// paid for.
+	//
+	// THE ANSWER IS KEPT. It is a real completion, already generated and already
+	// billed, and asking again to get it in a shape we prefer would pay for it
+	// twice. So it is parsed here through the same door the request/response path
+	// uses, and the ENDPOINT is remembered instead: from the next call on, this
+	// client stops asking a gateway for a dialect it has demonstrated it does not
+	// speak, and stops paying the streaming transport's header deadline to find
+	// that out again.
+	if !isEventStream(httpResponse.Header.Get("Content-Type")) {
+		c.unstreamable.Store(true)
+		payload, readErr := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
+		if readErr != nil {
+			return nil, false, fmt.Errorf("read response: %w", readErr)
+		}
+		return c.completionInOnePiece(ctx, request, knobs, payload, httpResponse.StatusCode, began, logBegan, true)
 	}
 	// The silence watchdog starts the moment the headers land, which is the
 	// moment the endpoint has accepted the request and owes an answer
@@ -936,9 +1037,9 @@ func (c *Client) completeWithMessagesStreaming(
 					ctx: ctx, request: request, knobs: knobs, stream: true,
 					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
 				})
-				return nil, cut
+				return nil, false, cut
 			}
-			return nil, fmt.Errorf("decode stream: %w", decodeErr)
+			return nil, false, fmt.Errorf("decode stream: %w", decodeErr)
 		}
 		if response.ID == "" {
 			response.ID = chunk.ID
@@ -975,7 +1076,7 @@ func (c *Client) completeWithMessagesStreaming(
 			})
 			c.refuseUpstream(c.modelFor(request), refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
-			return nil, refusal
+			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
 			response.Usage = chunk.Usage.usage()
@@ -1020,7 +1121,7 @@ func (c *Client) completeWithMessagesStreaming(
 					// An endpoint producing soup has failed this lineage as
 					// surely as one that went quiet, so the pin moves too.
 					c.releaseEndpoint(ctx, c.modelFor(request))
-					return nil, cut
+					return nil, false, cut
 				}
 			}
 			// The run of reasoning is announced ONCE — that boundary is what a
@@ -1095,14 +1196,49 @@ func (c *Client) completeWithMessagesStreaming(
 	} else {
 		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0)
 	}
+	// What the answer itself taught, read before the row is written so the row
+	// can carry it — the same reading completeOnce makes about the same fact.
+	// It belongs on BOTH paths or on neither: the ceiling that a thinking pass
+	// eats is a property of the model, not of the transport that carried it, and
+	// leaving it off the streamed path is how a fix landed at one seam gets
+	// silently un-landed by a change of default at another.
+	learned := c.learnFromAnswer(c.modelFor(request), request, response)
+	relearned = len(learned) > 0
 	c.record(recordFacts{
 		ctx: ctx, request: request, knobs: knobs, stream: true,
 		began: logBegan, status: httpResponse.StatusCode, served: served,
-		response: response, reasoningTokens: reasoningTokens,
+		response: response, reasoningTokens: reasoningTokens, learned: learned,
 	})
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
-	return response, nil
+	return response, relearned, nil
+}
+
+// isEventStream reports whether a response body is server-sent events, from the
+// only thing that can say so before a byte of it is read.
+//
+// A STREAM MUST DECLARE ITSELF, and the ambiguous answer is "not a stream". The
+// SSE specification requires `text/event-stream` and every router that speaks it
+// sends it, so requiring it costs nothing real; what it buys is that a response
+// which says nothing about its type is parsed as a whole completion, which is
+// the shape it almost certainly is and the behaviour that existed before any of
+// this. The alternative reading loses a real answer silently — the SSE decoder
+// finds no frames in a JSON body and hands back an empty reply for a call that
+// was paid for — and a silent empty answer is the worst failure in this file.
+//
+// Sniffing the body instead was considered and rejected: the first byte cannot
+// be read until it arrives, and the read that waits for it would happen before
+// the stall watch is armed, which is a gap in exactly the bound this whole
+// change exists to close.
+//
+// Everything but the media type is read leniently: a `charset` parameter, odd
+// spacing and any capitalisation are the same stream.
+func isEventStream(contentType string) bool {
+	media := strings.TrimSpace(strings.ToLower(contentType))
+	if semicolon := strings.IndexByte(media, ';'); semicolon >= 0 {
+		media = strings.TrimSpace(media[:semicolon])
+	}
+	return media == "text/event-stream"
 }
 
 // observeToolCallReady announces one whole tool call. The call rides as JSON
