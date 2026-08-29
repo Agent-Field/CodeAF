@@ -122,6 +122,29 @@ func reasoningReplayRefused(model string) bool { return quirks.knowsNoReasoningR
 // refusesReasoningReplay recognizes a complaint about assistant-message
 // continuation fields. All three halves are required so a 400 about the
 // request-level reasoning knob cannot accidentally erase transcript state.
+// refusesForeignReasoning reads a refusal for the one complaint a model switch
+// produces: reasoning that was made under a different model. It is a different
+// fact from refusesReasoningReplay — that endpoint does not do replay at all
+// and is remembered; this one does, just not of someone else's — so it is
+// matched on its own wording and never learned.
+func refusesForeignReasoning(payload []byte) bool {
+	text := strings.ToLower(string(payload))
+	if !strings.Contains(text, "reasoning") {
+		return false
+	}
+	for _, refusal := range []string{
+		"different model",
+		"produced under",
+		"endpoint that created",
+		"original model",
+	} {
+		if strings.Contains(text, refusal) {
+			return true
+		}
+	}
+	return false
+}
+
 func refusesReasoningReplay(payload []byte, carried []MessageReasoning) bool {
 	text := strings.ToLower(string(payload))
 	field := strings.Contains(text, "reasoning_details")
@@ -367,7 +390,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		return nil, err
 	}
 	if !reasoningReplayRefused(model) {
-		messages, err = attachMessageReasoning(messages, knobs.reasoning)
+		messages, err = attachMessageReasoning(messages, knobs.reasoning, model)
 		if err != nil {
 			return nil, err
 		}

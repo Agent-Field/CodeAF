@@ -20,6 +20,21 @@ type MessageReasoning struct {
 	Field   string
 	Text    string
 	Details json.RawMessage
+	// Model is the slug this working was produced under. A thinking pass is
+	// the endpoint's own — OpenRouter encrypts it, and replaying it to any
+	// other model is answered with a 404 ("encrypted payloads can only be
+	// replayed to the endpoint that created them"), which is what a /model
+	// switch mid-conversation ran into on 2026-08-28. Empty on a sidecar
+	// restored from a journal written before the field existed; that one is
+	// replayed on trust and repaired on refusal (client.go's sendRepaired).
+	Model string
+}
+
+// producedElsewhere reports that this working belongs to some other model and
+// must not travel to the one being asked. An untagged sidecar is not foreign —
+// it is unknown, and the wire is the only thing that can say.
+func (r MessageReasoning) producedElsewhere(model string) bool {
+	return r.Model != "" && normalizeModel(r.Model) != normalizeModel(model)
 }
 
 type messageReasoningContextKey struct{}
@@ -95,10 +110,16 @@ func encodeReasoningFields(raw json.RawMessage, reasoning MessageReasoning) (jso
 	return out, nil
 }
 
-func attachMessageReasoning(encoded []json.RawMessage, reasoning []MessageReasoning) ([]json.RawMessage, error) {
+func attachMessageReasoning(encoded []json.RawMessage, reasoning []MessageReasoning, model string) ([]json.RawMessage, error) {
 	for index := range encoded {
 		if index >= len(reasoning) {
 			break
+		}
+		// Another model's working stays home. The message itself still travels
+		// — the words are the conversation; the thinking was only ever the
+		// endpoint's own continuation, and a new endpoint has none to continue.
+		if reasoning[index].producedElsewhere(model) {
+			continue
 		}
 		raw, err := encodeReasoningFields(encoded[index], reasoning[index])
 		if err != nil {

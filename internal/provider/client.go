@@ -370,22 +370,44 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 	response, err := c.send(ctx, request, body, stream)
-	if err != nil || response.StatusCode != http.StatusBadRequest {
+	if err != nil || !endpointRefusalStatus(response.StatusCode) {
 		return response, err
 	}
 	model := c.modelFor(request)
-	if !c.repairable(model, knobs) {
+	// Two repairs read the body, and they are told apart by what they cost the
+	// memo. A learned quirk is a 400 about a knob this adapter chose. Foreign
+	// reasoning is a 404 (OpenRouter's spelling) about content the transcript
+	// carried from a model the person has since switched away from — it is
+	// true of this conversation, not of the model, so it is fixed for this
+	// request and remembered nowhere.
+	foreign := len(knobs.reasoning) > 0
+	repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
+	if !foreign && !repairable {
 		return response, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !c.learn(model, knobs, peek) {
-		// Not ours to fix. The body is handed back whole — the caller still has
-		// to read the provider's own words to build the error it reports.
-		response.Body = rewound(peek, response.Body)
-		return response, nil
+	switch {
+	case readErr != nil:
+	case foreign && refusesForeignReasoning(peek):
+		// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
+		// sidecar tagged with its model never gets here (reasoning.go's
+		// producedElsewhere); this is the journal written before the tag.
+		knobs.reasoning = nil
+		return c.resend(ctx, request, knobs, stream, response)
+	case repairable && c.learn(model, knobs, peek):
+		return c.resend(ctx, request, knobs, stream, response)
 	}
-	response.Body.Close()
-	body, err = c.encodeRequest(request, knobs)
+	// Not ours to fix. The body is handed back whole — the caller still has
+	// to read the provider's own words to build the error it reports.
+	response.Body = rewound(peek, response.Body)
+	return response, nil
+}
+
+// resend closes a refused answer and sends the request again as the knobs now
+// say to shape it. The refusal generated no tokens, so the retry is free.
+func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool, refused *http.Response) (*http.Response, error) {
+	refused.Body.Close()
+	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
