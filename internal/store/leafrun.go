@@ -72,6 +72,23 @@ type LeafExhausted struct {
 	Allowed string `json:"allowed,omitempty"`
 	// Turns is how many turns it had taken when it stopped.
 	Turns int `json:"turns,omitempty"`
+	// Meter, Reached, Allowance and Unit are the bound that actually fired,
+	// named, with its own two numbers.
+	//
+	// Bound above is the executor's StopReason, and three different ceilings
+	// used to share one of those: a leaf could be landed by its cost grant, by
+	// an undiscounted ceiling three times that grant, or by a cumulative bound
+	// on prompt sent, and every one of them journaled "budget". So the record
+	// said "it ran out of its tokens" and Allowed printed the grant — which in
+	// the ink run of 2026-08-29 was 150,000 against three leaves landed at
+	// 240,000 by a different meter, and no reading of the store could tell.
+	//
+	// Empty on an attempt whose executor does not name its bounds, which reads
+	// as "not said" rather than as a bound called "".
+	Meter     string `json:"meter,omitempty"`
+	Reached   int    `json:"reached,omitempty"`
+	Allowance int    `json:"allowance,omitempty"`
+	Unit      string `json:"unit,omitempty"`
 	// Reason is the one sentence a person is shown.
 	Reason string `json:"reason"`
 }

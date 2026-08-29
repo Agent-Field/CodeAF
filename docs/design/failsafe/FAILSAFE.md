@@ -516,3 +516,97 @@ The fix is not another flush on another ending; there is always one more ending.
 `resident.ExecResult.SpendBanked` so the landing does not write the same money
 twice. `cost.json` and the settlement's money line read the `usage` table, so
 both now see an interrupted leaf.
+
+---
+
+## A ninth failure, 2026-08-29: the belt that had none of it
+
+*Added against `bench/deepswe/results/ink-grid-box-layout-…-s9`, the first run on
+the wave that fixed the eighth. The banking worked — 57 usage rows, $0.0456,
+every call durable. Everything else that wave built was inert, and for one
+reason: it had been built on the wrong belt.*
+
+ink s9 ran three leaves, exhausted all three, created its continuation, and
+settled partial at 1 of 25 in 478 seconds. Its store holds **zero transcript
+rows and zero verification events**, and its exhaustion lines name a bound that
+never fired.
+
+### The one root cause
+
+`internal/exec/bare` is a *lighter* worker — the cheapest whole-taker for small
+work. `internal/exec/linear` is the GENERALIST: what a node gets when nothing
+routed it, which on an unrouted job is every node. Three separate lanes had put
+their mechanism in `bare` and stopped:
+
+| mechanism | writers in the whole tree, before this |
+| --- | --- |
+| `exec.TranscriptFrom` — a leaf's turns, under its node | one: `bare/loop.go:238` |
+| `store.RecordVerification` — the project's own checks, read | one: `bare/verification.go:221` |
+
+So the default worker recorded nothing and read nothing, and every mechanism
+built on those two records was dead on the path that actually runs.
+
+> **A MECHANISM THAT ONLY THE OPTIONAL WORKER HAS IS A MECHANISM THE RUN DOES
+> NOT HAVE.** The question to ask of any fail-safe is not "is it wired" but
+> "is it wired on the belt a node gets when nobody chose one".
+
+The blast radius, all three of s9's symptoms from that one cause:
+
+- **No resume line.** The continuation path was correct — `leafRanOutOfRoom`
+  covers a token exhaustion, `ReplanOverrunAs` fired, `job_growth reason=overrun`
+  is in the store. `resident.BankedRun` then read a transcript table with nothing
+  in it, so `Growth.Resumed` was zero and no `leaf_resumed` row was written. The
+  seed the eighth failure built was reaching for a record that the generalist had
+  never written.
+- **No verification.** Not "the exhausted landing skipped the photograph" — the
+  generalist has never taken one, on any path. (Its *world* photograph is fine:
+  `WatchTree`/`RecordChanges` are symmetric across all three belts and survive an
+  exhausted landing. Only the check-reading was missing.)
+- **The gate had nothing to weigh** and refused on the deliverable's own prose.
+
+The repair is one implementation reachable by every belt: the transcript is
+wired at the **flight recorder**, which every turn and every harness note of the
+generalist already passes through, and the photograph is lifted out of `bare`
+into `exec` so both belts call the same functions.
+
+### And the bound that fired had no name
+
+All three leaves journaled `leaf_exhausted bound=budget` — *"it was still working
+when it ran out of its tokens — 17 turns in"* — against a `leaf_mode` advertising
+`tokens: 150000`. No attempt reached 150,000. What landed every one of them was
+`reuseCeiling`, at 240,000 prompt tokens sent, exactly four landing turns before
+the number the record printed:
+
+```
+task-2 attempt 1   crossed 240,000 sent at turn 13, landed at 17
+task-2 attempt 2   crossed 240,000 sent at turn 12, landed at 16
+task-2-x1          crossed 240,000 sent at turn  9, landed at 13
+```
+
+Attempt one had spent 104,064 of its 150,000-token grant and 372,941 of its
+450,000 raw ceiling. It was cut at turn 13 of a 200-turn grant with 31% of its
+money unspent, and the record said it had run out of tokens.
+
+> **A LEAF HAS FIVE CEILINGS AND THREE OF THEM SPOKE WITH ONE VOICE.** A bound
+> that fires names itself, with its own two numbers and their unit, or the record
+> is an absence that means five things at once — clause 4, again, and the first
+> three readings of this store each blamed a different meter.
+
+And the meter that fired should not have. Σ over turns of the prompt is
+`turns × mean-context` wearing a token name: any transcript that only grows
+re-sends its prefix every turn, so the sum climbs identically for a leaf doing
+hard work and one circling. ink s9 stopped at a duplication factor of 8.9×; the
+audited runaway the bound was written for ran 11.2×. **No detector lives in a gap
+of 1.26×** — and the ceiling is stated against the *window* while it is consumed
+against the *transcript*, so it punishes the leaf that carries less.
+
+> **WHAT LANDS A LEAF IS WHAT ITS WORK COSTS.** The runaway both Σ-bounds were
+> written for is the no-progress guard's case, and `noprogress.go` opens by
+> saying that a magnitude bound cannot separate "many turns because the work is
+> hard" from "many turns because it is stuck". Both numbers survive as pressure
+> on the wrap-up warning, where firing early costs a sentence instead of a run.
+
+This is the second time the same lesson has been learned here: `maxTurnBackstop`
+was raised from 40 to 400 because forty "also stopped honest complex work". The
+reuse ceiling was a turn bound in disguise, sitting three times tighter than the
+forty that had already been rejected.
