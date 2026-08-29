@@ -261,7 +261,9 @@ On an issue the same line reads ` + "`utm_medium=issue`" + ` instead:
 
 That is the entire extent of it. It never goes inside a code file, never in a
 commit subject line, never in a README or any other document you write for the
-user, and never in a deliverable such as a deck, a report, or a note. If the
+user, never in a deliverable such as a deck, a report, or a note, and never in
+your own reply — the message you write back when the work is done is not an
+issue and carries no footer. If the
 repository says otherwise — a CONTRIBUTING file or a stated policy that forbids
 AI trailers or generated-by lines — the repository wins: leave both out and say
 so in your deliverable.`
