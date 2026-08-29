@@ -1063,3 +1063,61 @@ What it states:
 > its own gate line and its own journal field. Where the baseline named no GREEN
 > check the question cannot be asked — a runner that prints only its failures has
 > a reported list that IS its failure list — and the old subtraction stands.
+
+### Addendum, the same day: what the first sweep carrying it found
+
+Three faults, one sweep, and all three are the same mistake in different clothes
+— a fact about the READING reported as a fact about the work.
+
+**The excerpt was judged as the deliverable.** ofetch v4-flash s12 (4/47, against
+42/47 the seed before) refused on *"The deliverable does not include the actual
+content of the circuit breaker module … the fenced text shows only a truncated
+excerpt ending mid-sentence"*. textual v4-flash s12 (15/20 against 17/20) refused
+twice more, on *"The file is truncated — it cuts off before the implementation of
+`write(expand=True)`"* and *"the fenced material is a description of what the
+files contain, not the files themselves"*. Every clause of all three is true of
+the block and false of the run.
+
+So no file is ever printed in part. Contents appear entire or the file appears by
+name and size only, and the page says which. Saying *"this is an excerpt"* above
+it was the first fix and it is not one: textual's store holds two
+`structured_repair` rows on lane `gate`, so the verdict shape DID refuse the
+complaint and the re-ask returned it wearing a file and a quote. **A percept is
+not argued with; it is removed.**
+
+**And a gap is a behaviour, never a file's completeness.** The record already
+answers whether a file exists, and no behaviour a request states is about a file
+being on disk — so where the request states behaviours (the acceptance checklist,
+read before any work existed), those spans are the schema's enum for `quote` and
+the only ones a refusal over a changed tree may be built on. Containment runs one
+way only: a quote that is PART of a listed behaviour is that behaviour quoted
+shorter, and a quote that CONTAINS one is a longer sentence with a behaviour
+inside it — which is exactly what ofetch's refusal was. A request that states no
+behaviours turns the requirement off, because a contract nobody was shown is a
+contract nobody can satisfy.
+
+**Two readings of one job may not refuse each other in silence.** Both runs then
+did the same thing: the repair round the finding bought was refused
+`goal-already-covered`, and the run reported `partial — no more work could be
+started on it`. The gate says the delivery is short; the coverage question, asked
+of the whole job's criterion against everything landed, says there is nothing to
+add. That sentence is neither answer.
+
+> **THE FIRST ROUND AFTER A FINDING THAT NAMES A FILE OF THE RECORD IS NOT THE
+> COVERAGE QUESTION'S TO REFUSE** — the finding is itself a reading of the world,
+> and a narrower one. **And where coverage refuses a later round, the finding is
+> what was wrong**: it is journaled as overturned and the verdict is taken again
+> from the settled fields, never handed over as a shortfall nobody can act on.
+
+`GrowRequest.Grounded` carries the first half; `Extension.Overturned`, read off
+the growth journal rather than threaded back through four signatures, carries the
+second. Every cap the governor holds is untouched by both.
+
+**And clause 4 again: the subject did not reach the journal.** `subject` was
+empty on every gate of both runs, so the one question an autopsy of this
+mechanism asks — did the review read the world or a sentence — had no answer on
+the runs that needed it. It was being written onto each judgement at the place
+that built one, and a judgement is built at thirteen places. It is now stamped
+once, at the single exit of `JudgeDeliverable`, over whatever comes back —
+including a fault. **A field set by every constructor is a field the next
+constructor forgets.**

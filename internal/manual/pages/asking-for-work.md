@@ -159,18 +159,32 @@ that — the worker's last message came back as a data structure, and three
 reviews in a row said the work "contains only text describing what was
 supposedly done" while six changed files sat on disk.
 
+The files are shown to the review **whole**, or named and not shown at all —
+never part of one. A reviewer handed the first two kilobytes of a long file
+reports the file as truncated, which is true of what it was handed and false of
+what you get; three refusals across two runs were exactly that.
+
 So a finding about a job that changed files always names **one of those files**
-and quotes the words of your request it falls short of, and that is how you read
-it:
+and quotes **one of the behaviours your request states** that the file falls
+short of, and that is how you read it:
 
 ```
 gate: fail — src/textual/widgets/_rich_log.py — follow_end is declared and never posts FollowChanged
 ```
 
-A review that can name neither a file nor your own words is not an answer at
-all. It is asked again, and if it still says nothing the run reports itself
-**short** rather than finished — a check that did not happen is never a check
-that passed.
+A review that can name neither a file nor a behaviour you asked for is not an
+answer at all. It is asked again, and if it still says nothing the run reports
+itself **short** rather than finished — a check that did not happen is never a
+check that passed. "The file is truncated", "the deliverable does not contain
+the actual content" and the like are not findings: they are about what the
+review was shown, and the files are on disk either way.
+
+And when the review says the work is short while the job's own reading of what
+it is judged on says nothing is left to do, those two cannot both stand. The
+first round the review buys is never refused on that ground; and if the reading
+still finds nothing to add, the **review** is what was wrong — it is recorded as
+overturned and the work is handed over as finished, rather than left as a
+shortfall you cannot act on.
 
 Where a job produced no files — a question answered in words — the message *is*
 the answer, and the review reads the message, exactly as it always did. A file

@@ -218,6 +218,10 @@ type Growth struct {
 	// has just said what they want more of is not answerable by "the goal is
 	// already covered", because they have just redefined the goal.
 	Ungated bool
+	// Grounded says this growth is bought by a review finding that names a file
+	// of the record — GrowRequest.Grounded, carried through the one seam every
+	// growing job passes through.
+	Grounded bool
 	// After is the landed node this growth is a reaction to — the result that
 	// convened the revision sentinel, exhausted or failed or merely surprising.
 	// The zero node is growth with no such result behind it (a person changing
@@ -319,6 +323,21 @@ type GrowRequest struct {
 	// Ungated keeps the caps and skips the paid question — Growth.Ungated,
 	// carried to the one helper that acts on it.
 	Ungated bool
+	// Grounded says this round is bought by a REVIEW FINDING THAT NAMES A FILE
+	// OF THE RECORD: the delivery gate read the tree it is handing over and
+	// said, of a file that is on disk, that it does not do something the
+	// request asked for.
+	//
+	// It is here because two readings of one job may not refuse each other in
+	// silence. ofetch s12 is the measured case: the gate refused the delivery
+	// over src/circuit-breaker.ts, the first repair round asked to be planned,
+	// and the coverage question answered "everything this job is judged on is
+	// already covered" — so nothing ran, the run ended partial after 145 calls,
+	// and the two answers were never reconciled. The FIRST round after such a
+	// finding is not the coverage question's to refuse: the finding IS the
+	// evidence that something is not covered, taken from the same world, and it
+	// is more specific than a judgement about the job as a whole.
+	Grounded bool
 	// Quiet keeps the refusal out of the work's record while keeping it in the
 	// journal. It is for the one caller whose refusal is not a handover: a
 	// claim-time expansion that is refused runs the node whole, immediately, on
@@ -525,7 +544,18 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	}
 
 	// 4. The only question that can say "there is nothing left to do".
-	if gate := growthAsk(ask); GrowthGate && gate != nil && !req.Rechecking && !req.Ungated {
+	//
+	//    IT DOES NOT GET TO REFUSE THE FIRST ROUND AFTER A REVIEW FOUND
+	//    SOMETHING IN THE TREE. A gate finding that names a file of the record
+	//    is a reading of the world, taken of the thing about to be handed over,
+	//    and it is narrower than any answer this question can give. Refusing it
+	//    is two readings of one job disagreeing with nothing between them to
+	//    settle which is right — and the floor says a run may not deliver
+	//    nothing as done because two of its own checks would not speak to each
+	//    other. See ExtendForGap for what happens when a LATER round is refused
+	//    this way, which is the case where the contradiction is real.
+	grounded := req.Grounded && round <= 1
+	if gate := growthAsk(ask); GrowthGate && gate != nil && !req.Rechecking && !req.Ungated && !grounded {
 		criterion := req.Criterion
 		if criterion.Empty() {
 			criterion = jobCriterion(graph, jobRoot)
