@@ -661,6 +661,10 @@ func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Res
 	// the payload, and handed to both readers of it: the affinity that keeps a
 	// conversation on the endpoint holding its prompt cache, and the rating.
 	served := servedProvider(decoded.Provider)
+	// A completion teaches the lane its longest reply just as a stream does;
+	// without this line a lane that only ever answered whole — every headless
+	// worker's — never earned a wall at all.
+	c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	c.noteVelocity(
 		c.modelFor(request),

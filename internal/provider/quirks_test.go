@@ -318,10 +318,11 @@ func TestTheWireCeilingFollowsTheDocumentedAllocationAndTheTransportWaitsForIt(t
 	if !ok || ceiling <= answer {
 		t.Fatalf("ceilingFor = %d, %v; want more than the caller's %d on a model that thinks regardless", ceiling, ok, answer)
 	}
-	if got, want := client.clientFor(false, ceiling).Timeout, adaptiveCompletionTimeout(ceiling, 0); got != want {
+	client.velocity = newVelocityLedger()
+	if got, want := client.clientFor("silent/thinker", false, ceiling).Timeout, adaptiveCompletionTimeout(ceiling, 0); got != want {
 		t.Fatalf("transport timeout = %v, want %v, sized from the ceiling that travels", got, want)
 	}
-	if client.clientFor(false, ceiling).Timeout <= client.clientFor(false, answer).Timeout && ceiling/64 > 300 {
+	if client.clientFor("silent/thinker", false, ceiling).Timeout <= client.clientFor("silent/thinker", false, answer).Timeout && ceiling/64 > 300 {
 		t.Fatal("the wait did not grow with the room")
 	}
 }

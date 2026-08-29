@@ -563,6 +563,25 @@ func (c *Client) streamWall(model, served string) time.Duration {
 	return c.velocity.wall(model, served)
 }
 
+// completionWall is the wall a reply that is NOT streamed is held to, and
+// whether there is one. A stream on a lane nothing is known about gets the
+// floor, because silence bounds it as well; a completion has only its total
+// deadline, sized from the room it was given, and on an unknown lane that
+// deadline stays — a model that thinks at max regardless may need every
+// minute of it the first time. Once the lane has finished a reply for us the
+// measured wall applies to completions exactly as it does to streams, because
+// a reply running five times longer than the longest this endpoint ever
+// finished is a wedge, however it is being delivered. Measured 2026-08-29: a
+// headless worker's completion on deepseek-flash sat in flight for the whole
+// rest of a fifteen-minute run, on a lane whose longest finished reply was
+// twenty-four seconds.
+func (c *Client) completionWall(model string) (time.Duration, bool) {
+	if c.velocity == nil || !c.velocity.measured(model) {
+		return 0, false
+	}
+	return c.velocity.wall(model, ""), true
+}
+
 // refuseUpstream takes the lane away from an endpoint that REFUSED this request,
 // so the next encode routes around it, and reports whether it struck.
 //
@@ -835,6 +854,18 @@ func (l *velocityLedger) noteRun(model, served string, ran time.Duration) {
 // An unnamed ask — a request that has not yet learned who is serving it — gets
 // the lineage's widest, which is the most generous honest answer available
 // before the first chunk arrives.
+// measured says whether any endpoint serving the model has finished a reply
+// in this process — the difference between a wall that was derived and the
+// floor handed to a stranger.
+func (l *velocityLedger) measured(model string) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.runs[normalizeModel(model)]) > 0
+}
+
 func (l *velocityLedger) wall(model, served string) time.Duration {
 	if l == nil {
 		return wallFor(0)

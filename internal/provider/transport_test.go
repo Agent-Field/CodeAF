@@ -153,16 +153,17 @@ func TestClientForBoundsCompletionsInTimeAndStreamsInSilence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := client.clientFor(false, 32_768).Timeout; got != 512*time.Second {
+	client.velocity = newVelocityLedger()
+	if got := client.clientFor("vendor/model", false, 32_768).Timeout; got != 512*time.Second {
 		t.Fatalf("completion timeout = %s, want the adaptive budget", got)
 	}
-	if got := client.clientFor(true, 32_768).Timeout; got != 0 {
+	if got := client.clientFor("vendor/model", true, 32_768).Timeout; got != 0 {
 		t.Fatalf("a stream must carry no total deadline, got %s", got)
 	}
-	if client.clientFor(true, 0).Transport != streamTransport() {
+	if client.clientFor("vendor/model", true, 0).Transport != streamTransport() {
 		t.Fatal("a stream must go out over the transport that bounds the header wait")
 	}
-	if client.clientFor(false, 0).Transport != SharedTransport() {
+	if client.clientFor("vendor/model", false, 0).Transport != SharedTransport() {
 		t.Fatal("a completion must go out over the pool without a header deadline")
 	}
 }
@@ -181,5 +182,30 @@ func TestSharedTransportPoolsPerHostConnections(t *testing.T) {
 	}
 	if streamTransport() == transport {
 		t.Fatal("the streaming transport needs its own pool: ResponseHeaderTimeout is transport-wide")
+	}
+}
+
+// A completion on a lane that has finished a reply for us is held under that
+// lane's wall; a lane nothing is known about keeps the adaptive budget.
+func TestACompletionOnAMeasuredLaneIsHeldUnderItsWall(t *testing.T) {
+	client, err := NewClient(Config{APIKey: "test", BaseURL: "https://example.invalid/v1", Model: "vendor/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.velocity = newVelocityLedger()
+	const room = 65_536
+	if got := client.clientFor("vendor/model", false, room).Timeout; got != adaptiveCompletionTimeout(room, 0) {
+		t.Fatalf("an unmeasured lane should keep the adaptive budget, got %s", got)
+	}
+	client.velocity.noteRun("vendor/model", "fast-endpoint", 24*time.Second)
+	if got := client.clientFor("vendor/model", false, room).Timeout; got != wallFor(24*time.Second) {
+		t.Fatalf("a measured lane should be held under its wall %s, got %s", wallFor(24*time.Second), got)
+	}
+	client.velocity.noteRun("vendor/model", "slow-endpoint", 4*time.Minute)
+	if got := client.clientFor("vendor/model", false, room).Timeout; got != adaptiveCompletionTimeout(room, 0) {
+		t.Fatalf("a wall above the adaptive budget must not lengthen it, got %s", got)
+	}
+	if got := client.clientFor("vendor/model", true, room).Timeout; got != 0 {
+		t.Fatalf("a stream still carries no total deadline, got %s", got)
 	}
 }

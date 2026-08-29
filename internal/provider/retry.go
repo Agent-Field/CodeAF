@@ -92,7 +92,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// for longer than the transport would wait, and the empty-answer failure
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
-	httpClient := c.clientFor(stream, ceiling)
+	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
 	// providerWait is the provider's own comeback instruction from the last
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.
@@ -334,7 +334,13 @@ func backoffFor(attempt int, providerWait time.Duration) time.Duration {
 // stream at the budget however healthily it was delivering. What bounds a
 // stream is silence: the header deadline on the streaming transport and the
 // idle watchdog send wraps the body in.
-func (c *Client) clientFor(stream bool, maxTokens int) http.Client {
+//
+// A completion's total deadline is the adaptive budget, and once the lane
+// has finished a reply for us it is also held under the lane's measured wall
+// ([Client.completionWall]) — the same figure a stream on that lane is cut
+// at, so a wedged endpoint costs a headless worker minutes rather than the
+// whole run.
+func (c *Client) clientFor(model string, stream bool, maxTokens int) http.Client {
 	if stream {
 		client := *c.stream
 		client.Timeout = 0
@@ -342,6 +348,9 @@ func (c *Client) clientFor(stream bool, maxTokens int) http.Client {
 	}
 	client := *c.http
 	client.Timeout = adaptiveCompletionTimeout(maxTokens, c.config.Timeout)
+	if wall, measured := c.completionWall(model); measured && wall < client.Timeout {
+		client.Timeout = wall
+	}
 	return client
 }
 
