@@ -399,6 +399,75 @@ func (r *Runner) heldLeaf(nodeID string, token uint64) *leafHold {
 	return hold
 }
 
+// CloseOut stops a job's outstanding work so that what has landed can be
+// judged, and answers how many nodes it stopped.
+//
+// A GATE ALWAYS PRECEDES THE WALL. A job whose growth has just been refused
+// with the wall nearer than one measured round has had this run's last decision
+// about it taken; what it must not do next is keep claiming leaves the clock
+// will kill mid-flight, because a job still moving when the clock stops never
+// settles, no verdict on it is ever cut, and the person is handed a partial with
+// nothing judged. ofetch v4-flash s13 ended exactly there: two refusals inside
+// the last ninety seconds, thirteen pending leaves, a pending job root, and not
+// one delivery judgement in 5407 seconds.
+//
+// The job root itself is never touched. It is the node that carries the whole
+// remainder and it is where the gate fires, so what this does is clear the way
+// to it: every part of the job that has not started is retired, every part this
+// process is behind is asked to stop and cancelled, and the root then has
+// nothing left to wait for. A part claimed by a worker in another process is
+// asked and left — the claim reaper is what finishes those, and taking a claim
+// from a live worker is the one thing this may not do.
+//
+// keep is the node whose landing is asking. Stopping it would release the very
+// claim it is in the middle of settling, and the row would go back on the queue
+// to be claimed again — a close-out that reopens the job it closed.
+func (r *Runner) CloseOut(jobRoot, keep, reason string) int {
+	jobRoot = strings.TrimSpace(jobRoot)
+	if r == nil || r.graph == nil || jobRoot == "" {
+		return 0
+	}
+	parts, err := r.graph.SubtreeNodes(jobRoot)
+	if err != nil {
+		_ = guard.Note("resident/runner close-out "+jobRoot, err)
+		return 0
+	}
+	stopped := 0
+	for _, part := range parts {
+		if part.ID == jobRoot || part.ID == keep {
+			continue
+		}
+		switch part.Status {
+		case store.Pending:
+			// Retired outright rather than merely marked: a node the ready set
+			// still counts as unsettled keeps the job root waiting forever, and
+			// asking a pending row to cancel only takes it out of the queue.
+			if err := r.graph.CancelPendingWithPartial(part.ID, reason, ""); err == nil {
+				stopped++
+			}
+		case store.Claimed, store.Running:
+			// The order is the record's own: the cancellation is requested
+			// first, so that the worker's landing reads it and retires the row
+			// instead of releasing it back into the queue, and only then is the
+			// worker asked to stop.
+			if err := r.graph.RequestNodeCancel(part.ID, reason); err != nil {
+				continue
+			}
+			if hold := r.heldLeaf(part.ID, part.ClaimToken); hold != nil {
+				hold.reap(reason)
+			}
+			stopped++
+		}
+	}
+	if stopped > 0 {
+		// The ready set provably changed — the root may have just become
+		// claimable — and waiting out the rest of the tick to notice is wall
+		// this job does not have.
+		r.nudge()
+	}
+	return stopped
+}
+
 // reapSilentClaims is the backstop pass: every claim showing no sign of life is
 // either stopped, waited for, or taken back from a process that is gone. It
 // answers whether anything reopened the ready set.

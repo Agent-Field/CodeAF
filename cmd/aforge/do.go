@@ -404,6 +404,16 @@ func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 		refused: refused, progress: request.stderr, started: started,
 		produced: produced,
 	}
+	if brain != nil {
+		// A GATE ALWAYS PRECEDES THE WALL, and this is the half of that law
+		// which does not depend on anybody asking. The governor stops a job
+		// growing when the wall is near, but a job only asks to grow when
+		// something in it ends; a job whose queued leaves keep starting never
+		// asks, and it is exactly that job that reaches the wall unjudged. So
+		// the watcher holds the same grip the governor does and uses it on the
+		// clock alone. See settlementWatch.forceJudgement.
+		watcher.closeOut = brain.runner.CloseOut
+	}
 	outcome, err := watcher.wait(ctx)
 	if err != nil {
 		return headlessOutcome{}, err
@@ -688,6 +698,80 @@ type settlementWatch struct {
 	// quiet is how long silence may last. Zero is quietBeat; a test names a
 	// shorter one rather than sitting through half a minute of nothing.
 	quiet time.Duration
+	// closeOut stops a job's outstanding work so that what has landed can be
+	// judged. Nil is a run this process is not the brain of — the work is
+	// happening in a resident, whose own governor holds the same grip — and it
+	// forces nothing.
+	closeOut func(jobRoot, keep, reason string) int
+	// judged remembers the jobs this watcher has already driven to a verdict,
+	// so a job that takes two beats to settle is not closed out twice.
+	judged map[string]bool
+}
+
+// forcedJudgementReason is what a person reads on the parts that were stopped
+// so the whole could be judged. It says the trade rather than the machinery: a
+// run that spends its last minutes starting work the clock will kill has bought
+// nothing and given up its only verdict.
+const forcedJudgementReason = "there was not enough time left on this run to finish this, " +
+	"so it was handed over to be checked as it stands"
+
+// forceJudgement drives this errand's jobs to a verdict while the wall can still
+// hold one.
+//
+// THE RUN MAY NOT END WITH NOTHING JUDGED. A gate is cut when a job settles, so
+// a job still moving when the clock stops is a job nothing ever judged: ofetch
+// v4-flash s13 spent 5407 seconds, 422 model calls and eight growth rounds and
+// journaled ZERO delivery judgements, and its own governor had said twice, in
+// the last ninety seconds, that the wall was too near for another round. The
+// refusal stopped the growth; nothing stopped the queue.
+//
+// The distance is the job's own pace and not a number typed here — the median
+// round it has been running plus the reading it takes of itself, which is the
+// same quantity the governor refuses growth at, because what a job owes before
+// a verdict exists is one more body of work and one more reading of the tree
+// (resident.JobPace, PERF.md). A job that has shown no pace is not forced: with
+// nothing measured there is no honest moment to choose, and stopping work early
+// on a guess is the failure this whole mechanism exists to avoid.
+//
+// It fires only where NOTHING has been judged. A job whose lineage already
+// carries a verdict has the record this exists to guarantee, and taking its
+// last minutes away would buy a second opinion at the price of the work.
+func (w *settlementWatch) forceJudgement(ctx context.Context) {
+	if w.closeOut == nil {
+		return
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return
+	}
+	nodes, err := w.sessionNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Parent != store.RootID || terminalStatus(node.Status) || w.judged[node.ID] {
+			continue
+		}
+		// The lineage and not the node: a repair round is a different node id
+		// from the work it repairs, so a reader that asked the node would find
+		// no verdict on a job that has already been judged three times.
+		gates, err := w.graph.DeliveryGateLineage(node.ID)
+		if err != nil || len(gates) > 0 {
+			continue
+		}
+		pace := resident.JobPace(w.graph, node.ID)
+		if pace <= 0 || time.Until(deadline) > pace {
+			continue
+		}
+		if w.judged == nil {
+			w.judged = make(map[string]bool)
+		}
+		w.judged[node.ID] = true
+		stopped := w.closeOut(node.ID, "", forcedJudgementReason)
+		if stopped > 0 && w.progress != nil {
+			w.note("handing this over to be checked while there is still time", "")
+		}
+	}
 }
 
 func (w *settlementWatch) quietInterval() time.Duration {
@@ -772,6 +856,9 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			// wedged, and that run printed nothing for the whole of its life.
 			// So the clock is reset by check(), and only when a node this
 			// errand owns actually changed state.
+			// And the wall, watched rather than waited for: a job that cannot
+			// be judged after the clock stops is judged before it.
+			w.forceJudgement(ctx)
 			if err := w.saySomethingIfQuiet(); err != nil {
 				return headlessOutcome{}, err
 			}

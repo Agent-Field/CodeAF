@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -103,6 +104,11 @@ const (
 	// own input.
 	CauseFixedPoint = "fixed-point"
 
+	// CauseFindingStood is the round refused because the finding it would have
+	// been bought for has already been bought twice and did not move either
+	// time. It is the fixed point of one FINDING rather than of one text.
+	CauseFindingStood = "finding-stood"
+
 	// CauseOutOfWall is the round the run does not have time left to finish. It
 	// is not a cap and not a count: it is this job's OWN measured pace read
 	// against the clock it is actually running under.
@@ -123,6 +129,13 @@ const (
 	// owed the fact — nothing has changed, twice over — and not the machinery.
 	RefusedStandstill = "carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands"
 	RefusedFixedPoint = "the work left to do came back word for word the same as last time, so another round would ask for exactly what this one already did — handing over what's done"
+
+	// The refusal that is about one finding rather than about the job. It says
+	// what was observed — this exact thing was worked on twice and is still
+	// missing — because that is the fact the person is owed, and because it is
+	// the sentence that tells them the run stopped repairing rather than
+	// stopped caring.
+	RefusedFindingStood = "the same thing is still missing after two rounds of work aimed straight at it, so it is handed over named rather than repaired"
 
 	// The refusal that buys the person a verdict. A round the clock will kill
 	// halfway spends money to deliver nothing AND costs the run the only thing
@@ -385,6 +398,11 @@ type GrowRequest struct {
 	// reviewer named it. It is compared against the last round's for equality
 	// and for nothing else.
 	Remainder string
+	// Finding is the review finding this round is being bought to close, as the
+	// record holds it rather than as the review spelled it. Empty is every
+	// round nobody bought for a finding, and it is never refused on this
+	// ground. See store.GrowthFinding and [findingStood].
+	Finding store.GrowthFinding
 	// Rechecking marks a second look at a decision already taken this round —
 	// the exact ceiling, once a plan exists and its node count is known. The
 	// free checks are re-read; the paid question is not, because it was already
@@ -425,25 +443,58 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		reason = GrowOverrun
 	}
 
+	// THE JOURNAL IS THE JOB'S, AND A REPAIR THAT CONTINUES AS A TOP-LEVEL JOB
+	// IS THE SAME JOB. See [growthJournal] for what reading it under the node
+	// that asked cost two measured runs.
+	journal := growthJournal(jobRoot)
 	// The journal is read ONCE and every rule below asks it a question. It is
 	// the round counter, the standstill's memory and the job's own pace, and
 	// three reads of it could disagree with each other about the same job.
-	rounds := jobRounds(graph, jobRoot)
+	rounds := jobRounds(graph, journal)
 	// And the world is read once, here, rather than taken from whoever asked.
 	// A caller that hands the raw artifact list gets its "produced" decided by
 	// the rule below; one that has already narrowed its own keeps its answer.
 	req = req.weighed(graph, jobRoot, lineage)
 
+	// The finding this round is being bought for, taken from whoever knows it:
+	// the splice seam sets it so the admission can journal it, and any other
+	// path that carries one on its context is read here rather than being asked
+	// to wire a field.
+	if req.Finding.Empty() {
+		req.Finding = FindingFrom(ctx)
+	}
+
 	round := req.Round
 	if round <= 0 {
 		round = growthRound(rounds, lineage)
+	}
+	// How near the wall is, read ONCE, because two rules below turn on it and a
+	// pair of reads taken a model call apart could disagree. Zero pace is a job
+	// that has not shown one, and no deadline is a run with no wall at all;
+	// both answer "not near", which refuses nothing.
+	wallNear := false
+	if deadline, ok := ctx.Deadline(); ok {
+		if pace := jobPace(graph, rounds, journal); pace > 0 && time.Until(deadline) < pace {
+			wallNear = true
+		}
 	}
 	refuse := func(cause, words string) (GrowVerdict, error) {
 		verdict := GrowVerdict{Round: round, Cause: cause, Refused: words}
 		if words != "" && !req.Quiet {
 			postGovernorNotice(graph, req.Node, cause, words)
 		}
-		noteGrowth(graph, jobRoot, req.row(reason, lineage, round, false, cause, words))
+		noteGrowth(graph, journal, req.row(reason, lineage, round, false, cause, words))
+		// A GATE ALWAYS PRECEDES THE WALL. A refusal taken with the wall nearer
+		// than one measured round is this run's last decision about this job,
+		// so what it must not do is leave the job's remaining work queued: the
+		// scheduler would claim it, the clock would kill it mid-flight, and the
+		// run would end having never judged anything it did. ofetch v4-flash
+		// s13 refused twice in the last ninety seconds of a 5400-second wall,
+		// kept thirteen pending leaves and a pending job root, and journaled
+		// ZERO gate events over the whole run (2026-08-29, bench/deepswe).
+		if wallNear {
+			closeOutJob(jobRoot, req.Node.ID, RefusedOutOfWall)
+		}
 		return verdict, nil
 	}
 
@@ -466,9 +517,33 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		//
 		// This one stays per-lineage because it is a claim about one text: two
 		// lineages are two remainders and their being different says nothing.
-		if req.Remainder != "" && req.Remainder == previous.Remainder {
+		//
+		// It stands aside for a round that carries a STRUCTURED finding, which
+		// is the same question asked of the record instead of of a sentence and
+		// is answered one rule below. The two disagree in both directions — a
+		// finding reworded escapes this digest entirely, and two genuinely
+		// different findings a reviewer happened to phrase alike are refused by
+		// it — and where the record can say which finding a round was bought
+		// for, the record decides.
+		if req.Finding.Empty() && req.Remainder != "" && req.Remainder == previous.Remainder {
 			return refuse(CauseFixedPoint, RefusedFixedPoint)
 		}
+	}
+	// A FINDING HAS ITS OWN FIXED POINT. A round is bought FOR something, and
+	// whether the round was worth buying is a question about that thing: not
+	// about the tree, which a model that is stuck changes freely, and not about
+	// the reviewer's paragraph, which a model rewords for free. Two rounds
+	// bought for one finding that both ended with the finding standing
+	// unchanged are a standstill OF THAT FINDING, and no third round is bought
+	// for it — the finding is handed over named instead.
+	//
+	// The floor is the one FAILSAFE clause 5 states and it is unchanged: the
+	// first round a finding buys is never refused, because a repair that has
+	// not been tried once is not a repair that failed. A finding of another
+	// kind opening in the meantime is another finding and buys its own round;
+	// that falls out of the comparison rather than being a case here.
+	if findingStood(rounds, req.Finding) >= 2 {
+		return refuse(CauseFindingStood, RefusedFindingStood)
 	}
 	// And the same finding from the other side, for a remainder that was
 	// reworded rather than repeated: two consecutive bodies of work that moved
@@ -501,10 +576,8 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	//     running under. A job with no measured round yet is never refused
 	//     here, which is the fail-safe direction — see SETTLEMENT.md §3 for
 	//     what stopping early costs. PERF.md carries the derivation.
-	if deadline, ok := ctx.Deadline(); ok {
-		if pace := jobPace(rounds); pace > 0 && time.Until(deadline) < pace {
-			return refuse(CauseOutOfWall, RefusedOutOfWall)
-		}
+	if wallNear {
+		return refuse(CauseOutOfWall, RefusedOutOfWall)
 	}
 
 	// 1. Rounds. A lineage that is still growing after its allowance is
@@ -606,7 +679,72 @@ func admitGrowth(graph *store.Store, req GrowRequest, verdict GrowVerdict, splic
 	// it.
 	row := req.weighed(graph, jobRoot, lineage).row(reason, lineage, verdict.Round, true, "", "")
 	row.Adding = spliced
-	noteGrowth(graph, jobRoot, row)
+	noteGrowth(graph, growthJournal(jobRoot), row)
+}
+
+// growthJournal is the key a job's growth journal is kept under, and it is the
+// LINEAGE ROOT rather than the node that asked.
+//
+// A repair of a top-level job is spliced beside it and not beneath it — that is
+// a delivery law, so the finished remainder is announced like any other
+// deliverable — which makes its sink a top-level node and therefore its own job
+// root. So every round of such a job wrote its journal under a fresh key and
+// read back an empty one: the round counter, the fixed point, the standstill,
+// the pace and the finding rule all lost their memory at the moment the job
+// grew, which is the only moment any of them exists to weigh.
+//
+// happy-dom v4-flash s13 is the measured case and it is exact. Four gap rounds
+// journaled under `task-2`, `task-2-x1`, `task-2-x2`, `task-2-x3`, every one of
+// them a single-row journal, every one of them carrying the IDENTICAL remainder
+// digest `dc919e4e34171c4a` — the fixed-point rule's whole subject, invisible
+// to it because no two of those rows were ever read together. What stopped the
+// run was the round counter, which survives only because the splice derives it
+// from id arithmetic rather than from the journal.
+//
+// The "-x" arithmetic is the id law and OverrunLineage is where it lives, so it
+// is asked rather than re-spelled here — and it is the same key
+// revision.SpentCitations and revision.coverageOverturned have always read this
+// journal under, which is the second half of the same defect: the writer and
+// two of its readers disagreed about the name of the thing.
+func growthJournal(jobRoot string) string {
+	root, _ := OverrunLineage(strings.TrimSpace(jobRoot))
+	return root
+}
+
+// ── stopping a job that has run out of wall ──────────────────────────────────
+//
+// A refusal taken in the last minutes of a run has to do more than decline: the
+// job's queued work must stop, so that what has landed can be judged before the
+// clock arrives. Nothing in this package can stop a claim — the grip on a
+// running leaf belongs to the runner that dispatched it — so it is a seam, on
+// the same terms as the satisfaction gate above: installed once by whoever
+// builds the runner, and unset it simply refuses as it always did.
+
+var (
+	jobCloserMu sync.RWMutex
+	jobCloser   func(jobRoot, keep, reason string) int
+)
+
+// SetJobCloser installs the one thing that can stop a job's outstanding work.
+// Nil removes it, which is the rollback.
+func SetJobCloser(close func(jobRoot, keep, reason string) int) {
+	jobCloserMu.Lock()
+	defer jobCloserMu.Unlock()
+	jobCloser = close
+}
+
+// closeOutJob asks for it. keep is the node the refusal is about — the leaf
+// whose landing is making this decision — and it is left alone: stopping the
+// worker that is asking would release the very claim it is in the middle of
+// settling, and the node would go back on the queue to be claimed again.
+func closeOutJob(jobRoot, keep, reason string) {
+	jobCloserMu.RLock()
+	close := jobCloser
+	jobCloserMu.RUnlock()
+	if close == nil {
+		return
+	}
+	close(jobRoot, keep, reason)
 }
 
 // NoteResumedRound journals a round nobody asked the governor for.
@@ -640,7 +778,7 @@ func NoteResumedRound(graph *store.Store, node store.Node, artifacts []string) {
 		Artifacts: artifacts,
 	}
 	row := request.weighed(graph, jobRoot, lineage).row(GrowResume, lineage, 0, true, "", "")
-	noteGrowth(graph, jobRoot, row)
+	noteGrowth(graph, growthJournal(jobRoot), row)
 }
 
 // weighed is the request with its evidence read off the world.
@@ -685,7 +823,7 @@ func (r GrowRequest) row(reason, lineage string, round int, allowed bool, cause,
 		Reason: reason, Lineage: lineage, Adding: r.Adding,
 		Round: round, Allowed: allowed, Refused: words, Cause: cause,
 		Measured: r.Measured, Produced: r.Produced, Remainder: r.Remainder,
-		Scratch: len(r.scratch),
+		Finding: r.Finding, Scratch: len(r.scratch),
 	}
 	row.Moved, row.Wrote = namedFew(r.relevant), namedFew(r.scratch)
 	if r.shortfall != nil {
@@ -733,7 +871,7 @@ func GovernorStanding(graph *store.Store, jobRoot string) (string, bool) {
 	if graph == nil {
 		return "", false
 	}
-	rounds := jobRounds(graph, jobRoot)
+	rounds := jobRounds(graph, growthJournal(jobRoot))
 	for index := len(rounds) - 1; index >= 0; index-- {
 		row := rounds[index]
 		if row.Allowed {
@@ -742,6 +880,8 @@ func GovernorStanding(graph *store.Store, jobRoot string) (string, bool) {
 		switch row.Cause {
 		case CauseStandstill:
 			return standstillWords(rounds, index), true
+		case CauseFindingStood:
+			return findingStoodWords(rounds, index), true
 		case CauseOutOfWall:
 			return "no time left for another round of work", true
 		}
@@ -767,6 +907,25 @@ func standstillWords(rounds []store.JobGrowthRound, index int) string {
 		words = "no relevant progress in the last round"
 	}
 	return words + "; last change: " + lastRelevantChange(rounds, index)
+}
+
+// findingStoodWords is one finding's standstill said as the fact it is: what
+// was still missing, and how many rounds of repair were aimed at it and did not
+// move it. It is the line a person reads at the end of a run that stopped
+// repairing one thing, and it names the thing.
+func findingStoodWords(rounds []store.JobGrowthRound, index int) string {
+	finding := rounds[index].Finding
+	stood := findingStood(rounds[:index], finding)
+	return fmt.Sprintf("%s stood through %s of repair", FindingWords(finding), roundsWord(stood))
+}
+
+// roundsWord counts rounds in a person's words. The singular exists because a
+// refusal that says "1 rounds" is a refusal a person stops trusting.
+func roundsWord(rounds int) string {
+	if rounds == 1 {
+		return "1 round"
+	}
+	return fmt.Sprintf("%d rounds", rounds)
 }
 
 // lastRelevantChange is the newest file the job changed that it is about, or
@@ -866,27 +1025,90 @@ func fruitless(rounds []store.JobGrowthRound, before int, row store.JobGrowth) b
 	return true
 }
 
-// jobPace is how long a round of this job takes, measured on this job.
+// JobPace is how long another round of this job would take, measured on this
+// job, and it is what a run reserves before it stops buying rounds — and what
+// the settlement watch reserves before it forces a verdict. One quantity, one
+// derivation, because a run that stops growing at one estimate and gets judged
+// against another is a run whose two clocks disagree about the same wall.
 //
-// It is the LONGEST interval between two admitted rounds, because the question
-// it answers is whether the wall can hold ANOTHER one, and a round the clock
-// cuts in half delivers nothing while costing the run its verdict. Fewer than
-// two admitted rounds is a job that has not shown its pace yet, and it answers
-// zero — which refuses nothing. See PERF.md.
-func jobPace(rounds []store.JobGrowthRound) time.Duration {
-	pace, last := time.Duration(0), time.Time{}
+// See PERF.md, "What a round of a job costs".
+func JobPace(graph *store.Store, jobRoot string) time.Duration {
+	journal := growthJournal(jobRoot)
+	return jobPace(graph, jobRounds(graph, journal), journal)
+}
+
+// jobPace is that, with the journal already in hand.
+//
+// It is the MEDIAN interval between admitted rounds and no longer the longest.
+// The longest is the right answer to "what is the worst a round has cost" and
+// the wrong one to "can the wall hold another": rounds are long-tailed — one
+// round of ofetch v4-flash s13 took twenty minutes while the median of its five
+// was under four — so a single slow round taught the governor to refuse
+// everything for the rest of the run, which is a bound that stops the work at
+// the first outlier rather than at the wall. What makes it safe to relax is
+// that the guarantee no longer rests on it: the settlement watch forces a
+// verdict at this same distance from the wall whether or not any rule here
+// noticed (docs/design/failsafe/FAILSAFE.md, the twenty-first chapter).
+//
+// A round is not the whole of what another round costs. What follows it is a
+// reading of the tree and a judgement on it, and the reading is the one thing
+// this run ever measures about the MACHINE it is on — these benchmarks run
+// amd64 containers under qemu, where a suite that takes eight seconds natively
+// takes forty-five. So the pace is the median round plus that reading.
+//
+// Fewer than two admitted rounds is a job that has not shown its pace, and it
+// answers zero, which refuses nothing — the fail-safe direction, unchanged.
+func jobPace(graph *store.Store, rounds []store.JobGrowthRound, journal string) time.Duration {
+	gaps, last := []time.Duration(nil), time.Time{}
 	for _, round := range rounds {
 		if !round.Allowed || round.At.IsZero() {
 			continue
 		}
 		if !last.IsZero() {
-			if gap := round.At.Sub(last); gap > pace {
-				pace = gap
-			}
+			gaps = append(gaps, round.At.Sub(last))
 		}
 		last = round.At
 	}
-	return pace
+	if len(gaps) == 0 {
+		return 0
+	}
+	sort.Slice(gaps, func(i, j int) bool { return gaps[i] < gaps[j] })
+	middle := gaps[len(gaps)/2]
+	if len(gaps)%2 == 0 {
+		middle = (gaps[len(gaps)/2-1] + gaps[len(gaps)/2]) / 2
+	}
+	return middle + readingPace(graph, journal)
+}
+
+// readingPace is the longest reading this job has been observed taking.
+//
+// The LONGEST and not the median, because this term is not an estimate of a
+// distribution — it is the one measurement this run takes of the machine it is
+// running on, and a reading that was killed at its ceiling reports how long it
+// ran before that happened (store.VerificationReading.Elapsed, which exists for
+// exactly this). A job whose readings were all instant, or that has taken none,
+// answers zero and adds nothing.
+func readingPace(graph *store.Store, jobRoot string) time.Duration {
+	if graph == nil {
+		return 0
+	}
+	nodes, err := graph.LineageNodes(jobRoot)
+	if err != nil {
+		return 0
+	}
+	longest := time.Duration(0)
+	for _, node := range nodes {
+		readings, err := graph.VerificationsFor(node.ID)
+		if err != nil {
+			continue
+		}
+		for _, reading := range readings {
+			if reading.Elapsed > longest {
+				longest = reading.Elapsed
+			}
+		}
+	}
+	return longest
 }
 
 // growthRound is the next round number for a lineage, counted from the

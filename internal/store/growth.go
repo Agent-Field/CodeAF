@@ -111,6 +111,25 @@ type JobGrowth struct {
 	// it: nothing counted anything.
 	Measured bool `json:"measured,omitempty"`
 
+	// Finding is the REVIEW FINDING this round was bought for: what kind of
+	// finding it is and which names it cites, as the structured record holds
+	// them rather than as the review's paragraph spells them.
+	//
+	// It is journaled because A FINDING HAS ITS OWN FIXED POINT and nothing
+	// else in this row can see it. Remainder below is a digest of the review's
+	// PROSE, so a finding restated in fresh words reads as new work; Produced
+	// is a fact about the tree, so a round that rewrote half a repository and
+	// left the finding exactly where it found it reads as progress. happy-dom
+	// v4-flash s13 is the measured case: four gate events carrying one
+	// identical finding — the same four check names, word for word — bought
+	// four rounds, every one of them journaled as productive, and the finding
+	// they were bought FOR never moved at all (2026-08-29, bench/deepswe).
+	//
+	// Empty is every round nobody bought for a finding: an overrun, a
+	// cooperative split, a resumption. Those keep exactly the governors they
+	// had.
+	Finding GrowthFinding `json:"finding,omitempty"`
+
 	// Remainder is a digest of the work this round was planned to finish. Two
 	// consecutive rounds handed the same remainder are a fixed point: the round
 	// that just ran was aimed at exactly this and did not move it. The digest
@@ -204,4 +223,39 @@ func (s *Store) JobGrowthRounds(jobRoot string) ([]JobGrowthRound, error) {
 		return nil, fmt.Errorf("read job growth: %w", err)
 	}
 	return rounds, nil
+}
+
+// GrowthFinding is one review finding as the two things that decide whether a
+// later round is being bought for the SAME finding: what kind of finding it is,
+// and which names it cites.
+//
+// IT IS THE STRUCTURED FINDING AND NEVER THE PROSE. A gate records its
+// conclusions as lists — the behaviours no check exercises, the checks the run
+// wrote and left red, the definitions it reshaped, the spans it convicted on —
+// and those lists are stable across a rewording of the paragraph that carries
+// them. Comparing paragraphs answers "did the reviewer type the same sentence
+// twice", which is a question about a model's phrasing; comparing these answers
+// "is the same thing still missing", which is a question about the work.
+//
+// Names is a digest rather than the list because it is only ever compared for
+// equality and a list of citations is unbounded. Cited keeps a bounded few of
+// them anyway, for the same reason Moved and Wrote do: the digest is the
+// finding, and the names are what let a person recognise it in an autopsy.
+type GrowthFinding struct {
+	Kind  string   `json:"kind,omitempty"`
+	Names string   `json:"names,omitempty"`
+	Cited []string `json:"cited,omitempty"`
+}
+
+// Empty reports that this round was not bought for any finding the record can
+// name — which is not the same as a finding that cites nothing.
+func (f GrowthFinding) Empty() bool { return strings.TrimSpace(f.Kind) == "" }
+
+// Same reports that two rounds were bought for the same finding: same kind,
+// same names. An empty finding is never the same as anything, INCLUDING ANOTHER
+// EMPTY ONE — "nobody recorded what this round was for" is not evidence that
+// two rounds were for one thing, and reading it as such would refuse a path
+// that never named a finding at all.
+func (f GrowthFinding) Same(other GrowthFinding) bool {
+	return !f.Empty() && !other.Empty() && f.Kind == other.Kind && f.Names == other.Names
 }
