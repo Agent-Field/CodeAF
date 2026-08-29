@@ -77,6 +77,37 @@ type DeliveryGate struct {
 	// while the review that named the missing work was right every time
 	// (2026-08-28, bench/deepswe; see docs/design/gate/SETTLEMENT.md §2).
 	Overturned bool `json:"overturned,omitempty"`
+
+	// Exercised is the acceptance mapping as the gate settled it: one row per
+	// behaviour the request stated, naming the check that exercises it, or
+	// naming nothing when no check does.
+	//
+	// It is recorded rather than reduced to the finding it produced, because the
+	// mapping is the evidence and the finding is only its conclusion. A run that
+	// passed with every point exercised and a run that passed because the
+	// checklist was empty are the same event without it, and telling those two
+	// apart is the whole of what an autopsy of this mechanism has to do.
+	Exercises []ExercisedPoint `json:"exercises,omitempty"`
+
+	// Unmeasured says the gate held a checklist and could settle none of it:
+	// the project declares no verification this run could read and the change
+	// produced no readable diff, so nothing could be matched to what the
+	// request asked for.
+	//
+	// It is a field rather than a silence because NOBODY LOOKED IS NOT NOTHING
+	// WRONG, and the two are the same event without it. A delivery that
+	// satisfied every point and one that was measured against nothing both
+	// journal a passing gate; only this tells them apart, and an autopsy of
+	// this mechanism has nothing else to read.
+	Unmeasured string `json:"unmeasured,omitempty"`
+}
+
+// ExercisedPoint is one row of that mapping: a behaviour the request stated and
+// the check that exercises it. An empty Check is the finding — nothing in the
+// project's own verification touches this.
+type ExercisedPoint struct {
+	Point string `json:"point"`
+	Check string `json:"check,omitempty"`
 }
 
 // Cited is the gate's citations however they were written down. A row recorded
@@ -213,4 +244,98 @@ func (s *Store) DeliveryGateLineage(baseID string) ([]DeliveryGate, error) {
 		return nil, fmt.Errorf("read delivery gate lineage %q: %w", baseID, err)
 	}
 	return gates, nil
+}
+
+// EventAcceptance is the acceptance checklist journaled against the piece of
+// work it will be used to judge: the behaviours the person's own request states,
+// read from the request before any work began.
+//
+// It is a first-class event beside the plan blob for the reason EventNodeBrief
+// is: the checklist lives on plan.Spec, inside a document held in memory for the
+// life of a run, and "what was this work actually asked for" is exactly the
+// question an autopsy of a finished run needs answered from the run's own
+// journal. It is also what the headless stream reads to say the checklist exists
+// at all — a fail-safe that does not reach the person watching is decoration
+// (docs/design/failsafe/FAILSAFE.md clause 3).
+const EventAcceptance EventKind = "acceptance"
+
+// AcceptancePoint is one behaviour the request states, and the words of the
+// request it is a reading of.
+//
+// The store learns no more about a point than that, and deliberately: Quote is
+// what the grounding rule weighs and Behaviour is what a person reads, and the
+// rules that weigh them live where the gate lives. This is the journal's copy.
+type AcceptancePoint struct {
+	Behaviour string `json:"behaviour"`
+	Quote     string `json:"quote"`
+}
+
+// Acceptance is the whole checklist for one piece of work.
+type Acceptance struct {
+	Points []AcceptancePoint `json:"points"`
+}
+
+// RecordAcceptance journals the checklist against the node whose delivery it
+// governs. An empty checklist writes nothing: a request that states no checkable
+// behaviour has no checklist, and an event saying so would be a row every reader
+// has to learn to ignore.
+func (s *Store) RecordAcceptance(nodeID string, acceptance Acceptance) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record acceptance: %w: empty node id", ErrInvalid)
+	}
+	points := make([]AcceptancePoint, 0, len(acceptance.Points))
+	for _, point := range acceptance.Points {
+		point.Behaviour = bounded(strings.TrimSpace(point.Behaviour), MaxDigestBytes)
+		point.Quote = bounded(strings.TrimSpace(point.Quote), MaxDigestBytes)
+		// Bounded per point rather than over the list, for the reason the gate's
+		// citations are: a quotation clipped to a share of a budget it does not
+		// know the size of is clipped mid-word, and a citation that no longer
+		// matches the words it was taken from grounds against nothing.
+		if point.Behaviour == "" || point.Quote == "" {
+			continue
+		}
+		points = append(points, point)
+	}
+	if len(points) == 0 {
+		return nil
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("record acceptance: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record acceptance: %w", err)
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventAcceptance, Acceptance{Points: points}); err != nil {
+		return fmt.Errorf("record acceptance: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record acceptance: %w", err)
+	}
+	return nil
+}
+
+// AcceptanceFor returns the newest checklist journaled for a node. It reads the
+// event directly, exactly as DeliveryGateFor does and for the same reason: the
+// payload is sparse, looked up by id, and has no query anyone would run across
+// it.
+func (s *Store) AcceptanceFor(nodeID string) (Acceptance, bool, error) {
+	var payload string
+	err := s.db.QueryRow(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq DESC LIMIT 1`, nodeID, EventAcceptance).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Acceptance{}, false, nil
+	}
+	if err != nil {
+		return Acceptance{}, false, fmt.Errorf("read acceptance: %w", err)
+	}
+	var acceptance Acceptance
+	if err := json.Unmarshal([]byte(payload), &acceptance); err != nil {
+		return Acceptance{}, false, fmt.Errorf("read acceptance: %w", err)
+	}
+	return acceptance, true, nil
 }

@@ -514,6 +514,83 @@ measured. A tree nothing changed is not read a second time. In every one of thos
 run behaves exactly as it would have without this, and says nothing about checks it did not
 run.
 
+## What "acceptance" means — the checklist read off your request before the work starts
+
+Before anything runs, your request is read once for the **behaviours it states** — a rule
+the result must follow, a case it must handle, a transition it must make, an outcome it
+must produce. Each one carries the words of yours it came from. That list is the acceptance
+checklist, and if a headless run has one you see it once, near the start:
+
+```
+  acceptance — 6 points from the request  14s
+```
+
+The list is held by the review and **never shown to the worker**. A worker handed the list
+of things it will be checked on writes checks for the list and nothing else, which is the
+whole problem this exists to fix.
+
+Nothing can get onto the list that is not yours. Every point has to quote your request, by
+the same rule a review's finding does — a verbatim span, a quotation that skips a middle, a
+file you named, or the distinctively spelled names you used. A point this program wrote for
+itself is dropped before the review ever sees it. And the list can never be longer than
+your request has lines: past that it has stopped describing what you asked for.
+
+**When there is no list.** A request that states no checkable behaviour — a question, a
+lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
+exactly as it would have without any of this.
+
+## When nothing checks what you asked for — "no check exercises …"
+
+At the end, the review asks one more question of work it was otherwise about to accept: for
+each behaviour on the checklist, **is there a check that would fail if this were absent or
+wrong?**
+
+It answers that from two places, and the worker's own account of its checking is not one of
+them. It reads the check declarations in the change itself, and it reads the identities the
+project's **own** verification command printed when it ran. A sentence in the answer
+claiming every check passes is weighed as prose: those are checks the same worker wrote,
+and counting them proves nothing about what you asked for.
+
+A behaviour nothing exercises is a finding, and it reads:
+
+```
+The request asks for behaviours that no check exercises. Nothing in this project's own verification would fail if each of these were absent or wrong, so nothing that has been run says whether the work does them:
+no check exercises: A half-open probe holds its slot across internal retries
+no check exercises: A parse or hook failure is not retried by status-based retry logic
+Write the check for each, and make it pass.
+```
+
+Like a broken check, nothing is weighed about where it came from — it is a measurement of
+the repository rather than a reading of your words — so it buys the repair round straight
+away, and the round is asked to write the check and make it pass. If nothing closes it the
+run lands partial rather than finished.
+
+**Why this exists.** Two measured runs handed over wrong answers at exit 0 because the
+review believed the worker's own sentence about its own checks. One claimed all 56 of them
+passed and failed 6 of 47 hidden ones; the other claimed 31 of 31 and was one hidden check
+short of a complete solve. In both, the behaviours that failed were stated
+in the request and exercised by nothing the worker wrote.
+
+**When it does not happen.** If the project declares no way to check itself and the change
+produced no readable diff, nothing can be matched, and the answer is handed over as
+finished rather than failed — nobody looked is not the same as something is wrong. Eight
+behaviours are named at most; the rest are counted.
+
+## When a check the work deleted stops existing
+
+Taking out the check that is failing is the cheapest way there is to make a suite green, so
+that is checked too. A check declaration the change **removes**, and a check the project's
+own command reported before the work and did not report after it, are both findings:
+
+```
+This work removed checks that existed before it: keeps the half-open slot across internal retries. A check that was there and is not was deleted, renamed or skipped; whatever it was holding is now held by nothing.
+```
+
+A check that merely moved between files, or was re-indented, is not this: it is added and
+removed in the same change and cancels. And a run that reported no check identities on
+either reading raises nothing — plenty of verification commands say only `ok`, and a quiet one is
+not a suite that lost everything.
+
 ## Why it kept spawning the same worker over and over — the repeat guard
 
 If a run seemed to run the same brief again and again — worker after worker sent at one

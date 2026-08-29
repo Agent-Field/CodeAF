@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -259,7 +260,20 @@ type Judgment struct {
 	// is a pass — it is simply not a verified one, and the difference is the
 	// whole reason the field exists rather than being read out of the prose.
 	Exercised bool
-	Checked   bool
+	// Exercises is the acceptance mapping this judgement was settled on: one
+	// row per behaviour the request stated, naming the check that exercises it
+	// or naming nothing. It travels so the mapping can be journaled — the
+	// mapping is the evidence and the finding is only its conclusion, and a run
+	// that passed with every point covered must be tellable apart from one that
+	// passed because there was no checklist. See acceptance.go.
+	Exercises []store.ExercisedPoint
+	// Unmeasured says this judgement held an acceptance checklist and could
+	// settle none of it, because nothing in the project's own verification and
+	// nothing in the change could be read as a check. It is separate from
+	// Unjudged, which says the GATE never answered: here the gate answered and
+	// one half of its question had no evidence to answer from.
+	Unmeasured string
+	Checked    bool
 	// Unjudged names, in one line, why there is no verdict behind this value.
 	// Every failure of the gate itself is fail-open — the deliverable ships —
 	// and for as long as that was the whole of it, the cheapest bug in the
@@ -502,6 +516,35 @@ type Evidence struct {
 	//
 	// Empty on every worker that produces no diff, which reads as no claim.
 	Patch string
+	// Accept is the acceptance checklist: the behaviours the person's REQUEST
+	// states, read from the request before any work existed and carried on the
+	// plan's spec. It is what the gate holds the delivery to beyond "does this
+	// read like an answer", and it is the one thing on this record that was
+	// neither produced by the work nor written about it.
+	//
+	// Empty on every job whose request states nothing checkable, which is most
+	// of them, and empty reads as NO CHECKLIST rather than as nothing asked for.
+	Accept []plan.Point
+	// Verification is the photograph of the project's own checks the run took —
+	// the roster before the work and the roster after it, on the budget PERF.md
+	// states. The gate reads it instead of reading the deliverable's sentence
+	// about its own tests: a claim that "all 56 tests pass" is a claim about
+	// tests the same worker wrote, and weighing it is how two graded runs ended
+	// at exit 0 over wrong answers (docs/design/gate/ACCEPTANCE.md).
+	//
+	// A zero value is a photograph nobody took, which stops the acceptance
+	// settlement rather than convicting anything: NOBODY LOOKED IS NOT NOTHING
+	// WRONG, and it is not a finding either.
+	Verification verify.Reading
+	// Workspace is where the work happened, and it is here for one purpose: the
+	// gate may need to take the after reading itself. A worker that took no
+	// second photograph — a repair that only rewrote the account, a leaf whose
+	// wall could not afford one — leaves the final tree unmeasured, and the
+	// reading of the tree that is about to be handed over is the gate's to hold.
+	//
+	// Empty means the gate takes no reading of its own, which is what every
+	// caller that has no workspace to name already gets.
+	Workspace string
 }
 
 // gateEvidenceRan bounds what travels when the window is unknown. The executor
@@ -543,7 +586,7 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
-		len(e.Baseline) == 0 && len(e.Regressed) == 0 &&
+		len(e.Baseline) == 0 && len(e.Regressed) == 0 && !e.Verification.Taken &&
 		e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
 		if !e.Observed {
 			return ""
@@ -628,6 +671,18 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 			body.WriteString(name + "\n")
 		}
 	}
+	// What the project's own verification actually said, in place of what the
+	// deliverable says it said. A judge holding a sentence like "All 56 tests
+	// pass" and nothing beside it weighs the sentence, because a sentence is
+	// what it has; a judge holding the command, its exit status and its roster
+	// weighs the world. The two runs this block exists for both passed on the
+	// sentence (docs/design/gate/ACCEPTANCE.md).
+	if reading := e.readingBlock(); reading != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString(reading)
+	}
 	ran, tail := e.Ran, gateEvidenceLines(budget)
 	if len(ran) > tail {
 		ran = ran[len(ran)-tail:]
@@ -684,6 +739,25 @@ func (e Evidence) patchBlock(budget ctxbudget.Budget) string {
 			strconv.Itoa(len(body)) + "; the whole of it is at " + e.Patch + ")\n"
 	}
 	return head + clipped + "\n"
+}
+
+// patchSource is the change's whole text, read from where the worker left it.
+//
+// It is separate from patchBlock because the two readers want different things
+// from one file. The block is for a model and is clipped to a share of a prompt
+// budget; this is for the check-declaration reader, which scans and keeps
+// nothing, and which would report a truncated diff's later hunks as checks the
+// work never wrote. An unreadable patch is the empty string, which reads as no
+// claim everywhere it is used.
+func (e Evidence) patchSource() string {
+	if strings.TrimSpace(e.Patch) == "" {
+		return ""
+	}
+	body, err := os.ReadFile(e.Patch)
+	if err != nil {
+		return ""
+	}
+	return string(body)
 }
 
 // namedBlock settles every file the request named against the files the run
@@ -1008,6 +1082,16 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// judgement rather than rebuilding them from whatever fields their own
 	// caller happened to hold, which is how they came to disagree.
 	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	// THE READING OF THE TREE THAT IS ABOUT TO BE HANDED OVER IS THE GATE'S TO
+	// HOLD. A worker photographs the project's own checks before it starts and
+	// again at the end, and that second photograph is normally the reading of
+	// the final tree — but a repair round that only rewrote the account, and a
+	// worker that could not afford the second reading, both leave the tree
+	// unmeasured at the moment it is judged. The gate takes the reading itself
+	// there, on the same budget the worker was held to, so that the world's
+	// answer exists wherever a verdict is being reached rather than only where a
+	// worker happened to be able to take one.
+	evidence.measureFinalTree(ctx)
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
 	// measurement the run made of the world, and it outranks every other reading
@@ -1018,6 +1102,17 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if regression, broke := Regressions(evidence.Regressed); broke {
 		regression.Grounds = grounds
 		return regression
+	}
+	// And its near neighbour, which the photograph could not see until it kept
+	// rosters rather than only failures: A CHECK THAT STOPPED EXISTING. Deleting
+	// the test that was failing is the cheapest way there is to make a suite
+	// green, so a coverage rule that closed every other door and left this one
+	// open would be teaching exactly that move. Same evidence standard as a
+	// regression — the worker's own diff and two readings of the world — and so
+	// the same place in the order.
+	if weakened, removed := WeakenedChecks(evidence.removedChecks(), evidence.Verification.Vanished()); removed {
+		weakened.Grounds = grounds
+		return weakened
 	}
 	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
 		mechanical.Grounds = grounds
@@ -1114,7 +1209,13 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
-		return Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true, Grounds: grounds}
+		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true, Grounds: grounds}
+		// And the last question, asked only of a delivery that was about to be
+		// called whole: does anything CHECK what the person asked for? A gate
+		// that is already failing the work buys its repair round anyway, so the
+		// coverage question would spend a call to reach a conclusion that is
+		// already true. The run this exists for is the one standing here.
+		return settleAcceptance(ctx, settings, client, node, evidence, grounds, workerModel, pass)
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
@@ -1937,4 +2038,79 @@ func PlanNodeFor(planGraph *plan.Graph, prefix, nodeID string) *plan.Node {
 		}
 	}
 	return nil
+}
+
+// measureFinalTree fills in the after half of the verification photograph when
+// nobody else did, and does nothing at all otherwise.
+//
+// The three conditions are each a refusal to invent a measurement. Without a
+// before reading there is nothing to subtract from, and a second reading alone
+// would report the repository's own pre-existing reds as this work's doing —
+// the failure that threw away a correct fix to spf13/cobra once. Without a
+// workspace there is nowhere to run. And with an after reading already taken,
+// re-running the suite would spend an eighth of a wall to learn what is already
+// known.
+//
+// It is a measurement and never a gate: a command that will not run, an
+// entrypoint that vanished, or a ceiling that fires all leave the evidence
+// exactly as it arrived.
+func (e *Evidence) measureFinalTree(ctx context.Context) {
+	reading := e.Verification
+	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
+		return
+	}
+	after, ok := verify.RunTests(ctx, e.Workspace, reading.Plan, reading.Budget)
+	if !ok || after.TimedOut {
+		return
+	}
+	reading.After, reading.AfterTaken = after, true
+	e.Verification = reading
+	if len(e.Regressed) == 0 {
+		e.Regressed = reading.Regressed()
+	}
+}
+
+// readingBlock is what the project's own verification said, stated as the
+// measurement it is.
+//
+// It names the command, its exit status and the size of its roster, and it says
+// out loud when nothing was measured — because "the suite is green" and "nobody
+// ran the suite" are the two readings a deliverable's own sentence about its
+// tests is equally happy to produce, and a judge that cannot tell them apart
+// weighs a claim in place of a fact.
+func (e Evidence) readingBlock() string {
+	reading := e.Verification
+	if !reading.Taken {
+		return ""
+	}
+	result, when := reading.Before, "before the work"
+	if reading.AfterTaken {
+		result, when = reading.After, "on the finished tree"
+	}
+	var body strings.Builder
+	body.WriteString("What the project's OWN verification said when it was run " + when +
+		". This is the measurement; anything the deliverable says about its tests is a claim:\n")
+	fmt.Fprintf(&body, "`%s` exited %d, and named %d checks",
+		result.Entrypoint.Command, result.Exit, len(result.Reported))
+	if failing := len(result.Failing); failing > 0 {
+		fmt.Fprintf(&body, ", %d of them failing", failing)
+	}
+	body.WriteString(".\n")
+	if !reading.AfterTaken {
+		body.WriteString("The finished tree was NOT measured — this reading is of the " +
+			"repository as the work found it.\n")
+	}
+	return body.String()
+}
+
+// removedChecks names the check declarations the work's own diff takes away. It
+// is the cheap half of the disappearance evidence — it needs no run at all — and
+// it is empty for every worker that derives no diff, which reads as no claim.
+func (e Evidence) removedChecks() []string {
+	patch := e.patchSource()
+	if patch == "" {
+		return nil
+	}
+	_, removed := verify.PatchChecks(patch)
+	return removed
 }

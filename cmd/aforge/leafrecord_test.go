@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // The meter was broken on the path that carries almost all the tokens. The
@@ -136,7 +137,7 @@ func TestTheGateWeighsTheProducedFileBeforeTheProse(t *testing.T) {
 		Produces:   []string{"docs/decision-memo.md"},
 		Conditions: []plan.Check{{Kind: plan.CheckRead, Check: "open the memo", Expect: "it states a decision"}},
 	}}
-	record := gateEvidence(node, spec, outcome, []string{produced}, true)
+	record := gateEvidence(node, spec, outcome, []string{produced}, true, "")
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model"}
@@ -198,7 +199,7 @@ func TestAHintPathThatIsADirectoryIsNeitherOfferedNorClaimedAsWritten(t *testing
 		t.Fatal(err)
 	}
 	record := gateEvidence(node, plan.Spec{}, &exec.Outcome{Ran: []string{`write`}},
-		[]string{inside, filepath.Join(root, hint)}, true)
+		[]string{inside, filepath.Join(root, hint)}, true, "")
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model"}
@@ -226,13 +227,47 @@ func TestGateEvidenceCarriesTheBaselineDelta(t *testing.T) {
 		"(TestFailGenFishCompletionFile) was ALREADY failing at this commit."
 	record := gateEvidence(store.Node{ID: "job"}, plan.Spec{},
 		&exec.Outcome{Ran: []string{"stage verification pass"}, Baseline: []string{note}},
-		nil, true)
+		nil, true, "")
 	if len(record.Baseline) != 1 || record.Baseline[0] != note {
 		t.Fatalf("the gate record dropped the baseline delta: %#v", record.Baseline)
 	}
 	// A worker that measured nothing claims nothing.
-	plain := gateEvidence(store.Node{ID: "job"}, plan.Spec{}, &exec.Outcome{}, nil, true)
+	plain := gateEvidence(store.Node{ID: "job"}, plan.Spec{}, &exec.Outcome{}, nil, true, "")
 	if len(plain.Baseline) != 0 {
 		t.Fatalf("a leaf with no baseline claimed one: %#v", plain.Baseline)
+	}
+}
+
+// The gate is handed the checklist and the whole photograph, not a summary of
+// either. The checklist rides the spec — the one object carried forward verbatim
+// through a retry — and the photograph rides the outcome, because the gate needs
+// the ROSTERS and not only the failures: which checks exist is what answers
+// whether anything exercises what the request asked for.
+func TestTheGateRecordCarriesTheChecklistAndTheWholePhotograph(t *testing.T) {
+	spec := plan.Spec{Accept: []plan.Point{{
+		Behaviour: "A half-open probe holds its slot across internal retries",
+		Quote:     "keeps its slot for the full logical request",
+	}}}
+	outcome := &exec.Outcome{Verification: verify.Reading{
+		Taken: true, AfterTaken: true,
+		Before: verify.Result{Reported: []string{"an existing check"}},
+		After:  verify.Result{Reported: []string{"an existing check", "opens after five failures"}},
+	}}
+	record := gateEvidence(store.Node{ID: "task-2"}, spec, outcome, nil, true, "/work/task-2")
+
+	if len(record.Accept) != 1 || record.Accept[0].Quote != spec.Accept[0].Quote {
+		t.Fatalf("the gate was not handed the checklist: %#v", record.Accept)
+	}
+	if !record.Verification.AfterTaken || len(record.Verification.After.Reported) != 2 {
+		t.Fatalf("the gate was not handed the roster: %#v", record.Verification)
+	}
+	if record.Workspace != "/work/task-2" {
+		t.Errorf("the gate cannot take a reading of the tree it is judging: %q", record.Workspace)
+	}
+	// A worker that photographed nothing hands over nothing, and nothing reads
+	// as NOBODY LOOKED rather than as a clean suite.
+	plain := gateEvidence(store.Node{ID: "task-2"}, plan.Spec{}, &exec.Outcome{}, nil, true, "")
+	if plain.Verification.Taken || len(plain.Accept) != 0 {
+		t.Errorf("a leaf that measured nothing claimed something: %#v", plain.Verification)
 	}
 }

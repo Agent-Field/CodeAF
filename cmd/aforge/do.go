@@ -1113,6 +1113,19 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		w.note(subject, detail)
 		return true
 
+	case store.EventAcceptance:
+		var acceptance store.Acceptance
+		if json.Unmarshal(event.Payload, &acceptance) != nil || len(acceptance.Points) == 0 {
+			return false
+		}
+		// Said once, as a count and not as a list. The person watching needs to
+		// know the checklist EXISTS and how big it is — that is what makes a
+		// later "no check exercises …" legible instead of arriving out of
+		// nowhere — and forty behaviours printed one per line would bury every
+		// other line in the stream.
+		w.note("acceptance", acceptanceWords(len(acceptance.Points)))
+		return true
+
 	case store.EventDeliveryGate:
 		var gate store.DeliveryGate
 		if json.Unmarshal(event.Payload, &gate) != nil {
@@ -1190,6 +1203,16 @@ func gateWords(gate store.DeliveryGate) (verdict, detail string) {
 		return "pass", ""
 	}
 	return "fail", gap
+}
+
+// acceptanceWords says how many behaviours the request states, in the register
+// the rest of this stream uses: a fact about the run, in a person's words, with
+// no machinery vocabulary in it.
+func acceptanceWords(points int) string {
+	if points == 1 {
+		return "1 point from the request"
+	}
+	return fmt.Sprintf("%d points from the request", points)
 }
 
 // phaseWorker names the specialist a phase belongs to, and names nothing when it

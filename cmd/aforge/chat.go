@@ -991,6 +991,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		//
 		// In a build with no specialist the menu is empty, the condition below
 		// reads exactly as it always did, and not one extra call is made.
+		// The acceptance checklist, journaled against the work it will be used
+		// to judge, before that work starts. It is written here rather than at
+		// plan time because a node has to exist for an event to hang on, and
+		// because this is the one place that knows which spec this leaf is
+		// actually running with — a spliced repair inherits its predecessor's
+		// checklist and must be seen to.
+		//
+		// It is also the only place a person watching a headless run learns the
+		// checklist exists at all: the stream reads this event (see narrateOne
+		// in do.go). A fail-safe that does not reach the person reading the
+		// verdict is decoration — FAILSAFE clause 3.
+		journalAcceptance(graph, node, task.Spec)
 		specialists := exec.MenuTextExcept(subharness)
 		attempts := 1
 		if !isReflex && (escalatable || specialists != "") {
@@ -1458,61 +1470,66 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			records := gateEvidence(node, task.Spec, outcome, absolute, true)
+			records := gateEvidence(node, task.Spec, outcome, absolute, true, jobDir)
 			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
-					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical}
-			if gate.Pass {
-				outcome.Verdict = revision.GateVerdict(gate)
-				// Quorum: two cheap validators independently verify the pass.
-				// Both must ACCEPT; any REJECT buys one revision round, then
-				// the result commits unconditionally (no second gate).
-				if settings.Quorum {
-					accepts, rejects := quorumVerify(ctx, settings, boostClients, node.ID,
-						node.Provenance.Intent, text)
-					if accepts == 2 {
-						log.Printf("quorum: committed on 2/2")
-					} else {
-						repair := task
-						repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
-							Title:     "a review of your own first draft",
-							Artifacts: append([]string(nil), absolute...),
-							Result: "Two independent verifiers found gaps that must be closed:\n" + rejects +
-								"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
-								"\n\n" + revision.GateRevisionContract,
-						})
-						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
-						polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
-						if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
-							spent.PromptTokens += polished.Usage.PromptTokens
-							spent.CompletionTokens += polished.Usage.CompletionTokens
-							spent.CachedTokens += polished.Usage.CachedTokens
-							spent.Cost += polished.Usage.Cost
-							spentTurns += polished.Turns
-							outcome = polished
-							workerModel = provider.CallFrom(retryCtx).Model()
-							text = polished.Text
-							absolute = absolute[:0]
-							for _, artifact := range polished.Artifacts {
-								absolute = append(absolute, filepath.Join(jobDir, artifact))
+					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
+					// The acceptance mapping as the gate settled it. It is the
+					// evidence behind the verdict rather than the verdict, and a
+					// pass with every point exercised has to be tellable apart
+					// from a pass over an empty checklist.
+					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured}
+				if gate.Pass {
+					outcome.Verdict = revision.GateVerdict(gate)
+					// Quorum: two cheap validators independently verify the pass.
+					// Both must ACCEPT; any REJECT buys one revision round, then
+					// the result commits unconditionally (no second gate).
+					if settings.Quorum {
+						accepts, rejects := quorumVerify(ctx, settings, boostClients, node.ID,
+							node.Provenance.Intent, text)
+						if accepts == 2 {
+							log.Printf("quorum: committed on 2/2")
+						} else {
+							repair := task
+							repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+								Title:     "a review of your own first draft",
+								Artifacts: append([]string(nil), absolute...),
+								Result: "Two independent verifiers found gaps that must be closed:\n" + rejects +
+									"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+									"\n\n" + revision.GateRevisionContract,
+							})
+							retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+							retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
+							polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+							if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
+								spent.PromptTokens += polished.Usage.PromptTokens
+								spent.CompletionTokens += polished.Usage.CompletionTokens
+								spent.CachedTokens += polished.Usage.CachedTokens
+								spent.Cost += polished.Usage.Cost
+								spentTurns += polished.Turns
+								outcome = polished
+								workerModel = provider.CallFrom(retryCtx).Model()
+								text = polished.Text
+								absolute = absolute[:0]
+								for _, artifact := range polished.Artifacts {
+									absolute = append(absolute, filepath.Join(jobDir, artifact))
+								}
+								// A repair round rewrites the list wholesale, so the
+								// errand is told again; it keeps a set, and a path it
+								// already has costs nothing to hear twice.
+								if opts.produced != nil && len(absolute) > 0 {
+									opts.produced(absolute...)
+								}
+								if len(absolute) > 0 {
+									text += summaryFileList + strings.Join(absolute, "\n")
+								}
 							}
-							// A repair round rewrites the list wholesale, so the
-							// errand is told again; it keeps a set, and a path it
-							// already has costs nothing to hear twice.
-							if opts.produced != nil && len(absolute) > 0 {
-								opts.produced(absolute...)
-							}
-							if len(absolute) > 0 {
-								text += summaryFileList + strings.Join(absolute, "\n")
-							}
+							log.Printf("quorum: revised after reject")
 						}
-						log.Printf("quorum: revised after reject")
 					}
 				}
-			}
 				// The grounding check the extension has always had, applied one
 				// layer earlier: to the revision round. A gap the review cannot
 				// quote from the ask or from the working method is a standard
@@ -1697,7 +1714,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					}
 					if polished != nil {
 						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-							gateEvidence(node, task.Spec, outcome, absolute, true), polishModel)
+							gateEvidence(node, task.Spec, outcome, absolute, true, jobDir), polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
@@ -2061,9 +2078,9 @@ type chatBrain struct {
 	// never will: a plan that was rejected has no job to land, and a process
 	// that is stopping has no next landing. Both may be nil on a brain a test
 	// assembles by hand, which is why the flush checks.
-	plans  *jobPlans
-	ledger *store.Store
-	closeOnce  sync.Once
+	plans     *jobPlans
+	ledger    *store.Store
+	closeOnce sync.Once
 }
 
 // closing registers something built here that must be given back. They are
@@ -2486,12 +2503,22 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 // produced convicts a claim that it was written. The done-criterion is the
 // standard the plan set before the work started; it travels verbatim through
 // retries, so it is the only standard here the run itself cannot have moved.
-func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string, observed bool) revision.Evidence {
+func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string,
+	observed bool, workspace string) revision.Evidence {
 	evidence := revision.Evidence{
 		Artifacts: artifacts,
 		Named:     revision.NamedFiles(node.Provenance.Intent),
 		Done:      spec.Done,
 		Observed:  observed,
+		// The acceptance checklist rides on the spec for the reason the
+		// criterion does: it is the one object carried forward verbatim through
+		// a retry, so a repair round is judged against the same list its
+		// predecessor was. It is read here and nowhere else, and the worker was
+		// never shown it — see plan/accept.go.
+		Accept: spec.Accept,
+		// And where the work happened, so the gate can take its own reading of
+		// the tree it is judging when the worker left one untaken.
+		Workspace: workspace,
 	}
 	if outcome != nil {
 		evidence.Ran = outcome.Ran
@@ -2507,6 +2534,12 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// Regressions), so this field is what makes a regression a blocker
 		// rather than something a leaf's own green tests can talk over.
 		evidence.Regressed = outcome.Regressed
+		// And the whole photograph those two lists were subtracted out of. The
+		// gate needs the rosters, not the failures: which checks exist is what
+		// answers whether anything exercises what the request asked for, and
+		// which checks stopped existing is what catches a worker deleting the
+		// test that was failing it. See docs/design/gate/ACCEPTANCE.md.
+		evidence.Verification = outcome.Verification
 		// And the account of the work itself, when the worker kept one: the
 		// files it changed and the checks it ran. The gate that used to be
 		// handed "the run ended without saying how it went" is handed the diff
@@ -3975,7 +4008,10 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: "You are a deliverable verifier. Reply with exactly one line: ACCEPT or REJECT: <reason>."}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
 	}
-	type verdict struct{ accept bool; reason string }
+	type verdict struct {
+		accept bool
+		reason string
+	}
 	ch := make(chan verdict, 2)
 	for range 2 {
 		go func() {
@@ -4389,6 +4425,13 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 				// for a decomposed job and not for the commonest job there is.
 				// Journaling the one node costs one event and closes that gap.
 				document := taskSpecGraph(compiled.Goal, method)
+				// The acceptance checklist is stamped on the node that
+				// DELIVERS, which for a one-node job is this one. It is the
+				// request's own list and not this leaf's, so it belongs to
+				// whoever hands the finished thing over and to nobody else —
+				// holding a contributing worker to the whole request's
+				// behaviours would be judging it for work that was never its.
+				document.Nodes[0].Spec.Accept = compiled.Accept
 				leaf = document.Nodes[0].Spec
 				plans.put(prefix, document, prefix, "", nil)
 			}
@@ -4482,6 +4525,10 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			return store.Subtree{}, err
 		}
 		gatePlanDivision(graph, compiled.Goal)
+		// The acceptance checklist, on the one node that hands the finished
+		// thing over. See plan.Graph.SetAcceptance for why it goes there and
+		// nowhere else.
+		graph.SetAcceptance(compiled.Accept)
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
 		// The same run context the spine and briefs were built with: the contract
@@ -5516,5 +5563,27 @@ func validLearnedKind(kind store.FactKind) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// journalAcceptance writes the acceptance checklist onto the node it governs.
+//
+// Best-effort in the same sense every other journal write on this path is: a
+// write that fails costs an autopsy and a stream line, never the work. An empty
+// checklist writes nothing at all — a request that states no checkable behaviour
+// has no checklist, and a row saying so is a row every reader has to learn to
+// ignore.
+func journalAcceptance(graph *store.Store, node store.Node, spec plan.Spec) {
+	if graph == nil || len(spec.Accept) == 0 {
+		return
+	}
+	points := make([]store.AcceptancePoint, 0, len(spec.Accept))
+	for _, point := range spec.Accept {
+		points = append(points, store.AcceptancePoint{
+			Behaviour: point.Behaviour, Quote: point.Quote,
+		})
+	}
+	if err := graph.RecordAcceptance(node.ID, store.Acceptance{Points: points}); err != nil {
+		log.Printf("note: could not journal what %s is to be accepted on: %v", node.ID, err)
 	}
 }

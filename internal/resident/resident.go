@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
@@ -53,6 +54,16 @@ type Compiled struct {
 	// contains, in the person's own words. It is evidence handed to the
 	// planner, never a layout — see plan.Options.Asked.
 	Parts []string
+	// Accept is the acceptance checklist: the behaviours the person's REQUEST
+	// states, read from the request's own words before any work existed.
+	//
+	// It rides the compile because the compile is the one pass in the system
+	// holding the request VERBATIM. Everything downstream of it holds the
+	// compiled goal, which is this program's reading of the ask rather than the
+	// ask — and a checklist derived from our own reading is a checklist we wrote
+	// for ourselves, which is precisely what the gate may not hold anybody to.
+	// See plan.Acceptance and docs/design/gate/ACCEPTANCE.md.
+	Accept []plan.Point
 	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
 	// Zero means the compiled job is ordinary work.
 	TrialOf int64

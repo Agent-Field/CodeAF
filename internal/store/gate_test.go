@@ -185,3 +185,71 @@ func TestTheGateLedgerReplaysItsCitationsAndItsProvenance(t *testing.T) {
 		t.Fatalf("quotes = %q, want the blanks dropped", blank.Quotes)
 	}
 }
+
+// The checklist is journaled against the work it will be used to judge, and it
+// is the only durable answer to "what was this work actually asked for" that
+// survives the process that planned it. An autopsy of a passed run has to be
+// able to tell a delivery that satisfied every point from one that was measured
+// against nothing.
+func TestTheAcceptanceChecklistIsJournaledAgainstTheWorkItJudges(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "task-2", Brief: "add a per-origin circuit breaker", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1",
+		Intent: "Implement an opt-in per-origin circuit breaker"}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := Acceptance{Points: []AcceptancePoint{
+		{Behaviour: "A rejected non-listed status does not close half-open state",
+			Quote: "must not close half-open state"},
+		{Behaviour: "A half-open probe holds its slot across internal retries",
+			Quote: "keeps its slot for the full logical request"},
+	}}
+	if err := graph.RecordAcceptance("task-2", want); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := graph.AcceptanceFor("task-2")
+	if err != nil || !ok {
+		t.Fatalf("AcceptanceFor: ok=%v err=%v", ok, err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("the journal returned %#v, want %#v", got, want)
+	}
+
+	// An empty checklist writes nothing: a request that states no checkable
+	// behaviour has no checklist, and a row saying so is a row every reader has
+	// to learn to ignore.
+	if err := graph.RecordAcceptance("task-2", Acceptance{}); err != nil {
+		t.Fatal(err)
+	}
+	again, _, err := graph.AcceptanceFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(again, want) {
+		t.Errorf("an empty checklist overwrote a real one: %#v", again)
+	}
+
+	// And the mapping the gate settled rides the gate event, because the
+	// mapping is the evidence and the verdict is only its conclusion.
+	gate := DeliveryGate{Pass: true, Exercises: []ExercisedPoint{
+		{Point: "A half-open probe holds its slot across internal retries",
+			Check: "keeps half-open quota reserved while a probe is internally retrying"},
+		{Point: "A rejected non-listed status does not close half-open state"},
+	}}
+	if err := graph.RecordDeliveryGate("task-2", gate); err != nil {
+		t.Fatal(err)
+	}
+	back, ok, err := graph.DeliveryGateFor("task-2")
+	if err != nil || !ok {
+		t.Fatalf("DeliveryGateFor: ok=%v err=%v", ok, err)
+	}
+	if !reflect.DeepEqual(back.Exercises, gate.Exercises) {
+		t.Errorf("the mapping did not survive the journal: %#v", back.Exercises)
+	}
+}

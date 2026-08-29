@@ -648,7 +648,7 @@ func TestWhatTheWorkTurnedRedReachesTheGateAndBecomesAFinding(t *testing.T) {
 	evidence := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{
 		Baseline:  []string{"one check was already red before this began"},
 		Regressed: broke,
-	}, nil, true)
+	}, nil, true, "")
 	if len(evidence.Regressed) != 1 || evidence.Regressed[0] != broke[0] {
 		t.Fatalf("the gate was never shown what the work turned red: %v", evidence.Regressed)
 	}
@@ -658,7 +658,7 @@ func TestWhatTheWorkTurnedRedReachesTheGateAndBecomesAFinding(t *testing.T) {
 	}
 	// And a worker that took no reading says nothing, which is not the same
 	// fact as a worker that read twice and found nothing broken.
-	quiet := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{}, nil, true)
+	quiet := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{}, nil, true, "")
 	if len(quiet.Regressed) != 0 {
 		t.Fatalf("a worker that measured nothing claimed something: %v", quiet.Regressed)
 	}

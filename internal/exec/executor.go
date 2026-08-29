@@ -20,6 +20,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -347,6 +348,23 @@ type Outcome struct {
 	// ask for their repository to keep working (docs/design/gate/SETTLEMENT.md
 	// §4, FAILSAFE.md clause 2).
 	Regressed []string
+
+	// Verification is the whole photograph the two readings above came out of:
+	// the entrypoint that was run, the budget it was run on, and both readings'
+	// complete rosters rather than only their red halves.
+	//
+	// Regressed is one subtraction over it. The delivery gate needs the other
+	// two. WHICH CHECKS EXIST answers whether anything at all exercises a
+	// behaviour the request asked for, and WHICH CHECKS STOPPED EXISTING is the
+	// one thing that catches a worker deleting the test that was failing it —
+	// neither question can be asked of a list of failures. The Taken flag is
+	// what keeps the gate honest about a project that declares no verification:
+	// nobody looked and nothing may be concluded, which is a different fact from
+	// a suite that came back clean. See docs/design/gate/ACCEPTANCE.md.
+	//
+	// A zero value is a photograph nobody took, which is what every worker that
+	// cannot take two readings leaves here.
+	Verification verify.Reading
 
 	// Account is the worker's structured account of the work itself: the files
 	// it changed, the checks it ran, and what each one found. See [Account] for
