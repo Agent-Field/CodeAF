@@ -177,6 +177,25 @@ writing to the same workspace.
 > its claim for as long as it keeps calling; a claim silent through the window is
 > held by nobody, and the release says so in the journal.
 
+And a second clause under the same heading, because the first one alone would
+still have doubled the node. A release is a change to a row; the goroutine that
+held the claim is not party to the transaction and does not notice. The ink
+store shows the cost directly — the release at 07:30:13.856, the re-claim at
+07:30:13.873, and thereafter two transcript streams under one node id, turns
+1–25 of the new attempt flushed in between turns 45 and 67 of the old one. Two
+workers, one checkout, each undoing the other's edits, both billed.
+
+> **A CLAIM IS NOT TAKEN FROM A WORKER, THE WORKER IS STOPPED.** Every leaf runs
+> on a context this process can end. The reaper cancels; the node stays Running
+> and unclaimable; the worker's OWN landing releases it, so the release happens
+> strictly after the goroutine returned. `leaf_stopped` carries the token and is
+> journaled immediately before that release, so any store can be checked for the
+> ordering: where a `node_released` for a token is not preceded by a
+> `leaf_stopped` for it, a worker was overtaken. The backstop under the backstop
+> is `claimReaperPad` — a worker that ignores the cancellation for as long as a
+> landing leaf is given is gone, and the claim is taken without it, journaled as
+> exactly that.
+
 **Clause 4, leave a record.** Four different endings arrived as the same silence:
 a worker that hung, a worker whose deadline legitimately expired, a claim the
 reaper took back, and a leaf handed its predecessor's work that started over
