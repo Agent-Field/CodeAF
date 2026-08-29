@@ -2,12 +2,12 @@ package head
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -107,41 +107,24 @@ func RecognizesStandingIntent(instruction string) bool {
 func (c *Compiler) compileStanding(ctx context.Context, instruction, graphContext string) (Brief, error) {
 	user := "Current graph context and measured self-knowledge:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
-	// standingReplyTokens is a ceiling and not a purchase, and on a reasoning
-	// model the thinking is spent out of it before a single character of the
-	// charter is written. At the flat 800 it carried, an ask that took any
-	// deliberation came back `finish_reason:"length"` with `content:null` and
-	// the whole standing route failed — measured live, and the ordinary
-	// compiler's floor had the same fault for the same reason. The number that
-	// matters is what the reply can legitimately need, not what it usually
-	// costs; a call that stops early is billed for what it wrote.
-	const standingReplyTokens = 8000
-	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
-		textMessage("system", standingCompilerPrompt),
-		textMessage("user", user),
-	}, ai.WithMaxTokens(standingReplyTokens))
-	if err != nil {
-		return Brief{}, fmt.Errorf("compile standing intent: %w", err)
-	}
-	if response == nil {
-		return Brief{}, errors.New("compile standing intent: provider returned a nil response")
-	}
-
+	// The room a charter needs, and the repair when it does not fit, are the
+	// shared seam's business (internal/shaped). What was here was a flat 800 that
+	// a reasoning model spent entirely on deliberation — `finish_reason:"length"`,
+	// `content:null`, and the whole standing route failed — followed by a
+	// hand-rolled retry at double the room. Both were the ordinary compiler's
+	// mistakes made a second time in a second file, which is the argument for
+	// there being one seam at all. The echo term is the same one the compile has:
+	// a charter restates the rule it is standing up.
 	var spec store.CharterSpec
-	if err := decodeJSONObject(response.Text(), &spec); err != nil {
-		// One more try at double the room, on the ordinary compiler's precedent:
-		// this is the cheapest call on the route and the only one whose loss
-		// forfeits the whole standing rule.
-		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
+	if _, err := shaped.Answer(ctx, c.client, shaped.Ask{
+		Lane: "compile",
+		Messages: []ai.Message{
 			textMessage("system", standingCompilerPrompt),
 			textMessage("user", user),
-		}, ai.WithMaxTokens(standingReplyTokens*2))
-		if retryErr != nil || retry == nil {
-			return Brief{}, fmt.Errorf("compile standing intent: %w", err)
-		}
-		if err := decodeJSONObject(retry.Text(), &spec); err != nil {
-			return Brief{}, fmt.Errorf("compile standing intent: %w", err)
-		}
+		},
+		Echo: instruction,
+	}, &spec); err != nil {
+		return Brief{}, fmt.Errorf("compile standing intent: %w", err)
 	}
 	spec = normalizeCharterSpec(spec, instruction, graphContext)
 	return Brief{

@@ -242,6 +242,52 @@ spends money to deliver nothing, and a run that stopped for want of time is
 **partial** (exit 2), never whole. An unknown deadline or an untimed attempt
 answers empty and buys the round: this makes runs longer, not shorter.
 
+## The shaped answer's room, which is derived and never named
+
+Every call that asks a model for a JSON object goes through `internal/shaped`,
+and the ceiling it goes out with is **derived from the ask**. Before the seam
+existed each pass named its own: 8192 in the planner, a reserve-eighth in the
+delivery gate, eight thousand plus an echo in the intent compiler. Each was
+right about the call in front of its author and wrong about the next one — and
+wrong in the direction that costs a whole run, because a fan-out asking for five
+parts was given the room for one verdict, cut off mid-part, and the run exited
+with zero nodes (`bench/deepswe/AUTOPSY.md`, s4, `textual-richlog-follow-state`).
+
+```
+room = one object × how many objects the ask asks for + what the answer echoes
+```
+
+| term | value | where |
+| --- | --- | --- |
+| one object | `CompletionReserve() / 8`, floored at **4096** | `objectShare`, `objectFloor`, `internal/shaped/ceiling.go` |
+| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
+| the echo | `2 × len(material) / 3` — tokens ≈ bytes/3, twice, because the compiled goal restates the request and then quotes it | `Ask.Echo` |
+| the memo | the widest cut this model has been watched taking on this lane, **doubled** | `provider.WidestAnswerCut`, `model-quirks.json` |
+| the bound | never past `CompletionReserve()` | `reserve()` |
+
+Two properties are the whole reason this is safe to adopt everywhere.
+
+**Every one-object ask comes out with exactly the ceiling it already had.** The
+share and the floor are the delivery gate's own measured numbers, moved rather
+than changed, so nothing anybody measured moves. Only an ask for MORE than one
+object gets more room, which is the finding.
+
+**Nothing here is a clock and nothing here is a retry count.** A repair
+continues while the last round added text and the answer is still an unterminated
+object, bounded by the reserve — both quantities move one way, so the loop ends
+on what happened rather than on a number somebody guessed. A reply that never
+began an object is asked again exactly once, at doubled room, which is the same
+arithmetic `plan.retryTokenBudget` and `revision.retryVerdictTokens` each wrote
+separately and which is now written here alone.
+
+The width the fan-out prompt states and the width its ceiling is derived from
+are one constant, interpolated into the prompt (`fanOutWidth`,
+`internal/plan/fanout.go`). `TestAFanOutIsSizedForTheWidthItsPromptPermits` fails
+if they ever become two.
+
+`internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
+never being outrun, and the three repairs.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000
