@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,19 +45,71 @@ import (
 // a plain 404 from a wrong base URL all keep the behaviour they had (retry.go),
 // because none of them is a claim about the request's shape and stripping
 // fields off them would spend a person's turn discovering that.
+//
+// ── HOW THE CLASS IS RECOGNISED: BY STRUCTURE, NEVER BY VOCABULARY ──────────
+//
+// A list of the sentences a router has been SEEN to refuse in is always one
+// sentence behind, and on 2026-08-28 it was. The ladder's first rung IS the
+// recovery for a price ceiling that emptied the endpoint set, and it never
+// fired for a whole headless run, because the router reports the LAST filter
+// that emptied the set — "no endpoints available matching your guardrail
+// restrictions and data policy" — rather than the price that did it. Adding
+// that sentence to the list bought exactly one more sentence of coverage; the
+// next unfamiliar phrasing is the same outage again. Rule 1 of
+// docs/design/failsafe/FAILSAFE.md is the general form of that lesson: a
+// fail-safe detects by STRUCTURE or it is decoration.
+//
+// The structural facts are all available without reading a word of the message:
+//
+//   - the status is 404 or 400 ([endpointRefusalStatus]);
+//   - the body is the ROUTER'S OWN JSON error envelope — an `error` object with
+//     a `message` in it ([routerErrorEnvelope]) — which is what a wrong base URL
+//     CANNOT produce: a proxy, a static host, a mistyped path and a plain nginx
+//     all answer in HTML or bare text, and none of them has an envelope to
+//     answer in;
+//   - the request went to a router at all ([Client.isOpenRouter]), because this
+//     whole ladder is about which of several endpoints may serve one model, and
+//     a single endpoint has no endpoint set that can be emptied;
+//   - the model is one the CATALOG KNOWS ([Client.catalogKnowsModel]), which is
+//     what separates "nothing can serve this shape" from "there is no such
+//     model". The second is a fact the caller has to be SHOWN, and negotiating
+//     with it would spend four attempts discovering a typo;
+//   - and the router refused on its OWN account rather than relaying somebody
+//     else's ([APIError.FromUpstream] reads the same field). A 400 forwarded
+//     from the endpoint the router chose is ONE endpoint's verdict on the
+//     request — the routing layer found something to try, which is the opposite
+//     of this class, and refusal_test.go's rotation is the answer to it.
+//
+// Under all five, a 404 cannot be a wrong base URL and cannot be an unknown
+// model. What is left is "nothing I can reach will serve this shape", and the
+// ladder is the right answer to it whatever sentence it arrived in.
+//
+// [endpointRefusalPhrases] survives as a HINT with two jobs and no authority:
+// it SHORT-CIRCUITS the classification when it matches, so every refusal the
+// old gate caught is still caught — including on endpoints where the structural
+// facts cannot be established at all — and it chooses the WORDING of the retry
+// line a person reads ([Client.recoverFromRefusal]).
 
 // endpointRefusalStatus is the status half of the gate. 404 is the router's own
 // spelling of "nothing can serve this"; 400 is what several OpenAI-compatible
-// gateways answer with instead, and both are checked against the words below
-// before anything is retried.
+// gateways answer with instead. It is necessary and never sufficient — the rest
+// of what makes a refusal this class is in [Client.routingRefusal].
 func endpointRefusalStatus(status int) bool {
 	return status == http.StatusNotFound || status == http.StatusBadRequest
 }
 
-// endpointRefusalPhrases is the vocabulary a router refuses a parameter
-// combination in. It is the same list internal/swepro's adaptive router matches
-// on, kept in the two places rather than shared because one of them is a port of
-// somebody else's engine and the other is this adapter's own law.
+// endpointRefusalPhrases is the vocabulary a router has been SEEN to refuse a
+// parameter combination in. It is a HINT and no longer the gate — the header
+// above says what replaced it and what the two remaining jobs are.
+//
+// THE REMAINING VOCABULARY GATE IN THIS PROCESS IS NOT THIS ONE. internal/swepro's
+// adaptive router keeps a list like this one AS its detector
+// (internal/swepro/internal/router/adaptive/adaptive.go's
+// IsLikelyProviderIncompatible), and it is deliberately left alone: it is a port
+// of somebody else's engine, classifying a JS value rather than an HTTP
+// response, with no status, no envelope and no catalog in its hands to classify
+// by. It is named here so that the next person reading rule 1 of
+// docs/design/failsafe/FAILSAFE.md knows where the other one is.
 var endpointRefusalPhrases = []string{
 	"no endpoints found",
 	"no endpoints that support",
@@ -85,28 +138,33 @@ var endpointRefusalPhrases = []string{
 	// When the account's privacy setting excludes that one endpoint, the ceiling
 	// leaves nothing, and the router does not say "no endpoints found that
 	// satisfy the max price" — it reports the LAST filter that emptied the set,
-	// which was the data policy. None of the phrases above matched, so
-	// [endpointRefusal] said "not this class", the plain-404 path resent the
-	// identical body, and the ladder that drops the ceiling on its first rung
-	// never fired. The proof was a bisect against the live router with the
-	// captured body: every field passed alone, and max_price at list × 1.0
-	// produced this exact sentence.
+	// which was the data policy. None of the phrases above matched, so the gate
+	// said "not this class", the plain-404 path resent the identical body, and
+	// the ladder that drops the ceiling on its first rung never fired. The proof
+	// was a bisect against the live router with the captured body: every field
+	// passed alone, and max_price at list × 1.0 produced this exact sentence.
+	//
+	// THE FOUR PHRASES BELOW ARE NOW HISTORY RATHER THAN LOAD-BEARING. The refusal
+	// they describe is caught by [Client.routingRefusal] on its structure, and
+	// would be caught if the router reworded it tomorrow. What they still buy is
+	// the sentence a person reads when the ceiling comes off (see
+	// [Client.recoverFromRefusal]).
 	"no endpoints available",
 	"data policy",
 	"guardrail restrictions",
 	"satisfy the max price",
 }
 
-// endpointRefusal reads a refusal body for the one complaint this chain answers.
-// It matches on the words rather than on the status alone, so a 404 from a
-// mistyped base URL — which says nothing about parameters — is surfaced as the
-// error it is instead of provoking four retries of a request that can never land.
-// ceilingRefusal reads a refusal body for the two spellings the router uses
-// when it is the PRICE CEILING that left nothing: its own "satisfy the max
-// price", and the data-policy sentence it prefers when the last endpoint under
-// the ceiling was one the account has excluded. It is the narrower question
-// [endpointRefusal] asks first, and its only reader is the memo that stops the
-// ceiling being sent to that model again ([velocityLedger.refuseCeiling]).
+// ceilingRefusal reads a refusal body for the two spellings the router uses when
+// it is the PRICE CEILING that left nothing: its own "satisfy the max price",
+// and the data-policy sentence it prefers when the last endpoint under the
+// ceiling was one the account has excluded.
+//
+// IT DECIDES A SENTENCE AND NOT A BEHAVIOUR. The memo that stops the ceiling
+// being sent to a model twice ([velocityLedger.refuseCeiling]) no longer waits
+// to be told the price was the reason — that would be the vocabulary gate again,
+// one layer in — and what is left for these words to do is tell a person that
+// the thing coming off their request is a price ceiling.
 func ceilingRefusal(payload []byte) bool {
 	text := strings.ToLower(string(payload))
 	for _, phrase := range []string{"satisfy the max price", "data policy", "guardrail restrictions"} {
@@ -117,7 +175,10 @@ func ceilingRefusal(payload []byte) bool {
 	return false
 }
 
-func endpointRefusal(payload []byte) bool {
+// endpointRefusalPhrase reports whether a refusal is one already KNOWN to be
+// this class by its words. Ordinary language, ordinary answer: when the router
+// says one of these, nothing further has to be established.
+func endpointRefusalPhrase(payload []byte) bool {
 	text := strings.ToLower(string(payload))
 	for _, phrase := range endpointRefusalPhrases {
 		if strings.Contains(text, phrase) {
@@ -125,6 +186,81 @@ func endpointRefusal(payload []byte) bool {
 		}
 	}
 	return false
+}
+
+// routerErrorEnvelope reports whether a payload is the ROUTER'S OWN JSON error
+// object, and names the upstream when the router was relaying somebody else's
+// refusal rather than answering for itself.
+//
+// It decodes the same [errorBody] every refusal in this package is decoded
+// through, so this process has ONE answer to "what shape does a router error
+// arrive in" rather than two that can drift apart.
+//
+// A non-empty `error.message` is the whole test, and `code` is deliberately NOT
+// required. The router types that field as a number, as a string, and sometimes
+// omits it — which is exactly why [errorBody] takes it as raw JSON — and
+// demanding a field spelled three ways would be the vocabulary mistake again in
+// a different place. What the envelope proves is the only thing this gate needs
+// from it: SOMETHING THAT SPEAKS THE ROUTER'S DIALECT ANSWERED. A wrong base URL
+// does not.
+func routerErrorEnvelope(payload []byte) (upstream string, ok bool) {
+	var decoded errorBody
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return "", false
+	}
+	if strings.TrimSpace(decoded.Error.Message) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(decoded.Error.Metadata.ProviderName), true
+}
+
+// catalogKnowsModel reports whether the model in hand is one this process has a
+// catalog row for. It is the clause that separates "nothing can serve this
+// shape" from "there is no such model".
+//
+// THE CATALOG IS ASKED THROUGH ITS PRICE, because a published list price is the
+// only membership question [Config] exposes: ModelPrice answers known=false for
+// a slug the catalog has never resolved, and a published zero — the free
+// variants a router carries — is a real figure that still answers known. There
+// is no Knows(model) resolver to call, and adding one would be a second answer
+// to a question this one already answers on every request that carries a
+// ceiling (velocity.go's priceCeiling).
+//
+// A BUILD WIRED WITH NO ModelPrice AT ALL KNOWS NOTHING, and that is the safe
+// reading rather than a gap: with no way to tell a real model from a typo, the
+// refusal is surfaced as the error it is and the ladder is not entered. Every
+// door that reaches a person wires it (cmd/aforge, internal/config,
+// internal/session), so the class is live where the outage happened.
+func (c *Client) catalogKnowsModel(model string) bool {
+	if c.config.ModelPrice == nil {
+		return false
+	}
+	_, _, known := c.config.ModelPrice(normalizeModel(model))
+	return known
+}
+
+// routingRefusal is the gate on the ladder, and the whole of the answer to
+// "is this the router saying nothing it can reach will serve this shape?".
+// The header above states the five facts and why each one is needed.
+func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
+	if !endpointRefusalStatus(status) {
+		return false
+	}
+	// THE HINT IS ASKED FIRST, so that nothing the old gate caught can be lost
+	// by this one being stricter. A plain OpenAI-compatible endpoint saying
+	// "unsupported parameter" is not a router and has no catalog row in this
+	// build, and it climbed this ladder before the structural clauses existed.
+	if endpointRefusalPhrase(payload) {
+		return true
+	}
+	if !c.isOpenRouter() {
+		return false
+	}
+	upstream, ok := routerErrorEnvelope(payload)
+	if !ok || upstream != "" {
+		return false
+	}
+	return c.catalogKnowsModel(model)
 }
 
 // ── what a retry may take off ───────────────────────────────────────────────
@@ -278,15 +414,40 @@ func (c *Client) recoverFromRefusal(
 	first []byte,
 ) (*http.Response, error) {
 	model := c.modelFor(request)
-	// THE LEDGER LEARNS BEFORE THE LADDER CLIMBS. If this refusal is the price
-	// ceiling's doing and a ceiling was on the wire, the model is marked so the
-	// NEXT call carries none; the ladder below still recovers THIS call.
-	if c.velocity != nil && ceilingRefusal(first) {
-		if prefs := c.providerPreferences(model, knobs); prefs != nil && prefs.MaxPrice != nil {
-			c.velocity.refuseCeiling(model)
-		}
-	}
 	plan := c.relaxationPlan(request, knobs, model)
+	// A ceiling is on the wire when the latency ask put one there, and it is
+	// read BEFORE the memo below writes, so the plan and the memo are looking at
+	// the same request rather than at each other.
+	prefs := c.providerPreferences(model, knobs)
+	carriedCeiling := prefs != nil && prefs.MaxPrice != nil
+	// THE PHRASE LIST'S SECOND JOB. When the router's own sentence said it was
+	// the price or the account's policy that emptied the set, the first rung
+	// SAYS SO — "relaxed the endpoint filter" does not tell somebody watching
+	// that they were being routed under a price ceiling at all, and the ceiling
+	// is the one thing on that rung they may want back. The rung does exactly
+	// the same work either way: max_price rides the same provider object as
+	// require_parameters and ignore, and rung one drops the object.
+	if carriedCeiling && ceilingRefusal(first) && len(plan) > 0 && plan[0].bit == relaxEndpointFilter {
+		plan[0].label = "dropped the price ceiling and relaxed the endpoint filter"
+	}
+	// THE LEDGER LEARNS BEFORE THE LADDER CLIMBS. Reaching this function means
+	// the router refused this request's whole SHAPE; if a price ceiling was one
+	// of the fields on the wire, the model is marked so the NEXT call carries
+	// none. The ladder below still recovers THIS call.
+	//
+	// IT DOES NOT WAIT TO BE TOLD THE PRICE WAS THE REASON. That was the defect,
+	// one layer in: the router names the LAST filter that emptied the set, which
+	// on 2026-08-28 was the data policy and not the price, so a memo gated on
+	// [ceilingRefusal]'s two sentences is a memo one sentence behind. The cost of
+	// memoing a ceiling that was not the cause is bounded and purely monetary —
+	// that model routes at whatever the endpoint charges instead of at list ×
+	// 1.25 for the life of the process, and the ladder's first rung was going to
+	// drop the ceiling on every one of those calls anyway, so the memo only
+	// moves the same outcome earlier. The cost of NOT memoing was a 404 round
+	// trip on every call and a dead task.
+	if c.velocity != nil && carriedCeiling {
+		c.velocity.refuseCeiling(model)
+	}
 	fallbacks := c.fallbackChain(model)
 	total := len(plan) + len(fallbacks)
 	if total == 0 {
@@ -366,7 +527,7 @@ func (c *Client) attemptShaped(
 		return response, nil, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !endpointRefusal(peek) {
+	if readErr != nil || !c.routingRefusal(c.modelFor(request), response.StatusCode, peek) {
 		// Not this class after all. The body is handed back whole — the caller
 		// still has to read the provider's own words to build its error.
 		response.Body = rewound(peek, response.Body)

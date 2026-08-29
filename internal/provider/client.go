@@ -350,7 +350,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		return response, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !endpointRefusal(peek) {
+	if readErr != nil || !c.routingRefusal(c.modelFor(request), response.StatusCode, peek) {
 		// Not this class. The body is handed back whole — a peek must never
 		// shorten what the caller goes on to read.
 		response.Body = rewound(peek, response.Body)
