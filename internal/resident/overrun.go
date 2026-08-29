@@ -290,7 +290,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		// outside the work being weighed. The artifact list is the workspace's
 		// own before-and-after reading of the tree, not the leaf's account of
 		// itself; the gap is what a reviewer named as still missing.
-		Produced: len(artifacts), Remainder: RemainderDigest(gap),
+		Measured: true, Produced: len(artifacts), Remainder: RemainderDigest(gap),
 	}
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {

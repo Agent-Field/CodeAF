@@ -133,9 +133,9 @@ func TestGrowthRoundsAreCountedPerLineage(t *testing.T) {
 	// being tested about. A lineage that changes nothing twice running is
 	// refused before the counter is ever reached; that rule has its own tests.
 	first := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n1"), Lineage: "job-n1",
-		Reason: GrowOverrun, Adding: 1, Produced: 1}
+		Reason: GrowOverrun, Adding: 1, Measured: true, Produced: 1}
 	second := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n2"), Lineage: "job-n2",
-		Reason: GrowOverrun, Adding: 1, Produced: 1}
+		Reason: GrowOverrun, Adding: 1, Measured: true, Produced: 1}
 
 	for round := 1; round <= MaxOverrunRounds; round++ {
 		verdict, err := growJob(context.Background(), graph, nil, first)
@@ -327,7 +327,7 @@ func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testi
 
 	first, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
-		Produced: 0, Remainder: RemainderDigest(gap),
+		Measured: true, Produced: 0, Remainder: RemainderDigest(gap),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -337,7 +337,7 @@ func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testi
 	}
 	admitGrowth(graph, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
-		Produced: 0, Remainder: RemainderDigest(gap),
+		Measured: true, Produced: 0, Remainder: RemainderDigest(gap),
 	}, first, 1)
 
 	// The continuation ran and the reviewer named the same remainder again, in
@@ -345,7 +345,7 @@ func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testi
 	// already bought.
 	second, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
-		Produced: 0, Remainder: RemainderDigest("The  Spacing constants are still not derived; homeCardCap is still 48\n"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("The  Spacing constants are still not derived; homeCardCap is still 48\n"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *tes
 
 	first, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
-		Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -378,12 +378,12 @@ func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *tes
 	}
 	admitGrowth(graph, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun,
-		Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
 	}, first, 1)
 
 	second, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
-		Produced: 0, Remainder: RemainderDigest("still nothing on disk, in different words"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("still nothing on disk, in different words"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -421,19 +421,19 @@ func TestALineageThatChangedFilesKeepsGrowing(t *testing.T) {
 
 	first, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
-		Produced: 0, Remainder: RemainderDigest("the first gap"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("the first gap"),
 	})
 	if err != nil || !first.Allow {
 		t.Fatalf("first round: %+v %v", first, err)
 	}
 	admitGrowth(graph, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
-		Produced: 0, Remainder: RemainderDigest("the first gap"),
+		Measured: true, Produced: 0, Remainder: RemainderDigest("the first gap"),
 	}, first, 1)
 
 	second, err := growJob(context.Background(), graph, nil, GrowRequest{
 		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
-		Produced: 2, Remainder: RemainderDigest("a different gap, with two files now written"),
+		Measured: true, Produced: 2, Remainder: RemainderDigest("a different gap, with two files now written"),
 	})
 	if err != nil {
 		t.Fatal(err)

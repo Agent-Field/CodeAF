@@ -306,13 +306,20 @@ type GrowRequest struct {
 	// needs ("handing over what's done") would describe something that is not
 	// happening, on a node the reader is about to watch finish.
 	Quiet bool
+	// Measured says this caller read the world and Produced is its answer.
+	//
+	// It is a separate field and not a zero test on Produced, because "nobody
+	// looked" and "somebody looked and the answer was nothing" are opposite
+	// facts that a bare zero spells the same way — and a rule that read them as
+	// one would refuse a caller that never measured anything, which is a
+	// fail-safe pointing the wrong way. A growth path with no reading of the
+	// tree keeps exactly the governors it had.
+	Measured bool
 	// Produced is how many files the work this growth reacts to left behind in
 	// the world. It comes from the workspace's own before-and-after reading of
 	// the tree, never from the worker's account of itself, because a worker
 	// that produced nothing is exactly the worker whose account cannot be
-	// trusted about it. Zero on a caller that has no such reading is
-	// indistinguishable from a leaf that wrote nothing, which is why the
-	// standstill rule below needs TWO of them before it refuses anything.
+	// trusted about it. Meaningless unless Measured.
 	Produced int
 	// Remainder is the work this round is being bought to finish, as the
 	// reviewer named it. It is compared against the last round's for equality
@@ -370,7 +377,7 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		noteGrowth(graph, jobRoot, store.JobGrowth{
 			Reason: reason, Lineage: lineage, Adding: req.Adding,
 			Round: round, Allowed: false, Refused: words, Cause: cause,
-			Produced: req.Produced, Remainder: req.Remainder,
+			Measured: req.Measured, Produced: req.Produced, Remainder: req.Remainder,
 		})
 		return verdict, nil
 	}
@@ -400,7 +407,7 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		// out before it writes its first file, and that is exactly the round a
 		// repair exists for, so the first one is never refused here. Two is a
 		// standstill.
-		if req.Produced == 0 && previous.Produced == 0 {
+		if req.Measured && previous.Measured && req.Produced == 0 && previous.Produced == 0 {
 			return refuse(CauseStandstill, RefusedStandstill)
 		}
 	}
@@ -494,7 +501,7 @@ func admitGrowth(graph *store.Store, req GrowRequest, verdict GrowVerdict, splic
 		// then has nothing to compare — which reads as "not measured" and lets
 		// the round through, the fail-safe direction for a bound that has the
 		// round cap under it.
-		Produced: req.Produced, Remainder: req.Remainder,
+		Measured: req.Measured, Produced: req.Produced, Remainder: req.Remainder,
 	})
 }
 
