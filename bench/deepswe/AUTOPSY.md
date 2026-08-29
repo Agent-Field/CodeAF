@@ -1280,3 +1280,61 @@ price is the whole story: nemotron averages $0.00168/call against deepseek's ~$0
   (`The deliverable does not implement any of the 6 requested grid display behaviours`, ue=6 on both). With every
   finished-tree reading blind (`named=0 read=False`), the harness could not have told the difference between this
   and a working run from its own evidence.
+
+## s12 — chat-v3-fix 2045193a (governor, gate-judges-the-tree, reading scope, uncollected suites)
+
+| task | f2p | p2p | exit | settled | $ | wall | nodes | calls | $/call | graded | box |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| textual | 15/20 | 6/6 | 2 | true | 0.280 | 2498s | 16 | 273 | 0.001026 | 14:32Z | quiet |
+| happy-dom | 12/14 | 9/9 | 2 | **false** | 0.307 | 5401s | 12 | 287 | 0.001071 | 15:26Z | contended |
+| igel | **0/24** | 2/2 | 2 | **false** | 0.282 | 5402s | 14 | 296 | 0.000952 | 15:50Z | contended |
+| ink | 0/25 | 49/49 | 2 | true | 0.258 | 4063s | 5 | 279 | 0.000923 | 15:31Z | contended |
+| ofetch | 4/47 | 13/13 | 2 | true | 0.153 | 1686s | 4 | 145 | 0.001053 | 14:19Z | quiet |
+
+**Box contention.** A foreign fleet of ~56 containers appeared ~14:25–14:37Z; 1-min load peaked at 87 against
+20 cores. happy-dom, igel and ink graded inside that window and all three show deadline-metered exhaustions
+(happy-dom 3 of 4, igel and ink 1 of 4); ofetch and textual finished before it and were purely cost-metered.
+Wall-derived numbers for the three contended rows are suspect. No 429s or transport timeouts in any log — the
+contention was CPU, not the provider.
+
+**Gate-lane defect (routed).** ofetch and textual carry the full triple: a gate finding about the content of a
+record file, a round-1 `goal-already-covered` refusal, and `subject: None`. happy-dom, igel and ink journal
+`subject` normally (`tree (191 files)`, `tree (9 files)`, `tree (99 files)`), so the missing subject tracks the
+defect exactly. `goal-already-covered` refused four growth rounds on happy-dom and one each on ofetch/textual.
+Scratch counters now carry values: happy-dom 53, ink 5, textual 1, igel 1.
+
+**ink's after-photograph is fixed.** 4 of 7 finished-tree readings now parse (`named` 26, 43, 43, and 58 at
+red=15) where s10, s11 and n1 were 10/10 blind. Every baseline reading carries `partial: True` — cut rosters
+kept — and the 3 still-blind readings now say why:
+`` `npx ava --tap` ran on the finished tree and was killed at i… ``. The remaining blindness is a suite that
+does not finish, and the reading now records that rather than reporting an empty roster as fact.
+
+### igel s12 — the surface photograph works; a different breakage takes the run to 0
+
+**The surface photograph fires, and it fires on exactly the defect igel s11 could not see.** `task-2` journals
+`surface {"compared": 8, "lost": 8, "names": ["Igel.default_dataset_props", "Igel.default_model_path",
+"Igel.default_model_props", "Igel.default_onnx_model_path", "Igel.description_file", "Igel.evaluation_file",
+"Igel.prediction_file", "Igel.results_path"]}` — including `Igel.results_path`, the single deleted attribute
+that cost s11 all 24 tests with nothing in the store to name it. The gate says it in words: `This work removed a
+public name that existed before it: Igel.default_dataset_props, …`. A repair round was **bought** (`gap` round 1,
+allowed) and it **worked**: `task-2-x1` re-photographs at `{"compared": 1, "lost": 0}`, and every later surface
+event on `-x1`, `-x2-n3`, `-x2-n4`, `-x2-n6` reports `lost: 0`. The s11 hole is closed.
+
+**What holds it at 0 is a new and different breakage, and it is neither regression-blindness nor the wrong file.**
+All 24 hidden tests now fail on `TypeError: 'Configs' object does not support item assignment` — zero occurrences
+of `has no attribute` in the verifier log. The model made `Configs` non-subscriptable. That is a **behaviour
+change on a name that was retained**, so the surface photograph cannot see it by construction: it compares the
+presence of public names, not their semantics, and `Configs.__setitem__` is not a public name in that set.
+The check roster could not see it either — the project's own suite went `named=2` at baseline to `named=54`, with
+a persistent `red=2` that never cleared and never grew, because no project-owned test assigns into `Configs`.
+
+**And the run was cut off before it could find out: the settle was `out-of-wall`.** `task-2-x2` round 3 is
+`allowed=False, cause=out-of-wall` — the first time that cause has appeared in any sweep — with `settled: false`
+at the full 5402s wall, under the foreign-fleet contention. So the answer to "regression, wrong file, or early
+settle" is: **not regression** (the surface mechanism did its job and closed its finding), **not the wrong file**
+(`igel/igel.py` was correctly named and edited, patch `branch-feature_feature-schema-persistence.patch` applied),
+but a **semantic regression invisible to both photographs, plus a wall-truncated settle** that ended the run
+while three revision rounds were still in flight.
+
+The mechanism this wants is the assertion door landing in s14: a behaviour is exercised only when a check the run
+wrote asserts its observables. Nothing in igel s12 asserted that `Configs` still supports item assignment.
