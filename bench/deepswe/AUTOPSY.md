@@ -194,3 +194,76 @@ Three things to fix, in the order the evidence ranks them:
    settling, and refusing to settle on a new failure would have caught both.
 3. **Liveness.** A provider call that hangs for fifteen minutes should not cost
    twenty, and the restart that follows should not throw the leaf's work away.
+
+---
+
+# s3 — the worker roster pinned (`27e43a9c`)
+
+Same five tasks, same model, `"work.workers": "bare"` written into the profile so
+the specialist worker is not installed at all.
+
+| task | seed | reward | f2p | p2p | cost | wall | exit | nodes | test runs | broke at |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ofetch-per-origin-circuit-breaker | s3 | 0 | 37/47 | 12/13 | $0.234 | 1633s | 0 | 3 | 33 | **settlement** — `task-2-x2` |
+| ink-grid-box-layout | s3 | **RIG** | — | — | $0.458 | 4280s | 0 | 3 | 67 | **rig** — patch did not apply |
+| textual-richlog-follow-state | s3 | 0 | **17/20** | **6/6** | $0.147 | 1503s | 0 | 2 | 18 | **settlement** — `task-2-x1` |
+| igel-persist-feature-schema | s3 | **RIG** | — | — | $0.129 | 1910s | 0 | 4 | 0 | **rig** — patch did not apply |
+| happy-dom-…-intersectionobserver | s3 | 0 | **12/14** | 9/9 | $0.049 | 912s | 0 | 1 | 12 | **settlement** — `task-2` |
+
+## The roster held
+
+**No `swe` node in any s3 store** — not run, not even planned. `nodes.subharness`
+and `nodes.splice_subharness` across the five stores contain only `bare` and
+`linear`, where every s1/s2 store carried `splice_subharness = swe` on its leaves
+and happy-dom s1 actually ran one there. The ladder still escalates; it can only
+reach an installed worker:
+
+```
+s1  ↻ Core engine  — escalated linear → swe: escalated from linear after a failed attempt
+s3  ↻ Add follow state — handed to bare: escalated from linear after a failed attempt
+```
+
+## And it changed the scores
+
+Two of the three tasks that graded moved a long way, and both moves trace to the
+escalation landing on `bare` instead of stalling or leaving:
+
+- **textual 2/20 → 17/20 f2p, and 2/6 → 6/6 p2p.** Both earlier seeds shipped a
+  patch that deleted `RichLog._size_known` and never noticed. s3 escalated to
+  `bare` after a failed attempt, got a second node (`task-2-x1`), ran 18 test
+  invocations against 9, and the regression is gone. Three fail-to-pass tests
+  short of reward 1 — the best result of the sweep.
+- **happy-dom graded at all, at 12/14 and 9/9 in 912 seconds.** s1 spent the whole
+  90-minute wall on a leaf that restarted three times and ended void; s2 was lost
+  to a rig defect. With one node and no escalation, s3 came two tests short.
+- **ofetch went the other way**, 41/47 → 37/47, at 4× the spend and 7× the wall.
+
+## What did not change
+
+The settlement finding is untouched. All three graded runs exit **0** with reward
+0, and ink s3 is the clearest statement of the problem in the whole corpus — the
+gate caught the same lie three times and the run settled on it three times:
+
+```
+1h2m6s   gate: fail — The deliverable reports that everything is committed, but the
+                      run record shows the commit command returned an error and no
+                      successful commit is recorded.
+1h7m25s  gate: pass
+1h10m9s  gate: fail — The deliverable claims the commit exists (commit `32df26b`),
+                      but the run record shows no successful commit was made.
+1h11m19s ✓ Commit
+```
+
+Two earlier `gate: refused — what the review asked for next is not in the request`
+at 30m11s and 50m22s. The run then exited 0.
+
+## Two more rig defects, both found by s3
+
+| defect | evidence | fix |
+| --- | --- | --- |
+| The graded diff was taken without `--binary`, so any run that wrote a non-text file produced `Binary files a/x and b/x differ` and `git apply` refused the **whole** patch | igel s3 (`model_results/feature_schema.joblib`) and ink s3 both graded `apply_failed=1` — two of five runs lost | `git diff --cached --binary`, which is what the corpus's own collect command in `task.toml` uses |
+| qemu dumps a core file into the working directory when an emulated process crashes, and `git add -A` sweeps it into the graded diff | ink s3's patch carried `qemu_node_20260829-045200_38233.core` — a node crash under emulation, not the agent's work | exclude emulator core dumps before staging |
+
+Neither is a model failure. igel s3 and ink s3 are recorded as rig failures, not
+zeroes, and both need re-running on the fixed rig before anything is concluded
+from them.
