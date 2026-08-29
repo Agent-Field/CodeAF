@@ -131,6 +131,17 @@ type headlessOutcome struct {
 	// on a corpus needs the default spelled out as much as the specialist, or an
 	// absent field is indistinguishable from an older binary.
 	Subharness string `json:"subharness"`
+	// Error is the sentence a run that never reached an outcome left behind:
+	// the store that would not open, the working directory that could not be
+	// made, the resident that never picked the command up, a journal read that
+	// failed mid-flight. It is empty on every run that produced an answer.
+	//
+	// It exists because --json's whole promise is one object on stdout, and a
+	// promise that only holds when the work succeeds is not one a script can be
+	// written against. Every one of those bail-outs used to print "error: ..."
+	// on stderr and leave stdout EMPTY, which is byte-for-byte what a crashed
+	// process looks like from the other side of a pipe.
+	Error string `json:"error,omitempty"`
 
 	// status is what the process leaves with. It is decided where the outcome
 	// is produced, because only there is the difference visible between a job
@@ -147,7 +158,8 @@ func runDo(args []string) error {
 	timeout := flags.Int("timeout", defaultDoSeconds, "hard wall in seconds")
 	asJSON := flags.Bool("json", false,
 		"print one machine-readable object instead of the deliverable; settled says the errand is over, "+
-			"the exit code says whether it worked, and blocked_on carries a question nobody was here to answer")
+			"the exit code says whether it worked, blocked_on carries a question nobody was here to answer, "+
+			"and error carries the sentence when the run could not start at all")
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
@@ -248,14 +260,58 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 	return nil
 }
 
+// doErrand is the one exit every headless run leaves through.
+//
+// It is a wrapper around the run itself for a single reason: --json promises a
+// machine-readable object and must keep that promise on the paths where nothing
+// worked. Every bail-out inside errandRun — an unopenable store, a directory
+// that will not be made, a resident that never picked the command up, a journal
+// read that failed under the watcher — used to land in main's "error: ..." line
+// with EMPTY stdout, and a caller reading stdout could not tell a store failure
+// from a crash. So a --json run routes its failures through the same printer as
+// its successes: one object, the sentence in its error field, and exit 1, which
+// is what the table already promised for a run with nothing usable in it.
+//
+// A person at a terminal sees exactly what they always saw. The error goes back
+// to main, which says it on stderr — an ordinary run has no object to put it in
+// and never wanted one.
 func doErrand(request doRequest) error {
 	started := time.Now()
+	outcome, err := errandRun(request, started)
+	if err != nil {
+		if !request.asJSON {
+			return err
+		}
+		return reportErrand(request, failedErrand(err, started))
+	}
+	return reportErrand(request, outcome)
+}
+
+// failedErrand is what --json prints for a run that never got as far as an
+// outcome of its own. Settled is false because nothing was ever waiting to
+// move, and everything the run never learned — the deliverable, the bill, the
+// worker that took it — stays at its zero rather than being filled in with a
+// guess.
+func failedErrand(err error, started time.Time) headlessOutcome {
+	return headlessOutcome{
+		Artifacts: []string{},
+		Seconds:   time.Since(started).Seconds(),
+		Error:     err.Error(),
+		status:    exitFailed,
+	}
+}
+
+// errandRun is the errand itself: everything from opening a store to composing
+// what came of it. It reports nothing and decides no exit code — both belong to
+// doErrand, so that a failure anywhere in here reaches the caller through the
+// same door as an answer.
+func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 	path, home, ephemeral, err := headlessStore(request.database)
 	if err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 	if ephemeral && !request.keep {
 		defer func() { _ = os.RemoveAll(home) }()
@@ -264,13 +320,13 @@ func doErrand(request doRequest) error {
 		fmt.Fprintf(request.stderr, "store kept at %s\n", home)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create the store directory: %w", err)
+		return headlessOutcome{}, fmt.Errorf("create the store directory: %w", err)
 	}
 
 	session := headlessSessionID()
 	window, err := openChatWindow(path, path, session)
 	if err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 	defer window.close()
 	graph := window.graph
@@ -297,7 +353,7 @@ func doErrand(request doRequest) error {
 		Instruction: request.task,
 	})
 	if err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 
 	// A refused price is recorded rather than returned, because the desk is
@@ -318,12 +374,12 @@ func doErrand(request doRequest) error {
 
 	brain, release, deferredTo, err := headlessBrain(window, session, request, consent, ephemeral)
 	if err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 	if deferredTo != nil {
 		if err := awaitResidentPickup(graph, command.Seq, deferredTo, path,
 			request.residentWaitOrDefault(), request.stderr); err != nil {
-			return err
+			return headlessOutcome{}, err
 		}
 	}
 	if release != nil {
@@ -347,7 +403,7 @@ func doErrand(request doRequest) error {
 	}
 	outcome, err := watcher.wait(ctx)
 	if err != nil {
-		return err
+		return headlessOutcome{}, err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
 	// The wall is the case that made this necessary. A leaf cancelled by the
@@ -357,7 +413,7 @@ func doErrand(request doRequest) error {
 	// leaf landing that late is the whole of the 36 % under-report.
 	settle()
 	priceErrand(graph, session, openedAt, &outcome)
-	return reportErrand(request, outcome)
+	return outcome, nil
 }
 
 // priceErrand puts the journal's own answer on the outcome.
@@ -583,8 +639,11 @@ type settlementWatch struct {
 	// the first thing stderr ever carried was a leaf changing status, so a run
 	// that compiled and then hung showed nothing at all.
 	structured bool
-	// moved and said are the two clocks the quiet line reads: when the journal
-	// last changed, and when this watcher last admitted to being alive.
+	// moved and said are the two clocks the quiet line reads: when a node this
+	// errand owns last changed state, and when this watcher last admitted to
+	// being alive. The first is deliberately not the journal's own watermark —
+	// a store with other work in it grows all day, and a run wedged beside that
+	// growth is exactly the run this line exists for.
 	lastMoved time.Time
 	lastSaid  time.Time
 	// quiet is how long silence may last. Zero is quietBeat; a test names a
@@ -642,19 +701,27 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			if !moved {
-				if err := w.saySomethingIfQuiet(); err != nil {
+			if moved {
+				outcome, settled, err := w.check()
+				if err != nil {
 					return headlessOutcome{}, err
 				}
-				continue
+				if settled {
+					return outcome, nil
+				}
 			}
-			w.lastMoved = time.Now()
-			outcome, settled, err := w.check()
-			if err != nil {
+			// SILENCE IS ABOUT THE WORK, NOT ABOUT THE JOURNAL.
+			//
+			// This used to be the else-branch of the watermark: any event at
+			// all reset the clock and the quiet line was never even reached.
+			// But a journal that is moving is not a job that is moving — a
+			// sibling billing usage rows every few seconds is enough to keep
+			// the watermark climbing while the one node anybody cares about is
+			// wedged, and that run printed nothing for the whole of its life.
+			// So the clock is reset by check(), and only when a node this
+			// errand owns actually changed state.
+			if err := w.saySomethingIfQuiet(); err != nil {
 				return headlessOutcome{}, err
-			}
-			if settled {
-				return outcome, nil
 			}
 		}
 	}
@@ -725,7 +792,9 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 	if len(nodes) == 0 {
 		return headlessOutcome{}, false, nil
 	}
-	w.report(nodes)
+	if w.report(nodes) {
+		w.lastMoved = time.Now()
+	}
 	for _, node := range nodes {
 		if !terminalStatus(node.Status) {
 			return headlessOutcome{}, false, nil
@@ -808,9 +877,14 @@ func (w *settlementWatch) sessionNodes() ([]store.Node, error) {
 // report writes one line per state change to stderr, so a person watching a
 // long run can see the graph moving without the deliverable on stdout
 // acquiring a single byte of it.
-func (w *settlementWatch) report(nodes []store.Node) {
+//
+// It answers whether anything actually moved, because that is the only reading
+// of "this run is still alive" the quiet line may trust: a node it has never
+// seen, or one that is not where it was. Everything else in the journal belongs
+// to somebody else's work.
+func (w *settlementWatch) report(nodes []store.Node) bool {
 	if w.progress == nil {
-		return
+		return false
 	}
 	if w.seen == nil {
 		w.seen = make(map[string]store.Status, len(nodes))
@@ -833,10 +907,12 @@ func (w *settlementWatch) report(nodes []store.Node) {
 			plural(len(nodes), "task"), worker, time.Since(w.started).Round(time.Second))
 	}
 	w.noteDegradedWorkers(nodes)
+	changed := false
 	for _, node := range nodes {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
 			continue
 		}
+		changed = true
 		w.seen[node.ID] = node.Status
 		if node.Status == store.Pending {
 			continue
@@ -844,6 +920,7 @@ func (w *settlementWatch) report(nodes []store.Node) {
 		fmt.Fprintf(w.progress, "  %s %-28s %s\n", statusMark(node.Status),
 			clip(firstLine(nodeDisplay(node)), 28), time.Since(w.started).Round(time.Second))
 	}
+	return changed
 }
 
 // errandWorker is the specialist this errand was given, if it was given one. It
@@ -890,10 +967,11 @@ func (w *settlementWatch) noteDegradedWorkers(nodes []store.Node) {
 // saySomethingIfQuiet accounts for a run that has stopped producing evidence.
 //
 // It is a structural read and nothing else: how many of this errand's nodes are
-// waiting, how many are running, and how long since anything last happened. A
-// run thinking hard and a run wedged forever emit exactly the same silence, and
-// the only honest difference a watcher can offer is to name what the silence is
-// standing on. Nothing here spends money and nothing here is a new flag.
+// waiting, how many are running, the model call the silence is standing on, and
+// how long the run has been going. A run thinking hard and a run wedged forever
+// emit exactly the same silence, and the only honest difference a watcher can
+// offer is to name what the silence is standing on. Nothing here spends money
+// and nothing here is a new flag.
 func (w *settlementWatch) saySomethingIfQuiet() error {
 	interval := w.quietInterval()
 	if w.progress == nil || time.Since(w.lastMoved) < interval || time.Since(w.lastSaid) < interval {
@@ -914,8 +992,9 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 	// every other progress line in this file already prints, and the only one
 	// that can never run backwards.
 	elapsed := time.Since(w.started).Round(time.Second)
+	call := w.lastCallWords()
 	if len(nodes) == 0 {
-		fmt.Fprintf(w.progress, "  still waiting: the task is being turned into work — %s\n", elapsed)
+		fmt.Fprintf(w.progress, "  still waiting: the task is being turned into work%s — %s\n", call, elapsed)
 		return nil
 	}
 	var pending, running int
@@ -927,9 +1006,35 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 			pending++
 		}
 	}
-	fmt.Fprintf(w.progress, "  still waiting: %s pending, %s — %s\n",
-		plural(pending, "task"), runningWords(running), elapsed)
+	fmt.Fprintf(w.progress, "  still waiting: %s pending, %s%s — %s\n",
+		plural(pending, "task"), runningWords(running), call, elapsed)
 	return nil
+}
+
+// lastCallWords names the model call this silence is standing on.
+//
+// A run that spent fifteen minutes inside one model call said "1 task pending,
+// 1 running — 4m30s" and then left with exit 2, and nothing anywhere named the
+// model or said when it had last been heard from — the two facts anyone looking
+// at a wedged run wants first. The journal already knows both: every finished
+// call writes a usage row carrying the model that served it, so the newest row
+// this errand caused is the last thing that demonstrably happened.
+//
+// A run with no call recorded yet says nothing about calls at all, rather than
+// "0s ago" or "none". A model that has not been reached and a model that
+// answered a moment ago are different situations, and a zero invented for the
+// first is how they stop being told apart. A read that fails says nothing for
+// the same reason and never ends the run: this line is an account of the work,
+// never a part of it.
+func (w *settlementWatch) lastCallWords() string {
+	if w.graph == nil {
+		return ""
+	}
+	call, found, err := w.graph.LastNamedCallSinceSeq(w.session, w.commandSeq)
+	if err != nil || !found {
+		return ""
+	}
+	return fmt.Sprintf(" · last call %s %s ago", call.Model, time.Since(call.At).Round(time.Second))
 }
 
 // runningWords says "none running" rather than "0 running", because the whole

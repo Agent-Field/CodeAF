@@ -1113,6 +1113,49 @@ const errandSpendQuery = `
 		FROM usage LEFT JOIN nodes ON nodes.id = usage.node_id
 		WHERE usage.seq > ?`
 
+// LastCall is one model call as the journal remembers it: which model served it
+// and when its usage row landed. It is what a watcher with nothing else to go on
+// can say about a silence.
+type LastCall struct {
+	Model string
+	At    time.Time
+}
+
+// LastNamedCallSinceSeq is the newest model call this errand has caused since
+// the journal stood at sinceSeq — the same window SpendSinceSeq bills over, and
+// the same membership: the session's own nodes plus the root-billed spine,
+// because a run wedged in a planning pass owns no nodes yet and the planner's
+// row is the only evidence it left.
+//
+// Rows with no model name are skipped rather than returned nameless. A call
+// whose server was never recorded cannot answer the question this read exists
+// for — WHICH model is this waiting on — and half an answer here reads as a
+// fact. Nothing found is reported as nothing found, so a caller says nothing at
+// all rather than inventing a zero.
+func (s *Store) LastNamedCallSinceSeq(sessionID string, sinceSeq int64) (LastCall, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	var call LastCall
+	var stamp string
+	err := s.db.QueryRow(`
+		SELECT usage.model, usage.ts
+		FROM usage LEFT JOIN nodes ON nodes.id = usage.node_id
+		WHERE usage.seq > ? AND usage.model <> ''
+		  AND (nodes.session_id = ? OR usage.node_id = ?)
+		ORDER BY usage.seq DESC LIMIT 1`, sinceSeq, sessionID, RootID).Scan(&call.Model, &stamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return LastCall{}, false, nil
+	}
+	if err != nil {
+		return LastCall{}, false, fmt.Errorf("last call since %d: %w", sinceSeq, err)
+	}
+	at, err := parseTime(stamp)
+	if err != nil {
+		return LastCall{}, false, fmt.Errorf("last call since %d: %w", sinceSeq, err)
+	}
+	call.At = at
+	return call, true, nil
+}
+
 // NodeSpend is what one job and everything under it has actually cost: the
 // usage rows themselves, summed, with the number of priced model calls behind
 // the figure.
