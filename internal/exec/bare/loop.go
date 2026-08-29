@@ -437,7 +437,14 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 			if l.sweep != nil {
 				file = l.sweep()
 			}
+			// A COMMAND THAT IS RUNNING IS A WORKER THAT IS ALIVE. This span is
+			// the only thing the claim reaper can read about a leaf spending
+			// seven minutes inside one `go test`: the record is batched and
+			// nothing reaches the store until the batch fills. See
+			// exec.Working.
+			done := exec.Working(ctx)
 			text, isError, err := tool.Execute(ctx, args)
+			done()
 			if file != nil {
 				file()
 			}
@@ -490,7 +497,13 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 	// them took an endpoint out of the ledger, which is what decides the budget.
 	cuts, rerouted := 0, false
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// The same span around the other thing a leaf waits on. The stream
+		// guard already cuts a call that has gone silent, so this is not a
+		// safety net — it is the honest reading of a long reply that is still
+		// arriving, which is a worker at work and not a claim to reap.
+		callDone := exec.Working(ctx)
 		response, err := l.client.CompleteWithMessages(ctx, l.messages, ai.WithTools(defs))
+		callDone()
 		if err == nil {
 			return response, nil
 		}

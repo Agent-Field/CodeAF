@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -194,4 +195,118 @@ func journalOrder(t *testing.T, graph *store.Store, nodeID string, token uint64)
 		}
 	}
 	return stopped, released
+}
+
+// A CALL IN FLIGHT IS A SIGN OF LIFE, AND IT IS THE ONE THE JOURNAL CANNOT HOLD.
+//
+// Every durable mark a worker leaves is written when something FINISHES — a
+// usage row when a call is billed, a transcript flush when sixty-four entries
+// fill — so a leaf spending its whole window inside one long shell command
+// writes nothing at all and reads, to a sweep of the store, as a corpse. This is
+// the case that made the batching in store/transcript.go and the reaper
+// incompatible, and it is answered without a flush timer: the process doing the
+// waiting says it is waiting.
+//
+// Both halves are driven by calling Tick directly rather than by running Serve,
+// so what is being measured is the sweep's judgement and not the dispatch
+// loop's poll interval.
+func TestALeafInsideOneLongCommandIsNotReaped(t *testing.T) {
+	graph := openRunnerStore(t)
+	spliceOneLeaf(t, graph, "task-2")
+
+	const window = 60 * time.Millisecond
+	started := make(chan struct{}, 4)
+	var mu sync.Mutex
+	reapedDuringTheCommand := false
+
+	runner := NewRunner(graph, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		started <- struct{}{}
+		// One command, three windows long, writing nothing to the store: no
+		// usage row, no transcript flush, no turn recorded.
+		defer executor.Working(ctx)()
+		select {
+		case <-time.After(3 * window):
+		case <-ctx.Done():
+			mu.Lock()
+			reapedDuringTheCommand = true
+			mu.Unlock()
+		}
+		return ExecResult{Summary: "the command finished"}, nil
+	}, "reaper", 2)
+	runner.WithStaleAge(window)
+
+	ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	if _, err := runner.Tick(ctx); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	waitFor(t, started, "the leaf never started")
+	sweepFor(t, runner, ctx, 4*window)
+	runner.Wait()
+
+	mu.Lock()
+	reaped := reapedDuringTheCommand
+	mu.Unlock()
+	if reaped {
+		t.Fatal("a leaf waiting on one long command was reaped — the sweep read only what had already been written down")
+	}
+	node, _, err := graph.Node("task-2")
+	if err != nil {
+		t.Fatalf("read node: %v", err)
+	}
+	if node.Status != store.Done {
+		t.Fatalf("task-2 is %s, want the command's own landing", node.Status)
+	}
+}
+
+// And the same leaf with nothing in flight is reaped, which is what keeps the
+// mark honest: it reports work, it does not confer immunity.
+func TestALeafWithNothingInFlightIsStillReaped(t *testing.T) {
+	graph := openRunnerStore(t)
+	spliceOneLeaf(t, graph, "task-2")
+
+	const window = 60 * time.Millisecond
+	started := make(chan struct{}, 4)
+	cancelled := make(chan struct{}, 4)
+
+	runner := NewRunner(graph, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		started <- struct{}{}
+		// The same three windows of wall clock, and nothing to show for them:
+		// no tool issued, no model call, nothing recorded.
+		select {
+		case <-time.After(3 * window):
+		case <-ctx.Done():
+			cancelled <- struct{}{}
+			return ExecResult{}, ctx.Err()
+		}
+		return ExecResult{Summary: "never reached"}, nil
+	}, "reaper", 2)
+	runner.WithStaleAge(window)
+
+	ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	if _, err := runner.Tick(ctx); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	waitFor(t, started, "the leaf never started")
+	sweepFor(t, runner, ctx, 4*window)
+	select {
+	case <-cancelled:
+	default:
+		t.Fatal("a leaf with no call in flight and nothing written down was left holding its claim")
+	}
+	runner.Wait()
+}
+
+// sweepFor runs the reaper's own pass repeatedly for a stretch of wall clock, so
+// a test measures what the sweep decides rather than how often Serve polls.
+func sweepFor(t *testing.T, runner *Runner, ctx context.Context, howLong time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(howLong)
+	for time.Now().Before(deadline) {
+		if _, err := runner.Tick(ctx); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+		time.Sleep(howLong / 20)
+	}
 }

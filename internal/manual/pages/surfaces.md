@@ -220,9 +220,10 @@ why. Three lines, and they are three different things:
 tokens. **Nothing failed**: it was still working, and what it reached is kept.
 
 `✗ picked up again` is the backstop. Work is only taken off a worker that has
-shown **no sign of life** — no model call and no recorded turn — for the whole
-window, which is well past any deadline the worker itself was given. A worker
-that keeps working keeps its work, however long it takes.
+shown **no sign of life** for the whole window, which is well past any deadline
+the worker itself was given. A command that is still running counts, however long
+it takes — a build or a test suite that takes ten minutes is a worker at work,
+not a worker to interrupt. A worker that keeps working keeps its work.
 
 And the worker is **stopped first**. Nothing else can pick the work up until the
 one that had it has actually let go, so two workers never share one folder.
