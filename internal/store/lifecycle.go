@@ -40,6 +40,15 @@ type releasePayload struct {
 	// the store afterwards could not tell a reaped claim from a worker's own
 	// hand-back. See [Store.ReleaseSilent].
 	Reason string `json:"reason,omitempty"`
+	// Recorded is how many of the worker's turns survived on the node's record
+	// and are waiting for the next claim. It is written by the one release that
+	// is PROGRESS — a leaf that ran out of the room it was given, going back on
+	// the queue to be carried on from (exec.Requeued) — and is absent from every
+	// other, because a claim taken off a worker that never answered has nothing
+	// to hand on. It is the fact, not the sentence: a reader that had to decide
+	// the register by matching words in Reason would be answering privately a
+	// question the record already answers.
+	Recorded int `json:"recorded,omitempty"`
 }
 
 // Claim atomically moves a ready pending node to claimed. The UPDATE includes
@@ -327,17 +336,29 @@ func (s *Store) Fail(claim Claim, message string) error {
 // again. The extra increment is what makes the released Claim stale before a
 // replacement worker even arrives.
 func (s *Store) Release(claim Claim) error {
-	return s.release(claim, "")
+	return s.release(claim, "", 0)
 }
 
 // ReleaseWithReason is Release with the sentence that explains it, journaled on
 // the release itself. Everything that takes a claim back from a worker that did
 // not offer it uses this one, so the record always says who decided and why.
 func (s *Store) ReleaseWithReason(claim Claim, reason string) error {
-	return s.release(claim, reason)
+	return s.release(claim, reason, 0)
 }
 
-func (s *Store) release(claim Claim, reason string) error {
+// ReleaseWithRecord is ReleaseWithReason for the one release that hands work on
+// rather than takes it away: a leaf that ran out of its room, whose recorded
+// turns the next claim will carry on from. The count is journaled beside the
+// reason so a reader can tell this release from the reaper's without reading the
+// sentence — see [releasePayload.Recorded].
+func (s *Store) ReleaseWithRecord(claim Claim, reason string, recorded int) error {
+	if recorded < 0 {
+		recorded = 0
+	}
+	return s.release(claim, reason, recorded)
+}
+
+func (s *Store) release(claim Claim, reason string, recorded int) error {
 	if claim.ID == RootID {
 		// The spine root's Running status is structural — it is the permanent
 		// trunk every job splices under, not a claim any worker holds.
@@ -367,7 +388,7 @@ func (s *Store) release(claim Claim, reason string) error {
 	}
 	payload := releasePayload{
 		Owner: claim.Owner, Token: claim.Token, NextToken: claim.Token + 1,
-		Reason: bounded(strings.TrimSpace(reason), MaxDigestBytes),
+		Reason: bounded(strings.TrimSpace(reason), MaxDigestBytes), Recorded: recorded,
 	}
 	seq, _, err := appendEvent(tx, claim.ID, EventNodeReleased, payload)
 	if err != nil {

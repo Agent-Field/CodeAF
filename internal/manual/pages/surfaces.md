@@ -207,11 +207,14 @@ means one model call went quiet and was cut. **The call was asked again, not the
 work.** Everything the worker had already done is still in hand, and the endpoint
 that went quiet is set aside for a few minutes so the retry goes somewhere else.
 
+## When work is picked up again, restarted or resumed — `⏳`, `↻` and `✗`
+
 If a piece of work does have to be picked up again, the stream says so and says
-why. Three lines, and they are three different things:
+why. Four lines, and they are four different things:
 
 ```
   ⏳ Core engine                  — it was still working when it ran out of its 15m0s — 72 turns in
+  ↻ Core engine                  — picked up again from 45 recorded turns
   ✗ Core engine                  — picked up again — no sign of life for 24m3s …
   ↻ Core engine                  — resumed from 45 recorded turns, already holding styles.ts, grid-layout.ts
 ```
@@ -219,11 +222,17 @@ why. Three lines, and they are three different things:
 `⏳` is work that ran out of the room it was given — its time, its turns or its
 tokens. **Nothing failed**: it was still working, and what it reached is kept.
 
-`✗ picked up again` is the backstop. Work is only taken off a worker that has
-shown **no sign of life** for the whole window, which is well past any deadline
-the worker itself was given. A command that is still running counts, however long
-it takes — a build or a test suite that takes ten minutes is a worker at work,
-not a worker to interrupt. A worker that keeps working keeps its work.
+`↻ picked up again from N recorded turns` is what follows it: the piece goes
+back on the queue with its record, and the count is how much is waiting there
+for whoever takes it next. **This is progress, not a fault** — running out of
+room is the input the planner uses to decide whether the piece needs more of it.
+
+`✗ picked up again` is the backstop, and it is the only one of the four that is
+a fault. Work is only taken off a worker that has shown **no sign of life** for
+the whole window, which is well past any deadline the worker itself was given. A
+command that is still running counts, however long it takes — a build or a test
+suite that takes ten minutes is a worker at work, not a worker to interrupt. A
+worker that keeps working keeps its work.
 
 And the worker is **stopped first**. Nothing else can pick the work up until the
 one that had it has actually let go, so two workers never share one folder.

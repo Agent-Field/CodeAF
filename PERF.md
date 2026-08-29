@@ -876,8 +876,15 @@ and the run met none of them.
 
 ### The claim reaper is the backstop, not the detector
 
-`internal/resident`'s `staleClaimAge` is `leafDeadlineFloor + claimReaperPad` —
-fifteen minutes plus five — and it is **raised** by `Runner.RaiseStaleAge` to
+`internal/resident`'s `staleClaimAge` is the generalist's own deadline floor
+plus `claimReaperPad` — fifteen minutes plus five — and it reads that floor from
+`exec.SubharnessInfo.Deadline`, WHICH IS THE ONLY PLACE IN THE PROCESS THAT
+SIZES A LEAF'S ROOM. It was a fifteen-minute constant of its own until
+2026-08-29, one of five copies of the same arithmetic and seven of the watchdog
+pad above it; a floor raised in one of them would have put this backstop below
+the deadline it exists to sit above. `internal/exec`'s
+`TestOnlyTheSubharnessTableSizesALeafsRoom` fails the build on a sixth copy.
+It is **raised** by `Runner.RaiseStaleAge` to
 `that leaf's own watchdog + claimReaperPad` whenever a surface grants a longer
 deadline, because a leaf's deadline scales with its budget and a reaper firing
 below a worker's own deadline is not a backstop, it is the thing that fires

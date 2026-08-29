@@ -49,9 +49,11 @@ type Scheduler struct {
 
 	// NodeTimeout is the watchdog on a single node. The executor has its own
 	// deadline, so this only fires when an executor is wedged past every
-	// deadline it was given — a hung pipe, a stuck transport. The node is
-	// recorded as failed and abandoned rather than letting one stuck goroutine
-	// freeze the run silently and forever. Zero disables it.
+	// deadline it was given — a hung pipe, a stuck transport. The ending is
+	// recorded as an [Abandoned] rather than letting one stuck goroutine freeze
+	// the run silently and forever, and what that ending MEANS is decided in
+	// [Scheduler.apply]: a node with a record goes back on the queue, and a node
+	// that reached nothing is failed. Zero disables it.
 	NodeTimeout time.Duration
 
 	// BeforeLaunch applies process policy immediately before a leaf starts.
@@ -73,6 +75,11 @@ const stallAfter = 3 * time.Minute
 // land. Their contexts are already cancelled, so an honest executor returns
 // in seconds; anything still out after this is recorded and abandoned.
 const drainGrace = 30 * time.Second
+
+// exhaustionRequeues is how many times one node may go back on the queue for
+// having run out of the room it was given, rather than being settled failed.
+// The reasoning is beside the rule, in [Scheduler.apply].
+const exhaustionRequeues = 1
 
 // Event is one thing happening to one node.
 type Event struct {
@@ -246,16 +253,19 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			now := time.Now()
 			for id, flight := range inFlight {
 				if flight.timeout > 0 && now.Sub(flight.started) > flight.timeout {
-					node := graph.Node(id)
 					flight.cancel()
-					terminated := flight.control.terminate()
-					node.State = plan.StateFailed
-					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", flight.timeout.Round(time.Second))
-					if terminated > 0 {
-						node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+					// The ending is TYPED and its sentence is written once, by
+					// [Abandoned.Error]. Spelling it out here as well was the
+					// same sentence in two files, and the two were then read by
+					// code that had to agree about what it meant: what happens
+					// to an abandoned node is decided in apply below, from the
+					// type, so the words are nobody's evidence.
+					var abandoned error = &Abandoned{After: flight.timeout}
+					if terminated := flight.control.terminate(); terminated > 0 {
+						abandoned = fmt.Errorf("%w; %d background jobs terminated at leaf end", abandoned, terminated)
 					}
-					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 					delete(inFlight, id)
+					s.apply(graph, id, nil, abandoned, started, retries)
 				}
 			}
 			// A silent run is indistinguishable from a dead one. When nothing
@@ -307,7 +317,7 @@ func (s *Scheduler) timeoutFor(task Task) time.Duration {
 	if name == "" || name == LinearSubharness || !KnownSubharness(name) {
 		return timeout
 	}
-	if shaped := SubharnessFor(name).Deadline(0) + 2*time.Minute; shaped > timeout {
+	if shaped := SubharnessFor(name).Watchdog(0); shaped > timeout {
 		return shaped
 	}
 	return timeout
@@ -730,6 +740,31 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		node.State = plan.StatePending
 		s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StatePending,
 			Detail:  fmt.Sprintf("%s — retrying on a stronger model", outcome.Verdict),
+			Elapsed: time.Since(started)})
+		return
+	}
+	// AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK, and this
+	// scheduler used to be the last place that still answered it with a
+	// failure. The rule is [Requeued] — the same function resident.Runner.runOne
+	// asks — so the one-shot surface and the resident cannot disagree about what
+	// a spent clock means; what is local here is only what the record IS. There
+	// is no transcript bank on this side, so what a requeued node resumes from
+	// is its own row: the turns, the tokens and the result an earlier attempt
+	// left on it, all of which survive the requeue untouched.
+	//
+	// AND IT IS BOUNDED BY exhaustionRequeues, which the resident does not need.
+	// Its bank grows with every attempt, so "is there something to resume from"
+	// is a question whose answer moves and an attempt that recorded nothing ends
+	// the chain. This node's record is written only when an attempt LANDS, so a
+	// second abandonment reads exactly what the first one read, and the gate
+	// alone would put the node back on the queue forever.
+	if _, recorded, requeue := Requeued(err, func() int { return node.Turns }); requeue &&
+		retries != nil && retries[nodeID] < exhaustionRequeues {
+		retries[nodeID]++
+		node.State = plan.StatePending
+		s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StatePending,
+			Detail: fmt.Sprintf("ran out of the room it was given — back on the queue with %d turns recorded",
+				recorded),
 			Elapsed: time.Since(started)})
 		return
 	}

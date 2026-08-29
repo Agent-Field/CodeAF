@@ -456,6 +456,24 @@ from being an unbounded retry: a re-claim that reads an empty record is the same
 cold start again, and an attempt that recorded not one turn before the clock
 stopped it has told us the only thing it is going to.
 
+The rule is one function, `exec.Requeued`, and BOTH schedulers ask it. The
+resident's was fixed first and the one-shot `aforge run` scheduler went on
+failing an abandoned node outright for a day afterwards — the same defect, one
+package along, in code nobody had looked at because the sentence it printed was
+the same. What is local to each caller is only what the RECORD is: the resident
+reads the transcript bank, and the one-shot scheduler, which has none, reads the
+node's own row and is bounded to a single requeue because a record that cannot
+grow would send the node round forever.
+
+And the requeue is said in the register it belongs to. The stream marked every
+release that carried a reason with `✗`, so the ordinary end of a leaf that ran
+out of its room was announced as a fault one line under the `⏳` that had just
+said, correctly, that nothing had failed. The release now carries the count of
+recorded turns it hands on — the same fact the next claim's resume seed is built
+from — and a release that hands work on reads `↻ … picked up again from 45
+recorded turns`. `✗` is kept for the release it was added for: a claim taken back
+over a worker that never answered, which hands on nothing.
+
 And the deadline now reaches the growth governor. `Outcome.Overran()` excludes
 the clock on purpose — it answers "was this leaf too big for its TOKEN
 envelope" — so reading it at the continuation site meant the one ending that most
