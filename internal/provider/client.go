@@ -471,6 +471,42 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if err != nil {
 		return nil, err
 	}
+	response, err := c.completeOnce(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	// AN EMPTY ANSWER AT THE CEILING IS A FACT, NOT A RESULT. The 400 path above
+	// learns a model that refuses the disable; this is the other way the same
+	// thing shows — the endpoint accepted the disable, thought anyway, and the
+	// whole ceiling went to the pass. Learned once, the next encode leaves room
+	// (wire.go's thinkingCeiling), so the call is made again with the answer it
+	// was always going to need. Once, because a second empty answer WITH the
+	// room is a model that has nothing to say, and that is the caller's to hear.
+	if c.learnFromAnswer(c.modelFor(request), request, response) {
+		return c.completeOnce(ctx, request)
+	}
+	return response, nil
+}
+
+// learnFromAnswer reads one answer for the fact the adapter can act on and
+// reports whether the next encode will differ. It stays silent for a model
+// the memo already knows — the room was already there, so a blank answer
+// says nothing new — and for a call that set no ceiling to spend.
+func (c *Client) learnFromAnswer(model string, request *ai.Request, response *ai.Response) bool {
+	if request.MaxTokens == nil || ReasoningUnavoidable(model) {
+		return false
+	}
+	if !EmptyAtCeiling(response, *request.MaxTokens) {
+		return false
+	}
+	NoteReasoningDisableIgnored(model)
+	return true
+}
+
+// completeOnce is one send and one parse: the request as shaped, the answer as
+// served, and the measurements both feed. CompleteWithMessages owns the
+// decision to do it twice.
+func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Response, error) {
 	began := c.clock()
 	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), false)
 	if err != nil {

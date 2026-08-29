@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -23,6 +24,21 @@ func FinishReason(response *ai.Response) string {
 		return ""
 	}
 	return response.Choices[0].FinishReason
+}
+
+// EmptyAtCeiling is the one answer shape that says more room would change the
+// result: no text, a "length" finish, and the whole ceiling spent. It is
+// deliberately narrower than "blank" — a refusal or a cut stream also has no
+// text, but neither of those is cured by a larger max_tokens. It is the
+// signature of a thinking pass that ate the answer, and it is defined once so
+// the adapter's recovery, the reflex's, and the bill that journals a paid call
+// all call the same thing empty.
+func EmptyAtCeiling(response *ai.Response, ceiling int) bool {
+	if response == nil || strings.TrimSpace(response.Text()) != "" ||
+		!strings.EqualFold(strings.TrimSpace(FinishReason(response)), "length") {
+		return false
+	}
+	return response.Usage == nil || response.Usage.CompletionTokens >= ceiling
 }
 
 // Streaming reports whether a call made on this context is served over the

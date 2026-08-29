@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // strictHandler answers a disable the way MiniMax M2.7's endpoint does, and
@@ -213,4 +216,84 @@ func (c *capture) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.bodies)
+}
+
+// A model that cannot stop thinking bills the pass against the same ceiling as
+// the answer. The failure this pins: the intent compiler on z-ai/glm-5.3-flash
+// asked for 10273 tokens, the model spent 10651 thinking, the answer was empty,
+// and a headless run died before it had built a single node.
+func TestAnAlwaysThinkingModelIsSentRoomForItsThinkingPass(t *testing.T) {
+	quirksAt(t, "strict/always-reasons")
+	client, recorded := newStrictClient(t, "strict/always-reasons")
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	if _, err := client.CompleteWithMessages(ctx, userMessages("plan this"), ai.WithMaxTokens(1000)); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.count() != 2 {
+		t.Fatalf("sent %d requests, want the rejected one and its repair", recorded.count())
+	}
+	// The ceiling the caller asked for, right up until the endpoint said no.
+	if got := recorded.body(0)["max_tokens"]; got != float64(1000) {
+		t.Fatalf("first request max_tokens = %v, want the caller's own 1000", got)
+	}
+	// And the room, the moment the fact is known — on the repair itself, not
+	// on some later call, because the repair is the call that needs it.
+	if got := recorded.body(1)["max_tokens"]; got != float64(1000+ThinkingHeadroomTokens) {
+		t.Fatalf("repaired request max_tokens = %v, want %d", got, 1000+ThinkingHeadroomTokens)
+	}
+}
+
+// ignoringHandler is the other way the same fact shows: the endpoint takes the
+// disable without complaint, thinks anyway, and returns nothing once the whole
+// ceiling is spent. Only a ceiling with the room in it gets an answer.
+func ignoringHandler(recorded *capture, needs int) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		body := recorded.body(recorded.count() - 1)
+		ceiling, _ := body["max_tokens"].(float64)
+		writer.Header().Set("Content-Type", "application/json")
+		if int(ceiling) < needs {
+			_, _ = writer.Write([]byte(`{"model":"quiet/model","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":10,"completion_tokens":` + strconv.Itoa(int(ceiling)) + `}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"model":"quiet/model","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":2}}`))
+	})
+}
+
+func TestAnEmptyAnswerAtTheCeilingTeachesTheAdapterToLeaveRoom(t *testing.T) {
+	quirksAt(t, "quiet/thinks-anyway")
+	recorded := &capture{}
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: "http://provider.test", Model: "quiet/thinks-anyway",
+		HTTPClient:        handlerClient(ignoringHandler(recorded, 5000)),
+		SupportsParameter: func(string, string) (bool, bool) { return true, true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	response, err := client.CompleteWithMessages(ctx, userMessages("plan this"), ai.WithMaxTokens(1000))
+	if err != nil {
+		t.Fatalf("an empty answer at the ceiling must be retried with room, not returned: %v", err)
+	}
+	if got := response.Text(); got != "ok" {
+		t.Fatalf("answer = %q, want the one the room bought", got)
+	}
+	if recorded.count() != 2 {
+		t.Fatalf("sent %d requests, want the empty one and its retry", recorded.count())
+	}
+	if got := recorded.body(1)["max_tokens"]; got != float64(1000+ThinkingHeadroomTokens) {
+		t.Fatalf("retry max_tokens = %v, want %d", got, 1000+ThinkingHeadroomTokens)
+	}
+	if !ReasoningDisableIgnored("quiet/thinks-anyway") {
+		t.Fatal("the fact must be remembered, so the next call is sent with room the first time")
+	}
+
+	// Once. A second call is shaped right from the start and sent exactly once.
+	if _, err := client.CompleteWithMessages(ctx, userMessages("plan the next thing"), ai.WithMaxTokens(1000)); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.count() != 3 {
+		t.Fatalf("sent %d requests in total, want the learned call to go out once", recorded.count())
+	}
 }
