@@ -44,6 +44,18 @@ const (
 	// promise in resident.Bank — that a restarted leaf does not start over —
 	// and until it existed nothing anywhere said whether the promise was kept.
 	EventLeafResumed EventKind = "leaf_resumed"
+	// EventLeafStopped is the worker behind a claim reporting that it is gone,
+	// naming the token it held.
+	//
+	// IT IS THE ORDERING PROOF AND THAT IS ITS WHOLE JOB. A claim taken back
+	// while its worker is still running does not free the node, it doubles it:
+	// two leaves on one node, writing one workspace, each undoing the other's
+	// edits. So a reaped claim is released by the worker's OWN landing, after
+	// its context has been cancelled and it has actually returned, and this row
+	// is journaled immediately before that release. In any store's journal,
+	// `leaf_stopped` for a token strictly precedes the `node_released` that
+	// frees it — and where it does not, a worker was overtaken.
+	EventLeafStopped EventKind = "leaf_stopped"
 )
 
 // LeafExhausted is one attempt that ran out of room, as a reader needs it.
@@ -74,6 +86,27 @@ type LeafResumed struct {
 	// workspace's own before-and-after reading, not the worker's claim about it
 	// (FAILSAFE.md rule 2). Bounded by the caller.
 	Files []string `json:"files,omitempty"`
+}
+
+// LeafStopped is one worker reporting that it has stopped, and why it was asked
+// to.
+type LeafStopped struct {
+	// Token is the claim this worker held. It is the identity that matters: a
+	// node id alone cannot say WHICH of a node's workers stopped, and telling
+	// them apart is the entire reason this row exists.
+	Token uint64 `json:"token"`
+	// Reason is why it was asked to stop, carried from the sweep that asked.
+	Reason string `json:"reason,omitempty"`
+}
+
+// RecordLeafStopped appends one worker's report that it is gone.
+func (s *Store) RecordLeafStopped(nodeID string, record LeafStopped) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record leaf stop: %w: empty node id", ErrInvalid)
+	}
+	record.Reason = bounded(strings.TrimSpace(record.Reason), MaxDigestBytes)
+	return s.appendLeafRun(nodeID, EventLeafStopped, record, "record leaf stop")
 }
 
 // RecordLeafExhausted appends one attempt's exhaustion against a node.

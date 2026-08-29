@@ -224,6 +224,9 @@ shown **no sign of life** — no model call and no recorded turn — for the who
 window, which is well past any deadline the worker itself was given. A worker
 that keeps working keeps its work, however long it takes.
 
+And the worker is **stopped first**. Nothing else can pick the work up until the
+one that had it has actually let go, so two workers never share one folder.
+
 `↻ resumed from N recorded turns` is the piece being taken up again, and the
 count is the point. It continues from what it had reached: an outline of every
 turn it took, the last of them word for word, and the files it had already
