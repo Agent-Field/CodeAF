@@ -284,3 +284,125 @@ func (s *Store) SurfacesFor(nodeID string) ([]SurfaceReading, error) {
 	}
 	return readings, rows.Err()
 }
+
+// EventConsumers is the third reading of the same tree, journaled beside the
+// other two: the definitions this run's own diff touched, and what the rest of
+// the project still does with them.
+//
+// It is its own kind for the reason EventSurface is. The check-level reading
+// answers what a suite says, the surface reading answers whether a name is still
+// there, and neither can see a definition that kept its name and changed its
+// SHAPE — igel s12 rebound `configs` from a dict to an instance of a class it
+// wrote, the surface row read `compared: 8, lost: 0`, and twenty-four hidden
+// tests failed on `'Configs' object does not support item assignment`.
+const EventConsumers EventKind = "consumers"
+
+// ConsumersReading is that reading as the journal keeps it: one row per changed
+// definition, with its consumers counted by shape.
+//
+// COUNTS PLUS A BOUNDED SAMPLE, the same shape SurfaceReading keeps and for the
+// same reason: what a reader wants from a hundred usage sites is how many there
+// are and what kind they are.
+type ConsumersReading struct {
+	// Weighed is how many changed definitions were read. Zero with no rows is a
+	// real answer — the run touched no declaration this program can read — and
+	// it is not the same answer as no row at all.
+	Weighed int                 `json:"weighed"`
+	Changed []ChangedDefinition `json:"changed,omitempty"`
+}
+
+// ChangedDefinition is one definition the run's diff overlapped, and what still
+// uses it.
+type ChangedDefinition struct {
+	Name string `json:"name"`
+	File string `json:"file,omitempty"`
+	// Sites is how many usage sites were found outside the lines this run
+	// changed, and Shapes is those sites grouped by what they DO with the name.
+	Sites  int             `json:"sites"`
+	Shapes []ConsumerShape `json:"shapes,omitempty"`
+}
+
+// ConsumerShape is one syntactic shape of use, how many sites have it, and a
+// bounded sample of where they are.
+type ConsumerShape struct {
+	Shape  string   `json:"shape"`
+	Count  int      `json:"count"`
+	Sample []string `json:"sample,omitempty"`
+}
+
+// RecordConsumers journals one reading of the changed definitions against a node.
+//
+// EVERY READING IS WRITTEN, including one that found nothing, for the reason
+// RecordSurface's is: "the diff overlapped no declaration" and "nobody looked"
+// are two facts and the absence of the row is the only spelling either has.
+func (s *Store) RecordConsumers(nodeID string, reading ConsumersReading) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record consumers: %w: empty node id", ErrInvalid)
+	}
+	if len(reading.Changed) > VerificationSample {
+		reading.Changed = reading.Changed[:VerificationSample]
+	}
+	for index := range reading.Changed {
+		reading.Changed[index].Name = bounded(strings.TrimSpace(reading.Changed[index].Name), MaxDigestBytes)
+		reading.Changed[index].File = bounded(strings.TrimSpace(reading.Changed[index].File), MaxDigestBytes)
+		if len(reading.Changed[index].Shapes) > VerificationSample {
+			reading.Changed[index].Shapes = reading.Changed[index].Shapes[:VerificationSample]
+		}
+		for shape := range reading.Changed[index].Shapes {
+			held := reading.Changed[index].Shapes[shape]
+			held.Shape = bounded(strings.TrimSpace(held.Shape), MaxDigestBytes)
+			if len(held.Sample) > VerificationSample {
+				held.Sample = held.Sample[:VerificationSample]
+			}
+			for at, where := range held.Sample {
+				held.Sample[at] = bounded(strings.TrimSpace(where), MaxDigestBytes)
+			}
+			reading.Changed[index].Shapes[shape] = held
+		}
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("record consumers: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record consumers: %w", err)
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventConsumers, reading); err != nil {
+		return fmt.Errorf("record consumers: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record consumers: %w", err)
+	}
+	return nil
+}
+
+// ConsumersFor returns every changed-definition reading journaled for a node,
+// oldest first.
+func (s *Store) ConsumersFor(nodeID string) ([]ConsumersReading, error) {
+	rows, err := s.db.Query(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq ASC`, nodeID, EventConsumers)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("consumers for %s: %w", nodeID, err)
+	}
+	defer rows.Close()
+	var readings []ConsumersReading
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("consumers for %s: %w", nodeID, err)
+		}
+		var reading ConsumersReading
+		if err := json.Unmarshal(payload, &reading); err != nil {
+			continue
+		}
+		readings = append(readings, reading)
+	}
+	return readings, rows.Err()
+}

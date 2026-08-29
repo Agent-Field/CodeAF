@@ -744,6 +744,23 @@ idea of public: an underscore, `private`, an unexported name and a non-`pub` ite
 the author called it internal. It is read conservatively and says nothing it is not sure of.
 A rename reads as the old name going, which is what everyone calling it sees.
 
+**And a name your code kept, whose definition the work rewrote, is read against everything
+that still uses it.** Deleting a name is only half of what breaks callers; the other half is
+keeping the name and changing what stands behind it, and no suite and no list of names can
+see that. One job rebound a module's `configs` from a dictionary to an object of its own
+with no item assignment on it — same name, checks still green, every one of the twenty-four
+hidden tests failing on the first line that wrote into it. So the definitions the change's
+own diff rewrote are read out of the finished files, and every place in your project that
+still uses those names is found and counted by what it DOES with them: calls it with so many
+arguments, indexes it, assigns into an index, reaches a member off it, iterates it. That
+goes in front of the check at the end of the job with the file, the line number and the line
+itself, and it may refuse the work on one of those lines — `configs changed and its 14
+consumers still use it as subscript-assign: tests/test_igel.py:92, …`. It is read
+conservatively, from the shape of the code and never from what anything means: nothing here
+resolves a type or follows an import, a name it cannot look for whole has no consumers
+rather than the wrong ones, and prose in a document that happens to spell the name is not a
+usage site.
+
 **A check the run wrote itself and did not get passing is a different finding from a check
 it broke.** Only a check that was in your project's roster before the work, and green there,
 can be reported as broken by it. A red check that first appears after the work is the run's

@@ -1614,6 +1614,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// check names and no assertion weighs, each carrying the
 					// observables nothing asserted.
 					Unasserted: gate.Unasserted,
+					// And the definitions this run reshaped that the rest of
+					// the project still uses the old way — the finding no
+					// suite and no name comparison can make, because the name
+					// is still there and nobody wrote a check for it.
+					Consumers: gate.Consumers,
 					// And the checks the run wrote and did not get passing,
 					// which is a different state from a broken repository and
 					// was spelled the same way until it had a field.

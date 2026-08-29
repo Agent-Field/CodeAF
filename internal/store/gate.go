@@ -180,6 +180,18 @@ type DeliveryGate struct {
 	// short, and it is what Whole below spends.
 	Unreadable bool `json:"unreadable,omitempty"`
 
+	// Consumers is the finding the changed-definition reading produced: one line
+	// per definition this run reshaped that the rest of the project still uses,
+	// naming the shape its callers expect and how many of them there are.
+	//
+	// It is the FINDING; EventConsumers is the evidence it is a conclusion of,
+	// and they are two records for the reason Unexercised and Exercises are two:
+	// a finding that lives only as a paragraph inside `gap` is journaled by
+	// nothing and reachable by nothing. igel s12 changed `configs` from a dict
+	// to an instance of a class it wrote and the whole store held not one word
+	// about it (2026-08-29, bench/deepswe).
+	Consumers []string `json:"consumers,omitempty"`
+
 	// Subject is WHAT THIS GATE JUDGED, in the words the gate keeps them:
 	// "tree (6 files)" where the run changed the repository and the change was
 	// the deliverable, "claim" where the run left nothing behind and the
@@ -376,6 +388,19 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	gate.Unasserted = unasserted
 	if len(gate.Unasserted) == 0 {
 		gate.Unasserted = nil
+	}
+	// And the same, per line, for the consumers finding: one entry is one
+	// definition, and a line clipped to a share of a budget it does not know the
+	// size of would be clipped mid-path.
+	consumers := make([]string, 0, len(gate.Consumers))
+	for _, line := range gate.Consumers {
+		if line = bounded(strings.TrimSpace(line), MaxDigestBytes); line != "" {
+			consumers = append(consumers, line)
+		}
+	}
+	gate.Consumers = consumers
+	if len(gate.Consumers) == 0 {
+		gate.Consumers = nil
 	}
 	if len(gate.Quotes) == 0 {
 		// An empty list and a nil one are the same fact, and only one of them

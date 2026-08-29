@@ -379,10 +379,17 @@ const treeEnumFiles = 64
 // treeVerdictSchema is the delivery verdict's shape when the subject is the
 // tree. It is the claim schema plus the one field that makes a finding about
 // anything other than a changed file impossible to state.
-func treeVerdictSchema(files, behaviours []string) json.RawMessage {
+func treeVerdictSchema(files, behaviours, consumerFiles, consumerLines []string) json.RawMessage {
 	file := `{"type": "string"}`
-	if len(files) > 0 && len(files) <= treeEnumFiles {
-		if names, err := json.Marshal(files); err == nil {
+	// AND A FILE THAT USES WHAT THE RUN CHANGED IS A FILE A REFUSAL MAY NAME.
+	// The record is what the run WROTE; a consumer is somewhere else in the same
+	// repository that the run broke without touching, which is the one finding
+	// this door exists to make sayable. It joins the same enum rather than
+	// getting one of its own, because a verdict names one file and the question
+	// is only whether that file is one the judge was shown.
+	named := joinSpans(files, consumerFiles)
+	if len(named) > 0 && len(named) <= treeEnumFiles {
+		if names, err := json.Marshal(named); err == nil {
 			file = `{"type": "string", "enum": ` + string(names) + `}`
 		}
 	}
@@ -395,7 +402,12 @@ func treeVerdictSchema(files, behaviours []string) json.RawMessage {
 	// nobody can satisfy.
 	quote := `{"type": "string"}`
 	if len(behaviours) > 0 {
-		if spans, err := json.Marshal(behaviours); err == nil {
+		// The consumer lines join the same enum, and ONLY where there was
+		// already an enum to join. A request that states no checkable behaviour
+		// leaves the quote field free, and turning it into a list of consumer
+		// lines would narrow a refusal that was never narrowed before — the
+		// opposite of what this door is for.
+		if spans, err := json.Marshal(joinSpans(behaviours, consumerLines)); err == nil {
 			quote = `{"type": "string", "enum": ` + string(spans) + `}`
 		}
 	}
@@ -411,6 +423,20 @@ func treeVerdictSchema(files, behaviours []string) json.RawMessage {
   "required": ["pass"],
   "additionalProperties": false
 }`)
+}
+
+// joinSpans is two lists as one, in order, with the repeats dropped. Two enums
+// that overlap would offer a model the same string twice and say nothing by it.
+func joinSpans(first, second []string) []string {
+	joined := make([]string, 0, len(first)+len(second))
+	seen := make(map[string]bool, len(first)+len(second))
+	for _, span := range append(append([]string{}, first...), second...) {
+		if span = strings.TrimSpace(span); span != "" && !seen[span] {
+			seen[span] = true
+			joined = append(joined, span)
+		}
+	}
+	return joined
 }
 
 // gateAcceptShare is what a known window spends on the behaviours a refusal may
@@ -522,6 +548,13 @@ func heldPointWords(evidence Evidence, grounds Grounds, budget ctxbudget.Budget,
 	if evidence.Subject() != SubjectTree {
 		return ""
 	}
+	// A REFUSAL GROUNDED ON A CONSUMER WAS HELD TO A CONSUMER, and saying it was
+	// held to a checklist of nine behaviours would be the exact confusion this
+	// field exists to end. It carries the finding's own words, which name the
+	// definition and its sites.
+	if len(judgment.Consumers) > 0 {
+		return "consumer: " + judgment.Consumers[0]
+	}
 	spans := behaviourSpans(HeldPoints(evidence, grounds), budget)
 	if len(spans) == 0 {
 		return HeldPointEmpty
@@ -556,6 +589,14 @@ type treeVerdict struct {
 	File      string
 	Exercised bool
 
+	// Consumer says this refusal was grounded on a CONSUMER SITE rather than on
+	// a behaviour of the request: the judge quoted a line of the project that
+	// uses something this run reshaped. It is a different finding with a
+	// different sentence and a different journal field, and it is decided here
+	// because here is where the quote is settled against what the judge was
+	// shown.
+	Consumer bool
+
 	// files is the record, set by the caller before the decode. It is lower
 	// case because nothing outside this package may hand a verdict a record
 	// that is not the one the gate was assembled from.
@@ -565,6 +606,12 @@ type treeVerdict struct {
 	// no checkable behaviour, or states more of them than the room holds, and
 	// either way the requirement is off.
 	behaviours []string
+	// consumerFiles and consumerLines are the other ground a refusal over a
+	// changed tree may stand on: the files that use a definition this run
+	// reshaped, and the exact lines of them the block above printed. Both are
+	// set only where the judge was shown them, for the reason behaviours is.
+	consumerFiles []string
+	consumerLines []string
 }
 
 func (v *treeVerdict) UnmarshalJSON(data []byte) error {
@@ -608,8 +655,15 @@ func (v *treeVerdict) UnmarshalJSON(data []byte) error {
 	}
 	named := recordEntry(raw.File, v.files)
 	if named == "" {
-		return fmt.Errorf("a fail must name one of the files this run changed, and %q is not one of them",
-			strings.TrimSpace(raw.File))
+		// A run can break a file it never opened, and that file is not in the
+		// record. Where the reading found consumers, their files are nameable
+		// too — and only theirs, so a verdict still cannot be about a file
+		// nobody put in front of it.
+		named = recordEntry(raw.File, v.consumerFiles)
+	}
+	if named == "" {
+		return fmt.Errorf("a fail must name one of the files this run changed or one of the files "+
+			"that use what it changed, and %q is not one of them", strings.TrimSpace(raw.File))
 	}
 	// AND THE QUOTE IS A BEHAVIOUR THE FILE FAILS, NOT A SENTENCE ABOUT THE
 	// FILE'S EXISTENCE. ofetch s12 satisfied every rule above it: the file was
@@ -619,8 +673,21 @@ func (v *treeVerdict) UnmarshalJSON(data []byte) error {
 	// producing it. A refusal built on a behaviour the request states cannot be
 	// that claim, because the record already answers whether a file exists and
 	// no behaviour is about its being on disk.
-	if _, held := behaviourNamed(v.Quote, v.behaviours); len(v.behaviours) > 0 && !held {
-		return fmt.Errorf("a fail must quote one of the behaviours this request states, and %q is not one of them",
+	_, held := behaviourNamed(v.Quote, v.behaviours)
+	// OR A LINE OF THE PROJECT THAT USES WHAT THIS RUN RESHAPED. It is the same
+	// containment test over a different list, because it is the same question:
+	// is this quote one of the things the judge was actually shown. What it
+	// admits is the finding no behaviour of any request could ever carry —
+	// nobody writes "and the config object must still support item assignment",
+	// so a door that only took behaviours could never hear it.
+	if !held {
+		if _, cited := behaviourNamed(v.Quote, v.consumerLines); cited {
+			held, v.Consumer = true, true
+		}
+	}
+	if len(v.behaviours) > 0 && !held {
+		return fmt.Errorf("a fail must quote one of the behaviours this request states, or one of "+
+			"the lines that use what this run changed, and %q is not one of them",
 			clipUTF8Bytes(v.Quote, 120))
 	}
 	v.File = named
