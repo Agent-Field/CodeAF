@@ -137,12 +137,17 @@ var contextOverflowPattern = regexp.MustCompile(
 type loopState struct {
 	client providerClient
 	tools  []Tool
-	// produced is told, after every tool call, when that call began, so the
-	// files it left in the workspace can be filed under this leaf. pi's tools
-	// know a directory and nothing of a workspace, and this is the seam that
-	// keeps them from having to: the workspace's own sweep reads the clock.
-	// Nil is a loop with nobody to tell, which is what the tests run.
-	produced func(mark time.Time)
+	// sweep opens the world's own account of the workspace immediately before a
+	// tool call and hands back the function that closes it, so the files the
+	// call left behind can be filed under this leaf. pi's tools know a directory
+	// and nothing of a workspace, and this is the seam that keeps them from
+	// having to.
+	//
+	// It is a pair rather than a single call with a timestamp because the
+	// evidence is a BEFORE-AND-AFTER READ OF THE TREE and not a clock reading —
+	// see internal/exec/produced.go and FAILSAFE.md rule 2. Nil is a loop with
+	// nobody to tell, which is what some of the tests run.
+	sweep    func() (file func())
 	system   string
 	user     string
 	cwd      string
@@ -398,10 +403,13 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 	args := json.RawMessage(call.Function.Arguments)
 	for _, tool := range l.tools {
 		if tool.Name == name {
-			mark := time.Now()
+			var file func()
+			if l.sweep != nil {
+				file = l.sweep()
+			}
 			text, isError, err := tool.Execute(ctx, args)
-			if l.produced != nil {
-				l.produced(mark)
+			if file != nil {
+				file()
 			}
 			if err != nil {
 				// Harness-level failure: treat as a tool error with the Go

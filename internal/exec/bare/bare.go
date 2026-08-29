@@ -99,7 +99,10 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 		// same way exec.Toolbox files what a shell command produces. Without
 		// it the registry the delivery gate reads was structurally empty for a
 		// bare leaf — the file was on disk and the run said it was not.
-		produced: func(mark time.Time) { b.workspace.RecordProducedSince(leaf, mark) },
+		sweep: func() func() {
+			before := b.workspace.Snapshot()
+			return func() { b.workspace.RecordProducedSince(leaf, before) }
+		},
 		system:   system,
 		user:     userText,
 		cwd:      cwd,
