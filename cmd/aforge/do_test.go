@@ -1644,6 +1644,45 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 			want: exitPartial,
 		},
 		{
+			// The measured shape: a review found the deliverable empty, the
+			// repair that would have filled it was refused for want of rounds,
+			// and the run left with exit 0 because the refusal sentence was
+			// read as the gate correcting itself. The gap was never closed;
+			// only the repair was refused.
+			name: "the gap still stands and only the repair was refused",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the spacing ladder"}})
+				settleNode(t, graph, "task-1", "I'm handing this over with a reservation.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:      "Deliverable is empty - contains no implementation",
+					Refused:  "no more work could be started on it",
+					Unclosed: true,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: exitPartial,
+		},
+		{
+			// The other side of the same field, which must keep exiting 0: the
+			// gap itself was found inadmissible, which is the gate being wrong
+			// and being caught at it.
+			name: "the gap was refused as ungrounded",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE: the parser is faster.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:     "it does not benchmark the parser",
+					Refused: "that is not in the request",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: 0,
+		},
+		{
 			name: "the polish pass closed the gap",
 			build: func(t *testing.T, graph *store.Store, session string) {
 				t.Helper()

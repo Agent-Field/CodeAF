@@ -1455,10 +1455,21 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 // being wrong and being caught at it; those deliver whole, and charging them a
 // non-zero code would teach a harness to distrust the gate's own corrections.
 //
-// EXCEPT WHEN THE GATE CANNOT BE WRONG. The refusals above are all corrections
-// of an OPINION: a judge read the deliverable and named something missing, and
-// a rule found that the thing it named was never asked for, or is already on
-// disk, or is already in the text. A mechanical gap is not an opinion. It says
+// EXCEPT WHEN THE GATE CANNOT BE WRONG, AND EXCEPT WHEN THE GAP STILL STANDS.
+// The refusals that deliver whole are all corrections of an OPINION: a judge
+// read the deliverable and named something missing, and a rule found that the
+// thing it named was never asked for, or is already on disk, or is already in
+// the text. Two refusals are not that.
+//
+// The first is an unclosed gap. A repair a governor would not fund, or that
+// nothing could plan, refuses the REPAIR and not the finding: what the judge
+// named is still missing, and the run is delivering less than it promised. The
+// gate records which of the two happened (store.DeliveryGate.Unclosed) rather
+// than leaving it to be guessed from a sentence — a run that shipped
+// "Deliverable is empty - contains no implementation" under "no more work could
+// be started on it" left over exit 0 for want of exactly that field.
+//
+// The second is a mechanical gap. It says
 // a file the plan itself promised is missing or empty on disk, which is a fact
 // about the filesystem, and refusing its citation only declines to buy a repair
 // round — it cannot make the file appear. Charging that exit 0 is what let a run
@@ -1472,7 +1483,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
 		!gate.Pass && !gate.PolishClosed &&
-		(gate.Mechanical || strings.TrimSpace(gate.Refused) == "") {
+		(gate.Mechanical || gate.Unclosed || strings.TrimSpace(gate.Refused) == "") {
 		return false
 	}
 	parts, err := w.graph.SubtreeNodes(node.ID)

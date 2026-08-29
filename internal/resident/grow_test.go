@@ -307,3 +307,132 @@ func TestUngatedGrowthKeepsTheCaps(t *testing.T) {
 		t.Fatalf("the ceiling did not hold for a redirect: applied=%d notes=%v", applied, notes)
 	}
 }
+
+// The loop this closes, in the shape it was measured in: one lineage was
+// re-planned three rounds running, each round handed a byte-identical remainder,
+// each round leaving nothing at all in the tree, at $0.47 a round. The only
+// thing that ever stopped it was the round cap, three rounds and $1.42 later.
+// A count cannot tell a round that is finishing the work from a round that is
+// repeating it, so the governor now reads what happened instead.
+func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+	gap := "the spacing constants are still not derived; homeCardCap is still 48"
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Produced: 0, Remainder: RemainderDigest(gap),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Allow {
+		t.Fatalf("the first round was refused: %+v", first)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
+		Produced: 0, Remainder: RemainderDigest(gap),
+	}, first, 1)
+
+	// The continuation ran and the reviewer named the same remainder again, in
+	// the same words. Asking for it a third time buys what the second round
+	// already bought.
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Produced: 0, Remainder: RemainderDigest("The  Spacing constants are still not derived; homeCardCap is still 48\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Allow || second.Cause != CauseFixedPoint {
+		t.Fatalf("a lineage handed its own remainder back grew again: %+v", second)
+	}
+	if second.Refused != RefusedFixedPoint {
+		t.Fatalf("refusal = %q", second.Refused)
+	}
+}
+
+// The same finding read from the tree instead of from the text, for a remainder
+// that came back reworded. One fruitless round is never refused — a leaf can run
+// out of budget before it writes its first file, and that is exactly the round a
+// repair exists for. Two in a row is a standstill.
+func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
+		Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Allow {
+		t.Fatalf("the floor was refused: a run with nothing on disk must get its round: %+v", first)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun,
+		Produced: 0, Remainder: RemainderDigest("nothing has been written yet"),
+	}, first, 1)
+
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
+		Produced: 0, Remainder: RemainderDigest("still nothing on disk, in different words"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Allow || second.Cause != CauseStandstill {
+		t.Fatalf("a lineage that has changed nothing twice grew again: %+v", second)
+	}
+
+	// And the reason reaches the record on the node, where the delivery and the
+	// headless stream both read it.
+	messages, err := graph.NodeMessages("job-n1", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := false
+	for _, message := range messages {
+		if strings.Contains(message.Body, RefusedStandstill) {
+			said = true
+			if message.Progress == nil || message.Progress.Phase == "" {
+				t.Fatalf("the refusal was recorded with nothing for the stream to show: %+v", message)
+			}
+		}
+	}
+	if !said {
+		t.Fatal("the refusal was never recorded on the work it stopped")
+	}
+}
+
+// A lineage that IS getting somewhere keeps its rounds. This is the other half
+// of the rule and the one that would be broken by a cruder version of it: a
+// round that changed files earns the next one, however little it changed.
+func TestALineageThatChangedFilesKeepsGrowing(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Produced: 0, Remainder: RemainderDigest("the first gap"),
+	})
+	if err != nil || !first.Allow {
+		t.Fatalf("first round: %+v %v", first, err)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
+		Produced: 0, Remainder: RemainderDigest("the first gap"),
+	}, first, 1)
+
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Produced: 2, Remainder: RemainderDigest("a different gap, with two files now written"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Allow {
+		t.Fatalf("a lineage that wrote two files was refused its next round: %+v", second)
+	}
+}
