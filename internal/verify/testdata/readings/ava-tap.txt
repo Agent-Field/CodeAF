@@ -1,0 +1,1534 @@
+TAP version 13
+ok 1 - alternate-screen-example › snake can move into the tail cell when the tail moves away
+not ok 2 - alternate-screen-example › snake ends with a win when it fills the board
+  ---
+    name: AssertionError
+    message: Fixture hung instead of finishing the full-board win case
+    assertion: fail
+    at: '<anonymous> (test/alternate-screen-example.tsx:85:5)'
+  ...
+ok 3 - ansi-tokenizer › tokenize plain text
+ok 4 - ansi-tokenizer › tokenize ESC CSI SGR sequence
+ok 5 - ansi-tokenizer › tokenize C1 CSI sequence
+ok 6 - ansi-tokenizer › tokenize OSC control string with ST terminator
+ok 7 - ansi-tokenizer › tokenize tmux DCS passthrough as one control string token
+ok 8 - ansi-tokenizer › tokenize incomplete CSI as invalid and stop
+ok 9 - ansi-tokenizer › tokenize incomplete ESC intermediate sequence as invalid and stop
+ok 10 - ansi-tokenizer › ignore lone ESC before non-final byte
+ok 11 - ansi-tokenizer › tokenize ESC ST sequence as ESC token
+ok 12 - ansi-tokenizer › tokenize C1 OSC with C1 ST terminator
+ok 13 - ansi-tokenizer › tokenize C1 OSC with ESC ST terminator
+ok 14 - ansi-tokenizer › tokenize C1 SGR CSI sequence
+ok 15 - ansi-tokenizer › tokenize incomplete C1 CSI as invalid and stop
+ok 16 - ansi-tokenizer › tokenize incomplete C1 OSC as invalid and stop
+ok 17 - ansi-tokenizer › tokenize DCS with BEL in payload until ST terminator
+ok 18 - ansi-tokenizer › tokenize C1 OSC control string with BEL terminator
+ok 19 - ansi-tokenizer › tokenize ESC SOS control string with ST terminator
+ok 20 - ansi-tokenizer › tokenize ESC SOS control string with C1 ST terminator
+ok 21 - ansi-tokenizer › tokenize C1 SOS control string with C1 ST terminator
+ok 22 - ansi-tokenizer › tokenize C1 SOS control string with ESC ST terminator
+ok 23 - ansi-tokenizer › tokenize ESC SOS with BEL terminator as invalid and stop
+ok 24 - ansi-tokenizer › tokenize C1 SOS with BEL terminator as invalid and stop
+ok 25 - ansi-tokenizer › tokenize incomplete C1 SOS as invalid and stop
+ok 26 - ansi-tokenizer › tokenize incomplete ESC SOS as invalid and stop
+ok 27 - ansi-tokenizer › tokenize SOS with escaped ESC in payload until final ST terminator
+ok 28 - ansi-tokenizer › tokenize standalone C1 controls as c1 tokens
+# background › before hook
+ok 29 - background › Text inherits parent Box background color
+ok 30 - background › Text explicit background color overrides inherited
+ok 31 - background › Nested Box background inheritance
+ok 32 - background › Text without parent Box background has no inheritance
+ok 33 - background › Multiple Text elements inherit same background
+ok 34 - background › Mixed text with and without background inheritance
+ok 35 - background › Complex nested structure with background inheritance
+ok 36 - background › Box background with standard color
+ok 37 - background › Box background with hex color
+ok 38 - background › Box background with rgb color
+ok 39 - background › Box background with ansi256 color
+ok 40 - background › Box background with wide characters
+ok 41 - background › Box background with emojis
+ok 42 - background › Box background fills entire area with standard color
+ok 43 - background › Box background fills with hex color
+ok 44 - background › Box background fills with rgb color
+ok 45 - background › Box background fills with ansi256 color
+ok 46 - background › Box background with border fills content area
+ok 47 - background › Box background with padding fills entire padded area
+ok 48 - background › Box background with center alignment fills entire area
+ok 49 - background › Box background with column layout fills entire area
+ok 50 - background › Box background updates on rerender
+The current testing environment is not configured to support act(...)
+ok 51 - background › Text inherits parent Box background color - concurrent
+The current testing environment is not configured to support act(...)
+ok 52 - background › Nested Box background inheritance - concurrent
+The current testing environment is not configured to support act(...)
+ok 53 - background › Box background with hex color - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 54 - background › Box background updates on rerender - concurrent
+ok 55 - background › Box backgroundColor fills full width on every line when text wraps
+ok 56 - background › Text-only backgroundColor colors text content but does not fill Box width
+# background › after hook
+ok 57 - borders › single node - full width box
+ok 58 - borders › single node - full width box with colorful border
+ok 59 - borders › single node - fit-content box
+ok 60 - borders › single node - fit-content box with wide characters
+ok 61 - borders › single node - fit-content box with emojis
+ok 62 - borders › single node - fit-content box with variation selector emojis
+ok 63 - borders › single node - fixed width box
+ok 64 - borders › single node - fixed width and height box
+ok 65 - borders › single node - box with padding
+ok 66 - borders › single node - box with horizontal alignment
+ok 67 - borders › single node - box with vertical alignment
+ok 68 - borders › single node - box with wrapping
+ok 69 - borders › multiple nodes - full width box
+ok 70 - borders › multiple nodes - full width box with colorful border
+ok 71 - borders › multiple nodes - fit-content box
+ok 72 - borders › multiple nodes - fixed width box
+ok 73 - borders › multiple nodes - fixed width and height box
+ok 74 - borders › multiple nodes - box with padding
+ok 75 - borders › multiple nodes - box with horizontal alignment
+ok 76 - borders › multiple nodes - box with vertical alignment
+ok 77 - borders › multiple nodes - box with wrapping
+ok 78 - borders › multiple nodes - box with wrapping and long first node
+ok 79 - borders › multiple nodes - box with wrapping and very long first node
+ok 80 - borders › nested boxes
+ok 81 - borders › nested boxes - fit-content box with wide characters on flex-direction row
+ok 82 - borders › nested boxes - fit-content box with emojis on flex-direction row
+ok 83 - borders › nested boxes - fit-content box with wide characters on flex-direction column
+ok 84 - borders › nested boxes - fit-content box with emojis on flex-direction column
+ok 85 - borders › render border after update
+ok 86 - borders › render border edge changes after update when borderStyle is unchanged
+ok 87 - borders › hide top border
+ok 88 - borders › hide bottom border
+ok 89 - borders › hide top and bottom borders
+ok 90 - borders › hide left border
+ok 91 - borders › hide right border
+ok 92 - borders › hide left and right border
+ok 93 - borders › hide all borders
+ok 94 - borders › change color of top border
+ok 95 - borders › change color of bottom border
+ok 96 - borders › change color of left border
+ok 97 - borders › change color of right border
+ok 98 - borders › custom border style
+ok 99 - borders › dim border color
+ok 100 - borders › dim top border color
+ok 101 - borders › dim bottom border color
+ok 102 - borders › dim left border color
+ok 103 - borders › dim right border color
+ok 104 - borders › borderDimColor does not dim styled child Text touching left edge
+The current testing environment is not configured to support act(...)
+ok 105 - borders › single node - full width box - concurrent
+The current testing environment is not configured to support act(...)
+ok 106 - borders › single node - fit-content box - concurrent
+The current testing environment is not configured to support act(...)
+ok 107 - borders › nested boxes - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 108 - borders › render border after update - concurrent
+ok 109 - components › primary screen - cleanup console output follows the native console during unmount
+ok 110 - components › alternate screen - does not replay exit(Error) output on the primary screen during unmount
+ok 111 - components › alternate screen - does not replay teardown output on the primary screen during unmount
+ok 112 - components › alternate screen - cleanup console output follows the native console during unmount
+ok 113 - components › alternate screen - cleanup() exits the alternate screen
+not ok 114 - components › alternate screen - debug concurrent teardown restores the cursor before the first commit
+  ---
+    name: AssertionError
+    message: Should exit the alternate screen on unmount
+    assertion: not
+    values:
+      'Value is the same as:': '-1'
+    at: '<anonymous> (test/components.tsx:1276:5)'
+  ...
+ok 115 - components › text
+ok 116 - components › text with variable
+ok 117 - components › multiple text nodes
+ok 118 - components › text with component
+ok 119 - components › text with fragment
+ok 120 - components › wrap text
+ok 121 - components › don’t wrap text if there is enough space
+ok 122 - components › truncate text in the end
+ok 123 - components › truncate text in the middle
+ok 124 - components › truncate text in the beginning
+ok 125 - components › do not wrap text with BEL-terminated OSC hyperlinks
+ok 126 - components › do not wrap text with ST-terminated OSC hyperlinks
+ok 127 - components › do not wrap text with non-hyperlink OSC sequences
+ok 128 - components › hard-wrap single-word BEL-terminated OSC hyperlink
+ok 129 - components › hard-wrap single-word ST-terminated OSC hyperlink
+ok 130 - components › ignore empty text node
+ok 131 - components › render a single empty text node
+ok 132 - components › number
+ErrorBoundary: Error boundaries should implement getDerivedStateFromError(). In that method, return a state update to display an error message or fallback UI.
+ok 133 - components › fail when text nodes are not within <Text> component
+ErrorBoundary: Error boundaries should implement getDerivedStateFromError(). In that method, return a state update to display an error message or fallback UI.
+ok 134 - components › fail when text node is not within <Text> component
+ErrorBoundary: Error boundaries should implement getDerivedStateFromError(). In that method, return a state update to display an error message or fallback UI.
+ok 135 - components › fail when <Box> is inside <Text> component
+ok 136 - components › remeasure text dimensions on text change
+ok 137 - components › fragment
+ok 138 - components › transform children
+ok 139 - components › squash multiple text nodes
+ok 140 - components › transform with multiple lines
+ok 141 - components › squash multiple nested text nodes
+ok 142 - components › squash empty `<Text>` nodes
+ok 143 - components › <Transform> with undefined children
+ok 144 - components › <Transform> with null children
+ok 145 - components › hooks
+ok 146 - components › static output
+ok 147 - components › skip previous output when rendering new static output
+not ok 148 - components › render only new items in static output on final render
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - `␊
+        + `A␊
+        + B␊
+          `
+    at: '<anonymous> (test/components.tsx:500:4)'
+  ...
+not ok 149 - components › ensure wrap-ansi doesn’t trim leading whitespace
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - ' ERROR'
+        + ' ERROR '
+    at: '<anonymous> (test/components.tsx:507:4)'
+  ...
+ok 150 - components › replace child node with text
+ok 151 - components › disable raw mode when all input components are unmounted
+ok 152 - components › re-ref stdin when input is used after previous unmount
+ok 153 - components › setRawMode() should throw if raw mode is not supported
+ok 154 - components › render different component based on whether stdin is a TTY or not
+ok 155 - components › render only last frame when run in CI
+ok 156 - components › render all frames if CI environment variable equals false
+ok 157 - components › debug mode in CI does not replay final frame during unmount teardown
+ok 158 - components › debug mode in CI keeps final newline separation after waitUntilExit
+not ok 159 - components › render only last frame when stdout is not a TTY
+  ---
+    name: AssertionError
+    message: 'Intermediate frame "Count: 2" should not be written in non-interactive mode'
+    assertion: 'false'
+    values:
+      'Value is not `false`:': 'true'
+    at: '<anonymous> (test/components.tsx:891:5)'
+  ...
+ok 160 - components › render all frames when interactive is explicitly true
+not ok 161 - components › interactive option overrides TTY detection
+  ---
+    name: AssertionError
+    message: >-
+      Intermediate frame "Count: 2" should not be written when interactive=false
+      overrides TTY
+    assertion: 'false'
+    values:
+      'Value is not `false`:': 'true'
+    at: '<anonymous> (test/components.tsx:989:5)'
+  ...
+(node:19182) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 beforeExit listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok 162 - components › alternate screen - enters on mount and exits on unmount
+ok 163 - components › render warns when stdout is reused before unmount
+ok 164 - components › alternate screen - ignored when non-interactive
+ok 165 - components › alternate screen - disabled by default
+ok 166 - components › alternate screen - content is rendered between enter and exit
+ok 167 - components › alternate screen - ignored when isTTY is false
+ok 168 - components › alternate screen - ignored when isTTY is false even if interactive is true
+ok 169 - components › static output is written immediately in non-interactive mode
+ok 170 - components › reset prop when it’s removed from the element
+ok 171 - components › newline
+ok 172 - components › multiple newlines
+ok 173 - components › horizontal spacer
+ok 174 - components › vertical spacer
+ok 175 - components › link ansi escapes are closed properly
+The current testing environment is not configured to support act(...)
+ok 176 - components › text - concurrent
+The current testing environment is not configured to support act(...)
+ok 177 - components › multiple text nodes - concurrent
+The current testing environment is not configured to support act(...)
+ok 178 - components › wrap text - concurrent
+The current testing environment is not configured to support act(...)
+ok 179 - components › truncate text in the end - concurrent
+The current testing environment is not configured to support act(...)
+ok 180 - components › transform children - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 181 - components › static output - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 182 - components › remeasure text dimensions on text change - concurrent
+The current testing environment is not configured to support act(...)
+ok 183 - components › newline - concurrent
+The current testing environment is not configured to support act(...)
+ok 184 - components › horizontal spacer - concurrent
+The current testing environment is not configured to support act(...)
+ok 185 - components › vertical spacer - concurrent
+[?25hok 186 - cursor-helpers › cursorPositionChanged - both undefined returns false
+ok 187 - cursor-helpers › cursorPositionChanged - same position returns false
+ok 188 - cursor-helpers › cursorPositionChanged - different x returns true
+ok 189 - cursor-helpers › cursorPositionChanged - different y returns true
+ok 190 - cursor-helpers › cursorPositionChanged - undefined vs defined returns true
+ok 191 - cursor-helpers › buildCursorSuffix - returns empty string when cursorPosition is undefined
+ok 192 - cursor-helpers › buildCursorSuffix - moves up and positions cursor
+ok 193 - cursor-helpers › buildCursorSuffix - no cursorUp when cursor is at last visible line
+ok 194 - cursor-helpers › buildCursorSuffix - cursor at first line of single-line output
+ok 195 - cursor-helpers › buildReturnToBottom - returns empty string when previousCursorPosition is undefined
+ok 196 - cursor-helpers › buildReturnToBottom - moves down to bottom
+ok 197 - cursor-helpers › buildReturnToBottom - no cursorDown when cursor already at bottom
+ok 198 - cursor-helpers › buildCursorOnlySequence - builds full sequence with hide prefix when cursor was shown
+ok 199 - cursor-helpers › buildCursorOnlySequence - no hide prefix when cursor was not shown
+ok 200 - cursor-helpers › buildReturnToBottomPrefix - returns empty string when cursor was not shown
+ok 201 - cursor-helpers › buildReturnToBottomPrefix - returns hide + returnToBottom when cursor was shown
+ok 202 - cursor-helpers › buildReturnToBottomPrefix - with undefined previousCursorPosition still hides cursor
+not ok 203 - cursor › cursor is shown at specified position after render
+  ---
+    name: AssertionError
+    message: cursor should be visible after first render
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:101:4)'
+  ...
+not ok 204 - cursor › cursor is not hidden by useEffect after first render
+  ---
+    name: AssertionError
+    message: 'last cursor visibility change should be SHOW, not HIDE'
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:128:4)'
+  ...
+not ok 205 - cursor › cursor follows text input
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:150:4)'
+  ...
+not ok 206 - cursor › cursor moves on space input even when output is identical
+  ---
+    name: AssertionError
+    message: should write to stdout after space input
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:177:5)'
+  ...
+not ok 207 - cursor › cursor is cleared when component using useCursor unmounts
+  ---
+    name: AssertionError
+    message: cursor should be visible initially
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:225:5)'
+  ...
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+not ok 208 - cursor › cursor position does not leak from suspended concurrent render to fallback
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:290:5)'
+  ...
+not ok 209 - cursor › screen does not scroll up on subsequent renders
+  ---
+    name: AssertionError
+    message: should hide cursor before erase
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:346:4)'
+  ...
+not ok 210 - cursor › cursor remains visible after useStdout().write()
+  ---
+    name: AssertionError
+    message: last cursor visibility escape should be show after hook write
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:431:5)'
+  ...
+not ok 211 - cursor › cursor remains visible after useStderr().write()
+  ---
+    name: AssertionError
+    message: last cursor visibility escape should be show after hook write
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/cursor.tsx:431:5)'
+  ...
+ok 212 - cursor › debug mode: useStdout().write() replays latest frame
+ok 213 - cursor › debug mode: useStdout().write() does not leak into stderr
+ok 214 - cursor › debug mode: useStderr().write() replays latest frame without empty writes
+ok 215 - cursor › debug mode: useStdout().write() replays rerendered frame
+ok 216 - cursor › debug mode: useStderr().write() replays rerendered frame
+ok 217 - display › display flex
+ok 218 - display › display none
+The current testing environment is not configured to support act(...)
+ok 219 - display › display flex - concurrent
+The current testing environment is not configured to support act(...)
+ok 220 - display › display none - concurrent
+# errors › before hook
+ok 221 - errors › does not emit unhandledRejection when render exits with an error and waitUntilExit is unused
+ok 222 - errors › catch and display error
+ok 223 - errors › ErrorBoundary catches and displays nested component errors
+ok 224 - errors › clean up raw mode when error is thrown
+# errors › after hook
+ok 225 - exit › exit normally without unmount() or exit()
+ok 226 - exit › exit on unmount()
+ok 227 - exit › exit when app finishes execution
+ok 228 - exit › exit on exit()
+ok 229 - exit › exit on exit() with error
+ok 230 - exit › exit on exit() with error with value property
+ok 231 - exit › exit on exit() with result value
+ok 232 - exit › exit on exit() with object result
+ok 233 - exit › exit on exit() with raw mode
+ok 234 - exit › exit on exit() with raw mode with error
+ok 235 - exit › exit on unmount() with raw mode
+ok 236 - exit › exit with thrown error
+ok 237 - exit › don’t exit while raw mode is active
+ok 238 - exit › exit when DEV is set
+ok 239 - exit › exit on exit() with error and static output
+ok 240 - flex-align-content › align content flex-start
+ok 241 - flex-align-content › align content center
+ok 242 - flex-align-content › align content flex-end
+ok 243 - flex-align-content › align content space-between
+ok 244 - flex-align-content › align content space-around
+ok 245 - flex-align-content › align content space-evenly
+ok 246 - flex-align-content › align content stretch
+ok 247 - flex-align-content › align content defaults to flex-start
+ok 248 - flex-align-content › align content does not add extra spacing when there is no free cross-axis space
+ok 249 - flex-align-content › clears alignContent on rerender to default flex-start
+ok 250 - flex-align-content › clears alignContent from stretch on rerender to default flex-start
+ok 251 - flex-align-content › clears alignContent when prop is omitted on rerender
+The current testing environment is not configured to support act(...)
+ok 252 - flex-align-content › align content center - concurrent
+ok 253 - flex-align-items › row - align text to center
+ok 254 - flex-align-items › row - align multiple text nodes to center
+ok 255 - flex-align-items › row - align text to bottom
+ok 256 - flex-align-items › row - align multiple text nodes to bottom
+ok 257 - flex-align-items › column - align text to center
+ok 258 - flex-align-items › column - align text to right
+ok 259 - flex-align-items › row - align items stretch
+ok 260 - flex-align-items › row - default align items stretches children
+ok 261 - flex-align-items › row - align text to baseline
+ok 262 - flex-align-self › row - align text to center
+ok 263 - flex-align-self › row - align multiple text nodes to center
+ok 264 - flex-align-self › row - align text to bottom
+ok 265 - flex-align-self › row - align multiple text nodes to bottom
+ok 266 - flex-align-self › column - align text to center
+ok 267 - flex-align-self › column - align text to right
+ok 268 - flex-align-self › column - align self stretch
+ok 269 - flex-align-self › row - align self stretch
+ok 270 - flex-align-self › row - align self baseline
+ok 271 - flex-direction › direction row
+ok 272 - flex-direction › direction row reverse
+ok 273 - flex-direction › direction column
+ok 274 - flex-direction › direction column reverse
+ok 275 - flex-direction › don’t squash text nodes when column direction is applied
+The current testing environment is not configured to support act(...)
+ok 276 - flex-direction › direction row - concurrent
+The current testing environment is not configured to support act(...)
+ok 277 - flex-direction › direction column - concurrent
+ok 278 - flex-justify-content › row - align text to center
+ok 279 - flex-justify-content › row - align multiple text nodes to center
+ok 280 - flex-justify-content › row - align text to right
+ok 281 - flex-justify-content › row - align multiple text nodes to right
+ok 282 - flex-justify-content › row - align two text nodes on the edges
+ok 283 - flex-justify-content › row - space evenly two text nodes
+ok 284 - flex-justify-content › row - align two text nodes with equal space around them
+ok 285 - flex-justify-content › row - align colored text node when text is squashed
+ok 286 - flex-justify-content › column - align text to center
+ok 287 - flex-justify-content › column - align text to bottom
+ok 288 - flex-justify-content › column - align two text nodes on the edges
+ok 289 - flex-justify-content › column - align two text nodes with equal space around them
+ok 290 - flex-wrap › row - no wrap
+ok 291 - flex-wrap › column - no wrap
+ok 292 - flex-wrap › row - wrap content
+ok 293 - flex-wrap › column - wrap content
+ok 294 - flex-wrap › column - wrap content reverse
+ok 295 - flex-wrap › row - wrap content reverse
+ok 296 - flex › grow equally
+ok 297 - flex › grow one element
+ok 298 - flex › do not shrink
+ok 299 - flex › shrink equally
+ok 300 - flex › set flex basis with flexDirection="row" container
+ok 301 - flex › set flex basis in percent with flexDirection="row" container
+ok 302 - flex › set flex basis with flexDirection="column" container
+ok 303 - flex › set flex basis in percent with flexDirection="column" container
+ok 304 - focus › do not focus on register when auto focus is off
+ok 305 - focus › focus the first component to register
+ok 306 - focus › unfocus active component on Esc
+ok 307 - focus › switch focus to first component on Tab
+ok 308 - focus › switch focus to the next component on Tab
+ok 309 - focus › switch focus to the first component if currently focused component is the last one on Tab
+ok 310 - focus › skip disabled component on Tab
+ok 311 - focus › switch focus to the previous component on Shift+Tab
+ok 312 - focus › switch focus to the last component if currently focused component is the first one on Shift+Tab
+ok 313 - focus › skip disabled component on Shift+Tab
+ok 314 - focus › reset focus when focused component unregisters
+ok 315 - focus › focus first component after focused component unregisters
+ok 316 - focus › toggle focus management
+ok 317 - focus › manually focus next component
+ok 318 - focus › manually focus previous component
+ok 319 - focus › does not crash when focusing next on unmounted children
+ok 320 - focus › does not crash when focusing previous on unmounted children
+ok 321 - focus › focuses first non-disabled component
+ok 322 - focus › skips disabled elements when wrapping around
+ok 323 - focus › skips disabled elements when wrapping around from the front
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 324 - focus › focus component renders in concurrent mode
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 325 - focus › focus component with autoFocus renders in concurrent mode
+ok 326 - focus › activeId from useFocusManager reflects currently focused component
+ok 327 - focus › activeId resets to undefined on Esc
+ok 328 - focus › activeId is set immediately when component uses autoFocus
+ok 329 - focus › activeId updates when focus is changed programmatically
+ok 330 - focus › activeId resets to undefined when focused component unmounts
+ok 331 - gap › gap
+ok 332 - gap › column gap
+ok 333 - gap › row gap
+The current testing environment is not configured to support act(...)
+ok 334 - gap › gap - concurrent
+The current testing environment is not configured to support act(...)
+ok 335 - gap › column gap - concurrent
+The current testing environment is not configured to support act(...)
+ok 336 - gap › row gap - concurrent
+ok 337 - hooks-use-input-kitty › useInput - handle kitty protocol super modifier
+ok 338 - hooks-use-input-kitty › useInput - handle kitty protocol hyper modifier
+ok 339 - hooks-use-input-kitty › useInput - handle kitty protocol capsLock
+ok 340 - hooks-use-input-kitty › useInput - handle kitty protocol numLock
+ok 341 - hooks-use-input-kitty › useInput - handle kitty protocol super+ctrl
+ok 342 - hooks-use-input-kitty › useInput - handle kitty protocol press event
+ok 343 - hooks-use-input-kitty › useInput - handle kitty protocol repeat event
+ok 344 - hooks-use-input-kitty › useInput - handle kitty protocol release event
+ok 345 - hooks-use-input-kitty › useInput - handle kitty protocol escape key
+ok 346 - hooks-use-input-kitty › useInput - non-printable kitty key (capslock) produces empty input
+ok 347 - hooks-use-input-kitty › useInput - non-printable kitty key (f13) produces empty input
+ok 348 - hooks-use-input-kitty › useInput - non-printable kitty key (printscreen) produces empty input
+ok 349 - hooks-use-input-kitty › useInput - kitty protocol space key produces space input
+ok 350 - hooks-use-input-kitty › useInput - kitty protocol return key produces carriage return input
+ok 351 - hooks-use-input-kitty › useInput - kitty protocol ctrl+letter via codepoint 1-26 produces input
+ok 352 - hooks-use-input-navigation › useInput - handle up arrow
+ok 353 - hooks-use-input-navigation › useInput - handle down arrow
+ok 354 - hooks-use-input-navigation › useInput - handle left arrow
+ok 355 - hooks-use-input-navigation › useInput - handle right arrow
+ok 356 - hooks-use-input-navigation › useInput - handles rapid arrows and enter in one chunk
+ok 357 - hooks-use-input-navigation › useInput - handle meta + up arrow
+ok 358 - hooks-use-input-navigation › useInput - handle meta + down arrow
+ok 359 - hooks-use-input-navigation › useInput - handle meta + left arrow
+ok 360 - hooks-use-input-navigation › useInput - handle meta + right arrow
+ok 361 - hooks-use-input-navigation › useInput - handle ctrl + up arrow
+ok 362 - hooks-use-input-navigation › useInput - handle ctrl + down arrow
+ok 363 - hooks-use-input-navigation › useInput - handle ctrl + left arrow
+ok 364 - hooks-use-input-navigation › useInput - handle ctrl + right arrow
+ok 365 - hooks-use-input-navigation › useInput - handle page down
+ok 366 - hooks-use-input-navigation › useInput - handle page up
+ok 367 - hooks-use-input-navigation › useInput - handle home
+ok 368 - hooks-use-input-navigation › useInput - handle end
+not ok 369 - hooks-use-input › useInput - discrete priority keeps states in sync with useTransition during rapid input
+#   Output: FINAL query:"abcde" deferred:"abcde"
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/hooks-use-input.tsx:34:5)'
+  ...
+ok 370 - hooks-use-input › useInput - handle lowercase character
+ok 371 - hooks-use-input › useInput - handle uppercase character
+ok 372 - hooks-use-input › useInput - \r should not count as an uppercase character
+ok 373 - hooks-use-input › useInput - pasted carriage return
+ok 374 - hooks-use-input › useInput - pasted tab
+ok 375 - hooks-use-input › useInput - receives bracketed paste when no usePaste handler is active
+ok 376 - hooks-use-input › useInput - handle escape
+ok 377 - hooks-use-input › useInput - handle ctrl
+ok 378 - hooks-use-input › useInput - handle meta
+ok 379 - hooks-use-input › useInput - flushes ESC[ prefix as literal input
+ok 380 - hooks-use-input › useInput - handle meta + O with pending flush
+ok 381 - hooks-use-input › useInput - handle tab
+ok 382 - hooks-use-input › useInput - handle shift + tab
+ok 383 - hooks-use-input › useInput - handle backspace
+ok 384 - hooks-use-input › useInput - handle delete
+ok 385 - hooks-use-input › useInput - handle remove (delete)
+ok 386 - hooks-use-input › useInput - handle option + return (macOS)
+ok 387 - hooks-use-paste › usePaste - receives bracketed paste as single text blob
+ok 388 - hooks-use-paste › usePaste - paste content with escape sequences is delivered verbatim
+ok 389 - hooks-use-paste › usePaste - useInput does not receive bracketed paste content
+ok 390 - hooks-use-paste › usePaste - multiple simultaneous hooks both receive the same paste event
+not ok 391 - hooks › useStderr - write to stderr # TODO
+ok 392 - hooks › useInput - ignore input if not active
+ok 393 - hooks › useInput - handle Ctrl+C when `exitOnCtrlC` is `false`
+ok 394 - hooks › useInput - no MaxListenersExceededWarning with many useInput hooks
+ok 395 - hooks › useInput - handle Ctrl+C via kitty codepoint-3 form when `exitOnCtrlC` is `false`
+ok 396 - hooks › useStdout - write to stdout
+ok 397 - input-parser › passes through plain text chunks
+ok 398 - input-parser › keeps plain text and control sequences separate
+ok 399 - input-parser › parses multiple standard CSI keys in one chunk
+ok 400 - input-parser › parses CSI sequences with parameters
+ok 401 - input-parser › parses kitty protocol sequence as one key event
+ok 402 - input-parser › parses SS3 sequences as one key event
+ok 403 - input-parser › does not consume a following escape as SS3 final byte
+ok 404 - input-parser › parses meta+CSI sequence with double escape
+ok 405 - input-parser › parses escaped printable code points
+ok 406 - input-parser › parses escaped supplementary code points
+ok 407 - input-parser › preserves legacy ESC[[... sequences in a mixed chunk
+ok 408 - input-parser › preserves legacy ESC[[... sequences across chunks
+ok 409 - input-parser › parses legacy and standard CSI sequences mixed together
+ok 410 - input-parser › holds incomplete CSI sequence until final byte arrives
+ok 411 - input-parser › holds incomplete legacy ESC[[... sequence until final byte arrives
+ok 412 - input-parser › holds incomplete SS3 sequence until final byte arrives
+ok 413 - input-parser › holds incomplete double-escape CSI sequence until final byte arrives
+ok 414 - input-parser › keeps pending plain escape and can flush it
+ok 415 - input-parser › flushes pending CSI prefix as literal input
+ok 416 - input-parser › reset clears pending input state
+ok 417 - input-parser › treats invalid CSI continuation as escaped code point plus plain text
+ok 418 - input-parser › parses mixed text and many key events in one read
+ok 419 - input-parser › flushes pending SS3 prefix as literal input
+ok 420 - input-parser › flushes pending legacy CSI prefix as literal input
+ok 421 - input-parser › parses meta+SS3 sequence with double escape
+ok 422 - input-parser › holds incomplete double-escape SS3 sequence until final byte arrives
+ok 423 - input-parser › emits double escape as single event for non-control character
+ok 424 - input-parser › empty chunk produces no events
+ok 425 - input-parser › empty chunk does not disturb pending state
+ok 426 - input-parser › plain text followed by incomplete escape holds escape as pending
+ok 427 - input-parser › splits batched delete characters into individual events
+ok 428 - input-parser › splits batched backspace characters into individual events
+ok 429 - input-parser › splits mixed delete and backspace characters
+ok 430 - input-parser › splits mixed printable text and delete characters
+ok 431 - input-parser › single delete character is preserved as individual event
+ok 432 - input-parser › single backspace character is preserved as individual event
+ok 433 - input-parser › splits trailing delete from text
+ok 434 - input-parser › splits delete characters before escape sequences
+ok 435 - input-parser › splits delete characters after escape sequences
+ok 436 - input-parser › splits delete characters between escape sequences
+ok 437 - input-parser › splits backspace characters around escape sequences
+ok 438 - input-parser › splits interleaved text and delete characters
+ok 439 - input-parser › does not split pasted carriage return from text
+ok 440 - input-parser › does not split pasted tab from text
+ok 441 - input-parser › assembles CSI sequence from single-byte chunks
+ok 442 - input-parser › emits paste event for bracketed paste sequence
+ok 443 - input-parser › emits paste event for multiline bracketed paste
+ok 444 - input-parser › paste content with escape sequences is delivered verbatim
+ok 445 - input-parser › emits normal events before and after bracketed paste
+ok 446 - input-parser › emits multiple paste events in one chunk
+ok 447 - input-parser › holds incomplete bracketed paste as pending
+ok 448 - input-parser › assembles bracketed paste from chunk-by-chunk delivery
+ok 449 - input-parser › emits empty paste for adjacent paste markers
+ok 450 - input-parser › handles pasteStart split before the tilde (\u001B[200 without ~)
+ok 451 - input-parser › hasPendingEscape returns true for length-3 pasteStart prefix (\u001B[2)
+ok 452 - input-parser › hasPendingEscape returns true for length-4 pasteStart prefix (\u001B[20)
+ok 453 - input-parser › paste event delivers delete and backspace chars verbatim without splitting
+ok 454 - kitty-keyboard › kitty protocol - writes enable sequence on init when mode is enabled
+ok 455 - kitty-keyboard › kitty protocol - writes disable sequence on unmount
+ok 456 - kitty-keyboard › kitty protocol - not enabled when stdin is not a TTY
+ok 457 - kitty-keyboard › kitty protocol - not enabled when stdout is not a TTY
+ok 458 - kitty-keyboard › kitty protocol - auto detection does not enable protocol after unmount
+not ok 459 - kitty-keyboard › kitty protocol - auto detection handles synchronous query response
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/kitty-keyboard.tsx:720:5)'
+  ...
+not ok 460 - kitty-keyboard › kitty protocol - auto detection handles Uint8Array query response
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/kitty-keyboard.tsx:754:5)'
+  ...
+not ok 461 - kitty-keyboard › kitty protocol - auto detection preserves split UTF-8 input bytes
+  ---
+    name: AssertionError
+    assertion: deepEqual
+    values:
+      'Difference (- actual, + expected):': |2-
+          [
+        +   240,
+        +   159,
+        +   146,
+        +   169,
+          ]
+    at: '<anonymous> (test/kitty-keyboard.tsx:807:5)'
+  ...
+ok 462 - kitty-keyboard › kitty protocol - auto detection timeout does not leak partial query response
+not ok 463 - kitty-keyboard › kitty protocol - auto detection timeout preserves query prefix without digits
+  ---
+    name: AssertionError
+    assertion: deepEqual
+    values:
+      'Difference (- actual, + expected):': |2-
+          [
+        +   [
+        +     27,
+        +     91,
+        +     63,
+        +   ],
+          ]
+    at: '<anonymous> (test/kitty-keyboard.tsx:889:5)'
+  ...
+not ok 464 - kitty-keyboard › kitty protocol - auto detection ignores query response without digits
+  ---
+    name: AssertionError
+    assertion: deepEqual
+    values:
+      'Difference (- actual, + expected):': |2-
+          [
+        +   [
+        +     27,
+        +     91,
+        +     63,
+        +     117,
+        +   ],
+          ]
+    at: '<anonymous> (test/kitty-keyboard.tsx:934:5)'
+  ...
+not ok 465 - kitty-keyboard › kitty protocol - auto detection preserves invalid query-like escape sequence
+  ---
+    name: AssertionError
+    assertion: deepEqual
+    values:
+      'Difference (- actual, + expected):': |2-
+          [
+        +   [
+        +     27,
+        +     91,
+        +     63,
+        +     49,
+        +     120,
+        +   ],
+          ]
+    at: '<anonymous> (test/kitty-keyboard.tsx:979:5)'
+  ...
+ok 466 - kitty-keyboard › kitty protocol - simple character
+ok 467 - kitty-keyboard › kitty protocol - uppercase character (shift)
+ok 468 - kitty-keyboard › kitty protocol - ctrl modifier
+ok 469 - kitty-keyboard › kitty protocol - alt/option modifier
+ok 470 - kitty-keyboard › kitty protocol - super modifier
+ok 471 - kitty-keyboard › kitty protocol - hyper modifier
+ok 472 - kitty-keyboard › kitty protocol - meta modifier
+ok 473 - kitty-keyboard › kitty protocol - caps lock
+ok 474 - kitty-keyboard › kitty protocol - num lock
+ok 475 - kitty-keyboard › kitty protocol - combined modifiers (ctrl+shift)
+ok 476 - kitty-keyboard › kitty protocol - combined modifiers (super+ctrl)
+ok 477 - kitty-keyboard › kitty protocol - escape key
+ok 478 - kitty-keyboard › kitty protocol - return/enter key
+ok 479 - kitty-keyboard › kitty protocol - tab key
+ok 480 - kitty-keyboard › kitty protocol - backspace key
+ok 481 - kitty-keyboard › kitty protocol - delete key
+ok 482 - kitty-keyboard › kitty protocol - space key
+ok 483 - kitty-keyboard › kitty protocol - event type press
+ok 484 - kitty-keyboard › kitty protocol - event type repeat
+ok 485 - kitty-keyboard › kitty protocol - event type release
+ok 486 - kitty-keyboard › kitty protocol - number keys
+ok 487 - kitty-keyboard › kitty protocol - special character
+ok 488 - kitty-keyboard › kitty protocol - ctrl+letter produces codepoint 1-26
+ok 489 - kitty-keyboard › kitty protocol - preserves sequence and raw
+ok 490 - kitty-keyboard › kitty protocol - text-as-codepoints field
+ok 491 - kitty-keyboard › kitty protocol - text-as-codepoints with multiple codepoints
+ok 492 - kitty-keyboard › kitty protocol - supplementary unicode codepoint
+ok 493 - kitty-keyboard › kitty protocol - text-as-codepoints with supplementary unicode
+ok 494 - kitty-keyboard › kitty protocol - text defaults to character from codepoint
+ok 495 - kitty-keyboard › kitty protocol - arrow keys with event type
+ok 496 - kitty-keyboard › kitty protocol - arrow keys with modifiers
+ok 497 - kitty-keyboard › kitty protocol - home and end keys
+ok 498 - kitty-keyboard › kitty protocol - tilde-terminated special keys
+ok 499 - kitty-keyboard › kitty protocol - tilde keys with modifiers
+ok 500 - kitty-keyboard › kitty protocol - invalid codepoint above U+10FFFF returns safe empty keypress
+ok 501 - kitty-keyboard › kitty protocol - surrogate codepoint returns safe empty keypress
+ok 502 - kitty-keyboard › kitty protocol - invalid text codepoint replaced with fallback
+ok 503 - kitty-keyboard › kitty protocol - malformed modifier 0 does not set all flags
+ok 504 - kitty-keyboard › non-kitty sequences fall back to legacy parsing
+ok 505 - kitty-keyboard › non-kitty sequences - ctrl+c
+ok 506 - kitty-keyboard › kitty protocol - isPrintable is true for regular characters
+ok 507 - kitty-keyboard › kitty protocol - isPrintable is true for digits
+ok 508 - kitty-keyboard › kitty protocol - isPrintable is true for symbols
+ok 509 - kitty-keyboard › kitty protocol - isPrintable is true for emoji
+ok 510 - kitty-keyboard › kitty protocol - isPrintable is false for escape
+ok 511 - kitty-keyboard › kitty protocol - isPrintable is true for return
+ok 512 - kitty-keyboard › kitty protocol - isPrintable is false for tab
+ok 513 - kitty-keyboard › kitty protocol - isPrintable is true for space
+ok 514 - kitty-keyboard › kitty protocol - isPrintable is false for backspace
+ok 515 - kitty-keyboard › kitty protocol - isPrintable is false for ctrl+letter
+ok 516 - kitty-keyboard › kitty protocol - isPrintable is false for special keys (arrows)
+ok 517 - kitty-keyboard › kitty protocol - capslock (57358) is non-printable
+ok 518 - kitty-keyboard › kitty protocol - printscreen (57361) is non-printable
+ok 519 - kitty-keyboard › kitty protocol - f13 (57376) is non-printable
+ok 520 - kitty-keyboard › kitty protocol - media key (57428 mediaplay) is non-printable
+ok 521 - kitty-keyboard › kitty protocol - modifier-only key (57441 leftshift) is non-printable
+ok 522 - kitty-keyboard › kitty protocol - modifier-only key (57442 leftcontrol) is non-printable
+ok 523 - kitty-keyboard › kitty protocol - kp keys (57399 kp0) are non-printable
+ok 524 - kitty-keyboard › kitty protocol - scrolllock (57359) is non-printable
+ok 525 - kitty-keyboard › kitty protocol - numlock (57360) is non-printable
+ok 526 - kitty-keyboard › kitty protocol - pause (57362) is non-printable
+ok 527 - kitty-keyboard › kitty protocol - volume keys are non-printable
+ok 528 - kitty-keyboard › kitty protocol - space key has text field set to space character
+ok 529 - kitty-keyboard › kitty protocol - return key has text field set to carriage return
+ok 530 - log-update › standard rendering - renders and updates output
+ok 531 - log-update › standard rendering - skips identical output
+ok 532 - log-update › incremental rendering - renders and updates output
+ok 533 - log-update › incremental rendering - skips identical output
+ok 534 - log-update › incremental rendering - surgical updates
+ok 535 - log-update › incremental rendering - clears extra lines when output shrinks
+ok 536 - log-update › incremental rendering - when output grows
+ok 537 - log-update › incremental rendering - single write call with multiple surgical updates
+ok 538 - log-update › incremental rendering - shrinking output keeps screen tight
+ok 539 - log-update › incremental rendering - clear() fully resets incremental state
+ok 540 - log-update › incremental rendering - done() resets before next render
+ok 541 - log-update › incremental rendering - multiple consecutive clear() calls (should be harmless no-ops)
+ok 542 - log-update › incremental rendering - sync() followed by update (assert incremental path is used)
+ok 543 - log-update › standard rendering - positions cursor after output when cursorPosition is set
+ok 544 - log-update › standard rendering - hides cursor before erase when cursor was previously shown
+ok 545 - log-update › standard rendering - no cursor positioning when cursorPosition is undefined
+ok 546 - log-update › standard rendering - cursor position at second-to-last line emits cursorUp(1)
+ok 547 - log-update › standard rendering - clear() returns cursor to bottom before erasing
+ok 548 - log-update › incremental rendering - clear() returns cursor to bottom before erasing
+ok 549 - log-update › standard rendering - clearing cursor position stops cursor positioning
+ok 550 - log-update › incremental rendering - positions cursor after surgical updates
+ok 551 - log-update › incremental rendering - positions cursor after update
+ok 552 - log-update › standard rendering - repositions cursor when only cursor position changes (same output)
+ok 553 - log-update › incremental rendering - repositions cursor when only cursor position changes (same output)
+ok 554 - log-update › standard rendering - returns to bottom before erase when cursor was positioned
+ok 555 - log-update › standard rendering - sync() resets cursor state
+ok 556 - log-update › incremental rendering - sync() resets cursor state
+ok 557 - log-update › standard rendering - sync() writes cursor suffix when cursor is dirty
+ok 558 - log-update › incremental rendering - sync() writes cursor suffix when cursor is dirty
+ok 559 - log-update › standard rendering - sync() with cursor sets cursorWasShown for next render
+ok 560 - log-update › incremental rendering - sync() with cursor sets cursorWasShown for next render
+ok 561 - log-update › standard rendering - sync() hides cursor when previous render showed cursor
+ok 562 - log-update › incremental rendering - sync() hides cursor when previous render showed cursor
+ok 563 - log-update › standard rendering - sync() without cursor does not write to stream
+ok 564 - log-update › incremental rendering - no trailing newline: trailing to no-trailing transition
+ok 565 - log-update › incremental rendering - no trailing newline: no-trailing to no-trailing update
+ok 566 - log-update › incremental rendering - no trailing newline: shrink
+ok 567 - log-update › incremental rendering - no trailing newline: grow
+ok 568 - log-update › incremental rendering - no trailing newline: unchanged lines do not overshoot cursor
+ok 569 - log-update › incremental rendering - render to empty string (full clear vs early exit)
+ok 570 - margin › margin
+ok 571 - margin › margin X
+ok 572 - margin › margin Y
+ok 573 - margin › margin top
+ok 574 - margin › margin bottom
+ok 575 - margin › margin left
+ok 576 - margin › margin right
+ok 577 - margin › nested margin
+ok 578 - margin › margin with multiline string
+ok 579 - margin › apply margin to text with newlines
+ok 580 - margin › apply margin to wrapped text
+The current testing environment is not configured to support act(...)
+ok 581 - margin › margin - concurrent
+The current testing environment is not configured to support act(...)
+ok 582 - margin › nested margin - concurrent
+not ok 583 - measure-element › calculate layout while rendering is throttled
+  ---
+    name: AssertionError
+    message: Rejected promise returned by test
+    values:
+      'Rejected promise returned by test. Reason:': |-
+        TypeError {
+          message: 'Expected a `string`, got `undefined`',
+        }
+    at: |-
+      stripAnsi (file://node_modules/strip-ansi/index.js:7:9)
+      <anonymous> (test/measure-element.tsx:210:7)
+  ...
+ok 584 - measure-element › measure element
+not ok 585 - measure-element › measure element after state update
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |2-
+          `line 1␊
+          line 2␊
+          line 3␊
+        - Height: 0`
+        + Height: 3`
+    at: '<anonymous> (test/measure-element.tsx:79:4)'
+  ...
+not ok 586 - measure-element › measure element after multiple state updates
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |2-
+          `line 1␊
+        - Height: 3`
+        + Height: 1`
+    at: '<anonymous> (test/measure-element.tsx:125:4)'
+  ...
+ok 587 - measure-element › measure element in useLayoutEffect after state update
+ok 588 - measure-text › measure single word
+ok 589 - measure-text › measure empty string
+ok 590 - measure-text › measure multiline text
+ok 591 - measure-text › measure multiline text with varying line lengths
+ok 592 - measure-text › measure text with trailing newline
+ok 593 - measure-text › measure text with only newlines
+ok 594 - measure-text › returns cached result on repeated calls
+ok 595 - measure-text › measure text with ANSI escape sequences
+ok 596 - measure-text › measure text with 256-color ANSI
+ok 597 - measure-text › measure text with wide characters
+ok 598 - measure-text › measure text with emoji
+ok 599 - measure-text › measure multiline with wide characters
+ok 600 - overflow › overflowX - single text node in a box inside overflow container
+ok 601 - overflow › overflowX - single text node inside overflow container with border
+ok 602 - overflow › overflowX - single text node in a box with border inside overflow container
+ok 603 - overflow › overflowX - multiple text nodes in a box inside overflow container
+ok 604 - overflow › overflowX - multiple text nodes in a box inside overflow container with border
+ok 605 - overflow › overflowX - multiple text nodes in a box with border inside overflow container
+ok 606 - overflow › overflowX - multiple boxes inside overflow container
+ok 607 - overflow › overflowX - multiple boxes inside overflow container with border
+ok 608 - overflow › overflowX - box before left edge of overflow container
+ok 609 - overflow › overflowX - box before left edge of overflow container with border
+ok 610 - overflow › overflowX - box intersecting with left edge of overflow container
+ok 611 - overflow › overflowX - box intersecting with left edge of overflow container with border
+ok 612 - overflow › overflowX - box after right edge of overflow container
+ok 613 - overflow › overflowX - box intersecting with right edge of overflow container
+ok 614 - overflow › overflowY - single text node inside overflow container
+ok 615 - overflow › overflowY - single text node inside overflow container with border
+ok 616 - overflow › overflowY - multiple boxes inside overflow container
+ok 617 - overflow › overflowY - multiple boxes inside overflow container with border
+ok 618 - overflow › overflowY - box above top edge of overflow container
+ok 619 - overflow › overflowY - box above top edge of overflow container with border
+ok 620 - overflow › overflowY - box intersecting with top edge of overflow container
+ok 621 - overflow › overflowY - box intersecting with top edge of overflow container with border
+ok 622 - overflow › overflowY - box below bottom edge of overflow container
+ok 623 - overflow › overflowY - box below bottom edge of overflow container with border
+ok 624 - overflow › overflowY - box intersecting with bottom edge of overflow container
+ok 625 - overflow › overflowY - box intersecting with bottom edge of overflow container with border
+ok 626 - overflow › overflow - single text node inside overflow container
+ok 627 - overflow › overflow - single text node inside overflow container with border
+ok 628 - overflow › overflow - multiple boxes inside overflow container
+ok 629 - overflow › overflow - multiple boxes inside overflow container with border
+ok 630 - overflow › overflow - box intersecting with top left edge of overflow container
+ok 631 - overflow › overflow - box intersecting with top right edge of overflow container
+ok 632 - overflow › overflow - box intersecting with bottom left edge of overflow container
+ok 633 - overflow › overflow - box intersecting with bottom right edge of overflow container
+ok 634 - overflow › nested overflow
+ok 635 - overflow › out of bounds writes do not crash
+The current testing environment is not configured to support act(...)
+ok 636 - overflow › overflowX - single text node in a box inside overflow container - concurrent
+The current testing environment is not configured to support act(...)
+ok 637 - overflow › overflowY - single text node inside overflow container - concurrent
+The current testing environment is not configured to support act(...)
+ok 638 - overflow › overflow - single text node inside overflow container - concurrent
+The current testing environment is not configured to support act(...)
+ok 639 - overflow › nested overflow - concurrent
+ok 640 - padding › padding
+ok 641 - padding › padding X
+ok 642 - padding › padding Y
+ok 643 - padding › padding top
+ok 644 - padding › padding bottom
+ok 645 - padding › padding left
+ok 646 - padding › padding right
+ok 647 - padding › nested padding
+ok 648 - padding › padding with multiline string
+ok 649 - padding › apply padding to text with newlines
+ok 650 - padding › apply padding to wrapped text
+ok 651 - padding › text wrapping respects paddingX with flexGrow
+The current testing environment is not configured to support act(...)
+ok 652 - padding › padding - concurrent
+The current testing environment is not configured to support act(...)
+ok 653 - padding › nested padding - concurrent
+ok 654 - position › absolute position with top and left offsets
+ok 655 - position › absolute position with bottom and right offsets
+ok 656 - position › absolute position with percentage offsets
+ok 657 - position › absolute position with percentage bottom and right offsets
+ok 658 - position › relative position offsets visual position while keeping flow
+ok 659 - position › static position ignores offsets
+ok 660 - position › static position ignores percentage offsets
+ok 661 - position › clears top offset on rerender
+ok 662 - position › clears percentage top and left offsets on rerender
+ok 663 - position › clears percentage top and left offsets when props are omitted on rerender
+ok 664 - position › clears bottom and right offsets on rerender
+The current testing environment is not configured to support act(...)
+ok 665 - position › absolute position with top and left offsets - concurrent
+ok 666 - reconciler › update child
+ok 667 - reconciler › update text node
+ok 668 - reconciler › remove style prop from intrinsic node
+ok 669 - reconciler › append child
+ok 670 - reconciler › insert child between other children
+ok 671 - reconciler › remove child
+ok 672 - reconciler › reorder children
+ok 673 - reconciler › replace child node with text
+ok 674 - reconciler › support suspense
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 675 - reconciler › support suspense with concurrent mode
+ok 676 - render-to-string › render simple text
+ok 677 - render-to-string › render text with variable
+ok 678 - render-to-string › render nested text components
+ok 679 - render-to-string › render empty fragment
+ok 680 - render-to-string › render null children
+ok 681 - render-to-string › render box with padding
+ok 682 - render-to-string › render box with flex direction row
+ok 683 - render-to-string › render box with flex direction column
+ok 684 - render-to-string › render margin
+ok 685 - render-to-string › render gap between items
+ok 686 - render-to-string › render box with fixed width and height
+ok 687 - render-to-string › render spacer pushes content apart
+ok 688 - render-to-string › render newline inserts blank line
+ok 689 - render-to-string › render box with border
+ok 690 - render-to-string › render colored text
+ok 691 - render-to-string › render bold text
+ok 692 - render-to-string › render text with wrap
+ok 693 - render-to-string › render text with truncate
+ok 694 - render-to-string › default columns is 80
+ok 695 - render-to-string › custom columns option
+ok 696 - render-to-string › render Transform component
+ok 697 - render-to-string › render Static component with items
+ok 698 - render-to-string › render static-only output has no trailing newline
+ok 699 - render-to-string › render static + dynamic output has exactly one newline between parts
+ok 700 - render-to-string › captures initial render output before effect-driven state updates
+ok 701 - render-to-string › useLayoutEffect state updates are reflected in output
+ok 702 - render-to-string › runs effect cleanup on teardown
+ok 703 - render-to-string › component that throws propagates the error
+ok 704 - render-to-string › text outside Text component throws
+ok 705 - render-to-string › subsequent calls work after a component error
+ok 706 - render-to-string › can be called multiple times independently
+ok 707 - render-to-string › render deeply nested component tree
+ok 708 - render › do not erase screen
+ok 709 - render › do not erase screen where <Static> is taller than viewport
+not ok 710 - render › erase screen
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:360:4)'
+  ...
+not ok 711 - render › erase screen where <Static> exists but interactive part is taller than viewport
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:372:5)'
+  ...
+ok 712 - render › erase screen where state changes
+ok 713 - render › erase screen where state changes in small viewport
+not ok 714 - render › fullscreen mode should not add extra newline at the bottom
+  ---
+    name: AssertionError
+    message: Should have exactly 5 lines for 5-row terminal
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 6
+        + 5
+    at: '<anonymous> (test/render.tsx:438:5)'
+  ...
+not ok 715 - render › #442: full terminal-size box should not add an extra scroll line
+  ---
+    name: AssertionError
+    message: Should not end with a trailing newline in fullscreen mode
+    assertion: 'false'
+    values:
+      'Value is not `false`:': 'true'
+    at: '<anonymous> (test/render.tsx:458:5)'
+  ...
+not ok 716 - render › #450: full-height rerenders should not repeatedly clear terminal
+  ---
+    name: AssertionError
+    message: Expected incremental erase sequences for fullscreen rerenders
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:482:5)'
+  ...
+ok 717 - render › #450: initial overflowing frame should not clear terminal
+ok 718 - render › #450: initial full-height frame should not clear terminal
+not ok 719 - render › #450 control: rows - 1 rerenders should avoid clearTerminal
+  ---
+    name: AssertionError
+    message: Expected incremental erase sequences for non-fullscreen rerenders
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:533:5)'
+  ...
+not ok 720 - render › #450: full-height rerenders should not clear before unmount
+  ---
+    name: AssertionError
+    message: Fixture should render multiple dynamic frames
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: |-
+      assertIssue450DynamicFrameOutput (test/render.tsx:283:4)
+      <anonymous> (test/render.tsx:552:3)
+  ...
+not ok 721 - render › #450: grow from rows - 1 to full-height should not clear before unmount
+  ---
+    name: AssertionError
+    message: Fixture should render multiple dynamic frames
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: |-
+      assertIssue450DynamicFrameOutput (test/render.tsx:283:4)
+      <anonymous> (test/render.tsx:569:3)
+  ...
+not ok 722 - render › #450: shrink from full-height to rows - 1 should clear exactly once
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:582:5)'
+  ...
+not ok 723 - render › #450: shrink from overflow to rows - 1 should clear exactly once
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:594:5)'
+  ...
+not ok 724 - render › #450: <Static> with shrink from full-height should clear exactly once
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:607:5)'
+  ...
+ok 725 - render › #450: non-TTY full-height rerenders should never clear terminal
+ok 726 - render › #450: non-TTY overflow transitions should never clear terminal
+not ok 727 - render › #450: viewport shrink into overflow should clear once
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:719:5)'
+  ...
+ok 728 - render › #450: non-TTY grow-to-overflow rerender should not clear terminal
+ok 729 - render › #725: non-TTY child process output is flushed
+not ok 730 - render › #450: full-height rerenders with <Static> should not repeatedly clear terminal
+  ---
+    name: AssertionError
+    message: Expected incremental erase sequences for fullscreen rerenders
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:761:5)'
+  ...
+not ok 731 - render › clear output
+  ---
+    name: AssertionError
+    assertion: 'false'
+    values:
+      'Value is not `false`:': undefined
+    at: '<anonymous> (test/render.tsx:775:5)'
+  ...
+not ok 732 - render › intercept console methods and display result above output
+  ---
+    name: AssertionError
+    assertion: deepEqual
+    values:
+      'Difference (- actual, + expected):': |2-
+          [
+        -   `First log␍␊
+            Hello World␍␊
+        -   Second log␍␊
+            `,
+        +   `First log␍␊
+        +   Hello World␍␊
+        +   Second log␍␊
+        +   `,
+          ]
+    at: '<anonymous> (test/render.tsx:789:5)'
+  ...
+not ok 733 - render › rerender on resize
+  ---
+    name: AssertionError
+    message: Rejected promise returned by test
+    values:
+      'Rejected promise returned by test. Reason:': |-
+        TypeError {
+          message: 'Expected a `string`, got `undefined`',
+        }
+    at: |-
+      stripAnsi (file://node_modules/strip-ansi/index.js:7:9)
+      <anonymous> (test/render.tsx:811:3)
+  ...
+not ok 734 - render › throttle renders to maxFps
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:852:5)'
+  ...
+╭──────────────────────────────────────────────────────────────────────────────╮
+│aUpdated                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ok 735 - render › outputs renderTime when onRender is passed
+not ok 736 - render › no throttled renders after unmount
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:943:5)'
+  ...
+not ok 737 - render › unmount forces pending throttled render
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:970:5)'
+  ...
+ok 738 - render › should reject waitUntilExit when app exits during synchronous render error handling
+ok 739 - render › waitUntilExit resolves after stdout write callback
+ok 740 - render › createDelayedWriteCallbackStdout delays only the first matching chunk
+not ok 741 - render › waitUntilRenderFlush resolves after stdout write callback
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:1114:5)'
+  ...
+not ok 742 - render › waitUntilRenderFlush flushes pending throttled render
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:1135:5)'
+  ...
+not ok 743 - render › waitUntilRenderFlush resolves when stdout is not writable
+  ---
+    name: AssertionError
+    assertion: is
+    values:
+      'Difference (- actual, + expected):': |-
+        - 0
+        + 1
+    at: '<anonymous> (test/render.tsx:1164:5)'
+  ...
+not ok 744 - render › waitUntilRenderFlush waits for rerender write callback
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:1207:5)'
+  ...
+not ok 745 - render › waitUntilRenderFlush waits for concurrent rerender commit
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:1247:5)'
+  ...
+not ok 746 - render › waitUntilRenderFlush waits for all concurrent waiters on the same rerender
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/render.tsx:1292:5)'
+  ...
+ok 747 - render › useApp waitUntilRenderFlush resolves after the first frame write callback
+ok 748 - render › useApp waitUntilRenderFlush waits for state update frame flush
+not ok 749 - render › useApp waitUntilRenderFlush waits for state update queued in same effect tick
+  ---
+    name: AssertionError
+    assertion: 'false'
+    values:
+      'Value is not `false`:': 'true'
+    at: '<anonymous> (test/render.tsx:1428:5)'
+  ...
+ok 750 - render › waitUntilRenderFlush resolves after unmount
+ok 751 - render › waitUntilRenderFlush waits for unmount write callback
+ok 752 - render › waitUntilRenderFlush after unmount does not register beforeExit listener
+ok 753 - render › waitUntilRenderFlush resolves after exit with error
+(node:28801) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 beforeExit listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok 754 - render › issue 596: useEffect can run before the first frame write callback
+ok 755 - render › waitUntilExit resolves first exit value when duplicate exits happen during teardown
+ok 756 - render › waitUntilExit resolves first exit value when exit is re-entered during unmount writes
+ok 757 - render › waitUntilExit resolves first exit value when exit is re-entered during unmount writes in debug mode
+ok 758 - render › waitUntilExit resolves first exit value when exit is re-entered during unmount writes with screen reader
+ok 759 - render › exit rejects on cross-realm Error
+ok 760 - render › exit with cross-realm Error rejects after stdout write callback
+ok 761 - render › unmount does not write to ended stdout stream
+ok 762 - render › unmount cancels pending throttled log writes when stdout is ended
+ok 763 - render › unmount cancels pending throttled render when stdout is ended
+not ok 764 - render › no bsu/esu when output is unchanged
+  ---
+    name: AssertionError
+    message: initial render should include bsu
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: |-
+      <anonymous> (test/render.tsx:1936:6)
+      withFakeClock (test/render.tsx:1909:3)
+      assertNoBsuEsuForUnchangedTrailingRerender (test/render.tsx:1931:2)
+      <anonymous> (test/render.tsx:1951:2)
+  ...
+not ok 765 - render › no bsu/esu when output and cursor are unchanged
+  ---
+    name: AssertionError
+    message: initial render should include bsu
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: |-
+      <anonymous> (test/render.tsx:1936:6)
+      withFakeClock (test/render.tsx:1909:3)
+      assertNoBsuEsuForUnchangedTrailingRerender (test/render.tsx:1931:2)
+      <anonymous> (test/render.tsx:1958:2)
+  ...
+not ok 766 - render › bsu/esu wraps throttledLog trailing call
+  ---
+    name: AssertionError
+    message: leading call should include bsu
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: |-
+      <anonymous> (test/render.tsx:1975:6)
+      withFakeClock (test/render.tsx:1909:3)
+      <anonymous> (test/render.tsx:1965:2)
+  ...
+ok 767 - sanitize-ansi › preserve plain text
+ok 768 - sanitize-ansi › preserve SGR sequences
+ok 769 - sanitize-ansi › preserve OSC hyperlinks
+ok 770 - sanitize-ansi › preserve OSC hyperlinks terminated by C1 ST
+ok 771 - sanitize-ansi › preserve C1 OSC hyperlinks terminated by C1 ST
+ok 772 - sanitize-ansi › preserve C1 OSC hyperlinks terminated by ESC ST
+ok 773 - sanitize-ansi › preserve C1 OSC hyperlinks terminated by BEL
+ok 774 - sanitize-ansi › strip non-SGR CSI sequences as complete units
+ok 775 - sanitize-ansi › strip C1 non-SGR CSI sequences as complete units
+ok 776 - sanitize-ansi › preserve C1 SGR CSI sequences
+ok 777 - sanitize-ansi › strip private-parameter m-sequences that are not SGR
+ok 778 - sanitize-ansi › strip tmux DCS passthrough wrappers with escaped ST payload terminators
+ok 779 - sanitize-ansi › strip incomplete DCS passthrough sequences to avoid payload leaks
+ok 780 - sanitize-ansi › strip DCS control strings with BEL in payload until ST terminator
+ok 781 - sanitize-ansi › strip ESC SOS control strings as complete units
+ok 782 - sanitize-ansi › strip ESC SOS control strings with C1 ST terminator
+ok 783 - sanitize-ansi › strip C1 SOS control strings as complete units with C1 ST terminator
+ok 784 - sanitize-ansi › strip C1 SOS control strings as complete units with ESC ST terminator
+ok 785 - sanitize-ansi › strip ESC SOS with BEL terminator as malformed control string
+ok 786 - sanitize-ansi › strip C1 SOS with BEL terminator as malformed control string
+ok 787 - sanitize-ansi › strip incomplete ESC SOS control strings to avoid payload leaks
+ok 788 - sanitize-ansi › strip incomplete C1 SOS control strings to avoid payload leaks
+ok 789 - sanitize-ansi › strip SOS with escaped ESC in payload until final ST terminator
+ok 790 - sanitize-ansi › preserve SGR around stripped SOS control strings
+ok 791 - sanitize-ansi › strip ESC ST sequences
+ok 792 - sanitize-ansi › strip malformed ESC control sequences with intermediates and non-final bytes
+ok 793 - sanitize-ansi › strip incomplete CSI after preserving prior SGR content
+ok 794 - sanitize-ansi › strip standalone ST bytes
+ok 795 - sanitize-ansi › strip standalone C1 control characters
+ok 796 - screen-reader › render text for screen readers
+ok 797 - screen-reader › render text for screen readers with aria-hidden
+ok 798 - screen-reader › render text for screen readers with aria-role
+ok 799 - screen-reader › render select input for screen readers
+ok 800 - screen-reader › render aria-label only Text for screen readers
+ok 801 - screen-reader › render aria-label only Box for screen readers
+ok 802 - screen-reader › omit ANSI styling in screen-reader output
+ok 803 - screen-reader › skip nodes with display:none style in screen-reader output
+ok 804 - screen-reader › render multiple Text components
+ok 805 - screen-reader › render nested Box components with Text
+ok 806 - screen-reader › render component that returns null
+ok 807 - screen-reader › render with aria-state.busy
+ok 808 - screen-reader › render with aria-state.checked
+ok 809 - screen-reader › render with aria-state.disabled
+ok 810 - screen-reader › render with aria-state.expanded
+ok 811 - screen-reader › render with aria-state.multiline
+ok 812 - screen-reader › render with aria-state.multiselectable
+ok 813 - screen-reader › render with aria-state.readonly
+ok 814 - screen-reader › render with aria-state.required
+ok 815 - screen-reader › render with aria-state.selected
+ok 816 - screen-reader › render multi-line text
+ok 817 - screen-reader › render nested multi-line text
+ok 818 - screen-reader › render nested row
+ok 819 - screen-reader › render multi-line text with roles
+ok 820 - screen-reader › render listbox with multiselectable options
+ok 821 - text-width › wide characters do not add extra space inside fixed-width Box
+ok 822 - text-width › CJK characters occupy correct width in fixed-width Box
+ok 823 - text-width › mixed ASCII and wide characters align correctly
+ok 824 - text-width › ANSI styled text does not affect layout width
+ok 825 - text-width › empty Text does not affect sibling layout
+ok 826 - text › <Text> with undefined children
+ok 827 - text › <Text> with null children
+ok 828 - text › text with standard color
+ok 829 - text › text with dim+bold
+ok 830 - text › text with dimmed color
+ok 831 - text › text with hex color
+ok 832 - text › text with rgb color
+ok 833 - text › text with ansi256 color
+ok 834 - text › text with standard background color
+ok 835 - text › text with hex background color
+ok 836 - text › text with rgb background color
+ok 837 - text › text with ansi256 background color
+ok 838 - text › text with inversion
+ok 839 - text › text with empty-to-nonempty sibling does not wrap
+ok 840 - text › remeasure text when text is changed
+ok 841 - text › remeasure text when text nodes are changed
+ok 842 - text › text with content "constructor" wraps correctly
+ok 843 - text › strip ANSI cursor movement sequences from text
+ok 844 - text › strip ANSI cursor position and erase sequences from text
+ok 845 - text › preserve SGR color sequences in text
+ok 846 - text › preserve OSC hyperlink sequences in text
+ok 847 - text › preserve OSC hyperlink sequences with ST terminator in text
+ok 848 - text › preserve C1 OSC sequences in text
+ok 849 - text › preserve C1 OSC hyperlink sequences with ST terminator in text
+ok 850 - text › preserve SGR sequences with colon parameters
+ok 851 - text › strip complete non-SGR CSI sequences without leaking parameters
+ok 852 - text › strip complete C1 non-SGR CSI sequences without leaking parameters
+ok 853 - text › strip complete ESC control sequences with intermediates
+ok 854 - text › strip tmux DCS passthrough wrappers without leaking payload
+ok 855 - text › strip tmux DCS passthrough wrappers with ST-terminated OSC payload
+ok 856 - text › strip C1 DCS control strings as complete units
+ok 857 - text › strip PM and APC control strings as complete units
+ok 858 - text › strip C1 PM and APC control strings as complete units
+ok 859 - text › strip ESC SOS control strings as complete units
+ok 860 - text › strip C1 SOS control strings as complete units
+ok 861 - text › strip malformed SOS control strings to avoid payload leaks
+ok 862 - text › preserve SGR sequences around stripped SOS control strings
+ok 863 - text › strip tmux DCS passthrough containing BEL until the final ST terminator
+ok 864 - text › strip incomplete DCS passthrough sequences to avoid payload leaks
+ok 865 - text › strip incomplete C1 DCS control strings to avoid payload leaks
+ok 866 - text › strip incomplete OSC control strings to avoid payload leaks
+ok 867 - text › strip incomplete C1 OSC control strings to avoid payload leaks
+ok 868 - text › strip incomplete ESC control sequences with intermediates to avoid payload leaks
+ok 869 - text › strip malformed ESC control sequences with intermediates and non-final bytes
+ok 870 - text › strip standalone ST bytes from text output
+ok 871 - text › strip standalone C1 control characters from text output
+The current testing environment is not configured to support act(...)
+ok 872 - text › <Text> with undefined children - concurrent
+The current testing environment is not configured to support act(...)
+ok 873 - text › <Text> with null children - concurrent
+The current testing environment is not configured to support act(...)
+ok 874 - text › text with standard color - concurrent
+The current testing environment is not configured to support act(...)
+ok 875 - text › text with dim+bold - concurrent
+The current testing environment is not configured to support act(...)
+ok 876 - text › text with hex color - concurrent
+The current testing environment is not configured to support act(...)
+ok 877 - text › text with inversion - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 878 - text › remeasure text when text is changed - concurrent
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+ok 879 - text › remeasure text when text nodes are changed - concurrent
+ok 880 - use-box-metrics › removes resize listener on unmount
+ok 881 - use-box-metrics › does not crash when resize fires after unmount
+ok 882 - use-box-metrics › returns correct size on first render
+ok 883 - use-box-metrics › returns correct position
+not ok 884 - use-box-metrics › updates when terminal is resized
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/use-box-metrics.tsx:86:4)'
+  ...
+not ok 885 - use-box-metrics › uses latest tracked ref when terminal is resized
+  ---
+    name: AssertionError
+    assertion: 'true'
+    values:
+      'Value is not `true`:': 'false'
+    at: '<anonymous> (test/use-box-metrics.tsx:135:4)'
+  ...
+ok 886 - use-box-metrics › updates when sibling content changes
+ok 887 - use-box-metrics › updates when sibling content changes but tracked component is memoized
+ok 888 - use-box-metrics › updates when tracked ref attaches after initial render and component is memoized
+ok 889 - use-box-metrics › does not trigger extra re-renders when layout is unchanged
+ok 890 - use-box-metrics › returns zeros when ref is not attached
+ok 891 - use-box-metrics › hasMeasured becomes true when tracked element is mounted on initial render
+ok 892 - use-box-metrics › hasMeasured resets when tracked ref switches to a detached element
+ok 893 - use-box-metrics › hasMeasured becomes true after the tracked element is measured
+ok 894 - use-box-metrics › resets metrics when tracked element unmounts
+ok 895 - width-height › set width
+ok 896 - width-height › set width in percent
+ok 897 - width-height › set min width
+ok 898 - width-height › set min width in percent
+ok 899 - width-height › set height
+ok 900 - width-height › set height in percent
+ok 901 - width-height › cut text over the set height
+ok 902 - width-height › set min height
+ok 903 - width-height › set min height in percent
+ok 904 - width-height › set max width
+ok 905 - width-height › clears maxWidth on rerender
+ok 906 - width-height › set max height
+ok 907 - width-height › clears maxHeight on rerender
+ok 908 - width-height › set aspect ratio with width
+ok 909 - width-height › set aspect ratio with height
+ok 910 - width-height › set aspect ratio with width and height
+ok 911 - width-height › set aspect ratio with maxHeight constraint
+ok 912 - width-height › clears aspectRatio on rerender
+ok 913 - width-height › set max width in percent
+ok 914 - width-height › set max height in percent
+The current testing environment is not configured to support act(...)
+ok 915 - width-height › set width - concurrent
+The current testing environment is not configured to support act(...)
+ok 916 - width-height › set height - concurrent
+ok 917 - write-synchronized › bsu is the expected synchronized update sequence
+ok 918 - write-synchronized › esu is the expected synchronized update sequence
+ok 919 - write-synchronized › shouldSynchronize returns true for interactive TTY stream
+ok 920 - write-synchronized › shouldSynchronize returns false for non-interactive TTY stream
+ok 921 - write-synchronized › shouldSynchronize returns false for non-TTY stream
+ok 922 - write-synchronized › shouldSynchronize uses CI detection when interactive is not specified
+ok 923 - write-synchronized › shouldSynchronize returns false for non-TTY stream when interactive is not specified
+
+1..923
+# tests 922
+# pass 866
+# fail 57
+

@@ -212,25 +212,54 @@ in a job that actually wrote something.
 is a tail because every runner prints its failure summary last.
 
 **What is run is the runner, not the lifecycle script, and that is a saving as
-well as a repair.** `verify.ReadingStrategy` follows the project's declared
-entrypoint into its own body — a package script, a make or just recipe — and
-takes the reading from the test runner it finds there, asked for its own
-machine-readable output. `scriptExpansions` bounds that walk at **4**, which is
-the deepest a chain can usefully be (`test` runs `test:unit` runs `vitest`, plus
-one) and is what stops a reader following a cycle. A lifecycle script that lints
-and typechecks before it tests no longer spends the reading's budget on the lint,
-and a formatting complaint no longer exits 1 in front of a suite that was never
-run — which is exactly what happened on ofetch s5, where the gate read "`pnpm
-test` exited 1 and named 0 checks" of a suite that was green.
+well as a repair.** `verify.ReadingStrategies` follows the project's declared
+entrypoint into its own body — a package script, a make or just recipe, through
+that file's own variable table and past the ecosystem's launcher (`npx`, `pnpm
+exec`, `poetry run`) — and takes the reading from the test runner it finds there,
+asked for its own machine-readable output. `scriptExpansions` bounds that walk at
+**4**, which is the deepest a chain can usefully be (`test` runs `test:unit` runs
+`vitest`, plus one) and is what stops a reader following a cycle; the same bound
+settles a variable that names itself. A lifecycle script that lints and
+typechecks before it tests no longer spends the reading's budget on the lint, and
+a formatting complaint no longer exits 1 in front of a suite that was never run —
+which is exactly what happened on ofetch s5, where the gate read "`pnpm test`
+exited 1 and named 0 checks" of a suite that was green.
 
-**A repair round takes no baseline reading at all.** The baseline is the job's,
-taken once before the job's first change and inherited by every continuation
+**The ladder costs nothing when the first rung reads.** `ReadingStrategies`
+returns up to three rungs — the runner as the project invokes it, the runner as
+it invokes itself, and the project's declared entrypoint read as plain text —
+and `verify.Photograph` walks them inside ONE `ReadingBudget`, stopping at the
+first that names anything. A rung is only paid for when the one above it named
+nothing, which is a rung that told us nothing about the suite: textual's own
+`make test` passes `-n 16 --dist=loadgroup` and its task image has no
+pytest-xdist, so it exits in eight seconds on `unrecognized arguments: -n`. The
+LAST rung's answer is taken whatever it named, because a runner that reports no
+identities is a real reading with an empty roster.
+
+**A repair round takes no baseline reading at all, and a job that cannot be read
+pays for finding that out once.** The baseline is the job's, taken once before
+the job's first change and inherited by every continuation
 (`verify.BaselineFor`), so the second and later rounds of a job spend their
-eighth of the wall only on the after reading. `verify.rememberedTrees` is **16**,
+eighth of the wall only on the after reading. The REFUSAL is remembered the same
+way: why a reading could not be taken is a fact about the tree, the project and
+the wall, and none of them move between rounds. Measured: textual s6's bare leaf
+spent 5m27s on a suite killed at its ceiling — its whole suite is 3,422 tests and
+takes 793s in that image, measured — and without this every
+continuation of that job would spend the same 5m27s to learn the same thing. `verify.rememberedTrees` is **16**,
 a bound on memory rather than on behaviour: a reading is two rosters and an
 entrypoint, sixteen of them is kilobytes, and sixteen is more concurrent working
 directories than any surface here opens. Past it the oldest is dropped, and
 dropping a baseline costs a re-photograph rather than a wrong answer.
+
+**And a reading that could not be taken is written down.** There are four ways
+to have none — a project that declares no verification, a wall that cannot afford
+one, a shell the preamble cannot be trusted in, and a command killed at its
+ceiling — and they cost a run nothing, nothing, nothing and an eighth of its wall
+respectively. All four used to return one silent zero value, so an autopsy could
+not tell the free ones from the expensive one: textual s6 held no row saying its
+five and a half minutes had been spent. Each now carries its own sentence on
+`verify.Reading.Unread` and is journaled as a `verification` event with
+`read: false`. It costs one row.
 
 **What a person would see if this were wrong.** Too generous, and short leaves
 stop doing work — a `do` run whose nodes each sit for minutes with nothing in

@@ -57,13 +57,12 @@ var baselines = struct {
 	order []string
 }{taken: map[string]jobBaseline{}}
 
-// BaselineFor is the reading of this tree taken before this job's first change,
-// when this job has one.
+// BaselineFor is what this job settled about its own tree before its first
+// change: the reading it took, or the reason it could not take one.
 //
-// ok is false for the first leaf of a job, and for a leaf whose job never took a
-// reading at all — which is the same silence an unaffordable wall or an
-// undiscoverable entrypoint produces, and it means the same thing: nobody
-// looked.
+// ok is false only for the first leaf of a job. A later leaf inherits whichever
+// answer the first one reached, and inherits it rather than re-deriving it,
+// because both answers are facts about a tree that has since moved.
 func BaselineFor(root, job string) (Reading, bool) {
 	key := treeKey(root)
 	baselines.mutex.Lock()
@@ -75,14 +74,23 @@ func BaselineFor(root, job string) (Reading, bool) {
 	return held.reading, true
 }
 
-// RememberBaseline records the reading this job will be judged against, for
+// RememberBaseline records what this job's leaves are measured against, for
 // every leaf of it that follows.
 //
-// A reading that was never taken is not remembered: a zero Reading says nobody
-// looked, and remembering it would make the next leaf inherit that silence
+// IT REMEMBERS THE REFUSAL AS WELL AS THE READING. Why a reading could not be
+// taken is a fact about the tree, the project and the wall, and none of those
+// change between one round of a job and the next — so a job that could not
+// photograph its tree pays for finding that out ONCE. textual's s6 leaf spent
+// five and a half minutes of its wall on a suite that was killed at the
+// ceiling; without this, every continuation of that job spends the same five
+// and a half minutes to learn the same thing.
+//
+// A Reading that says nothing at all — neither taken nor carrying a reason — is
+// not remembered. That is the zero value, it is what a caller that never looked
+// produces, and remembering it would make the next leaf inherit a silence
 // instead of taking the photograph the job still owes.
 func RememberBaseline(root, job string, reading Reading) {
-	if !reading.Taken {
+	if !reading.Taken && strings.TrimSpace(reading.Unread) == "" {
 		return
 	}
 	key := treeKey(root)
