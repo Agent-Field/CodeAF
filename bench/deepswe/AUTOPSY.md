@@ -1338,3 +1338,92 @@ while three revision rounds were still in flight.
 
 The mechanism this wants is the assertion door landing in s14: a behaviour is exercised only when a check the run
 wrote asserts its observables. Nothing in igel s12 asserted that `Configs` still supports item assignment.
+
+## s13 — chat-v3-fix 40940bed (whole-file judging, HeldPoints, record-file exemption, subject journalled)
+
+| task | f2p | p2p | exit | settled | $ | wall | nodes | calls | $/call | gates |
+|---|---|---|---|---|---|---|---|---|---|---|
+| textual | **19/20** | 4/6 | 0 | true | 0.132 | 2862s | 7 | 206 | 0.000641 | 2 |
+| ofetch | 29/47 | 11/13 | 2 | **false** | 0.559 | 5407s | 33 | 422 | 0.001324 | **0** |
+| ink | 17/25 | 49/49 | 2 | true | 0.455 | 4945s | 6 | 346 | 0.001316 | 1 |
+| happy-dom | 9/14 | 9/9 | 2 | true | 0.135 | 2663s | 4 | 187 | 0.000723 | 4 |
+| igel | 0/24 | 2/2 | 2 | true | 0.235 | 3660s | 10 | 355 | 0.000663 | 2 |
+
+`subject` is journalled on every gate in the sweep — the s12 defect is closed. Readings are clean too:
+**0 blind readings across all five runs**, where s12 had 4 on happy-dom and 3 on ink.
+
+### textual s13 — 19/20, closest to reward 1, and the two p2p losses were unseeable
+Broken: `test_log_scrolling_updates_visible_viewport_and_scrollbar_position` and its `rich_log` twin
+(`AssertionError: assert 0 == 4 … ScrollBar(...position=0...)`). Both live in
+`tests/test_rich_log_follow_state.py`, **which does not exist in the agent's repo** — it is injected by
+`test.patch` at grade time, and `grep -c test_rich_log_follow_state model.patch` is **0**. Four of the six p2p
+tests are in that hidden file; only the two `tests.test_log.*` are project-owned, and both passed. So no roster
+at any scope could have held these names, and no regression finding was possible. **Neither a scope nor a
+governor fault.** The missing f2p (`test_rich_log_expand_entries_reflow_after_min_width_change`) *is* named by
+the gate's unexercised set — *"RichLog.write(expand=True) no longer preserves full-width justified rendering
+with current Rich"* — so the harness named the gap it then failed to close.
+
+### ofetch s13 — the zero-gate case
+33 nodes, 422 calls, ten exhaustions (7 cost, 1 deadline, 1 `turns`), $0.559, `settled: false` at the 5407s
+wall, and **no delivery_gate at all**. Growth ran eight rounds and ended `goal-already-covered`, then **twice
+`out-of-wall`**. Its two broken p2p tests are also hidden-file tests (`test/circuit-breaker.test.ts`), and the
+surface photograph correctly reported `lost: 0` on all eight events — nothing public was deleted. This is the
+run the s15 settlement watch is meant to make impossible.
+
+### happy-dom s13 — four gates, one finding, no progress
+All four gates repeat the identical stub-test finding (`This work removed checks that existed before it:
+IntersectionObserver disconnect() Does nothing, …`), four `gap` rounds ending `cause: rounds`. Cheapest
+happy-dom yet ($0.135/187 calls) because it stopped early rather than working the problem — versus s12's
+12/14 over 287 calls. The five remaining challenge behaviours were never implemented.
+
+### igel s13 — surface fires five times, run still scores 0
+Five `surface` events all report `lost: 8` naming the same set (`Igel.default_dataset_props … Igel.results_path`).
+Two `goal-already-covered` refusals landed on `revision` round 1 — before the record-file exemption could help —
+and growth ended `cause: rounds`.
+
+## s14 — mixed binaries: textual/ofetch/happy-dom = 419d6dc9, igel/ink = 58fffb5f
+
+| task | f2p | p2p | exit | settled | $ | wall | nodes | calls | $/call | gates | binary |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| happy-dom | **13/14** | 9/9 | 2 | true | 0.061 | 1801s | 4 | 99 | 0.000612 | 4 | 419d6dc9 |
+| ofetch | 40/47 | 13/13 | 2 | true | 0.239 | 1865s | 8 | 218 | 0.001096 | 4 | 419d6dc9 |
+| igel | 0/24 | 2/2 | 2 | true | 0.236 | 2854s | 20 | 289 | 0.000803 | 2 | 58fffb5f |
+| textual | **grade-failed** | — | 2 | true | 0.219 | 3761s | — | — | — | — | 419d6dc9 |
+| ink | pending | | | | | | | | | | 58fffb5f |
+
+**textual s14 = `grade-failed` (verifier timeout 1800s: suite hung on `test_example_script_exists_and_boots`).**
+`grade_seconds: 1921` against the task's 1800s cap. Not scored, and not regraded: the benchmark's verifier
+timeout is part of the benchmark, and a run whose example script hangs the suite scores 0 under DeepSWE.
+*Informational only, not a score*: of the 22 tests that completed before the hang, 19 passed and 3 failed.
+
+**happy-dom 13/14 is the best result of the benchmark and the cheapest run in it** ($0.061, 99 calls). The one
+miss is `IntersectionObserver > observe() > Detects threshold crossings in subsequent async delivery cycles`,
+failing on `Test timed out in 500ms` — a hang, not a wrong value. **Nothing named it**: `unasserted` and
+`unexercised` are both absent from all four gates, which instead repeat the same stub-test finding across four
+`gap` rounds ending `cause: rounds`. Readings climbed `named 4 → 37 → 41` at `red=0` throughout, so the evidence
+pointed nowhere near the missing async cycle.
+
+**ofetch s14 shows three mechanisms working.** `OwnFailing` is live and correctly worded — `The checks this work
+wrote fail: circuit breaker failure accounting non-listed status in half-open does not close the circuit. They
+were not in the project's roster when …`. `unexercised` carries real behaviour text overlapping the seven
+failures. And the HeldPoints retake fired with its note verbatim:
+`structured_repair(gate, reasked, note: "parse response: a fail must quote one of the behaviours this…")`.
+
+### igel s14 — the surface reader names the exact cause; the gate never hears it
+All 24 hidden tests fail on one line: `ImportError: cannot import name 'temp_post_req_data_path' from
+'igel.configs'`. The new module-level Python surface reader **caught it on three nodes**:
+`surface task-2-x1-n4 {"compared": 5, "lost": 3, "names": ["init_file_path","res_path","temp_post_req_data_path"]}`
+(same on `-n3`, `-n1`). `temp_post_req_data_path` is precisely the name in the ImportError.
+
+But **no `consumers` event exists in the store at all** — `configs` never appeared as a changed definition and
+its usage sites were never enumerated, so there is no site count to report — and **no gate grounded on a
+consumer site** (`sourced: None`, no `consumers` field on either gate). Only 2 gates were cut, both about the
+missing artifact (`gap: feature_schema.joblib`, then `feature_schema.joblib, description.json`), both with
+`held_point: 'After fit, write feature_schema.joblib in the results directory'`. The `lost: 3` findings sit on
+leaf nodes whose findings never propagated to a judged node.
+
+**Layer: the photograph sees it, the gate never hears it.** Routed to the consumers lane.
+
+**New fields not yet journalled on these binaries** (expected — both predate 338957b0): `replaced` is `None` on
+every reading in every s14 run, and `JobGrowth.Finding` is `None` on every growth event. No third-round refusal,
+no close-out or forced-judgement events; both multi-gate runs ended on `cause: rounds` at round 4.
