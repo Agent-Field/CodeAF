@@ -1384,11 +1384,12 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	// A command writes files, and until this line nothing in the product knew
 	// it. The registry behind Outcome.Artifacts was populated by write and edit
 	// alone, so a chart rendered by a script under this tool was invisible to
-	// the files footer, to the delivery gate and to every later node. The mark
-	// is taken here, before anything runs, and read back once the command is
-	// done — see produced.go for why one sweep afterwards rather than two.
-	mark := producedMark(time.Now())
-	defer t.recordProduced(mark)
+	// the files footer, to the delivery gate and to every later node. The tree
+	// is photographed here, before anything runs, and again once the command is
+	// done: the difference between the two sightings is what this call did, and
+	// see produced.go for why that is asked of the world rather than the clock.
+	before := t.workspace.Snapshot()
+	defer t.recordProduced(before)
 	// rtk compresses what the command said before the model has to pay for it,
 	// on every later turn as well as this one. It only ever stands in for the
 	// plain command when it can be trusted to have said the same thing: see
