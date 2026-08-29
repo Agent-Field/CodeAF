@@ -823,8 +823,31 @@ reads the index. A run that commits its work to a branch and leaves the worktree
 back on the default branch therefore grades as though it wrote nothing. The
 corpus's own collect command has the same shape, so this is inherited rather than
 invented — but it is a hole, and a run that hits the wall mid-branch falls into
-it. Recorded, not yet fixed; the container was already gone when the empty patch
-was noticed, so the run is reported as ungraded rather than as a zero.
+it. **Fixed** (`bench/deepswe/run.sh`). The extraction now measures every place the
+work could be and takes the richest: the worktree with untracked files staged,
+each local branch that moved off base, and HEAD for a detached checkout. They are
+candidates rather than a union because the grader applies ONE patch and two
+overlapping patches do not apply; every candidate's byte size is written to
+`meta.json` as `patch_candidates` with the winner in `patch_source`, so the
+choice is auditable and a run whose work was split across two of them is visible
+rather than silently halved.
+
+Proved on a constructed repository reproducing the exact failure — work committed
+to `feature/work` including a binary file, worktree returned to `main`:
+
+| | old (`git add -A && git diff --cached <base>`) | new (candidates) |
+| --- | --- | --- |
+| bytes | **0** | **387** |
+| files | none | `blob.bin`, `branch_only.py` |
+| binary hunk | — | present |
+| `git apply --binary --check` on a clean base tree | — | **applies cleanly** |
+
+A plain dirty worktree with no branch work still selects `worktree.patch`, so the
+normal case is unchanged.
+
+**happy-dom s7 is LOST, not regraded.** Its container was already removed when the
+empty patch was noticed, so there is no workspace left to re-extract from. It is
+reported as ungraded — never as a zero.
 
 ---
 
