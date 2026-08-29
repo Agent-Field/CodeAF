@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -174,6 +176,80 @@ func TestTheGapLedgerCountsOnlyTheRoundsThatWereBought(t *testing.T) {
 	// The lineage is this job's, never the one whose id merely starts the same.
 	if got := revision.SpentCitations(graph, "job-x1"); len(got) != 0 {
 		t.Fatalf("a repair round read its parent's ledger as its own: %v", got)
+	}
+}
+
+// WORDS SPENT ON A ROUND THAT MOVED THE TREE ARE NOT SPENT. The ledger used to
+// be a count of one wearing an invariant's clothes: words that bought a round
+// could never buy another, whatever that round did. That is the same species of
+// mistake as a retry count, and the settle lane already built the thing that
+// decides it properly — the growth journal records, per round, how many files
+// the work actually left behind. So the ledger bounds SCOPE against a finite
+// ask and the journal bounds REPETITION against measured change, and EVERYTHING
+// UNKNOWN STAYS SPENT so the direction never moves where the evidence is absent.
+func TestTheLedgerReleasesOnlyTheWordsWhoseRoundMovedTheTree(t *testing.T) {
+	for name, test := range map[string]struct {
+		growth *store.JobGrowth
+		spent  bool
+	}{
+		"a round that wrote seven files": {
+			growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1,
+				Allowed: true, Measured: true, Produced: 7},
+		},
+		"a round that wrote nothing":   {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Allowed: true, Measured: true}, spent: true},
+		"a round nobody measured":      {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Allowed: true, Produced: 7}, spent: true},
+		"a round the governor refused": {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Measured: true, Produced: 7}, spent: true},
+		"no journal at all":            {spent: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			graph := openCacheStore(t)
+			if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+				{ID: "job", Brief: "answer every part"}}},
+				store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.RecordDeliveryGate("job", store.DeliveryGate{
+				Gap: "no numbers", Quote: "every part", Round: 1, Extended: true}); err != nil {
+				t.Fatal(err)
+			}
+			if test.growth != nil {
+				if err := graph.RecordJobGrowth("job", *test.growth); err != nil {
+					t.Fatal(err)
+				}
+			}
+			spent := revision.SpentCitations(graph, "job")
+			if got := len(spent) > 0; got != test.spent {
+				t.Fatalf("ledger = %v, want spent=%t", spent, test.spent)
+			}
+			refusal := revision.AdmitGapCitation(revision.Grounds{Intent: "answer every part"},
+				[]string{"every part"}, spent)
+			if test.spent && refusal == "" {
+				t.Fatal("words whose round changed nothing bought another round")
+			}
+			if !test.spent && refusal != "" {
+				t.Fatalf("words whose round wrote seven files were refused: %q", refusal)
+			}
+		})
+	}
+	// And a sibling lineage's productivity is not evidence about this one: a
+	// bound that borrowed it would let one branch of a job buy the other's
+	// rounds.
+	graph := openCacheStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "answer every part"}}},
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job", store.DeliveryGate{
+		Gap: "no numbers", Quote: "every part", Round: 1, Extended: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordJobGrowth("job", store.JobGrowth{Reason: resident.GrowGap,
+		Lineage: "job-n2", Round: 1, Allowed: true, Measured: true, Produced: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if spent := revision.SpentCitations(graph, "job"); len(spent) == 0 {
+		t.Fatal("one lineage's productive round released another lineage's words")
 	}
 }
 
@@ -559,5 +635,31 @@ func TestTheRefusalLineNamesTheFindingBeforeTheReason(t *testing.T) {
 	// A refusal with no finding behind it still says the only thing it knows.
 	if _, only := gateWords(store.DeliveryGate{Refused: "no more work could be started on it"}); only != "no more work could be started on it" {
 		t.Fatalf("a refusal with no gap said %q", only)
+	}
+}
+
+// THE MEASUREMENT REACHES THE GATE, AND THE GATE RAISES IT WITHOUT BEING ASKED.
+// A worker that took two readings of the project's own verification hands back
+// the checks its change turned red; the seam that assembles what the gate is
+// shown has to carry them, or the whole measurement is a number in a struct
+// nobody reads. Everything else about the record is unchanged.
+func TestWhatTheWorkTurnedRedReachesTheGateAndBecomesAFinding(t *testing.T) {
+	broke := []string{"tests/test_widget.py::test_size_is_known"}
+	evidence := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{
+		Baseline:  []string{"one check was already red before this began"},
+		Regressed: broke,
+	}, nil, true)
+	if len(evidence.Regressed) != 1 || evidence.Regressed[0] != broke[0] {
+		t.Fatalf("the gate was never shown what the work turned red: %v", evidence.Regressed)
+	}
+	regression, raised := revision.Regressions(evidence.Regressed)
+	if !raised || !regression.Sourced || regression.Pass {
+		t.Fatalf("a measured regression did not become a finding: %+v", regression)
+	}
+	// And a worker that took no reading says nothing, which is not the same
+	// fact as a worker that read twice and found nothing broken.
+	quiet := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{}, nil, true)
+	if len(quiet.Regressed) != 0 {
+		t.Fatalf("a worker that measured nothing claimed something: %v", quiet.Regressed)
 	}
 }

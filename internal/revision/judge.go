@@ -458,6 +458,19 @@ type Evidence struct {
 	// measured battery (audit-notes §14.4.1). It is stated as fact rather than
 	// as an excuse, and it acquits only what it names.
 	Baseline []string
+	// Regressed names the project's own checks that PASSED BEFORE this work and
+	// FAIL AFTER it, in the words the runner printed them in.
+	//
+	// It is Baseline's opposite number and the half that convicts. Baseline
+	// acquits what was already red; this names what this work turned red, and it
+	// is the one finding on this whole record that no citation could ever be
+	// weighed for — a person does not have to ask for their repository to keep
+	// working. See Regressions, which raises it as a finding of its own, and
+	// Judgment.Sourced, which is what lifts it clear of the citation invariant.
+	//
+	// Nil on every worker that cannot take two readings of the project's own
+	// command, which reads as no claim.
+	Regressed []string
 	// Account is the worker's own structured account of the work: the files it
 	// changed, with the kind and size of each change, and the checks it ran
 	// with what each one found.
@@ -530,7 +543,8 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
-		len(e.Baseline) == 0 && e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
+		len(e.Baseline) == 0 && len(e.Regressed) == 0 &&
+		e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
 		if !e.Observed {
 			return ""
 		}
@@ -599,6 +613,19 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 			"doing and are not gaps:\n")
 		for _, note := range e.Baseline {
 			body.WriteString(note + "\n")
+		}
+	}
+	// And its opposite number, stated in the same breath so the two are read
+	// together: a judge told only what was already red is a judge that can
+	// forgive a fresh failure by mistaking it for an old one.
+	if len(e.Regressed) > 0 {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString("What this work TURNED RED. These checks passed before it and fail after it, " +
+			"measured twice with the project's own command:\n")
+		for _, name := range e.Regressed {
+			body.WriteString(name + "\n")
 		}
 	}
 	ran, tail := e.Ran, gateEvidenceLines(budget)
@@ -981,6 +1008,17 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// judgement rather than rebuilding them from whatever fields their own
 	// caller happened to hold, which is how they came to disagree.
 	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
+	// OPINION. A check that passed before the work and fails after it is a
+	// measurement the run made of the world, and it outranks every other reading
+	// of the deliverable: whatever else was produced, the repository is worse
+	// than it was found. It is settled before a model round is bought for the
+	// same reason a missing promised file is — the answer is already known and a
+	// judge's cost would buy nothing.
+	if regression, broke := Regressions(evidence.Regressed); broke {
+		regression.Grounds = grounds
+		return regression
+	}
 	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
 		mechanical.Grounds = grounds
 		return mechanical

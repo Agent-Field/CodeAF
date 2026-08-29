@@ -209,6 +209,39 @@ lets a patch that deleted an attribute the repository already had ship as whole
 going red; both are read off a run, which is why the numbers are written down
 here.
 
+## The repair round's room, which is not a clock and not a count
+
+A run that holds a finding it agrees with, with wall and money left, buys the
+work that closes it. The DeepSWE sweep of 2026-08-28 measured the opposite: a
+ninety-minute wall, eight cents spent, and eight of eight graded runs stopping at
+a tenth of it by choice. **Raising the wall buys nothing and raising a retry
+count buys a retry of the same blind decision** — see
+`docs/design/gate/SETTLEMENT.md` §3.
+
+So the bound on repair is evidence, and there is exactly one number in it and it
+was already there:
+
+| number | value | where |
+| --- | --- | --- |
+| `MaxOverrunRounds` | **3** | `internal/resident/grow.go` — the BACKSTOP, unchanged |
+
+What actually stops a lineage is what the growth journal measured: two rounds in
+a row that left nothing on disk (standstill), or the same remainder handed over
+twice (fixed point). The spent-citation ledger now defers to the same evidence —
+words whose round positively moved the tree may buy another, and **everything
+unknown stays spent**, which keeps the bound's direction wherever the journal is
+missing.
+
+One clock enters, as a floor rather than a ceiling, in `outOfWall`
+(`internal/revision/judge.go`): **a repair is bought only while the run's own
+deadline still holds as long as the attempt that produced the finding took.** It
+is derived from two things that already exist — the errand's deadline, which
+`aforge do --timeout` sets, and the node's start, which the store stamps — so it
+is not a knob and not a typed duration. A repair the wall will kill mid-flight
+spends money to deliver nothing, and a run that stopped for want of time is
+**partial** (exit 2), never whole. An unknown deadline or an untimed attempt
+answers empty and buys the round: this makes runs longer, not shorter.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000

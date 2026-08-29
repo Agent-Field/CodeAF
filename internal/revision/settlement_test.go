@@ -202,3 +202,67 @@ func TestARepairIsNotBoughtWhenTheWallCannotHoldOne(t *testing.T) {
 		t.Fatalf("an untimed attempt was refused on a duration nobody measured: %q", refusal)
 	}
 }
+
+// A CHECK THIS WORK TURNED RED IS A FINDING THE GATE RAISES ITSELF, AND NO
+// CITATION IS WEIGHED FOR IT. igel s2 and both textual runs shipped a patch that
+// deleted an attribute the repository already had; every hidden test failed on
+// setup while the leaf's own narrow tests stayed green, because the leaf wrote
+// them. The failing names below are the ones those runs' verifiers printed.
+func TestACheckThisWorkTurnedRedIsAFindingNoCitationIsWeighedFor(t *testing.T) {
+	broke := []string{
+		"tests/test_igel/test_feature_schema.py::TestFeatureSchema::test_fit_writes_schema",
+		"tests/test_igel/test_feature_schema.py::TestFeatureSchema::test_description_records_paths",
+	}
+	regression, raised := Regressions(broke)
+	if !raised {
+		t.Fatal("two checks that went from green to red raised no finding")
+	}
+	if regression.Pass || !regression.Checked {
+		t.Fatalf("a regression is a checked failure: %+v", regression)
+	}
+	if !regression.Sourced {
+		t.Fatal("a measurement of the world was not marked as one")
+	}
+	for _, name := range broke {
+		if !strings.Contains(regression.Gaps, name) {
+			t.Fatalf("the finding never names %q:\n%s", name, regression.Gaps)
+		}
+	}
+	// AND IT SURVIVES THE INVARIANT. Weighed as a citation against a request
+	// that never mentions a test name — because no request does — it is refused
+	// every time, which is why Sourced lifts it clear rather than the grounding
+	// rule being widened to guess at it.
+	recorded := loadRefusedGates(t)
+	grounds := recorded.groundsFor(t, "igel-persist-feature-schema-s2")
+	if refusal := admitGapCitations(regression.Cited(), grounds); refusal == "" {
+		t.Fatal("a test name grounded itself against a request that never names one")
+	}
+	// Nothing measured is not the same fact as nothing broken, and neither is a
+	// finding.
+	if _, raised := Regressions(nil); raised {
+		t.Fatal("a worker that took no reading raised a regression")
+	}
+	if _, raised := Regressions([]string{"", "   "}); raised {
+		t.Fatal("blank names raised a regression")
+	}
+}
+
+// AND THE FINDING IS BOUNDED. A worker that breaks an import breaks every test
+// in the file, and a gap listing four hundred of them is a gap no repair can
+// read; the rest are counted.
+func TestARegressionThatBrokeEverythingStillNamesOnlyWhatCanBeRead(t *testing.T) {
+	broke := make([]string, 0, 40)
+	for i := 0; i < 40; i++ {
+		broke = append(broke, "tests/test_widget.py::test_"+string(rune('a'+i%26))+strings.Repeat("x", i/26))
+	}
+	regression, raised := Regressions(broke)
+	if !raised {
+		t.Fatal("forty red checks raised no finding")
+	}
+	if len(regression.Citations) != regressionsNamed {
+		t.Fatalf("the finding carries %d citations, want %d", len(regression.Citations), regressionsNamed)
+	}
+	if !strings.Contains(regression.Gaps, "And 32 more.") {
+		t.Fatalf("the finding never counts what it did not name:\n%s", regression.Gaps)
+	}
+}

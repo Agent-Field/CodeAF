@@ -1509,7 +1509,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// So it downgrades to a note: journaled, said, carried on the
 				// delivery, and free.
 				ungrounded, closed := "", ""
-				if !gate.Pass {
+				// A finding the run MEASURED goes through none of this. The
+				// three doors below all ask where a review got its words, and a
+				// check that passed before the work and fails after it has no
+				// words to weigh: the person never had to ask for their
+				// repository to keep working, so grounding it would refuse it
+				// every time. See revision.Judgment.Sourced.
+				if !gate.Pass && !gate.Sourced {
 					ungrounded = revision.AdmitGapRevision(gate.Grounds, gate.Cited())
 					// The same refusal, for the gap the record has already
 					// closed rather than the one the request never set. A span
@@ -2474,6 +2480,12 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// "`make all` exited 2, therefore this change is broken" from a run tail
 		// it cannot rerun.
 		evidence.Baseline = outcome.Baseline
+		// And its opposite number: the project's own checks this work turned
+		// red, measured twice with the project's own command. The gate raises
+		// that as a finding of its own before it buys a judge (revision.
+		// Regressions), so this field is what makes a regression a blocker
+		// rather than something a leaf's own green tests can talk over.
+		evidence.Regressed = outcome.Regressed
 		// And the account of the work itself, when the worker kept one: the
 		// files it changed and the checks it ran. The gate that used to be
 		// handed "the run ended without saying how it went" is handed the diff
