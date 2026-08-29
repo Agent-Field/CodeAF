@@ -688,6 +688,15 @@ error: the reply ran past 15m0s without finishing and was cut, three times. a di
 to pick would be a number nobody could pick correctly — that is the whole reason it is
 measured instead.
 
+**A reply that is not streamed is held to the same wall once it has been measured.** The
+calls that arrive whole rather than token by token — the headless run's planner and its
+workers, `aforge do` — carry a total deadline sized from the room the reply was given (one
+second for every 64 tokens it may write, never less than 5 minutes and never more than 15).
+Once that endpoint has finished a reply for you, the measured wall applies to those calls
+too, and whichever of the two is shorter is the one that cuts. A model aforge has not heard
+back from yet keeps the room-sized deadline, because a first reply from a model that thinks
+at length may need all of it.
+
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.
 
