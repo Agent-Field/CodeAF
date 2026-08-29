@@ -191,6 +191,31 @@ except Exception as e:
 json.dump(out, open(sys.argv[2], "w"), indent=2)
 PY
 
+# Which worker actually did the work. `aforge do` is meant to be measured on
+# its own path: a run a specialist worker took over is measuring the specialist,
+# not the harness, so it is recorded and flagged rather than quietly averaged
+# in. nodes.subharness is the worker a node RAN on; splice_subharness is only
+# the worker its children would have been spliced onto, which is an intention
+# and not a fact.
+python3 - "$OUT/graph.db" "$OUT/meta.json" <<'WORKERS'
+import json, os, sqlite3, sys
+db, metapath = sys.argv[1], sys.argv[2]
+meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
+ran, planned = [], []
+try:
+    c = sqlite3.connect(db)
+    ran = sorted({r[0] for r in c.execute(
+        "select subharness from nodes where coalesce(subharness,'') != ''")})
+    planned = sorted({r[0] for r in c.execute(
+        "select splice_subharness from nodes where coalesce(splice_subharness,'') != ''")})
+except Exception as err:
+    meta["workers_error"] = str(err)
+meta["workers_ran"] = ran
+meta["workers_planned"] = planned
+meta["void"] = "swe" in ran
+json.dump(meta, open(metapath, "w"), indent=2)
+WORKERS
+
 PATCH_BYTES=$(wc -c < "$OUT/model.patch" | tr -d ' ')
 meta "patch_bytes=$PATCH_BYTES" "stage=grade"
 log "$TASK: patch is ${PATCH_BYTES} bytes"
