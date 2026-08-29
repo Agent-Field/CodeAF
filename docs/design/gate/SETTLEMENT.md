@@ -576,9 +576,14 @@ definition was rewritten is not a difference either reading can see.**
 > rewrote, and the places the rest of the project still uses that name, are one
 > fact and the judge is handed both.**
 
-`verify.ChangedDefinitions` and `verify.Consumers`, read from the diff and the
-disk with no model in the loop, sampled into the gate's prompt on a share of its
-own so a consumer list can never be the reason a changed file went unprinted.
+`verify.ChangedDefinitions` and `verify.Consumers`, read from the JOB's own
+baseline and the finished tree with no model in the loop, sampled into the gate's
+prompt on a share of its own so a consumer list can never be the reason a changed
+file went unprinted. Both readings — this and the lost-names half above — are
+re-taken by the gate against the job's baseline rather than carried up from the
+leaf that measured them: a grown subtree does its work in children and is judged
+at the parent, and igel s14 shipped an ImportError into all 24 hidden tests while
+three of its leaves had each journaled the loss.
 The verdict schema admits a refusal grounded on a consumer's own file and line
 beside one grounded on a behaviour of the request — §6's rule is unchanged for
 behaviours, and this is a second ground rather than a loosening of that one,
@@ -586,3 +591,23 @@ because no behaviour of any request will ever say "and it must still support
 item assignment". Such a refusal is Sourced, buys the repair round every measured
 finding buys, and is journaled as a finding of its own. FAILSAFE.md's twentieth
 chapter has the whole of it, including what it does not promise.
+
+
+## Addendum, 2026-08-29: what a contract may not cost
+
+§6 and the seventeenth chapter made a finding about the fenced text unsayable by
+building an enum. igel s15 is the other edge of that: the judge named
+`feature_schema.joblib`, a file the request asks for and the disk does not hold,
+the enum did not contain it, and the run ended after eight minutes with
+`the review could not be read` and nothing started.
+
+> **A contract narrows what a verdict may SAY. It may never be the reason a run
+> ends with nothing done about a finding the world can settle by itself.**
+
+Two halves. The `file` enum admits everything the plan or the person PROMISED
+beside the record and the consumers, because an absent deliverable is in no
+record by definition — and such a refusal is the mechanical gap, marked and
+funded as one. And when no verdict can be read at all, the gate runs that same
+promised-versus-present check and raises what the filesystem says, journaled
+`subject: fallback`. What it does NOT do is re-ask under the claim contract: that
+was built and it re-admitted the three findings §6 exists to refuse.

@@ -1231,11 +1231,13 @@ citation invariant would refuse it if one tried.
 > without a model — and it is the only fact that catches a name kept and a shape
 > moved.
 
-`verify.ChangedDefinitions` intersects the hunks of the run's own diff with the
-declaration spans the surface reader already locates, scoped to the run's own
-record; `verify.Consumers` walks the project for whole-identifier usage sites
-outside those hunks, one walk for all the names, and reads each site's shape
-from the token beside it — a closed set (`call(N args)`, `subscript`,
+`verify.ChangedDefinitions` compares the JOB's baseline surface against the
+finished tree over the run's own record, and reports every name that is in both
+readings with a different DECLARATION DIGEST — the same subtraction `Removed` is,
+over the same pair of readings, asking the other question. `verify.Consumers`
+walks the project for whole-identifier usage sites in files the run did not
+change, one walk for all the names, and reads each site's shape from the token
+beside it — a closed set (`call(N args)`, `subscript`,
 `subscript-assign`, `attribute .x`, `iterate`, `instantiate`, and `use` for
 everything it cannot name). Nothing here resolves a type or follows an import.
 The judge is shown the definition, its span on either side of the work, and its
@@ -1279,10 +1281,9 @@ gate: fail — tests/test_igel.py — configs changed and its 2 consumers still 
 
 Said plainly, because a fail-safe that is oversold is a fail-safe nobody
 re-measures. **In igel's own repository at that commit there are zero
-subscript-assign sites for `configs`.** Run against the s12 tree and its own
-patch, this reads the changed declaration as `configs` (`igel/configs.py`: the
-diff replaced lines 3–44 of the file as it was; the declaration now stands at
-line 73) and finds **23** usage sites elsewhere — 20 of them `attribute .get`,
+subscript-assign sites for `configs`.** Run against the s12 tree, this reads the
+rewritten definition as `configs` (`igel/configs.py`) and finds **23** usage
+sites elsewhere — 20 of them `attribute .get`,
 3 of them `use` — and the assignment that actually broke the run is
 `monkeypatch.setitem(configs, …)` inside a HIDDEN test this harness never sees.
 So what this would have put in front of the s12 judge is that a definition it
@@ -1556,3 +1557,101 @@ built to stop, and it still stops it. And no new evidence: every kind read here
 is a structure some other mechanism already journals — `DeliveryGate`,
 `VerificationReading`, `SurfaceReading` — assembled through the account of the
 record every brief is already composed from.
+
+## A twenty-first failure, 2026-08-29: the leaf measured it and no gate heard
+
+*igel v4-flash s14,
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s14`.*
+
+The reading above worked. Three grown leaves each journaled it:
+
+```
+task-2-x1-n1  surface {"compared": 4, "lost": 3,
+                       "names": ["init_file_path","res_path","temp_post_req_data_path"]}
+task-2-x1-n3  surface {"compared": 3, "lost": 3, …}
+task-2-x1-n4  surface {"compared": 5, "lost": 3, …}
+```
+
+and all 24 hidden tests failed on
+`ImportError: cannot import name 'temp_post_req_data_path' from 'igel.configs'`.
+That job's only two gates — `task-2-x1` and `task-2-x3` — carried `sourced: None`
+and cited a missing file and nothing else. **The measurement was in the store and
+no verdict ever saw it.** Clause 3, propagate to the verdict, broken by a graph
+shape: the gate reads the JUDGED NODE's own outcome, and a grown subtree does its
+work in children.
+
+> **A NAME THE JOB LOST IS A FINDING AT EVERY GATE OF THAT JOB UNTIL THE TREE HAS
+> IT BACK.** The gate re-takes the subtraction itself — the job's own baseline
+> (`verify.BaselineFor`, already inherited by every leaf and already carrying the
+> surface on every path) against the finished tree, over the record it is
+> judging — and what it finds REPLACES whatever a leaf measured.
+
+Re-taking rather than carrying a list upward is the whole of it: a name a round
+lost and a later round put back must stop being a finding, and only a reading of
+the finished tree can say so. It is SETTLEMENT §8 — a repair is settled against
+the world — applied to the last finding that was still a leaf's property.
+
+### And the same shape, twice over, for the reading beside it
+
+The changed-definition reading fired on nothing in that run: **no `consumers`
+event of any kind**, not even the empty one that says the reading happened. Two
+causes, both structural.
+
+Both gates were MECHANICAL — a file the plan promised was not on disk — so
+`judgeDeliverable` returned above the block that took the reading. **A
+measurement that only happens on the path where a model is bought is absent
+exactly when a run is already going wrong.** It is taken now before any door can
+return, and journaled whether or not it found anything.
+
+And it needed a DIFF. `Account.Patch` is written by `recordPatch`, which is the
+SWE belt's; the belts a headless run actually uses (`bare`, `linear`) set it
+nowhere, and the node a gate judges is routinely not the leaf that would have
+written one anyway. So the reading was rebuilt on the two things every belt does
+have: the job's baseline surface and the finished tree. A definition is CHANGED
+when its name is in both readings and its declaration DIGEST is not the same —
+which is a better claim than hunk overlap ever was (that said only that a diff
+landed inside a span) and needs no diff at all. `verify.Declaration.Digest`,
+hashed over the declaration's own non-blank lines on the same walk that decides
+the name is public.
+
+## A twenty-second failure, 2026-08-29: the contract that ate a correct verdict
+
+*igel v4-flash s15.* One node, 42 calls, 472 seconds, one gate:
+
+```
+gate     the review could not be read, so this delivery was never checked
+repair   parse response: a fail must name one of the files this run changed or
+         one of the files that use what it changed, and "feature_schema.joblib"
+         is not one of them
+repair   gate: the answer was still not readable — giving up on it
+```
+
+**The judge was right.** The request says *"After fit, write
+feature_schema.joblib in the results directory"*, the file was absent, and the
+judge named it. The enum did not hold the name — because the record is what the
+run LEFT BEHIND and the entire complaint is that this is not in it. Refused,
+re-asked, refused again, and the run stopped with nothing further started.
+
+> **A FILE THE PLAN OR THE PERSON PROMISED IS NAMEABLE IN A VERDICT WHETHER OR
+> NOT IT EXISTS.** An absent deliverable is the oldest finding this gate has, and
+> it must stay expressible. `Evidence.PromisedFiles` — the plan's structured
+> produces list and the files the request named, both already in front of the
+> judge — joins the `file` enum beside the record and the consumers, and a
+> refusal naming one the disk does not hold IS the mechanical gap, marked
+> `Mechanical` and `missing-produces`, buying the round it always bought.
+
+### And an unreadable review may not end a run with nothing started
+
+After the seam's own re-ask fails, the gate runs the mechanical check over that
+same promised list and raises what the FILESYSTEM can settle. The finding is
+journaled with `subject: fallback`, so an autopsy can tell it from a verdict.
+Only where nothing promised is missing does the gate fault, which is the honest
+ending it always was.
+
+**What is deliberately not here: a re-ask under the claim contract.** It was
+built, and measured, and it re-admits every finding the tree contract exists to
+refuse — the verdict about the fenced text, the complaint that a file was shown
+in part, the preference wearing a citation. Three tests in
+`internal/revision/subject_test.go` went red the moment it existed. A floor that
+lets a run be settled by the opinion the contract just refused is not a floor; it
+is the contract deleted on the path where it matters most.

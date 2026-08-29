@@ -26,6 +26,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -64,7 +65,18 @@ const (
 // it changed something, and a name that moved from one file to another is a
 // removal from the first and an addition to the second — which is what a rename
 // is, and what it should read as.
-type Surface map[string][]string
+type Surface map[string][]Declaration
+
+// Names is one file's public names, which is what a finding spells and what the
+// journal keeps.
+func (s Surface) Names(file string) []string {
+	held := s[file]
+	names := make([]string, 0, len(held))
+	for _, declaration := range held {
+		names = append(names, declaration.Name)
+	}
+	return sortedUnique(names)
+}
 
 // PublicSurface reads the public names of the source files under root that this
 // program can parse with certainty, walking the whole tree inside one budget.
@@ -100,8 +112,8 @@ func PublicSurface(root string) Surface {
 		if !read {
 			return nil
 		}
-		if names := publicNames(slashed, body); len(names) > 0 {
-			surface[slashed] = names
+		if declared := DeclarationsIn(slashed, body); len(declared) > 0 {
+			surface[slashed] = declared
 		}
 		return nil
 	})
@@ -128,8 +140,8 @@ func SurfaceOf(root string, files Focus) Surface {
 		if !read {
 			continue
 		}
-		if names := publicNames(clean, body); len(names) > 0 {
-			surface[clean] = names
+		if declared := DeclarationsIn(clean, body); len(declared) > 0 {
+			surface[clean] = declared
 		}
 	}
 	return surface
@@ -160,16 +172,51 @@ func (baseline Surface) Removed(now Surface, files Focus) []string {
 			continue
 		}
 		standing := make(map[string]bool, len(now[clean]))
-		for _, name := range now[clean] {
-			standing[name] = true
+		for _, declaration := range now[clean] {
+			standing[declaration.Name] = true
 		}
-		for _, name := range held {
-			if !standing[name] {
-				gone = append(gone, name)
+		for _, declaration := range held {
+			if !standing[declaration.Name] {
+				gone = append(gone, declaration.Name)
 			}
 		}
 	}
 	return sortedUnique(gone)
+}
+
+// LostNames is the public names a tree spelled before this work and does not
+// spell now: one baseline surface, one record of what changed, and the tree as
+// it stands.
+//
+// IT IS THE WHOLE SETTLEMENT AND IT LIVES HERE BECAUSE IT HAS TWO CALLERS. The
+// leaf takes it against the reading it holds; the delivery gate takes it against
+// the JOB's baseline, because the leaf that lost the name and the node that is
+// judged are routinely not the same node — igel s14's three grown leaves each
+// journaled `lost: 3` and both of that job's gates cited a missing file and
+// nothing else. Two spellings of one settlement would be two answers to the
+// question of what a run deleted.
+//
+// compared is how many changed source files the two readings were compared
+// across, and zero is the one answer a caller must be able to tell from "nothing
+// was lost": it says there was no comparison, not that there was a clean one.
+func LostNames(root string, baseline Surface, record []string) (lost []string, compared int) {
+	if len(baseline) == 0 {
+		return nil, 0
+	}
+	changed := ChangedSources(root, record)
+	// A file the record names and the tree no longer holds is not in
+	// ChangedSources, which only keeps what is still there — so the deletion of
+	// a whole module is added back from the record itself. Losing a public
+	// module is losing every public name in it.
+	for _, path := range MissingFrom(root, record) {
+		if _, held := baseline[path]; held {
+			changed = append(changed, path)
+		}
+	}
+	if len(changed) == 0 {
+		return nil, 0
+	}
+	return baseline.Removed(SurfaceOf(root, changed), changed), len(changed)
 }
 
 // readSurfaceFile is one file's text, bounded, or read=false when it is bigger
@@ -220,6 +267,21 @@ type Declaration struct {
 	Name string
 	Line int
 	End  int
+	// Digest is a hash of the declaration's own lines, and it is what makes a
+	// definition that KEPT ITS NAME comparable across two readings of a tree.
+	//
+	// A name comparison answers presence and nothing else, which is the hole
+	// igel s12 went through: `configs` was rebound from a dict to an instance of
+	// a class the run wrote, `lost: 0` was correct, and twenty-four hidden tests
+	// failed on `'Configs' object does not support item assignment`. Two
+	// readings of one tree already exist on every belt this program has; this is
+	// the one field that lets them answer whether a definition MOVED as well as
+	// whether it is gone.
+	//
+	// Blank lines are skipped and trailing whitespace is trimmed, so a file run
+	// through a formatter does not read as a project rewritten. Nothing else is
+	// forgiven: this is a hash of source text and never a reading of meaning.
+	Digest uint64
 }
 
 // Spans answers whether this declaration covers a line of the file.
@@ -238,17 +300,45 @@ func (d Declaration) Overlaps(from, to int) bool {
 // A language with no reader here declares NOTHING rather than something guessed
 // at, which is the same silence publicNames keeps and for the same reason.
 func DeclarationsIn(file, body string) []Declaration {
+	var declared []Declaration
 	switch surfaceLanguage(lastSegment(file)) {
 	case "go":
-		return goDeclarations(file, body)
+		declared = goDeclarations(file, body)
 	case "python":
-		return pythonDeclarations(body)
+		declared = pythonDeclarations(body)
 	case "script":
-		return scriptDeclarations(body)
+		declared = scriptDeclarations(body)
 	case "rust":
-		return rustDeclarations(body)
+		declared = rustDeclarations(body)
+	default:
+		return nil
 	}
-	return nil
+	return digested(strings.Split(body, "\n"), declared)
+}
+
+// digested hashes each declaration's own lines. It is done here, once, for every
+// reader, so a language cannot arrive with spans and no digest.
+func digested(lines []string, declared []Declaration) []Declaration {
+	for index, declaration := range declared {
+		from, to := declaration.Line-1, declaration.End
+		if from < 0 || from >= len(lines) {
+			continue
+		}
+		if to > len(lines) {
+			to = len(lines)
+		}
+		sum := fnv.New64a()
+		for _, line := range lines[from:to] {
+			trimmed := strings.TrimRight(line, " \t\r")
+			if strings.TrimSpace(trimmed) == "" {
+				continue
+			}
+			_, _ = sum.Write([]byte(trimmed))
+			_, _ = sum.Write([]byte{'\n'})
+		}
+		declared[index].Digest = sum.Sum64()
+	}
+	return declared
 }
 
 // publicNames is the file's public surface: the names of its declarations.

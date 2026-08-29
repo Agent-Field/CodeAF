@@ -403,6 +403,16 @@ type Judgment struct {
 	// record could say so. The pair is the comparable thing: this kind, and the
 	// names.
 	Finding string
+
+	// Fallback says this verdict was reached under the CLAIM contract after the
+	// tree contract could not be answered — free text where there were enums —
+	// or that the mechanical gate settled it after no verdict could be read at
+	// all. It is journaled as the subject, because the subject is what an
+	// autopsy reads to learn what the gate was actually holding, and a verdict
+	// reached under a narrow contract and one reached under a loose one are two
+	// different events wearing one word. See judgeDeliverable's fallback ladder
+	// and igel s15.
+	Fallback bool
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -1190,6 +1200,18 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// closed — reads one list, and until this call that list was an ACCOUNT of
 	// what leaves reported rather than an observation of the tree.
 	evidence.completeAgainstTheWorld()
+	// AND WHAT THE JOB HAS DELETED FROM ITS OWN PUBLIC SURFACE IS RE-SETTLED
+	// HERE, AGAINST THE TREE AS IT NOW STANDS. Until this, the finding was the
+	// judged node's own outcome — so a job whose work was done by grown leaves
+	// lost it entirely, and igel s14 shipped an ImportError into all twenty-four
+	// hidden tests while three of its leaves had each journaled the loss.
+	// Re-taking it rather than carrying the leaf's list is what lets a repair
+	// round CLEAR the finding: a name put back is a name the new reading finds.
+	// See Evidence.removedSinceTheJobBegan.
+	if lost, settled := evidence.removedSinceTheJobBegan(
+		verify.JobKey(node.Provenance.Intent)); settled {
+		evidence.Removed = lost
+	}
 	// AND WHAT THIS GATE IS ABOUT IS STAMPED ON WHATEVER COMES BACK, HERE, ONCE.
 	//
 	// It used to be written onto each judgement at the place that built it, and
@@ -1203,6 +1225,12 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	judgment := judgeDeliverable(ctx, settings, client, graph, node, deliverable, method,
 		evidence, workerModel, options...)
 	judgment.Subject = evidence.SubjectWords()
+	// AND A VERDICT THE NARROW CONTRACT COULD NOT HOLD SAYS SO. It is stamped
+	// here with everything else that is derived once, so no constructor can
+	// forget it.
+	if judgment.Fallback {
+		judgment.Subject = SubjectFallbackWords
+	}
 	// And the other half of the same question, derived the same way and for the
 	// same reason: WHICH behaviour this verdict was held to, or that there was
 	// no list to hold it to. See heldPointWords.
@@ -1229,6 +1257,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// judgement rather than rebuilding them from whatever fields their own
 	// caller happened to hold, which is how they came to disagree.
 	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	// The job this delivery belongs to, spelled the one way every reader in this
+	// system spells it: a digest of the person's own request, which is the one
+	// thing every leaf of a job holds identically and no two jobs share. It is
+	// what the readings below are looked up against, because a reading is a
+	// property of the JOB and the tree and never of the node being judged.
+	job := verify.JobKey(node.Provenance.Intent)
 	// THE ONE DECISION THIS WHOLE GATE TURNS ON: what the fence holds. Where the
 	// run changed the tree, the change is the deliverable and the worker's
 	// message is a claim about it; where it changed nothing, the message is the
@@ -1236,10 +1270,26 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// always was. The readings this reads are taken by the caller above, once.
 	// See subject.go.
 	subject := evidence.Subject()
-	// The changed definitions this gate was shown, held so the refusal below can
-	// say WHICH one a consumer-grounded quote belongs to. Nil everywhere the
-	// reading found nothing, which is most runs.
+	// THE READINGS OF THE WORLD ARE TAKEN BEFORE ANY DOOR CAN RETURN, and this
+	// one used to be taken after four of them. igel s14's two gates were both
+	// MECHANICAL — a file the plan promised was not on disk — so judgeDeliverable
+	// returned above the block that reads this, and the store holds no consumers
+	// event of any kind for that run: not an empty one, which would have said
+	// the reading happened and found nothing, and not a full one. A measurement
+	// that only happens on the path where a model is bought is a measurement
+	// that is absent exactly when the run is already going wrong.
+	//
+	// Nil everywhere the reading found nothing, which is most runs.
 	var consumers []verify.ChangedDefinition
+	var consumerFiles, consumerLines []string
+	if subject == SubjectTree {
+		consumers = evidence.changedDefinitions(job)
+		consumerFiles, consumerLines = consumerGrounds(consumers)
+		// Journaled either way, INCLUDING the reading that found nothing: an
+		// autopsy asking whether this door was open on a run has nothing else to
+		// read (FAILSAFE.md clause 4).
+		journalConsumers(graph, node.ID, consumers)
+	}
 	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
 	// OPINION. A check that passed before the work and fails after it is a
 	// measurement the run made of the world, and it outranks every other reading
@@ -1343,21 +1393,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// uses, beside the behaviours because it belongs to the same half of the
 	// prompt: how to judge, read from the world, rather than what is judged. It
 	// is the one fact that catches a name kept and a shape moved, which is the
-	// hole igel s12 went through with all twenty-four hidden checks red. See
+	// hole igel s12 went through with all twenty-four hidden checks red. The
+	// reading itself was taken above, before any door could return. See
 	// consumers.go.
-	var consumerFiles, consumerLines []string
-	if subject == SubjectTree {
-		if changed := evidence.changedDefinitions(); len(changed) > 0 {
-			consumers = changed
-			consumerFiles, consumerLines = consumerGrounds(changed)
-			if block := consumersBlock(changed, budget); block != "" {
-				body += "\n\n" + block
-			}
-		}
-		// Journaled either way, INCLUDING the reading that found nothing: an
-		// autopsy asking whether this door was open on a run has nothing else to
-		// read (FAILSAFE.md clause 4).
-		journalConsumers(graph, node.ID, consumers)
+	if block := consumersBlock(consumers, budget); block != "" {
+		body += "\n\n" + block
 	}
 	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(judged)
 	// The worker's own account, below the fence, named for what it is. It is
@@ -1392,12 +1432,14 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// what makes a finding about the worker's sentence unsayable rather than
 	// merely discouraged; over a claim the shape is the one it always was.
 	record := evidence.recordNames()
+	promised := evidence.PromisedFiles()
 	verdict := treeVerdict{files: record}
 	schema := deliverableSchema
 	if subject == SubjectTree {
 		verdict.behaviours = behaviours
 		verdict.consumerFiles, verdict.consumerLines = consumerFiles, consumerLines
-		schema = treeVerdictSchema(record, behaviours, consumerFiles, consumerLines)
+		verdict.promised = promised
+		schema = treeVerdictSchema(record, behaviours, consumerFiles, consumerLines, promised)
 	}
 	// One seam for every structured reply in the system. This used to send, then
 	// scan for braces, then decide — and a failed decode here was a silent pass.
@@ -1407,10 +1449,31 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// gate cannot READ — a fail over a changed tree that names no file of the
 	// record — travels that same path for the same reason: the contract it
 	// broke is the schema's, so the schema is what it is asked again with.
-	_, err := askVerdict(judgeCtx, client, []ai.Message{
+	messages := []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, schema, &verdict)
+	}
+	_, err := askVerdict(judgeCtx, client, messages, schema, &verdict)
+	// A CONTRACT MAY NOT BE THE REASON A RUN ENDS WITH NOTHING STARTED.
+	//
+	// The tree contract is narrow on purpose, and igel s15 shows both halves of
+	// what that costs when the enum is wrong. The request says "After fit, write
+	// feature_schema.joblib in the results directory"; the file was absent; the
+	// judge said exactly that, naming the file; the enum did not hold the name
+	// because the name is in no record of what the run LEFT BEHIND. Re-asked,
+	// refused again, and the run ended at eight minutes with `the review could
+	// not be read, so this delivery was never checked` and nothing further
+	// started. The first half is fixed above, where the enum now holds what the
+	// request and the plan promised. The second half is below.
+	//
+	// WHAT IS NOT DONE HERE: re-asking under the CLAIM contract, with no enums,
+	// and taking whatever comes back. It was built and measured and it re-admits
+	// the three findings the tree contract exists to refuse — the verdict about
+	// the fenced text (`contains only {"contract": …}`), the complaint that a
+	// file was shown in part, and the preference wearing a citation. A floor
+	// that lets a run be settled by the opinion the contract just refused is not
+	// a floor; it is the contract deleted on the path where it matters most. See
+	// FAILSAFE.md's seventeenth chapter and its twenty-first.
 	if err != nil {
 		// AN UNREADABLE VERDICT IS A FAULT ON THE GATE, NEVER AN ABSTENTION.
 		// This is the s4 sweep's second fatal shape: the gate answered with
@@ -1423,6 +1486,20 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// cmd/aforge/chat.go.
 		if shaped.Unreadable(err) {
 			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			// AND THE MECHANICAL GATE STILL RUNS. A gate that produced no
+			// verdict has not settled anything, and a promised file that is not
+			// on disk is settled by the filesystem rather than by anybody's
+			// opinion — so the run still gets the finding it plainly has, and
+			// still buys the round that closes it. Ending eight minutes of work
+			// with "nothing further was started" over an absent deliverable is
+			// FAILSAFE.md's floor broken: a check that did not happen may not be
+			// the reason a run stops.
+			if absent := evidence.MissingPromised(); len(absent) > 0 {
+				gap := joinCitations(absent)
+				return Judgment{Gaps: gap, Quote: gap, Citations: absent,
+					Mechanical: true, Checked: true, Grounds: grounds,
+					Finding: FindingMissingProduces, Fallback: true}
+			}
 			return faulted(node, "the gate answered with nothing this could read", err)
 		}
 		// A transport failure is a different thing and stays fail-open: the
@@ -1468,6 +1545,15 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	gaps = treeGapWords(verdict.File, gaps)
 	failed := Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
 		Checked: true, Grounds: grounds, File: verdict.File}
+	// A REFUSAL THAT NAMES A PROMISED FILE THE DISK DOES NOT HOLD IS THE
+	// MECHANICAL GAP, FOUND BY A JUDGE. It is the same fact the gate settles for
+	// itself when the plan states a produces list, so it is marked the same way
+	// and buys the same round — a refusal of its citation says only that no round
+	// will be bought, never that the absence is not real.
+	if verdict.Promised && !producedNonEmpty(verdict.File, evidence.Artifacts) {
+		failed.Mechanical = true
+		failed.Finding = FindingMissingProduces
+	}
 	// A CONSUMER-GROUNDED REFUSAL IS ITS OWN FINDING, AND IT IS SOURCED. There
 	// is no span of the request to weigh, because nobody writes down that the
 	// thing behind a name must keep answering to how it is used — the same
