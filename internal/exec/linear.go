@@ -744,6 +744,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// workspace is left consistent and the partial goes out whole. See
 	// noprogress.go for the signals and thresholds.
 	progress := newProgressGuard()
+	// The leaf's own closing. It is armed here, beside the other once-only
+	// questions above, because it is one of them: a finding this leaf's own
+	// after-photograph raises against this leaf's own work is put to it once
+	// per kind, and the gate is the floor under whatever is still red the
+	// second time. See selfclose.go.
+	closer := NewSelfCloser(l.history, task)
 
 	// The observation window is sized from what the model can hold in one
 	// request, and from nothing else.
@@ -978,7 +984,37 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				messages = messages[:len(messages)-1]
 			}
 			trace.turn(outcome.Turns, response, nil, nil, "final")
-			return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+			landed := l.land(ctx, task, outcome, started, reading, inheritedReading)
+			// AND THE LEAF READS ITS OWN LANDING BEFORE ANYBODY ELSE DOES. The
+			// photograph the line above just took is a measurement of THIS
+			// leaf's work, and until now everything it found — a public name
+			// deleted, a name read that nothing binds, a check turned red — went
+			// past this worker to a gate, and came back as a repair round: a
+			// cold leaf with a fresh brief and none of the context that made the
+			// mistake. The worker that can fix it cheapest is the one still
+			// standing here holding the transcript. So it is asked, once per
+			// kind, inside what is left of its own meter — and lands with the
+			// finding when there is nothing left, exactly as it did before.
+			//
+			// It reopens the loop the same way the mailbox above does, and for
+			// the same reason: a leaf that has not landed has not delivered. The
+			// answer just written goes in as the draft it now is, the finding
+			// follows it, and the next turns settle it. See selfclose.go.
+			if note, closing := closer.Close(landed, RoomLeft(landed, turnCap, l.maxTokens,
+				time.Until(deadline), landingReserve)); note != "" {
+				messages = append(messages,
+					ai.Message{Role: "assistant", Content: text(response.Text())},
+					ai.Message{Role: "user", Content: text(note)})
+				// The verdict belongs to a landing that is no longer happening.
+				// verdictFor keeps whatever it is handed, so a verdict written
+				// for this reading would outlive it and grade the leaf on an
+				// ending it did not have.
+				landed.Verdict = ""
+				trace.turn(outcome.Turns, response, nil, nil,
+					"closing its own finding — "+strings.Join(SelfCloseKinds(closing), ", "))
+				continue
+			}
+			return landed, nil
 		}
 
 		messages = append(messages, ai.Message{

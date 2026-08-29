@@ -1332,6 +1332,28 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		w.say("↻", nodeDisplay(node), resumedWords(resumed))
 		return true
 
+	case store.EventLeafSelfClose:
+		var closing store.LeafSelfClose
+		if json.Unmarshal(event.Payload, &closing) != nil || len(closing.Kinds) == 0 {
+			return false
+		}
+		// ONLY THE ARM THAT REOPENS THE WORK IS SAID. A leaf held back to fix
+		// what its own reading found is still running when the person expected
+		// it to be finished, and that is precisely the fact this register exists
+		// to carry (FAILSAFE.md clause 3). The other arm — the finding stands
+		// and the leaf lands with it — changes nothing about what happens next
+		// that the gate line below does not already say in its own words, and
+		// saying it twice would read as two findings. It is journaled either
+		// way, which is where an autopsy reads it.
+		if !closing.Closed {
+			return false
+		}
+		// ↻ and not ✗: nothing failed. The leaf is picking its own work back up,
+		// which is the same fact the mark already carries for a claim resuming
+		// from a record.
+		w.say("↻", nodeDisplay(node), selfCloseWords(closing))
+		return true
+
 	case store.EventNodeReleased:
 		var release struct {
 			Reason   string `json:"reason"`
@@ -1407,6 +1429,21 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 // The files are the world's own reading of what the earlier attempts changed,
 // and they are named up to a few because the point is that the workspace is not
 // empty, not to reprint a diff.
+// selfCloseWords says what a leaf found against its own work, as a kind and a
+// count.
+//
+// The names are in the record and deliberately not in this line. A person
+// watching a run needs to know the leaf caught something itself and is fixing
+// it before handing over; WHICH three names is the diagnosis, and it belongs
+// where a diagnosis is read — the journal, and the leaf's own note.
+func selfCloseWords(closing store.LeafSelfClose) string {
+	words := "closing its own finding: " + strings.Join(closing.Kinds, ", ")
+	if len(closing.Names) > 0 {
+		words += " (" + plural(len(closing.Names), "name") + ")"
+	}
+	return words
+}
+
 func resumedWords(resumed store.LeafResumed) string {
 	words := fmt.Sprintf("resumed from %s", plural(resumed.Turns, "recorded turn"))
 	if len(resumed.Files) > 0 {

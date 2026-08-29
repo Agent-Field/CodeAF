@@ -225,7 +225,23 @@ type providerClient interface {
 }
 
 // run executes the loop. It returns a fully populated exec.Outcome.
+// run drives the loop with nothing to close: the shape every test and every
+// caller that has no workspace to photograph gets.
 func (l *loopState) run(ctx context.Context) *exec.Outcome {
+	return l.runClosing(ctx, nil)
+}
+
+// runClosing is run with the leaf's own closing armed.
+//
+// close is asked ONCE PER ANSWER, at the one exit where this loop finishes under
+// its own power — the turn that came back with no tool call. It is handed the
+// outcome with the leaf's own after-photograph already taken and answers with
+// the note to carry on from, or the empty string to land on the reading it just
+// took. That is the whole seam: the decision itself, the bound on it and the
+// journal are exec.SelfCloser's, shared with the generalist belt, because a
+// mechanism only one worker has is one the run does not (see
+// internal/exec/selfclose.go).
+func (l *loopState) runClosing(ctx context.Context, close func(*exec.Outcome) string) *exec.Outcome {
 	outcome := &exec.Outcome{Stop: exec.StopDone}
 	started := time.Now()
 
@@ -306,6 +322,25 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			outcome.Text = strings.TrimSpace(response.Text())
 			outcome.Elapsed = time.Since(started)
 			l.say(store.TranscriptAssistant, outcome.Text)
+			// AND THE LEAF READS ITS OWN WORK BEFORE ANYBODY ELSE DOES. A
+			// finding this leaf's own closing photograph raises against this
+			// leaf — a public name it deleted, a name it reads that nothing
+			// binds, a check it turned red — used to reach nobody until the
+			// leaf had landed and a gate had bought a cold repair round. The
+			// worker holding the transcript that produced the fault is still
+			// standing right here, so it is asked. A close reopens the loop the
+			// way any other unanswered turn does: the answer goes in as the
+			// draft it now is, the finding follows it, and the next turns
+			// settle it.
+			if close != nil {
+				if note := close(outcome); note != "" {
+					l.messages = append(l.messages,
+						ai.Message{Role: "assistant", Content: assistantContent(response)},
+						ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: note}}})
+					l.note(note)
+					continue
+				}
+			}
 			return outcome
 		}
 
