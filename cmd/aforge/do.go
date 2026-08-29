@@ -1171,14 +1171,28 @@ func workerChangeWords(previous, subharness, reason string) string {
 // different things to whoever is reading — one is work that fell short, the
 // other is a round the run declined to buy — and collapsing them is how a
 // refused repair came to look like a passed delivery.
+//
+// THE FINDING IS THE NEWS, AND THE REASON IS THE FOOTNOTE. For a while this
+// printed the refusal sentence alone, so a person watching ten runs read
+// "gate: refused — what the review asked for next is not in the request" ten
+// times and never once learned what the review had said was missing. The one
+// fact worth the line — "the deliverable does not contain the code that
+// implements the feature schema persistence" — was in the journal and nowhere a
+// person could see it. FAILSAFE clause 3: a fail-safe that does not propagate
+// to the verdict the person reads is decoration.
 func gateWords(gate store.DeliveryGate) (verdict, detail string) {
+	gap := firstLine(strings.TrimSpace(gate.Gap))
 	if refused := strings.TrimSpace(gate.Refused); refused != "" {
-		return "refused", firstLine(refused)
+		detail = gap
+		if detail == "" {
+			return "refused", firstLine(refused)
+		}
+		return "refused", detail + " — " + firstLine(refused)
 	}
 	if gate.Pass {
 		return "pass", ""
 	}
-	return "fail", firstLine(strings.TrimSpace(gate.Gap))
+	return "fail", gap
 }
 
 // phaseWorker names the specialist a phase belongs to, and names nothing when it
@@ -1450,40 +1464,44 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 // this landed: 1 of 2 parts finished" — which is precisely the line that was
 // measured going out over exit 0.
 //
-// A verdict the system itself overruled is not a rejection. A gap the one polish
-// pass closed, and a gap refused as ungrounded or as already closed, are the gate
-// being wrong and being caught at it; those deliver whole, and charging them a
-// non-zero code would teach a harness to distrust the gate's own corrections.
+// A verdict the system itself overruled is not a rejection — but OVERRULED HAS
+// TO MEAN CHECKED AGAINST THE WORLD, and for a while it meant any refusal at
+// all. A gap the one polish pass closed delivers whole because the work was
+// redone. A gap refused because the file it says is missing is on disk under the
+// name the request used, or because the things it says are absent are in the
+// text the person is about to read, delivers whole because the finding was
+// weighed against the filesystem or against the deliverable and lost. Charging
+// either of those a non-zero code would teach a harness to distrust the gate's
+// own corrections. That is store.DeliveryGate.Overturned, and it is the only
+// refusal that acquits.
 //
-// EXCEPT WHEN THE GATE CANNOT BE WRONG, AND EXCEPT WHEN THE GAP STILL STANDS.
-// The refusals that deliver whole are all corrections of an OPINION: a judge
-// read the deliverable and named something missing, and a rule found that the
-// thing it named was never asked for, or is already on disk, or is already in
-// the text. Two refusals are not that.
+// EVERY OTHER REFUSAL LEAVES THE FINDING STANDING. A citation refused for its
+// provenance — "what the review asked for next is not in the request", "the same
+// words were already worked on once" — has been checked against nothing in the
+// world. It declines to BUY a round; it settles nothing about whether the work
+// landed, because no ruling about where a review got its words makes missing
+// work appear. A repair a governor would not fund, or that nothing could plan,
+// or that the wall has no room for, is the same shape (store.DeliveryGate.
+// Unclosed). So is a mechanical gap: a file the plan itself promised, missing or
+// empty on disk, is a fact about the filesystem that no admission rule is
+// competent to overturn.
 //
-// The first is an unclosed gap. A repair a governor would not fund, or that
-// nothing could plan, refuses the REPAIR and not the finding: what the judge
-// named is still missing, and the run is delivering less than it promised. The
-// gate records which of the two happened (store.DeliveryGate.Unclosed) rather
-// than leaving it to be guessed from a sentence — a run that shipped
-// "Deliverable is empty - contains no implementation" under "no more work could
-// be started on it" left over exit 0 for want of exactly that field.
-//
-// The second is a mechanical gap. It says
-// a file the plan itself promised is missing or empty on disk, which is a fact
-// about the filesystem, and refusing its citation only declines to buy a repair
-// round — it cannot make the file appear. Charging that exit 0 is what let a run
-// that produced no file at all report settled, done, success, under a note
-// explaining that the review had overreached (2026-08-28, meta/muse-spark-1.1).
-// It is exit 2, partial, which is the honest code for a job that delivered less
-// than it promised. See revision.Judgment.Mechanical.
+// The measured cost of collapsing those into one field is the whole DeepSWE
+// sweep: seven of eight graded runs exited 0 — "delivered whole" — with reward
+// 0, each of them after its own review had named the missing work and been
+// refused on provenance (2026-08-28, bench/deepswe/AUTOPSY.md; the reasoning is
+// docs/design/gate/SETTLEMENT.md §2). Before that, one run shipped "Deliverable
+// is empty - contains no implementation" over exit 0 for want of the Unclosed
+// field, and another produced no file at all and reported settled, done, success
+// under a note explaining that the review had overreached
+// (2026-08-28, meta/muse-spark-1.1). Exit 2, partial, is the honest code for a
+// job that delivered less than it promised.
 //
 // An unreadable store answers whole. This decides an exit code, not the work,
 // and a failed read is not evidence of a shortfall.
 func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
-		!gate.Pass && !gate.PolishClosed &&
-		(gate.Mechanical || gate.Unclosed || strings.TrimSpace(gate.Refused) == "") {
+		!gate.Pass && !gate.PolishClosed && !gate.Overturned {
 		return false
 	}
 	parts, err := w.graph.SubtreeNodes(node.ID)

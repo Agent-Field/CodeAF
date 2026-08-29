@@ -1510,7 +1510,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// delivery, and free.
 				ungrounded, closed := "", ""
 				if !gate.Pass {
-					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Cited())
+					ungrounded = revision.AdmitGapRevision(gate.Grounds, gate.Cited())
 					// The same refusal, for the gap the record has already
 					// closed rather than the one the request never set. A span
 					// of the ask naming a file the run produced is not a thing
@@ -1552,6 +1552,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// invented a requirement, and charging the model's rating for
 					// that would teach the profile the reviewer's mistake.
 				case closed != "":
+					// The only refusal that acquits. Both doors behind `closed`
+					// weigh the finding against the world — the file is on disk,
+					// or the things it names are in the text the person is about
+					// to read — so the review lost on evidence and the delivery
+					// stands whole. A provenance refusal is not that and does not
+					// set this: it declines to buy a round and leaves the finding
+					// where it was. See store.DeliveryGate.Overturned.
+					evidence.Overturned = true
 					evidence.Refused = closed
 					notes = append(notes, revision.GapClosedNote(gate.Gaps, closed))
 					// Same reasoning, one step stronger: the work produced what

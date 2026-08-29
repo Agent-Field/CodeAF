@@ -94,14 +94,19 @@ func TestAnUngroundedGateFailureShipsANoteInsteadOfBuyingARound(t *testing.T) {
 	defer script.close()
 
 	var stdout, stderr strings.Builder
-	if err := doErrand(doRequest{
+	err := doErrand(doRequest{
 		task:      "write the release note and include the migration steps",
 		timeout:   60 * time.Second,
 		stdout:    &stdout,
 		stderr:    &stderr,
 		newClient: script.client,
-	}); err != nil {
-		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	})
+	// It buys nothing AND it does not settle whole. Refusing where a review got
+	// its words checks nothing about the world, so the finding is still standing
+	// when the run hands over — see deliveredWhole.
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitPartial {
+		t.Fatalf("the errand settled whole over a standing finding: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 
 	if got := script.count("gate"); got != 1 {
@@ -288,6 +293,11 @@ func TestDoLeavesArtifactsUnderTheNamedWorkspace(t *testing.T) {
 func TestDoEditsTheNamedDirectoryInPlace(t *testing.T) {
 	script := newScriptedBrain(t)
 	script.editPath = "intervals.py"
+	// The gate is not what this test is about, and a scripted gap quoting
+	// another test's request is ungrounded against this one — which is now a
+	// partial settlement rather than a silent exit 0. Let the delivery stand so
+	// the assertion below is about the edit and nothing else.
+	script.gatePasses = true
 	defer script.close()
 
 	workspace := t.TempDir()
@@ -1665,10 +1675,13 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 			want: exitPartial,
 		},
 		{
-			// The other side of the same field, which must keep exiting 0: the
-			// gap itself was found inadmissible, which is the gate being wrong
-			// and being caught at it.
-			name: "the gap was refused as ungrounded",
+			// A refusal that checked NOTHING IN THE WORLD. It declines to buy a
+			// round over where the review got its words; it settles nothing
+			// about whether the work landed, and the finding is still standing
+			// when the run hands over. Seven of eight measured DeepSWE runs
+			// exited 0 on exactly this shape, each with a review that was right
+			// (bench/deepswe/AUTOPSY.md).
+			name: "the gap was refused for where its words came from",
 			build: func(t *testing.T, graph *store.Store, session string) {
 				t.Helper()
 				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
@@ -1676,6 +1689,27 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
 					Gap:     "it does not benchmark the parser",
 					Refused: "that is not in the request",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: exitPartial,
+		},
+		{
+			// And the refusal that DID check the world keeps exiting 0: the file
+			// the review says is missing is on disk under the name the request
+			// used, so the review lost on evidence and the delivery stands.
+			// Charging this a non-zero code would teach a harness to distrust
+			// the gate's own corrections.
+			name: "the gap was overturned against the world",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE: the parser is faster.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:        "notes.md was never written",
+					Refused:    "what it asked for is already on disk under the name the request used",
+					Overturned: true,
 				}); err != nil {
 					t.Fatal(err)
 				}
