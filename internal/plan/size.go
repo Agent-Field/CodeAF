@@ -695,6 +695,11 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 		return nil, nil, nil
 	}
 	specialists := Subharnesses()
+	// One verdict comes back per node being judged, so that count is what the
+	// reply has to have room for. Reading it off the same loop that built the
+	// list is the whole of the derivation: the ask states its own cardinality
+	// and nobody has to guess it.
+	judged := targetCount(graph, stage)
 	// The prices go on the very last message and nowhere else. The system prompt
 	// above is the same bytes for every stage of every job on this machine and
 	// the catalog block is the same bytes for every stage of this one; an
@@ -711,7 +716,7 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 	var decoded struct {
 		Sizes []sizeVerdict `json:"sizes"`
 	}
-	response, err := structured(ctx, client, messages, sizeSchemaFor(specialists), &decoded)
+	response, err := structuredParts(ctx, client, messages, sizeSchemaFor(specialists), judged, &decoded)
 	if err != nil {
 		return nil, usageOf(response), fmt.Errorf("size stage %d: %w", stage, err)
 	}

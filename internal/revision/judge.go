@@ -39,6 +39,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -271,6 +272,18 @@ type Judgment struct {
 	// fail-closed switch: flipping the default is a behaviour change and it is
 	// not this wave's.
 	Unjudged string
+
+	// Fault names, in one line, why this gate call produced NO VERDICT AT ALL —
+	// and it is set only where that is the gate's own failure rather than the
+	// weather's. Its one reader ends the run short of whole.
+	//
+	// It is a separate field from Unjudged because the two mean opposite things
+	// to a person. Unjudged is "the work ships and nobody read it", which is a
+	// pass. Fault is "the reader was there and could not speak", which is not a
+	// pass and not a gap: it is a hole where the run's own check should have
+	// been, and a run with a hole in its check has not been shown to be whole.
+	// See faulted, and FAILSAFE.md's floor.
+	Fault string
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -887,103 +900,37 @@ func AdmitGapPresent(citations []string, deliverable string) string {
 // worker's name, four hundred for a verdict. That is the right size for the
 // visible answer and the wrong size for the call. A reasoning model spends its
 // completion budget thinking before it writes, so a cap sized for the object
-// alone is spent entirely on deliberation and the object never arrives — the
-// same failure that killed planner nodes at completion_tokens=32768 before
-// plan.structured grew its retry.
+// alone is spent entirely on deliberation and the object never arrives.
 //
-// What made it worse here than there is what an empty reply MEANS to a gate.
-// An unparseable verdict is a pass (see JudgeDeliverable), so a cap too small
-// for a reasoning model is not a call that fails: it is a gate that stops
+// What made it worse here than anywhere else is what an empty reply MEANS to a
+// gate. An unparseable verdict used to be a pass, so a cap too small for a
+// reasoning model was not a call that failed: it was a gate that stopped
 // existing, quietly, on the models most worth pointing it at.
 //
-// The cap is a fraction of the completion reserve the whole tree keeps for a
-// reply and its reasoning — AFORGE_COMPLETION_RESERVE, 65536 by default — so it
-// moves with the law rather than against it. A verdict genuinely is small, which
-// is why it takes a fraction rather than the whole reserve; the floor is what
-// keeps that fraction from ever landing back where it started.
-const (
-	verdictShare       = 8
-	verdictFloorTokens = 4096
-)
+// BOTH HALVES OF THAT ARE NOW THE SHARED SEAM'S (internal/shaped). The room is
+// derived from the ask rather than named here — the share of the completion
+// reserve this file measured is stated there, once, for every structured call in
+// the harness — and a reply that arrives cut off or unreadable is continued or
+// asked again before this file ever sees it. What is left here is the one
+// question that was always the gate's: what an answer that still did not come
+// back MEANS. See the fault path in judgeDeliverable.
 
-func verdictTokens() int {
-	reserve := ctxbudget.CompletionReserve()
-	budget := reserve / verdictShare
-	if budget < verdictFloorTokens {
-		budget = verdictFloorTokens
-	}
-	if budget > reserve {
-		// An operator who set the reserve below the floor has stated what the
-		// room is. The floor guards against reasoning; it is not a licence to
-		// overrun a reserve somebody named on purpose.
-		budget = reserve
-	}
-	return budget
-}
-
-// retryVerdictTokens doubles what the empty attempt actually spent, floored at
-// twice the ordinary cap and bounded by the reserve itself, so one judgement
-// that cannot stop thinking cannot demand an absurd completion. It is
-// plan.retryTokenBudget's arithmetic with the law's numbers where that function
-// has literals.
-func retryVerdictTokens(response *ai.Response) int {
-	first := verdictTokens()
-	spent := 0
-	if response != nil && response.Usage != nil {
-		spent = response.Usage.CompletionTokens
-	}
-	budget := spent * 2
-	if budget < first*2 {
-		budget = first * 2
-	}
-	if ceiling := ctxbudget.CompletionReserve(); budget > ceiling {
-		budget = ceiling
-	}
-	return budget
-}
-
-// spentItThinking reports the one failure the retry exists for: the reply came
-// back with nothing in it, and the reason is that the budget went on
-// deliberation rather than on an answer. finish_reason=length says so outright;
-// a provider that reports a clean stop while billing completion tokens for an
-// empty body is saying the same thing in its own accent, and both are answered
-// the same way. A genuinely silent reply that cost nothing is not retried —
-// there is no evidence a bigger budget would change it.
-func spentItThinking(response *ai.Response) bool {
-	if response == nil || strings.TrimSpace(response.Text()) != "" {
-		return false
-	}
-	if len(response.Choices) > 0 && response.Choices[0].FinishReason == "length" {
-		return true
-	}
-	return response.Usage != nil && response.Usage.CompletionTokens > 0
-}
-
-// askVerdict sends one judgement and, when the model spends the whole cap
-// thinking and hands back nothing, sends it once more with doubled room. One
-// retry, the planner's own: the difference between a contract and a dead node
-// there, and between a gate and a rubber stamp here. A second empty answer is
-// the model's problem and not the budget's — the caller says so out loud.
-func askVerdict(ctx context.Context, client *pool.Client, messages []ai.Message, request []ai.Option) (*ai.Response, error) {
-	response, err := client.CompleteWithMessages(ctx, messages, sized(request, verdictTokens())...)
-	if err != nil || !spentItThinking(response) {
-		return response, err
-	}
-	retry, retryErr := client.CompleteWithMessages(ctx, messages, sized(request, retryVerdictTokens(response))...)
-	if retryErr != nil || retry == nil {
-		return response, nil
-	}
-	return retry, nil
-}
-
-// sized copies the request options and puts the cap last, where it wins. The
-// copy is not a nicety: two appends onto one slice with spare capacity write
-// over each other, and the second call would go out carrying the first call's
-// cap.
-func sized(request []ai.Option, tokens int) []ai.Option {
-	options := make([]ai.Option, 0, len(request)+1)
-	options = append(options, request...)
-	return append(options, ai.WithMaxTokens(tokens))
+// askVerdict sends one judgement through the shared structured-answer seam and
+// decodes it into the caller's destination.
+//
+// The seam owns the ceiling, the continuation of a cut answer, the single re-ask
+// for a reply that was not an object, and the typed fault when neither worked.
+// This wrapper exists only to say the two things that are true of every
+// judgement in this file and of nothing else: the lane is "gate", and the schema
+// travels on the wire only where there is a router to carry it.
+func askVerdict(ctx context.Context, client *pool.Client, messages []ai.Message,
+	schema json.RawMessage, into any) (*ai.Response, error) {
+	return shaped.Answer(ctx, client, shaped.Ask{
+		Lane:     "gate",
+		Messages: messages,
+		Schema:   schema,
+		Routed:   client != nil && client.Routed(),
+	}, into)
 }
 
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
@@ -1077,38 +1024,40 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	// Structured output is the cascade's free verifier. Keep the no-panel
-	// adapter's request options unchanged; there is no second rung to unlock.
-	if client.Routed() {
-		request = append(request, ai.WithSchema(deliverableSchema))
-	}
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, request)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return unjudged(node, "the gate could not be reached", err)
-	}
 	var verdict struct {
 		Pass      bool   `json:"pass"`
 		Gaps      string `json:"gaps"`
 		Quote     string `json:"quote"`
 		Exercised bool   `json:"exercised"`
 	}
-	// One extractor for every structured reply in the system. This used to hold
-	// its own — first brace to last brace — which is tolerant in the same
-	// direction and wrong in one: a judge that wrote a sentence containing a
-	// brace after its object swallowed the sentence into the JSON and failed the
-	// parse, and a failed parse here is a silent pass.
-	if err := provider.DecodeJSONObject(response.Text(), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		// The retry above has already spent a doubled budget on this, so what
-		// arrives here is a judge that answered twice and said nothing usable
-		// either time. It still passes — flipping that is a behaviour change and
-		// not this wave's — but it no longer passes silently.
-		return unjudged(node, "the gate answered with nothing this could read", err)
+	// One seam for every structured reply in the system. This used to send, then
+	// scan for braces, then decide — and a failed decode here was a silent pass.
+	// Both mistakes are gone: the seam continues a verdict that ran out of room,
+	// asks once more for one that came back as prose, and when neither works it
+	// says so in a type this file cannot mistake for silence.
+	_, err := askVerdict(judgeCtx, client, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	}, deliverableSchema, &verdict)
+	if err != nil {
+		// AN UNREADABLE VERDICT IS A FAULT ON THE GATE, NEVER AN ABSTENTION.
+		// This is the s4 sweep's second fatal shape: the gate answered with
+		// something no reader could parse, the caller took that for "no opinion",
+		// and the run delivered unjudged work as done with exit 0. The seam has
+		// already asked again by the time this is reached, so what arrives here
+		// is a gate that was given every chance and produced no verdict — which
+		// is a fact about the run, and FAILSAFE.md's floor says a fact about the
+		// run reaches the exit code. See Judgment.Fault and its one reader in
+		// cmd/aforge/chat.go.
+		if shaped.Unreadable(err) {
+			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			return faulted(node, "the gate answered with nothing this could read", err)
+		}
+		// A transport failure is a different thing and stays fail-open: the
+		// model was never reached, so nothing about this deliverable was
+		// examined and holding it hostage to the weather buys nobody anything.
+		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		return unjudged(node, "the gate could not be reached", err)
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
@@ -1137,6 +1086,46 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	quote := strings.TrimSpace(verdict.Quote)
 	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
 		Checked: true, Grounds: grounds}
+}
+
+// faulted is the gate call that produced no verdict, reported as the fault it is.
+//
+// It is unjudged's opposite number and the whole of what this wave changed about
+// the gate. The two failures it separates used to be one: a judge that could not
+// be REACHED (weather, a 429, a dead endpoint) and a judge that answered with
+// something no reader could parse. The first says nothing about the work and
+// must not hold it hostage. The second is the gate not existing — and a gate
+// that does not exist may not be the reason a run reports itself whole.
+//
+// It carries neither a pass nor a gap: there is no verdict to carry. Checked
+// stays false, so nothing downstream manufactures verified evidence out of it,
+// and Fault is what the delivery path reads to end the run PARTIAL with the
+// reason in the stream rather than 0 with nothing.
+func faulted(node store.Node, why string, err error) Judgment {
+	note := why
+	if err != nil {
+		note += ": " + firstLine(err.Error())
+	}
+	log.Printf("note: the delivery gate faulted on %s — %s; the run is partial, not whole", node.ID, note)
+	return Judgment{Fault: note}
+}
+
+// GateFaultWords is the shortfall as the delivery gate's own ledger keeps it,
+// and as the headless stream prints it. It says what did not happen — the check
+// — rather than what the gate found, because the gate found nothing.
+func GateFaultWords(fault string) string {
+	return "the review could not be read, so this delivery was never checked"
+}
+
+// GateFaultHandover is the reservation that rides the delivery when the gate
+// faulted.
+//
+// It exists for the same reason GapHandover does: a run that hands over work its
+// own check never looked at must not hand it over in silence. What it must NOT
+// say is that anything is wrong with the work — nobody knows, and that is the
+// whole point — so it names the missing check and stops there.
+func GateFaultHandover(fault string) string {
+	return "I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for."
 }
 
 // unjudged is the fail-open pass, said out loud.
@@ -1613,10 +1602,6 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	// is read by a person who wants to know which of them refused a deliverable.
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	if client.Routed() {
-		request = append(request, ai.WithSchema(retryWorkerSchema))
-	}
 	// The menu rides the end of the user message, not the system one. It reads
 	// as law — here are the workers, here is how to choose between them — but it
 	// carries each specialist's measured line, and those are run counts and a
@@ -1625,16 +1610,22 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	// one string in this call that could have been identical from job to job.
 	// Position by volatility: what churns sinks (12.4.1, and the same fix
 	// internal/head/compiler.go took for the same block).
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
+	var reply struct {
+		Worker string `json:"worker"`
+	}
+	if _, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: retryWorkerPrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text",
 			Text: body.String() + WorkerChoiceBrief(menu)}}},
-	}, request)
-	if err != nil || response == nil {
+	}, retryWorkerSchema, &reply); err != nil {
+		// Every failure of this one judgement means the same thing and it is not
+		// a fault: the answer it gives most of the time, and the one it is told
+		// to give when in doubt, is the default worker. A run does not stop
+		// because nobody had an opinion about which specialist to try next.
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return ""
 	}
-	chosen := DecodeWorkerChoice(response.Text())
+	chosen := knownWorker(reply.Worker)
 	if chosen == "" {
 		// Not a failure: "the default worker" is the answer this judge gives
 		// most of the time and the one it is told to give when in doubt.
@@ -1651,18 +1642,24 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 // the same reason: a hallucinated worker costs a retry its specialist and
 // nothing else.
 func DecodeWorkerChoice(text string) string {
-	text = strings.TrimSpace(text)
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		return ""
-	}
 	var reply struct {
 		Worker string `json:"worker"`
 	}
-	if json.Unmarshal([]byte(text[start:end+1]), &reply) != nil {
+	// One extractor, the same one every structured reply in the system goes
+	// through. It used to scan first brace to last brace by hand, which reads a
+	// sentence written after the object as part of it.
+	if provider.DecodeJSONObject(text, &reply) != nil {
 		return ""
 	}
-	chosen := strings.TrimSpace(reply.Worker)
+	return knownWorker(reply.Worker)
+}
+
+// knownWorker keeps only a name this build can actually construct. A
+// hallucinated worker costs a retry its specialist and nothing else, which is
+// the same degradation head.Compiler.normalizeSubharness makes on the compile
+// path for the same reason.
+func knownWorker(chosen string) string {
+	chosen = strings.TrimSpace(chosen)
 	if !exec.KnownSubharness(chosen) {
 		return ""
 	}
@@ -1743,37 +1740,37 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	if client.Routed() {
-		schema := remainderSchema
-		if menu != "" {
-			schema = remainderWorkerSchema
-		}
-		request = append(request, ai.WithSchema(schema))
+	schema := remainderSchema
+	if menu != "" {
+		schema = remainderWorkerSchema
 	}
 	// The menu sits at the end of the user message for the reason the retry
 	// judgement's does: it is measured, it moves within a session, and the
 	// system prompt above it is a constant this build never rewrites.
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
-	}, request)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return Remainder{}
-	}
-	text := strings.TrimSpace(response.Text())
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return Remainder{}
-	}
 	var verdict struct {
 		Done      bool   `json:"done"`
 		Remaining string `json:"remaining"`
+		Worker    string `json:"worker"`
 	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+	// This used to read its own reply first brace to last brace, which is
+	// tolerant in the same direction as the shared extractor and wrong in one: a
+	// judge that wrote a sentence containing a brace after its object swallowed
+	// the sentence into the JSON and failed the parse. It goes through the one
+	// seam now, which also means a cut answer is continued rather than lost.
+	if _, err := askVerdict(judgeCtx, client, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
+	}, schema, &verdict); err != nil {
+		// FAILURES FAIL TOWARD "NOT DONE" WITH Checked FALSE, unchanged: the
+		// continuation still runs, bounded by the overrun governors, rather than
+		// a judge outage silently shipping genuinely cut-off work as finished.
+		// That is the safe direction here and it is why this one does not fault
+		// the way the delivery gate does — nothing is being called whole.
+		if shaped.Unreadable(err) {
+			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		} else {
+			provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		}
 		return Remainder{}
 	}
 	remaining := strings.TrimSpace(verdict.Remaining)
@@ -1786,7 +1783,7 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true,
-		Worker: DecodeWorkerChoice(text)}
+		Worker: knownWorker(verdict.Worker)}
 }
 
 // deliveryPartialBytes is what the partial handed to a judgement is bounded to

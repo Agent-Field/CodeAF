@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -51,6 +52,14 @@ func spentThinking(limit int) *ai.Response {
 	}
 }
 
+// cutVerdict is a judgement that ran out of room mid-object: the expensive half
+// of the answer is in hand and the closing brace is not.
+func cutVerdict(text string) *ai.Response {
+	return &ai.Response{Choices: []ai.Choice{{
+		Message:      ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}},
+		FinishReason: "length"}}, Usage: &ai.Usage{CompletionTokens: 8192}}
+}
+
 func said(text string) *ai.Response {
 	return &ai.Response{Choices: []ai.Choice{{
 		Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}},
@@ -69,7 +78,7 @@ func gateNodeFixture() store.Node {
 func TestAnEmptyFirstVerdictIsAskedAgainWithRoomAndItsAnswerStands(t *testing.T) {
 	settings := config.Config{Model: "worker/model"}
 	judge := &scriptedJudge{replies: []*ai.Response{
-		spentThinking(verdictTokens()),
+		spentThinking(shaped.Room(shaped.Ask{Lane: "gate"}, "")),
 		said(`{"pass":false,"gaps":"no numbers appear anywhere","quote":"include the benchmark numbers"}`),
 	}}
 	judgment := JudgeDeliverable(context.Background(), settings,
@@ -99,51 +108,59 @@ func TestAnEmptyFirstVerdictIsAskedAgainWithRoomAndItsAnswerStands(t *testing.T)
 // A cap sized for the object and not for the reasoning is what made an empty
 // reply possible in the first place. 200 and 400 were the two literals; neither
 // is reachable now, and the number moves with the reserve rather than against
-// it.
+// it. The figure itself is the shared seam's — one place for every structured
+// call in the harness — and this is the gate asserting that it still gets what
+// it measured here.
 func TestAVerdictsCapIsAFractionOfTheReserveAndNeverTheOldLiterals(t *testing.T) {
-	if got := verdictTokens(); got <= 400 {
+	verdictRoom := func() int { return shaped.Room(shaped.Ask{Lane: "gate"}, "") }
+	if got := verdictRoom(); got <= 400 {
 		t.Fatalf("verdict cap = %d, which is still a cap a reasoning pass spends thinking", got)
 	}
-	if got, want := verdictTokens(), ctxbudget.CompletionReserve()/verdictShare; got != want {
+	if got, want := verdictRoom(), ctxbudget.CompletionReserve()/8; got != want {
 		t.Fatalf("verdict cap = %d, want the reserve's share %d", got, want)
 	}
 	// A reserve set small enough that the share falls under the floor gets the
 	// floor, and a reserve smaller than the floor is still the operator's word.
 	t.Setenv("AFORGE_COMPLETION_RESERVE", "8000")
-	if got := verdictTokens(); got != verdictFloorTokens {
-		t.Fatalf("verdict cap = %d under a small reserve, want the floor %d", got, verdictFloorTokens)
+	if got := verdictRoom(); got != 4096 {
+		t.Fatalf("verdict cap = %d under a small reserve, want the floor", got)
 	}
 	t.Setenv("AFORGE_COMPLETION_RESERVE", "1000")
-	if got := verdictTokens(); got != 1000 {
+	if got := verdictRoom(); got != 1000 {
 		t.Fatalf("verdict cap = %d, want the stated reserve of 1000", got)
-	}
-	if got := retryVerdictTokens(spentThinking(1000)); got != 1000 {
-		t.Fatalf("the retry cap = %d, past a reserve somebody named on purpose", got)
 	}
 }
 
-// Both attempts empty is the model's problem and not the budget's. Today's
-// behaviour is kept — the deliverable ships rather than being held hostage by a
-// gate that cannot answer — and the whole change is that the pass now says of
-// itself that nothing judged it.
-func TestTwoEmptyVerdictsStillShipButNoLongerPassSilently(t *testing.T) {
+// BOTH ATTEMPTS UNREADABLE IS A FAULT ON THE GATE, AND THE RUN SAYS SO.
+//
+// This is the behaviour this wave changed, and it is the s4 sweep's second fatal
+// shape. The old path shipped the work and passed it — the gate could not
+// answer, so the caller took that for "no opinion" and the run exited 0 as
+// though the check had been made and had held. A check that did not happen is
+// not a check that passed. The judgement now carries a Fault, which nothing
+// downstream can mistake for a verdict, and the delivery path turns it into a
+// partial run with the reason on the stream.
+func TestTwoUnreadableVerdictsFaultTheGateRatherThanPassingTheWork(t *testing.T) {
 	settings := config.Config{Model: "worker/model"}
-	judge := &scriptedJudge{replies: []*ai.Response{spentThinking(verdictTokens())}}
+	judge := &scriptedJudge{replies: []*ai.Response{spentThinking(shaped.Room(shaped.Ask{Lane: "gate"}, ""))}}
 	judgment := JudgeDeliverable(context.Background(), settings,
 		pool.Adopt(settings, judge.Model(), judge), nil, gateNodeFixture(),
 		"parser A wins", "", Evidence{}, "worker/model")
 
 	if len(judge.caps) != 2 {
-		t.Fatalf("the gate made %d calls, want one retry and no more", len(judge.caps))
+		t.Fatalf("the gate made %d calls, want the attempt and one re-ask", len(judge.caps))
 	}
-	if !judgment.Pass || judgment.Checked {
-		t.Fatalf("the fail-open pass changed shape: %+v", judgment)
+	if judgment.Pass || judgment.Checked {
+		t.Fatalf("a gate that never answered still passed the work: %+v", judgment)
 	}
-	if judgment.Unjudged == "" {
-		t.Fatal("a gate that never judged passed the work silently")
+	if judgment.Fault == "" {
+		t.Fatalf("a gate that never answered left no fault behind: %+v", judgment)
 	}
-	// A judge that fails the work and cannot name the gap is the same silence
-	// wearing a verdict, and it is recorded the same way.
+	if judgment.Unjudged != "" {
+		t.Fatalf("a fault was recorded as the old fail-open pass: %+v", judgment)
+	}
+	// A judge that fails the work and cannot name the gap is a different thing —
+	// it answered, and what it said was empty — and that one is unchanged.
 	nameless := &scriptedJudge{replies: []*ai.Response{said(`{"pass":false}`)}}
 	got := JudgeDeliverable(context.Background(), settings,
 		pool.Adopt(settings, nameless.Model(), nameless), nil, gateNodeFixture(),
@@ -151,15 +168,38 @@ func TestTwoEmptyVerdictsStillShipButNoLongerPassSilently(t *testing.T) {
 	if !got.Pass || got.Checked || got.Unjudged == "" {
 		t.Fatalf("a fail that named nothing passed silently: %+v", got)
 	}
-	// And a reply that cost nothing is not retried: there is no evidence more
-	// room would change it, so the second call is never bought.
+	// A reply that cost nothing is asked again too. It used to be exempt on the
+	// argument that more room would not change it — which was true of the
+	// BUDGET and is not the question the re-ask asks: it restates the format
+	// contract, and FAILSAFE's floor says a run is never failed before any work
+	// started while a retry is still possible.
 	silent := &scriptedJudge{replies: []*ai.Response{{Choices: []ai.Choice{{
 		Message: ai.Message{Role: "assistant"}, FinishReason: "stop"}}}}}
 	JudgeDeliverable(context.Background(), settings,
 		pool.Adopt(settings, silent.Model(), silent), nil, gateNodeFixture(),
 		"parser A wins", "", Evidence{}, "worker/model")
-	if len(silent.caps) != 1 {
-		t.Fatalf("a costless empty reply bought %d calls, want one", len(silent.caps))
+	if len(silent.caps) != 2 {
+		t.Fatalf("a silent reply bought %d calls, want the attempt and one re-ask", len(silent.caps))
+	}
+}
+
+// A verdict cut off at the ceiling is CONTINUED, and the verdict it completes to
+// is the verdict. Nothing about this used to work: the object never closed, the
+// decode failed, and the delivery was passed unjudged.
+func TestACutVerdictIsContinuedAndItsAnswerStands(t *testing.T) {
+	settings := config.Config{Model: "worker/model"}
+	judge := &scriptedJudge{replies: []*ai.Response{
+		cutVerdict(`{"pass":false,"gaps":"no numbers appear anywhere","quote":"include the benchm`),
+		said(`ark numbers"}`),
+	}}
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, gateNodeFixture(),
+		"parser A wins", "", Evidence{}, "worker/model")
+	if !judgment.Checked || judgment.Pass {
+		t.Fatalf("the continued verdict was not honoured: %+v", judgment)
+	}
+	if judgment.Quote != "include the benchmark numbers" {
+		t.Fatalf("the two halves were not joined: %+v", judgment)
 	}
 }
 

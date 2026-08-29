@@ -161,7 +161,9 @@ func auditStage(ctx context.Context, client Completer, shared string, graph *Gra
 	var decoded struct {
 		Checks []auditCheck `json:"checks"`
 	}
-	response, err := structured(ctx, client, messages, auditSchema, &decoded)
+	// One check per node: the ask's own cardinality, read off the same loop that
+	// wrote the list.
+	response, err := structuredParts(ctx, client, messages, auditSchema, targetCount(graph, stage), &decoded)
 	if err != nil {
 		return nil, usageOf(response), fmt.Errorf("audit stage %d: %w", stage, err)
 	}

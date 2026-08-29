@@ -46,7 +46,7 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		compiler = compiler.WithOneShotErrands()
 	}
 	reconciler := resident.New(graph,
-		compileIntent(settings, compiler, taskClient, plans),
+		compileIntent(settings, compiler, taskClient, plans, graph),
 		planSubtree(settings, planClient, taskClient, plans, graph, terrainRoot),
 	)
 	if oneShotErrand {
@@ -115,8 +115,13 @@ func rethinkAfterCancel(settings config.Config, planClient *liveClient,
 // resident.Compiled, because nothing between the compile and the splice acts on
 // it. The journal wants it anyway, so it is left as a memo keyed on the goal
 // both halves share. A nil registry simply drops it.
-func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *liveClient, plans *jobPlans) resident.CompileFunc {
+func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *liveClient, plans *jobPlans, graph *store.Store) resident.CompileFunc {
 	return func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
+		// A compile that had to be repaired to be read says so, against the job
+		// root — the compile runs before the job has an id of its own, and the
+		// run that lost four minutes to a silent stream lost them here and in the
+		// planning pass behind it. See withRepairJournal.
+		ctx = withRepairJournal(ctx, graph, store.RootID)
 		augmented := graphContext
 		if sk := selfKnowledge(settings, taskClient.Model()); sk != "" {
 			augmented += "\n\nMeasured execution costs (this system's own measured history):\n" + sk
