@@ -13,6 +13,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -696,4 +697,20 @@ func (o *Outcome) Overran() bool {
 
 func (o *Outcome) String() string {
 	return fmt.Sprintf("%s in %d turns, %d tool calls, $%.4f", o.Stop, o.Turns, o.ToolCalls, o.Usage.Cost)
+}
+
+// RanOutOfRoom reports that an error is a worker that was still working when
+// the clock stopped it, and how long it was given.
+//
+// It exists so that "the ending was the clock" is asked of the TYPE rather than
+// of the sentence, at every level that has to decide what happens next. The one
+// that matters is the node's: an ending that is exhaustion is not a failure, so
+// the node goes back on the queue with its record intact rather than being
+// settled failed with a run's worth of work in it (see resident.Runner.runOne).
+func RanOutOfRoom(err error) (time.Duration, bool) {
+	var abandoned *Abandoned
+	if errors.As(err, &abandoned) && abandoned != nil {
+		return abandoned.After, true
+	}
+	return 0, false
 }
