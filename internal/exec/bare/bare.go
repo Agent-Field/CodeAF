@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // BareSubharness is this worker's name, matching the registration in
@@ -30,6 +31,11 @@ type Bare struct {
 	apiKey    string
 	baseURL   string
 	deadline  time.Duration
+	// history is where this worker's readings of the project's own checks are
+	// journaled. It is optional and usually nil — a bare leaf run outside a
+	// graph has no journal to write into — and every reading is taken and
+	// weighed exactly the same way with or without it. See journal.
+	history *store.Store
 }
 
 // New builds the bare executor. The arguments mirror exec.NewSWE: the workspace
@@ -44,6 +50,14 @@ func New(workspace *exec.Workspace, model, apiKey, baseURL string, deadline time
 		baseURL:   baseURL,
 		deadline:  deadline,
 	}
+}
+
+// WithStore installs the run's journal, so the readings this worker takes of the
+// project's own checks leave a row that an autopsy can read. It mirrors
+// Linear.WithStore, which is the same seam for the same reason.
+func (b *Bare) WithStore(history *store.Store) *Bare {
+	b.history = history
+	return b
 }
 
 // Subharness returns the registered name.
@@ -79,7 +93,7 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 	// is still pristine. It is taken before the tree is photographed because a
 	// test runner's own droppings belong to the world the leaf arrived in and
 	// not to the leaf — see photographBefore.
-	reading := b.photographBefore(ctx)
+	reading, inherited := b.photographBefore(ctx, task)
 
 	// The world's own account of what this leaf leaves behind, opened before the
 	// first turn. The bare loop's four wire tools are pi's, and one of them is a
@@ -137,6 +151,6 @@ func (b *Bare) Run(ctx context.Context, task exec.Task) (*exec.Outcome, error) {
 	// The second reading, against the same entrypoint. Whether the tree actually
 	// moved is the workspace's answer, taken from the two tree photographs it
 	// has already compared — this asks it rather than re-stating the world.
-	photographAfter(ctx, reading, cwd, len(outcome.Artifacts) > 0, outcome)
+	b.photographAfter(ctx, task, reading, len(outcome.Artifacts) > 0, inherited, outcome)
 	return outcome, nil
 }

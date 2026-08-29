@@ -129,7 +129,7 @@ func TestABehaviourNoCheckExercisesIsAFinding(t *testing.T) {
 			Check: "resets consecutive failures on success",
 		},
 	}
-	finding, raised := Unexercised(mapping)
+	finding, raised := Unexercised(nil, mapping, Grounds{})
 	if !raised {
 		t.Fatal("three behaviours nothing exercises raised no finding")
 	}
@@ -162,7 +162,7 @@ func TestABehaviourNoCheckExercisesIsAFinding(t *testing.T) {
 	// Every point mapped is the case that must stay silent, or the gate would
 	// fail every delivery whose checklist it could settle.
 	whole := []store.ExercisedPoint{{Point: "a", Check: "one"}, {Point: "b", Check: "two"}}
-	if _, raised := Unexercised(whole); raised {
+	if _, raised := Unexercised(nil, whole, Grounds{}); raised {
 		t.Error("a fully exercised checklist raised a finding")
 	}
 }
@@ -222,4 +222,133 @@ func contains(names []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A READING THAT WAS TAKEN AND NAMED NOTHING IS STILL A TAKEN READING. This is
+// ofetch s5: `pnpm test` ran, exited 1 and named 0 checks, and the settlement
+// read the empty roster as "nothing could be measured" and recorded a note on a
+// pass. Fifty-two stated behaviours went unasked. The project answered; nothing
+// it printed exercises anything; that is a finding, not a shrug.
+func TestAnEmptyRosterIsAFindingAndNotANote(t *testing.T) {
+	evidence := Evidence{
+		Accept: ofetchPoints(),
+		Verification: verify.Reading{
+			Taken:  true,
+			Before: verify.Result{Exit: 1},
+		},
+	}
+	if !Measured(evidence) {
+		t.Fatal("a reading that ran and named nothing was read as nobody having looked")
+	}
+	pass := Judgment{Pass: true, Checked: true}
+	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+		store.Node{ID: "task-2"}, evidence, ofetchGrounds(t), "worker/model", pass)
+	if settled.Pass {
+		t.Fatal("a delivery whose project verification named no check at all was " +
+			"passed with every stated behaviour unexercised")
+	}
+	if strings.TrimSpace(settled.Unmeasured) != "" {
+		t.Error("a reading that was taken was recorded as one that could not be")
+	}
+	if !settled.Sourced {
+		t.Error("the finding is not Sourced, so the citation invariant refuses it " +
+			"and no repair round is ever bought")
+	}
+	if !strings.Contains(settled.Gaps, "no check exercises:") {
+		t.Errorf("the finding does not name a single unexercised behaviour:\n%s", settled.Gaps)
+	}
+	if len(settled.Exercises) != len(ofetchPoints()) {
+		t.Errorf("the mapping the verdict was settled on was not carried: %#v",
+			settled.Exercises)
+	}
+}
+
+// A GATE THAT IS ALREADY FAILING STILL ASKS. Ten delivery gates across the s5
+// sweep failed, so the coverage question was asked at none of them — and a
+// repair round is aimed at the gap the gate NAMED, so a round bought for a
+// missing branch name closes the branch name and leaves every unexercised
+// behaviour where it was. The two gaps travel together, and the acceptance half
+// joins as text: merging its citations would let the judge's own prose ride into
+// a round on the back of an exemption written for measurements.
+func TestAFailingGateStillAsksWhetherAnythingChecksTheRequest(t *testing.T) {
+	evidence := Evidence{
+		Accept:       ofetchPoints(),
+		Verification: verify.Reading{Taken: true, Before: verify.Result{Exit: 1}},
+	}
+	failed := Judgment{
+		Gaps:      "The deliverable is a report about the work rather than the work itself.",
+		Quote:     "commit everything when you are done",
+		Citations: []string{"commit everything when you are done"},
+		Checked:   true,
+	}
+	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+		store.Node{ID: "task-2"}, evidence, ofetchGrounds(t), "worker/model", failed)
+	if !strings.Contains(settled.Gaps, "report about the work") {
+		t.Error("the gap the gate named was replaced rather than joined")
+	}
+	if !strings.Contains(settled.Gaps, "no check exercises:") {
+		t.Errorf("the repair brief carries only one of the two gaps:\n%s", settled.Gaps)
+	}
+	if settled.Sourced {
+		t.Error("an ungrounded judge's gap was made Sourced, which admits it with " +
+			"no citation weighed at all")
+	}
+	if len(settled.Citations) != 1 || settled.Citations[0] != failed.Citations[0] {
+		t.Errorf("the citations the admission rules weigh were changed: %#v", settled.Citations)
+	}
+	if len(settled.Exercises) == 0 {
+		t.Error("the mapping was not journaled on a failing verdict")
+	}
+}
+
+// ONLY A READING NOBODY COULD TAKE IS UNMEASURED, and it says so on the verdict
+// rather than in a log — a fail-safe that does not reach the person watching is
+// decoration.
+func TestNobodyLookedIsRecordedAsSuchAndOnlyThen(t *testing.T) {
+	settled := settleAcceptance(context.Background(), config.Config{}, nil,
+		store.Node{ID: "task-2"},
+		Evidence{Accept: ofetchPoints()}, ofetchGrounds(t), "worker/model",
+		Judgment{Pass: true, Checked: true})
+	if !settled.Pass {
+		t.Fatal("a delivery was failed for a measurement nobody could take")
+	}
+	if strings.TrimSpace(settled.Unmeasured) == "" {
+		t.Error("the verdict does not say that no check could be read")
+	}
+}
+
+// THE FINDING IS BOUNDED BY THE PERSON'S OWN LINES. Points are derived per
+// clause, so one sentence listing four defaults becomes four points — right for
+// the mapping and wrong for the finding, because four halves of one sentence is
+// four repair rounds aimed at one sentence. The grouping is the person's own
+// line, so the number of things the finding asks for is a number they wrote.
+func TestTheFindingGroupsPointsByTheLineTheyWereReadFrom(t *testing.T) {
+	request := "Add a circuit breaker.\n" +
+		"When `circuitBreaker: true`, defaults are `threshold = 5`, `cooldown = 30000`, `halfOpenMaxRequests = 1`.\n" +
+		"Circuit state is keyed by URL origin (not path).\n"
+	points := []plan.Point{
+		{Behaviour: "the threshold defaults to 5", Quote: "defaults are `threshold = 5`"},
+		{Behaviour: "the cooldown defaults to 30000", Quote: "`cooldown = 30000`"},
+		{Behaviour: "halfOpenMaxRequests defaults to 1", Quote: "`halfOpenMaxRequests = 1`"},
+		{Behaviour: "state is keyed by origin", Quote: "Circuit state is keyed by URL origin (not path)."},
+	}
+	mapping := make([]store.ExercisedPoint, 0, len(points))
+	for _, point := range points {
+		mapping = append(mapping, store.ExercisedPoint{Point: point.Behaviour})
+	}
+	finding, raised := Unexercised(points, mapping, Grounds{Intent: request})
+	if !raised {
+		t.Fatal("four behaviours nothing exercises raised no finding")
+	}
+	if got := strings.Count(finding.Gaps, "no check exercises:"); got != 2 {
+		t.Fatalf("the finding names %d things to go and check; the person wrote 2 "+
+			"lines:\n%s", got, finding.Gaps)
+	}
+	if !strings.Contains(finding.Gaps, "the threshold defaults to 5; the cooldown defaults to 30000") {
+		t.Errorf("the points from one line were not gathered into one thing to "+
+			"check:\n%s", finding.Gaps)
+	}
+	if len(finding.Citations) != 2 {
+		t.Errorf("the citations were not grouped with the gap: %#v", finding.Citations)
+	}
 }

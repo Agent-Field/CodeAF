@@ -170,6 +170,9 @@ killed the run. So this measurement is bounded three ways, and the bound is
 | `verify.WallShare` | **8** | `internal/verify/reading.go` |
 | `verify.ShortestUsefulReading` | **1 minute** | `internal/verify/reading.go` |
 | `capturedOutputLimit` | **4 MiB** | `internal/verify/run.go` |
+| `verify.scriptExpansions` | **4** | `internal/verify/runner.go` |
+| `verify.rememberedTrees` | **16** | `internal/verify/baseline.go` |
+| `store.VerificationSample` | **8** | `internal/store/verification.go` |
 
 The two share constants moved out of `internal/exec/bare` on 2026-08-29. Two
 things read them now — the worker that photographs before the work, and the
@@ -194,16 +197,40 @@ eighth of a wall for a result that names nothing.
 
 Two more conditions keep the worst case off the common path, and neither is a
 clock. A reading is taken only when the project **declares** a test entrypoint
-(`verify.Discover`), and the second reading is taken only when the **tree
-actually changed** — the workspace's own before-and-after comparison, not a
-fresh stat. A leaf that changed nothing cannot have regressed anything. So the
-quarter-of-the-wall worst case is paid only by a long leaf, in a project that
-says how it is checked, that actually wrote something.
+(`verify.Discover`), and the second reading is taken only when the tree actually
+moved — this leaf's own before-and-after comparison of the workspace, or an
+earlier round of the same job having already changed it. A first leaf that
+changed nothing cannot have regressed anything; a continuation that changed
+nothing still hands over a tree an earlier round may have broken, which is why
+the inherited baseline is reason enough on its own. So the quarter-of-the-wall
+worst case is paid only by a long leaf, in a project that says how it is checked,
+in a job that actually wrote something.
 
 `capturedOutputLimit` bounds the memory rather than the time: it keeps the last
 4 MiB of a reading's output, ten times the largest suite output in that sweep
 (textual's 391,519-byte log for twenty failing tests with full tracebacks). It
 is a tail because every runner prints its failure summary last.
+
+**What is run is the runner, not the lifecycle script, and that is a saving as
+well as a repair.** `verify.ReadingStrategy` follows the project's declared
+entrypoint into its own body — a package script, a make or just recipe — and
+takes the reading from the test runner it finds there, asked for its own
+machine-readable output. `scriptExpansions` bounds that walk at **4**, which is
+the deepest a chain can usefully be (`test` runs `test:unit` runs `vitest`, plus
+one) and is what stops a reader following a cycle. A lifecycle script that lints
+and typechecks before it tests no longer spends the reading's budget on the lint,
+and a formatting complaint no longer exits 1 in front of a suite that was never
+run — which is exactly what happened on ofetch s5, where the gate read "`pnpm
+test` exited 1 and named 0 checks" of a suite that was green.
+
+**A repair round takes no baseline reading at all.** The baseline is the job's,
+taken once before the job's first change and inherited by every continuation
+(`verify.BaselineFor`), so the second and later rounds of a job spend their
+eighth of the wall only on the after reading. `verify.rememberedTrees` is **16**,
+a bound on memory rather than on behaviour: a reading is two rosters and an
+entrypoint, sixteen of them is kilobytes, and sixteen is more concurrent working
+directories than any surface here opens. Past it the oldest is dropped, and
+dropping a baseline costs a re-photograph rather than a wrong answer.
 
 **What a person would see if this were wrong.** Too generous, and short leaves
 stop doing work — a `do` run whose nodes each sit for minutes with nothing in
@@ -222,22 +249,54 @@ run to the common path and one bounded model call to two seams.
 
 | number | value | where |
 | --- | --- | --- |
-| the checklist's length | **one point per non-empty line of the request** | `plan.NormalizeAcceptance` |
+| the checklist's length | **one point per clause of the request** | `plan.NormalizeAcceptance` |
+| the acceptance finding's size | **one entry per REQUEST LINE, 8 named then a count** | `revision.groupUnexercised` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 
 **The checklist's length is derived from the request and not typed.** A request
-cannot state more behaviours than it has lines, so a forty-line request affords
-forty points and a one-line request affords one. There is no constant here for a
-later wave to tune wrongly, and past that ceiling a model has stopped describing
-the request and started describing the domain.
+cannot state more behaviours than it has clauses, so a request with forty
+statement-ending marks affords about forty points and a one-clause request
+affords one. There is no constant here for a later wave to tune wrongly, and past
+that ceiling a model has stopped describing the request and started describing
+the domain.
+
+It counted LINES until 2026-08-29, and that was the wrong unit measured twice. A
+person writes "defaults are `threshold = 5`, `cooldown = 30000`,
+`halfOpenMaxRequests = 1`" on one line and has stated three behaviours a check
+either exercises or does not; the s5 sweep held four points against igel's
+twenty-four hidden checks and five against textual's twenty. A clause — text
+either side of a full stop, semicolon, colon, question or exclamation mark with
+whitespace after it — is the smallest unit a person writes one behaviour in, so
+it is the unit the ceiling counts. A comma is deliberately not a boundary: it
+sits inside names and numbers as often as between statements, and counting it
+would raise a ceiling the request never earned.
+
+**The finding's size is bounded by the request's own lines, not by the
+checklist's length.** Points are derived per clause, which is right for the
+mapping — four defaults are four things a check either exercises or does not —
+and wrong for the finding, because a repair round aimed at four halves of one
+sentence is four rounds aimed at one sentence. So the finding groups the
+unexercised points by the LINE of the request they were read from, and one
+grouped entry is one thing to go and check. The number of things the finding can
+ask for is therefore bounded by the number of things the person wrote, and by
+nothing this program chose; past eight entries it names eight and counts the
+rest, which is `revision.regressionsNamed`, the same bound its sibling findings
+spell.
 
 **One call at plan time**, on the request alone, beside the compile that already
-read it. **One call at the gate**, and only on a delivery the model judge was
-about to pass — a gate that is already failing the work buys its repair round
-anyway, so asking the coverage question there would spend a call to reach a
-conclusion that is already true. Both are absent, not broken, where the request
-states nothing checkable or the project declares no verification.
+read it. **One call at the gate, on every verdict.** It used to be asked only of
+a delivery the model judge was about to pass, on the reasoning that a failing
+gate buys its repair round anyway — and the s5 sweep's ten delivery gates all
+failed, so the question was asked at none of them and no run in the sweep holds a
+mapping at all. The reasoning was wrong twice over: a repair round is aimed at
+the gap the gate NAMED, so a round bought for a missing branch name leaves every
+unexercised behaviour where it was; and a mechanism that runs only on the happy
+path is a mechanism nothing exercises. The call is still bounded by the same
+context budget, still skipped entirely when there is no checklist, and it costs
+nothing at all when the roster is empty — `MapChecks` answers "nothing mapped"
+without a wire call, which is the true answer and the finding this whole
+mechanism exists to raise.
 
 **No second suite run.** The reading the gate weighs is the one the leaf's own
 verification photograph already took of the final tree. It runs `verify.RunTests`

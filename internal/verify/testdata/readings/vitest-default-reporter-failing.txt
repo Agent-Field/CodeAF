@@ -1,0 +1,61 @@
+
+[41m[1m FAIL [22m[49m test/circuit-breaker.test.ts[2m > [22mcircuit breaker[2m > [22mcounts onRequestError hook exceptions as circuit failures
+[31m[1mAssertionError[22m: promise resolved "'ok'" instead of rejecting[39m
+
+[32m- Expected:[39m 
+Error {
+  "message": "rejected promise",
+}
+
+[31m+ Received:[39m 
+"ok"
+
+[36m [2m❯[22m test/circuit-breaker.test.ts:[2m634:7[22m[39m
+    [90m632| [39m          }[33m,[39m
+    [90m633| [39m        })
+    [90m634| [39m      )[33m.[39mrejects[33m.[39m[34mtoThrow[39m()[33m;[39m
+    [90m   | [39m      [31m^[39m
+    [90m635| [39m    }
+    [90m636| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/circuit-breaker.test.ts[2m > [22mcircuit breaker[2m > [22mcounts onResponse hook exceptions as circuit failures
+[31m[1mAssertionError[22m: expected [Function] to throw error including 'Circuit breaker is open' but got 'Body is unusable: Body has already be…'[39m
+
+Expected: [32m"Circuit breaker is open"[39m
+Received: [31m"Body is unusable: Body has already been read"[39m
+
+[36m [2m❯[22m test/circuit-breaker.test.ts:[2m661:5[22m[39m
+    [90m659| [39m    }
+    [90m660| [39m
+    [90m661| [39m    [35mawait[39m [34mexpect[39m(
+    [90m   | [39m    [31m^[39m
+    [90m662| [39m      [34m$fetch[39m([32m"http://example.com/api"[39m[33m,[39m {
+    [90m663| [39m        circuitBreaker[33m:[39m { threshold[33m:[39m [34m5[39m[33m,[39m cooldown[33m:[39m [34m30000[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/circuit-breaker.test.ts[2m > [22mcircuit breaker[2m > [22mcounts parseResponse exceptions as circuit failures
+[31m[1mAssertionError[22m: expected [Function] to throw error including 'Circuit breaker is open' but got 'Body is unusable: Body has already be…'[39m
+
+Expected: [32m"Circuit breaker is open"[39m
+Received: [31m"Body is unusable: Body has already been read"[39m
+
+[36m [2m❯[22m test/circuit-breaker.test.ts:[2m690:5[22m[39m
+    [90m688| [39m    }
+    [90m689| [39m
+    [90m690| [39m    [35mawait[39m [34mexpect[39m(
+    [90m   | [39m    [31m^[39m
+    [90m691| [39m      [34m$fetch[39m([32m"http://example.com/api"[39m[33m,[39m {
+    [90m692| [39m        circuitBreaker[33m:[39m { threshold[33m:[39m [34m5[39m[33m,[39m cooldown[33m:[39m [34m30000[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m49 passed[39m[22m[90m (54)[39m
+[2m   Start at [22m 06:05:44
+[2m   Duration [22m 11.02s[2m (transform 1.77s, setup 0ms, collect 2.72s, tests 3.98s, environment 6ms, prepare 110ms)[22m
+
+
