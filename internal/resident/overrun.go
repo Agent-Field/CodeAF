@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,18 @@ const overrunMarker = store.SplitNamespace
 // from — a leaf handed the second under the first's heading reads a path as a
 // thing it already has rather than as a thing it has to open.
 func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state string, records ...string) string {
+	return overrunGoal(node, partial, artifacts, gap, state, "", records...)
+}
+
+// overrunGoal is OverrunGoal with the exhausted attempt's own turns as well.
+//
+// The transcript is a separate parameter rather than another variadic because
+// it is the longest block by far and it goes LAST, under Bank's own header:
+// the summary blocks above are the attempt's account of itself, and this is the
+// attempt itself, so a reader that ran out of attention before reaching it has
+// already been told what it needed. See Bank.Continuation, which composes the
+// same four blocks in the same order for the in-place retry.
+func overrunGoal(node store.Node, partial string, artifacts []string, gap, state, transcript string, records ...string) string {
 	var goal strings.Builder
 	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
@@ -118,6 +131,13 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state
 			"answer is that the record does not name it — never an inference from the fact that the " +
 			"work succeeded, and never an example of what the answer might have been:\n")
 		goal.WriteString(strings.Join(records, "\n"))
+	}
+	// Last, and longest — the attempt itself rather than its account of itself.
+	// It carries Bank's own header so that all three ways unfinished work is
+	// handed on say it in one wording. See Growth.Transcript.
+	if block := strings.TrimSpace(transcript); block != "" {
+		goal.WriteString("\n\n" + ContinuationTranscriptHeader + "\n")
+		goal.WriteString(block)
 	}
 	return goal.String()
 }
@@ -342,7 +362,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	// exhaustion's words are not a template.
 	goal := strings.TrimSpace(growth.Goal)
 	if goal == "" {
-		goal = OverrunGoal(node, partial, artifacts, gap, growth.State, growth.Records...)
+		goal = overrunGoal(node, partial, artifacts, gap, growth.State, growth.Transcript, growth.Records...)
 	}
 	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
@@ -409,6 +429,20 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	admitGrowth(graph, request, verdict, len(subtree.Nodes))
+	// THE RESUMPTION IS JOURNALED, on the node that is actually resuming. A
+	// continuation is a different node id from the leaf it continues, so the
+	// claim-time resume row (which reads node.Attempt) can never fire for it —
+	// and until this line the store's only account of a continuation was a new
+	// node with a long brief, indistinguishable from a cold start. The row is
+	// written against the sink because the sink is the node that carries the
+	// whole remainder; the stream reads it and says so (`↻ … resumed`).
+	if growth.Resumed > 0 {
+		if err := graph.RecordLeafResumed(sink, store.LeafResumed{
+			Turns: growth.Resumed, Files: artifacts,
+		}); err != nil {
+			log.Printf("note: could not journal that %s resumed %s's work: %v", sink, node.ID, err)
+		}
+	}
 
 	// Consumers that were waiting on the exhausted node now also wait for
 	// the finished remainder. Only consumers that have not started are
