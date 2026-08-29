@@ -61,11 +61,23 @@ import (
 // project that declares no verification at all.
 func (b *Bare) photographBefore(ctx context.Context, task exec.Task) (reading verify.Reading, inherited bool) {
 	job := verify.JobKey(task.Goal)
+	pace := verify.Pace{}
 	if held, ok := verify.BaselineFor(b.workspace.Root(), job); ok {
-		b.journal(task, held, held.Before, "before the job's first change", true)
-		return held, true
+		// ONE ANSWER IS NOT INHERITED: a scoped reading killed at its ceiling
+		// having named nothing. Every other refusal is a fact about the tree,
+		// the project or the wall, and none of those move between rounds. That
+		// one is a fact about a SIZE this program chose, and the cut measured
+		// the pace that sizes it properly — so this round reads again over what
+		// that pace affords rather than declining to look. textual s8 spent its
+		// one reading on forty files, was cut naming nothing, and every round
+		// after it inherited the silence.
+		if !held.Retakeable() {
+			b.journal(task, held, held.Before, "before the job's first change", true)
+			return held, true
+		}
+		pace = held.Pace()
 	}
-	reading = verify.Photograph(ctx, b.workspace.Root(), b.deadline, focusOf(task))
+	reading = verify.Photograph(ctx, b.workspace.Root(), b.deadline, focusOf(task), pace)
 	verify.RememberBaseline(b.workspace.Root(), job, reading)
 	b.journal(task, reading, reading.Before, "before the job's first change", false)
 	return reading, false
@@ -82,6 +94,13 @@ func (b *Bare) photographBefore(ctx context.Context, task exec.Task) (reading ve
 // against a budget of 5m30s, and happy-dom's root command dies inside turbo
 // having named no check of any package.
 //
+// It reads the request for NAMES rather than only for paths. Most requests
+// spell no path at all: happy-dom's says "Implement `observe()`, `unobserve()`,
+// `disconnect()` and `takeRecords()`" and names `IntersectionObserver`, and a
+// focus built from paths alone was empty — so no package was chosen, the whole
+// reading was taken at the repository root, and it was killed at its ceiling.
+// verify.Locate matches those names, whole, against files the workspace holds.
+//
 // IT IS DERIVED FROM THE REQUEST AND NOT FROM THE DIFF, and that is forced
 // rather than chosen. The baseline is the tree BEFORE the job's first change, so
 // at the moment it is taken there is no diff to read; the request is the only
@@ -92,7 +111,7 @@ func (b *Bare) photographBefore(ctx context.Context, task exec.Task) (reading ve
 // because the files an earlier round left behind are the same job's own record
 // of where it has been working.
 func focusOf(task exec.Task) verify.Focus {
-	focus := verify.Focus(verify.NamedPaths(
+	focus := verify.Focus(verify.NamedSubjects(
 		strings.Join([]string{task.Title, task.Goal, task.Brief}, "\n")))
 	for _, input := range task.Inputs {
 		focus = append(focus, input.Artifacts...)

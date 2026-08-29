@@ -91,43 +91,240 @@ func TestAReadingIsScopedBeforeItIsBounded(t *testing.T) {
 	}
 }
 
-// The checks adjacent to a change are found three ways, and each of them is a
-// way a repository spells the link between a module and the check for it.
-func TestTheChecksNextToAChangeAreFoundByShape(t *testing.T) {
-	root := project(t, map[string]string{
-		"pytest.ini":            "[pytest]\n",
-		"src/pkg/_rich_log.py":  "class RichLog:\n    pass\n",
-		"src/pkg/other.py":      "x = 1\n",
-		"src/pkg/test_other.py": "def test_other():\n    assert True\n",
-		// Named after the module, in the project's one tests/ tree.
-		"tests/test_rich_log.py": "def test_a():\n    assert True\n",
-		// Not named after it, but it imports it — in the spelling the project
-		// writes imports in, which is not the spelling on disk.
-		"tests/test_widgets.py": "from pkg import RichLog\ndef test_b():\n    assert True\n",
-		// About something else entirely.
-		"tests/test_colours.py": "def test_c():\n    assert True\n",
-	})
-	paths, ok := Adjacent(root, Focus{"src/pkg/_rich_log.py"})
-	if !ok {
-		t.Fatal("nothing adjacent to a change was found in a tree that holds two")
+// textualRealShape is textual's own tree as the task image holds it: the module
+// naming convention, the package entry point that re-exports each widget's
+// public name, and enough of the 251-file tests/ tree to reproduce s8. The
+// decoys are real ones — every file here whose body says "log" inside "dialog",
+// "catalog", "logic" or "logging" is a file the flattened reader selected.
+func textualRealShape(t *testing.T) string {
+	t.Helper()
+	files := map[string]string{
+		"Makefile": "run := poetry run\n\n.PHONY: test\ntest:\n\t$(run) pytest tests/ -n 16 --dist=loadgroup\n",
+		"pyproject.toml": "[tool.poetry]\nname = \"textual\"\n\n" +
+			"[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
+
+		// The touched modules, and the package entry point that says what each
+		// of them is called from outside.
+		"src/textual/widget.py":            "class Widget:\n    pass\n",
+		"src/textual/messages.py":          "class Message:\n    pass\n",
+		"src/textual/widgets/_log.py":      "class Log:\n    pass\n",
+		"src/textual/widgets/_rich_log.py": "class RichLog:\n    pass\n",
+		"src/textual/widgets/__init__.py": "if TYPE_CHECKING:\n" +
+			"    from textual.widgets._log import Log\n" +
+			"    from textual.widgets._loading_indicator import LoadingIndicator\n" +
+			"    from textual.widgets._rich_log import RichLog\n" +
+			"__all__ = [\"Log\", \"LoadingIndicator\", \"RichLog\"]\n",
+
+		// Named after a touched module, by pytest's own convention.
+		"tests/test_log.py":    "from textual.widgets import Log\ndef test_log():\n    assert True\n",
+		"tests/test_widget.py": "from textual.widget import Widget\ndef test_widget():\n    assert True\n",
+
+		// Imports the touched module through the package's front door, which is
+		// how every user of the library imports it — and the only way to know
+		// it is the entry point's own re-export line.
+		"tests/test_textlog.py":     "from rich.text import Text\nfrom textual.widgets import RichLog\ndef test_a():\n    assert True\n",
+		"tests/test_concurrency.py": "from textual.widgets import RichLog\ndef test_b():\n    assert True\n",
+
+		// Named after a DIFFERENT module whose name merely begins the same way.
+		// This is rule 3: `Log` is not `Logger`, and `test_logger.py` is the
+		// check for `logger.py`.
+		"src/textual/logger.py": "class Logger:\n    pass\n",
+		"tests/test_logger.py":  "from textual.logger import Logger\ndef test_c():\n    assert True\n",
 	}
-	joined := strings.Join(paths, " ")
-	for _, want := range []string{"tests/test_rich_log.py", "tests/test_widgets.py"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("%s is a check next to this change and was not selected: %#v", want, paths)
+	// The decoys s8 actually selected: their bodies contain the letters of a
+	// touched stem and their imports name nothing that was touched.
+	for path, body := range map[string]string{
+		"tests/animations/test_disabling_animations.py": "def test_d():\n    # dialog animation logic\n    assert True\n",
+		"tests/animations/test_scrolling_animation.py":  "import logging\ndef test_e():\n    assert True\n",
+		"tests/command_palette/test_discover.py":        "def test_f():\n    # catalog of commands\n    assert True\n",
+		"tests/css/test_stylesheet.py":                  "def test_g():\n    # logical order\n    assert True\n",
+		"tests/directory_tree/test_change_path.py":      "def test_h():\n    # dialog\n    assert True\n",
+		"tests/document/test_document_delete.py":        "def test_i():\n    # logging\n    assert True\n",
+		"tests/footer/test_footer.py":                   "def test_j():\n    # catalogue\n    assert True\n",
+		"tests/input/test_input_validation.py":          "def test_k():\n    # logic\n    assert True\n",
+	} {
+		files[path] = body
+	}
+	return project(t, files)
+}
+
+// ADJACENCY IS A RELATIONSHIP, NOT A SUBSTRING. textual s8 is the whole reason
+// this test exists: the job touched `_log.py`, `_rich_log.py`, `widget.py` and
+// `messages.py`, the reader flattened every name to its letters and asked
+// whether a test file's TEXT contained one, and the stem `log` matched `dialog`,
+// `catalog`, `logic` and `logging` wherever they appeared. The selection came
+// back as forty files across tests/animations, command_palette, css,
+// directory_tree, document, footer and input — a third of the suite — and the
+// reading was killed at its ceiling of 1m53s naming nothing at all.
+func TestAdjacencyIsStructuralAndNeverASubstring(t *testing.T) {
+	root := textualRealShape(t)
+	touched := Focus{
+		"src/textual/widgets/_log.py",
+		"src/textual/widgets/_rich_log.py",
+		"src/textual/widget.py",
+		"src/textual/messages.py",
+	}
+	paths, core, ok := Adjacent(root, touched)
+	if !ok {
+		t.Fatal("nothing adjacent was found in a tree that holds several")
+	}
+	selected := map[string]bool{}
+	for _, path := range paths {
+		selected[path] = true
+	}
+
+	// Rank 1: named after a touched module by the runner's own convention.
+	for _, want := range []string{"tests/test_log.py", "tests/test_widget.py"} {
+		if !selected[want] {
+			t.Errorf("%s is named after a touched module and was not selected: %#v", want, paths)
 		}
 	}
-	if strings.Contains(joined, "test_colours.py") {
-		t.Errorf("a check about something else was selected: %#v", paths)
+	// Rank 2: imports it, through the package's own re-export. textual has no
+	// tests/test_rich_log.py at all — the checks for RichLog are these, and
+	// finding them is the whole of what rule 2 is for.
+	for _, want := range []string{"tests/test_textlog.py", "tests/test_concurrency.py"} {
+		if !selected[want] {
+			t.Errorf("%s imports a touched module and was not selected: %#v", want, paths)
+		}
 	}
-	// A change in a directory takes the checks BESIDE it too.
-	beside, ok := Adjacent(root, Focus{"src/pkg/other.py"})
-	if !ok || !strings.Contains(strings.Join(beside, " "), "src/pkg/test_other.py") {
-		t.Errorf("the check sitting beside the change was not selected: %#v", beside)
+	// Rule 3, both halves: a longer identifier is not a match, and a body that
+	// merely contains the letters is not a relationship.
+	if selected["tests/test_logger.py"] {
+		t.Error("`Log` matched inside `Logger`: an identifier is not a prefix")
 	}
+	for path := range selected {
+		for _, elsewhere := range []string{"animations/", "command_palette/", "css/",
+			"directory_tree/", "document/", "footer/", "input/"} {
+			if strings.Contains(path, elsewhere) {
+				t.Errorf("a check about something else was selected on a substring: %q", path)
+			}
+		}
+	}
+	// And the size. s8's answer was forty files, a third of the suite; the
+	// structural answer is the handful above.
+	if len(paths) > 6 {
+		t.Errorf("the selection is %d files, which is a suite rather than a scope: %#v",
+			len(paths), paths)
+	}
+	// Rank 1 leads, so a selection trimmed to fit keeps the checks the change
+	// is actually in.
+	if paths[0] != "tests/test_log.py" {
+		t.Errorf("the ranking does not put the named-after checks first: %#v", paths)
+	}
+	if core != 2 {
+		t.Errorf("the rank-1 core is %d, want the two checks named after a touched "+
+			"module: %#v", core, paths)
+	}
+
+	// The reading built on it is the one textual should have taken.
+	ladder, ok := ReadingStrategies(root, Discover(root), touched)
+	if !ok {
+		t.Fatal("the project produced no strategy")
+	}
+	if !strings.Contains(ladder[0].Command, "tests/test_log.py") ||
+		strings.Contains(ladder[0].Command, "tests/css/") {
+		t.Errorf("the scoped reading is not the structural one: %q", ladder[0].Command)
+	}
+}
+
+// A CHANGE TAKES THE CHECKS BESIDE IT TOO, and a relative import in JavaScript
+// is a path that resolves — the same rule as a Python re-export, read in the
+// other grammar.
+func TestAdjacencyReadsBesideAndResolvesRelativeImports(t *testing.T) {
+	beside := project(t, map[string]string{
+		"pytest.ini":            "[pytest]\n",
+		"src/pkg/other.py":      "x = 1\n",
+		"src/pkg/test_other.py": "def test_other():\n    assert True\n",
+		"tests/test_far.py":     "def test_far():\n    assert True\n",
+	})
+	paths, _, ok := Adjacent(beside, Focus{"src/pkg/other.py"})
+	if !ok || len(paths) != 1 || paths[0] != "src/pkg/test_other.py" {
+		t.Errorf("the check sitting beside the change was not the selection: %#v", paths)
+	}
+
+	javascript := project(t, map[string]string{
+		"package.json":                 `{"name": "p", "scripts": {"test": "vitest run"}, "devDependencies": {"vitest": "^4"}}`,
+		"vitest.config.ts":             "export default {}\n",
+		"src/nodes/Element.ts":         "export class Element {}\n",
+		"test/nodes/Element.test.ts":   "import { Element } from '../../src/nodes/Element';\nit('a', () => {})\n",
+		"test/console/Console.test.ts": "import { Console } from '../../src/console/Console';\nit('b', () => {})\n",
+	})
+	paths, _, ok = Adjacent(javascript, Focus{"src/nodes/Element.ts"})
+	if !ok {
+		t.Fatal("a relative import that resolves to the touched file found nothing")
+	}
+	joined := strings.Join(paths, " ")
+	if !strings.Contains(joined, "test/nodes/Element.test.ts") {
+		t.Errorf("the check named after the touched file was not selected: %#v", paths)
+	}
+	if strings.Contains(joined, "Console.test.ts") {
+		t.Errorf("a check that imports something else was selected: %#v", paths)
+	}
+
 	// And a job that named nothing scopes nothing.
-	if _, ok := Adjacent(root, nil); ok {
+	if _, _, ok := Adjacent(beside, nil); ok {
 		t.Error("a focus that names nothing produced a selection")
+	}
+}
+
+// NEVER THE SAME BLIND CEILING TWICE. A scoped reading killed at its ceiling
+// having named nothing has measured one thing after all — this project's pace —
+// and that is exactly what was missing when the size was chosen. Every other
+// refusal is a fact about the tree, the project or the wall and IS inherited.
+func TestACutScopedReadingIsRetakenAtTheSizeItsPaceAffords(t *testing.T) {
+	cut := Reading{
+		CutAfter: 113 * time.Second,
+		Strategy: Strategy{
+			Base:     "python3 -m pytest -rA",
+			Selected: make([]string, 40),
+			Scope:    "touched packages (40 files)",
+		},
+	}
+	if !cut.Retakeable() {
+		t.Fatal("a scoped reading cut at its ceiling was inherited as a settled refusal")
+	}
+	// A cut proves only that forty files cost MORE than 113s, so the average it
+	// yields is a ceiling and never a target: taken as a target it would say the
+	// same budget affords thirty-six, which is the same reading again.
+	if got := cut.Pace().Affords(113 * time.Second); got != 20 {
+		t.Errorf("the pace ceiling is %d files, want the halving at 20", got)
+	}
+	// And the core is the floor. The two checks named after what the job
+	// touched are a reading of this change; twenty is a reading of its
+	// neighbourhood, and it is the size that was just killed.
+	cut.Strategy.Core = 2
+	if got := cut.Strategy.retakeSize(cut.Pace().Affords(113 * time.Second)); got != 2 {
+		t.Errorf("the retake is %d files, want the rank-1 core of 2", got)
+	}
+	// Every other refusal stays inherited: paying to learn the same fact twice
+	// is what the baseline memory exists to stop.
+	for _, settled := range []Reading{
+		{Unread: "this project declares no way of checking itself"},
+		{Unread: "a wall of 1m0s cannot afford a reading worth taking"},
+		{Taken: true, Before: Result{Reported: []string{"a"}}},
+	} {
+		if settled.Retakeable() {
+			t.Errorf("a settled answer was made retakeable: %#v", settled)
+		}
+	}
+
+	// And the narrowing keeps the front of the ranked selection.
+	ranked := Strategy{
+		Base:     "python3 -m pytest -rA",
+		Selected: []string{"tests/test_log.py", "tests/test_widget.py", "tests/test_textlog.py"},
+	}
+	narrowed, ok := ranked.narrowedTo(2)
+	if !ok {
+		t.Fatal("a scoped strategy could not be narrowed")
+	}
+	if narrowed.Command != "python3 -m pytest -rA tests/test_log.py tests/test_widget.py" {
+		t.Errorf("the trim did not keep the most specific checks: %q", narrowed.Command)
+	}
+	if narrowed.Scope != "touched packages (2 files)" {
+		t.Errorf("the narrowed reading does not say its new size: %q", narrowed.Scope)
+	}
+	if _, ok := ranked.narrowedTo(3); ok {
+		t.Error("a strategy was narrowed to the size it already was")
 	}
 }
 
