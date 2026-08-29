@@ -555,5 +555,5 @@ judged on its message exactly as it always was. The fence then carries the
 changed sources and checks with bounded excerpts, the message sits below it under
 a heading that names it a claim, and a refusal must name one file of the record
 and quote the behaviour it fails or it is not a verdict this gate can read.
-FAILSAFE.md's sixteenth chapter has the whole of it, including why the second
+FAILSAFE.md's seventeenth chapter has the whole of it, including why the second
 half is a schema and not a sentence.

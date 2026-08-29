@@ -676,7 +676,7 @@ gate is back where s4 left it: passing "All 56 tests pass" at 41 of 47.
 
 The delivery gate's fence holds the CHANGE where a run made one — the changed
 sources and checks, with what is in them — and the worker's message where it did
-not (`internal/revision/subject.go`, FAILSAFE.md's sixteenth chapter). That block
+not (`internal/revision/subject.go`, FAILSAFE.md's seventeenth chapter). That block
 is the deliverable, so it is bounded like every other block in that prompt: a
 share of the judge's own room, with a literal for a build whose catalog cannot
 place the model.

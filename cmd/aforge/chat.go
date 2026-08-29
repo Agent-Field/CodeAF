@@ -1561,7 +1561,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// broken the shape it was asked for, which is the one failure this
 			// system has a seam for everywhere except here; without it a model
 			// quirk became three silent re-drives and a partial run
-			// (revision.ReshapeDelivery, FAILSAFE.md's sixteenth chapter). The
+			// (revision.ReshapeDelivery, FAILSAFE.md's seventeenth chapter). The
 			// result is assigned back to text because the handover is what the
 			// person reads and what the node's summary keeps, not only what the
 			// gate is shown.
