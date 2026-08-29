@@ -2,6 +2,7 @@ package store
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func TestAReadingOfTheProjectsChecksIsJournaled(t *testing.T) {
 
 	want := VerificationReading{
 		When: "before the job's first change", Command: "pnpm exec vitest run --reporter=json",
-		Declared: "pnpm test", Runner: "vitest", Read: "node-json",
+		Declared: "pnpm test", Runner: "vitest", Read: true, Format: "node-json",
 		Source: "package.json#scripts.test", Exit: 0, Named: 28, Red: 0,
 		Sample: []string{"ofetch ok", "ofetch default fetch options"},
 	}
@@ -43,7 +44,7 @@ func TestAReadingOfTheProjectsChecksIsJournaled(t *testing.T) {
 		t.Errorf("the command that ran and the one the project declared were not "+
 			"both kept: %+v", got)
 	}
-	if got.Runner != "vitest" || got.Read != "node-json" {
+	if got.Runner != "vitest" || got.Format != "node-json" || !got.Read {
 		t.Errorf("the strategy is not in the record, so the next autopsy cannot "+
 			"see where the reader looked: %+v", got)
 	}
@@ -51,14 +52,34 @@ func TestAReadingOfTheProjectsChecksIsJournaled(t *testing.T) {
 		t.Errorf("the size of the roster was lost: %+v", got)
 	}
 
-	// A reading nobody took writes nothing. The absence of the event is the
-	// fact, said by not saying it, and a row for it would be one every reader
-	// has to learn to ignore.
+	// A READING THAT COULD NOT BE TAKEN IS STILL AN EVENT. This is the s6
+	// silence: textual's bare leaf spent five and a half minutes on a suite
+	// killed at its ceiling and the store held no row saying so, which read
+	// from outside exactly like a project that declares no verification.
+	if err := graph.RecordVerification("job", VerificationReading{
+		When: "before the job's first change", Read: false,
+		Why:     "`python3 -m pytest -rA` was killed at its ceiling of 5m30s without finishing",
+		Command: "python3 -m pytest -rA", Declared: "make test", Runner: "pytest",
+		Exit: -1, TimedOut: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	refused, _ := graph.VerificationsFor("job")
+	if len(refused) != 2 {
+		t.Fatalf("a reading that could not be taken was journaled as %d rows, want 1",
+			len(refused)-1)
+	}
+	if refused[1].Read || !strings.Contains(refused[1].Why, "killed at its ceiling") {
+		t.Errorf("the refusal does not say why nothing was read: %+v", refused[1])
+	}
+
+	// Only a row that says nothing at all is not written — the zero value,
+	// which is nobody having called this.
 	if err := graph.RecordVerification("job", VerificationReading{}); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := graph.VerificationsFor("job"); len(again) != 1 {
-		t.Errorf("a photograph nobody took was journaled: %d rows", len(again))
+	if again, _ := graph.VerificationsFor("job"); len(again) != 2 {
+		t.Errorf("a row saying nothing was journaled: %d rows", len(again))
 	}
 
 	// The sample is bounded, because a suite with two thousand checks would
@@ -74,7 +95,7 @@ func TestAReadingOfTheProjectsChecksIsJournaled(t *testing.T) {
 		t.Fatal(err)
 	}
 	all, _ := graph.VerificationsFor("job")
-	if len(all) != 2 || len(all[1].Sample) != VerificationSample {
-		t.Errorf("the journaled sample is unbounded: %d names", len(all[1].Sample))
+	if len(all) != 3 || len(all[2].Sample) != VerificationSample {
+		t.Errorf("the journaled sample is unbounded: %d names", len(all[len(all)-1].Sample))
 	}
 }

@@ -555,15 +555,16 @@ verification command declared in its `package.json` scripts, its `Makefile` targ
 workflow, `go.mod`, `Cargo.toml`, or a Python project with a suite — and takes two readings
 of it: one before it touches anything, and one after, when the tree actually changed.
 
-**It reads the runner, not the script around it.** A `test` script that lints and
-typechecks before it reaches the suite is followed into its own body, and the test runner
-found there is asked for its own machine-readable account of every check it ran — vitest and
-jest print JSON, `go test` prints JSON, pytest is asked for the line-per-check summary it
-otherwise keeps to itself, mocha is asked for TAP. Your own flags on that runner are kept.
-This is why a formatting complaint no longer reads as a failed suite: it used to exit ahead
-of the tests and the run reported "`pnpm test` exited 1 and named 0 checks" of a suite that
-was green. A runner this program has not met is run exactly as your project declares it and
-read as plain text, which is what everything was read as before.
+**It reads the runner, not the script around it.** A lifecycle script that lints and
+typechecks on its way to the suite is followed into its own body — through a Makefile's own
+variables and past `npx`, `pnpm exec` or `poetry run` — and the runner found there is asked
+for its own machine-readable account: JSON from vitest, jest and `go test`, the
+line-per-check summary from pytest, TAP from mocha. Your flags on it are kept. This is why a
+formatting complaint no longer reads as a broken suite; it used to exit first, and the
+report was "`pnpm test` exited 1 and named 0 checks" of a suite that was green. Where that
+invocation names nothing — a flag aimed at a plugin this machine lacks — the runner is asked
+again in its plainest form, inside the same budget. A runner aforge has not met is invoked
+as your project declares it and read as plain text, as everything was before.
 
 **Repair rounds are measured against the tree the job started with.** The first reading
 belongs to the whole job, not to one attempt: a second or third round inherits it rather
@@ -588,13 +589,19 @@ see a breakage, because the worker wrote them. Three measured runs shipped a cha
 deleted an attribute the repository already had, watched their own narrow checks stay
 green, and reported success while every one of the repository's own checks failed on setup.
 
-**When it does not happen.** A project that declares no way to check itself is not checked
-— there is nothing to run. A piece of work whose whole time budget is too short to hold a
-real reading takes none at all, rather than spending an eighth of its life on a command
-that would be killed before it said anything: below about eight minutes of wall, nothing is
-measured. A tree the job has not changed is not read a second time. In every one of those
-cases the run behaves exactly as it would have without this, and says nothing about checks
-it did not run.
+**When there is no reading — and how you find out.** A project that declares no way to check
+itself has nothing there to read. Work whose whole time budget is too short to hold a real
+reading takes none, rather than spending an eighth of its life on something cut off before
+it says anything: below about eight minutes of wall, nothing is measured. A suite too large
+for that eighth is begun and cut off at its ceiling. A tree the job has not changed is not
+read twice.
+
+**Each of those is recorded with its reason and the exact invocation**, so work that
+measured nothing is legible apart from work whose project had nothing to measure — they used
+to be the same silence, and one of them costs an eighth of the wall. The reason is settled
+once per job, so a repair round inherits it rather than paying again. In every one of these
+cases the behaviour is what it would have been without any of this, and nothing is claimed
+about checks nobody read.
 
 ## What "acceptance" means — the checklist read off your request before the work starts
 

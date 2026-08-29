@@ -44,37 +44,30 @@ import (
 // the broken tree as its baseline, so every check an earlier round turned red
 // subtracted to nothing and was never a finding again — textual's s5 run walked
 // twenty project checks down to one across four rounds and raised nothing. So
-// the baseline is looked up first: where this job already took one, this leaf
-// inherits it, spends no suite run at all, and is measured against the tree as
-// it stood before the job's first change. See verify's baseline.go.
+// the baseline is looked up first: where this job already settled what its tree
+// looked like — a reading, or the reason there could not be one — this leaf
+// inherits that answer and spends nothing on reaching it again.
 //
 // A first reading of a tree runs BEFORE Workspace.WatchTree deliberately. A test
 // runner leaves its own droppings — a .pytest_cache, a target/, a coverage
 // file — and a reading taken after the tree was photographed would file every
 // one of them as something this leaf produced. Taken first, they are part of the
 // world the leaf arrived in, which is what they are.
+//
+// EVERY OUTCOME IS JOURNALED, including every way of having no reading. That is
+// the whole repair of the s6 silence: the bare leaf spent five minutes and
+// twenty-seven seconds on a reading that was killed at its ceiling, and the
+// finished store held no row saying so, which read from outside exactly like a
+// project that declares no verification at all.
 func (b *Bare) photographBefore(ctx context.Context, task exec.Task) (reading verify.Reading, inherited bool) {
 	job := verify.JobKey(task.Goal)
 	if held, ok := verify.BaselineFor(b.workspace.Root(), job); ok {
-		b.journal(task, held.Before, "before the job's first change", true)
+		b.journal(task, held, held.Before, "before the job's first change", true)
 		return held, true
 	}
-	budget, affordable := verify.ReadingBudget(b.deadline)
-	if !affordable {
-		return verify.Reading{}, false
-	}
-	plan := verify.Discover(b.workspace.Root())
-	result, ok := verify.RunTests(ctx, b.workspace.Root(), plan, budget)
-	if !ok || result.TimedOut {
-		// No test entrypoint, or a first reading that never finished. Either way
-		// there is nothing to subtract a second reading from, and a subtraction
-		// against an unknown baseline would name the repository's own
-		// pre-existing reds as this change's doing.
-		return verify.Reading{}, false
-	}
-	reading = verify.Reading{Plan: plan, Budget: budget, Before: result, Taken: true}
+	reading = verify.Photograph(ctx, b.workspace.Root(), b.deadline)
 	verify.RememberBaseline(b.workspace.Root(), job, reading)
-	b.journal(task, result, "before the job's first change", false)
+	b.journal(task, reading, reading.Before, "before the job's first change", false)
 	return reading, false
 }
 
@@ -93,7 +86,16 @@ func (b *Bare) photographAfter(
 	ctx context.Context, task exec.Task, reading verify.Reading,
 	changed, inherited bool, outcome *exec.Outcome,
 ) {
-	if !reading.Taken || outcome == nil {
+	if outcome == nil {
+		return
+	}
+	// The photograph rides the outcome whether or not a reading was taken,
+	// because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT FACTS
+	// and only the run that stood there before the work can tell them apart.
+	// A reading that could not be taken carries the sentence saying why, so
+	// the gate is handed a reason rather than a void.
+	outcome.Verification = reading
+	if !reading.Taken {
 		return
 	}
 	// The pre-existing reds are owed to the judge whether or not this leaf
@@ -105,45 +107,64 @@ func (b *Bare) photographAfter(
 			describeChecks(reading.Before.Failing)+"). This is the repository's pre-existing "+
 			"state, not this change's doing.")
 	}
-	// The photograph rides the outcome whether or not a second reading was
-	// taken, because WHAT WAS MEASURED AND WHAT NOBODY MEASURED ARE DIFFERENT
-	// FACTS and only the run that stood there before the work can tell them
-	// apart. The delivery gate reads it: the roster it holds is what says which
-	// checks exist, and its Taken flag is what stops the gate inventing a
-	// finding out of a project that declares no verification at all.
-	outcome.Verification = reading
 	if !changed && !inherited {
 		return
 	}
-	// The SAME strategy the baseline was taken with, pinned rather than
+	// The SAME rung of the ladder the baseline was taken on, pinned rather than
 	// re-derived. Two readings taken with two different commands subtract to
 	// noise, and re-deriving would hand a worker that edited its own test
 	// script the power to choose what the after reading measures — which is the
 	// tamper the photograph exists to catch.
 	after, ok := verify.RunReading(ctx, b.workspace.Root(), reading.Before.Strategy, reading.Budget)
-	if !ok || after.TimedOut {
+	switch {
+	case !ok:
+		reading.Unread = "the finished tree could not be read: `" +
+			reading.Before.Strategy.Command + "` could not be started a second time"
+	case after.TimedOut:
+		reading.Unread = "the finished tree was not read: `" + after.Strategy.Command +
+			"` was killed at its ceiling without finishing"
+	default:
+		reading.After, reading.AfterTaken = after, true
+		outcome.Verification = reading
+		outcome.Regressed = reading.Regressed()
+		b.journal(task, reading, after, "on the finished tree", false)
 		return
 	}
-	reading.After, reading.AfterTaken = after, true
+	// Not taken, and said so. The before half stands and the outcome keeps it;
+	// what is lost is the subtraction, and a run that cannot say a check went
+	// red must not be able to say one did not either.
 	outcome.Verification = reading
-	outcome.Regressed = reading.Regressed()
-	b.journal(task, after, "on the finished tree", false)
+	b.journal(task, reading, verify.Result{Strategy: reading.Before.Strategy}, "on the finished tree", false)
 }
 
-// journal writes one reading into the run's own record.
+// journal writes one reading — or one reading that could not be taken — into the
+// run's own record.
 //
-// A FAIL-SAFE THAT LEAVES NO RECORD CANNOT BE AUTOPSIED (FAILSAFE.md clause 4),
-// and this one left none: the photograph lived in memory from the worker that
-// took it to the gate that weighed it, so a finished run held no row saying
-// whether a reading had happened at all. Five graded runs were read back with no
-// way to tell a project that declares no verification from a reading that ran
-// and named nothing — the two opposite diagnoses.
+// A FAIL-SAFE THAT LEAVES NO RECORD CANNOT BE AUTOPSIED (FAILSAFE.md clause 4).
+// Every way of having no reading is written down here, because the absence of
+// the event used to be the only spelling of four different facts: a project that
+// declares no verification, a wall that could not afford a reading, a shell that
+// could not run one, and a command killed at its ceiling. They cost a run
+// nothing, nothing, nothing and five and a half minutes respectively, and an
+// autopsy could not tell which had happened.
 //
 // It is a measurement of the run and never a gate: a store that refuses the row
 // changes nothing about what the leaf does.
-func (b *Bare) journal(task exec.Task, result verify.Result, when string, inherited bool) {
+func (b *Bare) journal(
+	task exec.Task, reading verify.Reading, result verify.Result, when string, inherited bool,
+) {
 	if b.history == nil || strings.TrimSpace(task.StoreNodeID) == "" {
 		return
+	}
+	// The rung that was actually reached. A taken reading carries it on its own
+	// result; a refused one carries only the rung it got to.
+	strategy := result.Strategy
+	if strategy.Empty() {
+		strategy = reading.Strategy
+	}
+	taken := reading.Taken
+	if when == "on the finished tree" {
+		taken = reading.AfterTaken
 	}
 	sample := result.Reported
 	if len(sample) > store.VerificationSample {
@@ -151,11 +172,13 @@ func (b *Bare) journal(task exec.Task, result verify.Result, when string, inheri
 	}
 	_ = b.history.RecordVerification(task.StoreNodeID, store.VerificationReading{
 		When:        when,
-		Command:     result.Strategy.Command,
-		Declared:    result.Strategy.Declared,
-		Runner:      result.Strategy.Runner,
-		Read:        string(result.Strategy.Read),
-		Source:      result.Strategy.Source,
+		Read:        taken,
+		Why:         reading.Unread,
+		Command:     strategy.Command,
+		Declared:    strategy.Declared,
+		Runner:      strategy.Runner,
+		Format:      string(strategy.Read),
+		Source:      strategy.Source,
 		ReadAsPlain: result.ReadAsPlain,
 		Exit:        result.Exit,
 		TimedOut:    result.TimedOut,
