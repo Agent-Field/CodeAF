@@ -131,6 +131,19 @@ type DeliveryGate struct {
 	// could not reach it and no repair round was ever aimed at it.
 	Unexercised []string `json:"unexercised,omitempty"`
 
+	// OwnFailing is the checks THIS WORK WROTE that are red: names the baseline
+	// roster never held, so nothing that was working stopped.
+	//
+	// It is a field beside Unexercised rather than prose inside Gap because the
+	// distinction it carries is the one happy-dom's nemotron n1 run lost. That
+	// gate read `This work broke checks that were passing before it:
+	// IntersectionObserver initial observation queuing …` over eighteen checks
+	// the run had written that hour, on a tree the grader scored 9 of 9. A run
+	// that broke the repository and a run that has not finished its own tests
+	// are two different states, and an autopsy with one list could not tell them
+	// apart.
+	OwnFailing []string `json:"own_failing,omitempty"`
+
 	// Unmeasured says the gate held a checklist and could settle none of it:
 	// the project declares no verification this run could read and the change
 	// produced no readable diff, so nothing could be matched to what the

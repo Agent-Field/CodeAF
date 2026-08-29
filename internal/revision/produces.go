@@ -231,6 +231,54 @@ func Regressions(regressed []string) (judgment Judgment, ok bool) {
 	}, true
 }
 
+// OwnChecksFailing is the finding for a leaf whose OWN new checks are red.
+//
+// It is what the regression finding used to say instead, in words that were not
+// true. A run writes checks — that is most of what a run does — and happy-dom's
+// nemotron n1 run rewrote the file its reading was scoped to, taking it from 4
+// checks to 33 with eighteen of the new ones red. Both readings ran the
+// identical command, so nothing looked widened and nothing looked wrong, and the
+// gate failed the delivery with `This work broke checks that were passing before
+// it: IntersectionObserver initial observation queuing …` — naming checks that
+// did not exist when the baseline was taken — while the grader scored that same
+// tree 9 of 9.
+//
+// A LEAF WHOSE OWN CHECKS ARE RED HAS NOT FINISHED; A LEAF THAT TURNED SOMEBODY
+// ELSE'S CHECK RED HAS BROKEN THE REPOSITORY. Both are worth a round and only
+// one of them is a regression, so they are two findings and the words say which.
+//
+// SOURCED, like the regression and the removed name, and for the same reason:
+// there is no citation to weigh. The person asked for the behaviour; that the
+// checks written for it do not pass is a measurement of the repository rather
+// than a reading of the request.
+func OwnChecksFailing(failing []string) (judgment Judgment, ok bool) {
+	red := make([]string, 0, len(failing))
+	for _, name := range failing {
+		if name = strings.TrimSpace(name); name != "" {
+			red = append(red, name)
+		}
+	}
+	if len(red) == 0 {
+		return Judgment{}, false
+	}
+	named := red
+	if len(named) > regressionsNamed {
+		named = named[:regressionsNamed]
+	}
+	gap := "The checks this work wrote fail: " + joinCitations(named) + "."
+	if len(red) > len(named) {
+		gap += fmt.Sprintf(" And %d more.", len(red)-len(named))
+	}
+	gap += " They were not in the project's roster when this job started, so they are this " +
+		"work's own — nothing was broken by them being red, and nothing is finished while " +
+		"they are. Make them pass, or say in the deliverable why a check this work added " +
+		"is expected to fail."
+	return Judgment{
+		Pass: false, Gaps: gap, Quote: joinCitations(named),
+		Citations: named, OwnFailing: red, Sourced: true, Checked: true,
+	}, true
+}
+
 // RemovedPublicNames is the symbol-level half of the same measurement, and the
 // half a test suite structurally cannot make.
 //

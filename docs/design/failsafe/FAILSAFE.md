@@ -1025,3 +1025,41 @@ the repository rather than with a description of a sentence:
 ```
 gate: fail — src/textual/widgets/_rich_log.py — follow_end is declared and never posts FollowChanged
 ```
+
+## An eighteenth failure, 2026-08-29: the checks the run wrote, called checks it broke
+
+*happy-dom nemotron n1,
+`bench/deepswe/results/happy-dom-deterministic-intersectionobserver-nvidia-nemotron-3.5-lightning-n1`.*
+
+The gate reads *This work broke checks that were passing before it:
+IntersectionObserver initial observation queuing Queues an entry for each newly
+observed target, …*. The grader's p2p on that same tree is **9/9**.
+
+Every reading of the job ran the identical command —
+`npx vitest run --reporter=json test/intersection-observer/IntersectionObserver.test.ts`
+— scoped to one file, in one package. The baseline is `named 4, red 0` on all
+nine of its readings. The after-readings go 27/25, then 0, then 27/1 three times,
+then 4/0, then 33/18, then 5, then 4. **The roster grew from 4 to 33 because the
+run WROTE those checks**, into the very file the reading was scoped to. The
+"broken" ones did not exist when the baseline was taken.
+
+No rule fired and nothing looked wrong. The comparison was subtracting the two
+FAILING lists, which is exact only while both readings run the same set of
+checks — and a run writes checks. Every earlier guard was a way of noticing that
+the set had changed (a widened selection, a file added to the command); here the
+command never changed at all.
+
+Clause 2, evidence from the world: the baseline's own ROSTER is the record of
+what existed, and it was in hand the whole time. Clause 3, reaching the person:
+a leaf told it broke the repository and a leaf told its own new tests do not pass
+will do two different things about it.
+
+What it states:
+
+> **A REGRESSION IS A CHECK THAT WAS NAMED GREEN AT THE JOB BASELINE AND IS RED
+> NOW — nothing else.** A red check the baseline's roster never named is the
+> run's OWN, and it is a different finding in its own words: `the checks this
+> work wrote fail: …`. Sourced like the regression, buying the same round, with
+> its own gate line and its own journal field. Where the baseline named no GREEN
+> check the question cannot be asked — a runner that prints only its failures has
+> a reported list that IS its failure list — and the old subtraction stands.
