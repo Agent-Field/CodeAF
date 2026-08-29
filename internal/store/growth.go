@@ -146,6 +146,26 @@ type JobGrowth struct {
 	// had.
 	Finding GrowthFinding `json:"finding,omitempty"`
 
+	// BoughtFor is every NAME that finding stood on when this round was bought:
+	// the behaviours no check exercises, the checks the run left red, the public
+	// names the change deleted. A round bought for a set is a round bought for
+	// every name in it.
+	//
+	// It is journaled as names and not as a count because THE FINDING IS EACH
+	// NAME AND NOT THE SET. A gate cites whichever subset of the request it
+	// happened to weigh, and the subset rotates: ofetch v4-flash s15 raised four
+	// unexercised findings whose sets digested to four different values while
+	// `Count a circuit failure for body-read/stream-consumption errors` sat in
+	// every one of them, unclosed, for four rounds and the whole run. Nothing
+	// that compares sets can see that; the names can.
+	BoughtFor []string `json:"bought_for,omitempty"`
+
+	// Spent is the names that had already had their two rounds when this
+	// decision was taken — the ones that may not buy another. A refused round
+	// carries the whole set here, which is what makes the refusal legible: the
+	// person is told which things were worked on twice and still stand.
+	Spent []string `json:"spent,omitempty"`
+
 	// Remainder is a digest of the work this round was planned to finish. Two
 	// consecutive rounds handed the same remainder are a fixed point: the round
 	// that just ran was aimed at exactly this and did not move it. The digest
@@ -254,13 +274,13 @@ func (s *Store) JobGrowthRounds(jobRoot string) ([]JobGrowthRound, error) {
 // "is the same thing still missing", which is a question about the work.
 //
 // Names is a digest rather than the list because it is only ever compared for
-// equality and a list of citations is unbounded. Cited keeps a bounded few of
-// them anyway, for the same reason Moved and Wrote do: the digest is the
-// finding, and the names are what let a person recognise it in an autopsy.
+// equality and a list of names is unbounded. The names themselves are on the
+// row, in BoughtFor, because THE ROUND IS BOUGHT NAME BY NAME: the digest says
+// two gates raised the same set, and the set is exactly what a rotating citation
+// never repeats.
 type GrowthFinding struct {
-	Kind  string   `json:"kind,omitempty"`
-	Names string   `json:"names,omitempty"`
-	Cited []string `json:"cited,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	Names string `json:"names,omitempty"`
 }
 
 // Empty reports that this round was not bought for any finding the record can

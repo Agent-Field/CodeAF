@@ -135,7 +135,7 @@ const (
 	// missing — because that is the fact the person is owed, and because it is
 	// the sentence that tells them the run stopped repairing rather than
 	// stopped caring.
-	RefusedFindingStood = "the same thing is still missing after two rounds of work aimed straight at it, so it is handed over named rather than repaired"
+	RefusedFindingStood = "everything still missing here has already had two rounds of work aimed straight at it, so this is handed over with it named rather than repaired"
 
 	// The refusal that buys the person a verdict. A round the clock will kill
 	// halfway spends money to deliver nothing AND costs the run the only thing
@@ -399,10 +399,14 @@ type GrowRequest struct {
 	// and for nothing else.
 	Remainder string
 	// Finding is the review finding this round is being bought to close, as the
-	// record holds it rather than as the review spelled it. Empty is every
-	// round nobody bought for a finding, and it is never refused on this
-	// ground. See store.GrowthFinding and [findingStood].
-	Finding store.GrowthFinding
+	// record holds it rather than as the review spelled it: a kind and every
+	// name it stands on. Empty is every round nobody bought for a finding, and
+	// it is never refused on this ground. See [Finding] and [spentNames].
+	Finding Finding
+	// spent and boughtFor are that finding weighed against the journal, read
+	// once per decision so the refusal and the row beside it cannot disagree
+	// about which names were still worth buying.
+	spent, boughtFor []string
 	// Rechecking marks a second look at a decision already taken this round —
 	// the exact ceiling, once a plan exists and its node count is known. The
 	// free checks are re-read; the paid question is not, because it was already
@@ -425,6 +429,10 @@ type GrowVerdict struct {
 	// written after the splice, by a caller holding the request it was decided
 	// from, and this is the one fact about the decision that request never had.
 	CoveredDespite []string
+	// Spent is the names of this round's finding that had already had their two
+	// rounds, and it travels for the same reason. The names it was bought for
+	// are derived from the finding itself and need no carrying.
+	Spent []string
 }
 
 // growJob is the one gate every execution-time add passes through.
@@ -548,7 +556,18 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	// not been tried once is not a repair that failed. A finding of another
 	// kind opening in the meantime is another finding and buys its own round;
 	// that falls out of the comparison rather than being a case here.
-	if findingStood(rounds, req.Finding) >= 2 {
+	//
+	// AND THE FINDING IS EACH NAME, NOT THE SET. A gate cites whichever subset
+	// of the world it happened to weigh, and the subset rotates: ofetch
+	// v4-flash s15 raised four unexercised findings whose sets digested to four
+	// different values while one behaviour — `Count a circuit failure for
+	// body-read/stream-consumption errors` — stood in every one of them and was
+	// never closed. So a round is bought for every name in its set, a name that
+	// has had two such rounds is SPENT, and a round is bought only while its
+	// set still holds one that is not.
+	req.spent = spentNames(rounds, req.Finding)
+	req.boughtFor = req.Finding.spendable()
+	if len(req.boughtFor) > 0 && len(unspentNames(req.Finding, req.spent)) == 0 {
 		return refuse(CauseFindingStood, RefusedFindingStood)
 	}
 	// And the same finding from the other side, for a remainder that was
@@ -676,7 +695,7 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		}
 	}
 
-	return GrowVerdict{Allow: true, Round: round, CoveredDespite: covered}, nil
+	return GrowVerdict{Allow: true, Round: round, CoveredDespite: covered, Spent: req.spent}, nil
 }
 
 // admitGrowth journals a round that actually landed. It is called after the
@@ -708,6 +727,7 @@ func admitGrowth(graph *store.Store, req GrowRequest, verdict GrowVerdict, splic
 	row := req.weighed(graph, jobRoot, lineage).row(reason, lineage, verdict.Round, true, "", "")
 	row.Adding = spliced
 	row.CoveredDespite = verdict.CoveredDespite
+	row.Spent = boundedNames(verdict.Spent)
 	noteGrowth(graph, growthJournal(jobRoot), row)
 }
 
@@ -861,8 +881,18 @@ func (r GrowRequest) row(reason, lineage string, round int, allowed bool, cause,
 		Reason: reason, Lineage: lineage, Adding: r.Adding,
 		Round: round, Allowed: allowed, Refused: words, Cause: cause,
 		Measured: r.Measured, Produced: r.Produced, Remainder: r.Remainder,
-		Finding: r.Finding, Scratch: len(r.scratch),
+		Finding: r.Finding.Row(), Scratch: len(r.scratch),
 	}
+	// The names the round was bought for, and the ones that could not buy it.
+	// They are the rule's own working, kept where an autopsy reads it: a round
+	// refused here carries the whole set as spent, which is what makes the
+	// refusal legible a month later.
+	// BoughtFor is derived from the finding rather than taken from the decision,
+	// because THE ADMISSION IS WRITTEN BY A DIFFERENT CALLER: admitGrowth holds
+	// the request the round was decided from and never the working the governor
+	// did on it, and a row that lost its names would un-spend every one of them
+	// on the next decision.
+	row.BoughtFor, row.Spent = boundedNames(r.Finding.spendable()), boundedNames(r.spent)
 	row.Moved, row.Wrote = namedFew(r.relevant), namedFew(r.scratch)
 	if r.shortfall != nil {
 		row.Unexercised, row.Red = r.shortfall.Unexercised, r.shortfall.Red
@@ -952,18 +982,16 @@ func standstillWords(rounds []store.JobGrowthRound, index int) string {
 // move it. It is the line a person reads at the end of a run that stopped
 // repairing one thing, and it names the thing.
 func findingStoodWords(rounds []store.JobGrowthRound, index int) string {
-	finding := rounds[index].Finding
-	stood := findingStood(rounds[:index], finding)
-	return fmt.Sprintf("%s stood through %s of repair", FindingWords(finding), roundsWord(stood))
-}
-
-// roundsWord counts rounds in a person's words. The singular exists because a
-// refusal that says "1 rounds" is a refusal a person stops trusting.
-func roundsWord(rounds int) string {
-	if rounds == 1 {
-		return "1 round"
+	row := rounds[index]
+	spent := row.Spent
+	if len(spent) == 0 {
+		spent = row.BoughtFor
 	}
-	return fmt.Sprintf("%d rounds", rounds)
+	if len(spent) == 0 {
+		return "the same finding stood through 2 rounds of repair"
+	}
+	return fmt.Sprintf("%d %s stood through 2 rounds of repair: %s",
+		len(spent), FindingNoun(row.Finding.Kind, len(spent)), FindingWords(spent))
 }
 
 // lastRelevantChange is the newest file the job changed that it is about, or

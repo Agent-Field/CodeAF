@@ -527,27 +527,30 @@ result that contradicted the plan.
 What still stops the work is the rest of it: the round cap, a job that has stopped changing
 anything, one finding worked on twice, and the wall.
 
-## When one finding is worked on twice and still stands
+## When one thing is worked on twice and still stands
 
-A review finding buys work. **It buys at most two rounds.** If the first round ends and
-the same thing is still missing, a second round is bought and aimed at it; if that one ends
-and it is STILL missing, no third round is bought — the finding is handed over named
-instead of repaired, and the last line says so:
+A review finding buys work. **Each thing it names buys at most two rounds.** If the first
+round ends and that thing is still missing, a second round is bought; if that one ends and
+it is STILL missing, nothing more is bought for it — it is handed over named instead of
+repaired, and the last line counts and names what stood:
 
 ```
-partial — IntersectionObserver disconnect() Does nothing and 3 more stood through 2 rounds of repair
+partial — 1 behaviour stood through 2 rounds of repair: Count a circuit failure for body-read/stream-consumption errors
 ```
 
-"The same thing" is not the same sentence. Two findings are the same when they are the same
-KIND of finding — a check that used to pass and now fails, a check that was removed, a
-public name the change deleted, a behaviour nothing exercises — over the same names. A
-review that rewords itself has not found anything new; a review that names one more check
-has, and that one buys its own rounds. So a run can be stopped on one finding and still
-working on another, and only a finding that has been worked on twice is closed off.
+**It is counted thing by thing, not review by review.** A review usually names several
+things at once and the list it names changes from one reading to the next — two behaviours
+this time, five the next, with one of them in both. What matters is each behaviour, each
+check, each deleted name on its own: it is the same one when it is the same KIND of
+finding — a check that used to pass and now fails, a check that was removed, a public name
+the change deleted, a behaviour nothing exercises, callers a rewritten definition left
+behind — spelled the same way. A round is bought as long as the review still names
+something that has not already had its two rounds; the ones that have ride along without
+buying anything.
 
-The wording you see on the work's own record when it happens is `the same thing is still
-missing after two rounds of work aimed straight at it, so it is handed over named rather
-than repaired`.
+The wording you see on the work's own record when nothing in the review can buy a round is
+`everything still missing here has already had two rounds of work aimed straight at it, so
+this is handed over with it named rather than repaired`.
 
 ## When the wall gets close — the work is checked before the clock stops
 
