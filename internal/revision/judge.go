@@ -533,6 +533,18 @@ type Evidence struct {
 	// Nil on every worker that cannot take two readings of the project's own
 	// command, which reads as no claim.
 	Regressed []string
+	// Removed names the PUBLIC names this work deleted: a name the tree spelled
+	// before the job's first change and does not spell now, in the files the
+	// run's own record says it changed.
+	//
+	// It is Regressed's other half. A check that goes red is the suite noticing;
+	// this is what the suite structurally cannot notice, because a project only
+	// has checks for what somebody wrote checks for. See RemovedPublicNames and
+	// verify.Surface.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim.
+	Removed []string
 	// Account is the worker's own structured account of the work: the files it
 	// changed, with the kind and size of each change, and the checks it ran
 	// with what each one found.
@@ -1103,6 +1115,17 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if regression, broke := Regressions(evidence.Regressed); broke {
 		regression.Grounds = grounds
 		return regression
+	}
+	// And the half of the same measurement no suite can make: A PUBLIC NAME THAT
+	// EXISTED BEFORE THIS WORK AND DOES NOT NOW. It sits here, beside the
+	// regression and above everything a model is paid for, because it is
+	// evidence of exactly the same kind — two readings of the world, taken by
+	// the run, with nothing in between them to argue with. igel s11's check-level
+	// reading called the tree IMPROVED on the change that broke all twenty-four
+	// of its hidden tests at setup.
+	if lost, removed := RemovedPublicNames(evidence.Removed); removed {
+		lost.Grounds = grounds
+		return lost
 	}
 	// And its near neighbour, which the photograph could not see until it kept
 	// rosters rather than only failures: A CHECK THAT STOPPED EXISTING. Deleting

@@ -679,10 +679,13 @@ there was no reading, which of the reasons it was: your project declares no way 
 itself, there was no time left to size a reading against, or there was nothing to read.
 Silence used to mean all of those at once.
 
-**A reading that is cut keeps what it named.** A command killed at its ceiling having
+**A reading that is cut keeps what it named, on both sides.** A command killed at its ceiling having
 already printed some of its checks is a partial reading: it can say a check for something
 exists, and it is never used to say the work broke something, because the checks it never
-reached are missing from it for a reason that has nothing to do with your change.
+reached are missing from it for a reason that has nothing to do with your change. That holds
+for the reading taken after the work as much as for the one before it — and when a command
+ran but printed nothing a check could be read out of, the record says that, rather than the
+same words it would use for a project it could not read at all.
 
 **And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
 reading is a fact about your project or about the time available, and a later round inherits
@@ -704,6 +707,17 @@ covers a behaviour only when the check itself — its name, or the file it lives
 the names your sentence spelled. A judge saying so is not enough. What is left over is
 named, it buys a repair round, and while any of it is still open the run ends `partial`
 with the count in the last line, whatever else was settled or overturned along the way.
+
+**And a public name your code had before the work and does not have after it is a finding
+too.** A suite only covers what somebody wrote a check for, so it can come back greener on a
+change that broke every caller outside it: one job deleted eight public attributes off a
+class, the project's own checks went from two passing to fourteen, and all twenty-four of
+the hidden ones it was really measured on failed on their first line. So the names are read
+as well as the checks — what your source files publish before the work and what they publish
+after, for the files the job actually changed. Python, TypeScript, JavaScript, Go and Rust, each by its own
+idea of public: an underscore, `private`, an unexported name and a non-`pub` item all mean
+the author called it internal. It is read conservatively and says nothing it is not sure of.
+A rename reads as the old name going, which is what everyone calling it sees.
 
 A check that passed before and fails after is a finding the run raises about itself, and it
 is a blocker. Nothing is weighed about where it came from: you never have to ask for your

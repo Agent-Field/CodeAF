@@ -293,3 +293,54 @@ func TestAnOverturnDoesNotCloseTheCoverageSet(t *testing.T) {
 		}
 	}
 }
+
+// EVERY COMPARISON IS JOURNALED, INCLUDING ONE THAT FOUND NOTHING. "Sixteen
+// files were compared and no public name was lost" and "nobody compared
+// anything" are two facts, and the absence of the row was the only spelling
+// either of them had.
+func TestTheSymbolLevelComparisonIsJournaled(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "job", Brief: "persist the feature schema", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1",
+		Intent: "persist the feature schema"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordSurface("job", SurfaceReading{
+		Compared: 3, Lost: 8, Names: []string{"Igel.results_path", "Igel.description_file"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordSurface("job", SurfaceReading{Compared: 3}); err != nil {
+		t.Fatal(err)
+	}
+	readings, err := graph.SurfacesFor("job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 2 {
+		t.Fatalf("journaled %d comparisons, want 2", len(readings))
+	}
+	if readings[0].Lost != 8 || readings[0].Names[0] != "Igel.results_path" {
+		t.Errorf("the loss was not journaled as measured: %#v", readings[0])
+	}
+	if readings[1].Lost != 0 || readings[1].Compared != 3 {
+		t.Errorf("a comparison that found nothing was not journaled as such: %#v", readings[1])
+	}
+	// The sample is bounded the way every roster in this journal is.
+	long := make([]string, VerificationSample+4)
+	for index := range long {
+		long[index] = "Thing.name"
+	}
+	if err := graph.RecordSurface("job", SurfaceReading{Compared: 1, Lost: len(long), Names: long}); err != nil {
+		t.Fatal(err)
+	}
+	readings, _ = graph.SurfacesFor("job")
+	if got := len(readings[2].Names); got != VerificationSample {
+		t.Errorf("the journal kept %d names, want the sample bound of %d", got, VerificationSample)
+	}
+}

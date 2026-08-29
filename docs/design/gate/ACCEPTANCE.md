@@ -527,3 +527,63 @@ second reading at the diff instead. That pair is deliberately not comparable
 (a subset, which `covers` refuses and `Regressed` answers nothing to); what it
 buys is the ROSTER, which is the half the coverage settlement spends and the half
 a cut whole reading has none of.
+
+## What igel s11 proved: a suite cannot see what nobody wrote a check for
+
+*Added 2026-08-29 against
+`bench/deepswe/results/igel-persist-feature-schema-deepseek-deepseek-v4-flash-s11/`
+and the 37eabd38 autopsy.*
+
+That run deleted `Igel.results_path` and seven sibling public class attributes,
+moving them onto instances set in `__init__`. Its own check-level photograph read
+the finished tree as an **improvement**: named 2 → 14, red 2 → 0. All **24**
+hidden tests failed at setup on `Igel.results_path`, and the store held not one
+word about it.
+
+The reading was not wrong. The question it answers is a different one.
+
+> **A CHECK IS EVIDENCE THAT SOMETHING IS EXERCISED. IT IS NOT EVIDENCE THAT
+> NOTHING ELSE EXISTS.** The public surface is the half a suite structurally
+> cannot see, and a name that was there before the work and is gone after it is a
+> fact about the world, measured twice, with no model in the loop.
+
+`verify.Surface` is that half. `PublicSurface` reads the tree's public names with
+the baseline reading; `SurfaceOf` re-reads the files the run's own record says it
+changed; `Surface.Removed` is the difference, scoped to that record — a name that
+vanished from a file nobody touched vanished some other way, and reporting it
+would hand a leaf a finding about work it never did. A whole module the record
+names and the tree no longer holds contributes every public name it had
+(`MissingFrom`).
+
+`revision.RemovedPublicNames` raises it, **Sourced** and admitted with no
+citation weighed, in the same place and for the same reason as a check
+regression: nobody has to ask for the public names their repository already had.
+It buys the repair round every Sourced finding buys. It names the removal and not
+a remedy — putting the name back and keeping the new arrangement are both
+answers, and which is right is the round's business.
+
+**Read by language shape, never by a list of names.** Go through the standard
+library's parser; Python, TS/JS and Rust through conservative line-and-indent
+readers. The two ways a python class carries a name are two names —
+`Igel.results_path` is reached on the class, `Igel().results_path` on an
+instance — and igel s11 is exactly why: a reader matching the bare word would
+have called that change no change at all. A leading underscore, an unexported Go
+identifier, `private`/`protected`/`#field`, a non-`pub` Rust item: the author
+said it is theirs and this takes them at their word. A rename reads as a REMOVAL
+of the old name — which is what every caller of it sees — with the new name
+visible in the same two readings for whoever wants it.
+
+**The limits are the point.** Only declarations at the start of a line are read.
+A name assigned inside a conditional, a class built by a decorator, an export
+re-exported through a barrel, a symbol behind a macro: not read, deliberately. A
+Go file that does not parse contributes nothing rather than half a package. The
+cost of a name invented here is a false blocker on real work; the cost of a name
+missed is the state this was written in. Bounds are in PERF.md, "What the
+symbol-level photograph costs".
+
+**Journaled as its own kind.** `store.EventSurface` sits beside the verification
+event rather than inside it: the two answer different questions from different
+evidence, and a run can have either without the other. Every comparison is
+written, including one that found nothing — *sixteen files compared, no public
+name lost* and *nobody compared anything* are two facts, and the absence of the
+row was the only spelling either of them had.
