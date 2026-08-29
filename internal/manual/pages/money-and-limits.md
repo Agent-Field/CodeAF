@@ -55,6 +55,32 @@ Charters are capped explicitly: each one carries a per-firing budget (default
 **$0.15**) and a max-per-day (default **10**). A firing that would cross the
 daily rail is deferred and you are asked first.
 
+## When a worker runs out of time — what happens to what it did
+
+A worker is given a wall to finish in. When it reaches the end of it, it is not
+killed and its work is not thrown away — it stops working and spends what is
+left saying where it got to, and that account is what the next worker carries
+on from.
+
+Three things follow from that, and they are all readable on the work's record:
+
+- **A command that will not fit is cut, not the worker.** Every command a
+  worker runs is bounded by the time the worker has left, less what it takes
+  that worker to finish up. A command that outlives its bound comes back as
+  `cut after 9m12s; output so far:` followed by everything it had written by
+  then, and the worker reads that and decides what to do — usually run a
+  smaller piece of it. Nothing is left running in the background afterwards.
+- **The piece goes back on the queue.** Running out of time is not a failure
+  and it is not a verdict on the work. The piece is offered again, and whoever
+  picks it up is handed the last worker's own turns to carry on from, so it
+  never starts from nothing beside a directory full of its own files. You see
+  one line saying how much it picked up. A worker that ran out of time having
+  recorded nothing at all is the exception: there is nothing to carry on from,
+  so that one is a failure.
+- **What it spent is already counted.** Money is written down as each call is
+  billed, not when the work finishes, so a worker interrupted halfway still
+  shows its full spend on `/cost` and in the run's own total.
+
 ## When work stops growing itself — it gave up early, why did it stop trying
 
 Work that runs out mid-way is re-planned rather than abandoned: what is left is

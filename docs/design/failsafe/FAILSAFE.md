@@ -321,3 +321,121 @@ never answer "did this work break something". It is kept as
 learns about the pace of the machine it is on, which matters because these
 readings are taken in amd64 containers under qemu where everything is five to ten
 times slower than the wall-derived arithmetic assumes.
+
+---
+
+## An eighth failure, 2026-08-29: the room the leaf never had
+
+*Added against `bench/deepswe/results/ink-grid-box-layout-…-s8` and
+`textual-richlog-follow-state-…-s8`. Three defects, and every one of them is the
+same shape: a bound that belonged to the whole was applied to a part, or a
+record that belonged to the part was only ever written by the whole.*
+
+ink s8 is one node, one attempt, seventeen minutes, and exit 1. Its stream reads:
+
+```
+16m44s still waiting: 0 tasks pending, 1 running · last call 16m44s ago
+17m17s ⏳ the worker did not come back within 17m0s and was given up on
+       — its work is recorded and the node goes back on the queue
+17m17s ✗ CSS Grid layout support
+```
+
+then `leaf_exhausted`, then `node_failed` in the same second, then a deliverable
+of `executor did not return within 17m0s; abandoned` — over a 26,248-byte patch,
+109 recorded turns, 9 test invocations, and 73 minutes of unspent wall. Its
+`cost.json` reads **$0.000228, one usage row, 4,563 prompt tokens** — the
+planner's single call, and nothing else.
+
+### 1. A tool outlived the leaf's room and took the leaf with it
+
+The pi-ported belt's `bash` takes an optional timeout from the model and its
+schema says "no default timeout", so a command the model did not think to bound
+inherited the leaf's whole fifteen-minute envelope. When the envelope expired,
+three things happened at once and all three were wrong: the command was killed
+and reported a clean success (the cut was tested for `context.Canceled`, and a
+deadline is `DeadlineExceeded`), the loop's next turn-boundary check found a dead
+context and stopped — so the output never reached the model that asked for it —
+and the watchdog two minutes above was already counting.
+
+> **A TOOL CALL RUNS INSIDE THE ROOM THE LEAF HAS LEFT, LESS WHAT IT TAKES THAT
+> LEAF TO LAND.** Both halves are read, not chosen. The room is the context's own
+> deadline. The landing cost is the slowest model call this leaf has actually
+> made plus the slowest transcript flush it has actually taken, because landing
+> is exactly those two things happening once more — so a leaf on a slow machine
+> measures a slow machine. A cut command returns `cut after 9m12s; output so
+> far: …` with everything the accumulator held, and the leaf reads it, decides,
+> and lands with words of its own.
+
+A per-command timeout constant would have been the wrong repair twice over: it is
+wrong on every machine it was not picked on (these readings are taken in amd64
+containers under qemu), and "does this command fit a number" is not the question.
+`internal/exec/bare/room.go`; PERF.md, *A tool call's room*.
+
+The watchdog above it learned the same lesson the reaper learned in the seventh
+failure. It fired on a flat timer and, when it fired, returned **without
+cancelling the leaf** — so the abandoned goroutine went on spending and kept its
+children. It now reads the same `exec.Working` spans the reaper reads
+(`exec.AlsoWithLiveness` composes rather than displaces), re-arms over silence
+that is actually silence, and when it does give up it STOPS the worker and takes
+what the worker then lands.
+
+### 2. An abandoned node went back on the queue and nobody claimed it
+
+The sentence in the journal was a lie, and the code one function away was the
+proof: `resident.Runner.runOne` answered every non-context error with
+`store.Fail`, and `store.Ready` offers pending rows only. So the node was
+terminal in the same second it was said to be requeued, the settlement watch saw
+one terminal node, and the run left with exit 1 and no gate verdict at all.
+
+> **AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK.** The claim goes
+> back with its reason in the journal, the node is offered again, and the next
+> claim RESUMES from the record the last one left. The exit belongs to the
+> delivery gate; no abandoned node decides it.
+
+It is gated on there being something to resume from, and that is what keeps it
+from being an unbounded retry: a re-claim that reads an empty record is the same
+cold start again, and an attempt that recorded not one turn before the clock
+stopped it has told us the only thing it is going to.
+
+And the deadline now reaches the growth governor. `Outcome.Overran()` excludes
+the clock on purpose — it answers "was this leaf too big for its TOKEN
+envelope" — so reading it at the continuation site meant the one ending that most
+needs more room got none. `leafRanOutOfRoom` is the predicate the record already
+used for exactly this question, and it is now the one the replan reads.
+
+### 3. Every continuation started cold
+
+textual s8 journaled **six** exhaustions — "still working when it ran out of its
+tokens — 25 turns in", at 5m28s, 6m34s, 11m4s, 18m8s — and not one `↻ … resumed`
+line. The re-drive happened; the resume did not. `BankedRun` is read at claim
+time from `node.Attempt > 0`, and a continuation is a DIFFERENT NODE ID
+(`task-2` → `task-2-x1`), so that read could never fire for it. What the
+continuation did get was `Growth.State` — the leaf's own summary of itself — and
+an attempt stopped mid-turn has summarised almost nothing, because summarising is
+what a leaf does when it is finishing.
+
+> **WHATEVER CONTINUES THE WORK IS SEEDED FROM THE PREDECESSOR'S RECORD, AND
+> SAYS SO.** The in-place retry, the requeue and the continuation now read one
+> bank and render it under one set of headers, and the resumption is journaled
+> against the node that is actually resuming (`store.EventLeafResumed` on the
+> continuation's sink), so the stream says how much was picked up.
+
+### 4. Usage was banked per landing, so an interrupted leaf's spend vanished
+
+A leaf's spend reached the journal exactly once, out of `exec.Outcome.Usage`, on
+the way out of the run. Every ending that returns no outcome therefore returned
+no money: 109 billed calls, one usage row, $0.000228. The asymmetry is the tell —
+the transcript had been hardened against precisely these endings a wave earlier,
+with a flush on each side of the abandonment, and the money had no equivalent.
+
+> **A BILLED RESPONSE WRITES ITS ROW WHEN IT ARRIVES.** The provider already
+> knows what a call cost at the moment it decodes the answer, and its adapter is
+> the one door every outbound call in the process passes through — it already
+> writes a per-call row there for the call log. A turn roll-up stays, as a
+> different KIND of record (`usage_turns`), and is no longer the only one.
+
+The fix is not another flush on another ending; there is always one more ending.
+`provider.WithBilling` and `cmd/aforge`'s `leafBanker`, with
+`resident.ExecResult.SpendBanked` so the landing does not write the same money
+twice. `cost.json` and the settlement's money line read the `usage` table, so
+both now see an interrupted leaf.
