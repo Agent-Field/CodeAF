@@ -371,8 +371,12 @@ func journalReading(
 		TimedOut:    result.TimedOut,
 		Named:       len(result.Reported),
 		Red:         len(result.Failing),
-		Sample:      append([]string{}, sample...),
-		Inherited:   inherited,
+		// And how many of the names this roster dropped were rewritten rather
+		// than deleted. It is a fact about the SUBTRACTION, so it exists only
+		// on the half that has one to make.
+		Replaced:  len(reading.Replaced()),
+		Sample:    append([]string{}, sample...),
+		Inherited: inherited,
 	})
 }
 

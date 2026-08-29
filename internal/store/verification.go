@@ -105,6 +105,19 @@ type VerificationReading struct {
 	// with one failing test in it.
 	Uncollected bool   `json:"uncollected,omitempty"`
 	Trouble     string `json:"trouble,omitempty"`
+	// Replaced is how many of the checks this roster stopped naming were
+	// REWRITTEN rather than removed: a check the after reading no longer holds
+	// by name, whose subject a check it does hold still covers.
+	//
+	// It is journaled because the removal finding it suppresses is invisible
+	// otherwise. happy-dom's v4-flash s13 raised `This work removed checks that
+	// existed before it: IntersectionObserver observe() Does nothing, …` on
+	// four consecutive rounds over four stubs the run had replaced with real
+	// checks under the same describe path, and the store held nothing that
+	// could tell that from a deletion. A mechanism that declines to convict
+	// says so, or an autopsy cannot tell it from one that never ran
+	// (FAILSAFE.md clause 4).
+	Replaced int `json:"replaced,omitempty"`
 	// Inherited says this reading was not taken here: it is the baseline this
 	// job took before its first change, carried forward into a later round.
 	Inherited bool `json:"inherited,omitempty"`

@@ -182,6 +182,21 @@ func producedNonEmpty(named string, artifacts []string) bool {
 // before their eye slides off a list.
 const regressionsNamed = 8
 
+// The measurement findings, by kind. They are the four gaps this gate reaches
+// without paying a model: two readings of the world, subtracted, and the
+// worker's own diff.
+//
+// They are constants rather than the sentences themselves because the sentence
+// carries a bounded list of names in the middle of it, so two raisings of one
+// finding over two different tails are different strings and one comparison of
+// prose cannot tell that from two different findings. See Judgment.Finding.
+const (
+	FindingRegression   = "regression"
+	FindingOwnFailing   = "own-checks-failing"
+	FindingRemovedName  = "removed-public-name"
+	FindingRemovedCheck = "removed-checks"
+)
+
 // Regressions is the second mechanical half of the delivery gate, and the one
 // whose evidence comes from the WORLD rather than from the plan.
 //
@@ -227,7 +242,7 @@ func Regressions(regressed []string) (judgment Judgment, ok bool) {
 	gap += " They were measured twice with the project's own command, before the work and after it."
 	return Judgment{
 		Pass: false, Gaps: gap, Quote: joinCitations(named),
-		Citations: named, Sourced: true, Checked: true,
+		Citations: named, Sourced: true, Checked: true, Finding: FindingRegression,
 	}, true
 }
 
@@ -276,6 +291,7 @@ func OwnChecksFailing(failing []string) (judgment Judgment, ok bool) {
 	return Judgment{
 		Pass: false, Gaps: gap, Quote: joinCitations(named),
 		Citations: named, OwnFailing: red, Sourced: true, Checked: true,
+		Finding: FindingOwnFailing,
 	}, true
 }
 
@@ -327,7 +343,7 @@ func RemovedPublicNames(removed []string) (judgment Judgment, ok bool) {
 		"in the deliverable why removing them was what the request asked for."
 	return Judgment{
 		Pass: false, Gaps: gap, Quote: joinCitations(named),
-		Citations: named, Sourced: true, Checked: true,
+		Citations: named, Sourced: true, Checked: true, Finding: FindingRemovedName,
 	}, true
 }
 

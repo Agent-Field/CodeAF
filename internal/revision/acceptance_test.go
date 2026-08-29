@@ -192,6 +192,15 @@ func TestACheckThatStoppedExistingIsAFinding(t *testing.T) {
 	if _, raised := WeakenedChecks(nil, nil); raised {
 		t.Error("a change that removed nothing raised a finding")
 	}
+	// AND IT CARRIES ITS OWN STRUCTURE. A reader comparing this round against
+	// the last one compares a kind and a list of names; the sentence carries a
+	// bounded list glued into its middle and cannot be compared at all.
+	if finding.Finding != FindingRemovedCheck {
+		t.Errorf("the finding is journaled as %q; want %q", finding.Finding, FindingRemovedCheck)
+	}
+	if len(finding.Citations) != 2 {
+		t.Errorf("the finding cites %d names; want both", len(finding.Citations))
+	}
 }
 
 // The roster the project's own runner printed is coverage evidence, and the
