@@ -51,7 +51,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	tail := flags.Int("tail", defaultLogTail, "how many calls to show")
 	follow := flags.Bool("follow", false, "keep printing calls as they happen")
 	pathOnly := flags.Bool("path", false, "print where the log is and nothing else")
-	if err := flags.Parse(reorder(args, map[string]bool{"tail": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

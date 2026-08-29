@@ -55,7 +55,7 @@ func runChat(args []string) error {
 	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

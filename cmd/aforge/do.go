@@ -171,10 +171,7 @@ func runDo(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0,
 		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
 			"sets AFORGE_COMPLETION_RESERVE for this run")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true, "subharness": true,
-		"context-fill": true, "completion-reserve": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	task, err := readText(flags.Args())

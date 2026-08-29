@@ -351,7 +351,7 @@ func runPlan(args []string) error {
 	// the person naming the goal also names the material it is about — which is
 	// exactly when the material is worth looking at.
 	workspace := flags.String("w", "", "directory holding the material this goal is about, read once to ground the plan")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true, "model": true, "plan-model": true, "w": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	goal, err := readText(flags.Args())
@@ -454,7 +454,7 @@ func runRevise(args []string) error {
 	done := flags.String("done", "", "mark these node ids finished before revising")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model (default AFORGE_PLAN_MODEL)")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "done": true, "model": true, "plan-model": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -551,10 +551,30 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 	return nil
 }
 
+// readText is the prose a command was given: its positional arguments, or what
+// was piped to it.
+//
+// TWO WAYS IN, AND THE SECOND ONE IS EXPLICIT. A lone `-` positional means "the
+// text is on stdin", which is the convention every unix filter keeps, and no
+// positional at all means the same thing WHEN NOTHING IS ATTACHED TO THE
+// TERMINAL. The terminal check is what stops the third case being a hang: a
+// person who typed `aforge do` with nothing after it used to get a process
+// silently reading their keyboard forever, which reads exactly like a program
+// that has crashed. They get the usage instead.
 func readText(args []string) (string, error) {
+	if len(args) == 1 && args[0] == "-" {
+		return readPipedText()
+	}
 	if len(args) > 0 {
 		return strings.TrimSpace(strings.Join(args, " ")), nil
 	}
+	if stdinIsTerminal(os.Stdin) {
+		return "", fmt.Errorf("no goal given\n\n%s", usageText)
+	}
+	return readPipedText()
+}
+
+func readPipedText() (string, error) {
 	piped, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
@@ -569,27 +589,95 @@ func readText(args []string) (string, error) {
 // reorder moves flags ahead of positional arguments. Go's flag package stops
 // parsing at the first non-flag token, so `aforge plan "goal" -o out.json`
 // would otherwise fold the flag into the goal text — silently, which is the
-// worst way for it to fail. Flags that take a value are named explicitly
-// because only the caller knows which ones consume the token after them.
-func reorder(args []string, valueFlags map[string]bool) []string {
-	var flags, positional []string
+// worst way for it to fail.
+//
+// ── A BRIEF THAT BEGINS WITH "-" IS TEXT, NOT A FLAG ────────────────────────
+//
+// This used to decide by shape alone: a leading dash meant a flag. So
+// `aforge do "- Update the display style property…"` — a brief written as a
+// bullet list, which is how people write briefs — was moved into the flag
+// section and the run died in one second with `flag provided but not defined:
+// - Update the display style property…` and a usage dump. It happened to a real
+// benchmark cell and cost the whole run.
+//
+// A shape cannot answer the question because two different things wear it. What
+// answers it is the FLAG SET ITSELF, which is the one authority on which flags
+// this command has, and which of them take a value:
+//
+//   - A token whose name this command declares is a flag, and it consumes the
+//     token after it when the flag set says it is not a boolean. That fact used
+//     to be a hand-written map at each of the seventeen call sites, which is one
+//     source of truth per caller and therefore none.
+//   - A token that cannot be a flag NAME is text. Flag names hold no whitespace,
+//     so a bullet, a sentence and a multi-line brief are all text no matter what
+//     they begin with — decided by structure, never by a list of shapes we have
+//     seen briefs take.
+//   - Anything else that looks like a flag and is not declared stays in the flag
+//     section, so a typo (`-dbb`) is still refused by name rather than being
+//     folded silently into the brief.
+//
+// `--` ends the flags, as it does everywhere, and one is emitted between the two
+// sections so a positional that begins with a dash reaches Args() intact.
+func reorder(flags *flag.FlagSet, args []string) []string {
+	var named, positional []string
 	for index := 0; index < len(args); index++ {
 		argument := args[index]
-		if !strings.HasPrefix(argument, "-") || argument == "-" {
+		if argument == "--" {
+			// Everything after the terminator is text by the caller's own
+			// instruction, which outranks every reading below.
+			positional = append(positional, args[index+1:]...)
+			break
+		}
+		if !looksLikeFlag(argument) {
 			positional = append(positional, argument)
 			continue
 		}
-		flags = append(flags, argument)
+		named = append(named, argument)
 		name := strings.TrimLeft(argument, "-")
 		if strings.Contains(name, "=") {
 			continue
 		}
-		if valueFlags[name] && index+1 < len(args) {
+		if takesAValue(flags, name) && index+1 < len(args) {
 			index++
-			flags = append(flags, args[index])
+			named = append(named, args[index])
 		}
 	}
-	return append(flags, positional...)
+	// The terminator goes in unconditionally: a positional beginning with a dash
+	// is exactly the case this whole function exists for, and it must not be
+	// re-read as a flag by the parser downstream.
+	return append(append(named, "--"), positional...)
+}
+
+// looksLikeFlag reports whether a token could be a flag at all — which is a
+// question about its SHAPE as a name, and the only part of the decision the flag
+// set cannot answer.
+func looksLikeFlag(argument string) bool {
+	if !strings.HasPrefix(argument, "-") || argument == "-" || argument == "--" {
+		return false
+	}
+	name := strings.TrimLeft(argument, "-")
+	if name == "" {
+		return false
+	}
+	// A flag name is one word. Anything with a space, a tab or a newline in it is
+	// prose that happens to open with a dash — a bullet, a diff hunk, a brief.
+	return !strings.ContainsAny(name, " \t\r\n")
+}
+
+// takesAValue asks the flag set whether this flag consumes the token after it.
+// An undeclared name answers false and is left for the parser to refuse by name;
+// a boolean answers false because `-keep true` is not how a boolean flag is
+// written and swallowing the next token would eat a positional.
+func takesAValue(flags *flag.FlagSet, name string) bool {
+	if flags == nil {
+		return false
+	}
+	found := flags.Lookup(name)
+	if found == nil {
+		return false
+	}
+	boolean, ok := found.Value.(interface{ IsBoolFlag() bool })
+	return !ok || !boolean.IsBoolFlag()
 }
 
 // applyModelFlags lets a headless invocation split the two roles per run:

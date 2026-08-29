@@ -47,7 +47,7 @@ func runExecute(args []string) error {
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model (default AFORGE_PLAN_MODEL)")
 	subharness := flags.String("subharness", "", "force every leaf of this run onto one worker, for measuring workers against each other (default: what the graph chose)")
-	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true, "model": true, "plan-model": true, "subharness": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
