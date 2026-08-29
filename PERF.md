@@ -111,6 +111,51 @@ is how many chances a settling tree gets to settle — one verification that wri
 a file and then reuses it settles on the second, and a tree still moving on the
 third moves every time.
 
+## The workspace snapshot's budget
+
+What a run left behind is answered by reading the tree, not by asking the clock.
+`Workspace.Snapshot` (`internal/exec/workspace.go`) photographs every path a
+deliverable could be and `diffTrees` compares two photographs; that ONE pair
+answers both spans — the whole leaf (`WatchTree` at the top, `RecordChanges` at
+landing) and the single tool call (`RecordProducedSince`, `internal/exec/produced.go`).
+It replaces a mtime-versus-a-wall-clock-mark test that misfiled three ordinary
+cases: a write landing inside the filesystem's own timestamp granularity, a tool
+that preserves the timestamp it copied (`cp -p`, `git checkout`, `tar`), and a
+rewrite whose bytes are identical. It is the same conclusion the worktree
+fingerprint above reached from the other end.
+
+The cost of that honesty is a second walk: **two bounded snapshots per tool call**
+rather than one sweep afterwards. Three budgets bound it, and all three are in
+`internal/exec/produced.go`:
+
+| budget | value | what it bounds |
+| --- | --- | --- |
+| `producedScanLimit` | **6000** entries | one walk. Past it the snapshot is PARTIAL, and a partial snapshot claims no deletions and falls back on the file's own write time before calling anything created. |
+| `snapshotDigestFileLimit` | **1 MiB** | the largest file whose bytes are read. Above it the stamp is size, mode and write time — the pre-existing, narrower answer. |
+| `snapshotDigestBudget` | **8 MiB** | the total bytes ONE snapshot reads. Past it the remaining stamps are digestless and fall back the same way. |
+
+The two digest budgets exist because the walk's own bound does not bound reading:
+six thousand files just under the per-file limit is six gigabytes on the leaf's
+critical path, twice per tool call. Against the real case — a workspace holding a
+report, a chart and a script — the whole snapshot is a handful of stats and a few
+kilobytes of reading, which is why no third budget (a deadline) is needed here the
+way it is for a repository-sized fingerprint.
+
+**What degrades past the budget is only the rewrite case.** Created and deleted
+files are decided by whether the tree holds the path at all, which reads no bytes
+and is the half that was broken; a tree big enough to exhaust the budget gets the
+older size-and-clock answer for its tail. The walk is lexical, so both snapshots
+spend the budget on the same files and compare like with like.
+
+**A digestless stamp is a narrower answer and never a different one.** Size and
+mode still decide first; only when neither sighting could be read does the write
+time get consulted at all, and that is the one place a clock is still trusted.
+`TestAFileTheClockCallsOldIsStillProduced`,
+`TestARewriteWithIdenticalBytesIsNotProduced` and
+`TestARewriteAtTheSameLengthAndClockIsStillProduced` pin all three cases, and
+`TestProducedFilesAreBounded` pins the per-call cap of **24** paths
+(`producedPerCall`) that one command may claim.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000
