@@ -1538,6 +1538,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// journaled against this node, so a delivery that took three model
 			// calls to judge says so rather than looking like one that took one.
 			gateCtx := withRepairJournal(ctx, graph, node.ID)
+			// AND THE DELIVERABLE'S OWN SHAPE IS REPAIRED BEFORE ANYTHING READS
+			// IT. A worker that answered the handover with a data object has
+			// broken the shape it was asked for, which is the one failure this
+			// system has a seam for everywhere except here; without it a model
+			// quirk became three silent re-drives and a partial run
+			// (revision.ReshapeDelivery, FAILSAFE.md's sixteenth chapter). The
+			// result is assigned back to text because the handover is what the
+			// person reads and what the node's summary keeps, not only what the
+			// gate is shown.
+			if reshaped, ok := revision.ReshapeDelivery(gateCtx, settings, planClient, node, text); ok {
+				text = reshaped
+				outcome.Text = reshaped
+			}
 			gate := revision.JudgeDeliverable(gateCtx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
 			if gate.Fault != "" {
@@ -1566,6 +1579,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// pass with every point exercised has to be tellable apart
 					// from a pass over an empty checklist.
 					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured,
+					// And what the gate actually held between its fence
+					// markers. An autopsy asking whether a refusal read the
+					// world or a sentence has nothing else to go on.
+					Subject: gate.Subject,
 					// And its conclusion. The mapping is the evidence; this is
 					// the finding, and it is recorded as a list of its own so
 					// the stream can say it and an autopsy can find it without

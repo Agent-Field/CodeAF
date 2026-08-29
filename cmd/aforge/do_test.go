@@ -1305,22 +1305,32 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		// The gate's refusal shape follows what it is judging. Over a changed
+		// tree a fail has to name one file of the record, so the stub reads the
+		// record it was handed rather than inventing a path — which is the same
+		// contract a real judge is held to, and the only way a stub can stay
+		// honest to a schema that moves with the subject.
+		fail := func(gaps, quote string) string {
+			verdict := fmt.Sprintf(`{"pass":false,"gaps":%q,"quote":%q,"exercised":false`, gaps, quote)
+			if file := gateSubjectFile(body); file != "" {
+				verdict += fmt.Sprintf(`,"file":%q`, file)
+			}
+			return s.say(verdict + "}")
+		}
 		if s.longAnswer != "" {
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
 		if s.inventedGap {
 			// The quote is a span of the compiled goal's own working
 			// decisions, not of anything the person typed.
-			return s.say(fmt.Sprintf(
-				`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, inventedGapText, inventedQuote))
+			return fail(inventedGapText, inventedQuote)
 		}
 		if s.gatePasses {
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
 		if s.revisionCloses {
 			if round == 1 {
-				return s.say(fmt.Sprintf(
-					`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, gateCritique, citedQuote))
+				return fail(gateCritique, citedQuote)
 			}
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
@@ -1328,8 +1338,7 @@ func (s *scriptedBrain) reply(body string) string {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that
 			// buys another round of real work.
-			return s.say(fmt.Sprintf(
-				`{"pass":false,"gaps":"the migration steps are missing","quote":%q,"exercised":false}`, citedQuote))
+			return fail("the migration steps are missing", citedQuote)
 		}
 		return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 
@@ -1343,6 +1352,32 @@ func (s *scriptedBrain) reply(body string) string {
 	// Anything else the resident asks about itself gets a shrug it can absorb.
 	s.tally("other")
 	return s.say("{}")
+}
+
+// gateSubjectFile is the first file the gate's own prompt lists as part of the
+// change it is judging, or empty where the run left nothing behind and the
+// deliverable is the worker's message. It reads the block the gate composed
+// rather than a path the test happens to know, so a stub cannot answer with a
+// file the judge was never shown.
+func gateSubjectFile(body string) string {
+	// The stub is handed the encoded request, so the prompt's own newlines
+	// arrive as the two characters JSON spells them with. Reading them back is
+	// what makes this a reader of the block the gate composed rather than of
+	// the transport that carried it.
+	body = strings.ReplaceAll(body, `\n`, "\n")
+	head := "Sources the run wrote or changed:\n"
+	start := strings.Index(body, head)
+	if start < 0 {
+		return ""
+	}
+	line := body[start+len(head):]
+	if end := strings.IndexByte(line, '\n'); end >= 0 {
+		line = line[:end]
+	}
+	if open := strings.LastIndex(line, " ("); open >= 0 {
+		line = line[:open]
+	}
+	return strings.TrimSpace(line)
 }
 
 // leaf answers as the worker. Which worker it is reads off the inputs it was
