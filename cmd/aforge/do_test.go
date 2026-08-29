@@ -1139,6 +1139,12 @@ type scriptedBrain struct {
 	// editPath names a file already in the workspace that the first leaf edits
 	// in place, which is what a coding errand actually does.
 	editPath string
+	// namesPath makes the worker's draft mention an absolute path it did not
+	// write. It is how the difference between the two ways of answering "what
+	// did this run produce?" is made visible: the workspace's registry knows it
+	// produced nothing of the sort, while a regex over the worker's prose sees a
+	// real file on disk and credits the run with it.
+	namesPath string
 	// leafCost is what each call reports spending, which is what the consent
 	// desk's estimate is built from.
 	leafCost float64
@@ -1360,6 +1366,9 @@ func (s *scriptedBrain) leaf(body string) string {
 		return s.tool("write", fmt.Sprintf(`{"path":%q,"text":"migration steps go here"}`, artifactName))
 	default:
 		s.tally("draft")
+		if s.namesPath != "" {
+			return s.say(firstDraftAnswer + " I read " + s.namesPath + " to write it.")
+		}
 		return s.say(firstDraftAnswer)
 	}
 }
@@ -1734,5 +1743,200 @@ func settleNode(t *testing.T, graph *store.Store, id, summary, failure string) {
 	}
 	if err := graph.Complete(claim, summary); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// One list, once. A worker names the files it wrote at the end of its summary,
+// and the errand prints the same paths under it as its own footer — so stdout
+// carried the identical absolute path twice, back to back, on every run that
+// produced a file. The footer is the home: it is structured, it is what --json
+// carries, and it is there whether or not a worker thought to mention anything.
+//
+// The graph keeps its copy. A node downstream of this one is handed the files
+// its dependency produced by reading absolute paths out of that summary, so the
+// block comes off on the way to stdout and nowhere earlier.
+func TestTheFileListReachesStdoutOnceAndStaysInTheGraph(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.writeFile = true
+	script.gatePasses = true
+	defer script.close()
+
+	database := filepath.Join(t.TempDir(), "graph.db")
+	workspace := t.TempDir()
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "write the release note and include the migration steps", workspace: workspace,
+		database: database, timeout: 60 * time.Second,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	written := filepath.Join(workspace, artifactName)
+	if got := strings.Count(stdout.String(), written); got != 1 {
+		t.Fatalf("the file was named %d times on stdout, want once:\n%s", got, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Files:") {
+		t.Fatalf("the worker's own file list survived onto stdout:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "files:") {
+		t.Fatalf("the footer never listed the file:\n%s", stdout.String())
+	}
+
+	graph, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	nodes, err := graph.SubtreeNodes(store.RootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := false
+	for _, node := range nodes {
+		if strings.Contains(node.Summary, "Files:") && strings.Contains(node.Summary, written) {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatal("the summary the graph keeps lost the paths a dependent node reads out of it")
+	}
+}
+
+// artifacts is what this run produced, and a path is not produced by being
+// mentioned. Reading it back out of a worker's prose credited the run with
+// every real file the worker happened to name — and credited it with nothing at
+// all when the worker wrote "hello.txt" instead of the whole path, which is how
+// a run that wrote a file reported artifacts: []. The workspace's own registry
+// is the record; the prose is the fallback for a run this process handed to a
+// resident and never saw the workers of.
+func TestArtifactsAreWhatTheRunProducedNotEveryPathItMentioned(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.writeFile = true
+	script.gatePasses = true
+	defer script.close()
+
+	workspace := t.TempDir()
+	// A file that was already there. The person's own material, read by the
+	// worker and named in its answer, and produced by nobody.
+	mentioned := filepath.Join(workspace, "changelog.md")
+	if err := os.WriteFile(mentioned, []byte("the parser got faster\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script.namesPath = mentioned
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "write the release note and include the migration steps", workspace: workspace,
+		asJSON: true, timeout: 60 * time.Second,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	var outcome struct {
+		Artifacts []string `json:"artifacts"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout.String())
+	}
+	written := filepath.Join(workspace, artifactName)
+	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != written {
+		t.Fatalf("artifacts = %v, want only the file the run wrote (%s)", outcome.Artifacts, written)
+	}
+}
+
+// The store has to agree with the exit code. A run that left with 0 and left a
+// node of its own still moving would be telling two different stories about the
+// same work, and the durable one is the one anybody debugging reads.
+//
+// The permanent spine is the deliberate exception and is asserted as such: the
+// root is Running by construction, forever, and the store repairs it back to
+// Running if anything ever closes it. It is not this errand's node and never
+// settles with it.
+func TestASettledErrandLeavesNoNodeOfItsOwnStillRunning(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.gatePasses = true
+	defer script.close()
+
+	database := filepath.Join(t.TempDir(), "graph.db")
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:     "write the release note and include the migration steps",
+		database: database, timeout: 60 * time.Second,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	graph, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	nodes, err := graph.SubtreeNodes(store.RootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := 0
+	for _, node := range nodes {
+		if node.ID == store.RootID {
+			if node.Status != store.Running {
+				t.Fatalf("the permanent spine settled with the errand: %s", node.Status)
+			}
+			continue
+		}
+		owned++
+		if !terminalStatus(node.Status) {
+			t.Fatalf("%s is still %s after a run that left with exit 0", node.ID, node.Status)
+		}
+	}
+	if owned == 0 {
+		t.Fatal("the errand left no node of its own behind at all")
+	}
+}
+
+// A one-shot schedules nothing for later. Self-practice is the resident's own
+// curiosity, and it was firing inside every headless run — writing a
+// practice-loop charter and its work into whatever store the run was pointed
+// at, including a person's own with --db. It costs almost nothing and it is not
+// the errand's, which is reason enough.
+func TestAHeadlessErrandSchedulesNoPractice(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.gatePasses = true
+	defer script.close()
+	// The harness zeroes the practice budget for every other test here. This is
+	// the one run that must prove the gate rather than the setting.
+	t.Setenv("AFORGE_PRACTICE_BUDGET", "2")
+
+	database := filepath.Join(t.TempDir(), "graph.db")
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:     "write the release note and include the migration steps",
+		database: database, timeout: 60 * time.Second,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	graph, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	charters, err := graph.Charters()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, charter := range charters {
+		if strings.Contains(charter.ID, "practice") ||
+			charter.ProposalShape == store.PracticeCharterShape {
+			t.Fatalf("a one-shot errand stood up %q in the person's own store", charter.ID)
+		}
+	}
+	nodes, err := graph.SubtreeNodes(store.RootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range nodes {
+		if node.Group == store.PracticeGroup || strings.Contains(node.ID, "practice") {
+			t.Fatalf("a one-shot errand left practice work behind: %s", node.ID)
+		}
 	}
 }

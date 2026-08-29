@@ -56,6 +56,10 @@ It has its own money, separate from yours: **$2.00 a day**, spent as at most
 **2 firings of $1.00**. When that is gone, practice simply stops for the day. It
 never asks you to raise a rail on its own behalf.
 
+Only the resident practices. A one-shot `aforge do` errand never schedules
+practice, even when it is pointed at your own store with `--db` — it does the
+one job it was given and leaves nothing behind for later.
+
 ## Belief aging: what it stops believing
 
 About once a minute, aforge scores everything in its notebook by how recently

@@ -146,7 +146,14 @@ locally.
   planning, the same contracts, the same delivery gate, the same repair when a
   gap is found. It works in the directory you are standing in and edits what is
   there. The exit code is the verdict — 0 worked, 1 did not, 2 hit the wall with
-  partial work — so a script can believe it.
+  partial work — so a script can believe it. What it prints is the answer, then
+  a short footer: the files the run wrote, one absolute path per line under
+  `files:`, anything workers told each other under `learned:`, and the elapsed
+  time, node count and cost. `--json` prints that same outcome as one object on
+  stdout instead, with the files under `artifacts`. Both lists are the files the
+  run actually produced, not every path it mentioned. It is a one-shot and
+  schedules nothing for later: an errand never practices, whatever store it is
+  pointed at with `--db`.
 - `aforge wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
 - `aforge doctor` — the brain's path and size, whether a resident is alive, the
