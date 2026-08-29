@@ -1435,24 +1435,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if clause := surpriseEvidence(graph, node.ID); clause != "" {
 					gap = strings.TrimSpace(gap + "\n\n" + clause)
 				}
-				// What this attempt actually did, read back from its own
-				// record, so the continuation resumes instead of restarting.
-				// It is the same bank the in-place retry above is handed.
-				carried, carriedTurns := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines())
+				// The recorded work is NOT passed in from here any more. It is
+				// read at the splice, from the lineage, so that every reason a
+				// job grows — this overrun, the gate's gap round, a cooperative
+				// split, a deferred resumption — is seeded by one rule instead
+				// of by whichever caller somebody remembered to wire. Passing it
+				// from here worked on this path and on none of the others, and
+				// the textual run of 2026-08-29 spliced fourteen cold children
+				// on `reason: gap` to prove it. See resident.LineageBank.
 				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
-					resident.Growth{
-						Reason: resident.GrowOverrun, State: resident.LeafState(outcome),
-						// WHATEVER CONTINUES THE WORK IS SEEDED FROM THE RECORD.
-						// The in-place retry and the requeue both read this
-						// bank; the continuation — which is where an exhausted
-						// node actually goes — was the one path that did not,
-						// so the textual run of 2026-08-29 journaled six
-						// exhaustions and not one resumption, and each new node
-						// opened by exploring the repository its predecessor
-						// had spent minutes in. See resident.BankedRun.
-						Transcript: carried.Transcript, Resumed: carriedTurns,
-					},
+					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
 					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
@@ -2676,7 +2669,42 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 	if node.Parent == store.RootID {
 		brief = resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 	}
-	return withTasteBrief(graph, brief)
+	return withOpenFindings(graph, node, withTasteBrief(graph, brief))
+}
+
+// withOpenFindings puts what the job is measurably still short of at the top of
+// the brief, verbatim from the record.
+//
+// THIS IS THE COMPOSER'S JOB AND NOT A MODEL'S. The findings reach a worker
+// today by being written into a goal, handed to a planner, and restated in
+// whatever words that planner chooses — and a model summarising a page of
+// instructions drops a two-item list most times it is asked. Measured, on the
+// textual run of 2026-08-29: the coverage gate reported the same two unexercised
+// behaviours on all three of its rounds, those rounds briefed fourteen nodes,
+// and THIRTEEN OF THE FOURTEEN BRIEFS NAME NEITHER BEHAVIOUR. The job measured
+// its shortfall three times, spent fourteen leaves, and never told a worker what
+// it was.
+//
+// So the section is composed here, from store.DeliveryGate and
+// store.VerificationReading, at the last moment before a worker reads anything —
+// which is the only point downstream of every planner. It goes FIRST, because a
+// worker that reads one section reads the first one, and because what a round
+// exists to close belongs above the assignment that was already attempted once.
+//
+// It is silent when the record names nothing, which is every first attempt at
+// every job: a heading announcing no findings teaches the model that the heading
+// means nothing.
+func withOpenFindings(graph *store.Store, node store.Node, brief string) string {
+	// The LINEAGE, not the node. A repair round is a fresh id spliced beside the
+	// work it repairs, so a reader that asked this node would find a new row
+	// with nothing on it and conclude the job was short of nothing — which is
+	// the same mistake the seed made on the other side of this wave.
+	lineage, _ := resident.OverrunLineage(node.ID)
+	section := resident.ReadOpenFindings(graph, lineage).Words()
+	if section == "" {
+		return brief
+	}
+	return section + "\n\n" + brief
 }
 
 // leafOutputHint decides where, if anywhere, a leaf is invited to write a file,

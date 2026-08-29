@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -742,4 +743,94 @@ func LeafState(outcome *executor.Outcome) string {
 		parts = append(parts, lines.String())
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// LineageBank is what a whole job's recorded work hands to the next node
+// spliced under it.
+//
+// THE RECORDED RUNS ARE A LINEAGE PROPERTY, NOT A NODE'S. BankedRun answers
+// "what did THIS node do", which serves the two paths where the id stays the
+// same — the in-place retry and the requeue after a claim comes back. It cannot
+// serve the path a growing job actually takes: a round splices FRESH IDS
+// (`task-2` → `task-2-x1-n2`), so every child asks its own empty record and
+// starts cold beside a workspace full of its predecessors' work.
+//
+// The textual run of 2026-08-29 (s9) is the measurement. `task-2` ran to 350
+// recorded rows over 80 turns and exhausted; thirteen minutes later a gap round
+// spliced five fresh children under it, and `task-2-x1-n2`'s first recorded row
+// is turn 1, "Let me start by examining the existing codebase", followed by
+// `find /app`. The record it needed was in the same store, under the id one
+// character away, and nothing looked.
+//
+// It is composed newest-first and bounded once, not per node: what a resuming
+// worker most needs is where the job GOT TO, and a bound spent on the oldest
+// attempt is a bound not spent on the newest. The sink is skipped because it is
+// the node being seeded — a brief that quotes the reader back to itself is a
+// brief that has said nothing.
+func LineageBank(graph *store.Store, lineage, sink string) (string, int) {
+	if graph == nil || strings.TrimSpace(lineage) == "" {
+		return "", 0
+	}
+	nodes, err := graph.LineageNodes(lineage)
+	if err != nil {
+		// AN UNREADABLE LINEAGE IS NOT AN EMPTY ONE, and the difference has to
+		// be audible. Returning nothing on an error is indistinguishable from a
+		// job that genuinely has no record, which is the reading that starts
+		// every successor cold — the exact silence this function exists to end.
+		// It is still not allowed to fail the work: a seed is an account of the
+		// job, never a part of it.
+		log.Printf("note: could not read the lineage of %s to seed its next piece: %v", lineage, err)
+		return "", 0
+	}
+	if len(nodes) == 0 {
+		return "", 0
+	}
+	var block strings.Builder
+	resumed := 0
+	// Newest first: LineageNodes is oldest-first admission order, and the last
+	// thing the job did is the first thing its successor needs.
+	for index := len(nodes) - 1; index >= 0; index-- {
+		node := nodes[index]
+		if node.ID == sink {
+			continue
+		}
+		run, turns := BankedRun(graph, node.ID)
+		if turns == 0 || strings.TrimSpace(run) == "" {
+			continue
+		}
+		if block.Len()+len(run) > BankedTranscriptBytes {
+			break
+		}
+		if block.Len() > 0 {
+			block.WriteString("\n\n")
+		}
+		// Each run says whose it was. A composition of three attempts read as
+		// one continuous transcript would have the reader believe a decision
+		// taken by one worker was taken by another.
+		block.WriteString(lineageRunLead(node))
+		block.WriteString("\n")
+		block.WriteString(run)
+		resumed += turns
+	}
+	return block.String(), resumed
+}
+
+// lineageRunLead names one recorded run inside a composed bank.
+func lineageRunLead(node store.Node) string {
+	title := strings.TrimSpace(node.Title)
+	if title == "" {
+		title = strings.TrimSpace(firstLineOf(node.Brief))
+	}
+	if title == "" {
+		return "From an earlier piece of this job (" + node.ID + "):"
+	}
+	return "From an earlier piece of this job — " + title + " (" + node.ID + "):"
+}
+
+// firstLineOf is the first line of a brief, for a one-line label.
+func firstLineOf(text string) string {
+	if index := strings.IndexByte(text, '\n'); index >= 0 {
+		return text[:index]
+	}
+	return text
 }
