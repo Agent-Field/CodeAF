@@ -244,7 +244,7 @@ eighth of the wall only on the after reading. The REFUSAL is remembered the same
 way: why a reading could not be taken is a fact about the tree, the project and
 the wall, and none of them move between rounds. Measured: textual s6's bare leaf
 spent 5m27s on a suite killed at its ceiling — its whole suite is 3,422 tests and
-was still running at twenty-five minutes when measured in that image — and without this every
+takes 793s in that image, measured — and without this every
 continuation of that job would spend the same 5m27s to learn the same thing. `verify.rememberedTrees` is **16**,
 a bound on memory rather than on behaviour: a reading is two rosters and an
 entrypoint, sixteen of them is kilobytes, and sixteen is more concurrent working

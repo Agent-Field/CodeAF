@@ -160,6 +160,14 @@ var runners = []runner{{
 	declaredBy:  []string{".mocharc.json", ".mocharc.yml", ".mocharc.yaml", ".mocharc.js", ".mocharc.cjs"},
 	dependency:  "mocha", invocation: "mocha",
 }, {
+	// ava speaks TAP for the same reason mocha is asked to: its own default
+	// output names only what failed, and TAP is already in the shared
+	// vocabulary. One row, no parser.
+	name: "ava", binary: "ava", read: FormatPlain,
+	machineArgs: []string{"--tap"},
+	declaredBy:  []string{"ava.config.js", "ava.config.cjs", "ava.config.mjs"},
+	dependency:  "ava", invocation: "ava",
+}, {
 	// pytest's quiet default prints one dot per check and no names at all, and
 	// its normal default names only the red ones. `-rA` asks for the short
 	// summary over EVERY check, which is exactly the roster, spelled in the

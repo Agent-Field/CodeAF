@@ -210,6 +210,20 @@ roster was file-level: vitest's default reporter prints `✓ test/index.test.ts
 vocabulary did not know. pytest is worse — measured in textual's own image,
 forty-seven green checks print as forty-seven dots and name nothing at all.
 
+Measured across all five task images at their base commits, plain output against
+the runner's own reporter — and the rule the numbers show is that **the amount of
+identity in a default reading is a function of how many checks FAILED, not of how
+many ran**, which is the worst possible property for a reader whose question is
+what exists:
+
+| project | runner | ran | named by the declared command | named by the runner |
+| --- | --- | --- | --- | --- |
+| ofetch | vitest | 28 | 2 (all green) | 28 |
+| textual | pytest | 3422 | 448 | 3422 |
+| ink | ava | 923 | 0 (dies in lint) | 922 |
+| igel | pytest | 2 | 2 | 2 |
+| happy-dom | vitest | 7260 | 192 | 7260 |
+
 So the reading is taken from the runner underneath, asked for its own
 machine-readable output, and the runner is found in what the project itself
 declares: the body of its own test script or make recipe, its manifest's

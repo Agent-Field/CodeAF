@@ -92,8 +92,8 @@ What actually happened is in the usage timestamps. `bare` took the node over at
 07:13:47 and made its first model call at 07:19:14 — **five minutes and
 twenty-seven seconds** with no call, which is the reading running and being
 killed at its ceiling. The command it ran was `python3 -m pytest -rA` over
-textual's whole repository: 3,422 collected tests, which was still running at
-twenty-five minutes when measured by hand in that same image.
+textual's whole repository: 3,422 collected tests, measured at 793s in that same
+image — well over twice the budget it was given.
 
 Two defects, one clause each.
 

@@ -273,3 +273,70 @@ func contains(names []string, want string) bool {
 	}
 	return false
 }
+
+// A THIRD LIFECYCLE SCRIPT, A THIRD RUNNER, THE SAME SHAPE. ink's `npm test` is
+// `npm run typecheck && npm run lint && FORCE_COLOR=true ava`, so at the base
+// commit it dies in xo on four pre-existing lint errors and names nothing at all
+// — 0 of 923 checks — while the runner underneath speaks TAP and names every one
+// of them. Measured in ink's own image.
+//
+// It is also the case that proves the table is a vocabulary of runners rather
+// than of ecosystems: ava needed one row and no parser, because TAP was already
+// in the shared vocabulary.
+func TestARunnerBehindTwoLintGatesIsStillFound(t *testing.T) {
+	root := project(t, map[string]string{
+		"package.json": `{
+  "name": "ink",
+  "scripts": {
+    "test": "npm run typecheck && npm run lint && FORCE_COLOR=true ava",
+    "lint": "xo",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {"ava": "^5.1.1", "xo": "^1.2.3"},
+  "ava": {"files": ["test/*.tsx"]}
+}`,
+	})
+	strategy, ok := ReadingStrategy(root, Discover(root))
+	if !ok {
+		t.Fatal("a project that declares a test script produced no strategy")
+	}
+	if strategy.Runner != "ava" {
+		t.Fatalf("the runner behind the lint gates was not found: %#v", strategy)
+	}
+	if !strings.Contains(strategy.Command, "--tap") {
+		t.Errorf("ava was not asked for output that names its checks: %q", strategy.Command)
+	}
+	if !strings.HasPrefix(strategy.Command, "FORCE_COLOR=true ") {
+		t.Errorf("the project's own environment was dropped from the command: %q", strategy.Command)
+	}
+	for _, gate := range []string{"xo", "tsc", "typecheck"} {
+		if strings.Contains(strategy.Command, gate) {
+			t.Errorf("the reading still runs %q ahead of the suite: %q", gate, strategy.Command)
+		}
+	}
+	// ink declares no lockfile at all, so the launcher is the one every node
+	// install has.
+	if !strings.Contains(strategy.Command, "npx ava") {
+		t.Errorf("a runner in node_modules was invoked without a launcher: %q", strategy.Command)
+	}
+
+	// And the real output that invocation produces, read by the shared
+	// vocabulary: every one of the 922 checks it ran, and the 57 that were red.
+	reported, failing, _ := FormatPlain.Read(fixture(t, "ava-tap.txt"))
+	// ava's own trailer counts 922. The roster is asserted as a FLOOR rather
+	// than an equality because a roster is only ever compared with another
+	// roster taken the same way: what a name has to be is STABLE between two
+	// readings, not identical to the runner's own spelling of it. Four of
+	// these names carry a bracket or a ` - ` that normalisation reads
+	// differently from ava, which splits one of them in two — visible here,
+	// and invisible to every subtraction this roster feeds.
+	if len(reported) < 922 {
+		t.Fatalf("a real ava roster named %d checks, and ava ran 922", len(reported))
+	}
+	if len(failing) != 57 {
+		t.Errorf("a real ava reading named %d red checks, want 57", len(failing))
+	}
+	if !contains(reported, "ansi-tokenizer › tokenize plain text") {
+		t.Errorf("the checks are not named by their own identities: %#v", reported[:4])
+	}
+}
