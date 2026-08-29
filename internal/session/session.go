@@ -1012,6 +1012,13 @@ type Config struct {
 	// follow the model the next turn will actually ride.
 	SupportsImages func(model string) bool
 
+	// ReasoningProfile is the row's account of a model's thinking pass —
+	// whether it can be turned off, which effort words it takes — under the
+	// same never-blocks contract as SupportsParameter, and nil is the same
+	// "nobody knows". The adapter reads it to send a model that cannot stop
+	// thinking its lowest level instead of a disable it would refuse.
+	ReasoningProfile func(model string) (provider.ReasoningProfile, bool)
+
 	// SupportsParameter answers whether a model accepts a request field, and
 	// whether anybody knows (internal/catalog's SupportsParameter states the two
 	// bools). The adapter asks it before it lets an optional knob travel, so a

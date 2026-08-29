@@ -83,13 +83,15 @@ const (
 // The request is rebuilt on each attempt rather than reused: its body is a
 // reader, and a retried request carrying a drained reader would silently post an
 // empty document.
-func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, stream bool) (*http.Response, error) {
+func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs, body []byte, stream bool) (*http.Response, error) {
 	var lastErr error
-	maxTokens := 0
-	if request.MaxTokens != nil {
-		maxTokens = *request.MaxTokens
-	}
-	httpClient := c.clientFor(stream, maxTokens)
+	// The wait is sized for the reply the request PERMITS — the caller's answer
+	// plus the thinking pass's room — and not for the caller's figure alone.
+	// Sized from the figure, an always-thinking model was allowed to generate
+	// for longer than the transport would wait, and the empty-answer failure
+	// came back as a timeout.
+	ceiling, _ := c.ceilingFor(request, knobs)
+	httpClient := c.clientFor(stream, ceiling)
 	// providerWait is the provider's own comeback instruction from the last
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.

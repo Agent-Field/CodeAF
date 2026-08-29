@@ -33,9 +33,14 @@ const (
 	// deliberating first, and the answer is the same size either way.
 	EffortOff Effort = "off"
 
-	EffortLow    Effort = "low"
-	EffortMedium Effort = "medium"
-	EffortHigh   Effort = "high"
+	// EffortMinimal is the lowest word the router defines. It is not on the
+	// operator's dial — ParseEffort does not take it — because nobody chooses
+	// it; it is what the adapter sends to a model that cannot stop thinking
+	// when the caller asked for off, if the model lists it (thinking.go).
+	EffortMinimal Effort = "minimal"
+	EffortLow     Effort = "low"
+	EffortMedium  Effort = "medium"
+	EffortHigh    Effort = "high"
 )
 
 // ParseEffort validates operator-supplied configuration. An unrecognized value

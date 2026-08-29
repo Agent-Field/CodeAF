@@ -358,7 +358,7 @@ func (c *Client) attemptShaped(
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal request: %w", err)
 	}
-	response, err := c.send(ctx, request, body, stream)
+	response, err := c.send(ctx, request, knobs, body, stream)
 	if err != nil {
 		return nil, nil, err
 	}

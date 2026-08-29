@@ -731,6 +731,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
 		SupportsParameter: models.SupportsParameter,
+		ReasoningProfile:  config.ReasoningProfileSeam(models),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
 		// wearing the model's name (internal/provider's latencyPriceCeiling).

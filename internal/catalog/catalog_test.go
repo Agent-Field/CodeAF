@@ -315,3 +315,41 @@ func TestPriceNowSeparatesAPublishedZeroFromNoPriceAtAll(t *testing.T) {
 		t.Fatal("a catalog that has not resolved answered with a price")
 	}
 }
+
+// The row's account of the thinking pass, in the shape the live catalog
+// published on 2026-08-28: a `reasoning` block with mandatory, the effort
+// words the model takes, and where it sits when nobody sends one.
+const reasoningProfilePayload = `{"data":[
+  {"id":"always/thinks","name":"Always","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["reasoning","reasoning_effort"],
+   "reasoning":{"mandatory":true,"default_enabled":true,"supported_efforts":["max","High","low"],"default_effort":"max"}},
+  {"id":"quiet/model","name":"Quiet","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["temperature"]}
+]}`
+
+func TestTheReasoningProfileIsReadFromTheRowAndSurvivesTheCache(t *testing.T) {
+	dir := t.TempDir()
+	first := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, reasoningProfilePayload, nil),
+	})
+	profile, known := first.ReasoningProfile("always/thinks")
+	if !known || !profile.Mandatory || profile.DefaultEffort != "max" {
+		t.Fatalf("profile = %+v known %t, want the published block", profile, known)
+	}
+	if got := strings.Join(profile.Efforts, ","); got != "max,high,low" {
+		t.Fatalf("efforts = %q, want the words lowercased in the provider's order", got)
+	}
+	// A row that published no block is unknown — not a model that can be
+	// switched off, and not one that cannot.
+	if _, known := first.ReasoningProfile("quiet/model"); known {
+		t.Fatal("a row without the block must read as unknown")
+	}
+	second := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusInternalServerError, "", nil),
+	})
+	if cached, known := second.ReasoningProfile("always/thinks"); !known || !cached.Mandatory || len(cached.Efforts) != 3 {
+		t.Fatalf("cached profile = %+v known %t, want the fetched answer", cached, known)
+	}
+}

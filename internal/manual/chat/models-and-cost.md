@@ -1287,3 +1287,22 @@ It moves off that endpoint when the endpoint stops earning it, and there are thr
 - **It charged too much.** The same quarter-over-list price cap described above rides on every one of these requests, and an endpoint that billed above it loses its place. A warm cache is never worth any price.
 
 Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
+
+## A model that cannot stop thinking — what turning thinking off does on it, and why some models think at "max" by default
+
+Some models cannot have their thinking pass switched off at all; the model list says so
+for each one (GLM 5.3, Gemini 3.7 Flash and Grok 4.6 were among them on 2026-08-28).
+Asking such a model to think less does not fail and is not ignored: aforge sends the
+lowest thinking level the model offers instead of a switch-off it would refuse. That
+matters more than it sounds. Sent nothing at all, one of these models runs at its own
+published default — for GLM 5.3 that default is "max" — and can spend ten thousand tokens
+thinking before it writes a word, which is how a headless run once came back with an empty
+plan. At its lowest level the same model answered the same question in twenty seconds with
+a hundred tokens of thinking.
+
+The reply room is sized to match: thinking tokens count against the same ceiling as the
+answer, so the ceiling is grown by the share the chosen level takes (roughly a fifth at
+low, half at medium, four fifths at high), and the wait for the reply is sized from that
+same ceiling. If a model's list does not say how much it thinks, the first time an answer
+comes back empty with the whole ceiling spent, aforge remembers that model thinks
+regardless and leaves room from then on; it never remembers it on a guess.

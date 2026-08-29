@@ -63,8 +63,11 @@ func TestAdapterRecoversWhenAnEndpointRefusesToDisableReasoning(t *testing.T) {
 	if reasoning, _ := recorded.body(0)["reasoning"].(map[string]any); reasoning["enabled"] != false {
 		t.Fatalf("first request = %#v, want the disable that gets refused", recorded.body(0))
 	}
-	if _, present := recorded.body(1)["reasoning"]; present {
-		t.Fatalf("repaired request = %#v, want no reasoning knob at all", recorded.body(1))
+	// The repair sends the lowest effort word, never the disable again and
+	// never NOTHING — nothing leaves the model at its published default, which
+	// on GLM 5.3 is the top of its ladder (thinking.go).
+	if reasoning, _ := recorded.body(1)["reasoning"].(map[string]any); reasoning["effort"] != "low" || reasoning["enabled"] != nil {
+		t.Fatalf("repaired request reasoning = %#v, want effort low and no disable", recorded.body(1)["reasoning"])
 	}
 
 	// Learned, not re-learned: the next call knows better before it is sent.
@@ -74,8 +77,8 @@ func TestAdapterRecoversWhenAnEndpointRefusesToDisableReasoning(t *testing.T) {
 	if recorded.count() != 3 {
 		t.Fatalf("sent %d requests in total, want one more — the second call must not be refused again", recorded.count())
 	}
-	if _, present := recorded.body(2)["reasoning"]; present {
-		t.Fatalf("second call = %#v, want the knob dropped without being told twice", recorded.body(2))
+	if reasoning, _ := recorded.body(2)["reasoning"].(map[string]any); reasoning["effort"] != "low" || reasoning["enabled"] != nil {
+		t.Fatalf("second call reasoning = %#v, want the lowest effort without being told twice", recorded.body(2)["reasoning"])
 	}
 	if !ReasoningMandatory("~strict/always-reasons") {
 		t.Fatal("the fact must be readable by a surface, and by the slug however it is written")
@@ -218,11 +221,12 @@ func (c *capture) count() int {
 	return len(c.bodies)
 }
 
-// A model that cannot stop thinking bills the pass against the same ceiling as
-// the answer. The failure this pins: the intent compiler on z-ai/glm-5.3-flash
-// asked for 10273 tokens, the model spent 10651 thinking, the answer was empty,
-// and a headless run died before it had built a single node.
-func TestAnAlwaysThinkingModelIsSentRoomForItsThinkingPass(t *testing.T) {
+// A model that cannot stop thinking, met cold — no row in the catalog, so the
+// adapter learns from the 400. The repair does not send NOTHING (that leaves
+// the model at its published default, which for GLM 5.3 is "max", and a
+// ten-thousand-token pass then eats the answer): it sends the lowest effort
+// word, and a ceiling with that pass's documented share in front of the answer.
+func TestAnAlwaysThinkingModelIsSentItsLowestEffortAndRoomForIt(t *testing.T) {
 	quirksAt(t, "strict/always-reasons")
 	client, recorded := newStrictClient(t, "strict/always-reasons")
 	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
@@ -232,14 +236,93 @@ func TestAnAlwaysThinkingModelIsSentRoomForItsThinkingPass(t *testing.T) {
 	if recorded.count() != 2 {
 		t.Fatalf("sent %d requests, want the rejected one and its repair", recorded.count())
 	}
-	// The ceiling the caller asked for, right up until the endpoint said no.
 	if got := recorded.body(0)["max_tokens"]; got != float64(1000) {
 		t.Fatalf("first request max_tokens = %v, want the caller's own 1000", got)
 	}
-	// And the room, the moment the fact is known — on the repair itself, not
-	// on some later call, because the repair is the call that needs it.
-	if got := recorded.body(1)["max_tokens"]; got != float64(1000+ThinkingHeadroomTokens) {
-		t.Fatalf("repaired request max_tokens = %v, want %d", got, 1000+ThinkingHeadroomTokens)
+	repaired := recorded.body(1)
+	if reasoning, _ := repaired["reasoning"].(map[string]any); reasoning["effort"] != "low" {
+		t.Fatalf("repaired request reasoning = %#v, want the lowest effort word, not nothing", repaired["reasoning"])
+	}
+	// low is a fifth of the ceiling, so 1000 tokens of answer need 1250.
+	if got := repaired["max_tokens"]; got != float64(1250) {
+		t.Fatalf("repaired request max_tokens = %v, want 1250", got)
+	}
+}
+
+// The same model with its row KNOWN: the catalog says mandatory and lists the
+// words, so there is no 400 to learn from — the first request is already the
+// lowest listed effort, and the disable never travels.
+func TestACatalogThatSaysMandatorySendsTheLowestListedEffortFromTheFirstCall(t *testing.T) {
+	quirksAt(t, "listed/always-reasons")
+	recorded := &capture{}
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: "http://provider.test", Model: "listed/always-reasons",
+		HTTPClient:        handlerClient(strictHandler(recorded)),
+		SupportsParameter: func(string, string) (bool, bool) { return true, true },
+		ReasoningProfile: func(string) (ReasoningProfile, bool) {
+			return ReasoningProfile{Mandatory: true, Efforts: []Effort{"max", "high", "low"}, Default: "max"}, true
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	if _, err := client.CompleteWithMessages(ctx, userMessages("plan this"), ai.WithMaxTokens(1000)); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.count() != 1 {
+		t.Fatalf("sent %d requests, want exactly one: the row already said no disable", recorded.count())
+	}
+	first := recorded.body(0)
+	if reasoning, _ := first["reasoning"].(map[string]any); reasoning["effort"] != "low" || reasoning["enabled"] != nil {
+		t.Fatalf("first request reasoning = %#v, want effort low and no disable", first["reasoning"])
+	}
+	if got := first["max_tokens"]; got != float64(1250) {
+		t.Fatalf("first request max_tokens = %v, want 1250", got)
+	}
+}
+
+// The ceiling follows the router's documented allocation, and the transport
+// waits for the ceiling that travels rather than the caller's figure.
+func TestTheWireCeilingFollowsTheDocumentedAllocationAndTheTransportWaitsForIt(t *testing.T) {
+	quirksAt(t, "silent/thinker")
+	client, _ := newTestClient(t, Config{Model: "sim/model", ReasoningProfile: func(model string) (ReasoningProfile, bool) {
+		if model == "silent/thinker" {
+			return ReasoningProfile{Mandatory: true, Default: "max"}, true
+		}
+		return ReasoningProfile{}, false
+	}})
+	cases := []struct {
+		name         string
+		model        string
+		sent         Effort
+		budget, want int
+	}{
+		{"no pass, the caller's figure", "sim/model", EffortNone, 0, 1000},
+		{"low is a fifth", "sim/model", EffortLow, 0, 1250},
+		{"medium is half", "sim/model", EffortMedium, 0, 2000},
+		{"high is four fifths", "sim/model", EffortHigh, 0, 5000},
+		{"a budget is exact", "sim/model", EffortHigh, 3000, 4000},
+		{"nothing sent to a model that thinks at max regardless", "silent/thinker", EffortNone, 0, 20000},
+	}
+	for _, tc := range cases {
+		if got := client.wireCeiling(tc.model, tc.sent, tc.budget, 1000); got != tc.want {
+			t.Errorf("%s: wireCeiling = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+	// One source for the wait: the transport's timeout is derived from the
+	// ceiling the encoder sends, so a permitted reply can never outrun it.
+	answer := 10273
+	request := &ai.Request{Model: "silent/thinker", MaxTokens: &answer}
+	ceiling, ok := client.ceilingFor(request, callKnobs{})
+	if !ok || ceiling <= answer {
+		t.Fatalf("ceilingFor = %d, %v; want more than the caller's %d on a model that thinks regardless", ceiling, ok, answer)
+	}
+	if got, want := client.clientFor(false, ceiling).Timeout, adaptiveCompletionTimeout(ceiling, 0); got != want {
+		t.Fatalf("transport timeout = %v, want %v, sized from the ceiling that travels", got, want)
+	}
+	if client.clientFor(false, ceiling).Timeout <= client.clientFor(false, answer).Timeout && ceiling/64 > 300 {
+		t.Fatal("the wait did not grow with the room")
 	}
 }
 
@@ -251,8 +334,10 @@ func ignoringHandler(recorded *capture, needs int) http.Handler {
 		recorded.record(request)
 		body := recorded.body(recorded.count() - 1)
 		ceiling, _ := body["max_tokens"].(float64)
+		reasoning, _ := body["reasoning"].(map[string]any)
 		writer.Header().Set("Content-Type", "application/json")
-		if int(ceiling) < needs {
+		// It thinks at its default until told a level; told one, it answers.
+		if int(ceiling) < needs && reasoning["effort"] == nil {
 			_, _ = writer.Write([]byte(`{"model":"quiet/model","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":10,"completion_tokens":` + strconv.Itoa(int(ceiling)) + `}}`))
 			return
 		}
@@ -282,8 +367,12 @@ func TestAnEmptyAnswerAtTheCeilingTeachesTheAdapterToLeaveRoom(t *testing.T) {
 	if recorded.count() != 2 {
 		t.Fatalf("sent %d requests, want the empty one and its retry", recorded.count())
 	}
-	if got := recorded.body(1)["max_tokens"]; got != float64(1000+ThinkingHeadroomTokens) {
-		t.Fatalf("retry max_tokens = %v, want %d", got, 1000+ThinkingHeadroomTokens)
+	retried := recorded.body(1)
+	if reasoning, _ := retried["reasoning"].(map[string]any); reasoning["effort"] != "low" {
+		t.Fatalf("retry reasoning = %#v, want the lowest effort word", retried["reasoning"])
+	}
+	if got := retried["max_tokens"]; got != float64(1250) {
+		t.Fatalf("retry max_tokens = %v, want 1250", got)
 	}
 	if !ReasoningDisableIgnored("quiet/thinks-anyway") {
 		t.Fatal("the fact must be remembered, so the next call is sent with room the first time")
@@ -295,5 +384,35 @@ func TestAnEmptyAnswerAtTheCeilingTeachesTheAdapterToLeaveRoom(t *testing.T) {
 	}
 	if recorded.count() != 3 {
 		t.Fatalf("sent %d requests in total, want the learned call to go out once", recorded.count())
+	}
+}
+
+// The memo is forever, so it is written only on evidence: an empty answer with
+// no usage block, or one cut while calling a tool, teaches nothing.
+func TestAnEmptyAnswerWithoutEvidenceTeachesNothing(t *testing.T) {
+	quirksAt(t, "quiet/no-evidence")
+	for name, payload := range map[string]string{
+		"no usage":  `{"model":"m","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":""}}]}`,
+		"tool call": `{"model":"m","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":"","tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":"{}"}}]}}],"usage":{"prompt_tokens":1,"completion_tokens":1000}}`,
+	} {
+		recorded := &capture{}
+		client, err := NewClient(Config{APIKey: "k", BaseURL: "http://provider.test", Model: "quiet/no-evidence",
+			HTTPClient: handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				recorded.record(request)
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(payload))
+			}))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.CompleteWithMessages(context.Background(), userMessages("go"), ai.WithMaxTokens(1000)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if recorded.count() != 1 {
+			t.Fatalf("%s: sent %d requests, want one — nothing to learn, nothing to resend", name, recorded.count())
+		}
+		if ReasoningDisableIgnored("quiet/no-evidence") {
+			t.Fatalf("%s: the memo was written on a guess", name)
+		}
 	}
 }

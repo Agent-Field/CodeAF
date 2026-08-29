@@ -228,40 +228,6 @@ func ReasoningUnavoidable(model string) bool {
 	return reasoningMandatory(model) || quirks.knowsDisableIgnored(model)
 }
 
-// ThinkingHeadroomTokens is the room this adapter adds in front of a caller's
-// answer ceiling when the model's thinking pass cannot be removed.
-//
-// Every ceiling above this layer is sized for the ANSWER — the compiler's brief,
-// a plan's contract, a reflex's one-line verdict — because the harness asks for
-// the thinking pass to be turned off. On a model where that ask is refused or
-// ignored the pass still runs, it bills against the same max_tokens, and it is
-// the answer that gets cut: the intent compiler on z-ai/glm-5.3-flash asked
-// for 10273 tokens, the model spent 10651 of them thinking, and the whole
-// headless run died on "compile intent: empty response" with nothing built
-// (2026-08-28). Fixing that in each caller is the same fix written six times
-// and forgotten at the seventh, so it is made once, here, where every request
-// passes.
-//
-// The room is ADDED, not multiplied. A thinking pass is sized by the prompt
-// the model is reading, not by the answer it was asked for, so ten times a
-// 200-token reflex ceiling is honest and ten times a 65536-token delivery
-// ceiling is not. The figure is the measured pass above with a third again
-// on top; a model that outruns it is cut and learns nothing, exactly as
-// before. A max_tokens an endpoint will not accept is already repaired by the
-// relax ladder (endpoints.go's relaxMaxTokens), so a grown ceiling can only
-// ever cost a repair, never a run.
-const ThinkingHeadroomTokens = 16384
-
-// thinkingCeiling is the ceiling that actually travels: the caller's, plus the
-// room a thinking pass needs on a model this process has watched refuse or
-// ignore the disable. Any other model is sent exactly what was asked.
-func thinkingCeiling(model string, ceiling int) int {
-	if ReasoningUnavoidable(model) {
-		return ceiling + ThinkingHeadroomTokens
-	}
-	return ceiling
-}
-
 // normalizeModel keys the memo on the model itself rather than on how it was
 // written. The leading "~" is Aforge's own routing marker, not part of the
 // slug, so "~minimax/minimax-m2.7" and "minimax/minimax-m2.7" are one model.
@@ -411,6 +377,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 			c.resolveEffort(model, knobs.effort),
 			c.resolveReasoningBudget(model, knobs.effort))
 	}
+	// The ceiling that travels is the caller's answer plus the thinking pass's
+	// room (thinking.go's ceilingFor), read here and again by the transport so
+	// the request and its wait describe the same reply. The request itself
+	// keeps the caller's figure: that is what an empty answer is judged
+	// against (client.go's learnFromAnswer).
+	ceiling, hasCeiling := c.ceilingFor(&scrubbed, knobs)
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
@@ -422,11 +394,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		// set — so a relaxed request still asks for the fastest thing available.
 		wire.Provider = relaxedPreferences(wire.Provider)
 	}
-	if scrubbed.MaxTokens != nil {
-		// Grown here and not on the request, so the caller's own ceiling stays
-		// what it asked for: it is what the answer is judged against when it
-		// comes back empty (client.go's learnFromAnswer).
-		ceiling := thinkingCeiling(model, *scrubbed.MaxTokens)
+	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = &ceiling
 		} else {
@@ -440,11 +408,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
 	effort := c.requestedEffort(model, requested)
 	// A model that reasons unconditionally answers the disable with a 400, and
-	// no amount of operator intent changes that. Sending nothing is what the
-	// harness wanted anyway — the cheapest request the endpoint will accept —
-	// so the economy degrades to the model's own default instead of failing.
-	if effort == EffortOff && reasoningMandatory(model) {
-		return EffortNone
+	// no amount of operator intent changes that. What travels instead is the
+	// lowest effort the model takes (thinking.go) — NOT nothing, because
+	// nothing leaves the model at its published default, which can be the top
+	// of its ladder, and a caller who asked for off is then paying for the
+	// longest pass the model has.
+	if effort == EffortOff && c.reasoningUnstoppable(model) {
+		return c.lowestEffort(model)
 	}
 	return effort
 }

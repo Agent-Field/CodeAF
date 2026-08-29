@@ -905,6 +905,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// whose model has no tool grammar would spend its whole errand finding
 		// out (task_run.go states the same argument for a node).
 		SupportsParameter: parent.SupportsParameter,
+		ReasoningProfile:  parent.ReasoningProfile,
 		RolesSource:       parent.RolesSource,
 		// A hand reads documents on the rung the person chose, like the
 		// conversation does: the same mind, reading the same file, must not drop

@@ -162,9 +162,10 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 		Plugins: []documentPlugin{plugin},
 		Usage:   ai.RequestUsage{Include: true},
 	}
-	// The same room the chat route leaves (wire.go's thinkingCeiling): a
-	// document read on an always-thinking model is cut the same way.
-	ceiling := thinkingCeiling(model, maxTokens)
+	// The same room the chat route leaves (thinking.go): this route sends no
+	// reasoning word, so on a model that thinks regardless the pass runs at
+	// the row's default, and the ceiling makes room for it.
+	ceiling := c.wireCeiling(model, EffortNone, 0, maxTokens)
 	if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 		wire.MaxCompletionTokens = &ceiling
 	} else {
@@ -175,7 +176,7 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 		return nil, fmt.Errorf("marshal document request: %w", err)
 	}
 	metadata := &ai.Request{Model: model, MaxTokens: &maxTokens}
-	httpResponse, err := c.send(ctx, metadata, body, false)
+	httpResponse, err := c.send(ctx, metadata, callKnobs{}, body, false)
 	if err != nil {
 		return nil, err
 	}

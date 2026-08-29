@@ -750,10 +750,33 @@ func (c Config) providerConfig(model string) provider.Config {
 		// "unknown", which the adapter treats as "send nothing on your own
 		// initiative" — never as permission.
 		SupportsParameter: c.Models.SupportsParameter,
+		// And what the row says about the model's thinking pass, under the
+		// same contract, translated into the adapter's words at this seam.
+		ReasoningProfile: ReasoningProfileSeam(c.Models),
 		// And the model's own list price, which is what the adapter bounds a
 		// latency-sorted request against. Same contract: never blocks, and
 		// "nobody published one" sends no ceiling at all.
 		ModelPrice: c.Models.PriceNow,
+	}
+}
+
+// ReasoningProfileSeam hands the catalog's published reasoning profile to the
+// adapter in the adapter's own vocabulary. A nil catalog answers "unknown",
+// exactly as its SupportsParameter does.
+func ReasoningProfileSeam(models *catalog.Catalog) func(string) (provider.ReasoningProfile, bool) {
+	if models == nil {
+		return nil
+	}
+	return func(model string) (provider.ReasoningProfile, bool) {
+		row, known := models.ReasoningProfile(model)
+		if !known {
+			return provider.ReasoningProfile{}, false
+		}
+		profile := provider.ReasoningProfile{Mandatory: row.Mandatory, Default: provider.Effort(row.DefaultEffort)}
+		for _, word := range row.Efforts {
+			profile.Efforts = append(profile.Efforts, provider.Effort(word))
+		}
+		return profile, true
 	}
 }
 

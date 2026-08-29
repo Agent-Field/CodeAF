@@ -376,11 +376,17 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 			textMessage("system", compilerSystemPrompt),
 			textMessage("user", user),
 		}, ai.WithMaxTokens(compileTokens*2))
-		if retryErr != nil || retry == nil {
-			return Brief{}, fmt.Errorf("compile intent: %w", err)
+		// The error a person reads is the SECOND attempt's, because that is the
+		// one that decided the outcome: reporting the first here told an
+		// operator "empty response" when the retry had failed some other way.
+		if retryErr != nil {
+			return Brief{}, fmt.Errorf("compile intent: %w (first attempt: %v)", retryErr, err)
 		}
-		if err := decodeJSONObject(retry.Text(), &brief); err != nil {
-			return Brief{}, fmt.Errorf("compile intent: %w", err)
+		if retry == nil {
+			return Brief{}, fmt.Errorf("compile intent: provider returned a nil response on retry (first attempt: %v)", err)
+		}
+		if retryErr := decodeJSONObject(retry.Text(), &brief); retryErr != nil {
+			return Brief{}, fmt.Errorf("compile intent: %w (first attempt: %v)", retryErr, err)
 		}
 		response = retry
 	}

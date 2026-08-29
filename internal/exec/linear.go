@@ -1309,6 +1309,14 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 		if ctx.Err() != nil {
 			return nil, err
 		}
+		// A refusal of the request ITSELF is not retried: the same body sent
+		// into the same wall three times is three bills for one answer, and
+		// the answer is the provider's own words, which are already here.
+		// Anything else — a dropped connection, a busy upstream — earns the
+		// attempts below.
+		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
+			return nil, err
+		}
 		if attempt == nodeCallAttempts-1 {
 			break
 		}

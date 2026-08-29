@@ -59,6 +59,7 @@ func New(config Config) (*Agent, error) {
 		// behaviour exactly — knobs travel only when explicit, and a refusal
 		// ends in the diagnosis rather than on another model.
 		SupportsParameter: config.SupportsParameter,
+		ReasoningProfile:  config.ReasoningProfile,
 		ModelPrice:        config.ModelPrice,
 		Fallbacks:         config.ModelFallbacks,
 		NearestModels:     config.NearestModels,

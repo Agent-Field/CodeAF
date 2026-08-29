@@ -571,3 +571,19 @@ func TestTheRunRecordIsATailAndNotATranscript(t *testing.T) {
 		t.Errorf("one recorded call is %d bytes, want it clipped near %d", got, ranArgumentBytes)
 	}
 }
+
+// A refusal of the request itself — the provider's own words, a 4xx the router
+// issued on our account — is handed back at once. Sending the same body into
+// the same wall three times is three bills for one answer that was already here.
+func TestARefusalOfOurOwnRequestIsNotRetried(t *testing.T) {
+	client := &scriptedCompleter{errors: []error{
+		&provider.APIError{Status: 400, Message: "max_tokens is too large for this endpoint"},
+	}}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"}); err == nil {
+		t.Fatal("a refused request must surface, not be retried into success")
+	}
+	if len(client.seen) != 1 {
+		t.Fatalf("calls = %d, want exactly one: the refusal is the answer", len(client.seen))
+	}
+}
