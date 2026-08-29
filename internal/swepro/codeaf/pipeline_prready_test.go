@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/prreadyphase"
 )
@@ -18,6 +19,7 @@ func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {
 		formatterMutation string
 		writeSummary      bool
 		selfMutating      bool
+		oversizeTree      bool
 		wantStatus        string
 		wantReason        string
 		// wantVerifications counts every entrypoint invocation, and the first
@@ -45,7 +47,16 @@ func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {
 		{
 			name: "self-mutating verification is bounded", formatterMutation: "formatted.txt",
 			writeSummary: true, selfMutating: true, wantStatus: "fail",
-			wantReason: "self-mutating", wantVerifications: 8,
+			wantReason: "rewrites the worktree every time it runs", wantVerifications: 8,
+		},
+		{
+			// The measured failure: a workspace larger than the old byte
+			// allowance made every fingerprint disagree with itself, so a leaf
+			// that had changed nothing after its audit was failed as
+			// self-mutating. Five nodes across two runs died here.
+			name:         "a tree too big for the old byte budget still settles",
+			oversizeTree: true, writeSummary: true,
+			wantStatus: "pass", wantVerifications: 4,
 		},
 	}
 	for _, test := range tests {
@@ -58,6 +69,12 @@ func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {
 			t.Setenv("CODEAF_HYGIENE", "0")
 			t.Setenv("CODEAF_ADAPTIVE_CUTS", "0")
 
+			if test.oversizeTree {
+				if err := os.WriteFile(filepath.Join(workspace, "large.bin"),
+					make([]byte, oversizeTreeBytes), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			countPath := filepath.Join(t.TempDir(), "verification-count")
 			mutationCommand := "@true"
 			if test.selfMutating {
@@ -135,11 +152,21 @@ func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {
 	}
 }
 
-func TestWorktreeFingerprintBudgetIsFailSafeChanged(t *testing.T) {
-	// F10.2: an over-budget tree yields a fresh changed marker rather than a
-	// stable hash of a silent subset, forcing the bounded re-verification path.
+// oversizeTreeBytes is a worktree larger than the byte allowance the old
+// whole-tree scan carried (8 MiB). aforge's own repository is nine times that,
+// and one tracked file in it exceeds it alone, so this is not a corner: it is
+// what every fingerprint of a real project used to hit.
+const oversizeTreeBytes = 8*1024*1024 + 1
+
+func TestAFingerprintOfATreeTooBigForTheOldBudgetIsStableRatherThanAlwaysChanged(t *testing.T) {
+	// The defect this pins: an over-budget scan answered with a fresh nonce, so
+	// no two observations of an untouched tree could ever agree, and the
+	// post-audit stabilisation loop failed every leaf on a real repository with
+	// "self-mutating or exceeded the fingerprint budget". A measurement that
+	// cannot be taken must not be reported as a measurement that came back
+	// different.
 	workspace := validityTestRepo(t)
-	large := make([]byte, worktreeFingerprintMaxBytes+1)
+	large := make([]byte, oversizeTreeBytes)
 	if err := os.WriteFile(filepath.Join(workspace, "large.bin"), large, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -147,10 +174,73 @@ func TestWorktreeFingerprintBudgetIsFailSafeChanged(t *testing.T) {
 	t.Cleanup(runner.runtime.Close)
 	first, firstOK := runner.worktreeFingerprint(context.Background())
 	second, secondOK := runner.worktreeFingerprint(context.Background())
-	if !firstOK || !secondOK || first == second ||
-		!strings.Contains(first, "worktree-fingerprint-budget") ||
-		!strings.Contains(second, "worktree-fingerprint-budget") {
-		t.Fatalf("over-budget fingerprints = %q/%v, %q/%v", first, firstOK, second, secondOK)
+	if !firstOK || !secondOK {
+		t.Fatalf("an untouched tree could not be fingerprinted: %v/%v", firstOK, secondOK)
+	}
+	if first != second {
+		t.Fatalf("two fingerprints of one untouched tree disagree: %q vs %q", first, second)
+	}
+	if strings.Contains(first, "budget") {
+		t.Fatalf("the fingerprint still answers with a budget marker: %q", first)
+	}
+
+	// And it still sees a real edit, which is the whole reason it exists.
+	if err := os.WriteFile(filepath.Join(workspace, "large.bin"), append(large, 'x'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	third, thirdOK := runner.worktreeFingerprint(context.Background())
+	if !thirdOK || third == second {
+		t.Fatalf("an edited tree fingerprinted the same as before it was edited: %q/%v", third, thirdOK)
+	}
+}
+
+func TestAFingerprintReadsContentRatherThanTheClock(t *testing.T) {
+	// A formatter that rewrites a file with byte-identical content has changed
+	// the tree's timestamps and has not changed the tree. The old digest took
+	// the modification time in, so that run was failed as self-mutating.
+	workspace := validityTestRepo(t)
+	path := filepath.Join(workspace, "same.txt")
+	if err := os.WriteFile(path, []byte("identical\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := newPipeline(cliArgs{}, workspace, pipelineDeps{Events: newEventWriter(io.Discard), Notes: io.Discard})
+	t.Cleanup(runner.runtime.Close)
+	before, ok := runner.worktreeFingerprint(context.Background())
+	if !ok {
+		t.Fatal("the tree could not be fingerprinted")
+	}
+	stamp := time.Now().Add(2 * time.Hour)
+	if err := os.WriteFile(path, []byte("identical\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	after, ok := runner.worktreeFingerprint(context.Background())
+	if !ok {
+		t.Fatal("the rewritten tree could not be fingerprinted")
+	}
+	if after != before {
+		t.Fatalf("a rewrite with identical bytes changed the fingerprint: %q vs %q", before, after)
+	}
+}
+
+func TestTheFingerprintNamesWhatMovedWhenTwoObservationsDisagree(t *testing.T) {
+	// A verdict that a tree will not settle has to say WHAT would not settle,
+	// or nobody can autopsy it.
+	before := worktreeSnapshot{Files: map[string]worktreeFileFingerprint{
+		"kept.txt":     {ContentHash: "a"},
+		"rewritten.go": {ContentHash: "b"},
+		"removed.txt":  {ContentHash: "c"},
+	}}
+	after := worktreeSnapshot{Files: map[string]worktreeFileFingerprint{
+		"kept.txt":     {ContentHash: "a"},
+		"rewritten.go": {ContentHash: "d"},
+		"added.txt":    {ContentHash: "e"},
+	}}
+	got := strings.Join(worktreeMutations(before, after), ", ")
+	if got != "added.txt, removed.txt, rewritten.go" {
+		t.Fatalf("mutations = %q", got)
 	}
 }
 
@@ -183,7 +273,7 @@ func TestFailedAuditSkipsWorktreeFingerprinting(t *testing.T) {
 	if result.Status == "pass" {
 		t.Fatalf("failing verification passed: %#v", result)
 	}
-	if runner.fingerprintFiles != nil || runner.fingerprintNonce != 0 {
-		t.Fatalf("failed audit scanned worktree: files=%d nonce=%d", len(runner.fingerprintFiles), runner.fingerprintNonce)
+	if runner.fingerprintFiles != nil {
+		t.Fatalf("failed audit scanned worktree: files=%d", len(runner.fingerprintFiles))
 	}
 }
