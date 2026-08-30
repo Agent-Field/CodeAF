@@ -34,7 +34,7 @@ func (a *Agent) anchorWorkspaceTools() []bare.Tool {
 			var parsed struct {
 				Path string `json:"path"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			path, err := a.AnchorWorkspace(parsed.Path)

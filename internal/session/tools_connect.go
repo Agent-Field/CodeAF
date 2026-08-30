@@ -47,7 +47,7 @@ const gmailReadSchemaJSON = `{"type":"object","properties":{"id":{"type":"string
 
 const slackSearchDescription = "Search the person's Slack and get back matching messages newest first: the channel, who wrote each one, when, and its text. Every result ends with the channel id and Slack timestamp that slack_read_thread takes."
 
-const slackSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for in Slack"},"max":{"type":"number","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
+const slackSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for in Slack"},"max":{"type":"integer","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
 
 const slackReadThreadDescription = "Read one Slack thread in order, up to 15 messages. The channel id and ts are the final line of a slack_search result; ts is Slack's timestamp for the message the thread starts at."
 
@@ -55,7 +55,7 @@ const slackReadThreadSchemaJSON = `{"type":"object","properties":{"channel":{"ty
 
 const slackListChannelsDescription = "List the Slack channels the person can see: each channel's name, id, member count and purpose. Filter narrows the names when you already know part of one."
 
-const slackListChannelsSchemaJSON = `{"type":"object","properties":{"filter":{"type":"string","description":"Part of a channel name to keep (optional)"},"max":{"type":"number","description":"How many channels to inspect (default: 50)"}},"additionalProperties":false}`
+const slackListChannelsSchemaJSON = `{"type":"object","properties":{"filter":{"type":"string","description":"Part of a channel name to keep (optional)"},"max":{"type":"integer","description":"How many channels to inspect (default: 50)"}},"additionalProperties":false}`
 
 const slackSendDescription = "Send one Slack message as the person, to a channel id or #name. It leaves as them and somebody in that channel can read it, so write what they would have written and expect them to be asked before it goes. thread_ts replies under the message whose ts came from slack_search."
 
@@ -618,7 +618,7 @@ func (a *Agent) slackSearchTool() bare.Tool {
 				Query string `json:"query"`
 				Max   *int   `json:"max"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
@@ -652,7 +652,7 @@ func (a *Agent) slackReadThreadTool() bare.Tool {
 				Channel string `json:"channel"`
 				TS      string `json:"ts"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			channel, ts := strings.TrimSpace(parsed.Channel), strings.TrimSpace(parsed.TS)
@@ -685,7 +685,7 @@ func (a *Agent) slackListChannelsTool() bare.Tool {
 				Filter string `json:"filter"`
 				Max    *int   `json:"max"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			limit := slackChannelDefaultMax
@@ -762,7 +762,7 @@ func (a *Agent) slackSendTool() bare.Tool {
 				Text     string `json:"text"`
 				ThreadTS string `json:"thread_ts"`
 			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
+			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 			if strings.TrimSpace(parsed.Channel) == "" {
