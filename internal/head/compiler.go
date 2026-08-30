@@ -380,6 +380,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 			textMessage("user", user),
 		},
 		Echo: instruction,
+		JSON: true,
 	}, &brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
@@ -393,7 +394,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
-	if err := validateBrief(brief); err != nil {
+	if err := validateBrief(&brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
@@ -598,18 +599,24 @@ func normalizeScale(scale string) string {
 	}
 }
 
-func validateBrief(brief Brief) error {
+// validateBrief refuses what cannot be run and tidies what can. A BRIEF THAT
+// MADE NO ASSUMPTIONS IS A COMPLETE BRIEF: the field is what the model declares
+// it had to assume, and a request that needed nothing assumed comes back with
+// the field absent or empty. A blank entry is dropped rather than refused for
+// the same reason — it says nothing, and a refusal here forfeits the whole
+// compile, the cheapest call in the job and the only one nothing after it can
+// run without.
+func validateBrief(brief *Brief) error {
 	if strings.TrimSpace(brief.Goal) == "" {
 		return errors.New("empty goal")
 	}
-	if brief.Assumptions == nil {
-		return errors.New("missing assumptions")
-	}
+	kept := brief.Assumptions[:0]
 	for _, assumption := range brief.Assumptions {
-		if strings.TrimSpace(assumption) == "" {
-			return errors.New("empty assumption")
+		if assumption = strings.TrimSpace(assumption); assumption != "" {
+			kept = append(kept, assumption)
 		}
 	}
+	brief.Assumptions = kept
 	return nil
 }
 

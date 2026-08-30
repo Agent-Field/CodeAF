@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -494,6 +495,15 @@ func newBashTool(cwd string) Tool {
 			// every check it reached; that answers "does a check for this exist"
 			// even when it can never answer "did this work break something". The
 			// model reads the cut, sees the pace, and can scope the next one.
+			//
+			// A PERSON'S INTERRUPT IS NOT A CUT. Cancellation is somebody
+			// stopping the turn, and the duration says nothing about pace;
+			// it is reported as aborted, which is the word the session's
+			// promotion rule and its record reader (why.go) both hold to, so
+			// an interrupted command is never carried on as a background job.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return appendStatus(text, "Command aborted"), true, nil
+			}
 			if ctx.Err() != nil {
 				return commandCutWords(began, text), true, nil
 			}

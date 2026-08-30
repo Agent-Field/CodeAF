@@ -951,7 +951,15 @@ func (c *Client) completeWithMessagesStreaming(
 		c.unstreamable.Store(true)
 		payload, readErr := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
 		if readErr != nil {
-			return nil, false, fmt.Errorf("read response: %w", readErr)
+			// A body that breaks off after the headers is an attempt that
+			// failed, and it leaves its end row like any other; without one the
+			// log shows the call in flight forever.
+			readErr = fmt.Errorf("read response: %w", readErr)
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: true,
+				began: logBegan, status: httpResponse.StatusCode, err: readErr,
+			})
+			return nil, false, readErr
 		}
 		return c.completionInOnePiece(ctx, request, knobs, payload, httpResponse.StatusCode, began, logBegan, true)
 	}
