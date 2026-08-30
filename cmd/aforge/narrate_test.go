@@ -187,3 +187,36 @@ func TestTheNarratorOnlySaysThisErrandsFacts(t *testing.T) {
 		t.Fatalf("the watcher reported a node it does not own:\n%s", line)
 	}
 }
+
+// THE CHECKLIST HAS TO REACH THE PERSON WATCHING. A fail-safe that does not
+// propagate to the verdict a person reads is decoration (FAILSAFE clause 3),
+// and a "no check exercises …" arriving forty minutes into a run is illegible
+// to somebody who was never told a checklist existed.
+//
+// It is a count and not a list: forty behaviours printed one per line would bury
+// every other line in the stream.
+func TestTheStreamSaysTheChecklistExistsOnce(t *testing.T) {
+	graph, watcher, said := narrationFixture(t)
+
+	if err := graph.RecordAcceptance("task-1", store.Acceptance{Points: []store.AcceptancePoint{
+		{Behaviour: "A rejected non-listed status does not close half-open state",
+			Quote: "must not close half-open state"},
+		{Behaviour: "A half-open probe holds its slot across internal retries",
+			Quote: "keeps its slot for the full logical request"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	line := narrated(t, watcher, said)
+	if !strings.Contains(line, "acceptance") || !strings.Contains(line, "2 points from the request") {
+		t.Fatalf("the stream never said the checklist exists:\n%s", line)
+	}
+	// The behaviours themselves stay out of the stream: the count is the news.
+	if strings.Contains(line, "half-open") {
+		t.Errorf("the stream printed the checklist itself:\n%s", line)
+	}
+	// Said once. The journal is read forward from where it stopped, so a second
+	// pass over the same event must write nothing at all.
+	if again := narrated(t, watcher, said); strings.Contains(again, "acceptance") {
+		t.Errorf("the checklist line was said twice:\n%s", again)
+	}
+}

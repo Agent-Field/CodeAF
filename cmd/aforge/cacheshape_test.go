@@ -144,7 +144,7 @@ func TestCompileRidesOneConstantCacheKey(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &compileCaptureClient{model: "talk/model"}
 	client := adoptLiveClient(settings, capture.model, capture)
-	compile := compileIntent(settings, head.NewCompiler(client), client, nil)
+	compile := compileIntent(settings, head.NewCompiler(client), client, nil, nil, nil)
 
 	for _, instruction := range []string{"summarise this file", "benchmark the parser"} {
 		if _, err := compile(context.Background(), instruction, "Live graph snapshot:\n(nothing)"); err != nil {

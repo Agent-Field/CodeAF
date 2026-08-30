@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/orientation"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -302,9 +303,12 @@ type Linear struct {
 	swarm bool
 }
 
-// WithStore enables the optional persistent-memory pull tool. It mutates the
+// WithStore enables the optional persistent-memory pull tool, and it is also
+// where this loop's readings of the project's own checks are journaled — the
+// same seam Bare.WithStore is, for the same reason. It mutates the
 // just-constructed loop for fluent wiring; callers that do not opt in retain
-// the base-tool completion floor.
+// the base-tool completion floor, and their readings are still taken and still
+// weighed, with nowhere to write the row down.
 func (l *Linear) WithStore(history *store.Store) *Linear {
 	l.history = history
 	return l
@@ -367,9 +371,31 @@ type Completer interface {
 // defaultLeafTokens is the budget one leaf may spend, and it is calibrated
 // rather than picked.
 //
+// WHAT IT COUNTS IS WHAT THE JOB PAYS. spent() reads uncached prompt at full
+// rate, cache reads at cachedTokenWeightPercent — the provider's own discount,
+// not a weight this file invented — and the completion. So the grant is a bill
+// expressed in token-equivalents, and a leaf that spends it has cost the job
+// what the job agreed to spend on one leaf, whether it did that in twelve
+// expensive turns or sixty cheap ones. That is deliberate: the alternative is a
+// meter that charges a leaf for re-reading its own transcript, which is a fact
+// about how conversations work rather than about what this leaf did.
+//
+// AND IT IS NOW THE ONLY BOUND THAT MAY LAND A LEAF ON ACCOUNT OF ITS WORK.
+// Two cumulative prompt ceilings used to be able to as well; both were Σ over
+// turns of the prompt, which is turns × mean-context wearing a token name, and
+// on ink s9 of 2026-08-29 one of them cut three leaves at turns 13, 12 and 9
+// with a third of this grant unspent. They are wrap-up pressure now. The other
+// two things that may still stop a leaf measure something else entirely —
+// maxTurnBackstop counts iterations, and the no-progress guard reads whether it
+// is working at all. See PERF.md, "A leaf's bounds", and meter.go's
+// reuseCeiling for the arithmetic.
+//
 // Measured: with observations spilled and decayed, a turn costs about 11k input
 // tokens, and a well-sized leaf finishes in 8 to 16 turns. That is 90k to 175k,
-// so the budget sits just above the top of the honest range.
+// so the budget sits just above the top of the honest range. Those figures are
+// RAW input; against the discount above, a leaf whose prefix caches well buys
+// proportionally more turns for the same grant, which is the discount doing its
+// job rather than the grant losing its meaning.
 //
 // It was originally set at 400k, which turned out to permit around 37 turns —
 // and every leaf ran to exactly that, because the loop has no intrinsic reason
@@ -378,8 +404,23 @@ type Completer interface {
 // spend all of it.
 const defaultLeafTokens = 150_000
 
-// rawTokenCeilingMultiple is the leaf's second bound, written as a multiple of
-// the first. Cost bounds spend; raw bounds convergence.
+// rawTokenCeilingMultiple WAS the leaf's second bound and is now pressure on
+// the wrap-up warning, for the reason set out at length against reuseCeiling in
+// meter.go: Σ over turns of the prompt is turns × mean-context wearing a token
+// name, and bounding it lands honest leaves early without reaching the runaway
+// any sooner than the guard built to recognise one.
+//
+// The specific case below is answered instead by maxTurnBackstop and the
+// no-progress guard. A 98%-cached loop that buys a million raw tokens with a
+// 150k grant has, by construction, spent the grant — the provider charged for
+// it, which is what the grant means — and what was actually wrong with the
+// audited nodes was that they ran eighty turns without progressing, which is
+// the thing noprogress.go measures and this never could.
+//
+// What follows is the reasoning it was introduced with, kept for the same
+// reason meter.go keeps its own.
+//
+// Cost bounds spend; raw bounded convergence.
 //
 // spent() weights cache reads at cachedTokenWeightPercent, and that is the
 // honest measure of what a leaf COSTS. It is not a measure of how far a leaf has
@@ -468,7 +509,10 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 		maxTokens = defaultLeafTokens
 	}
 	if deadline <= 0 {
-		deadline = 15 * time.Minute
+		// A caller that said nothing about time gets the generalist's own
+		// floor, asked for rather than written out again: this loop IS the
+		// generalist, so the shape registered under its name is the answer.
+		deadline = linearInfo.Deadline(0)
 	}
 	return &Linear{client: client, workspace: workspace, web: web,
 		maxTurns: maxTurns, maxTokens: maxTokens, deadline: deadline}
@@ -540,6 +584,21 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// it is not close. It is applied before the deadline so that every call the
 	// leaf makes, including the tool-side model calls, rides the same key.
 	ctx = provider.WithLeafCacheKey(ctx, task.leafKey())
+	// The project's own account of whether it still works, read while the tree
+	// is still pristine. THIS BELT IS THE DEFAULT EVERY UNROUTED NODE GETS, and
+	// until it took a reading a whole graded run could finish with no
+	// verification event in its store at all — an absence that spells four
+	// different facts at once and diagnoses none of them (FAILSAFE.md, the sixth
+	// failure). The reading is an account of the run and never part of it: it
+	// cannot fail this leaf, and every way it can go wrong is written down
+	// rather than returned.
+	//
+	// It is taken BEFORE the tree is photographed on purpose. A test runner
+	// leaves its own droppings — a .pytest_cache, a target/, a coverage file —
+	// and a reading taken after WatchTree would file every one of them as
+	// something this leaf produced. Taken first, they belong to the world the
+	// leaf arrived in, which is what they are.
+	reading, inheritedReading := PhotographBefore(ctx, l.workspace, l.history, l.deadline, task)
 	// The world's own account of what this leaf leaves behind starts here: the
 	// tree as it stands before a single turn has run. Everything the leaf writes
 	// with a shell command, a script or a build is invisible to the write tools
@@ -621,7 +680,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		}
 		return current
 	}
-	trace := newTracer(l.workspace, task.leafKey())
+	// THE GENERALIST NOW LEAVES A RECORD. Every turn of this loop and every
+	// note the harness writes about itself already passes through this one
+	// object; wiring the store's transcript into it is what makes the default
+	// worker's work readable afterwards and resumable by whatever continues it.
+	// See tracer.sink.
+	trace := newRecordingTracer(ctx, l.workspace, task.leafKey())
 	defer trace.close()
 	system := l.system(task, tools.Guidelines())
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
@@ -680,6 +744,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// workspace is left consistent and the partial goes out whole. See
 	// noprogress.go for the signals and thresholds.
 	progress := newProgressGuard()
+	// The leaf's own closing. It is armed here, beside the other once-only
+	// questions above, because it is one of them: a finding this leaf's own
+	// after-photograph raises against this leaf's own work is put to it once
+	// per kind, and the gate is the floor under whatever is still red the
+	// second time. See selfclose.go.
+	closer := NewSelfCloser(l.history, task)
 
 	// The observation window is sized from what the model can hold in one
 	// request, and from nothing else.
@@ -718,11 +788,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			case ControlCancel:
 				outcome.Stop = StopCancelled
 				trace.note("cancel requested — stopping at turn boundary")
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			case ControlPause:
 				outcome.Stop = StopPaused
 				trace.note("pause requested — holding at turn boundary")
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 		}
 		if landing == 0 && time.Until(deadline) <= landingReserve {
@@ -733,6 +803,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// on that path Stop stays StopDone, so this is the only record that
 			// the leaf was still working when the clock took it.
 			outcome.Exhausted = StopDeadline
+			outcome.Meter = Meter{Name: "deadline", Unit: "seconds",
+				Reached: int(time.Since(started).Seconds()), Allowed: int(l.deadline.Seconds())}
 			trace.note("deadline close — landing reserve started")
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"The wall-clock deadline for this task is close. Use the remaining time only to " +
@@ -776,7 +848,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			if ctx.Err() != nil {
 				outcome.Stop = StopDeadline
 			}
-			return l.land(ctx, task, outcome, started), fmt.Errorf("node %s: %w", task.leafKey(), err)
+			return l.land(ctx, task, outcome, started, reading, inheritedReading), fmt.Errorf("node %s: %w", task.leafKey(), err)
 		}
 		outcome.Turns++
 		// The node total, and the same numbers kept per turn. See meter.go: a
@@ -797,7 +869,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					outcome.Text = "The quick pass found that this needs a full job."
 				}
 				trace.turn(outcome.Turns, response, calls, nil, "promoted")
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 		}
 		// The cooperative ending, and it is terminal by contract: a leaf that
@@ -826,7 +898,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				}
 				trace.turn(outcome.Turns, response, calls, nil, fmt.Sprintf(
 					"asked to divide into %d parts", len(request.Parts)))
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 		}
 		if len(calls) == 0 {
@@ -847,7 +919,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				trace.turn(outcome.Turns, response, nil, nil, fmt.Sprintf(
 					"empty reply burned %d of %d remaining tokens — abandoned for escalation",
 					completionOf(response), remaining))
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 			// An empty message with no tool calls is not a deliverable — it is
 			// what a reasoning model produces when the output ceiling cut it
@@ -912,7 +984,37 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				messages = messages[:len(messages)-1]
 			}
 			trace.turn(outcome.Turns, response, nil, nil, "final")
-			return l.land(ctx, task, outcome, started), nil
+			landed := l.land(ctx, task, outcome, started, reading, inheritedReading)
+			// AND THE LEAF READS ITS OWN LANDING BEFORE ANYBODY ELSE DOES. The
+			// photograph the line above just took is a measurement of THIS
+			// leaf's work, and until now everything it found — a public name
+			// deleted, a name read that nothing binds, a check turned red — went
+			// past this worker to a gate, and came back as a repair round: a
+			// cold leaf with a fresh brief and none of the context that made the
+			// mistake. The worker that can fix it cheapest is the one still
+			// standing here holding the transcript. So it is asked, once per
+			// kind, inside what is left of its own meter — and lands with the
+			// finding when there is nothing left, exactly as it did before.
+			//
+			// It reopens the loop the same way the mailbox above does, and for
+			// the same reason: a leaf that has not landed has not delivered. The
+			// answer just written goes in as the draft it now is, the finding
+			// follows it, and the next turns settle it. See selfclose.go.
+			if note, closing := closer.Close(landed, RoomLeft(landed, turnCap, l.maxTokens,
+				time.Until(deadline), landingReserve)); note != "" {
+				messages = append(messages,
+					ai.Message{Role: "assistant", Content: text(response.Text())},
+					ai.Message{Role: "user", Content: text(note)})
+				// The verdict belongs to a landing that is no longer happening.
+				// verdictFor keeps whatever it is handed, so a verdict written
+				// for this reading would outlive it and grade the leaf on an
+				// ending it did not have.
+				landed.Verdict = ""
+				trace.turn(outcome.Turns, response, nil, nil,
+					"closing its own finding — "+strings.Join(SelfCloseKinds(closing), ", "))
+				continue
+			}
+			return landed, nil
 		}
 
 		messages = append(messages, ai.Message{
@@ -983,6 +1085,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 						results[index] = errorf("internal fault in this tool call — recorded to the log. Try a different approach.")
 					}
 				}()
+				// The same span the bare loop opens around a running command:
+				// a tool that takes minutes writes nothing to the journal
+				// while it runs, and the claim reaper has nothing else to
+				// read. See Working.
+				defer Working(ctx)()
 				results[index] = tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
 			}(index, call)
 		}
@@ -1107,25 +1214,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				"straggler threshold crossed at %d tokens against a measured median of %d — judged worth continuing",
 				evidence.Spent, evidence.Anchor))
 		}
-		pressure, pressureCeiling := outcome.contextPressure(), reuseCeiling(l.contextTokens)
-		if (exhausted(outcome, l.maxTokens) || pressureReached(pressure, pressureCeiling)) && landing == 0 {
+		// WHAT LANDS A LEAF IS WHAT ITS WORK COSTS, AND NOTHING ELSE COUNTS
+		// TEXT. The two cumulative prompt bounds that used to land it here are
+		// kept as pressure on the wrap-up warning above (see budgetUsed) and
+		// journaled as evidence, but they no longer stop anything. See
+		// contextPressure and reuseCeiling in meter.go for the measurement that
+		// retired them.
+		if exhausted(outcome, l.maxTokens) && landing == 0 {
 			landing = landingTurns
 			landingStop = StopBudget
 			// Same reason as the deadline reserve above: the budget is spent
 			// here, whether or not the landing later has to be cut short.
 			outcome.Exhausted = StopBudget
+			// The bound names itself, with its own two numbers, so the journal
+			// and the line a person reads are composed from one fact rather
+			// than from two guesses. See Outcome.Meter.
+			outcome.Meter = Meter{
+				Name: "cost", Reached: spent(outcome), Allowed: l.maxTokens,
+				Unit: "tokens of billed work",
+			}
 			reached := "budget exhausted — landing reserve granted"
-			if spent(outcome) < l.maxTokens {
-				reached = fmt.Sprintf(
-					"raw token bound reached (%d of %d, cost only %d of %d) — landing reserve granted",
-					rawSpent(outcome), rawCeiling(l.maxTokens), spent(outcome), l.maxTokens)
-			}
-			if pressureReached(pressure, pressureCeiling) {
-				reached = fmt.Sprintf(
-					"context reuse bound reached (%d prompt tokens sent across %d turns, %d permitted "+
-						"against a %d-token window; cost only %d of %d) — landing reserve granted",
-					pressure, outcome.Turns, pressureCeiling, l.contextTokens, spent(outcome), l.maxTokens)
-			}
 			trace.note(reached)
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"The budget for this task is spent. You have a few final tool calls to land the " +
@@ -1138,7 +1246,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			if landing == 1 {
 				outcome.Stop = landingStop
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 			landing--
 			continue
@@ -1156,7 +1264,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// deadline the model can actually work towards. It is announced a single
 		// time rather than every turn: repeating it would cost tokens on exactly
 		// the turns that have none to spare.
-		if !warned && budgetUsed(outcome, l.maxTokens) > wrapUpAt {
+		if !warned && budgetUsed(outcome, l.maxTokens, l.contextTokens) > wrapUpAt {
 			warned = true
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"You have used most of the budget for this task. If the deliverable is not yet " +
@@ -1182,9 +1290,13 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			case progressTerminate:
 				outcome.Stop = StopNoProgress
 				outcome.Exhausted = StopNoProgress
+				// The one bound with no allowance worth printing: it is a
+				// structural detector rather than a ceiling, and what it
+				// reached is a description, not a figure.
+				outcome.Meter = Meter{Name: "no-progress", Reached: outcome.Turns}
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 				trace.note(progress.noProgressReason() + " — leaf terminated")
-				return l.land(ctx, task, outcome, started), nil
+				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 			}
 		}
 	}
@@ -1193,8 +1305,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish in well under it, so reaching it is evidence the sizing anchors put
 	// too much into one node — which is worth reporting rather than hiding.
 	outcome.Stop = StopTurnCap
+	outcome.Meter = Meter{Name: "turns", Reached: outcome.Turns, Allowed: l.maxTurns, Unit: "turns"}
 	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-	return l.land(ctx, task, outcome, started), nil
+	return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 }
 
 // readSteering drains the mailbox into the transcript and reports how many of
@@ -1237,11 +1350,34 @@ func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
 // verdict, and tells whatever routed the leaf how it went — in one place,
 // because there are five ways out of the loop above and a verdict that is set on
 // four of them is worse than none at all.
-func (l *Linear) land(ctx context.Context, task Task, outcome *Outcome, started time.Time) *Outcome {
+// reading and inherited are the opening photograph this leaf has been carrying
+// since before its first turn, and they arrive here rather than at any of the
+// ten returns above for the same reason the verdict does: THIS IS THE ONE PLACE
+// EVERY EXIT PASSES THROUGH, and a measurement taken on nine of them is worse
+// than none, because the tenth reads as a project with nothing to check.
+func (l *Linear) land(
+	ctx context.Context, task Task, outcome *Outcome, started time.Time,
+	reading verify.Reading, inherited bool,
+) *Outcome {
 	// What the leaf left behind is read off the disk before it is reported, so
 	// the list is the world's answer and not only the write tools'.
 	l.workspace.RecordChanges(task.leafKey())
 	outcome.Artifacts = l.workspace.Artifacts(task.leafKey())
+	// The closing reading, and it is taken on EVERY landing — including the one
+	// the leaf was ordered into. An exhausted leaf still changed the tree it was
+	// standing in, and skipping the second reading there would leave the runs
+	// that most need an autopsy with nothing to autopsy. Whether the tree
+	// actually moved is the workspace's own before-and-after answer, which the
+	// line above has just settled; this asks it rather than re-stating the
+	// world.
+	//
+	// It rides this leaf's own context on purpose. That context carries the
+	// leaf's wall, so a landing whose clock is already spent takes no second
+	// reading — and journals the sentence saying why, which is the whole point:
+	// a reason in the record, never an absence. The alternative, a fresh clock,
+	// would let a measurement push Run past the deadline its caller leased it.
+	PhotographAfter(ctx, l.workspace, l.history, l.deadline, task, reading,
+		len(outcome.Artifacts) > 0, inherited, outcome)
 	outcome.Elapsed = time.Since(started)
 	outcome.Verdict = verdictFor(outcome)
 	provider.Report(ctx, outcome.Verdict)
@@ -1616,11 +1752,25 @@ func rawSpent(outcome *Outcome) int {
 	return outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
 }
 
-// exhausted reports whether the leaf has reached either of its bounds — the
-// cost ceiling it was granted, or the raw ceiling that is a multiple of it.
-// Both endings are the same ending: the landing reserve, not a stop.
+// exhausted reports whether the leaf has spent the grant it was given.
+//
+// ONE BOUND ON WORK, AND IT IS THE MONEY. It used to be two — this, and the
+// undiscounted raw ceiling below — and the second is now pressure on the
+// wrap-up warning rather than a landing, because Σ over turns of the prompt is
+// not a second opinion about spend. It is turns × mean-context wearing a token
+// name: any transcript that only grows re-sends its whole prefix every turn, so
+// the sum climbs at the same rate for a leaf doing hard work as for one
+// circling, and the measured separation between the two is nil (see
+// reuseCeiling in meter.go for the figures out of the ink run of 2026-08-29).
+//
+// What is left to catch the warm runaway the raw ceiling was added for — very
+// many cheap turns, no per-turn prompt above 17k — is the pair built to tell
+// hard work from stuck: maxTurnBackstop and the no-progress guard, whose own
+// file opens by saying that a magnitude bound cannot make that distinction and
+// that this is what was missing. It fires at noProgressTurnFloor, which is a
+// fifth of where the raw ceiling would have.
 func exhausted(outcome *Outcome, maxTokens int) bool {
-	return spent(outcome) >= maxTokens || rawSpent(outcome) >= rawCeiling(maxTokens)
+	return spent(outcome) >= maxTokens
 }
 
 // rawCeiling is the grant expressed in undiscounted tokens.
@@ -1630,16 +1780,28 @@ func rawCeiling(maxTokens int) int { return maxTokens * rawTokenCeilingMultiple 
 // beside the ledger it is measured off.
 
 // budgetUsed is how far into its allowance the leaf is, read on whichever of
-// the two bounds it is closer to. The wrap-up warning is measured against this
-// rather than against cost alone, so a heavily cached leaf hears that it should
-// be landing while it still has the turns to land in.
-func budgetUsed(outcome *Outcome, maxTokens int) float64 {
+// its three readings is furthest along. The wrap-up warning is measured against
+// this rather than against cost alone, so a heavily cached leaf hears that it
+// should be landing while it still has the turns to land in.
+//
+// THIS IS WHERE THE TWO CUMULATIVE BOUNDS LIVE NOW. They used to land the leaf
+// and they were wrong to, but they are not nothing: a leaf whose transcript has
+// gone round many times over IS more likely to be near the end of its useful
+// run than one that has not, and telling it so costs a sentence and lands
+// nobody. A warning that fires early on an honest leaf makes it wrap up
+// promptly; a stop that fires early on an honest leaf throws its work away.
+func budgetUsed(outcome *Outcome, maxTokens, contextTokens int) float64 {
 	if maxTokens <= 0 {
 		return 0
 	}
 	used := float64(spent(outcome)) / float64(maxTokens)
 	if raw := float64(rawSpent(outcome)) / float64(rawCeiling(maxTokens)); raw > used {
 		used = raw
+	}
+	if ceiling := reuseCeiling(contextTokens); ceiling > 0 {
+		if reuse := float64(outcome.contextPressure()) / float64(ceiling); reuse > used {
+			used = reuse
+		}
 	}
 	return used
 }

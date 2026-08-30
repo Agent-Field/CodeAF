@@ -172,10 +172,7 @@ func runDo(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0,
 		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
 			"sets AFORGE_COMPLETION_RESERVE for this run")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true, "subharness": true,
-		"context-fill": true, "completion-reserve": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	task, err := readText(flags.Args())
@@ -408,6 +405,16 @@ func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 		refused: refused, progress: request.stderr, started: started,
 		produced: produced,
 	}
+	if brain != nil {
+		// A GATE ALWAYS PRECEDES THE WALL, and this is the half of that law
+		// which does not depend on anybody asking. The governor stops a job
+		// growing when the wall is near, but a job only asks to grow when
+		// something in it ends; a job whose queued leaves keep starting never
+		// asks, and it is exactly that job that reaches the wall unjudged. So
+		// the watcher holds the same grip the governor does and uses it on the
+		// clock alone. See settlementWatch.forceJudgement.
+		watcher.closeOut = brain.runner.CloseOut
+	}
 	outcome, err := watcher.wait(ctx)
 	if err != nil {
 		return headlessOutcome{}, err
@@ -481,7 +488,16 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		model:           request.model, planModel: request.planModel,
 		subharness: request.subharness,
 		consent:    consent, newClient: request.newClient,
-		produced: produced.add,
+		produced: produced,
+		// THE WALL THE WATCHER IS WATCHING IS THE WALL THE WORK RUNS UNDER.
+		// Until this line the errand's timeout reached the settlement watcher
+		// and nothing else, so the machinery that decides whether to buy
+		// another round of work was running under context.Background() and
+		// every "is there time left" rule in the program answered yes forever.
+		// Two 5400-second runs ended at the wall mid-round with no gate cut
+		// and settled: false, which is not a slow run — it is a run that was
+		// never told when it had to be finished. See chatBrain.wall.
+		wall: request.timeout,
 	})
 	if err != nil {
 		release()
@@ -644,10 +660,22 @@ type settlementWatch struct {
 	produced *errandRegistry
 
 	watermark int64
-	seen      map[string]store.Status
+	// saidStanding remembers that the closing reservation has been printed. The
+	// compose that prints it is reached once on the settled path and once on the
+	// timeout path, and a person told twice why their run was short reads the
+	// second line as a second finding.
+	saidStanding bool
+	seen         map[string]store.Status
 	// noted remembers which nodes have already had their degradation said, so a
 	// build missing a worker admits it once per node rather than once per beat.
 	noted map[string]bool
+	// waiting is when this watcher first saw a node running with nobody named
+	// as running it. The claim is granted and the row is stamped a fraction of
+	// a second before the dispatch path builds the worker and writes it down,
+	// so a poll can land in the gap; holding the line for that fraction is what
+	// lets every ▶ say who. See runningWorkerGrace for what happens when the
+	// fact never arrives.
+	waiting map[string]time.Time
 	// structured records that the "understood" line has been said. Without it
 	// the first thing stderr ever carried was a leaf changing status, so a run
 	// that compiled and then hung showed nothing at all.
@@ -671,6 +699,80 @@ type settlementWatch struct {
 	// quiet is how long silence may last. Zero is quietBeat; a test names a
 	// shorter one rather than sitting through half a minute of nothing.
 	quiet time.Duration
+	// closeOut stops a job's outstanding work so that what has landed can be
+	// judged. Nil is a run this process is not the brain of — the work is
+	// happening in a resident, whose own governor holds the same grip — and it
+	// forces nothing.
+	closeOut func(jobRoot, keep, reason string) int
+	// judged remembers the jobs this watcher has already driven to a verdict,
+	// so a job that takes two beats to settle is not closed out twice.
+	judged map[string]bool
+}
+
+// forcedJudgementReason is what a person reads on the parts that were stopped
+// so the whole could be judged. It says the trade rather than the machinery: a
+// run that spends its last minutes starting work the clock will kill has bought
+// nothing and given up its only verdict.
+const forcedJudgementReason = "there was not enough time left on this run to finish this, " +
+	"so it was handed over to be checked as it stands"
+
+// forceJudgement drives this errand's jobs to a verdict while the wall can still
+// hold one.
+//
+// THE RUN MAY NOT END WITH NOTHING JUDGED. A gate is cut when a job settles, so
+// a job still moving when the clock stops is a job nothing ever judged: ofetch
+// v4-flash s13 spent 5407 seconds, 422 model calls and eight growth rounds and
+// journaled ZERO delivery judgements, and its own governor had said twice, in
+// the last ninety seconds, that the wall was too near for another round. The
+// refusal stopped the growth; nothing stopped the queue.
+//
+// The distance is the job's own pace and not a number typed here — the median
+// round it has been running plus the reading it takes of itself, which is the
+// same quantity the governor refuses growth at, because what a job owes before
+// a verdict exists is one more body of work and one more reading of the tree
+// (resident.JobPace, PERF.md). A job that has shown no pace is not forced: with
+// nothing measured there is no honest moment to choose, and stopping work early
+// on a guess is the failure this whole mechanism exists to avoid.
+//
+// It fires only where NOTHING has been judged. A job whose lineage already
+// carries a verdict has the record this exists to guarantee, and taking its
+// last minutes away would buy a second opinion at the price of the work.
+func (w *settlementWatch) forceJudgement(ctx context.Context) {
+	if w.closeOut == nil {
+		return
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return
+	}
+	nodes, err := w.sessionNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Parent != store.RootID || terminalStatus(node.Status) || w.judged[node.ID] {
+			continue
+		}
+		// The lineage and not the node: a repair round is a different node id
+		// from the work it repairs, so a reader that asked the node would find
+		// no verdict on a job that has already been judged three times.
+		gates, err := w.graph.DeliveryGateLineage(node.ID)
+		if err != nil || len(gates) > 0 {
+			continue
+		}
+		pace := resident.JobPace(w.graph, node.ID)
+		if pace <= 0 || time.Until(deadline) > pace {
+			continue
+		}
+		if w.judged == nil {
+			w.judged = make(map[string]bool)
+		}
+		w.judged[node.ID] = true
+		stopped := w.closeOut(node.ID, "", forcedJudgementReason)
+		if stopped > 0 && w.progress != nil {
+			w.note("handing this over to be checked while there is still time", "")
+		}
+	}
 }
 
 func (w *settlementWatch) quietInterval() time.Duration {
@@ -724,6 +826,12 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
 				outcome.Deliverable = wallWords(outcome.Artifacts)
 			}
+			// AND THE WALL SAYS WHAT THE GOVERNOR KNEW. A run that reaches its
+			// deadline having already been told it stopped making progress must
+			// not report the clock as the reason: the clock is what it ran into
+			// afterwards. Said here as well as on the settled path because a
+			// run killed mid-round never reaches compose at all.
+			w.sayWallStanding()
 			return outcome, nil
 		case <-ticker.C:
 			moved, err := w.moved()
@@ -749,6 +857,9 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			// wedged, and that run printed nothing for the whole of its life.
 			// So the clock is reset by check(), and only when a node this
 			// errand owns actually changed state.
+			// And the wall, watched rather than waited for: a job that cannot
+			// be judged after the clock stops is judged before it.
+			w.forceJudgement(ctx)
 			if err := w.saySomethingIfQuiet(); err != nil {
 				return headlessOutcome{}, err
 			}
@@ -945,15 +1056,78 @@ func (w *settlementWatch) report(nodes []store.Node) bool {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
 			continue
 		}
+		if w.holdForWorker(node) {
+			// Said on a later beat, with the worker in it. Not counted as
+			// movement: the quiet line's whole job is to speak when nothing is
+			// known, and a node whose record never arrives must not silence it.
+			continue
+		}
 		changed = true
 		w.seen[node.ID] = node.Status
+		delete(w.waiting, node.ID)
 		if node.Status == store.Pending {
 			continue
 		}
-		fmt.Fprintf(w.progress, "  %s %-28s %s\n", statusMark(node.Status),
-			clip(firstLine(nodeDisplay(node)), 28), time.Since(w.started).Round(time.Second))
+		fmt.Fprintf(w.progress, "  %s %-28s%s %s\n", statusMark(node.Status),
+			clip(firstLine(nodeDisplay(node)), 28), ranWords(node),
+			time.Since(w.started).Round(time.Second))
 	}
 	return changed
+}
+
+// runningWorkerGrace is how long a ▶ waits for the store to say who is running
+// the node. A claim is granted, the row is stamped running, and the dispatch
+// path writes the worker down a few milliseconds later, so a poll landing in
+// that gap would otherwise print the one line that cannot answer the question
+// the whole stream is there to answer.
+//
+// It is a grace and not a requirement, which is the point of having a figure at
+// all: after it the line prints anyway, without the worker. A node whose record
+// never arrives is a node that has still started, and losing its ▶ would trade
+// a missing word for a missing line.
+const runningWorkerGrace = 3 * time.Second
+
+// holdForWorker answers whether this node's line should wait a beat. Only a
+// node that has just started running waits, only while nobody has said what is
+// running it, and only until the grace above runs out.
+func (w *settlementWatch) holdForWorker(node store.Node) bool {
+	if statusMark(node.Status) != "▶" {
+		// A held claim goes back to pending and may be granted again later. The
+		// grace is per run of the node and not per errand, so the clock is
+		// dropped the moment the node stops running.
+		delete(w.waiting, node.ID)
+		return false
+	}
+	if strings.TrimSpace(node.Ran) != "" {
+		return false
+	}
+	if w.waiting == nil {
+		w.waiting = make(map[string]time.Time, 1)
+	}
+	first, seen := w.waiting[node.ID]
+	if !seen {
+		w.waiting[node.ID] = time.Now()
+		return true
+	}
+	return time.Since(first) < runningWorkerGrace
+}
+
+// ranWords is the worker in parentheses, on every line this stream writes about
+// a node rather than only on the interesting ones. The ▶ says who took the work
+// and the ✓ says who finished it, which on an escalated node are two different
+// answers and are the whole reason the escalation line between them is there.
+//
+// The compile summary has named a specialist since it existed, and that was the
+// wrong half of the rule: the runs worth reading afterwards are the ones where
+// nobody routed anything, and those printed a stream of ▶ marks over a table of
+// blanks. The generalist says "linear" here for the same reason it says it in
+// the store — an unnamed worker and a worker nobody recorded look identical,
+// and telling them apart cost the s9 sweep a day.
+func ranWords(node store.Node) string {
+	if ran := strings.TrimSpace(node.Ran); ran != "" {
+		return " (" + ran + ")"
+	}
+	return ""
 }
 
 // errandWorker is the specialist this errand was given, if it was given one. It
@@ -1041,6 +1215,16 @@ func (w *settlementWatch) narrate(nodes []store.Node) {
 	said := false
 	for _, event := range events {
 		w.narrated = event.Seq
+		// A REPAIR OF A MODEL CALL IS A FACT ABOUT THE RUN AND NOT ABOUT ONE
+		// NODE, so it is the one kind read without asking whether the errand
+		// owns the node it is filed under. It has to be: the planner's repairs
+		// happen against the job root before a single node exists, which is
+		// precisely the moment the s4 sweep's textual run died in silence with
+		// nothing on the stream but "still waiting".
+		if event.Kind == store.EventStructuredRepair {
+			said = w.narrateRepair(event) || said
+			continue
+		}
 		node, ours := member[event.NodeID]
 		if !ours {
 			continue
@@ -1117,6 +1301,90 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		w.note(subject, detail)
 		return true
 
+	case store.EventAcceptance:
+		var acceptance store.Acceptance
+		if json.Unmarshal(event.Payload, &acceptance) != nil || len(acceptance.Points) == 0 {
+			return false
+		}
+		// Said once, as a count and not as a list. The person watching needs to
+		// know the checklist EXISTS and how big it is — that is what makes a
+		// later "no check exercises …" legible instead of arriving out of
+		// nowhere — and forty behaviours printed one per line would bury every
+		// other line in the stream.
+		w.note("acceptance", acceptanceWords(len(acceptance.Points)))
+		return true
+
+	case store.EventLeafExhausted:
+		var exhausted store.LeafExhausted
+		if json.Unmarshal(event.Payload, &exhausted) != nil || strings.TrimSpace(exhausted.Reason) == "" {
+			return false
+		}
+		// ⏳ and not ✗: nothing failed. An attempt that was still working when
+		// its budget ended is the one ending this stream had no mark for, and
+		// borrowing the fault mark would have said the opposite of the truth.
+		w.say("⏳", nodeDisplay(node), exhausted.Reason)
+		return true
+
+	case store.EventLeafResumed:
+		var resumed store.LeafResumed
+		if json.Unmarshal(event.Payload, &resumed) != nil || resumed.Turns <= 0 {
+			return false
+		}
+		w.say("↻", nodeDisplay(node), resumedWords(resumed))
+		return true
+
+	case store.EventLeafSelfClose:
+		var closing store.LeafSelfClose
+		if json.Unmarshal(event.Payload, &closing) != nil || len(closing.Kinds) == 0 {
+			return false
+		}
+		// ONLY THE ARM THAT REOPENS THE WORK IS SAID. A leaf held back to fix
+		// what its own reading found is still running when the person expected
+		// it to be finished, and that is precisely the fact this register exists
+		// to carry (FAILSAFE.md clause 3). The other arm — the finding stands
+		// and the leaf lands with it — changes nothing about what happens next
+		// that the gate line below does not already say in its own words, and
+		// saying it twice would read as two findings. It is journaled either
+		// way, which is where an autopsy reads it.
+		if !closing.Closed {
+			return false
+		}
+		// ↻ and not ✗: nothing failed. The leaf is picking its own work back up,
+		// which is the same fact the mark already carries for a claim resuming
+		// from a record.
+		w.say("↻", nodeDisplay(node), selfCloseWords(closing))
+		return true
+
+	case store.EventNodeReleased:
+		var release struct {
+			Reason   string `json:"reason"`
+			Recorded int    `json:"recorded"`
+		}
+		if json.Unmarshal(event.Payload, &release) != nil || strings.TrimSpace(release.Reason) == "" {
+			return false
+		}
+		// Only a release that carries a reason is said. A worker handing its own
+		// node back says everything by handing it back; a claim taken away from
+		// one is the event a person watching a run restart needs, and it was
+		// invisible four times on the ink run of 2026-08-29.
+		//
+		// ✗ IS THE FAULT REGISTER AND A REQUEUE IS NOT A FAULT. A release that
+		// hands on a record is the ordinary end of a leaf that ran out of its
+		// room — the ⏳ line directly above has already said so — and marking it
+		// as a fault said the opposite of the truth twice in three lines. The
+		// count is the release's own (store.releasePayload.Recorded), which is
+		// the fact the next claim's resume seed is built from, so the two lines
+		// cannot disagree about how much was picked up. ✗ is kept for the
+		// release this mark was added for: a claim taken back over a worker that
+		// never answered, which hands on nothing.
+		if release.Recorded > 0 {
+			w.say("↻", nodeDisplay(node), fmt.Sprintf("picked up again from %s",
+				plural(release.Recorded, "recorded turn")))
+			return true
+		}
+		w.say("✗", nodeDisplay(node), "picked up again — "+firstLine(release.Reason))
+		return true
+
 	case store.EventDeliveryGate:
 		var gate store.DeliveryGate
 		if json.Unmarshal(event.Payload, &gate) != nil {
@@ -1124,9 +1392,126 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		}
 		verdict, detail := gateWords(gate)
 		w.note("gate: "+verdict, detail)
+		// The coverage finding gets its own line, because it is a different
+		// fact from the verdict and it is the one the acceptance line above
+		// promised. A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS
+		// (FAILSAFE clause 3): igel s6 printed "acceptance — 17 points from the
+		// request" at 23 seconds and never said another word about them, while
+		// three of the seventeen went to the end of the run unexercised. It
+		// could not: the finding was a paragraph in the middle of the gap, and
+		// the line above it is the gap's FIRST line.
+		if words := unexercisedWords(gate.Unexercised); words != "" {
+			w.note("no check exercises", words)
+		}
+		// And the behaviours a check names and no assertion weighs get theirs.
+		// It is a separate line because it asks for a separate thing: not
+		// another check, but an assertion on the identifier the request spelled.
+		if words := unexercisedWords(gate.Unasserted); words != "" {
+			w.note("asserted by no check", words)
+		}
+		// AND THE CHECKS THIS WORK WROTE THAT ARE RED GET THEIR OWN LINE, in
+		// their own words. They used to be printed as `gate: fail — This work
+		// broke checks that were passing before it: …`, which is a sentence
+		// about a repository somebody damaged rather than about a leaf that has
+		// not finished — and on happy-dom's nemotron n1 run it was said of
+		// eighteen checks the run had written that hour, over a tree the grader
+		// scored 9 of 9.
+		if words := unexercisedWords(gate.OwnFailing); words != "" {
+			w.note("the checks this work wrote fail", words)
+		}
 		return true
 	}
 	return false
+}
+
+// resumedWords is the line a resumed leaf opens with, and it is a count rather
+// than a claim: "resumed" on its own is exactly the promise that was made and
+// silently not kept, so the number the seed actually carries is the thing said.
+// The files are the world's own reading of what the earlier attempts changed,
+// and they are named up to a few because the point is that the workspace is not
+// empty, not to reprint a diff.
+// selfCloseWords says what a leaf found against its own work, as a kind and a
+// count.
+//
+// The names are in the record and deliberately not in this line. A person
+// watching a run needs to know the leaf caught something itself and is fixing
+// it before handing over; WHICH three names is the diagnosis, and it belongs
+// where a diagnosis is read — the journal, and the leaf's own note.
+func selfCloseWords(closing store.LeafSelfClose) string {
+	words := "closing its own finding: " + strings.Join(closing.Kinds, ", ")
+	if len(closing.Names) > 0 {
+		words += " (" + plural(len(closing.Names), "name") + ")"
+	}
+	return words
+}
+
+func resumedWords(resumed store.LeafResumed) string {
+	words := fmt.Sprintf("resumed from %s", plural(resumed.Turns, "recorded turn"))
+	if len(resumed.Files) > 0 {
+		shown := resumed.Files
+		more := 0
+		if len(shown) > resumedFilesShown {
+			more, shown = len(shown)-resumedFilesShown, shown[:resumedFilesShown]
+		}
+		names := make([]string, 0, len(shown))
+		for _, path := range shown {
+			names = append(names, filepath.Base(path))
+		}
+		words += ", already holding " + strings.Join(names, ", ")
+		if more > 0 {
+			words += fmt.Sprintf(" and %d more", more)
+		}
+	}
+	return words
+}
+
+// resumedFilesShown is how many of the files an earlier attempt changed are
+// named on the stream. Three, because the line is one line.
+const resumedFilesShown = 3
+
+// unexercisedWords is the coverage finding in one line: what it is short of,
+// named once and counted after that.
+//
+// One behaviour spelled out and the rest counted is the same shape
+// describeChecks and regressionsNamed already use on a list of names, and for
+// the same reason — this is a line in a stream beside ▶ and ✓, and seventeen
+// behaviours printed one per line is seventeen lines nobody reads. The whole
+// list is on the gate event for whoever opens it.
+func unexercisedWords(points []string) string {
+	named := make([]string, 0, len(points))
+	for _, point := range points {
+		if point = strings.TrimSpace(point); point != "" {
+			named = append(named, point)
+		}
+	}
+	if len(named) == 0 {
+		return ""
+	}
+	words := firstLine(named[0])
+	if len(named) > 1 {
+		words += fmt.Sprintf(" — and %d more", len(named)-1)
+	}
+	return words
+}
+
+// narrateRepair says what the structured-answer seam had to do to get an answer.
+//
+// The words are the seam's own, kept verbatim off the journal rather than
+// rebuilt here, so a person watching and a person reading the record afterwards
+// are looking at one sentence: "plan: answer cut at the ceiling — continued".
+// The mark is ↻ because that is what this stream already means by it — something
+// was tried again — and it is the same register the escalation line uses.
+func (w *settlementWatch) narrateRepair(event store.Event) bool {
+	var repair store.StructuredRepair
+	if json.Unmarshal(event.Payload, &repair) != nil {
+		return false
+	}
+	line := strings.TrimSpace(repair.Line)
+	if line == "" {
+		return false
+	}
+	fmt.Fprintf(w.progress, "  ↻ %s  %s\n", line, time.Since(w.started).Round(time.Second))
+	return true
 }
 
 // say writes one narration line about a node, in the register the status lines
@@ -1172,14 +1557,135 @@ func workerChangeWords(previous, subharness, reason string) string {
 // different things to whoever is reading — one is work that fell short, the
 // other is a round the run declined to buy — and collapsing them is how a
 // refused repair came to look like a passed delivery.
+//
+// THE FINDING IS THE NEWS, AND THE REASON IS THE FOOTNOTE. For a while this
+// printed the refusal sentence alone, so a person watching ten runs read
+// "gate: refused — what the review asked for next is not in the request" ten
+// times and never once learned what the review had said was missing. The one
+// fact worth the line — "the deliverable does not contain the code that
+// implements the feature schema persistence" — was in the journal and nowhere a
+// person could see it. FAILSAFE clause 3: a fail-safe that does not propagate
+// to the verdict the person reads is decoration.
 func gateWords(gate store.DeliveryGate) (verdict, detail string) {
+	gap := firstLine(strings.TrimSpace(gate.Gap))
 	if refused := strings.TrimSpace(gate.Refused); refused != "" {
-		return "refused", firstLine(refused)
+		detail = gap
+		if detail == "" {
+			return "refused", firstLine(refused)
+		}
+		return "refused", detail + " — " + firstLine(refused)
 	}
 	if gate.Pass {
 		return "pass", ""
 	}
-	return "fail", firstLine(strings.TrimSpace(gate.Gap))
+	// A GATE A REPAIR CLOSED IS A PASS, AND SAYING "fail" OF IT WAS THE LINE
+	// THAT DISAGREED WITH THE EXIT CODE. Pass is the FIRST reading of the work;
+	// a delivery that failed it, was repaired and was re-judged carries the
+	// second reading in PolishClosed, and this said only the first. Three of the
+	// five s5 runs ended on "gate: fail — …" and left with exit 0 over it. The
+	// settled verdict has one reading — store.DeliveryGate.Whole — and both this
+	// and deliveredWhole spend it (SETTLEMENT.md §7). The gap is still named,
+	// because what was wrong and then fixed is worth one clause.
+	if gate.Whole() {
+		if gap == "" {
+			return "pass", ""
+		}
+		return "pass", gap + " — closed by the repair"
+	}
+	return "fail", gap
+}
+
+// gateStanding is the finding a settled run is still short of, and why nothing
+// closed it, for the one line a person reads at the end.
+//
+// It answers nothing for a gate that settled whole: a delivery that passed, that
+// a repair closed, or whose finding was weighed against the world and lost owes
+// the person no reservation. What it names otherwise is the gap first and the
+// reason second, in the gate's own words off the journal, for the reason
+// gateWords does it in that order — THE FINDING IS THE NEWS.
+//
+// The reason is the refusal sentence when there is one, and otherwise the
+// structural fact that nothing further ran. A run that failed its gate and had
+// no round left says so; a run refused on where its review got its words says
+// that; and either way the person is told what the run itself believes it did
+// not do (FAILSAFE clause 3).
+func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
+	if gate.Whole() {
+		return "", "", false
+	}
+	// THE COVERAGE SET IS THE FINDING WHERE IT IS THE ONE NOTHING ADDRESSED. A
+	// verdict that passed, that a repair closed, or whose refusal was weighed
+	// against the world and lost has settled everything it was about — and the
+	// behaviours nothing exercises are not among them. Leading with the gate's
+	// own prose there would name the finding that was ACQUITTED as the reason
+	// the run is short, which is the opposite of what happened.
+	if open := len(gate.Unexercised) + len(gate.Unasserted); open > 0 &&
+		(gate.Pass || gate.PolishClosed || gate.Overturned) {
+		return uncheckedWords(open), "", true
+	}
+	finding = firstLine(strings.TrimSpace(gate.Gap))
+	if finding == "" && gate.Unreadable {
+		// A gate that PASSED over a suite nobody could read names no gap,
+		// because the judge found none. What the run is short of is the
+		// measurement itself, and that sentence is the finding.
+		return firstLine(strings.TrimSpace(gate.Unmeasured)), "", true
+	}
+	if finding == "" {
+		return "", "", false
+	}
+	reason = firstLine(strings.TrimSpace(gate.Refused))
+	if reason == "" && gate.Unmoved {
+		// The one reason worth saying over "nothing further was started",
+		// because it is the reason a person would otherwise never guess: a
+		// repair DID run and it rewrote the account without touching the tree,
+		// so the finding it was aimed at is exactly where it was.
+		reason = "the repair rewrote the account and changed nothing on disk"
+	}
+	if reason == "" {
+		reason = "nothing further was started"
+	}
+	return finding, reason, true
+}
+
+// uncheckedWords is the coverage shortfall as a count, for the last line of a
+// run that is short of nothing else.
+//
+// A count rather than the behaviours themselves, because unexercisedWords
+// already spells one of them out where the finding is the news, and this line is
+// the run's whole reservation in one clause. The list is on the gate event for
+// whoever opens it.
+func uncheckedWords(groups int) string {
+	if groups == 1 {
+		return "1 behaviour the request states has no check"
+	}
+	return fmt.Sprintf("%d behaviours the request states have no check", groups)
+}
+
+// partialWords is that reservation as the stream's last line.
+//
+// The exit code is the contract a pipeline reads and it is invisible to a person
+// watching a terminal, so a run that ends short says it in the register every
+// other line here uses. It is one line and it is last, after the ✓ rows, so the
+// thing a person carries away from a ninety-minute run is the thing the run
+// itself says it did not do.
+func partialWords(finding, reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		// The shortfall is the measurement rather than a finding a repair could
+		// have closed, so there is nothing to say about why nothing was
+		// repaired. "gate:" comes off with it: no gate said this.
+		return "partial — " + finding
+	}
+	return fmt.Sprintf("partial — gate: %s (not repaired: %s)", finding, reason)
+}
+
+// acceptanceWords says how many behaviours the request states, in the register
+// the rest of this stream uses: a fact about the run, in a person's words, with
+// no machinery vocabulary in it.
+func acceptanceWords(points int) string {
+	if points == 1 {
+		return "1 point from the request"
+	}
+	return fmt.Sprintf("%d points from the request", points)
 }
 
 // phaseWorker names the specialist a phase belongs to, and names nothing when it
@@ -1430,6 +1936,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// pipeline reads — recorded them as work that stands.
 			if !w.deliveredWhole(*final) {
 				outcome.status = exitPartial
+				w.sayStanding(*final)
 			}
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
@@ -1466,29 +1973,50 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 // this landed: 1 of 2 parts finished" — which is precisely the line that was
 // measured going out over exit 0.
 //
-// A verdict the system itself overruled is not a rejection. A gap the one polish
-// pass closed, and a gap refused as ungrounded or as already closed, are the gate
-// being wrong and being caught at it; those deliver whole, and charging them a
-// non-zero code would teach a harness to distrust the gate's own corrections.
+// A verdict the system itself overruled is not a rejection — but OVERRULED HAS
+// TO MEAN CHECKED AGAINST THE WORLD, and for a while it meant any refusal at
+// all. A gap the one polish pass closed delivers whole because the work was
+// redone. A gap refused because the file it says is missing is on disk under the
+// name the request used, or because the things it says are absent are in the
+// text the person is about to read, delivers whole because the finding was
+// weighed against the filesystem or against the deliverable and lost. Charging
+// either of those a non-zero code would teach a harness to distrust the gate's
+// own corrections. That is store.DeliveryGate.Overturned, and it is the only
+// refusal that acquits.
 //
-// EXCEPT WHEN THE GATE CANNOT BE WRONG. The refusals above are all corrections
-// of an OPINION: a judge read the deliverable and named something missing, and
-// a rule found that the thing it named was never asked for, or is already on
-// disk, or is already in the text. A mechanical gap is not an opinion. It says
-// a file the plan itself promised is missing or empty on disk, which is a fact
-// about the filesystem, and refusing its citation only declines to buy a repair
-// round — it cannot make the file appear. Charging that exit 0 is what let a run
-// that produced no file at all report settled, done, success, under a note
-// explaining that the review had overreached (2026-08-28, meta/muse-spark-1.1).
-// It is exit 2, partial, which is the honest code for a job that delivered less
-// than it promised. See revision.Judgment.Mechanical.
+// EVERY OTHER REFUSAL LEAVES THE FINDING STANDING. A citation refused for its
+// provenance — "what the review asked for next is not in the request", "the same
+// words were already worked on once" — has been checked against nothing in the
+// world. It declines to BUY a round; it settles nothing about whether the work
+// landed, because no ruling about where a review got its words makes missing
+// work appear. A repair a governor would not fund, or that nothing could plan,
+// or that the wall has no room for, is the same shape (store.DeliveryGate.
+// Unclosed). So is a mechanical gap: a file the plan itself promised, missing or
+// empty on disk, is a fact about the filesystem that no admission rule is
+// competent to overturn.
+//
+// The measured cost of collapsing those into one field is the whole DeepSWE
+// sweep: seven of eight graded runs exited 0 — "delivered whole" — with reward
+// 0, each of them after its own review had named the missing work and been
+// refused on provenance (2026-08-28, bench/deepswe/AUTOPSY.md; the reasoning is
+// docs/design/gate/SETTLEMENT.md §2). Before that, one run shipped "Deliverable
+// is empty - contains no implementation" over exit 0 for want of the Unclosed
+// field, and another produced no file at all and reported settled, done, success
+// under a note explaining that the review had overreached
+// (2026-08-28, meta/muse-spark-1.1). Exit 2, partial, is the honest code for a
+// job that delivered less than it promised.
+//
+// THE READING IS store.DeliveryGate.Whole AND IT IS NOT REPEATED HERE. This
+// combined the three fields inline for a while and gateWords, forty lines up,
+// built the line a person watching reads out of two of them — so ink s5 and
+// ofetch s5 printed "gate: fail" as the last thing anybody saw and left with
+// exit 0, the exit code and the stream disagreeing about the same event
+// (2026-08-29, bench/deepswe; SETTLEMENT.md §7).
 //
 // An unreadable store answers whole. This decides an exit code, not the work,
 // and a failed read is not evidence of a shortfall.
 func (w *settlementWatch) deliveredWhole(node store.Node) bool {
-	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
-		!gate.Pass && !gate.PolishClosed &&
-		(gate.Mechanical || strings.TrimSpace(gate.Refused) == "") {
+	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok && !gate.Whole() {
 		return false
 	}
 	parts, err := w.graph.SubtreeNodes(node.ID)
@@ -1504,6 +2032,74 @@ func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 		}
 	}
 	return true
+}
+
+// sayStanding writes the one line that tells a person watching WHY the run is
+// short, at the end, where the answer is.
+//
+// The exit code is the contract every pipeline reads and it is the one thing a
+// person at a terminal cannot see. Five headless runs of ninety minutes ended
+// with their last visible line being a ✓ on a node, and what the run itself
+// believed it had not done was in the journal and nowhere a person could read it
+// (2026-08-29, bench/deepswe; FAILSAFE clause 3, and SETTLEMENT.md §7).
+//
+// It says nothing when the store cannot be read, when there is no gate, or when
+// the gate settled whole — a run that is short for a structural reason instead,
+// a part that failed or was cancelled, already carries that in the deliverable's
+// own words.
+func (w *settlementWatch) sayStanding(node store.Node) {
+	if w.saidStanding || w.progress == nil {
+		return
+	}
+	// THE GOVERNOR SPEAKS FIRST WHEN IT SPOKE AT ALL. A run the growth
+	// governor stopped is a run that discovered it had stopped working, and
+	// that is a more particular fact than any gate verdict standing beside it:
+	// the gate says what is missing, this says why nothing more was bought to
+	// get it. Two 5400-second runs ended with a standstill refusal sitting in
+	// the journal, on a node nobody opens, and a last line that said nothing
+	// about it (FAILSAFE clause 3).
+	if finding, standing := resident.GovernorStanding(w.graph, node.ID); standing {
+		w.saidStanding = true
+		w.note(partialWords(finding, ""), "")
+		return
+	}
+	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
+	if err != nil || !ok {
+		return
+	}
+	finding, reason, standing := gateStanding(gate)
+	if !standing {
+		return
+	}
+	w.saidStanding = true
+	w.note(partialWords(finding, reason), "")
+}
+
+// sayWallStanding is the closing line for a run the clock ended: what a
+// governor had already found, if one had found anything, over every job this
+// errand owns.
+//
+// It walks the roots rather than being handed one because there is no
+// deliverable at a wall — the run was killed mid-round, so nothing composed a
+// final node — and the fact worth saying belongs to whichever job stopped
+// moving.
+func (w *settlementWatch) sayWallStanding() {
+	if w.saidStanding || w.progress == nil {
+		return
+	}
+	nodes, err := w.sessionNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		w.sayStanding(node)
+		if w.saidStanding {
+			return
+		}
+	}
 }
 
 // artifactsNamed bounds how many paths a grounded closing line spells out. The

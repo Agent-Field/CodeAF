@@ -156,3 +156,38 @@ func TestTheEvidenceBlockCarriesWhatWasAlreadyBroken(t *testing.T) {
 		t.Fatalf("an empty observed record = %q", got)
 	}
 }
+
+// The record the judge is SHOWN must agree with the record the run holds.
+//
+// Evidence.namedBlock is the block that put the false sentence in front of the
+// gate: "examples/rich_log_follow_state.py — nothing of that name is among what
+// was left behind", printed of a file that was on disk, because the record it
+// was rendered against was one repair node's artifacts rather than the job's.
+// This pins the rendering half — a request that names a file the way a person
+// writes it, relative, against a record holding the absolute path a workspace
+// records — so that fixing the record upstream cannot be undone by a comparison
+// downstream that is string equality wearing a path's clothes.
+// See docs/design/gate/SETTLEMENT.md §5.
+func TestTheRecordSaysProducedForAFileTheRequestNamedRelatively(t *testing.T) {
+	workspace := t.TempDir()
+	produced := filepath.Join(workspace, "examples", "rich_log_follow_state.py")
+	if err := os.MkdirAll(filepath.Dir(produced), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(produced, []byte("class RichLogFollowStateApp:\n    pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	evidence := Evidence{
+		Artifacts: []string{produced},
+		Named:     []string{"examples/rich_log_follow_state.py"},
+		Observed:  true,
+	}
+	block := evidence.namedBlock()
+	if strings.Contains(block, "nothing of that name") {
+		t.Fatalf("the gate is told a file on disk was never produced, because the "+
+			"deliverable spelled it relatively and the record holds it absolutely:\n%s", block)
+	}
+	if !strings.Contains(block, "produced, at "+produced) {
+		t.Fatalf("the record never states where the file is:\n%s", block)
+	}
+}

@@ -1,0 +1,112 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.3, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.12.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 47 items
+
+tests/test_log.py ..                                                     [  4%]
+tests/test_widget.py .............................................       [100%]
+
+==================================== PASSES ====================================
+_________________________ test_mount_error_not_widget __________________________
+----------------------------- Captured stderr call -----------------------------
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /app/tests/test_widget.py:500 in compose                                     │
+│                                                                              │
+│   497 async def test_mount_error_not_widget():                               │
+│   498 │   class NotWidgetApp(App):                                           │
+│   499 │   │   def compose(self) -> ComposeResult:                            │
+│ ❱ 500 │   │   │   yield {}                                                   │
+│   501 │                                                                      │
+│   502 │   app = NotWidgetApp()                                               │
+│   503 │   with pytest.raises(MountError):                                    │
+│                                                                              │
+│ ╭────────────────── locals ───────────────────╮                              │
+│ │ self = NotWidgetApp(                        │                              │
+│ │        │   title='NotWidgetApp',            │                              │
+│ │        │   classes={'-dark-mode'},          │                              │
+│ │        │   pseudo_classes={                 │                              │
+│ │        │   │   'focus',                     │                              │
+│ │        │   │   'dark'                       │                              │
+│ │        │   }                                │                              │
+│ │        )                                    │                              │
+│ ╰─────────────────────────────────────────────╯                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+MountError: Can't mount <class 'dict'>; expected a Widget instance.
+_________________________ test_mount_error_bad_widget __________________________
+----------------------------- Captured stderr call -----------------------------
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /app/tests/test_widget.py:516 in compose                                     │
+│                                                                              │
+│   513 │                                                                      │
+│   514 │   class NotWidgetApp(App):                                           │
+│   515 │   │   def compose(self) -> ComposeResult:                            │
+│ ❱ 516 │   │   │   yield DaftWidget()                                         │
+│   517 │                                                                      │
+│   518 │   app = NotWidgetApp()                                               │
+│   519 │   with pytest.raises(MountError):                                    │
+│                                                                              │
+│ ╭────────────────── locals ───────────────────╮                              │
+│ │ self = NotWidgetApp(                        │                              │
+│ │        │   title='NotWidgetApp',            │                              │
+│ │        │   classes={'-dark-mode'},          │                              │
+│ │        │   pseudo_classes={                 │                              │
+│ │        │   │   'focus',                     │                              │
+│ │        │   │   'dark'                       │                              │
+│ │        │   }                                │                              │
+│ │        )                                    │                              │
+│ ╰─────────────────────────────────────────────╯                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+MountError: Widget is missing an 'id' attribute; did you forget to call 
+super().__init__()?
+=========================== short test summary info ============================
+PASSED tests/test_log.py::test_process_line
+PASSED tests/test_log.py::test_disabled_log_no_attribute_error
+PASSED tests/test_widget.py::test_widget_construct
+PASSED tests/test_widget.py::test_widget_set_visible_true[True-True-visible]
+PASSED tests/test_widget.py::test_widget_set_visible_true[False-False-hidden]
+PASSED tests/test_widget.py::test_widget_set_visible_true[hidden-False-hidden]
+PASSED tests/test_widget.py::test_widget_set_visible_true[visible-True-visible]
+PASSED tests/test_widget.py::test_widget_set_visible_invalid_string
+PASSED tests/test_widget.py::test_widget_content_width
+PASSED tests/test_widget.py::test_get_child_by_id_gets_first_child
+PASSED tests/test_widget.py::test_get_child_by_id_no_matching_child
+PASSED tests/test_widget.py::test_get_child_by_id_only_immediate_descendents
+PASSED tests/test_widget.py::test_get_child_by_type
+PASSED tests/test_widget.py::test_get_widget_by_id_no_matching_child
+PASSED tests/test_widget.py::test_get_widget_by_id_non_immediate_descendants
+PASSED tests/test_widget.py::test_get_widget_by_id_immediate_descendants
+PASSED tests/test_widget.py::test_get_widget_by_id_doesnt_return_self
+PASSED tests/test_widget.py::test_get_widgets_app_delegated
+PASSED tests/test_widget.py::test_widget_mount_ids_must_be_unique_mounting_all_in_one_go
+PASSED tests/test_widget.py::test_widget_mount_ids_must_be_unique_mounting_multiple_calls
+PASSED tests/test_widget.py::test_get_pseudo_class_state
+PASSED tests/test_widget.py::test_get_pseudo_class_state_disabled
+PASSED tests/test_widget.py::test_get_pseudo_class_state_parent_disabled
+PASSED tests/test_widget.py::test_get_pseudo_class_state_hover
+PASSED tests/test_widget.py::test_get_pseudo_class_state_focus
+PASSED tests/test_widget.py::test_remove
+PASSED tests/test_widget.py::test_remove_unmounted
+PASSED tests/test_widget.py::test_render_str
+PASSED tests/test_widget.py::test_compose_order
+PASSED tests/test_widget.py::test_children_must_be_widgets
+PASSED tests/test_widget.py::test_orphan_widget_has_no_siblings
+PASSED tests/test_widget.py::test__allow_scroll_default
+PASSED tests/test_widget.py::test__allow_scroll
+PASSED tests/test_widget.py::test_offset_getter_setter
+PASSED tests/test_widget.py::test_get_set_tooltip
+PASSED tests/test_widget.py::test_loading
+PASSED tests/test_widget.py::test_loading_button
+PASSED tests/test_widget.py::test_is_mounted_property
+PASSED tests/test_widget.py::test_mount_error_not_widget
+PASSED tests/test_widget.py::test_mount_error_bad_widget
+PASSED tests/test_widget.py::test_render_returns_text
+PASSED tests/test_widget.py::test_sort_children
+PASSED tests/test_widget.py::test_sort_children_no_key
+PASSED tests/test_widget.py::test_bad_widget_name_raised
+PASSED tests/test_widget.py::test_lazy_loading
+PASSED tests/test_widget.py::test_of_type
+PASSED tests/test_widget.py::test_click_line_api_border
+============================= 47 passed in 18.03s ==============================

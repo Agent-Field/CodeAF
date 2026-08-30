@@ -55,6 +55,20 @@ type ExecResult struct {
 	// escalation moved to, which is not the model anyone asked for. It rides
 	// the spend row because that is the row a receipt already reads.
 	Model string
+	// SpendBanked says this run banked its own calls as they were billed — one
+	// usage row per response, written at the moment the provider answered
+	// (cmd/aforge's leafBanker, provider.WithBilling) — so the three totals
+	// above are the REMAINDER and not the whole. On an ordinary banked run they
+	// are zero and nothing more is written; they are non-zero when part of the
+	// leaf ran on a worker whose calls the adapter never saw, and that part is
+	// journaled exactly as it always was.
+	//
+	// The per-turn shape below is NOT a duplicate and is written either way —
+	// it is a different kind of record, one row per turn rather than one per
+	// call, and nothing else in the journal carries it. Which is why the zero
+	// check above asks this field as well: a fully banked run has nothing left
+	// to sum and its turn ledger still has to reach the journal.
+	SpendBanked bool
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -102,9 +116,21 @@ type Runner struct {
 	// is not allowed to mistake for "nothing to do."
 	passFaults atomic.Int64
 	craft      *CraftRunner
-	// staleAge bounds how long a claim may sit running before the tick
-	// reaper returns it to pending; defaults to staleClaimAge.
-	staleAge  time.Duration
+	// staleAge bounds how long a claim may sit SILENT before the tick reaper
+	// returns it to pending; defaults to staleClaimAge and is raised by
+	// [Runner.RaiseStaleAge] as leaves with longer deadlines are dispatched.
+	// The lock is because the raise happens on a leaf's goroutine and the read
+	// happens on the dispatch loop's.
+	staleMu  sync.Mutex
+	staleAge time.Duration
+	// holds is this process's grip on every node it currently has a worker
+	// behind, keyed by node id. It is what makes "never two workers on one
+	// node" a fact rather than a hope: the reaper consults it before taking a
+	// claim back, and a claim this process is behind is never taken back at
+	// all — it is CANCELLED, and its own worker releases it on the way out.
+	// See [Runner.reapSilentClaims] and [leafHold].
+	holdMu sync.Mutex
+	holds  map[string]*leafHold
 	// expand is the depth loop, moved out of the plan build and into the
 	// schedule. Nil is the whole rollback: with no hook, a claimed node goes
 	// straight to its worker exactly as it did before claim-time division
@@ -136,6 +162,7 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		owner:               owner,
 		slots:               make(chan struct{}, workers),
 		activePractice:      make(map[string]context.CancelFunc),
+		holds:               make(map[string]*leafHold),
 		serviceConsentGrace: ServiceConsentGrace,
 		governor:            executor.HostGovernor(),
 		staleAge:            staleClaimAge,
@@ -207,13 +234,320 @@ func (r *Runner) FreeSlots() int {
 	return cap(r.slots) - len(r.slots)
 }
 
-// WithStaleAge sets how long a claim may sit running before the tick reaper
+// WithStaleAge sets how long a claim may sit SILENT before the tick reaper
 // returns the node to pending. Callers that know their longest possible leaf
 // deadline set it just above it; the default (staleClaimAge) covers jobs with
 // no deadline to compare against.
 func (r *Runner) WithStaleAge(age time.Duration) *Runner {
 	r.staleAge = age
 	return r
+}
+
+// ── one node, one worker ────────────────────────────────────────────────────
+//
+// A RELEASE THAT DOES NOT STOP THE WORKER DOES NOT FREE THE NODE, IT DOUBLES IT.
+// Taking a claim back is a change to a row; the goroutine that held it is not
+// party to the transaction and does not notice. On the ink run of 2026-08-29 the
+// reaper released `task-2` at 07:30:13 and a fresh worker claimed it 17
+// milliseconds later, while the first one went on making model calls and editing
+// the same checkout for another eleven minutes — the store shows both streams
+// interleaved under one node, turns 1-25 of the new attempt flushed between
+// turns 45 and 67 of the old one. Two workers, one workspace, each undoing the
+// other's edits.
+//
+// So the claim is not what gets taken. The WORKER gets cancelled — every leaf
+// runs on a context this process can end, and the bare loop and its tool calls
+// already honour it — and the node stays exactly as it is, Running and
+// unclaimable, until that worker's own landing releases it. The release
+// therefore happens after the goroutine has provably returned, which is the only
+// moment at which the node is genuinely held by nobody.
+//
+// The backstop under the backstop is [claimReaperPad]. A worker that ignores its
+// cancellation for that long is not unwinding, it is gone, and the claim is
+// taken back without it — journaled as exactly that, because "released after its
+// worker stopped" and "released over a worker that never answered" are different
+// facts and only one of them is safe.
+
+// leafHold is this process's grip on one dispatched node: how to stop its
+// worker, what that worker is currently waiting on, whether the reaper has asked
+// it to stop, and when it asked.
+type leafHold struct {
+	// token is the claim this worker holds. A hold is only ever matched against
+	// the token it was created for, so a stale sweep can never cancel the
+	// worker that came after the one it was looking at.
+	token  uint64
+	cancel context.CancelFunc
+
+	// inFlight is how many calls this worker is waiting on right now, and
+	// lastSeen is when one of them last began or ended, in Unix nanoseconds.
+	//
+	// THE MARK THE JOURNAL CANNOT CARRY. Every durable sign of life is written
+	// when something FINISHES — a usage row when a call is billed, a transcript
+	// flush when a batch of sixty-four entries fills — so a leaf spending its
+	// window inside three long shell commands writes nothing at all and reads as
+	// a corpse. The fact that was missing is that a call is IN FLIGHT, and it is
+	// known here, for free, by the process that is waiting. See exec.Working.
+	//
+	// Atomics rather than the mutex below because a batch of tools running in
+	// parallel opens several spans at once, on the worker's own goroutines,
+	// while the sweep reads them on the dispatch loop's.
+	inFlight atomic.Int64
+	lastSeen atomic.Int64
+
+	mu      sync.Mutex
+	reason  string
+	askedAt time.Time
+}
+
+// working is the [executor.LivenessMark] this hold hands its worker: a call is
+// starting, and the returned function says it is over.
+func (hold *leafHold) working() func() {
+	hold.inFlight.Add(1)
+	hold.mark()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			hold.inFlight.Add(-1)
+			hold.mark()
+		})
+	}
+}
+
+func (hold *leafHold) mark() { hold.lastSeen.Store(time.Now().UnixNano()) }
+
+// busy reports that this worker is demonstrably at work: it is waiting on
+// something right now, or it finished waiting on something inside the window.
+//
+// A worker that has never marked anything is not busy, and that is the honest
+// answer rather than a generous one: a leaf that made no call and issued no tool
+// has done nothing this process can vouch for, and the journal is then the only
+// account of it — which is exactly the account the sweep already read.
+func (hold *leafHold) busy(now time.Time, window time.Duration) bool {
+	if hold.inFlight.Load() > 0 {
+		return true
+	}
+	seen := hold.lastSeen.Load()
+	return seen > 0 && now.Sub(time.Unix(0, seen)) < window
+}
+
+// reap asks this worker to stop and answers whether this is the first ask. The
+// context is cancelled once; a repeat is the sweep coming round again while the
+// worker unwinds, and it must not restart the clock the backstop measures.
+func (hold *leafHold) reap(reason string) bool {
+	hold.mu.Lock()
+	first := hold.reason == ""
+	if first {
+		hold.reason, hold.askedAt = reason, time.Now()
+	}
+	hold.mu.Unlock()
+	if first && hold.cancel != nil {
+		hold.cancel()
+	}
+	return first
+}
+
+// stopping reports whether the reaper has asked this worker to stop, and why.
+// A worker asks it of itself at its landing: an answer of true means its claim
+// is no longer its to settle.
+func (hold *leafHold) stopping() (string, bool) {
+	if hold == nil {
+		return "", false
+	}
+	hold.mu.Lock()
+	defer hold.mu.Unlock()
+	return hold.reason, hold.reason != ""
+}
+
+// unheeded reports that this worker was asked to stop and has not, for longer
+// than a leaf told to land is given to land.
+func (hold *leafHold) unheeded(now time.Time) bool {
+	hold.mu.Lock()
+	defer hold.mu.Unlock()
+	return hold.reason != "" && now.Sub(hold.askedAt) >= claimReaperPad
+}
+
+// takeHold registers this process's grip on a node it has just claimed.
+func (r *Runner) takeHold(nodeID string, token uint64, cancel context.CancelFunc) *leafHold {
+	hold := &leafHold{token: token, cancel: cancel}
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	r.holds[nodeID] = hold
+	return hold
+}
+
+// dropHold forgets a grip once its worker has returned. It compares identity
+// rather than node id so a landing can never delete the hold of the worker that
+// replaced it.
+func (r *Runner) dropHold(nodeID string, hold *leafHold) {
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	if r.holds[nodeID] == hold {
+		delete(r.holds, nodeID)
+	}
+}
+
+// heldLeaf is the grip this process has on one claim, or nil when the worker
+// behind that claim is not this process's — a claim owned by a resident that
+// died, or one whose goroutine has already returned and is settling.
+func (r *Runner) heldLeaf(nodeID string, token uint64) *leafHold {
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	hold := r.holds[nodeID]
+	if hold == nil || hold.token != token {
+		return nil
+	}
+	return hold
+}
+
+// CloseOut stops a job's outstanding work so that what has landed can be
+// judged, and answers how many nodes it stopped.
+//
+// A GATE ALWAYS PRECEDES THE WALL. A job whose growth has just been refused
+// with the wall nearer than one measured round has had this run's last decision
+// about it taken; what it must not do next is keep claiming leaves the clock
+// will kill mid-flight, because a job still moving when the clock stops never
+// settles, no verdict on it is ever cut, and the person is handed a partial with
+// nothing judged. ofetch v4-flash s13 ended exactly there: two refusals inside
+// the last ninety seconds, thirteen pending leaves, a pending job root, and not
+// one delivery judgement in 5407 seconds.
+//
+// The job root itself is never touched. It is the node that carries the whole
+// remainder and it is where the gate fires, so what this does is clear the way
+// to it: every part of the job that has not started is retired, every part this
+// process is behind is asked to stop and cancelled, and the root then has
+// nothing left to wait for. A part claimed by a worker in another process is
+// asked and left — the claim reaper is what finishes those, and taking a claim
+// from a live worker is the one thing this may not do.
+//
+// keep is the node whose landing is asking. Stopping it would release the very
+// claim it is in the middle of settling, and the row would go back on the queue
+// to be claimed again — a close-out that reopens the job it closed.
+func (r *Runner) CloseOut(jobRoot, keep, reason string) int {
+	jobRoot = strings.TrimSpace(jobRoot)
+	if r == nil || r.graph == nil || jobRoot == "" {
+		return 0
+	}
+	parts, err := r.graph.SubtreeNodes(jobRoot)
+	if err != nil {
+		_ = guard.Note("resident/runner close-out "+jobRoot, err)
+		return 0
+	}
+	stopped := 0
+	for _, part := range parts {
+		if part.ID == jobRoot || part.ID == keep {
+			continue
+		}
+		switch part.Status {
+		case store.Pending:
+			// Retired outright rather than merely marked: a node the ready set
+			// still counts as unsettled keeps the job root waiting forever, and
+			// asking a pending row to cancel only takes it out of the queue.
+			if err := r.graph.CancelPendingWithPartial(part.ID, reason, ""); err == nil {
+				stopped++
+			}
+		case store.Claimed, store.Running:
+			// The order is the record's own: the cancellation is requested
+			// first, so that the worker's landing reads it and retires the row
+			// instead of releasing it back into the queue, and only then is the
+			// worker asked to stop.
+			if err := r.graph.RequestNodeCancel(part.ID, reason); err != nil {
+				continue
+			}
+			if hold := r.heldLeaf(part.ID, part.ClaimToken); hold != nil {
+				hold.reap(reason)
+			}
+			stopped++
+		}
+	}
+	if stopped > 0 {
+		// The ready set provably changed — the root may have just become
+		// claimable — and waiting out the rest of the tick to notice is wall
+		// this job does not have.
+		r.nudge()
+	}
+	return stopped
+}
+
+// reapSilentClaims is the backstop pass: every claim showing no sign of life is
+// either stopped, waited for, or taken back from a process that is gone. It
+// answers whether anything reopened the ready set.
+func (r *Runner) reapSilentClaims() bool {
+	silent, err := r.graph.SilentClaims(r.staleWindow())
+	if err != nil || len(silent) == 0 {
+		return false
+	}
+	window := r.staleWindow()
+	now := time.Now()
+	freed := false
+	for _, claim := range silent {
+		if hold := r.heldLeaf(claim.ID, claim.Token); hold != nil {
+			// THE JOURNAL IS NOT THE ONLY WITNESS WHEN THE WORKER IS OURS. The
+			// sweep above read what has been written down, and what gets written
+			// down is what has FINISHED; a leaf waiting on one long command has
+			// finished nothing and written nothing. This process is the one
+			// doing the waiting, so it can simply say so.
+			if _, stopping := hold.stopping(); !stopping && hold.busy(now, window) {
+				continue
+			}
+			// Ours, and still running. Ask it to stop and leave the claim
+			// exactly where it is: its own landing releases it, which is the
+			// only release that cannot overtake a live worker. The one
+			// exception is a worker that has ignored the ask for longer than a
+			// leaf is given to land, which is a goroutine nobody is going to
+			// hear from again.
+			if hold.reap(claim.Reason); !hold.unheeded(now) {
+				continue
+			}
+			claim.Reason = claim.Reason +
+				" — and it did not stop when it was asked, so the claim was taken without it"
+		}
+		if err := r.graph.ReleaseWithReason(claim.Claim(), claim.Reason); err != nil {
+			continue
+		}
+		if claim.CancelRequested {
+			_ = r.graph.CancelPending(claim.ID, store.UserCancelReason)
+		}
+		freed = true
+	}
+	return freed
+}
+
+// RaiseStaleAge lifts the reaper's window so it stays above a leaf whose own
+// deadline has just been decided, and never lowers it.
+//
+// It exists because the window is a CONSTANT and the deadline is not. A leaf's
+// deadline scales with the budget it was granted (cmd/aforge's leafDeadline: a
+// minute per fifty thousand tokens above the floor), so a well-fed leaf is
+// entitled to run for longer than the reaper's default window — and the reaper
+// would then take a node away from a worker that was still working, which is the
+// one thing a backstop must never do. The surface that decides a deadline is the
+// only party that knows it, so it says so here.
+//
+// MONOTONIC, AND ON PURPOSE. Several leaves of different sizes run at once and
+// the sweep is one query over the whole store, so the window has to clear the
+// widest deadline in flight rather than the newest. It is never lowered again:
+// the cost of a window left wide is a dead claim noticed later, and the cost of
+// one narrowed under a live leaf is the leaf.
+//
+// It is called from the leaf-building goroutine and read by the dispatch loop,
+// which is why it is guarded.
+func (r *Runner) RaiseStaleAge(deadline time.Duration) {
+	if deadline <= 0 {
+		return
+	}
+	window := deadline + claimReaperPad
+	r.staleMu.Lock()
+	defer r.staleMu.Unlock()
+	if window > r.staleAge {
+		r.staleAge = window
+	}
+}
+
+// staleWindow is the reaper's window as it stands now.
+func (r *Runner) staleWindow() time.Duration {
+	r.staleMu.Lock()
+	defer r.staleMu.Unlock()
+	return r.staleAge
 }
 
 // WithDailyBudgetUSD installs the policy rail checked immediately before each
@@ -252,14 +586,60 @@ const runnerTickFailures = 10
 // so no clock-driven readiness can ever be more than one ceiling late.
 const runnerQuietCeiling = 15 * time.Second
 
-// staleClaimAge is how long a node may sit running before the reaper returns
-// it to pending. It is deliberately far above the leaf executor's own
-// deadline (15 minutes) so a legitimately long leaf is never touched: the
-// reaper's whole job is the claim that outlived every possible worker behind
-// it — a stalled model call, a tool that never returned — and the DAG that
-// gates on it waiting forever. The CAS inside Release means a live worker
-// keeps its claim: the token has moved and the release fails.
-const staleClaimAge = 20 * time.Minute
+// ── the claim reaper's window, and why it is a backstop ─────────────────────
+//
+// IT IS NOT THE DETECTOR, AND ON 2026-08-28 IT WAS ACTING AS ONE. A provider
+// call hung; nothing in the call path noticed, because the guard that watches a
+// stream for silence was armed only when somebody was watching the stream
+// (internal/provider's CompleteWithMessages, and the law stated there). So the
+// first thing in the whole system to react was this reaper, twenty minutes
+// later, whose only available reaction is the bluntest one there is: take the
+// node away from the worker holding it and let somebody claim it again. It did
+// that three times to one leaf and the run produced nothing.
+//
+// The detector belongs where the failure is: the guard cuts a silent call in
+// ninety seconds, the ledger routes around the endpoint that went quiet, and the
+// worker's own loop asks the CALL again with everything it had still in hand. By
+// the time a claim is old enough to interest this reaper, every one of those has
+// been tried and the claim is genuinely held by nobody — which is the only case
+// a reaper can be right about.
+//
+// So the window is sized to be OUT OF THE WAY rather than to be timely. It is
+// the leaf executor's own deadline plus a landing pad, and it is RAISED by
+// [Runner.RaiseStaleAge] whenever a surface grants a leaf a longer one, because
+// a reaper that fires below a worker's own deadline is not a backstop — it is
+// the thing that fires first.
+//
+// AND ON 2026-08-29 THAT WAS STILL NOT ENOUGH, because a window is only as good
+// as what it is measured against. The window below came out at twenty-two
+// minutes — fifteen for the executor's own deadline, two for the watchdog above
+// it, five for the pad — and the reaper measured it from the claim's start. So
+// it fired on the ink run at 22m10s, 22m10s, 22m11s and 22m06s, four times, at a
+// leaf that was calling the model throughout: one claim legitimately carries the
+// executor's deadline AND the retry a spent deadline earns, which is twice this
+// window, and the clock could not tell that from a corpse. The window is now
+// measured from the node's last SIGN OF LIFE (store.ReleaseSilent), so it bounds
+// SILENCE rather than work, and a leaf that keeps calling keeps its claim for as
+// long as it keeps calling.
+const (
+	// claimReaperPad is how far above a worker's own deadline the reaper sits:
+	// the room a leaf told to land needs to write its result and release its
+	// claim. Five minutes, which is the landing reserve a leaf at its deadline
+	// is already given, doubled — a claim released a minute late costs nothing,
+	// and a claim reaped a minute early costs the whole leaf.
+	claimReaperPad = 5 * time.Minute
+)
+
+// staleClaimAge is the window as a fresh runner starts with it. It bounds
+// SILENCE, not work: see [Runner.Tick] and store.ReleaseSilent.
+//
+// The floor it is measured from is the generalist's own, ASKED FOR RATHER THAN
+// REPEATED. It used to be a fifteen-minute constant beside this one, and the
+// arithmetic that produces a leaf's deadline lived in three other files as
+// well; a floor raised in one of them and not here would put this backstop
+// below the deadline it exists to sit above. See exec.SubharnessInfo.Deadline,
+// which is now the only place in the process that knows the shape.
+var staleClaimAge = executor.SubharnessFor(executor.LinearSubharness).Deadline(0) + claimReaperPad
 
 // runnerQuietGate is the dispatch loop's proof that a timed pass would find
 // nothing. A negative seq means it is disarmed and the next pass runs.
@@ -479,16 +859,18 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 	if err := r.preemptPracticeForUserWork(); err != nil {
 		return 0, err
 	}
-	// The stale-claim reaper. A worker that hangs mid-run — a stalled model
-	// call, a tool that never returns — leaves its node running forever, and
-	// every downstream node gated on it waits behind a claim nobody holds.
-	// The runner heartbeats the whole time and finds nothing to do: that is
-	// the live-lock a long-horizon run dies of. The threshold is well above
-	// the leaf executor's own deadline (15min), so a legitimately long leaf
-	// is never touched; only a claim that has outlived any possible worker
-	// behind it is returned to pending. The CAS inside Release means a live
-	// worker keeps its claim — the token has moved and the release fails.
-	if released, err := r.graph.ReleaseStale(r.staleAge); err == nil && len(released) > 0 {
+	// The silent-claim reaper. A worker that dies mid-run — a process killed, a
+	// goroutine wedged past every deadline it was given — leaves its node
+	// running forever, and every downstream node gated on it waits behind a
+	// claim nobody holds. The runner heartbeats the whole time and finds nothing
+	// to do: that is the live-lock a long-horizon run dies of.
+	//
+	// A CLAIM IS HELD BY EVIDENCE OF LIFE, NOT BY A CLOCK. What the window is
+	// measured against is the node's last durable sign that somebody is working
+	// it — a billed model call, a recorded turn — and never how long the claim
+	// has existed, which is a fact about the wall and not about the worker. See
+	// store.ReleaseSilent for the four restarts the old reading cost.
+	if r.reapSilentClaims() {
 		// A released node reopens the ready set, so the pass that freed it
 		// should look again immediately rather than at the tick.
 		defer r.nudge()
@@ -602,10 +984,20 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 			return false, nil
 		}
 	}
-	runCtx := ctx
-	var cancel context.CancelFunc
+	// Everything above this line can still hand the claim back; nothing above it
+	// has taken a grip. Below it the grip exists and the goroutine owns it.
+	// EVERY LEAF RUNS ON A CONTEXT THIS PROCESS CAN END. It used to be only
+	// practice leaves, because user-stopped practice was the only reason anybody
+	// had to end one — and so the claim reaper, which is the other reason, had
+	// no way to end a worker at all and took the claim out from under it
+	// instead. See the leafHold block above for what that cost.
+	runCtx, cancel := context.WithCancel(ctx)
+	hold := r.takeHold(node.ID, node.ClaimToken, cancel)
+	// And the worker's own account of what it is waiting on, which is the half
+	// of "is anybody behind this claim" that the journal structurally cannot
+	// answer. See leafHold.busy.
+	runCtx = executor.WithLiveness(runCtx, hold.working)
 	if node.Group == store.PracticeGroup {
-		runCtx, cancel = context.WithCancel(ctx)
 		// Deferred because a fault under this lock would otherwise leave it
 		// held forever — trading a crash for a deadlock is not a rescue.
 		func() {
@@ -625,7 +1017,7 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 	}
 	held = false            // the worker's own defer returns the slot now
 	claimed = store.Claim{} // and the worker's own landing settles the claim
-	go func(node store.Node, runCtx context.Context, cancel context.CancelFunc) {
+	go func(node store.Node, runCtx context.Context, cancel context.CancelFunc, hold *leafHold) {
 		// runOne settles the node on its own fault; this is the outer belt, for
 		// a fault in the settling itself. Registered first so it absorbs last.
 		defer guard.Recover("resident/runner worker " + node.ID)
@@ -641,16 +1033,20 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 		if local {
 			defer r.localInFlight.Add(-1)
 		}
-		if cancel != nil {
-			defer cancel()
+		defer cancel()
+		// Dropped after the landing and before the slot goes back, so the pass
+		// woken by the returned slot can never find a grip on a worker that is
+		// no longer there.
+		defer r.dropHold(node.ID, hold)
+		if node.Group == store.PracticeGroup {
 			defer func() {
 				r.activeMu.Lock()
 				defer r.activeMu.Unlock()
 				delete(r.activePractice, node.ID)
 			}()
 		}
-		r.runOne(runCtx, node)
-	}(node, runCtx, cancel)
+		r.runOne(runCtx, node, hold)
+	}(node, runCtx, cancel, hold)
 	return true, nil
 }
 
@@ -837,7 +1233,7 @@ func (r *Runner) finishCancellation(node store.Node, partial string) {
 	}
 }
 
-func (r *Runner) runOne(ctx context.Context, node store.Node) {
+func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
 	// Settling beats stranding. A fault in the landing steps below — service
 	// promotion, the craft sentinel, the completion itself — must not leave a
@@ -863,6 +1259,25 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		if control.CancelRequested {
 			r.finishCancellation(node, result.Summary)
 		}
+		return
+	}
+	// A WORKER THAT WAS ASKED TO STOP DOES NOT SETTLE ITS NODE, IT RELEASES IT —
+	// and this is the release the reaper deliberately did not make, held back
+	// until the goroutine it was about actually returned. Whatever the worker
+	// reached is on its record and in the workspace, and the next claim resumes
+	// from both; what it must not do is report a verdict, because it was stopped
+	// mid-thought and its verdict would be one. The stop is journaled first so
+	// the record's order is the truth's: leaf_stopped for this token, then the
+	// release that frees it.
+	if reason, stopping := hold.stopping(); stopping {
+		stopServiceRequests(result.ServiceRequests)
+		r.recordSpend(node, result)
+		if stopErr := r.graph.RecordLeafStopped(node.ID, store.LeafStopped{
+			Token: claim.Token, Reason: reason,
+		}); stopErr != nil {
+			_ = guard.Note("resident/runner stop "+node.ID, stopErr)
+		}
+		_ = r.graph.ReleaseWithReason(claim, reason)
 		return
 	}
 	if err != nil {
@@ -895,6 +1310,31 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// nil here and is still a failure, exactly as before.
 		if ctx.Err() != nil {
 			_ = r.graph.Release(claim)
+			return
+		}
+		// AN ENDING THAT IS EXHAUSTION IS NOT A FAILURE, AND A FAILED NODE IS
+		// NEVER OFFERED AGAIN. Store.Ready serves pending rows only, so failing
+		// a node here is the end of it: the ink run of 2026-08-29 journaled
+		// "the node goes back on the queue", settled the node failed in the same
+		// second, and left with exit 1 and no gate verdict over seventy-three
+		// minutes of unspent wall and a twenty-six kilobyte patch on disk.
+		//
+		// The rule itself is [executor.Requeued] — the one this runner and the
+		// one-shot scheduler both ask, so the two surfaces cannot answer
+		// differently about what a spent clock means. What is local here is only
+		// what the record IS: this side reads the transcript bank, and the next
+		// claim resumes from the same bank (cmd/aforge reads it at claim time
+		// through resident.Bank when node.Attempt is above zero).
+		if allowed, recorded, requeue := executor.Requeued(err, func() int {
+			_, turns := BankedRun(r.graph, node.ID)
+			return turns
+		}); requeue {
+			// The turn count rides on the release itself and not only inside its
+			// sentence, because the headless stream has to tell a requeue that
+			// is PROGRESS from a claim taken off a worker that never answered,
+			// and reading that out of prose would be a second, private answer to
+			// a question the record already holds. See store.ReleaseWithRecord.
+			_ = r.graph.ReleaseWithRecord(claim, exhaustedClaimReason(allowed, recorded), recorded)
 			return
 		}
 		_ = r.graph.Fail(claim, err.Error())
@@ -1015,17 +1455,27 @@ const maxFiringDepth = 32
 // A zero row is skipped: nothing was spent, and an empty row would only make
 // the journal longer.
 func (r *Runner) recordSpend(node store.Node, result ExecResult) {
-	if result.PromptTokens == 0 && result.CompletionTokens == 0 && result.Cost == 0 {
+	spent := result.PromptTokens > 0 || result.CompletionTokens > 0 || result.Cost > 0
+	if !spent && !result.SpendBanked {
 		return
 	}
-	_ = r.graph.RecordUsage(store.NodeUsage{
-		NodeID:           node.ID,
-		PromptTokens:     result.PromptTokens,
-		CompletionTokens: result.CompletionTokens,
-		CachedTokens:     result.CachedTokens,
-		Cost:             result.Cost,
-		Model:            result.Model,
-	})
+	// The three totals are what is LEFT to write: a run that banked its own
+	// calls put them on disk one row per response, as each was billed, and
+	// summing them again here would charge the node twice for one leaf. What
+	// arrives non-zero on a banked run is spend the adapter could not see —
+	// a worker that drives another process — and it is journaled as it always
+	// was. The rows already on disk are the better record either way, because
+	// they survive an ending this function never sees.
+	if spent {
+		_ = r.graph.RecordUsage(store.NodeUsage{
+			NodeID:           node.ID,
+			PromptTokens:     result.PromptTokens,
+			CompletionTokens: result.CompletionTokens,
+			CachedTokens:     result.CachedTokens,
+			Cost:             result.Cost,
+			Model:            result.Model,
+		})
+	}
 	// The same spend with its shape kept, in its own table, beside the summed
 	// row every existing reader counts. It is written after the total and it is
 	// allowed to fail on its own: shape is evidence, and losing the evidence
@@ -1220,4 +1670,26 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 		}
 	}
 	return open, nil
+}
+
+// exhaustedClaimReason is what the journal says when a claim goes back because
+// the worker holding it ran out of room.
+//
+// It names both facts a reader needs and neither of them is machinery: how long
+// the worker was given, and how much of its work survived — because "the node
+// goes back on the queue" is only worth reading if the next claim is going to
+// pick up where this one stopped, and the turn count is the evidence that it
+// can. The headless stream prints it beside the node (see cmd/aforge's
+// narrateOne on store.EventNodeReleased).
+func exhaustedClaimReason(allowed time.Duration, recorded int) string {
+	return fmt.Sprintf("the worker did not come back within %s and was stopped — %s of its work is recorded, and the next one carries on from there",
+		allowed.Round(time.Second), pluralTurns(recorded))
+}
+
+// pluralTurns spells a turn count in a person's words.
+func pluralTurns(turns int) string {
+	if turns == 1 {
+		return "1 turn"
+	}
+	return fmt.Sprintf("%d turns", turns)
 }

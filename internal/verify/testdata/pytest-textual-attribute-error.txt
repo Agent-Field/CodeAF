@@ -1,0 +1,9 @@
+>       if old_value != new_value and self._size_known:
+                                      ^^^^^^^^^^^^^^^^
+E       AttributeError: 'RichLog' object has no attribute '_size_known'
+src/textual/widgets/_rich_log.py:193: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_rich_log_follow_state.py::test_log_exposes_follow_api - Att...
+FAILED tests/test_rich_log_follow_state.py::test_rich_log_exposes_follow_api
+FAILED tests/test_rich_log_follow_state.py::test_widgets_start_following_end_when_auto_scroll_is_enabled
+FAILED tests/test_rich_log_follow_state.py::test_rich_log_follow_changed_posts_only_when_boolean_changes

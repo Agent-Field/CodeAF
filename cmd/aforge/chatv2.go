@@ -123,9 +123,7 @@ func runChatV2(args []string) error {
 	// standard ecosystem variables, and an operator who disagrees says so here.
 	colour := flags.String("color", "",
 		"colour vocabulary: none, 16, 256 or truecolor; empty asks the terminal")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"db": true, "session": true, "color": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

@@ -27,6 +27,8 @@ package resident
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -54,6 +56,11 @@ const (
 	// Empty when the leaf left no structured record, which is the ordinary
 	// case for a generalist that produced only prose.
 	ContinuationStateHeader = "What the previous agent actually did — files it touched, checks it ran, and its last calls. Resume from here; do not re-discover what this already found."
+	// ContinuationTranscriptHeader introduces the dead attempt's own turns as
+	// they were recorded: what it said, what it ran, and what came back. It is
+	// the last block of the continuation because it is the longest and the most
+	// specific — the three above are the summary, this is the working.
+	ContinuationTranscriptHeader = "Your own turns from the attempt that was interrupted, oldest first — what you said, what you ran, and what came back. This work is already done and already paid for; carry on from the end of it."
 )
 
 // BankSharedLead introduces the shared progress lines inside the partial block.
@@ -91,6 +98,25 @@ type Bank struct {
 	// case for a generalist that produced only prose — and an empty state is
 	// simply left out of the composition.
 	State string
+	// Transcript is the dead attempt's OWN TURNS, read back from the record it
+	// wrote as it worked (internal/store/transcript.go): the assistant text, the
+	// tool calls and the results they returned, in the order they happened.
+	//
+	// THIS IS THE FIELD THAT MAKES A RESTART A RESUMPTION. The three above are
+	// what the attempt CHOSE to announce — a partial result, some progress rows,
+	// a structured summary — and a leaf abandoned mid-turn announced almost
+	// nothing, because announcing is what a leaf does when it is finishing. Its
+	// work is nonetheless all there: seventy-one runs of one test file, on the
+	// happy-dom run of 2026-08-28, every one recorded under the node and every
+	// one discarded when the claim reaper started the leaf over.
+	//
+	// It is expected to be PARTIAL. The recorder flushes on a full batch and on
+	// every way out of a leaf, a fault included, so what survives is everything
+	// up to the last flush — which is exactly what "resume from where it got to"
+	// means, and is why nothing here tries to invent the result of a tool call
+	// whose answer never arrived. See [BankedRun] for how one is rendered: an
+	// outline of every turn the run took, and then its end verbatim.
+	Transcript string
 }
 
 // Empty reports that there is nothing to hand on, in which case no caller should
@@ -98,6 +124,7 @@ type Bank struct {
 // is a sentence that costs tokens and teaches the model that the work has
 func (b Bank) Empty() bool {
 	return strings.TrimSpace(b.Partial) == "" && strings.TrimSpace(b.State) == "" &&
+		strings.TrimSpace(b.Transcript) == "" &&
 		len(b.trimmedShared()) == 0 && len(b.Artifacts) == 0
 }
 
@@ -125,6 +152,17 @@ func (b Bank) Continuation() string {
 		body.WriteString(ContinuationStateHeader)
 		body.WriteString("\n")
 		body.WriteString(state)
+	}
+	// Last, and longest. The three blocks above are the attempt's account of
+	// itself; this is the attempt itself, and a reader that ran out of attention
+	// before reaching it has already been told the summary.
+	if transcript := strings.TrimSpace(b.Transcript); transcript != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n\n")
+		}
+		body.WriteString(ContinuationTranscriptHeader)
+		body.WriteString("\n")
+		body.WriteString(transcript)
 	}
 	return body.String()
 }
@@ -258,6 +296,330 @@ func BankedProgress(graph nodeRecord, nodeID string) []string {
 	return lines
 }
 
+// ── the attempt's own turns ─────────────────────────────────────────────────
+//
+// THE DEFECT THIS ANSWERS. On the happy-dom run of 2026-08-28 the node
+// `task-2-x1-n2` started three times, twenty minutes apart to the minute. Each
+// start was a provider call that hung for fifteen minutes, a claim reaper that
+// took the node back, and a leaf that began again — with an empty context, in a
+// workspace already holding its own edits, having already run the project's test
+// file seventy-one times. Every one of those turns was in the store: the leaflog
+// recorder writes them under the node and flushes on every way out of a leaf.
+// Nothing read them back.
+//
+// The bank already knew how to hand a dead attempt's work to its successor. What
+// it could hand over was only what the attempt had ANNOUNCED — a partial result,
+// its progress rows, its structured findings — and an attempt killed mid-turn
+// announces almost nothing, because announcing is the last thing a leaf does.
+// Its turns are the work.
+
+const (
+	// BankedTranscriptTurns is how many of the attempt's most recent turns ride
+	// into its successor VERBATIM.
+	//
+	// THE LAST ONES, for the reason [BankedProgressLimit] takes the last progress
+	// rows: work of this kind is cumulative, and the state a resuming leaf needs
+	// is where the previous one had GOT TO. The head of a run is what an autopsy
+	// wants and the store keeps it (store.MaxTranscriptEntries seals from the
+	// front); a continuation wants the other end.
+	//
+	// IT IS NOT THE WHOLE SEED, and treating it as one was the memory half of
+	// the ink run of 2026-08-29: twelve turns out of a hundred and thirty-eight
+	// is a window on one file's contents, and the attempt's successor re-read
+	// the repository because nothing had told it about the other hundred and
+	// twenty-six. The outline above it (see [BankedRun]) carries every turn of
+	// the run at one line each, which is what makes this bound affordable
+	// instead of lossy.
+	BankedTranscriptTurns = 12
+	// BankedTranscriptBytes bounds the whole block, because a dozen turns of a
+	// leaf that ran a test suite is not a dozen short lines.
+	//
+	// It is store.MaxTranscriptTextBytes × 8 and not a fresh figure: one entry's
+	// bound is what this package already accepts as "enough of one step to tell
+	// what happened", and this block is a handful of steps. Reached first, it
+	// wins over the turn count and the block is trimmed from the FRONT, so what
+	// survives is always the end of the work.
+	BankedTranscriptBytes = 8 * store.MaxTranscriptTextBytes
+	// bankedResultBytes bounds one tool result inside the block. A test run's
+	// output is the largest thing a leaf ever holds and the least of it is worth
+	// re-reading: what the resuming leaf needs is that the command ran and how it
+	// ended, which is its tail (store.TruncateTranscriptText keeps both ends).
+	bankedResultBytes = 1200
+)
+
+// transcriptRecord is the one read this needs of the journal.
+type transcriptRecord interface {
+	TranscriptFor(nodeID string, limit int) ([]store.TranscriptEntry, error)
+}
+
+// BankedTranscript renders a node's recorded turns as the block a resuming
+// attempt is handed, or "" when this worker left no record.
+func BankedTranscript(graph transcriptRecord, nodeID string) string {
+	block, _ := BankedRun(graph, nodeID)
+	return block
+}
+
+// BankedRun renders the LAST RUN in a node's record as the block a resuming
+// attempt is handed, and says how many turns that run reached.
+//
+// EMPTY IS AN HONEST ANSWER AND A COMMON ONE. Not every worker records a
+// transcript, and a leaf that died before its first flush recorded nothing. In
+// both the bank simply has one fewer block, which is what it already does with
+// every other field it does not have.
+//
+// A TOOL CALL WITH NO RESULT IS SAID TO HAVE NO RESULT. That is the shape a
+// partial record takes — the attempt was interrupted between asking and being
+// answered — and it is the one fact about it that must not be smoothed over: a
+// resuming leaf that believed a command had run and returned nothing would skip
+// the command. So the call is rendered with "(interrupted before it answered)"
+// and the leaf can decide to run it again.
+//
+// IT IS ONE RUN AND NOT THE WHOLE TABLE. A node's record is every attempt any
+// worker ever made under it, appended, and each attempt numbers its own turns
+// from one — so "the last twelve turns" read across the table was not a window
+// on anything. On the ink run of 2026-08-29 the third claim's seed was assembled
+// from turns 79-90 of the attempt before it INTERLEAVED with turns 34-45 of the
+// attempt before that, because both satisfied a turn-number cutoff. A run is
+// found by structure instead: the turn counter only ever goes up inside one
+// attempt, so where it goes backwards a new attempt began.
+//
+// AND IT CARRIES AN OUTLINE OF THE WHOLE RUN, not only its tail. The tail is
+// where the work got to and the outline is what it decided on the way there, and
+// handing over the second without the first is what an eleven-million-token
+// re-exploration is made of: twelve turns of one file's contents say nothing
+// about the thirty-eight files the attempt had already read and rejected. The
+// outline is one line per turn over every turn of the run — what it said and
+// what it ran — which is affordable precisely because it is one line.
+func BankedRun(graph transcriptRecord, nodeID string) (string, int) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" {
+		return "", 0
+	}
+	entries, err := graph.TranscriptFor(nodeID, 0)
+	if err != nil || len(entries) == 0 {
+		return "", 0
+	}
+	run := lastRecordedRun(entries)
+	if len(run) == 0 {
+		return "", 0
+	}
+	reached := run[len(run)-1].Turn
+	answered := make(map[string]bool, len(run))
+	for _, entry := range run {
+		if entry.Kind == store.TranscriptToolResult && entry.CallID != "" {
+			answered[entry.CallID] = true
+		}
+	}
+	// Which turns survive into the verbatim tail, counted from the end of THIS
+	// run. The entries carry their own turn number, so this is a read of the
+	// record rather than an assumption about how many entries a turn has.
+	cutoff := 0
+	if reached > BankedTranscriptTurns {
+		cutoff = reached - BankedTranscriptTurns
+	}
+	lines := make([]string, 0, len(run))
+	for _, entry := range run {
+		if entry.Turn <= cutoff {
+			continue
+		}
+		if line := bankedTranscriptLine(entry, answered); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	tail := trimmedFromTheFront(lines, BankedTranscriptBytes)
+	outline := bankedRunOutline(run)
+	var block strings.Builder
+	if outline != "" {
+		block.WriteString(BankedRunOutlineLead)
+		block.WriteString("\n")
+		block.WriteString(outline)
+	}
+	if tail != "" {
+		if block.Len() > 0 {
+			block.WriteString("\n\n")
+		}
+		block.WriteString(BankedRunTailLead)
+		block.WriteString("\n")
+		block.WriteString(tail)
+	}
+	if block.Len() == 0 {
+		return "", 0
+	}
+	return block.String(), reached
+}
+
+// The two leads inside the transcript block. They are separate because the two
+// halves answer different questions and a model handed them under one heading
+// reads the outline as a preamble to the tail rather than as the record of
+// thirty turns it will otherwise repeat.
+const (
+	// BankedRunOutlineLead introduces the one-line-per-turn account of the
+	// WHOLE run.
+	BankedRunOutlineLead = "In outline, every turn that attempt took, oldest first — this is the whole of it, and none of it needs doing again:"
+	// BankedRunTailLead introduces the verbatim end of the run.
+	BankedRunTailLead = "And the end of it verbatim — what you said, what you ran, and what came back:"
+)
+
+// lastRecordedRun is the slice of entries belonging to the most recent attempt.
+//
+// A run boundary is a turn number that goes DOWN, which is structure rather than
+// a guess: within one attempt the counter only ever rises, and a fresh attempt
+// numbers from one. Entries on turn zero — the harness's own notes, the elision
+// marker, a fault recorded before any turn — carry no boundary information and
+// are left attached to whatever they follow.
+func lastRecordedRun(entries []store.TranscriptEntry) []store.TranscriptEntry {
+	start, previous := 0, 0
+	for index, entry := range entries {
+		if entry.Turn <= 0 {
+			continue
+		}
+		if previous > 0 && entry.Turn < previous {
+			start = index
+		}
+		previous = entry.Turn
+	}
+	return entries[start:]
+}
+
+// bankedRunOutline is one line per turn of the run: what the turn ran and what
+// it said, in that order, because the tools are the shorter half and a reader
+// scanning for "did it already try this" is scanning for them.
+//
+// It is clipped from the MIDDLE rather than the front, which is the opposite of
+// what the tail does and correct for the same reason: an outline that keeps only
+// its end has thrown away what the attempt set out to do, and the head of a run
+// is where that is stated.
+func bankedRunOutline(run []store.TranscriptEntry) string {
+	lines := make([]string, 0, 32)
+	turn, said, tools := 0, "", []string(nil)
+	flush := func() {
+		if turn <= 0 || (said == "" && len(tools) == 0) {
+			return
+		}
+		line := fmt.Sprintf("turn %d", turn)
+		if len(tools) > 0 {
+			line += " · ran " + strings.Join(tools, ", ")
+		}
+		if said != "" {
+			line += " · " + said
+		}
+		lines = append(lines, line)
+	}
+	for _, entry := range run {
+		if entry.Turn != turn {
+			flush()
+			turn, said, tools = entry.Turn, "", nil
+		}
+		switch entry.Kind {
+		case store.TranscriptAssistant:
+			if said == "" {
+				said = outlineSentence(entry.Text)
+			}
+		case store.TranscriptToolCall:
+			tool := strings.TrimSpace(entry.Tool)
+			if tool == "" {
+				tool = "a tool"
+			}
+			tools = append(tools, tool)
+		case store.TranscriptFault, store.TranscriptNote:
+			if sentence := outlineSentence(entry.Text); sentence != "" {
+				said = sentence
+			}
+		}
+	}
+	flush()
+	return clipMiddle(strings.Join(lines, "\n"), BankedTranscriptBytes)
+}
+
+// outlineSentence is one turn's words as a single clipped line. A model's turn
+// opens with what it has decided and continues into how it will do it, so the
+// first line is the half worth an outline's budget.
+func outlineSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if cut := strings.IndexByte(text, '\n'); cut >= 0 {
+		text = strings.TrimSpace(text[:cut])
+	}
+	if len(text) > bankedOutlineSentenceBytes {
+		text = strings.TrimSpace(text[:bankedOutlineSentenceBytes]) + "…"
+	}
+	return text
+}
+
+// bankedOutlineSentenceBytes bounds one outline line's prose. It is
+// store.MaxTranscriptTextBytes / 16 and not a fresh figure: a whole recorded
+// step is worth that bound, and one line about a step is worth a sixteenth of
+// one — which is about a sentence, which is what this is.
+const bankedOutlineSentenceBytes = store.MaxTranscriptTextBytes / 16
+
+// bankedTranscriptLine renders one recorded entry, or nothing for a kind whose
+// only reader is an autopsy.
+func bankedTranscriptLine(entry store.TranscriptEntry, answered map[string]bool) string {
+	text := strings.TrimSpace(entry.Text)
+	switch entry.Kind {
+	case store.TranscriptAssistant:
+		if text == "" {
+			return ""
+		}
+		return "you said: " + text
+	case store.TranscriptToolCall:
+		line := "you ran " + entry.Tool
+		if text != "" {
+			line += " with " + text
+		}
+		if entry.CallID != "" && !answered[entry.CallID] {
+			line += " (interrupted before it answered)"
+		}
+		return line
+	case store.TranscriptToolResult:
+		outcome := "it returned"
+		if entry.Failed {
+			outcome = "it failed with"
+		}
+		if text == "" {
+			return outcome + " nothing"
+		}
+		return outcome + ": " + store.TruncateTranscriptText(clipMiddle(text, bankedResultBytes))
+	case store.TranscriptNote, store.TranscriptFault:
+		// The harness talking about its own machinery, and how the attempt
+		// ended. Both are worth carrying — "the stream was cut and the turn was
+		// asked again" explains a gap the turns themselves cannot — and both are
+		// marked as the harness speaking so they are not read as the model's.
+		if text == "" {
+			return ""
+		}
+		return "(the harness noted: " + text + ")"
+	default:
+		return ""
+	}
+}
+
+// clipMiddle keeps a value's head and tail with the gap named, which is what
+// store.TruncateTranscriptText does at its own bound; this applies the tighter
+// bound a continuation can afford before that one is asked.
+func clipMiddle(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	head := limit * 1 / 3
+	tail := limit - head
+	return text[:head] + "\n… … …\n" + text[len(text)-tail:]
+}
+
+// trimmedFromTheFront joins the lines and drops them from the OLD end until the
+// block fits. The end of the work is what a continuation is for.
+func trimmedFromTheFront(lines []string, limit int) string {
+	for len(lines) > 0 {
+		block := strings.Join(lines, "\n")
+		if len(block) <= limit {
+			return block
+		}
+		lines = lines[1:]
+	}
+	return ""
+}
+
 // bankedLine reads one record row as a progress line, or says it is not one.
 func bankedLine(message store.Message) string {
 	if message.Progress != nil {
@@ -381,4 +743,94 @@ func LeafState(outcome *executor.Outcome) string {
 		parts = append(parts, lines.String())
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// LineageBank is what a whole job's recorded work hands to the next node
+// spliced under it.
+//
+// THE RECORDED RUNS ARE A LINEAGE PROPERTY, NOT A NODE'S. BankedRun answers
+// "what did THIS node do", which serves the two paths where the id stays the
+// same — the in-place retry and the requeue after a claim comes back. It cannot
+// serve the path a growing job actually takes: a round splices FRESH IDS
+// (`task-2` → `task-2-x1-n2`), so every child asks its own empty record and
+// starts cold beside a workspace full of its predecessors' work.
+//
+// The textual run of 2026-08-29 (s9) is the measurement. `task-2` ran to 350
+// recorded rows over 80 turns and exhausted; thirteen minutes later a gap round
+// spliced five fresh children under it, and `task-2-x1-n2`'s first recorded row
+// is turn 1, "Let me start by examining the existing codebase", followed by
+// `find /app`. The record it needed was in the same store, under the id one
+// character away, and nothing looked.
+//
+// It is composed newest-first and bounded once, not per node: what a resuming
+// worker most needs is where the job GOT TO, and a bound spent on the oldest
+// attempt is a bound not spent on the newest. The sink is skipped because it is
+// the node being seeded — a brief that quotes the reader back to itself is a
+// brief that has said nothing.
+func LineageBank(graph *store.Store, lineage, sink string) (string, int) {
+	if graph == nil || strings.TrimSpace(lineage) == "" {
+		return "", 0
+	}
+	nodes, err := graph.LineageNodes(lineage)
+	if err != nil {
+		// AN UNREADABLE LINEAGE IS NOT AN EMPTY ONE, and the difference has to
+		// be audible. Returning nothing on an error is indistinguishable from a
+		// job that genuinely has no record, which is the reading that starts
+		// every successor cold — the exact silence this function exists to end.
+		// It is still not allowed to fail the work: a seed is an account of the
+		// job, never a part of it.
+		log.Printf("note: could not read the lineage of %s to seed its next piece: %v", lineage, err)
+		return "", 0
+	}
+	if len(nodes) == 0 {
+		return "", 0
+	}
+	var block strings.Builder
+	resumed := 0
+	// Newest first: LineageNodes is oldest-first admission order, and the last
+	// thing the job did is the first thing its successor needs.
+	for index := len(nodes) - 1; index >= 0; index-- {
+		node := nodes[index]
+		if node.ID == sink {
+			continue
+		}
+		run, turns := BankedRun(graph, node.ID)
+		if turns == 0 || strings.TrimSpace(run) == "" {
+			continue
+		}
+		if block.Len()+len(run) > BankedTranscriptBytes {
+			break
+		}
+		if block.Len() > 0 {
+			block.WriteString("\n\n")
+		}
+		// Each run says whose it was. A composition of three attempts read as
+		// one continuous transcript would have the reader believe a decision
+		// taken by one worker was taken by another.
+		block.WriteString(lineageRunLead(node))
+		block.WriteString("\n")
+		block.WriteString(run)
+		resumed += turns
+	}
+	return block.String(), resumed
+}
+
+// lineageRunLead names one recorded run inside a composed bank.
+func lineageRunLead(node store.Node) string {
+	title := strings.TrimSpace(node.Title)
+	if title == "" {
+		title = strings.TrimSpace(firstLineOf(node.Brief))
+	}
+	if title == "" {
+		return "From an earlier piece of this job (" + node.ID + "):"
+	}
+	return "From an earlier piece of this job — " + title + " (" + node.ID + "):"
+}
+
+// firstLineOf is the first line of a brief, for a one-line label.
+func firstLineOf(text string) string {
+	if index := strings.IndexByte(text, '\n'); index >= 0 {
+		return text[:index]
+	}
+	return text
 }

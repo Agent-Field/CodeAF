@@ -1,7 +1,10 @@
 package exec
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -62,7 +65,7 @@ type Workspace struct {
 	// observed is what diffing it afterwards proved that leaf did to the world.
 	// They are the answer to "what did this run leave behind" that no tool has
 	// to volunteer — see [Workspace.WatchTree].
-	baseline map[string]treeBaseline
+	baseline map[string]*TreeSnapshot
 	observed map[string]map[string]ArtifactChange
 	jobID    int
 }
@@ -85,7 +88,7 @@ func NewWorkspace(root string) (*Workspace, error) {
 	return &Workspace{
 		root: absolute, real: real, scratch: absolute,
 		artifacts: map[string]map[string]bool{},
-		baseline:  map[string]treeBaseline{},
+		baseline:  map[string]*TreeSnapshot{},
 		observed:  map[string]map[string]ArtifactChange{},
 	}, nil
 }
@@ -477,29 +480,62 @@ func (w *Workspace) ArtifactFacts(leaf string) []ArtifactFact {
 // constant, so the two bounds cannot drift apart.
 const observedArtifactLimit = sweArtifactLimit
 
-// treeBaseline is the workspace as it stood the moment a leaf started.
-type treeBaseline struct {
-	// files is workspace-relative path to stamp. It is a stat and never a read:
-	// this walk happens on the leaf's critical path, and a hash of every file in
-	// a repository is a cost nobody asked for.
+// TreeSnapshot is the workspace as the filesystem itself showed it at one
+// instant: every path a deliverable could be, with enough of each file recorded
+// to tell it apart from its successor without asking the clock what time it is.
+//
+// It is ONE type with ONE walk behind it, and that is the point of it. The
+// whole-leaf evidence record (WatchTree at the top of a run, RecordChanges at
+// landing) and the per-call sweep after every tool call are the same question
+// asked over different spans — "what did the tree gain, lose or change between
+// these two moments" — and two implementations of one question are two answers
+// waiting to disagree about what a deliverable is.
+type TreeSnapshot struct {
+	// files is workspace-relative path to stamp.
 	files map[string]fileStamp
-	// at is when the walk was taken, moved back by producedSlack so a filesystem
-	// that records whole seconds cannot hide a file behind it. It is what a
-	// partial baseline falls back on — see [Workspace.RecordChanges].
+	// at is when the walk was taken, moved back by producedSlack so a
+	// filesystem that records whole seconds cannot hide a file behind it. It is
+	// only ever read for a PARTIAL snapshot, where absence proves nothing and
+	// the file's own write time is the last tiebreak available — see diffTrees.
 	at time.Time
-	// partial says the walk hit its bound, so absence from files means "not
-	// seen" rather than "not there".
+	// partial says the walk hit its bound or could not read something, so
+	// absence from files means "not seen" rather than "not there".
 	partial bool
 }
 
-// fileStamp is how a file is told apart from itself an hour later without
-// opening it. Length plus write time misses exactly one case — a rewrite inside
-// one coarse filesystem second that lands on the identical length — and that is
-// the case the tool-sourced record covers, which is why the two accounts are
-// layered rather than one chosen over the other.
+// fileStamp is how a file is told apart from itself a moment later.
+//
+// SIZE, MODE AND CONTENT ARE THE EVIDENCE; THE WRITE TIME IS THE LAST RESORT.
+// That ordering is FAILSAFE.md rule 2 — source evidence from the world — applied
+// to one file: a tool that preserves timestamps (cp -p, git checkout, tar,
+// rsync -t) leaves a file whose clock says nothing happened while its bytes say
+// everything did, and a formatter that rewrites a file with byte-identical
+// content moves the clock while changing nothing at all. The coding engine's
+// worktree fingerprint reached the same conclusion from the other end and is
+// documented in PERF.md under the worktree fingerprint's budget.
+//
+// digest is empty for a file too large to read inside the snapshot's budget, and
+// two stamps that both lack one fall back on the write time, which is the old
+// behaviour and the narrower answer rather than a wrong one.
 type fileStamp struct {
 	size     int64
+	mode     fs.FileMode
 	modified time.Time
+	digest   string
+}
+
+// same says whether two sightings of one path are two sightings of one file.
+func (was fileStamp) same(now fileStamp) bool {
+	if was.size != now.size || was.mode != now.mode {
+		return false
+	}
+	if was.digest != "" && now.digest != "" {
+		return was.digest == now.digest
+	}
+	// Neither sighting could be read inside the budget. The clock is all that is
+	// left, and it is here rather than at the top of the function precisely so
+	// that it is never consulted about a file whose bytes are known.
+	return was.modified.Equal(now.modified)
 }
 
 // WatchTree remembers the workspace as it is right now, so that what a leaf
@@ -515,14 +551,13 @@ func (w *Workspace) WatchTree(leaf string) {
 	if w == nil || strings.TrimSpace(leaf) == "" {
 		return
 	}
-	at := producedMark(time.Now())
-	files, partial := w.walkTree()
+	snapshot := w.Snapshot()
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 	if w.baseline == nil {
-		w.baseline = map[string]treeBaseline{}
+		w.baseline = map[string]*TreeSnapshot{}
 	}
-	w.baseline[leaf] = treeBaseline{files: files, at: at, partial: partial}
+	w.baseline[leaf] = snapshot
 }
 
 // RecordChanges reads the tree again and files everything that moved since
@@ -549,22 +584,42 @@ func (w *Workspace) RecordChanges(leaf string) {
 	if !watched {
 		return
 	}
-	after, partial := w.walkTree()
+	changes := diffTrees(baseline, w.Snapshot())
+	w.noteObserved(leaf, changes, boundedPaths(changes))
+}
+
+// diffTrees is THE comparison of two sightings of the workspace, and every
+// account of what a run left behind is built on it — the whole-leaf record and
+// the per-call sweep alike. Paths are workspace-relative, the spelling
+// [Workspace.record] keeps and everything downstream reads.
+//
+// FAILSAFE.md rule 2: a fail-safe sources its evidence from the WORLD. What the
+// tree held before and what it holds now are both facts about the world; "was
+// this file written after some instant on some clock" is a fact about a clock,
+// and it was wrong in three ordinary cases — a write that lands inside the
+// filesystem's own timestamp granularity, a tool that preserves the mtime it
+// copied, and a rewrite whose bytes are the same. The first of those made
+// TestABareLeafFilesTheFilesItsToolsLeaveBehind fail about one run in four.
+func diffTrees(before, after *TreeSnapshot) map[string]ArtifactChange {
+	if before == nil || after == nil {
+		return nil
+	}
 	changes := make(map[string]ArtifactChange, 8)
-	for path, now := range after {
-		before, known := baseline.files[path]
+	for path, now := range after.files {
+		was, known := before.files[path]
 		if known {
-			if before.size != now.size || !before.modified.Equal(now.modified) {
+			if !was.same(now) {
 				changes[path] = ArtifactChanged
 			}
 			continue
 		}
-		// A path missing from a PARTIAL baseline may be a file the leaf wrote or
-		// a file the bounded walk never reached, and calling the second one
-		// "created" would credit a leaf with a repository it merely stood in. The
-		// file's own write time is the tiebreak, and it is the same evidence the
-		// per-command sweep already trusts.
-		if baseline.partial && now.modified.Before(baseline.at) {
+		// A path missing from a PARTIAL earlier snapshot may be a file the leaf
+		// wrote or a file the bounded walk never reached, and calling the second
+		// one "created" would credit a leaf with a repository it merely stood
+		// in. The file's own write time is the tiebreak, and it is used HERE and
+		// nowhere else: this is the one case where the world's own answer was
+		// never taken.
+		if before.partial && now.modified.Before(before.at) {
 			continue
 		}
 		changes[path] = ArtifactCreated
@@ -573,12 +628,27 @@ func (w *Workspace) RecordChanges(leaf string) {
 	// a bounded second walk is as likely to be beyond the bound as gone, and
 	// reporting a file somebody still has as deleted is a worse error than
 	// staying quiet about one they no longer do.
-	if !baseline.partial && !partial {
-		for path := range baseline.files {
-			if _, still := after[path]; !still {
+	if !before.partial && !after.partial {
+		for path := range before.files {
+			if _, still := after.files[path]; !still {
 				changes[path] = ArtifactDeleted
 			}
 		}
+	}
+	return changes
+}
+
+// noteObserved merges one diff into a leaf's observed record. It is the one
+// door into that map, so the whole-leaf backstop and the per-call sweep — which
+// both write to it, over spans that overlap — cannot keep two different sets of
+// bookkeeping rules.
+//
+// paths is the caller's own bounded, ordered subset of changes; the two callers
+// bound the same map differently and for different stated reasons (see
+// observedArtifactLimit and producedPerCall).
+func (w *Workspace) noteObserved(leaf string, changes map[string]ArtifactChange, paths []string) {
+	if len(paths) == 0 {
+		return
 	}
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -588,7 +658,12 @@ func (w *Workspace) RecordChanges(leaf string) {
 	if w.observed[leaf] == nil {
 		w.observed[leaf] = map[string]ArtifactChange{}
 	}
-	for _, path := range boundedPaths(changes) {
+	// Later sightings win. The per-call sweep and the whole-leaf backstop write
+	// here over spans that overlap, and a path they disagree about is a path
+	// that moved twice: a scratch file created by one call and removed by a
+	// later one ends as a deletion, which is what keeps it out of the list of
+	// things to open.
+	for _, path := range paths {
 		w.observed[leaf][path] = changes[path]
 	}
 }
@@ -609,9 +684,10 @@ func boundedPaths(changes map[string]ArtifactChange) []string {
 	return paths
 }
 
-// walkTree stats every file a deliverable could be, and says whether it got to
-// the end. Paths come back workspace-relative, which is the spelling
-// [Workspace.record] keeps and everything downstream reads.
+// Snapshot photographs every file a deliverable could be. It is what a caller
+// holds across a span it wants the truth about — a whole leaf, or one tool
+// call — and hands back to [Workspace.RecordChanges] or
+// [Workspace.RecordProducedSince] at the other end.
 //
 // What it skips is exactly what the per-command sweep skips, from the same
 // predicate: dot-entries, which are the harness's own machinery (.obs spills,
@@ -620,28 +696,32 @@ func boundedPaths(changes map[string]ArtifactChange) []string {
 // __pycache__, bower_components, venv. One predicate rather than two, because
 // two lists of "what is not a deliverable" is two answers to one question.
 //
-// THE WALK IS BOUNDED AT producedScanLimit ENTRIES, which is 6000. A workspace
-// is usually a handful of files; a person's repository is not, and this runs at
-// the top and the bottom of every leaf. Past the bound the answer is partial and
-// says so, and RecordChanges reads less into a partial answer than into a whole
-// one.
-func (w *Workspace) walkTree() (map[string]fileStamp, bool) {
-	files := make(map[string]fileStamp, 32)
-	partial := false
+// THE WALK IS BOUNDED AT producedScanLimit ENTRIES, which is 6000, AND THE BYTES
+// IT READS AT snapshotDigestBudget. A workspace is usually a handful of files; a
+// person's repository is not, and this runs at both ends of every leaf and both
+// ends of every tool call. Past either bound the answer is partial or a stamp is
+// digestless, and both of those are read as less than a whole answer rather than
+// as a different one. PERF.md carries the budget.
+func (w *Workspace) Snapshot() *TreeSnapshot {
+	if w == nil {
+		return nil
+	}
+	snapshot := &TreeSnapshot{files: make(map[string]fileStamp, 32), at: producedMark(time.Now())}
+	budget := int64(snapshotDigestBudget)
 	visited := 0
 	_ = filepath.WalkDir(w.root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			// An unreadable entry is not this walk's to report. What it must not
 			// do is treat "could not look" as "not there", so the answer becomes
 			// partial and deletions go unclaimed.
-			partial = true
+			snapshot.partial = true
 			if entry != nil && entry.IsDir() {
 				return fs.SkipDir
 			}
 			return nil
 		}
 		if visited++; visited > producedScanLimit {
-			partial = true
+			snapshot.partial = true
 			return fs.SkipAll
 		}
 		if path == w.root {
@@ -664,10 +744,33 @@ func (w *Workspace) walkTree() (map[string]fileStamp, bool) {
 		if err != nil || strings.HasPrefix(relative, "..") {
 			return nil
 		}
-		files[relative] = fileStamp{size: info.Size(), modified: info.ModTime()}
+		stamp := fileStamp{size: info.Size(), mode: info.Mode().Perm(), modified: info.ModTime()}
+		if info.Size() <= snapshotDigestFileLimit && budget >= info.Size() {
+			if sum, ok := fileDigest(path); ok {
+				stamp.digest = sum
+				budget -= info.Size()
+			}
+		}
+		snapshot.files[relative] = stamp
 		return nil
 	})
-	return files, partial
+	return snapshot
+}
+
+// fileDigest reads one file's bytes and returns their hash. A file that cannot
+// be read comes back without one rather than with a wrong one, and the stamp
+// falls back on the clock exactly as it did before digests existed.
+func fileDigest(path string) (string, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+	sum := sha256.New()
+	if _, err := io.Copy(sum, file); err != nil {
+		return "", false
+	}
+	return hex.EncodeToString(sum.Sum(nil)), true
 }
 
 // Existing lists the files already sitting in the workspace, as absolute paths

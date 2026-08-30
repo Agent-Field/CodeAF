@@ -28,6 +28,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -38,7 +39,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -148,7 +151,13 @@ When you name a gap, quote the words of the request it is a failure of — a spa
 
 The deliverable is fenced. Everything between the line ` + deliverableOpen + ` and the line ` + deliverableClose + ` is the deliverable, the whole of it, and nothing outside those two lines is any part of it. What sits above the fence — settled taste, lessons from earlier work, the request, the goal, the working method — is how to judge, never what is judged, and what sits below it is the record of the run. A lesson from earlier work describes a job that is not this one: it may tell you what to look for and it can never tell you what is there. Read the fenced text itself before you say anything about it, and describe only what is in it. If you are about to say the deliverable is a progress report, a series of messages, or a set of pointers to files, that sentence must be true of the fenced text in front of you — check it there first, because that is a description earlier work has been given and it is the easiest one to repeat about work it does not fit.
 
-Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
+The fenced material is one of two things and it opens by saying which. Where the run changed the tree, THE DELIVERABLE IS THAT CHANGE: the files the run wrote or changed, listed there with what is in them, and that is the whole of what the person is being handed. The worker's own final message then appears BELOW the fence, under a heading that calls it what it is — a claim about the work, and not the work. Judge the files. What the claim says, what shape it came out in, whether it is a summary, a plan, a paragraph or a data object, is not the deliverable and is never a gap: a verdict describing the worker's message when the tree is the subject is a verdict about the wrong thing. The claim is worth reading for exactly one purpose, which is the one the run records serve too — a claim the files do not bear out is an element unsupported by evidence, and you name the FILE it is not true of. Where the run changed nothing, the fenced material is the worker's message, the message is the whole of what the run produced, and every paragraph above applies to it exactly as written.
+
+Every file in that list is on disk, whole, at the size stated beside it, and NOTHING YOU ARE SHOWN IS AN EXCERPT. A file whose contents are printed is printed entire. A file that appears in the list with no contents under it is one there was no room to print: it is whole on disk and no less part of what the person is being handed. So "the deliverable does not contain the actual content of these files", "the file is truncated", "it cuts off before", "the fenced material is a description rather than the files" are statements about this page rather than about the delivery, and none of them is a gap — a file you were not shown is not a file that is missing, and there is nothing here for you to find cut off.
+
+So a fail over a changed tree has a fixed shape, and the answer fields carry it: name the one file of the record the request is not satisfied by, quote ONE BEHAVIOUR the request states — from the list above where one is given, exactly as it is written there — and say what that file does not do about it. A gap is always a behaviour the work does not perform, never the presence, size or completeness of a file: the record already answers whether a file exists, and no behaviour is about a file being on disk. If nothing in the record can be named — if the change genuinely does everything the request asked for — that is a pass.
+
+Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. Where the deliverable is a changed tree, a fail carries one field more — "file": "<the one file of the record this gap is about, spelled exactly as the record spells it>" — and a fail without it cannot be read. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
 var deliverableSchema = json.RawMessage(`{
   "type": "object",
@@ -234,12 +243,92 @@ type Judgment struct {
 	// reports is a fact about the filesystem, which no admission rule is
 	// competent to overturn. See deliveredWhole in cmd/aforge/do.go.
 	Mechanical bool
+	// Grounds are the promises this run made before it began working, and they
+	// travel on the judgement because every rule that weighs this gap must weigh
+	// it against the same three things. They were assembled at two different
+	// seams from two different sets of fields for a while, and the measured cost
+	// of that was a finding admitted by the revision door and refused by the
+	// extension door one round later — the same asymmetry FAILSAFE names in the
+	// row about the mechanical gate and the citation invariant.
+	Grounds Grounds
+	// Sourced says this finding is a MEASUREMENT OF THE WORLD rather than a
+	// reading of the request, and it is what lifts a finding clear of the
+	// citation invariant altogether.
+	//
+	// A regression is the case it exists for. A check that passed before the
+	// work and fails after it is a fact the run gathered for itself, and there
+	// is no span of the request to cite because the person never had to ask for
+	// their repository to keep working. Grounding such a finding would refuse
+	// it every time, which is the shape of the two runs that shipped a patch
+	// deleting an attribute the repository already had. See FAILSAFE clause 2.
+	Sourced bool
 	// Exercised is the gate's separate answer about evidence: it saw the
 	// finished thing run the way it will be used, and hold. A pass without it
 	// is a pass — it is simply not a verified one, and the difference is the
 	// whole reason the field exists rather than being read out of the prose.
 	Exercised bool
-	Checked   bool
+	// Exercises is the acceptance mapping this judgement was settled on: one
+	// row per behaviour the request stated, naming the check that exercises it
+	// or naming nothing. It travels so the mapping can be journaled — the
+	// mapping is the evidence and the finding is only its conclusion, and a run
+	// that passed with every point covered must be tellable apart from one that
+	// passed because there was no checklist. See acceptance.go.
+	Exercises []store.ExercisedPoint
+	// Unexercised is the acceptance finding as a LIST rather than as a
+	// paragraph: one entry per line of the request whose behaviours no check
+	// exercises, already grouped and already bounded (see Unexercised).
+	//
+	// It is a field of its own because the finding kept arriving as prose glued
+	// onto somebody else's gap, and prose glued onto a gap is invisible three
+	// ways at once. igel s6 mapped seventeen points, left three unexercised, and
+	// the run's whole record of that is a paragraph in the middle of the gate
+	// event's `gap` string: nothing journaled it as a finding, the stream's own
+	// line is firstLine(gap) and never reached it, and the round it bought was
+	// bought on the judge's citation, so a refusal of that citation took the
+	// measurement down with it.
+	//
+	// It travels beside Gaps rather than instead of it, and it is set on a
+	// FAILING verdict too — the acceptance question is asked on every verdict,
+	// and a run that failed for a missing file is not a run whose stated
+	// behaviours are covered.
+	// OwnFailing is the checks THIS WORK WROTE that are red — a leaf that has
+	// not finished, and never a repository that was broken. It is a list of its
+	// own so the stream can say it and an autopsy can find it without reading a
+	// paragraph out of the middle of the gap, which is the same reason
+	// Unexercised is one. See OwnChecksFailing.
+	OwnFailing  []string
+	Unexercised []string
+	// Unasserted is the other half of the same finding as a list: the behaviours
+	// a check NAMES and no assertion WEIGHS, each already carrying the
+	// observables nothing asserted. It is a field of its own for the reason
+	// Unexercised is one — a finding that travels as prose inside somebody
+	// else's gap is journaled by nothing, said by nothing, and taken down by a
+	// refusal of a citation it has no part in.
+	Unasserted []string
+	// Stated is how many behaviours were weighed to reach Unexercised, so the
+	// finding can say what a repair round most needs to know: how much of the
+	// checklist is still open, out of how much there was.
+	Stated int
+	// Unmeasured says this judgement held an acceptance checklist and could
+	// settle none of it, because nothing in the project's own verification and
+	// nothing in the change could be read as a check. It is separate from
+	// Unjudged, which says the GATE never answered: here the gate answered and
+	// one half of its question had no evidence to answer from.
+	Unmeasured string
+	// Unreadable says the project DECLARED a way of checking itself and this run
+	// could not read it — a suite killed at its ceiling, a shell the preamble
+	// cannot be trusted in, a wall that could not afford the reading.
+	//
+	// It is the half of Unmeasured that must not deliver as whole, and the two
+	// were one field. ink s7 journaled its cut reading correctly — `npx ava
+	// --tap` killed at 1m53s — and then passed the round-2 gate over a tree with
+	// no roster at all and left with exit 0 at 13 of 25 hidden checks. A project
+	// with NO verification leaves the coverage question unanswerable and nobody
+	// is at fault; a project with a suite nobody could read leaves it unanswered,
+	// which is FAILSAFE clause 5 — a floor that cannot deliver nothing as done.
+	// See store.DeliveryGate.Whole.
+	Unreadable bool
+	Checked    bool
 	// Unjudged names, in one line, why there is no verdict behind this value.
 	// Every failure of the gate itself is fail-open — the deliverable ships —
 	// and for as long as that was the whole of it, the cheapest bug in the
@@ -251,6 +340,89 @@ type Judgment struct {
 	// fail-closed switch: flipping the default is a behaviour change and it is
 	// not this wave's.
 	Unjudged string
+
+	// Fault names, in one line, why this gate call produced NO VERDICT AT ALL —
+	// and it is set only where that is the gate's own failure rather than the
+	// weather's. Its one reader ends the run short of whole.
+	//
+	// It is a separate field from Unjudged because the two mean opposite things
+	// to a person. Unjudged is "the work ships and nobody read it", which is a
+	// pass. Fault is "the reader was there and could not speak", which is not a
+	// pass and not a gap: it is a hole where the run's own check should have
+	// been, and a run with a hole in its check has not been shown to be whole.
+	// See faulted, and FAILSAFE.md's floor.
+	Fault string
+
+	// Subject is what this gate held between its fence markers, in the words
+	// the record keeps: "tree (6 files)" or "claim". See subject.go.
+	//
+	// It is carried on the judgement rather than recomputed by the wiring
+	// because the two would answer differently the moment anything about the
+	// record moved between them, and the whole value of the field is that an
+	// autopsy can trust it: three refusals of one run described a sentence
+	// while the tree held 42KB of changed Python, and nothing anywhere said
+	// which of the two had been read.
+	Subject string
+
+	// File is the one file of the record this finding is about, in the record's
+	// own spelling. Empty on a pass, on a claim-subject finding, and on every
+	// mechanical judgement that is already about a named file of its own.
+	File string
+	// HeldPoint is the behaviour of the request this verdict was held to, in
+	// the record's own words: the span a refusal was built on, the size of the
+	// list a pass was weighed against, or HeldPointEmpty where the request
+	// states none and the requirement was off.
+	//
+	// It exists because the quote alone cannot say which. textual v4-flash s13
+	// journaled two gates whose subject and quote were both right, and no
+	// reader could tell whether the quote had passed the checklist enum or
+	// there had been no checklist at all — which are the mechanism working and
+	// the mechanism absent, wearing the same event.
+	HeldPoint string
+
+	// Consumers is the finding the changed-definition reading produced: one line
+	// per definition this run reshaped that the rest of the project still uses,
+	// naming the shape its callers expect and how many of them there are.
+	//
+	// It is a field of its own for the reason Unexercised and Unasserted are:
+	// a finding that travels as prose inside somebody else's gap is journaled by
+	// nothing and reachable by nothing. See consumers.go.
+	Consumers []string
+
+	// Unbound is the finding the unbound-reference reading produced: one line
+	// per name the run's own sources READ that nothing in the tree binds, each
+	// carrying the file and line it is read at.
+	//
+	// It is a field of its own for the reason Consumers is, and the name is the
+	// whole point of it: igel s14's gate could say the run's checks were red and
+	// could not say that `temp_post_req_data_path` was the name they were red
+	// about. See unbound.go.
+	Unbound []string
+
+	// Finding names WHICH MEASUREMENT this gap is, in one stable word, and
+	// Cited above holds the things it names. Empty for a model judge's verdict,
+	// which is a reading of a request and not a measurement of the world.
+	//
+	// It exists because a finding's identity has only ever been its SENTENCE,
+	// and a sentence is not a structure. A reader asking "is this the same
+	// finding the last round raised" — the governor deciding whether a repair
+	// round bought anything, an autopsy counting how many times one mechanism
+	// fired — has had to compare prose that carries a bounded list of names
+	// glued into the middle of it. happy-dom's v4-flash s13 raised the identical
+	// removed-checks finding on four consecutive rounds and nothing in the
+	// record could say so. The pair is the comparable thing: this kind, and the
+	// names.
+	Finding string
+
+	// Fallback says this verdict was reached under the CLAIM contract after the
+	// tree contract could not be answered — free text where there were enums —
+	// or that the mechanical gate settled it after no verdict could be read at
+	// all. It is journaled as the subject, because the subject is what an
+	// autopsy reads to learn what the gate was actually holding, and a verdict
+	// reached under a narrow contract and one reached under a loose one are two
+	// different events wearing one word. See judgeDeliverable's fallback ladder
+	// and igel s15.
+	Fallback bool
 }
 
 // Cited is the gap's citations, and the one reader every admission rule goes
@@ -438,6 +610,44 @@ type Evidence struct {
 	// measured battery (audit-notes §14.4.1). It is stated as fact rather than
 	// as an excuse, and it acquits only what it names.
 	Baseline []string
+	// Regressed names the project's own checks that PASSED BEFORE this work and
+	// FAIL AFTER it, in the words the runner printed them in.
+	//
+	// It is Baseline's opposite number and the half that convicts. Baseline
+	// acquits what was already red; this names what this work turned red, and it
+	// is the one finding on this whole record that no citation could ever be
+	// weighed for — a person does not have to ask for their repository to keep
+	// working. See Regressions, which raises it as a finding of its own, and
+	// Judgment.Sourced, which is what lifts it clear of the citation invariant.
+	//
+	// Nil on every worker that cannot take two readings of the project's own
+	// command, which reads as no claim.
+	Regressed []string
+	// Removed names the PUBLIC names this work deleted: a name the tree spelled
+	// before the job's first change and does not spell now, in the files the
+	// run's own record says it changed.
+	//
+	// It is Regressed's other half. A check that goes red is the suite noticing;
+	// this is what the suite structurally cannot notice, because a project only
+	// has checks for what somebody wrote checks for. See RemovedPublicNames and
+	// verify.Surface.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim.
+	Removed []string
+	// OwnFailing names the red checks that first appeared AFTER the baseline —
+	// the ones this run wrote itself and did not get passing. See
+	// OwnChecksFailing, and verify.Reading.OwnFailing for why it is not a
+	// regression.
+	OwnFailing []string
+
+	// Unbound is what the LEAF measured of the same question the gate re-takes
+	// for itself: names the run's own sources read that nothing in the tree
+	// binds, already worded (verify.UnboundWords). The gate reads it only
+	// where it has no workspace of its own to re-read — which is the same place
+	// removedSinceTheJobBegan leaves the leaf's answer standing, and for the
+	// same reason: a measurement nobody could re-take is still a measurement.
+	Unbound []string
 	// Account is the worker's own structured account of the work: the files it
 	// changed, with the kind and size of each change, and the checks it ran
 	// with what each one found.
@@ -469,6 +679,35 @@ type Evidence struct {
 	//
 	// Empty on every worker that produces no diff, which reads as no claim.
 	Patch string
+	// Accept is the acceptance checklist: the behaviours the person's REQUEST
+	// states, read from the request before any work existed and carried on the
+	// plan's spec. It is what the gate holds the delivery to beyond "does this
+	// read like an answer", and it is the one thing on this record that was
+	// neither produced by the work nor written about it.
+	//
+	// Empty on every job whose request states nothing checkable, which is most
+	// of them, and empty reads as NO CHECKLIST rather than as nothing asked for.
+	Accept []plan.Point
+	// Verification is the photograph of the project's own checks the run took —
+	// the roster before the work and the roster after it, on the budget PERF.md
+	// states. The gate reads it instead of reading the deliverable's sentence
+	// about its own tests: a claim that "all 56 tests pass" is a claim about
+	// tests the same worker wrote, and weighing it is how two graded runs ended
+	// at exit 0 over wrong answers (docs/design/gate/ACCEPTANCE.md).
+	//
+	// A zero value is a photograph nobody took, which stops the acceptance
+	// settlement rather than convicting anything: NOBODY LOOKED IS NOT NOTHING
+	// WRONG, and it is not a finding either.
+	Verification verify.Reading
+	// Workspace is where the work happened, and it is here for one purpose: the
+	// gate may need to take the after reading itself. A worker that took no
+	// second photograph — a repair that only rewrote the account, a leaf whose
+	// wall could not afford one — leaves the final tree unmeasured, and the
+	// reading of the tree that is about to be handed over is the gate's to hold.
+	//
+	// Empty means the gate takes no reading of its own, which is what every
+	// caller that has no workspace to name already gets.
+	Workspace string
 }
 
 // gateEvidenceRan bounds what travels when the window is unknown. The executor
@@ -510,31 +749,48 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
-		len(e.Baseline) == 0 && e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
+		len(e.Baseline) == 0 && len(e.Regressed) == 0 && !e.Verification.Taken &&
+		e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
 		if !e.Observed {
 			return ""
 		}
 		return UnexercisedRecord
 	}
 	var body strings.Builder
+	// A TREE THAT IS THE DELIVERABLE IS NOT ALSO A RECORD ABOUT ONE. Where the
+	// fence holds the changed files (see subject.go), listing them again here
+	// would put one list in the prompt twice under two headings that mean
+	// different things — and the second heading, "what the work left behind",
+	// is the one that invites a judge to weigh the tree as supporting evidence
+	// for a message it is no longer being shown as the deliverable.
+	//
+	// WHAT THE RECORD CLAIMS AND THE WORLD DOES NOT HOLD SURVIVES EITHER WAY,
+	// because the fence can only carry files that exist and those two lines are
+	// the ones that convict: a path the deliverable names and the filesystem
+	// does not have, and a directory wearing a file's name. They are the whole
+	// of the block under a tree subject and they lead it under a claim.
 	if len(e.Artifacts) > 0 {
-		body.WriteString("What the work left behind:\n")
+		tree := e.Subject() == SubjectTree
+		head := "What the work left behind:\n"
+		if tree {
+			head = "What the record NAMES and the tree does not hold:\n"
+		}
 		for _, artifact := range e.Artifacts {
-			if info, err := os.Stat(artifact); err == nil {
-				if info.IsDir() {
-					// A directory where a file was expected is the shape that
-					// made a leaf claim a written file that was never written:
-					// reported as a size it reads as the deliverable.
-					fmt.Fprintf(&body, "%s (a directory, not a file)\n", artifact)
-					continue
-				}
-				fmt.Fprintf(&body, "%s (%d bytes)\n", artifact, info.Size())
-				continue
+			info, err := os.Stat(artifact)
+			switch {
+			case err != nil:
+				// A path the deliverable names and the filesystem does not
+				// have is the loudest thing in this block, so it is stated
+				// rather than dropped for being unreadable.
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (not on disk)\n", artifact))
+			case info.IsDir():
+				// A directory where a file was expected is the shape that made
+				// a leaf claim a written file that was never written: reported
+				// as a size it reads as the deliverable.
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (a directory, not a file)\n", artifact))
+			case !tree:
+				body.WriteString(headOnce(&head) + fmt.Sprintf("%s (%d bytes)\n", artifact, info.Size()))
 			}
-			// A path the deliverable names and the filesystem does not have is
-			// the loudest thing in this block, so it is stated rather than
-			// dropped for being unreadable.
-			fmt.Fprintf(&body, "%s (not on disk)\n", artifact)
 		}
 	}
 	if named := e.namedBlock(); named != "" {
@@ -581,6 +837,31 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 			body.WriteString(note + "\n")
 		}
 	}
+	// And its opposite number, stated in the same breath so the two are read
+	// together: a judge told only what was already red is a judge that can
+	// forgive a fresh failure by mistaking it for an old one.
+	if len(e.Regressed) > 0 {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString("What this work TURNED RED. These checks passed before it and fail after it, " +
+			"measured twice with the project's own command:\n")
+		for _, name := range e.Regressed {
+			body.WriteString(name + "\n")
+		}
+	}
+	// What the project's own verification actually said, in place of what the
+	// deliverable says it said. A judge holding a sentence like "All 56 tests
+	// pass" and nothing beside it weighs the sentence, because a sentence is
+	// what it has; a judge holding the command, its exit status and its roster
+	// weighs the world. The two runs this block exists for both passed on the
+	// sentence (docs/design/gate/ACCEPTANCE.md).
+	if reading := e.readingBlock(); reading != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString(reading)
+	}
 	ran, tail := e.Ran, gateEvidenceLines(budget)
 	if len(ran) > tail {
 		ran = ran[len(ran)-tail:]
@@ -595,6 +876,16 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 		}
 	}
 	return strings.TrimRight(body.String(), "\n")
+}
+
+// headOnce writes a section's heading the first time the section has anything
+// under it, and nothing after that. It exists because a heading printed above an
+// empty list is the record asserting a fact it does not hold — "what the tree
+// does not have:" followed by nothing reads as a claim that something is missing.
+func headOnce(head *string) string {
+	written := *head
+	*head = ""
+	return written
 }
 
 // gatePatchBytes is how much of the change's text travels when the window is
@@ -637,6 +928,25 @@ func (e Evidence) patchBlock(budget ctxbudget.Budget) string {
 			strconv.Itoa(len(body)) + "; the whole of it is at " + e.Patch + ")\n"
 	}
 	return head + clipped + "\n"
+}
+
+// patchSource is the change's whole text, read from where the worker left it.
+//
+// It is separate from patchBlock because the two readers want different things
+// from one file. The block is for a model and is clipped to a share of a prompt
+// budget; this is for the check-declaration reader, which scans and keeps
+// nothing, and which would report a truncated diff's later hunks as checks the
+// work never wrote. An unreadable patch is the empty string, which reads as no
+// claim everywhere it is used.
+func (e Evidence) patchSource() string {
+	if strings.TrimSpace(e.Patch) == "" {
+		return ""
+	}
+	body, err := os.ReadFile(e.Patch)
+	if err != nil {
+		return ""
+	}
+	return string(body)
 }
 
 // namedBlock settles every file the request named against the files the run
@@ -690,32 +1000,17 @@ func doneBlock(done plan.Done) string {
 	return strings.TrimRight(body.String(), "\n")
 }
 
-// namedFile matches a token that reads as a filename: a stem, a dot, and a
-// two-to-eight character alphanumeric extension opening with a letter. The
-// extension's shape is what keeps prose out — "e.g.", "i.e.", "vs." and version
-// numbers all fail it — and the stem's character class is what lets a path
-// through, because "docs/JOURNEY.md" names a file exactly as "report.md" does.
-// It is the same shape the delivery law's file-shaped bit is decided on, for the
-// same reason: the two questions are one question asked at either end.
-var namedFile = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
-
 // NamedFiles lists, in order and without repeats, the files a piece of text
 // names. It is exported because the gate's caller holds the request and the
 // gate holds the record, and the answer they need is the same list.
-func NamedFiles(text string) []string {
-	var names []string
-	seen := map[string]bool{}
-	for _, match := range namedFile.FindAllString(text, -1) {
-		clean := strings.Trim(strings.TrimSpace(match), "/")
-		clean = strings.TrimPrefix(clean, "./")
-		if clean == "" || seen[strings.ToLower(clean)] {
-			continue
-		}
-		seen[strings.ToLower(clean)] = true
-		names = append(names, clean)
-	}
-	return names
-}
+//
+// The shape rule itself is verify.NamedPaths and is deliberately not repeated
+// here. Which text names a file is one question asked at three ends — which
+// files a request is about, which decides where a reading is taken; which files
+// a request named, which the delivery record settles against the disk; and which
+// file a produces entry IS — and a regular expression written down twice is a
+// regular expression that will differ.
+func NamedFiles(text string) []string { return verify.NamedPaths(text) }
 
 // ProducedFile answers whether one named file is among the files a run left
 // behind, and returns the path it landed at.
@@ -802,9 +1097,37 @@ const enumerationFloor = 3
 // the items names the substance rather than the item, and reaches it too; a
 // deliverable missing even one of the named items is judged as it always was.
 //
+// AND IT MAY ONLY SPEAK WHERE THE DELIVERED TEXT IS THE WHOLE OF WHAT THE RUN
+// LEFT BEHIND. This acquits a finding — it sets store.DeliveryGate.Overturned,
+// which is the field the exit code turns on — and an acquittal has to be
+// weighed against the world. The deliverable is not the world; it is the
+// component being checked, and a rule that reads it is FAILSAFE clause 2 broken
+// in the strict sense the clause states it. A worker that restates the request
+// back in the request's own words satisfies the containment test below by
+// writing prose about work it did not do, and one did: textual s5 was acquitted
+// on "everything it names is already in the delivered text" over a true finding
+// that an example file had never been written, and shipped 1 of 20 hidden
+// checks under exit 0 (2026-08-29, bench/deepswe; docs/design/gate/SETTLEMENT.md
+// §6).
+//
+// Where the run produced NOTHING BUT THE MESSAGE, that is not a softening of the
+// rule but the same rule: the message is the only artifact the run made, so a
+// citation settled against it is settled against everything there is. That is
+// the twelve-profiles case exactly, and it survives untouched. The moment a file
+// is in the record, the record is the world and the text is a claim about it —
+// which AdmitGapArtifact is the door for, and this one closes.
+//
 // Presence is checked case-insensitively and nowhere else is anything relaxed:
 // this is a containment test, so it can close a gap and can never open one.
-func AdmitGapPresent(citations []string, deliverable string) string {
+func AdmitGapPresent(citations []string, deliverable string, evidence Evidence) string {
+	// The record first, because it decides whether this door exists at all for
+	// this delivery. It is asked of the whole record rather than of the
+	// citation's own file names: a run that left three files behind has a world
+	// to be checked against, and prose does not get to overrule it about any of
+	// them.
+	if len(evidence.Artifacts) > 0 {
+		return ""
+	}
 	// The enumeration is read off the citations as one line. Joining is safe
 	// here and only here: an item of an enumeration cannot span the separator,
 	// because the separator is not a character an item is made of.
@@ -840,103 +1163,37 @@ func AdmitGapPresent(citations []string, deliverable string) string {
 // worker's name, four hundred for a verdict. That is the right size for the
 // visible answer and the wrong size for the call. A reasoning model spends its
 // completion budget thinking before it writes, so a cap sized for the object
-// alone is spent entirely on deliberation and the object never arrives — the
-// same failure that killed planner nodes at completion_tokens=32768 before
-// plan.structured grew its retry.
+// alone is spent entirely on deliberation and the object never arrives.
 //
-// What made it worse here than there is what an empty reply MEANS to a gate.
-// An unparseable verdict is a pass (see JudgeDeliverable), so a cap too small
-// for a reasoning model is not a call that fails: it is a gate that stops
+// What made it worse here than anywhere else is what an empty reply MEANS to a
+// gate. An unparseable verdict used to be a pass, so a cap too small for a
+// reasoning model was not a call that failed: it was a gate that stopped
 // existing, quietly, on the models most worth pointing it at.
 //
-// The cap is a fraction of the completion reserve the whole tree keeps for a
-// reply and its reasoning — AFORGE_COMPLETION_RESERVE, 65536 by default — so it
-// moves with the law rather than against it. A verdict genuinely is small, which
-// is why it takes a fraction rather than the whole reserve; the floor is what
-// keeps that fraction from ever landing back where it started.
-const (
-	verdictShare       = 8
-	verdictFloorTokens = 4096
-)
+// BOTH HALVES OF THAT ARE NOW THE SHARED SEAM'S (internal/shaped). The room is
+// derived from the ask rather than named here — the share of the completion
+// reserve this file measured is stated there, once, for every structured call in
+// the harness — and a reply that arrives cut off or unreadable is continued or
+// asked again before this file ever sees it. What is left here is the one
+// question that was always the gate's: what an answer that still did not come
+// back MEANS. See the fault path in judgeDeliverable.
 
-func verdictTokens() int {
-	reserve := ctxbudget.CompletionReserve()
-	budget := reserve / verdictShare
-	if budget < verdictFloorTokens {
-		budget = verdictFloorTokens
-	}
-	if budget > reserve {
-		// An operator who set the reserve below the floor has stated what the
-		// room is. The floor guards against reasoning; it is not a licence to
-		// overrun a reserve somebody named on purpose.
-		budget = reserve
-	}
-	return budget
-}
-
-// retryVerdictTokens doubles what the empty attempt actually spent, floored at
-// twice the ordinary cap and bounded by the reserve itself, so one judgement
-// that cannot stop thinking cannot demand an absurd completion. It is
-// plan.retryTokenBudget's arithmetic with the law's numbers where that function
-// has literals.
-func retryVerdictTokens(response *ai.Response) int {
-	first := verdictTokens()
-	spent := 0
-	if response != nil && response.Usage != nil {
-		spent = response.Usage.CompletionTokens
-	}
-	budget := spent * 2
-	if budget < first*2 {
-		budget = first * 2
-	}
-	if ceiling := ctxbudget.CompletionReserve(); budget > ceiling {
-		budget = ceiling
-	}
-	return budget
-}
-
-// spentItThinking reports the one failure the retry exists for: the reply came
-// back with nothing in it, and the reason is that the budget went on
-// deliberation rather than on an answer. finish_reason=length says so outright;
-// a provider that reports a clean stop while billing completion tokens for an
-// empty body is saying the same thing in its own accent, and both are answered
-// the same way. A genuinely silent reply that cost nothing is not retried —
-// there is no evidence a bigger budget would change it.
-func spentItThinking(response *ai.Response) bool {
-	if response == nil || strings.TrimSpace(response.Text()) != "" {
-		return false
-	}
-	if len(response.Choices) > 0 && response.Choices[0].FinishReason == "length" {
-		return true
-	}
-	return response.Usage != nil && response.Usage.CompletionTokens > 0
-}
-
-// askVerdict sends one judgement and, when the model spends the whole cap
-// thinking and hands back nothing, sends it once more with doubled room. One
-// retry, the planner's own: the difference between a contract and a dead node
-// there, and between a gate and a rubber stamp here. A second empty answer is
-// the model's problem and not the budget's — the caller says so out loud.
-func askVerdict(ctx context.Context, client *pool.Client, messages []ai.Message, request []ai.Option) (*ai.Response, error) {
-	response, err := client.CompleteWithMessages(ctx, messages, sized(request, verdictTokens())...)
-	if err != nil || !spentItThinking(response) {
-		return response, err
-	}
-	retry, retryErr := client.CompleteWithMessages(ctx, messages, sized(request, retryVerdictTokens(response))...)
-	if retryErr != nil || retry == nil {
-		return response, nil
-	}
-	return retry, nil
-}
-
-// sized copies the request options and puts the cap last, where it wins. The
-// copy is not a nicety: two appends onto one slice with spare capacity write
-// over each other, and the second call would go out carrying the first call's
-// cap.
-func sized(request []ai.Option, tokens int) []ai.Option {
-	options := make([]ai.Option, 0, len(request)+1)
-	options = append(options, request...)
-	return append(options, ai.WithMaxTokens(tokens))
+// askVerdict sends one judgement through the shared structured-answer seam and
+// decodes it into the caller's destination.
+//
+// The seam owns the ceiling, the continuation of a cut answer, the single re-ask
+// for a reply that was not an object, and the typed fault when neither worked.
+// This wrapper exists only to say the two things that are true of every
+// judgement in this file and of nothing else: the lane is "gate", and the schema
+// travels on the wire only where there is a router to carry it.
+func askVerdict(ctx context.Context, client *pool.Client, messages []ai.Message,
+	schema json.RawMessage, into any) (*ai.Response, error) {
+	return shaped.Answer(ctx, client, shaped.Ask{
+		Lane:     "gate",
+		Messages: messages,
+		Schema:   schema,
+		Routed:   client != nil && client.Routed(),
+	}, into)
 }
 
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
@@ -945,6 +1202,63 @@ func sized(request []ai.Option, tokens int) []ai.Option {
 // now — see Judgment.Unjudged and unjudged below — because fail-open and silent
 // are two different designs and only one of them was ever chosen.
 func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, deliverable, method string, evidence Evidence, workerModel string, options ...Option) Judgment {
+	// THE READING OF THE TREE THAT IS ABOUT TO BE HANDED OVER IS THE GATE'S TO
+	// HOLD. A worker photographs the project's own checks before it starts and
+	// again at the end, and that second photograph is normally the reading of
+	// the final tree — but a repair round that only rewrote the account, and a
+	// worker that could not afford the second reading, both leave the tree
+	// unmeasured at the moment it is judged. The gate takes the reading itself
+	// there, on the same budget the worker was held to, so that the world's
+	// answer exists wherever a verdict is being reached rather than only where a
+	// worker happened to be able to take one.
+	evidence.measureFinalTree(ctx)
+	// AND THE RECORD OF WHAT WAS LEFT BEHIND IS SETTLED AGAINST THE WORLD BEFORE
+	// ANYTHING IS ASKED OF IT. Every reader below — the mechanical gate, the
+	// block the judge is shown, the door that refuses a gap the disk has already
+	// closed — reads one list, and until this call that list was an ACCOUNT of
+	// what leaves reported rather than an observation of the tree.
+	evidence.completeAgainstTheWorld()
+	// AND WHAT THE JOB HAS DELETED FROM ITS OWN PUBLIC SURFACE IS RE-SETTLED
+	// HERE, AGAINST THE TREE AS IT NOW STANDS. Until this, the finding was the
+	// judged node's own outcome — so a job whose work was done by grown leaves
+	// lost it entirely, and igel s14 shipped an ImportError into all twenty-four
+	// hidden tests while three of its leaves had each journaled the loss.
+	// Re-taking it rather than carrying the leaf's list is what lets a repair
+	// round CLEAR the finding: a name put back is a name the new reading finds.
+	// See Evidence.removedSinceTheJobBegan.
+	if lost, settled := evidence.removedSinceTheJobBegan(
+		verify.JobKey(node.Provenance.Intent)); settled {
+		evidence.Removed = lost
+	}
+	// AND WHAT THIS GATE IS ABOUT IS STAMPED ON WHATEVER COMES BACK, HERE, ONCE.
+	//
+	// It used to be written onto each judgement at the place that built it, and
+	// a judgement is built at eleven places in this file and two more in
+	// acceptance.go. ofetch s12 is what that costs: a gate refused, the event
+	// journaled, and `subject` empty in the store — so the one question an
+	// autopsy of this mechanism has to answer, did the review read the world or
+	// a sentence, had no answer on the very run that needed it. A field set by
+	// every constructor is a field the next constructor forgets. This is the
+	// one exit, so there is nothing left to forget.
+	judgment := judgeDeliverable(ctx, settings, client, graph, node, deliverable, method,
+		evidence, workerModel, options...)
+	judgment.Subject = evidence.SubjectWords()
+	// AND A VERDICT THE NARROW CONTRACT COULD NOT HOLD SAYS SO. It is stamped
+	// here with everything else that is derived once, so no constructor can
+	// forget it.
+	if judgment.Fallback {
+		judgment.Subject = SubjectFallbackWords
+	}
+	// And the other half of the same question, derived the same way and for the
+	// same reason: WHICH behaviour this verdict was held to, or that there was
+	// no list to hold it to. See heldPointWords.
+	judgment.HeldPoint = heldPointWords(evidence,
+		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
+		newBounds(options).budget(DeliverablePrompt), judgment)
+	return judgment
+}
+
+func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, deliverable, method string, evidence Evidence, workerModel string, options ...Option) Judgment {
 	// The one fact a judge should never be paid to discover is settled before a
 	// model round is bought: a file the plan named as a deliverable that is
 	// missing or empty on disk. It is checked from the structured criterion
@@ -956,7 +1270,110 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// is a fact about the filesystem. When the criterion named no files, or
 	// every named file is present and non-empty, this returns ok=false and the
 	// path is byte-identical to before it existed.
+	// The promises this run made before it began working, assembled once and
+	// carried on every judgement below. Both admission doors read them off the
+	// judgement rather than rebuilding them from whatever fields their own
+	// caller happened to hold, which is how they came to disagree.
+	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	// The job this delivery belongs to, spelled the one way every reader in this
+	// system spells it: a digest of the person's own request, which is the one
+	// thing every leaf of a job holds identically and no two jobs share. It is
+	// what the readings below are looked up against, because a reading is a
+	// property of the JOB and the tree and never of the node being judged.
+	job := verify.JobKey(node.Provenance.Intent)
+	// THE ONE DECISION THIS WHOLE GATE TURNS ON: what the fence holds. Where the
+	// run changed the tree, the change is the deliverable and the worker's
+	// message is a claim about it; where it changed nothing, the message is the
+	// whole of what the run produced and it is the deliverable, exactly as it
+	// always was. The readings this reads are taken by the caller above, once.
+	// See subject.go.
+	subject := evidence.Subject()
+	// THE READINGS OF THE WORLD ARE TAKEN BEFORE ANY DOOR CAN RETURN, and this
+	// one used to be taken after four of them. igel s14's two gates were both
+	// MECHANICAL — a file the plan promised was not on disk — so judgeDeliverable
+	// returned above the block that reads this, and the store holds no consumers
+	// event of any kind for that run: not an empty one, which would have said
+	// the reading happened and found nothing, and not a full one. A measurement
+	// that only happens on the path where a model is bought is a measurement
+	// that is absent exactly when the run is already going wrong.
+	//
+	// Nil everywhere the reading found nothing, which is most runs.
+	var consumers []verify.ChangedDefinition
+	var consumerFiles, consumerLines []string
+	unbound := evidence.Unbound
+	if subject == SubjectTree {
+		consumers = evidence.changedDefinitions(job)
+		consumerFiles, consumerLines = consumerGrounds(consumers)
+		// Journaled either way, INCLUDING the reading that found nothing: an
+		// autopsy asking whether this door was open on a run has nothing else to
+		// read (FAILSAFE.md clause 4).
+		journalConsumers(graph, node.ID, consumers)
+		// And the reading one question further back, taken here for every reason
+		// that one is: it is about the tree the gate is judging rather than
+		// about the leaf that happened to write it, and a measurement that only
+		// happens on the path where a model is bought is absent exactly when a
+		// run is already going wrong. See unbound.go.
+		if found, settled := evidence.unboundReferences(); settled {
+			unbound = verify.UnboundWords(found)
+			journalUnbound(graph, node.ID, found)
+		}
+	}
+	// A REGRESSION IS THE FIRST THING THIS GATE ANSWERS, AND IT IS NOT AN
+	// OPINION. A check that passed before the work and fails after it is a
+	// measurement the run made of the world, and it outranks every other reading
+	// of the deliverable: whatever else was produced, the repository is worse
+	// than it was found. It is settled before a model round is bought for the
+	// same reason a missing promised file is — the answer is already known and a
+	// judge's cost would buy nothing.
+	if regression, broke := Regressions(evidence.Regressed); broke {
+		regression.Grounds = grounds
+		return regression
+	}
+	// And the half of the same measurement no suite can make: A PUBLIC NAME THAT
+	// EXISTED BEFORE THIS WORK AND DOES NOT NOW. It sits here, beside the
+	// regression and above everything a model is paid for, because it is
+	// evidence of exactly the same kind — two readings of the world, taken by
+	// the run, with nothing in between them to argue with. igel s11's check-level
+	// reading called the tree IMPROVED on the change that broke all twenty-four
+	// of its hidden tests at setup.
+	if lost, removed := RemovedPublicNames(evidence.Removed); removed {
+		lost.Grounds = grounds
+		return lost
+	}
+	// And the third measurement off the same pair of readings, which is a
+	// different fact about the run and gets different words: THE CHECKS THIS
+	// WORK WROTE AND DID NOT GET PASSING. It sits below the two findings about
+	// damage because it is not damage — nothing that was working stopped — and
+	// above every model round for the reason they are: the answer is already
+	// measured, and a judge's cost would buy nothing.
+	if unfinished, red := OwnChecksFailing(evidence.OwnFailing); red {
+		unfinished.Grounds = grounds
+		return unfinished
+	}
+	// And the fact one question further back than any of them: A NAME THIS WORK
+	// READS THAT NOTHING IN THE TREE BINDS. It sits here, beside the checks the
+	// run wrote and left red, because it is what those reds usually ARE — igel
+	// s14's twenty-four hidden failures were one `ImportError` on one name, and
+	// the only thing the gate could say was that a suite was red. It is settled
+	// above every model round for the reason the three above it are: the answer
+	// is already measured, and a judge's cost would buy nothing.
+	if imagined, reads := UnboundNames(unbound); reads {
+		imagined.Grounds = grounds
+		return imagined
+	}
+	// And its near neighbour, which the photograph could not see until it kept
+	// rosters rather than only failures: A CHECK THAT STOPPED EXISTING. Deleting
+	// the test that was failing is the cheapest way there is to make a suite
+	// green, so a coverage rule that closed every other door and left this one
+	// open would be teaching exactly that move. Same evidence standard as a
+	// regression — the worker's own diff and two readings of the world — and so
+	// the same place in the order.
+	if weakened, removed := WeakenedChecks(evidence.removedChecks(), evidence.Verification.Vanished()); removed {
+		weakened.Grounds = grounds
+		return weakened
+	}
 	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
+		mechanical.Grounds = grounds
 		return mechanical
 	}
 	ask := node.Provenance.Intent
@@ -996,7 +1413,43 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if method = strings.TrimSpace(method); method != "" {
 		body += "\n\nThe working method this deliverable was held to:\n" + method
 	}
-	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(deliverable)
+	judged := deliverable
+	if subject == SubjectTree {
+		judged = evidence.treeBlock(budget)
+	}
+	// The behaviours a refusal may be built on, above the fence with everything
+	// else that is how to judge rather than what is judged. They are the same
+	// list the acceptance settlement counts (HeldPoints), so the gate cannot
+	// refuse a verdict for citing a behaviour the settlement is about to weigh.
+	var behaviours []string
+	if subject == SubjectTree {
+		if spans := behaviourSpans(HeldPoints(evidence, grounds), budget); len(spans) > 0 {
+			behaviours = spans
+			body += "\n\n" + behavioursBlock(spans)
+		}
+	}
+	// And the definitions this run reshaped that the rest of the project still
+	// uses, beside the behaviours because it belongs to the same half of the
+	// prompt: how to judge, read from the world, rather than what is judged. It
+	// is the one fact that catches a name kept and a shape moved, which is the
+	// hole igel s12 went through with all twenty-four hidden checks red. The
+	// reading itself was taken above, before any door could return. See
+	// consumers.go.
+	if block := consumersBlock(consumers, budget); block != "" {
+		body += "\n\n" + block
+	}
+	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(judged)
+	// The worker's own account, below the fence, named for what it is. It is
+	// first among the records because it is the most useful of them for the one
+	// purpose it has left — a claim the files do not bear out — and because a
+	// reader that meets it anywhere above the fence is a reader that has been
+	// invited to judge it.
+	if subject == SubjectTree {
+		if claim := strings.TrimSpace(deliverable); claim != "" {
+			body += "\n\nWhat the worker said about its own work. THIS IS A CLAIM ABOUT " +
+				"THE DELIVERABLE AND IS NOT THE DELIVERABLE:\n" + boundedDelivery(claim, budget)
+		}
+	}
 	// The records come last, under the deliverable they are used to check: they
 	// are the most volatile block in the prompt — a revision rewrites the text
 	// and re-runs the work — and the cache pays for volatility by position.
@@ -1013,44 +1466,98 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	// Structured output is the cascade's free verifier. Keep the no-panel
-	// adapter's request options unchanged; there is no second rung to unlock.
-	if client.Routed() {
-		request = append(request, ai.WithSchema(deliverableSchema))
+	// The answer's shape follows the subject. Over a changed tree a refusal must
+	// name one file of the record and quote the behaviour it fails, which is
+	// what makes a finding about the worker's sentence unsayable rather than
+	// merely discouraged; over a claim the shape is the one it always was.
+	record := evidence.recordNames()
+	promised := evidence.PromisedFiles()
+	verdict := treeVerdict{files: record}
+	schema := deliverableSchema
+	if subject == SubjectTree {
+		verdict.behaviours = behaviours
+		verdict.consumerFiles, verdict.consumerLines = consumerFiles, consumerLines
+		verdict.promised = promised
+		schema = treeVerdictSchema(record, behaviours, consumerFiles, consumerLines, promised)
 	}
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
+	// One seam for every structured reply in the system. This used to send, then
+	// scan for braces, then decide — and a failed decode here was a silent pass.
+	// Both mistakes are gone: the seam continues a verdict that ran out of room,
+	// asks once more for one that came back as prose, and when neither works it
+	// says so in a type this file cannot mistake for silence. A verdict this
+	// gate cannot READ — a fail over a changed tree that names no file of the
+	// record — travels that same path for the same reason: the contract it
+	// broke is the schema's, so the schema is what it is asked again with.
+	messages := []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, request)
-	if err != nil || response == nil {
+	}
+	_, err := askVerdict(judgeCtx, client, messages, schema, &verdict)
+	// A CONTRACT MAY NOT BE THE REASON A RUN ENDS WITH NOTHING STARTED.
+	//
+	// The tree contract is narrow on purpose, and igel s15 shows both halves of
+	// what that costs when the enum is wrong. The request says "After fit, write
+	// feature_schema.joblib in the results directory"; the file was absent; the
+	// judge said exactly that, naming the file; the enum did not hold the name
+	// because the name is in no record of what the run LEFT BEHIND. Re-asked,
+	// refused again, and the run ended at eight minutes with `the review could
+	// not be read, so this delivery was never checked` and nothing further
+	// started. The first half is fixed above, where the enum now holds what the
+	// request and the plan promised. The second half is below.
+	//
+	// WHAT IS NOT DONE HERE: re-asking under the CLAIM contract, with no enums,
+	// and taking whatever comes back. It was built and measured and it re-admits
+	// the three findings the tree contract exists to refuse — the verdict about
+	// the fenced text (`contains only {"contract": …}`), the complaint that a
+	// file was shown in part, and the preference wearing a citation. A floor
+	// that lets a run be settled by the opinion the contract just refused is not
+	// a floor; it is the contract deleted on the path where it matters most. See
+	// FAILSAFE.md's seventeenth chapter and its twenty-first.
+	if err != nil {
+		// AN UNREADABLE VERDICT IS A FAULT ON THE GATE, NEVER AN ABSTENTION.
+		// This is the s4 sweep's second fatal shape: the gate answered with
+		// something no reader could parse, the caller took that for "no opinion",
+		// and the run delivered unjudged work as done with exit 0. The seam has
+		// already asked again by the time this is reached, so what arrives here
+		// is a gate that was given every chance and produced no verdict — which
+		// is a fact about the run, and FAILSAFE.md's floor says a fact about the
+		// run reaches the exit code. See Judgment.Fault and its one reader in
+		// cmd/aforge/chat.go.
+		if shaped.Unreadable(err) {
+			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			// AND THE MECHANICAL GATE STILL RUNS. A gate that produced no
+			// verdict has not settled anything, and a promised file that is not
+			// on disk is settled by the filesystem rather than by anybody's
+			// opinion — so the run still gets the finding it plainly has, and
+			// still buys the round that closes it. Ending eight minutes of work
+			// with "nothing further was started" over an absent deliverable is
+			// FAILSAFE.md's floor broken: a check that did not happen may not be
+			// the reason a run stops.
+			if absent := evidence.MissingPromised(); len(absent) > 0 {
+				gap := joinCitations(absent)
+				return Judgment{Gaps: gap, Quote: gap, Citations: absent,
+					Mechanical: true, Checked: true, Grounds: grounds,
+					Finding: FindingMissingProduces, Fallback: true}
+			}
+			return faulted(node, "the gate answered with nothing this could read", err)
+		}
+		// A transport failure is a different thing and stays fail-open: the
+		// model was never reached, so nothing about this deliverable was
+		// examined and holding it hostage to the weather buys nobody anything.
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return unjudged(node, "the gate could not be reached", err)
-	}
-	var verdict struct {
-		Pass      bool   `json:"pass"`
-		Gaps      string `json:"gaps"`
-		Quote     string `json:"quote"`
-		Exercised bool   `json:"exercised"`
-	}
-	// One extractor for every structured reply in the system. This used to hold
-	// its own — first brace to last brace — which is tolerant in the same
-	// direction and wrong in one: a judge that wrote a sentence containing a
-	// brace after its object swallowed the sentence into the JSON and failed the
-	// parse, and a failed parse here is a silent pass.
-	if err := provider.DecodeJSONObject(response.Text(), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		// The retry above has already spent a doubled budget on this, so what
-		// arrives here is a judge that answered twice and said nothing usable
-		// either time. It still passes — flipping that is a behaviour change and
-		// not this wave's — but it no longer passes silently.
-		return unjudged(node, "the gate answered with nothing this could read", err)
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
-		return Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true}
+		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true,
+			Grounds: grounds}
+		// And the last question: does anything CHECK what the person asked
+		// for? On a pass it is the whole verdict — a delivery about to be
+		// called whole with a stated behaviour nothing exercises is the run
+		// this mechanism was built for.
+		return settleAcceptance(ctx, settings, client, graph, node, evidence, grounds, workerModel, pass)
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
@@ -1071,7 +1578,81 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// was. Both fields are written because they are one fact seen from two
 	// sides: what a person reads, and what the admission rules weigh.
 	quote := strings.TrimSpace(verdict.Quote)
-	return Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}), Checked: true}
+	// THE FILE FIRST. Over a changed tree the finding is about one file of the
+	// record, so the line a person reads opens with its path rather than with
+	// whatever clause the model chose to lead on.
+	gaps = treeGapWords(verdict.File, gaps)
+	failed := Judgment{Gaps: gaps, Quote: quote, Citations: trimmedCitations([]string{quote}),
+		Checked: true, Grounds: grounds, File: verdict.File}
+	// A REFUSAL THAT NAMES A PROMISED FILE THE DISK DOES NOT HOLD IS THE
+	// MECHANICAL GAP, FOUND BY A JUDGE. It is the same fact the gate settles for
+	// itself when the plan states a produces list, so it is marked the same way
+	// and buys the same round — a refusal of its citation says only that no round
+	// will be bought, never that the absence is not real.
+	if verdict.Promised && !producedNonEmpty(verdict.File, evidence.Artifacts) {
+		failed.Mechanical = true
+		failed.Finding = FindingMissingProduces
+	}
+	// A CONSUMER-GROUNDED REFUSAL IS ITS OWN FINDING, AND IT IS SOURCED. There
+	// is no span of the request to weigh, because nobody writes down that the
+	// thing behind a name must keep answering to how it is used — the same
+	// reason a regression carries no citation (FAILSAFE clause 2). So it says
+	// what moved and who is still using it, in front of the judge's own words,
+	// and it buys the repair round every other measured finding buys.
+	if verdict.Consumer {
+		if finding, ok := ConsumerFinding(quote, consumers); ok {
+			failed.Consumers = []string{finding}
+			failed.Sourced = true
+			failed.Gaps = treeGapWords(verdict.File, finding+". "+gaps)
+		}
+	}
+	// And the coverage question on this side too. A repair round is aimed at
+	// the gap the gate NAMED, so a round bought for a missing branch name
+	// closes the branch name and leaves every behaviour nothing checks exactly
+	// where it was; ten gates across the s5 sweep failed and the question was
+	// asked at none of them. The settlement adds its findings to this gap
+	// rather than replacing it — see settleAcceptance.
+	return settleAcceptance(ctx, settings, client, graph, node, evidence, grounds, workerModel, failed)
+}
+
+// faulted is the gate call that produced no verdict, reported as the fault it is.
+//
+// It is unjudged's opposite number and the whole of what this wave changed about
+// the gate. The two failures it separates used to be one: a judge that could not
+// be REACHED (weather, a 429, a dead endpoint) and a judge that answered with
+// something no reader could parse. The first says nothing about the work and
+// must not hold it hostage. The second is the gate not existing — and a gate
+// that does not exist may not be the reason a run reports itself whole.
+//
+// It carries neither a pass nor a gap: there is no verdict to carry. Checked
+// stays false, so nothing downstream manufactures verified evidence out of it,
+// and Fault is what the delivery path reads to end the run PARTIAL with the
+// reason in the stream rather than 0 with nothing.
+func faulted(node store.Node, why string, err error) Judgment {
+	note := why
+	if err != nil {
+		note += ": " + firstLine(err.Error())
+	}
+	log.Printf("note: the delivery gate faulted on %s — %s; the run is partial, not whole", node.ID, note)
+	return Judgment{Fault: note}
+}
+
+// GateFaultWords is the shortfall as the delivery gate's own ledger keeps it,
+// and as the headless stream prints it. It says what did not happen — the check
+// — rather than what the gate found, because the gate found nothing.
+func GateFaultWords(fault string) string {
+	return "the review could not be read, so this delivery was never checked"
+}
+
+// GateFaultHandover is the reservation that rides the delivery when the gate
+// faulted.
+//
+// It exists for the same reason GapHandover does: a run that hands over work its
+// own check never looked at must not hand it over in silence. What it must NOT
+// say is that anything is wrong with the work — nobody knows, and that is the
+// whole point — so it names the missing check and stops there.
+func GateFaultHandover(fault string) string {
+	return "I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for."
 }
 
 // unjudged is the fail-open pass, said out loud.
@@ -1122,8 +1703,8 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // of are the user's own. The residual it does not close is a real span cited
 // for an invented requirement — bounded by the round cap, and by the plan's own
 // rule that no piece of work may exist to check another's product.
-func AdmitGapCitation(intent string, citations, spent []string) string {
-	if refusal := admitGapCitations(citations, intent); refusal != "" {
+func AdmitGapCitation(grounds Grounds, citations, spent []string) string {
+	if refusal := admitGapCitations(citations, grounds); refusal != "" {
 		return refusal
 	}
 	// The ledger keys per citation and not on the joined line, which is the one
@@ -1133,8 +1714,17 @@ func AdmitGapCitation(intent string, citations, spent []string) string {
 	// fresh one would be refused wholesale — the first buys unbounded rounds,
 	// the second abandons real work. Per citation, a round is admitted only if
 	// it names something no earlier round did, and every citation it names is
-	// spent by it. The unspent set therefore falls by at least one on every
-	// admitted round, which is exactly the guarantee the single span gave.
+	// spent by it.
+	//
+	// WHAT COUNTS AS SPENT IS DECIDED BY EVIDENCE, NOT BY A COUNT. SpentCitations
+	// hands back only the words whose round left nothing new in the world; a
+	// round that moved the tree and still did not close what it was aimed at
+	// leaves its words unspent, and the growth journal's standstill and fixed
+	// point are what stop the lineage after that. The two bounds divide the work
+	// cleanly: this one bounds SCOPE against a finite ask, the journal bounds
+	// REPETITION against measured change. A count of one standing in for the
+	// second is how a run with eighty-six minutes and ninety-nine per cent of its
+	// money left stopped holding a finding it agreed with.
 	for _, citation := range trimmedCitations(citations) {
 		if !citationSpent(citation, spent) {
 			return ""
@@ -1165,89 +1755,6 @@ func citationSpent(citation string, spent []string) bool {
 	return false
 }
 
-// admitGapCitations is the citation invariant's core, and the one door every
-// reader of it goes through. A gap is admitted when EVERY citation it carries
-// is grounded in something nobody in this system wrote for itself during the
-// run: the user's ask, or the working method this kind of job was held to
-// before anything was produced. Everything else — the compiled goal, the
-// working decisions, the previous round's own output — is aforge talking to
-// aforge, and a gap that can only quote those is a preference rather than a
-// failure.
-//
-// Every citation, and not merely one of them, because a list that smuggles an
-// invented requirement in among four real ones is still an invention, and the
-// round it would buy is a round against a standard the run wrote for itself.
-//
-// A citation is grounded two ways, and the second exists because the first
-// alone made the mechanical half of this gate unusable.
-//
-// It is grounded when it is a verbatim span of a ground. Whitespace is
-// normalised on both sides and nothing else is: a model that re-wraps a quoted
-// line has still quoted it, and a model that invents a requirement has still
-// invented it.
-//
-// It is also grounded when it NAMES A FILE that a ground names — the same file,
-// under either spelling, by the identity law namesSameFile states once for this
-// whole package. A person writes "there is a breakpoints_test.go, update it"
-// and the plan resolves that to internal/tui3/breakpoints_test.go; the file the
-// review is missing is the file the person asked for, and a rule that could
-// only compare the two spellings letter by letter called it an invention. That
-// refusal is not hypothetical: it delivered a run that had written no file at
-// all as done, with a note explaining that the review had overreached
-// (2026-08-28, meta/muse-spark-1.1 on the spacing ladder). This second door is
-// narrow in the direction that matters — it opens only for a citation that IS a
-// file name rather than a sentence mentioning one, and only against a file the
-// ask or the method actually names — so it can admit a gap the person really
-// asked for and cannot admit one they did not.
-func admitGapCitations(citations []string, grounds ...string) string {
-	citations = trimmedCitations(citations)
-	if len(citations) == 0 {
-		return "the review could not point at anything in the request that is missing"
-	}
-	// The grounds are keyed and read for names once rather than per citation:
-	// they are the same two strings for every element of the list, and a gap
-	// naming five files would otherwise re-scan the whole request five times.
-	keyed := make([]string, 0, len(grounds))
-	named := make([][]string, 0, len(grounds))
-	for _, ground := range grounds {
-		key := citationKey(ground)
-		if key == "" {
-			continue
-		}
-		keyed = append(keyed, key)
-		named = append(named, NamedFiles(ground))
-	}
-	for _, citation := range citations {
-		if !citationGrounded(citation, keyed, named) {
-			return "what the review asked for next is not in the request"
-		}
-	}
-	return ""
-}
-
-// citationGrounded applies both doors of the rule above to one citation, span
-// first because it is the cheaper question and the one that answers for prose.
-func citationGrounded(citation string, keyed []string, named [][]string) bool {
-	key := citationKey(citation)
-	for _, ground := range keyed {
-		if strings.Contains(ground, key) {
-			return true
-		}
-	}
-	cited, ok := citedFile(citation)
-	if !ok {
-		return false
-	}
-	for _, files := range named {
-		for _, file := range files {
-			if namesSameFile(cited, file) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // AdmitGapRevision applies that same grounding one layer earlier than the
 // extension does: to the paid revision round a failed gate buys.
 //
@@ -1259,15 +1766,16 @@ func citationGrounded(citation string, keyed []string, named [][]string) bool {
 // a self-authored standard cannot converge on anything, because the standard
 // moves with each round that is written against it.
 //
-// The working method is admitted as a second ground because it is the one
-// standard besides the ask that was fixed before the work started and that the
-// worker was actually held to. It is not self-authored in the sense that
-// matters: it does not move in response to what the work produced.
+// It weighs the finding against the same Grounds the extension does, which for
+// a while it did not: this door admitted the working method and the extension's
+// did not, so a run could pay for a repair against a standard and then be told
+// the same standard was an invention. ink s1 spent both of its gates that way
+// and settled at four minutes of ninety.
 //
 // A refusal is not a pass. The gap is journaled, it is said in the thread, and
 // it rides the delivery — it simply does not redo the work.
-func AdmitGapRevision(intent, method string, citations []string) string {
-	return admitGapCitations(citations, intent, method)
+func AdmitGapRevision(grounds Grounds, citations []string) string {
+	return admitGapCitations(citations, grounds)
 }
 
 // GapNote is what an ungrounded gap gets instead of a round: the reviewer's
@@ -1307,6 +1815,26 @@ type Extension struct {
 	Round      int
 	Refused    string
 	Mechanical bool
+	// Unclosed says the gap is still open: the repair was refused for want of
+	// money, rounds or a planner, rather than because the gap itself was found
+	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
+	// the one the exit code reads.
+	Unclosed bool
+	// Overturned says the finding LOST to a reading of the world: the job's own
+	// coverage question, asked against the criterion it is judged on and
+	// everything that has landed, answered that nothing is left uncovered.
+	//
+	// Two readings of one job may not refuse each other in silence. The gate
+	// says the delivery is not whole; the coverage reading says there is
+	// nothing to add. ofetch s12 held both, resolved neither, and ended partial
+	// after 145 calls with the person told only "no more work could be started
+	// on it" — which is neither answer and reads as the machinery giving up.
+	// One of the two has to yield, and it is the gate's: coverage is a reading
+	// over the whole job's criterion and its landed work, the finding is a
+	// judgement about one file, and the more specific opinion does not outrank
+	// the broader measurement. See store.DeliveryGate.Overturned, whose whole
+	// meaning is a finding weighed against the world and lost.
+	Overturned bool
 }
 
 // GapContinuationNotice is the whole of what a person sees when a judgement
@@ -1359,45 +1887,154 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	unmet Judgment, artifacts []string, dailyBudgetUSD float64,
 	planRemainder resident.OverrunPlanFunc, records ...string) Extension {
 	base, round := resident.OverrunLineage(node.ID)
+	// The grounds ride on the judgement, which is where the gate assembled them.
+	// A judgement built by a caller that predates them — or by one holding only a
+	// gap and a citation — still gets the ask, because the node carries it and
+	// the store stamps the same verbatim intent on every node of every splice.
+	// One value, filled from one place, so the two doors cannot drift apart
+	// again.
+	grounds := unmet.Grounds
+	if strings.TrimSpace(grounds.Intent) == "" {
+		grounds.Intent = node.Provenance.Intent
+	}
 	cited := unmet.Cited()
 	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
 		Mechanical: unmet.Mechanical}
 	if graph == nil || planRemainder == nil {
-		extension.Refused = "there is nothing here that could plan the rest"
+		extension.Refused, extension.Unclosed = "there is nothing here that could plan the rest", true
 		return extension
 	}
 	// Admissibility is decided before any planning call: an ungrounded gap must
 	// cost nothing at all, or the refusal is only a refusal to splice what has
 	// already been bought.
-	if refusal := AdmitGapCitation(node.Provenance.Intent, extension.Citations, SpentCitations(graph, base)); refusal != "" {
-		extension.Refused = refusal
+	//
+	// A finding the run MEASURED skips the question entirely. The invariant asks
+	// whose words a finding is a failure of, and a check that passed before the
+	// work and fails after it is nobody's words — it is the world, reported. See
+	// Judgment.Sourced.
+	if !unmet.Sourced {
+		if refusal := AdmitGapCitation(grounds, extension.Citations, SpentCitations(graph, base)); refusal != "" {
+			// A MEASURED FINDING RIDING ON A REFUSED ONE IS STILL A MEASURED
+			// FINDING. The citations weighed here are the judge's, and refusing
+			// them says the judge's words were not the person's. It says nothing
+			// whatever about a coverage gap the run MEASURED, which has no
+			// citation to weigh and is admitted with none — so a round is still
+			// bought, aimed at the half that survives. Without this, igel s6's
+			// three unexercised behaviours died with a refusal of a sentence
+			// about something else entirely.
+			if len(unmet.Unexercised) == 0 && len(unmet.Unasserted) == 0 {
+				extension.Refused = refusal
+				return extension
+			}
+			unmet = unmet.measuredHalf()
+			extension.Quote, extension.Citations = unmet.Quote, unmet.Cited()
+			extension.Mechanical = false
+		}
+	}
+	// ROOM, NOT ROUNDS. A repair the wall will kill mid-flight spends money to
+	// deliver nothing, and there is no honest way to call the result whole. The
+	// floor is derived rather than typed: a repair is about the size of the
+	// attempt that produced the finding, so the run must still hold at least
+	// that much wall. A run whose deadline nobody set, or whose attempt was
+	// never timed, is not refused on a clock it cannot read — the fail-safe
+	// direction here is to try, because the alternative is the defect this whole
+	// change is about: eight runs that stopped at a tenth of their wall by
+	// choice. See PERF.md and docs/design/gate/SETTLEMENT.md §3.
+	if refusal := outOfWall(ctx, node); refusal != "" {
+		extension.Refused, extension.Unclosed = refusal, true
 		return extension
 	}
 	// The reason travels rather than being inherited: this is quality failure
 	// growing a job, not resource failure, and the journal that bounds growth
 	// could not tell the two apart while one borrowed the other's whole path.
 	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
-		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap, Records: records}, planRemainder)
+		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap, Records: records,
+			// A finding that names a file of the record is a reading of the
+			// world, so the first round it buys is not the coverage question's
+			// to refuse. See resident.GrowRequest.Grounded.
+			Grounded: strings.TrimSpace(unmet.File) != ""}, planRemainder)
 	if err != nil {
 		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
-		extension.Refused = "the work that would close it could not be planned"
+		extension.Refused, extension.Unclosed = "the work that would close it could not be planned", true
 		return extension
 	}
 	if spliced == 0 {
 		// A governor has already said so in the thread in its own words, or the
 		// rail has journaled the repair and is waiting on consent. Either way
 		// nothing new is running and the delivery has to say so.
-		extension.Refused = "no more work could be started on it"
+		//
+		// EXCEPT WHERE THE GOVERNOR THAT SPOKE CONTRADICTED THE FINDING. The
+		// cause is read from the journal rather than threaded back through four
+		// signatures, because the journal is where it is already written down
+		// and a fact carried twice is a fact that will differ.
+		if coverageOverturned(graph, base) {
+			extension.Overturned = true
+			extension.Refused = "the job's own reading of what it is judged on found nothing left uncovered, " +
+				"so the review's finding is what was wrong"
+			return extension
+		}
+		extension.Refused, extension.Unclosed = "no more work could be started on it", true
 		return extension
 	}
 	extension.Spliced = spliced
 	return extension
 }
 
+// coverageOverturned reads the growth journal for the refusal that has just
+// happened and answers whether it was the coverage question.
+//
+// It is the one governor whose refusal CONTRADICTS the finding rather than
+// merely declining to fund it. Rounds, the ceiling, the wall and the rail all
+// say "not now" and leave the gap standing, which is exactly what Unclosed
+// means and what the exit code is for. Coverage says "there is nothing there",
+// about the same job, from the same world — and a run cannot hand over a
+// finding and a measurement that deny each other and call the result a
+// shortfall the person should act on.
+//
+// A journal that cannot be read answers false, which leaves the delivery
+// partial: the fail-safe direction is the one that does not manufacture a pass
+// out of a record nobody could open.
+func coverageOverturned(graph *store.Store, lineage string) bool {
+	if graph == nil {
+		return false
+	}
+	growths, err := graph.JobGrowths(jobRootOf(lineage))
+	if err != nil || len(growths) == 0 {
+		return false
+	}
+	last := growths[len(growths)-1]
+	return !last.Allowed && last.Cause == resident.CauseCovered
+}
+
+// jobRootOf is the job the growth journal is kept under, from a lineage id. A
+// lineage is the job root with a round suffix, and OverrunLineage is the law
+// that strips it — asked here of the base rather than re-derived, so one rule
+// answers it everywhere.
+func jobRootOf(lineage string) string {
+	root, _ := resident.OverrunLineage(lineage)
+	return root
+}
+
 // SpentCitations is the ledger: the spans of the ask that earlier rounds of this
-// job already commissioned work against. A read failure returns nothing, which
-// is the fail-safe direction for a bound on new work only in company with the
-// round cap — which is exactly what that cap is for.
+// job already commissioned work against AND GOT NOTHING FOR. A read failure
+// returns nothing, which is the fail-safe direction for a bound on new work only
+// in company with the round cap — which is exactly what that cap is for.
+//
+// The second half of that sentence is the change, and it is what turns a count
+// into a measurement. Spending words on a round that moved nothing is what the
+// bound exists to stop happening twice; spending them on a round that rewrote
+// half the repository and still left the thing genuinely undone is the system
+// working, and refusing the next round over it is a count of one wearing an
+// invariant's clothes. The growth journal already records, per round, how many
+// files the work actually left behind (store.JobGrowth.Produced, with Measured
+// saying somebody looked) — so the evidence exists and was simply not being
+// read here.
+//
+// EVERYTHING UNKNOWN IS SPENT. A round with no journal row, a row nobody
+// measured, or a row that measured zero all leave their citations on the ledger.
+// That keeps the bound's direction unchanged wherever the evidence is missing,
+// and it means this can only ever release words the journal positively says were
+// productive.
 func SpentCitations(graph *store.Store, baseID string) []string {
 	if graph == nil {
 		return nil
@@ -1407,16 +2044,66 @@ func SpentCitations(graph *store.Store, baseID string) []string {
 		log.Printf("note: could not read the gap ledger for %s: %v", baseID, err)
 		return nil
 	}
+	productive := productiveRounds(graph, baseID)
 	// Flattened across gates, because the ledger is a set of citations and not
 	// a set of rounds: what bounds the next round is which of the ask's words
 	// and files have already been worked on, whichever round spent them.
 	var spent []string
 	for _, gate := range gates {
-		if gate.Extended {
+		if gate.Extended && !productive[gate.Round] {
 			spent = append(spent, gate.Cited()...)
 		}
 	}
 	return spent
+}
+
+// productiveRounds names the rounds of this lineage that the growth journal says
+// left something new in the world.
+//
+// It reads the journal the growth governor writes, keyed by the job root, and
+// keeps only the rows for this lineage: a sibling lineage's productivity is not
+// evidence about this one, and a bound that borrowed it would let one branch of
+// a job buy the other's rounds. A read that fails, or a job with no journal at
+// all, answers "nothing was productive", which leaves every citation spent.
+func productiveRounds(graph *store.Store, baseID string) map[int]bool {
+	growths, err := graph.JobGrowths(baseID)
+	if err != nil {
+		log.Printf("note: could not read the growth journal for %s: %v", baseID, err)
+		return nil
+	}
+	productive := make(map[int]bool, len(growths))
+	for _, growth := range growths {
+		if lineage := strings.TrimSpace(growth.Lineage); lineage != "" && lineage != baseID {
+			continue
+		}
+		if growth.Allowed && growth.Measured && growth.Produced > 0 {
+			productive[growth.Round] = true
+		}
+	}
+	return productive
+}
+
+// outOfWall answers whether this run still holds enough time to be worth buying
+// a repair in, and names the shortfall in the words the person is told.
+//
+// The measure is the attempt that produced the finding: a repair aimed at one
+// gap is about the size of the work that left the gap, so a run that cannot
+// afford that much again cannot afford the repair. Both halves are read off
+// things that already exist — the errand's own deadline, which the headless run
+// sets from --timeout, and the node's start, which the store stamps — so nothing
+// here is a new knob and nothing is a typed number. An unknown answers empty,
+// which buys the round: this is a floor under settlement, never a new reason to
+// settle early.
+func outOfWall(ctx context.Context, node store.Node) string {
+	deadline, ok := ctx.Deadline()
+	if !ok || node.StartedAt.IsZero() {
+		return ""
+	}
+	attempt := time.Since(node.StartedAt)
+	if attempt <= 0 || time.Until(deadline) >= attempt {
+		return ""
+	}
+	return "there is not enough time left on the run to finish it"
 }
 
 // ── who takes the next attempt ───────────────────────────────────────────────
@@ -1520,10 +2207,6 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	// is read by a person who wants to know which of them refused a deliverable.
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	if client.Routed() {
-		request = append(request, ai.WithSchema(retryWorkerSchema))
-	}
 	// The menu rides the end of the user message, not the system one. It reads
 	// as law — here are the workers, here is how to choose between them — but it
 	// carries each specialist's measured line, and those are run counts and a
@@ -1532,16 +2215,22 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	// one string in this call that could have been identical from job to job.
 	// Position by volatility: what churns sinks (12.4.1, and the same fix
 	// internal/head/compiler.go took for the same block).
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
+	var reply struct {
+		Worker string `json:"worker"`
+	}
+	if _, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: retryWorkerPrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text",
 			Text: body.String() + WorkerChoiceBrief(menu)}}},
-	}, request)
-	if err != nil || response == nil {
+	}, retryWorkerSchema, &reply); err != nil {
+		// Every failure of this one judgement means the same thing and it is not
+		// a fault: the answer it gives most of the time, and the one it is told
+		// to give when in doubt, is the default worker. A run does not stop
+		// because nobody had an opinion about which specialist to try next.
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return ""
 	}
-	chosen := DecodeWorkerChoice(response.Text())
+	chosen := knownWorker(reply.Worker)
 	if chosen == "" {
 		// Not a failure: "the default worker" is the answer this judge gives
 		// most of the time and the one it is told to give when in doubt.
@@ -1558,18 +2247,24 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 // the same reason: a hallucinated worker costs a retry its specialist and
 // nothing else.
 func DecodeWorkerChoice(text string) string {
-	text = strings.TrimSpace(text)
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		return ""
-	}
 	var reply struct {
 		Worker string `json:"worker"`
 	}
-	if json.Unmarshal([]byte(text[start:end+1]), &reply) != nil {
+	// One extractor, the same one every structured reply in the system goes
+	// through. It used to scan first brace to last brace by hand, which reads a
+	// sentence written after the object as part of it.
+	if provider.DecodeJSONObject(text, &reply) != nil {
 		return ""
 	}
-	chosen := strings.TrimSpace(reply.Worker)
+	return knownWorker(reply.Worker)
+}
+
+// knownWorker keeps only a name this build can actually construct. A
+// hallucinated worker costs a retry its specialist and nothing else, which is
+// the same degradation head.Compiler.normalizeSubharness makes on the compile
+// path for the same reason.
+func knownWorker(chosen string) string {
+	chosen = strings.TrimSpace(chosen)
 	if !exec.KnownSubharness(chosen) {
 		return ""
 	}
@@ -1650,37 +2345,37 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	var request []ai.Option
-	if client.Routed() {
-		schema := remainderSchema
-		if menu != "" {
-			schema = remainderWorkerSchema
-		}
-		request = append(request, ai.WithSchema(schema))
+	schema := remainderSchema
+	if menu != "" {
+		schema = remainderWorkerSchema
 	}
 	// The menu sits at the end of the user message for the reason the retry
 	// judgement's does: it is measured, it moves within a session, and the
 	// system prompt above it is a constant this build never rewrites.
-	response, err := askVerdict(judgeCtx, client, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
-	}, request)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return Remainder{}
-	}
-	text := strings.TrimSpace(response.Text())
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return Remainder{}
-	}
 	var verdict struct {
 		Done      bool   `json:"done"`
 		Remaining string `json:"remaining"`
+		Worker    string `json:"worker"`
 	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+	// This used to read its own reply first brace to last brace, which is
+	// tolerant in the same direction as the shared extractor and wrong in one: a
+	// judge that wrote a sentence containing a brace after its object swallowed
+	// the sentence into the JSON and failed the parse. It goes through the one
+	// seam now, which also means a cut answer is continued rather than lost.
+	if _, err := askVerdict(judgeCtx, client, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
+	}, schema, &verdict); err != nil {
+		// FAILURES FAIL TOWARD "NOT DONE" WITH Checked FALSE, unchanged: the
+		// continuation still runs, bounded by the overrun governors, rather than
+		// a judge outage silently shipping genuinely cut-off work as finished.
+		// That is the safe direction here and it is why this one does not fault
+		// the way the delivery gate does — nothing is being called whole.
+		if shaped.Unreadable(err) {
+			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		} else {
+			provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		}
 		return Remainder{}
 	}
 	remaining := strings.TrimSpace(verdict.Remaining)
@@ -1693,7 +2388,7 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true,
-		Worker: DecodeWorkerChoice(text)}
+		Worker: knownWorker(verdict.Worker)}
 }
 
 // deliveryPartialBytes is what the partial handed to a judgement is bounded to
@@ -1844,4 +2539,105 @@ func PlanNodeFor(planGraph *plan.Graph, prefix, nodeID string) *plan.Node {
 		}
 	}
 	return nil
+}
+
+// measureFinalTree fills in the after half of the verification photograph when
+// nobody else did, and does nothing at all otherwise.
+//
+// The three conditions are each a refusal to invent a measurement. Without a
+// before reading there is nothing to subtract from, and a second reading alone
+// would report the repository's own pre-existing reds as this work's doing —
+// the failure that threw away a correct fix to spf13/cobra once. Without a
+// workspace there is nowhere to run. And with an after reading already taken,
+// re-running the suite would spend an eighth of a wall to learn what is already
+// known.
+//
+// It is a measurement and never a gate: a command that will not run, an
+// entrypoint that vanished, or a ceiling that fires all leave the evidence
+// exactly as it arrived.
+func (e *Evidence) measureFinalTree(ctx context.Context) {
+	reading := e.Verification
+	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
+		return
+	}
+	// The SAME strategy the first reading was taken with, pinned rather than
+	// re-derived. Two readings taken with two different commands subtract to
+	// noise, and re-deriving here would let a worker that edited its own test
+	// script choose what the gate's reading measures.
+	//
+	// It is widened by exactly one thing, and only outward: the check files the
+	// run itself left behind, taken from the record of the tree rather than from
+	// anybody's account of what was tested. A scope is chosen before the work
+	// exists and so can never hold a test the work wrote — igel's s8 read the two
+	// checks its one touched file already had and never the forty the run put in
+	// a new file — and a checklist point exercised only by such a check is
+	// unexercised for as long as it is out of scope. Widening cannot forge a
+	// regression: Reading.Regressed counts only checks the before roster
+	// reported green, and these did not exist then.
+	strategy := reading.Before.Strategy
+	switch widened, added := strategy.WithChangedWork(e.Workspace, e.Artifacts); {
+	case added:
+		strategy = widened
+	case strategy.Scope == verify.ScopeWhole && reading.Partial:
+		// A whole reading that was killed at its ceiling will be killed again.
+		// The diff is the reading that fits, and the roster is what this gate
+		// came for. See verify.ChangedWorkStrategy.
+		if narrowed, ok := verify.ChangedWorkStrategy(e.Workspace, reading.Plan, e.Artifacts); ok {
+			strategy = narrowed
+		}
+	}
+	after, ok := verify.RunReading(ctx, e.Workspace, strategy, reading.Budget)
+	if !ok || after.TimedOut {
+		return
+	}
+	reading.After, reading.AfterTaken = after, true
+	e.Verification = reading
+	if len(e.Regressed) == 0 {
+		e.Regressed = reading.Regressed()
+	}
+}
+
+// readingBlock is what the project's own verification said, stated as the
+// measurement it is.
+//
+// It names the command, its exit status and the size of its roster, and it says
+// out loud when nothing was measured — because "the suite is green" and "nobody
+// ran the suite" are the two readings a deliverable's own sentence about its
+// tests is equally happy to produce, and a judge that cannot tell them apart
+// weighs a claim in place of a fact.
+func (e Evidence) readingBlock() string {
+	reading := e.Verification
+	if !reading.Taken {
+		return ""
+	}
+	result, when := reading.Before, "before the work"
+	if reading.AfterTaken {
+		result, when = reading.After, "on the finished tree"
+	}
+	var body strings.Builder
+	body.WriteString("What the project's OWN verification said when it was run " + when +
+		". This is the measurement; anything the deliverable says about its tests is a claim:\n")
+	fmt.Fprintf(&body, "`%s` exited %d, and named %d checks",
+		result.Entrypoint.Command, result.Exit, len(result.Reported))
+	if failing := len(result.Failing); failing > 0 {
+		fmt.Fprintf(&body, ", %d of them failing", failing)
+	}
+	body.WriteString(".\n")
+	if !reading.AfterTaken {
+		body.WriteString("The finished tree was NOT measured — this reading is of the " +
+			"repository as the work found it.\n")
+	}
+	return body.String()
+}
+
+// removedChecks names the check declarations the work's own diff takes away. It
+// is the cheap half of the disappearance evidence — it needs no run at all — and
+// it is empty for every worker that derives no diff, which reads as no claim.
+func (e Evidence) removedChecks() []string {
+	patch := e.patchSource()
+	if patch == "" {
+		return nil
+	}
+	_, removed := verify.PatchChecks(patch)
+	return removed
 }

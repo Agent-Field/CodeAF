@@ -128,8 +128,14 @@ func TestApplyRevisionAdmitsAndJournalsGrowthThatFits(t *testing.T) {
 // sibling's repair spend another sibling's allowance.
 func TestGrowthRoundsAreCountedPerLineage(t *testing.T) {
 	graph := crowdedJob(t, "s4", 3)
-	first := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n1"), Lineage: "job-n1", Reason: GrowOverrun, Adding: 1}
-	second := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n2"), Lineage: "job-n2", Reason: GrowOverrun, Adding: 1}
+	// Both lineages are getting somewhere — a file written each round — because
+	// that is what "three legitimate rounds" means and it is what the counter is
+	// being tested about. A lineage that changes nothing twice running is
+	// refused before the counter is ever reached; that rule has its own tests.
+	first := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n1"), Lineage: "job-n1",
+		Reason: GrowOverrun, Adding: 1, Measured: true, Produced: 1}
+	second := GrowRequest{JobRoot: "job", Node: jobNode(t, graph, "job-n2"), Lineage: "job-n2",
+		Reason: GrowOverrun, Adding: 1, Measured: true, Produced: 1}
 
 	for round := 1; round <= MaxOverrunRounds; round++ {
 		verdict, err := growJob(context.Background(), graph, nil, first)
@@ -305,5 +311,191 @@ func TestUngatedGrowthKeepsTheCaps(t *testing.T) {
 		[]plan.Operation{{Op: "add", Node: 42, Reason: "they asked for it", Applied: true}})
 	if applied != 0 || len(notes) != 1 {
 		t.Fatalf("the ceiling did not hold for a redirect: applied=%d notes=%v", applied, notes)
+	}
+}
+
+// The loop this closes, in the shape it was measured in: one lineage was
+// re-planned three rounds running, each round handed a byte-identical remainder,
+// each round leaving nothing at all in the tree, at $0.47 a round. The only
+// thing that ever stopped it was the round cap, three rounds and $1.42 later.
+// A count cannot tell a round that is finishing the work from a round that is
+// repeating it, so the governor now reads what happened instead.
+func TestALineageThatIsHandedTheSameRemainderTwiceIsAFixedPointAndStops(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+	gap := "the spacing constants are still not derived; homeCardCap is still 48"
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Measured: true, Produced: 0, Remainder: RemainderDigest(gap),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Allow {
+		t.Fatalf("the first round was refused: %+v", first)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
+		Measured: true, Produced: 0, Remainder: RemainderDigest(gap),
+	}, first, 1)
+
+	// The continuation ran and the reviewer named the same remainder again, in
+	// the same words. Asking for it a third time buys what the second round
+	// already bought.
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Measured: true, Produced: 0, Remainder: RemainderDigest("The  Spacing constants are still not derived; homeCardCap is still 48\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Allow || second.Cause != CauseFixedPoint {
+		t.Fatalf("a lineage handed its own remainder back grew again: %+v", second)
+	}
+	if second.Refused != RefusedFixedPoint {
+		t.Fatalf("refusal = %q", second.Refused)
+	}
+}
+
+// The same finding read from the tree instead of from the text, for a remainder
+// that came back reworded. One fruitless round is never refused — a leaf can run
+// out of budget before it writes its first file, and that is exactly the round a
+// repair exists for. Two in a row is a standstill.
+func TestALineageThatHasChangedNothingTwiceStopsAndTheFirstRoundNeverDoes(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+	// An empty tree the rounds are read against. It is named rather than
+	// asserted because MEASURED IS A FACT ABOUT THE WORLD HAVING BEEN READ: a
+	// request that hands neither an artifact list nor a workspace has not read
+	// anything, whatever it says about itself, and the governor correctly
+	// declines to weigh it. See GrowRequest.weighed.
+	tree := t.TempDir()
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
+		Workspace: tree, Remainder: RemainderDigest("nothing has been written yet"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Allow {
+		t.Fatalf("the floor was refused: a run with nothing on disk must get its round: %+v", first)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun,
+		Workspace: tree, Remainder: RemainderDigest("nothing has been written yet"),
+	}, first, 1)
+
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowOverrun, Adding: 1,
+		Workspace: tree, Remainder: RemainderDigest("still nothing on disk, in different words"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Allow || second.Cause != CauseStandstill {
+		t.Fatalf("a lineage that has changed nothing twice grew again: %+v", second)
+	}
+
+	// And the reason reaches the record on the node, where the delivery and the
+	// headless stream both read it.
+	messages, err := graph.NodeMessages("job-n1", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := false
+	for _, message := range messages {
+		if strings.Contains(message.Body, RefusedStandstill) {
+			said = true
+			if message.Progress == nil || message.Progress.Phase == "" {
+				t.Fatalf("the refusal was recorded with nothing for the stream to show: %+v", message)
+			}
+		}
+	}
+	if !said {
+		t.Fatal("the refusal was never recorded on the work it stopped")
+	}
+}
+
+// A lineage that IS getting somewhere keeps its rounds. This is the other half
+// of the rule and the one that would be broken by a cruder version of it: a
+// round that changed files earns the next one, however little it changed.
+func TestALineageThatChangedFilesKeepsGrowing(t *testing.T) {
+	graph := crowdedJob(t, "s1", 3)
+	node := jobNode(t, graph, "job-n1")
+
+	first, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Measured: true, Produced: 0, Remainder: RemainderDigest("the first gap"),
+	})
+	if err != nil || !first.Allow {
+		t.Fatalf("first round: %+v %v", first, err)
+	}
+	admitGrowth(graph, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap,
+		Measured: true, Produced: 0, Remainder: RemainderDigest("the first gap"),
+	}, first, 1)
+
+	second, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: node, Lineage: "job-n1", Reason: GrowGap, Adding: 1,
+		Measured: true, Produced: 2, Remainder: RemainderDigest("a different gap, with two files now written"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Allow {
+		t.Fatalf("a lineage that wrote two files was refused its next round: %+v", second)
+	}
+}
+
+// ofetch s12, in one test. The delivery gate read the tree it was handing over
+// and named src/circuit-breaker.ts; the first repair round that finding bought
+// asked to be planned; and the coverage question answered "everything this job
+// is judged on is already covered", so nothing ran and the run ended partial
+// after 145 calls. Two readings of one job, refusing each other in silence.
+//
+// The first round after a finding that names a file of the record is not the
+// coverage question's to refuse — the finding IS a reading of the world, and a
+// narrower one.
+func TestTheFirstRoundAFindingBuysIsNotRefusedOnCoverage(t *testing.T) {
+	graph := crowdedJob(t, "s12", 3)
+	criterion := plan.Done{
+		Produces:   []string{"the circuit breaker"},
+		Conditions: []plan.Check{{Kind: plan.CheckRun, Check: "pnpm test", Expect: "it exits 0"}},
+	}
+	asked := 0
+	gate := SatisfierFunc(func(context.Context, plan.Done, []plan.Landed, []plan.Spec) (plan.Satisfaction, error) {
+		asked++
+		return plan.Satisfaction{Complete: true}, nil
+	})
+
+	verdict, err := growJob(context.Background(), graph, gate, GrowRequest{
+		JobRoot: "job", Node: jobNode(t, graph, "job"), Reason: GrowGap, Adding: 1,
+		Criterion: criterion, Grounded: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != 0 {
+		t.Fatalf("the coverage question was bought for a grounded first round: asked %d times", asked)
+	}
+	if !verdict.Allow {
+		t.Fatalf("the round a review finding bought was refused: %+v", verdict)
+	}
+}
+
+// And the caps are untouched by it: a grounded round is exempt from the one
+// question that contradicts its own evidence and from nothing else.
+func TestAGroundedRoundStillObeysTheCaps(t *testing.T) {
+	graph := crowdedJob(t, "s12", maxJobNodes)
+	verdict, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "job", Node: jobNode(t, graph, "job"), Reason: GrowGap, Adding: 1, Grounded: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Allow || verdict.Cause != CauseCeiling {
+		t.Fatalf("a grounded round walked through the ceiling: %+v", verdict)
 	}
 }

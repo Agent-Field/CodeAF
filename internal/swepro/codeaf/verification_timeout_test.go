@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // Validation contract for a verification entrypoint that hangs, derived from
@@ -81,10 +81,10 @@ func TestVerificationTimeoutIsNotRerunAgainstAnUnchangedTree(t *testing.T) {
 	})
 	defer runner.runtime.Close()
 
-	plan := fullverification.Discover(workspace)
-	var testEntry *fullverification.Entrypoint
+	plan := verify.Discover(workspace)
+	var testEntry *verify.Entrypoint
 	for _, entrypoint := range plan.Entrypoints {
-		if entrypoint.Kind == fullverification.KindTest {
+		if entrypoint.Kind == verify.KindTest {
 			found := entrypoint
 			testEntry = &found
 			break
@@ -145,9 +145,9 @@ func TestVerificationTimeoutIsRetriedOnceTheTreeChanges(t *testing.T) {
 	})
 	defer runner.runtime.Close()
 
-	plan := fullverification.Discover(workspace)
+	plan := verify.Discover(workspace)
 	for _, entrypoint := range plan.Entrypoints {
-		if entrypoint.Kind != fullverification.KindTest {
+		if entrypoint.Kind != verify.KindTest {
 			continue
 		}
 		// A stale fingerprint: the agent has edited the tree since the hang, so

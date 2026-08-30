@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, spec, attachments, created_seq, created_order, updated_seq,
+	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, ran, spec, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -65,13 +65,20 @@ func migrateNodesSchema(db *sql.DB) error {
 		// existed reads back exactly as it always did.
 		"subharness":        `TEXT NOT NULL DEFAULT ''`,
 		"splice_subharness": `TEXT NOT NULL DEFAULT ''`,
+		// ran is the worker that actually executed the node, and it is the one
+		// column here that is a fact about the RUN rather than about the plan.
+		// Empty on every node written before it existed, and empty means what
+		// it has always meant for those stores: nobody wrote down who ran this.
+		// A reader that wants the fact for an old store has only the assignment
+		// column to fall back on, and it must say so rather than guess.
+		"ran": `TEXT NOT NULL DEFAULT ''`,
 		// spec holds the planner's task object as it was admitted. Empty is the
 		// default and is exactly what "this node was admitted before specs
 		// existed" means, so an old store reads back as it always did and every
 		// reader falls through to brief, which is still the read.
 		"spec": `TEXT NOT NULL DEFAULT ''`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "plan_model", "run_model", "craft", "subharness", "splice_subharness", "spec"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "plan_model", "run_model", "craft", "subharness", "splice_subharness", "ran", "spec"} {
 		if existing[column] {
 			continue
 		}
@@ -310,7 +317,7 @@ func scanNode(scanner rowScanner) (Node, error) {
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Held, &node.CancelRequested, &node.Priority,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf, &node.Provenance.RetryOf, &node.Provenance.ServiceIntent,
-		&node.Provenance.WorkModel, &node.Provenance.PlanModel, &node.Provenance.RunModel, &node.Provenance.Craft, &node.Subharness, &node.Provenance.Subharness, &spec, &attachments,
+		&node.Provenance.WorkModel, &node.Provenance.PlanModel, &node.Provenance.RunModel, &node.Provenance.Craft, &node.Subharness, &node.Provenance.Subharness, &node.Ran, &spec, &attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
 	); err != nil {

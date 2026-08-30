@@ -9,7 +9,10 @@ package resident
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +71,18 @@ const overrunMarker = store.SplitNamespace
 // from — a leaf handed the second under the first's heading reads a path as a
 // thing it already has rather than as a thing it has to open.
 func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state string, records ...string) string {
+	return overrunGoal(node, partial, artifacts, gap, state, "", OpenFindings{}, records...)
+}
+
+// overrunGoal is OverrunGoal with the exhausted attempt's own turns as well.
+//
+// The transcript is a separate parameter rather than another variadic because
+// it is the longest block by far and it goes LAST, under Bank's own header:
+// the summary blocks above are the attempt's account of itself, and this is the
+// attempt itself, so a reader that ran out of attention before reaching it has
+// already been told what it needed. See Bank.Continuation, which composes the
+// same four blocks in the same order for the in-place retry.
+func overrunGoal(node store.Node, partial string, artifacts []string, gap, state, transcript string, findings OpenFindings, records ...string) string {
 	var goal strings.Builder
 	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
@@ -117,7 +132,39 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state
 			"work succeeded, and never an example of what the answer might have been:\n")
 		goal.WriteString(strings.Join(records, "\n"))
 	}
+	// The measured shortfall, verbatim from the record, so the planner sizes the
+	// remainder against what the job is actually short of rather than against
+	// the prose of a review. See OpenFindings.
+	if section := findings.Words(); section != "" {
+		goal.WriteString("\n\n" + section)
+	}
+	// Last, and longest — the attempt itself rather than its account of itself.
+	// It carries Bank's own header so that all three ways unfinished work is
+	// handed on say it in one wording. See Growth.Transcript.
+	if block := strings.TrimSpace(transcript); block != "" {
+		goal.WriteString("\n\n" + ContinuationTranscriptHeader + "\n")
+		goal.WriteString(block)
+	}
 	return goal.String()
+}
+
+// RemainderDigest is a piece of remaining work reduced to something two rounds
+// can be compared by.
+//
+// Case and runs of whitespace are dropped because they are the two ways one
+// sentence is written twice without being a different sentence; nothing else is.
+// This is an EQUALITY test and not a similarity one on purpose: a remainder that
+// came back reworded is a different claim about what is left, and it is the
+// standstill rule beside this one — which reads the tree rather than the text —
+// that catches a loop dressed in fresh words. Empty in, empty out, and an empty
+// digest never matches anything, so a caller with no reviewer finding is never
+// refused on this ground.
+func RemainderDigest(gap string) string {
+	if strings.TrimSpace(gap) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.Join(strings.Fields(gap), " "))))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ReplanOverrun splices a repair subtree for a leaf whose partial result is
@@ -192,16 +239,37 @@ func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, p
 // ladder does not touch it. A dead leaf nobody sized promised no envelope, so
 // its continuation keeps whatever the caller judged (or the baseline when
 // nothing was), preserving the splice's "degradation, never failure" default.
+//
+// EVERY RUNG IS GATED ON THE WORKER BEING INSTALLED HERE. A judgment is a
+// claim about the work; whether this install has the worker to act on it is a
+// separate fact, and the profile's roster (internal/config's workers.go) is
+// what answers it. A name that reaches no installed worker would run on the
+// generalist anyway — the registry degrades rather than fails — but it would
+// be WRITTEN onto the continuation node and into the ledger, so a profile that
+// holds no coding pipeline would keep filing generalist leaves under the
+// pipeline's name. The gate is the same one the provenance rung has always
+// had, said once at the top so that every road out of this function obeys it.
 func escalateContinuation(dead, judged, provenance string) string {
 	dead = strings.TrimSpace(dead)
 	judged = strings.TrimSpace(judged)
+	// A judged worker this install does not have is THE GENERALIST, NAMED —
+	// not silence. Somebody did answer the question, and blanking their answer
+	// would make it indistinguishable from the verdict nobody made, which every
+	// reader downstream fills in from somewhere else. The generalist is left
+	// alone because it is never a registration, and an unanswered question is
+	// left alone because it is not an answer.
+	if executor.SubharnessChosen(judged) && !executor.GeneralistSubharness(judged) &&
+		!executor.KnownSubharness(judged) {
+		judged = executor.LinearSubharness
+	}
 	// The frozen engine first: its exhaustion is its own business, and the
 	// caller's choice — judged or empty — is returned unchanged.
 	if strings.EqualFold(dead, executor.SWESubharness) {
 		return judged
 	}
 	// A specialist the judge recognised is the top of the ladder; escalation
-	// only ever climbs, never downgrades it.
+	// only ever climbs, never downgrades it. It reaches here only when this
+	// install actually has that worker, by the gate above.
 	if strings.EqualFold(judged, executor.SWESubharness) {
 		return executor.SWESubharness
 	}
@@ -264,8 +332,30 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	request := GrowRequest{
 		JobRoot: jobRootID(graph, node), Node: node, Lineage: lineage,
 		Reason: growth.reason(), Round: round, DailyBudgetUSD: dailyBudgetUSD,
-		Ungated: growth.Ungated,
+		Ungated: growth.Ungated, Grounded: growth.Grounded,
+		// The two facts the governor weighs this round against, both taken from
+		// outside the work being weighed. The artifact list is the workspace's
+		// own before-and-after reading of the tree, not the leaf's account of
+		// itself; the gap is what a reviewer named as still missing.
+		//
+		// The LIST travels rather than its length. What counts as having
+		// produced something is the governor's question and not this path's —
+		// a round that wrote fourteen debug files beside a change it never
+		// touched produced fourteen of nothing, and a count cannot say so. See
+		// MeasureRound.
+		Measured: true, Artifacts: artifacts, Remainder: RemainderDigest(gap),
+		// And the finding this round is being bought to close, read off the
+		// judgement that convened it. It is read HERE, at the one seam every
+		// growing job passes through, for the reason the lineage bank and the
+		// open findings above it are: a property of the round cannot be a
+		// property of whichever caller somebody remembered to wire. A caller
+		// with no finding on its context is a round nobody bought for one, and
+		// it keeps exactly the governors it had.
+		Finding: FindingFrom(ctx),
 	}
+	// The world is read once for this round, here, and the same reading is what
+	// both the way-in decision and the exact recheck below are made from.
+	request = request.weighed(graph, request.JobRoot, lineage)
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
@@ -293,9 +383,23 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	planCtx = withPlanRecords(planCtx, growth.Records)
 	// The caller's own phrasing when it has one; see Growth.Goal for why an
 	// exhaustion's words are not a template.
+	// WHAT THE JOB HAS ALREADY DONE IS READ HERE, AT THE SPLICE, AND NOT PASSED
+	// IN BY WHOEVER ASKED FOR IT.
+	//
+	// This is the one seam every growing job passes through — the overrun round,
+	// the gate's gap round, the cooperative split and the deferred resumption
+	// all reach the graph through this function — and until now the seed rode in
+	// on the caller's Growth. So it worked on the one caller that had been wired
+	// for it and on none of the others: the textual run of 2026-08-29 grew three
+	// times on `reason: gap`, spliced fourteen fresh ids, and every one of them
+	// opened by exploring a repository the lineage had been editing for minutes.
+	// A property of the work cannot be a property of the caller, or it is a
+	// property of whichever caller somebody remembered.
+	recorded, resumed := LineageBank(graph, lineage, "")
+	findings := ReadOpenFindings(graph, lineage)
 	goal := strings.TrimSpace(growth.Goal)
 	if goal == "" {
-		goal = OverrunGoal(node, partial, artifacts, gap, growth.State, growth.Records...)
+		goal = overrunGoal(node, partial, artifacts, gap, growth.State, recorded, findings, growth.Records...)
 	}
 	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
@@ -362,6 +466,20 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	admitGrowth(graph, request, verdict, len(subtree.Nodes))
+	// THE RESUMPTION IS JOURNALED, on the node that is actually resuming. A
+	// continuation is a different node id from the leaf it continues, so the
+	// claim-time resume row (which reads node.Attempt) can never fire for it —
+	// and until this line the store's only account of a continuation was a new
+	// node with a long brief, indistinguishable from a cold start. The row is
+	// written against the sink because the sink is the node that carries the
+	// whole remainder; the stream reads it and says so (`↻ … resumed`).
+	if resumed > 0 {
+		if err := graph.RecordLeafResumed(sink, store.LeafResumed{
+			Turns: resumed, Files: artifacts,
+		}); err != nil {
+			log.Printf("note: could not journal that %s resumed %s's lineage: %v", sink, lineage, err)
+		}
+	}
 
 	// Consumers that were waiting on the exhausted node now also wait for
 	// the finished remainder. Only consumers that have not started are
@@ -406,12 +524,39 @@ func OverrunLineage(nodeID string) (string, int) {
 // the sentence the person is owed is the delivery that follows it, which says
 // what they got and carries the same "handing over what's done" in its own
 // words.
-func postGovernorNotice(graph *store.Store, node store.Node, body string) {
+func postGovernorNotice(graph *store.Store, node store.Node, cause, body string) {
 	_, _ = thread.Record(graph, store.Message{
 		Role:   store.RoleSystem,
 		NodeID: node.ID,
 		Body:   body,
+		// The progress payload is what carries this out of the record and into
+		// the headless stream, where the reader watching a run needs it most: a
+		// governor stopping work is invisible there otherwise, and "still
+		// waiting" over a job that has quietly stopped growing is the line that
+		// gets a run killed by hand. See narrateOne in cmd/aforge/do.go.
+		Progress: &store.MessageProgress{Phase: governorPhrase(cause), Latest: body},
 	})
+}
+
+// governorPhrase is the two or three words the stream shows above the governor's
+// own sentence. It is per cause so two different refusals on one node are two
+// different lines rather than one repeated phase the stream deduplicates away —
+// and it is written in the register of the product, which never names its own
+// machinery to a person.
+func governorPhrase(cause string) string {
+	switch cause {
+	case CauseStandstill:
+		return "nothing is changing"
+	case CauseFixedPoint:
+		return "the same work again"
+	case CauseRounds:
+		return "no more rounds"
+	case CauseCeiling:
+		return "no more room"
+	case CauseCovered:
+		return "already covered"
+	}
+	return "handing over"
 }
 
 // ResumeDeferredOverruns admits journaled repairs after the rail is raised.

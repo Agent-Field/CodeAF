@@ -664,9 +664,10 @@ func answerBudget(c Completer) int {
 
 // decode reads the model's reply as one JSON object, through the shared
 // provider decoder — which already tolerates a ```json fence and prose either
-// side of it by taking the first BALANCED {...} it can parse. Spelling that
-// walk again here would be a second answer to "what counts as JSON in a reply",
-// and the two would drift.
+// side of it by taking the first balanced {...} it can parse, and refuses to
+// take one found INSIDE an object that never closes, because a fragment of a
+// truncated answer is not the answer. Spelling that walk again here would be a
+// second answer to "what counts as JSON in a reply", and the two would drift.
 func decode(reply string, into any) error {
 	return provider.DecodeJSONObject(reply, into)
 }

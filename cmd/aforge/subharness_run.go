@@ -59,9 +59,7 @@ func runSubharnessCommand(args []string) error {
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"input": true, "w": true, "model": true, "journal": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()

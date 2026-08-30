@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -347,64 +348,40 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
 		settledQuestionBrief(instruction) + c.surfaceBrief() + c.subharnessBrief()
+	// What this call is FOR, for the model-call log (provider.WithCallTag). It is
+	// set once rather than at each send below, because a repair is the same call
+	// asked again and a reader chasing a lost compile wants every row under one
+	// word. There is no node to name: the compile happens before the graph it
+	// will produce exists.
+	ctx = provider.WithCallTag(ctx, "compile")
 	// The compile reply carries the goal with the verbatim ask inside it, the
 	// title, the task method, and any separate requests — all in one JSON object,
 	// which is exactly why a completion cap sized for the goal alone became a
 	// guillotine: two GAIA questions long enough to echo hit 1000 tokens to
 	// the digit, the JSON was cut mid-structure, and both questions were lost
-	// whole for $0.0003 each. The cap breathes with the ask now, and a reply
-	// that still comes back without a complete object gets exactly one more
-	// try at double room — a compile is the cheapest call in the job and the
-	// only one whose loss forfeits everything after it.
-	compileTokens := compileReplyTokens(instruction)
-	// What this call is FOR, for the model-call log (provider.WithCallTag). It
-	// is set here rather than at each of the two sends below because the retry
-	// is the same call asked twice, and a reader chasing a lost compile wants
-	// both rows under one word. There is no node to name: the compile happens
-	// before the graph it will produce exists.
-	ctx = provider.WithCallTag(ctx, "compile")
-	// The system message is the constant and nothing else, for every process
-	// this compiler runs in: measured content that moves within a session is
-	// added below, in the user message, never here.
-	// THE REPLY IS ASKED FOR AS JSON ON THE WIRE, NOT ONLY IN THE PROMPT.
-	// Every planning call sends its shape as a response format; this one asked
-	// in prose alone, and a model handed an issue written in Markdown answered
-	// in Markdown — twice, once per attempt — and the whole job was forfeit at
-	// three seconds for $0.0007. JSON mode rather than a strict schema, because
-	// the shape here is the prompt's to extend: the subharness menu, the
-	// charter, the model note are fields the prompt adds when they apply, and
-	// a strict schema would have to know every one of them. An endpoint that
-	// refuses the format has it taken off by the provider's own ladder.
-	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
-		textMessage("system", compilerSystemPrompt),
-		textMessage("user", user),
-	}, ai.WithMaxTokens(compileTokens), ai.WithJSONMode())
-	if err != nil {
-		return Brief{}, fmt.Errorf("compile intent: %w", err)
-	}
-	if response == nil {
-		return Brief{}, errors.New("compile intent: provider returned a nil response")
-	}
-
+	// whole for $0.0003 each.
+	//
+	// The room the reply needs is the shared seam's business now (internal/shaped),
+	// and the echo term below — the material this answer has to carry back
+	// verbatim — is the fact this call taught it. So is the repair: a cut object
+	// is continued rather than bought a second time, and a reply that is not an
+	// object at all gets one more try with the format contract. A compile is the
+	// cheapest call in the job and the only one whose loss forfeits everything
+	// after it.
+	//
+	// The system message is the constant and nothing else, for every process this
+	// compiler runs in: measured content that moves within a session is added in
+	// the user message, never here.
 	var brief Brief
-	if err := decodeJSONObject(response.Text(), &brief); err != nil {
-		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
+	if _, err := shaped.Answer(ctx, c.client, shaped.Ask{
+		Lane: "compile",
+		Messages: []ai.Message{
 			textMessage("system", compilerSystemPrompt),
 			textMessage("user", user),
-		}, ai.WithMaxTokens(compileTokens*2), ai.WithJSONMode())
-		// The error a person reads is the SECOND attempt's, because that is the
-		// one that decided the outcome: reporting the first here told an
-		// operator "empty response" when the retry had failed some other way.
-		if retryErr != nil {
-			return Brief{}, fmt.Errorf("compile intent: %w (first attempt: %v)", retryErr, err)
-		}
-		if retry == nil {
-			return Brief{}, fmt.Errorf("compile intent: provider returned a nil response on retry (first attempt: %v)", err)
-		}
-		if retryErr := decodeJSONObject(retry.Text(), &brief); retryErr != nil {
-			return Brief{}, fmt.Errorf("compile intent: %w (first attempt: %v)", retryErr, err)
-		}
-		response = retry
+		},
+		Echo: instruction,
+	}, &brief); err != nil {
+		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
 	if question := strings.TrimSpace(brief.Question); question != "" {
 		// A question suspends the brief: the rest of the fields are drafts at
@@ -416,7 +393,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
-	if err := validateBrief(&brief); err != nil {
+	if err := validateBrief(brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
@@ -557,10 +534,14 @@ func normalizeBuildsOn(ids []string) []string {
 // the widest brief this prompt can legitimately produce rather than to the
 // narrowest, and short asks pay nothing for the headroom they do not use.
 // Measured successful compiles landed between 827 and 5565 completion tokens.
+//
+// BOTH HALVES NOW LIVE AT THE SEAM. internal/shaped derives every structured
+// call's ceiling from one object's room plus what the answer must echo back, and
+// this call is where the echo term was learned. What is left here is the reader
+// that names it, so anything asking what a compile is allowed to write gets the
+// answer from the same place the request does.
 func compileReplyTokens(instruction string) int {
-	const floor = 8000
-	echo := 2 * len(instruction) / 3
-	return floor + echo
+	return shaped.Room(shaped.Ask{Lane: "compile", Echo: instruction}, "")
 }
 
 // Scale values the compiler may emit. ScaleTask is also the degradation
@@ -617,26 +598,18 @@ func normalizeScale(scale string) string {
 	}
 }
 
-// validateBrief rejects only what nothing downstream could work from: a goal
-// with no words in it. Assumptions are OPTIONAL BY MEANING — a brief that made
-// none is a complete brief — so a model that leaves the list out or writes a
-// blank entry is tidied, never refused. It used to be refused: deepseek-flash
-// answered a seven-tool ask with a faultless brief and no "assumptions" key,
-// and the whole run ended at 58 seconds with "compile intent: missing
-// assumptions", the same shape as the "empty budget" failure the Brief comment
-// above records. Every reader of the list (the receipt, the working-decisions
-// anchor) already treats nil and empty alike.
-func validateBrief(brief *Brief) error {
+func validateBrief(brief Brief) error {
 	if strings.TrimSpace(brief.Goal) == "" {
 		return errors.New("empty goal")
 	}
-	kept := brief.Assumptions[:0]
+	if brief.Assumptions == nil {
+		return errors.New("missing assumptions")
+	}
 	for _, assumption := range brief.Assumptions {
-		if assumption = strings.TrimSpace(assumption); assumption != "" {
-			kept = append(kept, assumption)
+		if strings.TrimSpace(assumption) == "" {
+			return errors.New("empty assumption")
 		}
 	}
-	brief.Assumptions = kept
 	return nil
 }
 

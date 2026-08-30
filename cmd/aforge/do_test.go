@@ -95,14 +95,19 @@ func TestAnUngroundedGateFailureShipsANoteInsteadOfBuyingARound(t *testing.T) {
 	defer script.close()
 
 	var stdout, stderr strings.Builder
-	if err := doErrand(doRequest{
+	err := doErrand(doRequest{
 		task:      "write the release note and include the migration steps",
 		timeout:   60 * time.Second,
 		stdout:    &stdout,
 		stderr:    &stderr,
 		newClient: script.client,
-	}); err != nil {
-		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	})
+	// It buys nothing AND it does not settle whole. Refusing where a review got
+	// its words checks nothing about the world, so the finding is still standing
+	// when the run hands over — see deliveredWhole.
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitPartial {
+		t.Fatalf("the errand settled whole over a standing finding: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 
 	if got := script.count("gate"); got != 1 {
@@ -289,6 +294,11 @@ func TestDoLeavesArtifactsUnderTheNamedWorkspace(t *testing.T) {
 func TestDoEditsTheNamedDirectoryInPlace(t *testing.T) {
 	script := newScriptedBrain(t)
 	script.editPath = "intervals.py"
+	// The gate is not what this test is about, and a scripted gap quoting
+	// another test's request is ungrounded against this one — which is now a
+	// partial settlement rather than a silent exit 0. Let the delivery stand so
+	// the assertion below is about the edit and nothing else.
+	script.gatePasses = true
 	defer script.close()
 
 	workspace := t.TempDir()
@@ -1324,22 +1334,32 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		// The gate's refusal shape follows what it is judging. Over a changed
+		// tree a fail has to name one file of the record, so the stub reads the
+		// record it was handed rather than inventing a path — which is the same
+		// contract a real judge is held to, and the only way a stub can stay
+		// honest to a schema that moves with the subject.
+		fail := func(gaps, quote string) string {
+			verdict := fmt.Sprintf(`{"pass":false,"gaps":%q,"quote":%q,"exercised":false`, gaps, quote)
+			if file := gateSubjectFile(body); file != "" {
+				verdict += fmt.Sprintf(`,"file":%q`, file)
+			}
+			return s.say(verdict + "}")
+		}
 		if s.longAnswer != "" {
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
 		if s.inventedGap {
 			// The quote is a span of the compiled goal's own working
 			// decisions, not of anything the person typed.
-			return s.say(fmt.Sprintf(
-				`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, inventedGapText, inventedQuote))
+			return fail(inventedGapText, inventedQuote)
 		}
 		if s.gatePasses {
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
 		if s.revisionCloses {
 			if round == 1 {
-				return s.say(fmt.Sprintf(
-					`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, gateCritique, citedQuote))
+				return fail(gateCritique, citedQuote)
 			}
 			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 		}
@@ -1347,8 +1367,7 @@ func (s *scriptedBrain) reply(body string) string {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that
 			// buys another round of real work.
-			return s.say(fmt.Sprintf(
-				`{"pass":false,"gaps":"the migration steps are missing","quote":%q,"exercised":false}`, citedQuote))
+			return fail("the migration steps are missing", citedQuote)
 		}
 		return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 
@@ -1362,6 +1381,32 @@ func (s *scriptedBrain) reply(body string) string {
 	// Anything else the resident asks about itself gets a shrug it can absorb.
 	s.tally("other")
 	return s.say("{}")
+}
+
+// gateSubjectFile is the first file the gate's own prompt lists as part of the
+// change it is judging, or empty where the run left nothing behind and the
+// deliverable is the worker's message. It reads the block the gate composed
+// rather than a path the test happens to know, so a stub cannot answer with a
+// file the judge was never shown.
+func gateSubjectFile(body string) string {
+	// The stub is handed the encoded request, so the prompt's own newlines
+	// arrive as the two characters JSON spells them with. Reading them back is
+	// what makes this a reader of the block the gate composed rather than of
+	// the transport that carried it.
+	body = strings.ReplaceAll(body, `\n`, "\n")
+	head := "Sources the run wrote or changed:\n"
+	start := strings.Index(body, head)
+	if start < 0 {
+		return ""
+	}
+	line := body[start+len(head):]
+	if end := strings.IndexByte(line, '\n'); end >= 0 {
+		line = line[:end]
+	}
+	if open := strings.LastIndex(line, " ("); open >= 0 {
+		line = line[:open]
+	}
+	return strings.TrimSpace(line)
 }
 
 // leaf answers as the worker. Which worker it is reads off the inputs it was
@@ -1671,6 +1716,69 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 				}
 			},
 			want: exitPartial,
+		},
+		{
+			// The measured shape: a review found the deliverable empty, the
+			// repair that would have filled it was refused for want of rounds,
+			// and the run left with exit 0 because the refusal sentence was
+			// read as the gate correcting itself. The gap was never closed;
+			// only the repair was refused.
+			name: "the gap still stands and only the repair was refused",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the spacing ladder"}})
+				settleNode(t, graph, "task-1", "I'm handing this over with a reservation.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:      "Deliverable is empty - contains no implementation",
+					Refused:  "no more work could be started on it",
+					Unclosed: true,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: exitPartial,
+		},
+		{
+			// A refusal that checked NOTHING IN THE WORLD. It declines to buy a
+			// round over where the review got its words; it settles nothing
+			// about whether the work landed, and the finding is still standing
+			// when the run hands over. Seven of eight measured DeepSWE runs
+			// exited 0 on exactly this shape, each with a review that was right
+			// (bench/deepswe/AUTOPSY.md).
+			name: "the gap was refused for where its words came from",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE: the parser is faster.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:     "it does not benchmark the parser",
+					Refused: "that is not in the request",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: exitPartial,
+		},
+		{
+			// And the refusal that DID check the world keeps exiting 0: the file
+			// the review says is missing is on disk under the name the request
+			// used, so the review lost on evidence and the delivery stands.
+			// Charging this a non-zero code would teach a harness to distrust
+			// the gate's own corrections.
+			name: "the gap was overturned against the world",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE: the parser is faster.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap:        "notes.md was never written",
+					Refused:    "what it asked for is already on disk under the name the request used",
+					Overturned: true,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: 0,
 		},
 		{
 			name: "the polish pass closed the gap",

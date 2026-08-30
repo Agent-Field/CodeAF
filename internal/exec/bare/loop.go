@@ -3,6 +3,7 @@ package bare
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -137,12 +138,17 @@ var contextOverflowPattern = regexp.MustCompile(
 type loopState struct {
 	client providerClient
 	tools  []Tool
-	// produced is told, after every tool call, when that call began, so the
-	// files it left in the workspace can be filed under this leaf. pi's tools
-	// know a directory and nothing of a workspace, and this is the seam that
-	// keeps them from having to: the workspace's own sweep reads the clock.
-	// Nil is a loop with nobody to tell, which is what the tests run.
-	produced func(mark time.Time)
+	// sweep opens the world's own account of the workspace immediately before a
+	// tool call and hands back the function that closes it, so the files the
+	// call left behind can be filed under this leaf. pi's tools know a directory
+	// and nothing of a workspace, and this is the seam that keeps them from
+	// having to.
+	//
+	// It is a pair rather than a single call with a timestamp because the
+	// evidence is a BEFORE-AND-AFTER READ OF THE TREE and not a clock reading —
+	// see internal/exec/produced.go and FAILSAFE.md rule 2. Nil is a loop with
+	// nobody to tell, which is what some of the tests run.
+	sweep    func() (file func())
 	system   string
 	user     string
 	cwd      string
@@ -175,6 +181,41 @@ type loopState struct {
 	// entirely of the harness's own progress lines — so nobody could say what it
 	// had done, or learn anything from what it cost.
 	transcript exec.TranscriptSink
+
+	// faulted carries one interruption of this loop out to the surface that
+	// owns the journal, so a person watching a headless run is told about it
+	// while it is happening (exec.Task.Fault, and internal/store/fault.go for
+	// the law).
+	//
+	// THE TRANSCRIPT IS NOT ENOUGH ON ITS OWN. A note recorded under the node is
+	// durable and readable afterwards, which answers the autopsy; it reaches
+	// nobody who is watching the run now, and a stalled provider call that costs
+	// fifteen minutes is exactly the fact an operator has to see while there is
+	// still a run to save. FAILSAFE.md's third clause: a fail-safe propagates to
+	// the verdict the person reads. Nil is a loop with nowhere to write, which
+	// is what the tests and the bench harness run.
+	faulted func(error)
+
+	// measured is what this leaf has learned about the machine it is running
+	// on: how long its own model calls and its own transcript writes actually
+	// take. It is what the tool bound and the landing decision are derived
+	// from, so neither of them is a number somebody picked. See room.go.
+	measured pace
+}
+
+// tell reports one interruption of this loop to whoever can write it down, and
+// reports nothing when nobody can. The nil check lives here rather than at the
+// call sites for the reason exec.Task.progress gives about its own.
+//
+// It is the sibling of [loopState.fault], and the pair is deliberate: fault
+// writes the RECORD, under the node, for whoever reads the run afterwards; this
+// writes the LINE, now, for whoever is watching it. The two answer different
+// questions and a cut that only did one of them was the defect.
+func (l *loopState) tell(err error) {
+	if l.faulted == nil || err == nil {
+		return
+	}
+	l.faulted(err)
 }
 
 // providerClient is the narrow slice of provider.Client the loop needs.
@@ -184,7 +225,23 @@ type providerClient interface {
 }
 
 // run executes the loop. It returns a fully populated exec.Outcome.
+// run drives the loop with nothing to close: the shape every test and every
+// caller that has no workspace to photograph gets.
 func (l *loopState) run(ctx context.Context) *exec.Outcome {
+	return l.runClosing(ctx, nil)
+}
+
+// runClosing is run with the leaf's own closing armed.
+//
+// close is asked ONCE PER ANSWER, at the one exit where this loop finishes under
+// its own power — the turn that came back with no tool call. It is handed the
+// outcome with the leaf's own after-photograph already taken and answers with
+// the note to carry on from, or the empty string to land on the reading it just
+// took. That is the whole seam: the decision itself, the bound on it and the
+// journal are exec.SelfCloser's, shared with the generalist belt, because a
+// mechanism only one worker has is one the run does not (see
+// internal/exec/selfclose.go).
+func (l *loopState) runClosing(ctx context.Context, close func(*exec.Outcome) string) *exec.Outcome {
 	outcome := &exec.Outcome{Stop: exec.StopDone}
 	started := time.Now()
 
@@ -227,6 +284,14 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			l.fault("the leaf's time ran out before turn " + strconv.Itoa(l.turn+1) + ": " + ctx.Err().Error())
 			return outcome
 		}
+		// THE ROOM TO LAND IS NOT THE WORK'S TO SPEND. Asked before the call
+		// rather than after it, because a turn started inside the reserve is a
+		// turn whose answer arrives after the deadline and is thrown away —
+		// which is how a leaf that had been working for seventeen minutes was
+		// recorded as one that never came back. See room.go.
+		if left, bounded := room(ctx); bounded && left <= l.measured.reserve() {
+			return l.landOnTheWall(ctx, outcome, started)
+		}
 		l.turn++
 
 		// Snapshot the messages for the append-only test assertion.
@@ -257,6 +322,25 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			outcome.Text = strings.TrimSpace(response.Text())
 			outcome.Elapsed = time.Since(started)
 			l.say(store.TranscriptAssistant, outcome.Text)
+			// AND THE LEAF READS ITS OWN WORK BEFORE ANYBODY ELSE DOES. A
+			// finding this leaf's own closing photograph raises against this
+			// leaf — a public name it deleted, a name it reads that nothing
+			// binds, a check it turned red — used to reach nobody until the
+			// leaf had landed and a gate had bought a cold repair round. The
+			// worker holding the transcript that produced the fault is still
+			// standing right here, so it is asked. A close reopens the loop the
+			// way any other unanswered turn does: the answer goes in as the
+			// draft it now is, the finding follows it, and the next turns
+			// settle it.
+			if close != nil {
+				if note := close(outcome); note != "" {
+					l.messages = append(l.messages,
+						ai.Message{Role: "assistant", Content: assistantContent(response)},
+						ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: note}}})
+					l.note(note)
+					continue
+				}
+			}
 			return outcome
 		}
 
@@ -282,8 +366,25 @@ func (l *loopState) run(ctx context.Context) *exec.Outcome {
 			})
 		}
 
+		// THE BATCH RUNS INSIDE WHAT IS LEFT, LESS WHAT IT TAKES TO LAND. A
+		// command handed the leaf's whole remaining envelope can spend all of
+		// it, and then there is no leaf left to read what it said. Cutting the
+		// command instead costs the command; cutting the leaf costs everything
+		// the leaf had done. See room.go.
+		toolCtx, release, affordable := l.toolRoom(ctx)
+		if !affordable {
+			// Nothing left but the landing. The calls the model just made are
+			// already on the record as calls that were never run, which is the
+			// honest account of them.
+			return l.landOnTheWall(ctx, outcome, started)
+		}
+
 		// Execute the tool calls in parallel (pi spec §2: "run in parallel").
-		results := l.executeTools(ctx, calls)
+		results := l.executeTools(toolCtx, calls)
+		// Released here rather than deferred: this is a loop that runs two
+		// hundred times, and two hundred parked cancels is a leak wearing a
+		// keyword.
+		release()
 
 		// Append tool result messages in the order the calls were issued.
 		for i, call := range calls {
@@ -352,9 +453,15 @@ func (l *loopState) note(text string) {
 // flushTranscript makes the record durable. It is called from a defer in run,
 // so it must tolerate a nil sink and a second call from the runner.
 func (l *loopState) flushTranscript() {
-	if l.transcript != nil {
-		l.transcript.Flush()
+	if l.transcript == nil {
+		return
 	}
+	// The write times itself, because the landing reserve is partly this: a
+	// leaf that lands has to get its record on disk, and how long that takes is
+	// a fact about the store under it rather than a number this file may pick.
+	began := time.Now()
+	l.transcript.Flush()
+	l.measured.noteFlush(time.Since(began))
 }
 
 // toolResult is the output of executing one tool call.
@@ -398,10 +505,20 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 	args := json.RawMessage(call.Function.Arguments)
 	for _, tool := range l.tools {
 		if tool.Name == name {
-			mark := time.Now()
+			var file func()
+			if l.sweep != nil {
+				file = l.sweep()
+			}
+			// A COMMAND THAT IS RUNNING IS A WORKER THAT IS ALIVE. This span is
+			// the only thing the claim reaper can read about a leaf spending
+			// seven minutes inside one `go test`: the record is batched and
+			// nothing reaches the store until the batch fills. See
+			// exec.Working.
+			done := exec.Working(ctx)
 			text, isError, err := tool.Execute(ctx, args)
-			if l.produced != nil {
-				l.produced(mark)
+			done()
+			if file != nil {
+				file()
 			}
 			if err != nil {
 				// Harness-level failure: treat as a tool error with the Go
@@ -452,7 +569,19 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 	// them took an endpoint out of the ledger, which is what decides the budget.
 	cuts, rerouted := 0, false
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// The same span around the other thing a leaf waits on. The stream
+		// guard already cuts a call that has gone silent, so this is not a
+		// safety net — it is the honest reading of a long reply that is still
+		// arriving, which is a worker at work and not a claim to reap.
+		callDone := exec.Working(ctx)
+		began := time.Now()
 		response, err := l.client.CompleteWithMessages(ctx, l.messages, ai.WithTools(defs))
+		callDone()
+		// Measured whether it answered or failed: a call that took four minutes
+		// to time out is four minutes this leaf must expect to need again, and
+		// a reserve that only counted successes would be blind to exactly the
+		// machine that is running slow.
+		l.measured.noteCall(time.Since(began))
 		if err == nil {
 			return response, nil
 		}
@@ -472,6 +601,7 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 				rerouted = true
 			}
 			if cuts >= cutBudget(cut, rerouted) {
+				l.tell(fmt.Errorf("%w — this leaf has no attempts left for it", err))
 				return nil, err
 			}
 			cuts++
@@ -481,6 +611,13 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 			// back as one turn that simply took four minutes, and the endpoint —
 			// the thing that was actually wrong — is nowhere in the account.
 			l.note("the stream was cut and the turn was asked again: " + err.Error())
+			// AND ON THE STREAM SOMEBODY IS WATCHING. The note above is the
+			// record; this is the line. What it says is the whole of what a
+			// person needs while it is happening — what stalled, and that THE
+			// CALL was retried rather than the leaf restarted, because a run
+			// whose leaf keeps starting over is the shape this was mistaken for
+			// on 2026-08-28.
+			l.tell(errors.New(cutWords(cut, rerouted)))
 			continue
 		}
 
@@ -779,4 +916,25 @@ func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 		return blindRetries
 	}
 	return silentRetries
+}
+
+// cutWords is the one line a person watching a headless run is given when the
+// guard cuts a call.
+//
+// It says three things and no more: WHAT went wrong, WHO it was routed away
+// from when the ledger could act, and — the part the reader most needs — that
+// what was retried is THE CALL. A run whose leaves restart reads, from outside,
+// exactly like a run whose calls retry, and the difference between them is
+// whether the work already paid for still exists. Naming it here is what stops
+// the two being confused again.
+//
+// The provider's name is included only when the wire actually said it: a cut
+// stream that never named its endpoint has nothing to name, and inventing one
+// would be the phrase-matching mistake FAILSAFE.md's first rule is about.
+func cutWords(cut *provider.StreamCut, rerouted bool) string {
+	words := cut.Error() + " → the call was retried"
+	if rerouted && strings.TrimSpace(cut.Provider) != "" {
+		words += ", routed away from " + strings.TrimSpace(cut.Provider)
+	}
+	return words
 }

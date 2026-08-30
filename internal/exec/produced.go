@@ -1,11 +1,12 @@
 package exec
 
 import (
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // What a command left behind, and why the write tools alone could never see it.
@@ -20,24 +21,40 @@ import (
 // delivery gate for a message that "did not contain the script", and spent a
 // whole continuation node retyping a file already sitting in the workspace.
 //
-// The swe executor had already solved its half of this by reading the tree
-// before and after (see SWE.recordArtifacts). It can afford two reads because it
-// runs once per leaf; this runs once per shell call, so it takes the cheaper
-// half of the same idea: note the moment the command starts, then read the tree
-// once afterwards and keep what was written since. One sweep, bounded, and the
-// files it finds go into the same registry the write tools use, under the same
-// node identity, so everything downstream — the files footer, the gate's
-// evidence, a continuation's inputs — is fixed by this one record.
+// The first repair asked the CLOCK: note the instant the call began, walk the
+// tree once afterwards, keep whatever carried a later write time. That is
+// evidence sourced from the component being checked rather than from the world,
+// which is the exact shape FAILSAFE.md rule 2 was written about, and it was
+// wrong in three ordinary cases:
 //
-// It is deliberately a heuristic and deliberately generous in the safe
-// direction: a file wrongly named as produced is noise in a list, while a file
-// missed is a deliverable the person never hears about.
+//   - a file written inside the filesystem's own timestamp granularity of the
+//     mark carries a stamp fractionally BEFORE it and was silently dropped —
+//     TestABareLeafFilesTheFilesItsToolsLeaveBehind failed about one run in four
+//     on a machine whose tmpfs answers in whole milliseconds;
+//   - a file a tool put there with its timestamp preserved (cp -p, git checkout,
+//     tar, rsync -t) claims to predate a mark it postdates, and the deliverable
+//     is never named;
+//   - a file rewritten with identical bytes moved the clock and nothing else,
+//     and was named as though the call had produced something.
+//
+// So the sweep now asks the WORLD, in the same words the whole-leaf evidence
+// record asks it: [Workspace.Snapshot] photographs the tree before the call and
+// again after it, and [diffTrees] — ONE implementation, shared with
+// [Workspace.WatchTree] and [Workspace.RecordChanges] — says what the two
+// sightings prove. Files created, changed or deleted between them are this
+// call's products whatever any clock says, and the files it finds go into the
+// same registry the write tools use, under the same node identity, so
+// everything downstream — the files footer, the gate's evidence, a
+// continuation's inputs — is fixed by this one record.
+//
+// The cost of asking the world is a second bounded walk per tool call rather
+// than one; see [Workspace.Snapshot] for the bounds and PERF.md for the budget.
 
 const (
-	// producedScanLimit bounds one sweep. A workspace is usually a handful of
+	// producedScanLimit bounds one snapshot. A workspace is usually a handful of
 	// files, but a leaf that ran a build or unpacked an archive can have tens of
-	// thousands, and this runs after every shell call — so the sweep stops
-	// rather than walking a tree whose size is nobody's plan.
+	// thousands, and this runs at both ends of every shell call — so the walk
+	// stops rather than walking a tree whose size is nobody's plan.
 	producedScanLimit = 6000
 
 	// producedPerCall bounds what one command may claim. A command that touched
@@ -45,83 +62,70 @@ const (
 	// deliverable, and a footer naming three hundred paths names nothing.
 	producedPerCall = 24
 
-	// producedSlack absorbs filesystem timestamp granularity. Some filesystems
-	// record whole seconds, so a file written in the same second the command
-	// began can carry a stamp fractionally before it. The cost of the slack is
-	// re-recording a file an earlier tool call already recorded, which is a set
-	// membership that was already true.
+	// snapshotDigestFileLimit is the largest file a snapshot will read to know
+	// its bytes. Above it the stamp keeps size, mode and write time, which is
+	// the answer the sweep gave before digests existed. A deliverable bigger
+	// than a megabyte is nearly always bigger than its predecessor too, so the
+	// size alone still catches it; what is given up is the rewrite-in-place of
+	// a large file at exactly its old length, which the tool-sourced record
+	// covers and which is why the two accounts are layered rather than one
+	// chosen over the other.
+	snapshotDigestFileLimit = 1 << 20
+
+	// snapshotDigestBudget is the total bytes ONE snapshot will read. Past it
+	// the remaining stamps are digestless and fall back on the clock. It bounds
+	// the honest worst case, which the walk's own limit does not: six thousand
+	// files just under the per-file limit would be six gigabytes of reading on
+	// the leaf's critical path, twice per tool call.
+	//
+	// Eight megabytes is chosen against the real workspace — a report, a chart,
+	// a script — and against the cost of being wrong about it. WHAT DEGRADES
+	// PAST THE BUDGET IS ONLY THE REWRITE CASE: created and deleted files are
+	// decided by whether the tree holds the path at all, which needs no bytes
+	// and is the half that was actually broken. A tree big enough to exhaust
+	// this gets the older, narrower size-and-clock answer for its tail, never a
+	// wrong one. The walk is lexical, so both snapshots spend the budget on the
+	// same files and compare like with like.
+	snapshotDigestBudget = 8 << 20
+
+	// producedSlack moves a snapshot's own timestamp back far enough that a
+	// coarse filesystem cannot hide a file behind it. It is the last resort of
+	// a PARTIAL snapshot and of a file too large to digest — see fileStamp.same
+	// and diffTrees — and never the first question asked about a file.
 	producedSlack = time.Second
 )
 
-// producedMark is the instant a command starts, moved back far enough that a
-// coarse filesystem cannot hide a file behind it.
+// producedMark is an instant moved back far enough that a coarse filesystem
+// cannot hide a file behind it.
 func producedMark(now time.Time) time.Time { return now.Add(-producedSlack) }
 
-// producedSince names the workspace files written at or after mark, newest
-// first, bounded. Paths are absolute, which is what Workspace.Record expects.
-func (w *Workspace) producedSince(mark time.Time) []string {
-	if w == nil {
-		return nil
+// producedBound orders a per-call change set newest first and cuts it to what
+// one command may claim. Newest first, so that when the cap bites it keeps what
+// the command most recently produced rather than whatever sorts early in the
+// alphabet; ties break on the path, so the same diff is the same list twice.
+//
+// A deleted path is dated by the snapshot that still held it, which is the last
+// moment the world was seen to have it.
+func producedBound(changes map[string]ArtifactChange, before, after *TreeSnapshot) []string {
+	paths := make([]string, 0, len(changes))
+	for path := range changes {
+		paths = append(paths, path)
 	}
-	type stamped struct {
-		path string
-		when time.Time
+	when := func(path string) time.Time {
+		if stamp, ok := after.files[path]; ok {
+			return stamp.modified
+		}
+		return before.files[path].modified
 	}
-	var found []stamped
-	visited := 0
-	_ = filepath.WalkDir(w.root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// An unreadable entry is not this function's problem to report: the
-			// command already ran and its own output said whatever went wrong.
-			if entry != nil && entry.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+	sort.Slice(paths, func(i, j int) bool {
+		left, right := when(paths[i]), when(paths[j])
+		if left.Equal(right) {
+			return paths[i] < paths[j]
 		}
-		if visited++; visited > producedScanLimit {
-			return fs.SkipAll
-		}
-		if path == w.root {
-			return nil
-		}
-		if entry.IsDir() {
-			if producedSkipDir(entry.Name()) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		// Dot-files are the harness's own machinery (.obs spills, .aforge job
-		// logs and traces) and the tooling's (.git objects, editor state). None
-		// of them is anybody's deliverable, and the spill directory in
-		// particular is written by the very turn that would record it.
-		if strings.HasPrefix(entry.Name(), ".") {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() {
-			return nil
-		}
-		if info.ModTime().Before(mark) {
-			return nil
-		}
-		found = append(found, stamped{path: path, when: info.ModTime()})
-		return nil
+		return left.After(right)
 	})
-	// Newest first, so that when the cap bites it keeps what the command most
-	// recently produced rather than whatever sorts early in the alphabet. Ties
-	// break on the path, so the list is the same list twice.
-	sort.Slice(found, func(i, j int) bool {
-		if found[i].when.Equal(found[j].when) {
-			return found[i].path < found[j].path
-		}
-		return found[i].when.After(found[j].when)
-	})
-	if len(found) > producedPerCall {
-		found = found[:producedPerCall]
-	}
-	paths := make([]string, 0, len(found))
-	for _, file := range found {
-		paths = append(paths, file.path)
+	if len(paths) > producedPerCall {
+		paths = paths[:producedPerCall]
 	}
 	return paths
 }
@@ -130,36 +134,49 @@ func (w *Workspace) producedSince(mark time.Time) []string {
 // this workspace: dependency installs, caches, and version-control storage. A
 // leaf that ran `pip install` or `npm install` produced thousands of files and
 // delivered none of them.
-func producedSkipDir(name string) bool {
-	if strings.HasPrefix(name, ".") {
-		return true
-	}
-	switch name {
-	case "node_modules", "vendor", "site-packages", "__pycache__", "bower_components", "venv":
-		return true
-	}
-	return false
-}
+func producedSkipDir(name string) bool { return verify.SkipTree(name) }
 
-// recordProduced files everything the workspace gained since mark under this
+// recordProduced files everything this call changed in the workspace under this
 // leaf's node identity — the same registry, keyed the same way, as a write.
-func (t *Toolbox) recordProduced(mark time.Time) {
-	t.workspace.RecordProducedSince(t.leaf, mark)
+func (t *Toolbox) recordProduced(before *TreeSnapshot) {
+	t.workspace.RecordProducedSince(t.leaf, before)
 }
 
-// RecordProducedSince files everything the workspace gained since mark under
-// leaf, in the same registry a write goes into. It is the ONE door for an
-// executor whose tools do not report their own writes — a shell command, or a
-// tool ported from elsewhere that knows a directory and nothing of this
-// workspace — because what the delivery gate is later shown is this registry
-// and nothing else: a leaf that wrote the file and never filed it is convicted
-// of not writing it, and a second leaf is spliced in to write it again. The
-// bare loop paid that twice on every run until it went through this door.
-func (w *Workspace) RecordProducedSince(leaf string, mark time.Time) {
-	if w == nil {
+// RecordProducedSince files what the workspace gained, changed or lost between
+// before — a [Workspace.Snapshot] taken at the top of one tool call — and now,
+// under leaf, in the same registry a write goes into.
+//
+// It is the ONE door for an executor whose tools do not report their own writes
+// — a shell command, or a tool ported from elsewhere that knows a directory and
+// nothing of this workspace — because what the delivery gate is later shown is
+// this registry and nothing else: a leaf that wrote the file and never filed it
+// is convicted of not writing it, and a second leaf is spliced in to write it
+// again. The bare loop paid that twice on every run until it went through this
+// door.
+//
+// The findings go to BOTH accounts, and deliberately. A created or changed file
+// is recorded as a deliverable, which is what the footer and the gate read and
+// is the behaviour every caller already depends on; and every finding, deletions
+// included, is recorded as OBSERVED, because a before-and-after read of the tree
+// is the world's own testimony whether it spans a whole leaf or one call. A
+// deletion cannot be a deliverable — there is nothing to open — so it is kept
+// only in the evidence record, exactly where [Workspace.RecordChanges] keeps
+// one.
+func (w *Workspace) RecordProducedSince(leaf string, before *TreeSnapshot) {
+	if w == nil || before == nil || strings.TrimSpace(leaf) == "" {
 		return
 	}
-	for _, path := range w.producedSince(mark) {
-		w.Record(leaf, path)
+	after := w.Snapshot()
+	changes := diffTrees(before, after)
+	if len(changes) == 0 {
+		return
+	}
+	paths := producedBound(changes, before, after)
+	w.noteObserved(leaf, changes, paths)
+	for _, path := range paths {
+		if changes[path] == ArtifactDeleted {
+			continue
+		}
+		w.Record(leaf, filepath.Join(w.root, path))
 	}
 }

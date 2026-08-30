@@ -1,0 +1,778 @@
+diff --git a/test/circuit-breaker.test.ts b/test/circuit-breaker.test.ts
+new file mode 100644
+index 0000000..ef92309
+--- /dev/null
++++ b/test/circuit-breaker.test.ts
+@@ -0,0 +1,771 @@
++import { describe, beforeEach, it, expect, vi } from "vitest";
++import { createFetch, resetCircuitStates } from "../src/index.ts";
++
++// Helper to create a mock fetch that simulates responses
++function mockFetch(
++  responses: Map<string, { status: number; body?: string } | Error>
++): typeof globalThis.fetch {
++  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
++    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
++    const response = responses.get(url);
++    if (response instanceof Error) {
++      throw response;
++    }
++    if (!response) {
++      return new Response("Not Found", { status: 404 });
++    }
++    return new Response(response.body || "", {
++      status: response.status,
++      statusText: response.status === 200 ? "OK" : "Error",
++    });
++  }) as unknown as typeof globalThis.fetch;
++}
++
++describe("circuit breaker", () => {
++  beforeEach(() => {
++    resetCircuitStates();
++  });
++
++  // ---------- State transitions ----------
++
++  it("transitions from closed to open after threshold failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // 6th call should fail fast with circuit breaker message
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("transitions from open to half-open after cooldown", async () => {
++    vi.useFakeTimers();
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Still open
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    // Advance past cooldown
++    vi.advanceTimersByTime(30001);
++
++    // Should now be half-open — but still fails because the mock still errors
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow();
++
++    vi.useRealTimers();
++  });
++
++  it("transitions from half-open to closed on successful probe", async () => {
++    vi.useFakeTimers();
++    let callCount = 0;
++    const fetch = vi.fn(async () => {
++      callCount++;
++      if (callCount <= 5) {
++        throw new Error("Network error");
++      }
++      return new Response("ok", { status: 200 });
++    }) as unknown as typeof globalThis.fetch;
++    const $fetch = createFetch({ fetch });
++
++    // 5 failures to open circuit
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Advance past cooldown
++    vi.advanceTimersByTime(30001);
++
++    // Half-open probe succeeds — should close circuit
++    const result = await $fetch("http://example.com/api", {
++      circuitBreaker: true,
++    });
++    expect(result).toBe("ok");
++
++    // Circuit is closed, next call should work
++    const result2 = await $fetch("http://example.com/api", {
++      circuitBreaker: true,
++    });
++    expect(result2).toBe("ok");
++
++    vi.useRealTimers();
++  });
++
++  it("transitions from half-open to open on failed probe", async () => {
++    vi.useFakeTimers();
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 5 failures to open circuit
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Advance past cooldown
++    vi.advanceTimersByTime(30001);
++
++    // Half-open probe fails — back to open
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow();
++
++    // Should be open again — fast fail
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    vi.useRealTimers();
++  });
++
++  // ---------- Origin keying ----------
++
++  it("keys circuit state by origin, not path", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/a", new Error("Network error")],
++      ["http://example.com/b", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // Fail on /a 5 times
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/a", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // /b should also be blocked (same origin)
++    await expect(
++      $fetch("http://example.com/b", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("supports string, URL, and Request inputs", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // String
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // URL object
++    await expect(
++      $fetch(new URL("http://example.com/other"), { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    // Request object
++    await expect(
++      $fetch(new Request("http://example.com/another"), {
++        circuitBreaker: true,
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("resolves origin for relative URLs with baseURL", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("/api", { baseURL: "http://example.com", circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Same origin via different relative path
++    await expect(
++      $fetch("/other", { baseURL: "http://example.com", circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Shared state across derived clients ----------
++
++  it("shares circuit state across clients created via .create()", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++    const derived = $fetch.create();
++
++    // Fail on parent
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Derived client should see open circuit
++    await expect(
++      derived("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Half-open probe limits ----------
++
++  it("limits concurrent half-open probes to halfOpenMaxRequests", async () => {
++    vi.useFakeTimers();
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 5 failures to open
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Advance past cooldown
++    vi.advanceTimersByTime(30001);
++
++    // First probe is allowed (halfOpenMaxRequests=1)
++    const probe1 = $fetch("http://example.com/api", {
++      circuitBreaker: true,
++    });
++
++    // Second probe should fail fast
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    await expect(probe1).rejects.toThrow();
++
++    vi.useRealTimers();
++  });
++
++  it("respects custom halfOpenMaxRequests", async () => {
++    vi.useFakeTimers();
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 5 failures to open
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Advance past cooldown
++    vi.advanceTimersByTime(30001);
++
++    // With halfOpenMaxRequests=3, allow 3 concurrent probes
++    const probe1 = $fetch("http://example.com/api", {
++      circuitBreaker: { halfOpenMaxRequests: 3 },
++    });
++    const probe2 = $fetch("http://example.com/api", {
++      circuitBreaker: { halfOpenMaxRequests: 3 },
++    });
++    const probe3 = $fetch("http://example.com/api", {
++      circuitBreaker: { halfOpenMaxRequests: 3 },
++    });
++
++    // 4th should fail fast
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { halfOpenMaxRequests: 3 },
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    await expect(probe1).rejects.toThrow();
++    await expect(probe2).rejects.toThrow();
++    await expect(probe3).rejects.toThrow();
++
++    vi.useRealTimers();
++  });
++
++  // ---------- Failure accounting ----------
++
++  it("counts network errors as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("counts failureStatusCodes as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 500 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("does not count non-listed 4xx/5xx as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 403 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 403 is not in default failureStatusCodes
++    for (let i = 0; i < 10; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Circuit should still be closed — 403 doesn't count
++    // Next call should still try (and fail with 403)
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow();
++    // Should NOT be circuit breaker error
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.not.toThrow("Circuit breaker is open");
++  });
++
++  it("does not reset failure streak on non-listed error statuses", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 500 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 4 failures with 500 (listed)
++    for (let i = 0; i < 4; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Now change to 403 (non-listed) — should not reset streak
++    const fetch2 = mockFetch(new Map([
++      ["http://example.com/api", { status: 403 }],
++    ]));
++    const $fetch2 = createFetch({ fetch: fetch2 });
++
++    await expect(
++      $fetch2("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow();
++
++    // Next 500 should be the 5th failure and open circuit
++    const fetch3 = mockFetch(new Map([
++      ["http://example.com/api", { status: 500 }],
++    ]));
++    const $fetch3 = createFetch({ fetch: fetch3 });
++
++    await expect(
++      $fetch3("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow();
++
++    // Now circuit should be open
++    await expect(
++      $fetch3("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("counts listed status failures even with ignoreResponseError=true", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 500 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: true,
++          ignoreResponseError: true,
++        })
++      ).resolves.toBeDefined();
++    }
++
++    // Circuit should be open — 5 failures counted
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++        ignoreResponseError: true,
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("resets consecutive failures on success", async () => {
++    const results: (Error | Response)[] = [
++      new Error("Network error"),
++      new Error("Network error"),
++      new Error("Network error"),
++      new Response("ok", { status: 200 }),
++      new Error("Network error"),
++      new Error("Network error"),
++      new Error("Network error"),
++      new Error("Network error"),
++    ];
++    let callIndex = 0;
++    const fetch = vi.fn(async (): Promise<Response> => {
++      const result = results[callIndex];
++      callIndex++;
++      if (result instanceof Error) {
++        throw result;
++      }
++      return result;
++    });
++    const $fetch = createFetch({ fetch });
++
++    // Disable retries to have predictable call counts
++    const opts = { circuitBreaker: true, retry: false };
++
++    // 3 failures (under threshold of 5)
++    for (let i = 0; i < 3; i++) {
++      await expect(
++        $fetch("http://example.com/api", opts)
++      ).rejects.toThrow();
++    }
++
++    // Success resets counter
++    await expect(
++      $fetch("http://example.com/api", opts)
++    ).resolves.toBe("ok");
++
++    // 4 more failures should not open circuit (counter was reset to 0, 4 < threshold of 5)
++    for (let i = 0; i < 4; i++) {
++      await expect(
++        $fetch("http://example.com/api", opts)
++      ).rejects.toThrow();
++    }
++
++    // Still closed — only 4 consecutive failures since reset
++    // Verify it's NOT a circuit breaker error
++    await expect(
++      $fetch("http://example.com/api", opts)
++    ).rejects.not.toThrow("Circuit breaker is open");
++  });
++
++  it("counts parseResponse errors as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 200, body: "invalid json" }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: true,
++          responseType: "json",
++        })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++        responseType: "json",
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("counts onResponse hook errors as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 200, body: "ok" }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: true,
++          onResponse: () => {
++            throw new Error("Hook error");
++          },
++        })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++        onResponse: () => {
++          throw new Error("Hook error");
++        },
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("counts onRequestError hook errors as circuit failures", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: true,
++          onRequestError: () => {
++            throw new Error("Hook error");
++          },
++        })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Retry semantics ----------
++
++  it("records exactly one failure per logical request with retries", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 500 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // One logical request with retries — should count as 1 failure
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: true,
++          retry: 3,
++        })
++      ).rejects.toThrow();
++    }
++
++    // 5 logical requests each with retries = 5 failures -> open
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++        retry: 3,
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Fast-fail behavior ----------
++
++  it("rejects immediately when circuit is open without calling underlying fetch", async () => {
++    const fetch = vi.fn() as unknown as typeof globalThis.fetch;
++    const $fetch = createFetch({ fetch });
++
++    // Manually trigger open state by failing 5 times
++    const errorFetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $errorFetch = createFetch({ fetch: errorFetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $errorFetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Now use the clean fetch — it should NOT be called
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    expect(fetch).not.toHaveBeenCalled();
++  });
++
++  it("includes 'Circuit breaker is open' in error message", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- No circuit breaker when option omitted ----------
++
++  it("does not apply circuit tracking when circuitBreaker is omitted", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // Many failures without circuitBreaker
++    for (let i = 0; i < 100; i++) {
++      await expect(
++        $fetch("http://example.com/api")
++      ).rejects.toThrow();
++    }
++
++    // Should never get circuit breaker error
++    await expect(
++      $fetch("http://example.com/api")
++    ).rejects.not.toThrow("Circuit breaker is open");
++  });
++
++  it("does not apply circuit tracking when circuitBreaker is false", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 100; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: false })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: false })
++    ).rejects.not.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Custom options ----------
++
++  it("accepts custom threshold", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // 2 failures with threshold=2
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { threshold: 2 },
++      })
++    ).rejects.toThrow();
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { threshold: 2 },
++      })
++    ).rejects.toThrow();
++
++    // 3rd should fail fast
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { threshold: 2 },
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  it("accepts custom cooldown", async () => {
++    vi.useFakeTimers();
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // Still open
++    await expect(
++      $fetch("http://example.com/api", { circuitBreaker: true })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    // Advance by custom cooldown (10ms)
++    vi.advanceTimersByTime(11);
++
++    // Should now be half-open
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { cooldown: 10 },
++      })
++    ).rejects.toThrow();
++
++    vi.useRealTimers();
++  });
++
++  it("accepts custom failureStatusCodes", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", { status: 418 }],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    for (let i = 0; i < 3; i++) {
++      await expect(
++        $fetch("http://example.com/api", {
++          circuitBreaker: { threshold: 3, failureStatusCodes: [418] },
++        })
++      ).rejects.toThrow();
++    }
++
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: { threshold: 3, failureStatusCodes: [418] },
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++  });
++
++  // ---------- Hook ordering ----------
++
++  it("runs onRequest hook even when circuit is open", async () => {
++    const fetch = mockFetch(new Map([
++      ["http://example.com/api", new Error("Network error")],
++    ]));
++    const $fetch = createFetch({ fetch });
++
++    // Open the circuit
++    for (let i = 0; i < 5; i++) {
++      await expect(
++        $fetch("http://example.com/api", { circuitBreaker: true })
++      ).rejects.toThrow();
++    }
++
++    // onRequest should still be called even though circuit is open
++    const onRequest = vi.fn();
++    await expect(
++      $fetch("http://example.com/api", {
++        circuitBreaker: true,
++        onRequest,
++      })
++    ).rejects.toThrow("Circuit breaker is open");
++
++    expect(onRequest).toHaveBeenCalledOnce();
++  });
++});
+\ No newline at end of file

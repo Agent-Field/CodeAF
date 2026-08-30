@@ -1320,9 +1320,13 @@ errands on two screens.
 "context reuse", "searching", "exa key", "jina key".
 
 **Workspace** — what aforge may do and spend while it works for you. Rows: "daily
-budget", "ask before spending", "practice budget", "quiet before practice", "arrival
-brief after", "tenure after", "background checks", "attribution", "google sign-in id",
-"google sign-in secret".
+budget", "ask before spending", "practice budget", "workers", "quiet before practice",
+"arrival brief after", "tenure after", "background checks", "attribution", "google
+sign-in id", "google sign-in secret".
+
+**"workers"** is which workers this install may hand a piece of work to, separated by
+commas — blank is all of them, which is the default. It is how you turn a specialist off;
+*How work on its own actually runs* has the whole of it.
 
 **"background checks"** is on by default: one small timer under your own login checks
 your reminders, watches and routines every 5 minutes with no window open. Off removes it

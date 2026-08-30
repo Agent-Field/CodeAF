@@ -96,6 +96,14 @@ var selfServiceGuards = map[string]string{
 	KeyWorkingSet:       guardSpending,
 	KeyContextReuse:     guardSpending,
 
+	// The roster of workers. It is a spending rail rather than a preference:
+	// the specialists are the expensive way of taking a job — a whole pipeline
+	// of model calls where the generalist is one sitting — and a model that
+	// could put one back onto its own roster could then choose it for its own
+	// next piece of work. The person who wrote the roster wrote it to stop
+	// exactly that, so the row is theirs and not the model's.
+	KeyWorkers: guardSpending,
+
 	// The machine's own ceilings.
 	KeyTaskParallel:  guardPressure,
 	KeyTaskMaxLoad:   guardPressure,

@@ -25,7 +25,7 @@ func TestEveryCitationTheAskItselfContainsIsGrounded(t *testing.T) {
 		"a span of prose, not a file":              {"then fix home.go"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if refusal := admitGapCitations(citations, intent); refusal != "" {
+			if refusal := admitGapCitations(citations, Grounds{Intent: intent}); refusal != "" {
 				t.Errorf("%q: refused as %q, but every citation is the person's own words", citations, refusal)
 			}
 		})
@@ -38,18 +38,18 @@ func TestEveryCitationTheAskItselfContainsIsGrounded(t *testing.T) {
 // invariant exists to refuse.
 func TestAListWithAnInventedCitationIsRefusedWhole(t *testing.T) {
 	intent := "Grow spacing.go, then fix home.go."
-	if refusal := admitGapCitations([]string{"spacing.go", "home.go", "verification of the previous round"}, intent); refusal == "" {
+	if refusal := admitGapCitations([]string{"spacing.go", "home.go", "verification of the previous round"}, Grounds{Intent: intent}); refusal == "" {
 		t.Fatal("a list carrying an invented requirement was admitted")
 	}
 	// A file nobody named is the same invention wearing a filename. This is the
 	// half of the rule the file-identity door must not open.
-	if refusal := admitGapCitations([]string{"spacing.go", "internal/tui3/rendercache.go"}, intent); refusal == "" {
+	if refusal := admitGapCitations([]string{"spacing.go", "internal/tui3/rendercache.go"}, Grounds{Intent: intent}); refusal == "" {
 		t.Fatal("a file only the plan named bought a round")
 	}
-	if refusal := admitGapCitations(nil, intent); !strings.Contains(refusal, "could not point") {
+	if refusal := admitGapCitations(nil, Grounds{Intent: intent}); !strings.Contains(refusal, "could not point") {
 		t.Fatalf("an empty list should still be the empty-citation refusal, got %q", refusal)
 	}
-	if refusal := admitGapCitations([]string{"   ", ""}, intent); !strings.Contains(refusal, "could not point") {
+	if refusal := admitGapCitations([]string{"   ", ""}, Grounds{Intent: intent}); !strings.Contains(refusal, "could not point") {
 		t.Fatalf("a list of blanks grounded itself against anything, got %q", refusal)
 	}
 }
@@ -61,18 +61,18 @@ func TestAListWithAnInventedCitationIsRefusedWhole(t *testing.T) {
 // and a rule comparing the two letter by letter called it an invention.
 func TestAPlanResolvedPathIsGroundedByTheBareNameTheAskUsed(t *testing.T) {
 	intent := "There is a breakpoints_test.go asserting today's derivations; update it."
-	if refusal := admitGapCitations([]string{"internal/tui3/breakpoints_test.go"}, intent); refusal != "" {
+	if refusal := admitGapCitations([]string{"internal/tui3/breakpoints_test.go"}, Grounds{Intent: intent}); refusal != "" {
 		t.Fatalf("the resolved path of a file the person named was refused as %q", refusal)
 	}
 	// It opens for a citation that IS a file name, never for a sentence holding
 	// one: inferring a deliverable from prose is what neither half may do.
-	if refusal := admitGapCitations([]string{"a rewrite of internal/tui3/breakpoints_test.go"}, intent); refusal == "" {
+	if refusal := admitGapCitations([]string{"a rewrite of internal/tui3/breakpoints_test.go"}, Grounds{Intent: intent}); refusal == "" {
 		t.Fatal("a sentence mentioning a file was grounded as though it named one")
 	}
 	// And a different directory is a different file, which is exactly what the
 	// person meant when they wrote one.
 	deep := "Update internal/tui3/breakpoints_test.go."
-	if refusal := admitGapCitations([]string{"internal/tui/breakpoints_test.go"}, deep); refusal == "" {
+	if refusal := admitGapCitations([]string{"internal/tui/breakpoints_test.go"}, Grounds{Intent: deep}); refusal == "" {
 		t.Fatal("a file at another address was grounded against the one the person named")
 	}
 }
@@ -85,19 +85,19 @@ func TestAPlanResolvedPathIsGroundedByTheBareNameTheAskUsed(t *testing.T) {
 func TestTheSpentLedgerKeysPerCitation(t *testing.T) {
 	const intent = "Grow spacing.go, then fix home.go and homebridge.go."
 	spent := []string{"spacing.go"}
-	if refusal := AdmitGapCitation(intent, []string{"spacing.go", "home.go"}, spent); refusal != "" {
+	if refusal := AdmitGapCitation(Grounds{Intent: intent}, []string{"spacing.go", "home.go"}, spent); refusal != "" {
 		t.Fatalf("a fresh citation beside a spent one was refused: %q", refusal)
 	}
-	if refusal := AdmitGapCitation(intent, []string{"spacing.go"}, spent); refusal == "" {
+	if refusal := AdmitGapCitation(Grounds{Intent: intent}, []string{"spacing.go"}, spent); refusal == "" {
 		t.Fatal("a citation already worked on bought a second round")
 	}
-	if refusal := AdmitGapCitation(intent, []string{"spacing.go", "home.go"},
+	if refusal := AdmitGapCitation(Grounds{Intent: intent}, []string{"spacing.go", "home.go"},
 		[]string{"spacing.go", "home.go"}); refusal == "" {
 		t.Fatal("a list every citation of which was spent bought another round")
 	}
 	// Spelling does not refresh a file. A round bought for the bare name is a
 	// round bought for the path it resolves to, or one file buys two rounds.
-	if refusal := AdmitGapCitation("Fix home.go.", []string{"internal/tui3/home.go"},
+	if refusal := AdmitGapCitation(Grounds{Intent: "Fix home.go."}, []string{"internal/tui3/home.go"},
 		[]string{"home.go"}); refusal == "" {
 		t.Fatal("resolving a path in between bought the same file a second round")
 	}
@@ -155,10 +155,10 @@ func TestTheSpacingLadderGateIsGroundedInItsOwnRequest(t *testing.T) {
 	if !gate.Mechanical {
 		t.Fatal("a gap about files on disk was not marked mechanical")
 	}
-	if refusal := AdmitGapRevision(string(intent), "", gate.Cited()); refusal != "" {
+	if refusal := AdmitGapRevision(Grounds{Intent: string(intent)}, gate.Cited()); refusal != "" {
 		t.Fatalf("the gate's own citations were refused as %q against the request that names every file in them", refusal)
 	}
-	if refusal := AdmitGapCitation(string(intent), gate.Cited(), nil); refusal != "" {
+	if refusal := AdmitGapCitation(Grounds{Intent: string(intent)}, gate.Cited(), nil); refusal != "" {
 		t.Fatalf("the extension refused the same citations as %q", refusal)
 	}
 	// The refusal the run actually recorded is the one this whole change exists

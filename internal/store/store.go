@@ -117,6 +117,16 @@ const (
 	// for the same reason the choice is journaled at splice time: a leaf claimed
 	// after a restart must run on what it was last promised.
 	EventNodeWorkerChanged EventKind = "node_worker_changed"
+	// A node's RUNNING worker is a different fact from the one above, and it is
+	// the fact an autopsy actually needs: which worker the dispatch path built
+	// and handed the work to. The two agree for nearly every node and disagree
+	// for exactly the nodes worth knowing about — an unrouted node runs the
+	// generalist while its assignment column says nothing at all, and a node
+	// promised a worker this build cannot construct runs the generalist while
+	// its assignment column names the specialist. The s9 sweep cost a day to
+	// this: every node in its stores said nothing, and no other row said who
+	// had done the work.
+	EventNodeRan EventKind = "node_ran"
 	// A node's model may change whenever somebody says so, for as long as the
 	// node still has work left. It is one event per node rather than one sweep
 	// over a subtree, so a replay re-points exactly the nodes the sweep found
@@ -433,6 +443,13 @@ type Node struct {
 	// admission, so every dispatch path reads one field and cannot disagree
 	// with another about which worker a node was promised.
 	Subharness string
+	// Ran is the worker that actually executed this node, written by the
+	// dispatch path at the moment it builds the executor and again whenever an
+	// escalation builds a different one. Subharness above is what the node was
+	// ASKED to run on and is empty wherever nobody answered; this is what ran,
+	// and it is never empty for a node that ran — the generalist says "linear"
+	// out loud rather than leaving a blank that four other things also mean.
+	Ran string
 	// Spec is the planner's task object as it was admitted, journal-derived
 	// like every other field on this view. Readers that do not know what a spec
 	// is pass it along; the one that does decodes it.
@@ -545,6 +562,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	craft          TEXT NOT NULL DEFAULT '',
 	subharness     TEXT NOT NULL DEFAULT '',
 	splice_subharness TEXT NOT NULL DEFAULT '',
+	ran            TEXT NOT NULL DEFAULT '',
 	spec           TEXT NOT NULL DEFAULT '',
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),

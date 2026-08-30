@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,13 +37,83 @@ import (
 // have arrived as a rewrite of every dispatch path instead of a registration.
 // swe is the proof — it is two lines here and one file beside this one.
 
+// buildWorkers is every worker this binary can construct, in the order it
+// declares them. It is the ONE list: [installSubharnesses] registers from it,
+// the roster row's receipt reports it, and the roster is filtered against it —
+// so adding a worker is still a line here and a line in leafExecutors, and the
+// new worker is on every profile's roster the day it is declared.
+func buildWorkers() []exec.SubharnessInfo {
+	return []exec.SubharnessInfo{sweInfo(), bareInfo()}
+}
+
 // installSubharnesses declares this build's workers to the whole process. It is
 // called once, before any command runs, so every surface — chat, do, run, wake
-// — sees the same menu and the same rulers. Adding a worker is a line here and
-// a line in leafExecutors, and nothing else.
+// — sees the same menu and the same rulers.
+//
+// IT REGISTERS THE ROSTER AND NOT THE BUILD. A profile that names a subset gets
+// that subset registered and nothing else, and the absence does the rest with no
+// help from anybody: an unregistered worker is off exec.MenuText, so the
+// compiler never sees it; exec.KnownSubharness says no, so the resident's
+// escalation ladder cannot climb to it and executorFor degrades to the
+// generalist; and `--subharness <name>` answers with the flag's own
+// not-in-this-build sentence. A capability that cannot work is absent, not
+// broken, and this is that law applied to a whole worker.
 func installSubharnesses() {
-	exec.RegisterSubharness(sweInfo())
-	exec.RegisterSubharness(bareInfo())
+	installWorkerRoster(config.WorkersAt(os.Getenv("AFORGE_PROFILE_DIR")), os.Stderr)
+}
+
+// installWorkerRoster is [installSubharnesses] with its two inputs named, so a
+// test can hand it a roster without writing a profile or the environment.
+//
+// The catalog hook is seated FIRST and from the whole build rather than from the
+// roster: the settings row exists so somebody can see which worker they turned
+// off and turn it back on, and a row that could only list what is already
+// installed would be a row that hides the name a person needs.
+func installWorkerRoster(roster string, stderr io.Writer) {
+	workers := buildWorkers()
+	config.UseInstalledWorkers(func() []string { return workerNames(buildWorkers()) })
+
+	// The generalist is a name the roster may say and never a worker the roster
+	// installs: it is not a registered subharness at all (internal/plan's
+	// size.go — the baseline every node is judged against, never an entry on a
+	// menu), so it is always there whatever this line says. It is on the known
+	// list only so that a person who writes "linear" is answered with the
+	// generalist rather than with a note about a name nobody recognises.
+	known := append([]string{exec.LinearSubharness}, workerNames(workers)...)
+	kept, unknown := config.WorkerRoster(roster, known)
+	if len(unknown) > 0 && stderr != nil {
+		fmt.Fprintf(stderr, "note: no worker named %s — this build has: %s\n",
+			strings.Join(quoteAll(unknown), ", "), strings.Join(workerNames(workers), ", "))
+	}
+
+	install := map[string]bool{}
+	for _, name := range kept {
+		install[name] = true
+	}
+	for _, info := range workers {
+		if install[info.Name] {
+			exec.RegisterSubharness(info)
+		}
+	}
+}
+
+// workerNames is the build's workers as the names a person writes.
+func workerNames(workers []exec.SubharnessInfo) []string {
+	names := make([]string, 0, len(workers))
+	for _, info := range workers {
+		names = append(names, info.Name)
+	}
+	return names
+}
+
+// quoteAll puts a person's own spelling in quotes, so a roster line with a
+// stray word reads back as the word rather than dissolving into the sentence.
+func quoteAll(names []string) []string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, fmt.Sprintf("%q", name))
+	}
+	return quoted
 }
 
 // leafBuild is everything a worker needs to be constructed for one leaf. It is
@@ -270,8 +341,14 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	// tokens under no app — which is exactly what this one did while the
 	// attribution travelled as three copied config fields.
 	barepkg.BareSubharness: func(build leafBuild) exec.Executor {
+		// The journal, so the readings this worker takes of the project's own
+		// checks leave a row an autopsy can read. It is the one piece of
+		// graph-level wiring the bare worker takes, and it changes nothing
+		// about what it does: a fail-safe that leaves no record cannot be
+		// autopsied (docs/design/failsafe/FAILSAFE.md clause 4).
 		return barepkg.New(build.workspace, engineModelID(build.models, build.model),
-			build.settings.APIKey, build.settings.BaseURL, build.deadline)
+			build.settings.APIKey, build.settings.BaseURL, build.deadline).
+			WithStore(build.graph)
 	},
 }
 
@@ -340,6 +417,51 @@ func executorFor(subharness string, build leafBuild) exec.Executor {
 		return construct(build)
 	}
 	return leafExecutors[exec.LinearSubharness](build)
+}
+
+// runningWorker is THE SEAM. It builds the worker one node will actually be run
+// by and writes that down against the node in the same breath, because this is
+// the one moment in the process where both halves of the fact are in hand: the
+// node, and the executor the resolution above just settled on.
+//
+// It exists because the two facts were never the same column and one of them
+// was never written at all. `nodes.subharness` is an ASSIGNMENT — what the
+// compiler asked for — and the compiler asks for nothing on the great majority
+// of nodes, so an autopsy of a run where nobody routed anything reads a table
+// of blanks. Every node of the s9 sweep's ink and igel stores said exactly that,
+// and the sweep's diagnosis cost a day to a question the store could not answer:
+// WHO DID THE WORK. It answers it now, here, and the generalist answers "linear"
+// rather than leaving the blank that also means "nobody ran this".
+//
+// [executorFor] stays the pure resolution it always was, and after this it has
+// one caller in the surface. That is a law and not a convenience: a dispatch
+// path that resolved a worker without journaling it would put the blank back on
+// exactly the nodes nobody thought to look at.
+// `TestTheWorkerThatRanIsWrittenAtOneSeam` fails the build on a second caller.
+func runningWorker(nodeID, promised string, build leafBuild, reason string) exec.Executor {
+	worker := executorFor(promised, build)
+	ran := worker.Subharness()
+	if reason == "" && strings.TrimSpace(promised) != "" && strings.TrimSpace(promised) != ran {
+		// The degradation, said in the record rather than only on a trace file
+		// somebody has to know to open. A benchmark cell that silently became a
+		// default cell is a measurement of the wrong thing, and this is the row
+		// that tells whoever reads the store afterwards which of the two it was.
+		reason = "promised " + strings.TrimSpace(promised) + "; this build has no such worker"
+	}
+	recordRunningWorker(build.graph, nodeID, ran, reason)
+	return worker
+}
+
+// recordRunningWorker journals who is doing the work. It is best-effort in the
+// same sense every other note on the dispatch path is: a journal write that
+// fails costs an autopsy and must never cost the work.
+func recordRunningWorker(graph *store.Store, nodeID, subharness, reason string) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" || strings.TrimSpace(subharness) == "" {
+		return
+	}
+	if _, err := graph.RecordNodeRan(nodeID, subharness, reason); err != nil {
+		log.Printf("note: could not journal the worker running %s: %v", nodeID, err)
+	}
 }
 
 // registerLeafExecutors fills a scheduler's registry with every worker this

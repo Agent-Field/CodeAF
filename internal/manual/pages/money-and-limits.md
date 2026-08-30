@@ -55,6 +55,115 @@ Charters are capped explicitly: each one carries a per-firing budget (default
 **$0.15**) and a max-per-day (default **10**). A firing that would cross the
 daily rail is deferred and you are asked first.
 
+## When a worker runs out of time — what happens to what it did
+
+A worker is given a wall to finish in. When it reaches the end of it, it is not
+killed and its work is not thrown away — it stops working and spends what is
+left saying where it got to, and that account is what the next worker carries
+on from.
+
+Three things follow from that, and they are all readable on the work's record:
+
+- **A command that will not fit is cut, not the worker.** Every command a
+  worker runs is bounded by the time the worker has left, less what it takes
+  that worker to finish up. A command that outlives its bound comes back as
+  `cut after 9m12s; output so far:` followed by everything it had written by
+  then, and the worker reads that and decides what to do — usually run a
+  smaller piece of it. Nothing is left running in the background afterwards.
+- **The piece goes back on the queue.** Running out of time is not a failure
+  and it is not a verdict on the work. The piece is offered again, and whoever
+  picks it up is handed the last worker's own turns to carry on from, so it
+  never starts from nothing beside a directory full of its own files. You see
+  one line saying how much it picked up. A worker that ran out of time having
+  recorded nothing at all is the exception: there is nothing to carry on from,
+  so that one is a failure.
+- **What it spent is already counted.** Money is written down as each call is
+  billed, not when the work finishes, so a worker interrupted halfway still
+  shows its full spend on `/cost` and in the run's own total.
+
+## What actually stops a worker — it stopped early, what ran out
+
+Three things can stop a worker that is still going, and the record always says
+which one it was, with its own two numbers:
+
+- **The money.** Each piece of work is given an allowance, counted in what the
+  provider actually charges — fresh input, the answer, and re-read context at
+  the discount the provider gives it. This is the ordinary way a long piece of
+  work ends.
+- **Turns.** A backstop at 400 steps, which honest work never reaches.
+- **Going in circles.** A worker that re-runs the same command, or goes several
+  steps without writing anything or learning anything new, is told to wrap up
+  and then stopped. This is what catches a worker that is stuck rather than
+  slow.
+
+Two other numbers are watched and **neither one stops anything**: how many
+tokens have gone over the wire in total, and the same figure undiscounted. They
+climb just as fast for a worker doing hard work as for one going in circles — a
+long conversation re-sends everything it has said so far, every step — so they
+are used to tell a worker to start wrapping up, and never to end it. They used
+to end it, and the work that was thrown away was real.
+
+## What a new piece of work is told about the pieces before it
+
+When a job splits again — because work ran out of room, or because a review
+found something missing — the new pieces are not strangers to it. Each one is
+handed two things, taken from the job's own record rather than from anyone's
+summary of it:
+
+- **What the job has already done**, as an outline of the earlier pieces' turns
+  and the files they left on disk, so nothing sets out to write a file that is
+  already there. You see one line saying how much was picked up.
+- **What the job is still short of**, at the top of its instructions and in the
+  words the request itself used: behaviours nothing checks yet, checks that were
+  failing when they were last run, and what the last review said was missing.
+
+Neither is rewritten on the way. A finding that reached a worker as somebody's
+paraphrase used to be a finding that mostly did not reach it at all.
+
+## When work stops growing itself — it gave up early, why did it stop trying
+
+Work that runs out mid-way is re-planned rather than abandoned: what is left is
+worked out and queued as fresh pieces, and you see one line saying so. Five
+things stop that from becoming a habit, and the first three read what actually
+happened rather than counting:
+
+- **Nothing is changing.** A round that changed nothing the job is about, after
+  a round before it that also changed nothing, ends the **whole job** — not just
+  the piece that asked:
+  `carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands`.
+  One fruitless round is never refused — work can run out before it writes its
+  first file, and that is exactly the round this exists to buy.
+
+  **What counts as changing something** is narrower than "a file appeared". It
+  is a check file, a source file the request is about or one sitting beside it,
+  or the job's own shortfall getting smaller — a failing check that passes now,
+  a behaviour that nothing checked and something does, a deleted public name put
+  back, a review finding answered. A worker that is stuck writes scratch files
+  next to the work — `debug-grid.ts`, `debug-yoga.ts` — and those are not
+  progress however many of them there are. They are written down by name, so a
+  run that stopped this way can be read afterwards.
+
+  A piece that ran out of room and was picked up again counts as a round here
+  too, even though nothing new was queued for it.
+
+- **No time left.** A run given a wall stops growing while there is still time
+  to finish what is running and get a verdict on it:
+  `there is not enough time left on this run to finish another round of work, so this is handed over while there is still time to check it`.
+  How long a round of this job takes is measured on this job — its own rounds,
+  not a fixed number.
+- **The same work again.** When what is left to do comes back word for word the
+  same as last time, another round would ask for exactly what the last one
+  already did:
+  `the work left to do came back word for word the same as last time, so another round would ask for exactly what this one already did — handing over what's done`.
+- **Rounds.** A lineage may grow **three** times. Past that:
+  `this work has split as many times as splitting helps — handing over what's done`.
+- **Size.** A job may hold **90** pieces in all:
+  `this job has grown as large as jobs are allowed to grow — handing over what's done`.
+
+Every one of them hands over what exists rather than failing, and every one is
+said on the work's own record, so a job that quietly stopped growing never looks
+like a job that is still going.
+
 ## The practice carve-out
 
 Aforge's own practice has its own pocket: **$2.00 a day**, spent as at most two

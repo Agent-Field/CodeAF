@@ -89,6 +89,7 @@ func TestTheHarnessesOwnFilesAreNotDeliverables(t *testing.T) {
 // three hundred named deliverables.
 func TestProducedFilesAreBounded(t *testing.T) {
 	space := workspace(t)
+	before := space.Snapshot()
 	outputs := filepath.Join(space.Root(), "out")
 	if err := os.MkdirAll(outputs, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -108,13 +109,153 @@ func TestProducedFilesAreBounded(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	produced := space.producedSince(producedMark(time.Now()))
+	space.RecordProducedSince("8", before)
+
+	produced := space.Artifacts("8")
 	if len(produced) > producedPerCall {
-		t.Fatalf("scan returned %d files, cap is %d", len(produced), producedPerCall)
+		t.Fatalf("the sweep filed %d files, cap is %d", len(produced), producedPerCall)
 	}
 	for _, path := range produced {
 		if strings.Contains(path, "node_modules") {
 			t.Errorf("a dependency tree was claimed as output: %q", path)
 		}
+	}
+}
+
+// The defect the snapshot diff exists for: a file whose write time is at or
+// before the moment the call began is still a file the tree did not hold and
+// now does.
+//
+// The clock was wrong about this in two ordinary ways at once. A filesystem
+// whose timestamps are coarser than the gap between the mark and the write
+// stamps the new file fractionally BEFORE the mark — that is what made
+// TestABareLeafFilesTheFilesItsToolsLeaveBehind fail about one run in four —
+// and a tool that preserves the timestamp it copied (cp -p, git checkout, tar,
+// rsync -t) backdates it on purpose. Chtimes stands in for both, an hour deep,
+// so no amount of slack can rescue a clock-sourced answer.
+//
+// FAILSAFE.md rule 2: source evidence from the world.
+func TestAFileTheClockCallsOldIsStillProduced(t *testing.T) {
+	space := workspace(t)
+	before := space.Snapshot()
+
+	path := touch(t, space, "delivered.md", "the work")
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	space.RecordProducedSince("11", before)
+
+	if artifacts := space.Artifacts("11"); !slices.Contains(artifacts, "delivered.md") {
+		t.Fatalf("artifacts = %v, want the file the call left behind", artifacts)
+	}
+}
+
+// A rewrite that puts the same bytes back is not something the call produced,
+// however far it moved the clock. A formatter run over a file it has already
+// formatted, an idempotent generator re-run, `touch` on somebody's input: each
+// of them used to name that file as this call's output.
+func TestARewriteWithIdenticalBytesIsNotProduced(t *testing.T) {
+	space := workspace(t)
+	path := touch(t, space, "given.csv", "a,b\n1,2\n")
+	before := space.Snapshot()
+
+	// A whole second later, so the write time has certainly moved on every
+	// filesystem this runs on.
+	later := time.Now().Add(time.Second)
+	if err := os.WriteFile(path, []byte("a,b\n1,2\n"), 0o644); err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	space.RecordProducedSince("12", before)
+
+	if artifacts := space.Artifacts("12"); len(artifacts) != 0 {
+		t.Fatalf("artifacts = %v, want nothing: the bytes never changed", artifacts)
+	}
+}
+
+// The other half of the same rule: bytes that DID change are the call's output
+// even when the file is exactly as long as it was and the clock says nothing.
+// Length plus write time cannot see this at all, and it is the ordinary shape
+// of an edit — a one-character fix, a flipped flag, a swapped identifier.
+func TestARewriteAtTheSameLengthAndClockIsStillProduced(t *testing.T) {
+	space := workspace(t)
+	path := touch(t, space, "config.toml", "mode = \"draft\"\n")
+	stat, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	before := space.Snapshot()
+
+	if err := os.WriteFile(path, []byte("mode = \"final\"\n"), 0o644); err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	// The tool preserved the timestamp, and the replacement is the same length.
+	// Nothing but the bytes can tell the two files apart.
+	if err := os.Chtimes(path, stat.ModTime(), stat.ModTime()); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	space.RecordProducedSince("13", before)
+
+	if artifacts := space.Artifacts("13"); !slices.Contains(artifacts, "config.toml") {
+		t.Fatalf("artifacts = %v, want the file the call rewrote", artifacts)
+	}
+}
+
+// A command that removed a file leaves that fact in the evidence record and
+// nowhere else — the same place, and for the same reason, that the whole-leaf
+// diff keeps a deletion. Artifacts is a list of things to open, and a path that
+// no longer exists sends every reader of it to nothing.
+func TestACommandsDeletionIsEvidenceButNotSomethingToOpen(t *testing.T) {
+	space := workspace(t)
+	path := touch(t, space, "draft.md", "superseded")
+	before := space.Snapshot()
+
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	space.RecordProducedSince("14", before)
+
+	fact, found := factFor(space.ArtifactFacts("14"), "draft.md")
+	if !found {
+		t.Fatal("the call removed draft.md and the evidence record does not say so")
+	}
+	if !fact.Observed || fact.Change != ArtifactDeleted {
+		t.Fatalf("draft.md fact = %+v, want observed and deleted", fact)
+	}
+	if artifacts := space.Artifacts("14"); slices.Contains(artifacts, "draft.md") {
+		t.Fatalf("artifacts = %v, want a file that no longer exists left out", artifacts)
+	}
+}
+
+// A scratch file the leaf made and then removed is never handed to anyone.
+//
+// Two sweeps see the two halves — one call creates it, a later call removes it
+// — and the later sighting wins, so the path leaves the list of things to open
+// exactly as a deletion of somebody else's file would. Before the tree diff the
+// creating call filed it as a deliverable and nothing ever retracted that: the
+// files footer named a temp file, and a dependent following the pointer found
+// nothing there.
+func TestAScratchFileMadeAndRemovedIsNotHandedToAnyone(t *testing.T) {
+	space := workspace(t)
+
+	first := space.Snapshot()
+	path := touch(t, space, "tmp-working.json", "{}")
+	space.RecordProducedSince("15", first)
+
+	second := space.Snapshot()
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	space.RecordProducedSince("15", second)
+
+	if artifacts := space.Artifacts("15"); len(artifacts) != 0 {
+		t.Fatalf("artifacts = %v, want nothing to open: the file is gone", artifacts)
+	}
+	fact, found := factFor(space.ArtifactFacts("15"), "tmp-working.json")
+	if !found || fact.Change != ArtifactDeleted {
+		t.Fatalf("tmp-working.json fact = %+v (found=%v), want the deletion recorded", fact, found)
 	}
 }
