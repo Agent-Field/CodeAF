@@ -9,8 +9,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditconvergence"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
-	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 const fullVerificationTimeoutMS = 600_000
@@ -23,7 +23,7 @@ const strictVerificationPreamble = "set -euo pipefail\n"
 type projectVerificationResult struct {
 	Commands []any
 	Prompt   string
-	Failed   *fullverification.Entrypoint
+	Failed   *verify.Entrypoint
 	Failure  string
 	// TimedOut is set when at least one entrypoint was killed at the
 	// fullVerificationTimeoutMS ceiling without ever producing an exit status.
@@ -46,7 +46,7 @@ type timedOutEntrypoint struct {
 	HaveFinger  bool
 }
 
-func verificationMemoKey(entrypoint fullverification.Entrypoint) string {
+func verificationMemoKey(entrypoint verify.Entrypoint) string {
 	return entrypoint.Workdir + "\x00" + entrypoint.Command
 }
 
@@ -58,7 +58,7 @@ func verificationMemoKey(entrypoint fullverification.Entrypoint) string {
 // baseline comparison needs the failure list, which for a suite with a dozen
 // reds is further up than 600 characters reach.
 func (runner *pipeline) executeEntrypoint(
-	ctx context.Context, entrypoint fullverification.Entrypoint,
+	ctx context.Context, entrypoint verify.Entrypoint,
 ) (exitCode int, timedOut bool, output string) {
 	exitCode = -1
 	bashInput := map[string]any{
@@ -122,7 +122,7 @@ func projectVerificationPassVerdict(
 func (runner *pipeline) runProjectVerification(
 	ctx context.Context,
 ) projectVerificationResult {
-	plan := fullverification.Discover(runner.workspace)
+	plan := verify.Discover(runner.workspace)
 	result := projectVerificationResult{Commands: []any{}}
 	lines := []string{
 		"# Harness-executed full project verification",
@@ -268,9 +268,9 @@ func (runner *pipeline) runProjectVerification(
 	// Only demand a build/typecheck when the ecosystem actually has one.
 	// Requiring it unconditionally would fail every plain-Python repo, which
 	// has tests to run but nothing to compile.
-	if plan.BuildExpected && !planHasKind(plan, fullverification.KindBuild) {
-		missing := fullverification.Entrypoint{
-			Kind: fullverification.KindBuild, Command: "(project build/typecheck entrypoint not found)",
+	if plan.BuildExpected && !planHasKind(plan, verify.KindBuild) {
+		missing := verify.Entrypoint{
+			Kind: verify.KindBuild, Command: "(project build/typecheck entrypoint not found)",
 			Source: "manifest/CI/documentation discovery",
 		}
 		if result.Failed == nil {
@@ -283,9 +283,9 @@ func (runner *pipeline) runProjectVerification(
 	// every workspace failed the one kind that can never supply it: a
 	// workspace with no project in it. That failure is unrepairable, so the
 	// audit-fix loop reran forever against a deliverable that was already done.
-	if plan.TestExpected && !planHasKind(plan, fullverification.KindTest) {
-		missing := fullverification.Entrypoint{
-			Kind: fullverification.KindTest, Command: "(project test entrypoint not found)",
+	if plan.TestExpected && !planHasKind(plan, verify.KindTest) {
+		missing := verify.Entrypoint{
+			Kind: verify.KindTest, Command: "(project test entrypoint not found)",
 			Source: "manifest/CI/documentation discovery",
 		}
 		if result.Failed == nil {
@@ -335,7 +335,7 @@ func (runner *pipeline) runProjectVerification(
 	return result
 }
 
-func planHasKind(plan fullverification.Plan, kind fullverification.EntrypointKind) bool {
+func planHasKind(plan verify.Plan, kind verify.EntrypointKind) bool {
 	for _, entrypoint := range plan.Entrypoints {
 		if entrypoint.Kind == kind {
 			return true
@@ -372,7 +372,7 @@ func projectVerificationFailure(
 	reason := detail
 	repairHint := "Fix the failing project-wide verification, then rerun the exact command until it exits 0. Do not replace it with targeted package checks."
 	if result.Failed != nil && strings.HasPrefix(result.Failed.Command, "(") {
-		if result.Failed.Kind == fullverification.KindBuild {
+		if result.Failed.Kind == verify.KindBuild {
 			repairHint = "Declare the project's standard build/typecheck and test entrypoints in its manifest, task runner, CI, or repository instructions, then make both full entrypoints exit 0."
 		} else {
 			repairHint = "Declare the project's standard test entrypoint in its manifest, task runner, CI, or repository instructions, then make that full entrypoint exit 0."

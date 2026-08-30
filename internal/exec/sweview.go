@@ -444,9 +444,27 @@ func (v *sweView) land(ctx context.Context, delivered bool, message string) sweL
 		return sweLanding{}
 	}
 	if !delivered {
-		v.trace.note("workspace: this leaf did not deliver — its work stays on branch " +
-			v.branch + " in " + v.dir)
-		return sweLanding{}
+		// The work is not merged, and that is the right decision: a change the
+		// gate refused must not be squashed into a tree siblings are verifying
+		// against, and a run's product must not include work nothing judged
+		// good. What was wrong is that the decision was recorded ONLY here, in
+		// a trace line, so a leaf could finish a whole implementation in its
+		// view and the run could end with an empty workspace and no sentence
+		// anywhere naming the checkout it was in.
+		//
+		// So the branch and the checkout are kept, as they always were, and the
+		// fact is now said in the one place a person reads. The evidence is
+		// git's, not the leaf's: a leaf that reports having written nothing and
+		// a leaf that reports having written everything are equally unreliable
+		// about it, and the porcelain of its own view is neither.
+		if !v.holds(ctx) {
+			v.trace.note("workspace: this leaf did not deliver, and its view holds no change")
+			return sweLanding{}
+		}
+		note := "this leaf's work was not brought back into the workspace — it is complete on branch " +
+			v.branch + " in " + v.dir + ", and merging it is a decision for a person rather than for the run"
+		v.trace.note("workspace: " + note)
+		return sweLanding{refusal: note}
 	}
 	// The engine commits as it merges its own judged worktrees, so a finished
 	// run usually leaves a clean tree. Usually is not always, and an edit that
@@ -512,6 +530,35 @@ func (v *sweView) land(ctx context.Context, delivered bool, message string) sweL
 	}
 	v.remove(ctx)
 	return landed
+}
+
+// holds reports whether this view is carrying work, and it asks git rather than
+// the leaf.
+//
+// Two questions, because a view can be carrying work in two shapes and either
+// one alone is a wrong answer. The engine commits as it merges its own judged
+// worktrees, so a finished run's product is usually COMMITTED — invisible to
+// the porcelain, and found by comparing the branch against the commit it grew
+// from. A run that was cancelled, deadlined or failed its gate mid-edit has
+// whatever it was in the middle of writing, UNCOMMITTED — invisible to the
+// commit comparison, and found by the porcelain.
+//
+// A view that cannot be read at all answers true. That is the fail-safe
+// direction and it is chosen deliberately: the cost of saying "there is work in
+// here" about an empty checkout is one sentence a person ignores, and the cost
+// of the opposite is the failure this whole path exists to end.
+func (v *sweView) holds(ctx context.Context) bool {
+	if v == nil || !v.isolated {
+		return false
+	}
+	if len(gitLines(ctx, v.dir, "status", "--porcelain")) > 0 {
+		return true
+	}
+	head := gitLines(ctx, v.dir, "rev-parse", "HEAD")
+	if len(head) == 0 {
+		return true
+	}
+	return strings.TrimSpace(head[0]) != strings.TrimSpace(v.base)
 }
 
 // refuse cleans up after a merge that would not apply and says what happened.

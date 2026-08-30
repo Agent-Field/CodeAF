@@ -90,6 +90,34 @@ signature out.
 Turn it off in the settings sheet under **sharing**, or pin it from your shell
 with `AFORGE_ATTRIBUTION`. Off means the worker is never told to sign at all.
 
+## Where a coding worker actually works, and what happens to work that was not brought back
+
+A coding worker that shares a directory with other workers, or that is pointed at
+a repository of yours, is given a **checkout of its own** — a git worktree under
+aforge's own state, on a branch named `aforge/leaf/<the part's id>`. It edits
+there, runs the project's own checks there against a tree no sibling can move
+under it, and when it succeeds its branch is squashed back into your workspace as
+**one commit** with a real message. Your directory is never worked in directly.
+
+**Work that does not come back is never thrown away, and it is never silent.**
+When the work is refused — a check said it is not right, or its change would not
+merge — nothing is applied, because a change nobody has judged good must not be
+put into a tree other work is being checked against. What you get instead is one
+sentence, on the result and in the running output, saying where it is:
+
+```
+This work is written and it is not in your workspace: 4 file(s) are in <the checkout>, on branch aforge/leaf/<id> — `git merge aforge/leaf/<id>` brings it over.
+```
+
+The checkout and the branch are both kept for **seven days**, so the sentence is
+still true when you come back to it on Monday. Whether that work belongs in your
+repository is a decision for you and not for the run.
+
+That sentence is written from **git**, never from what the worker said about
+itself: aforge reads the checkout's own status and the commits on its branch. A
+worker that reports having written everything and a worker that reports having
+written nothing are equally unreliable about it.
+
 ## What the reply promises
 
 A receipt says the work is queued and that you will be told when it lands. It
@@ -115,3 +143,53 @@ concluded, when it needs more than arrived with the question.
 Which jobs get opened is decided by how well your words match the work itself,
 never by a list of phrases. A greeting or a fresh request opens nothing, and a
 result you were shown a moment ago is not repeated back at you.
+
+## What the review reads before work is handed to you — the files, not the write-up
+
+When a job changed files, the review that decides whether it is done reads **the
+change itself**: every file the work wrote or changed, with what is in them. The
+worker's own write-up sits beside it, marked as what the worker *says* about the
+work. It is never what is judged.
+
+That is deliberate, and it is a fail-safe. A write-up that is thin, oddly
+worded, or that comes back as a lump of data instead of sentences cannot make
+correct work look unfinished; a confident write-up cannot make missing work look
+finished. One measured run lost twenty-eight minutes and 46 cents to exactly
+that — the worker's last message came back as a data structure, and three
+reviews in a row said the work "contains only text describing what was
+supposedly done" while six changed files sat on disk.
+
+The files are shown to the review **whole**, or named and not shown at all —
+never part of one. A reviewer handed the first two kilobytes of a long file
+reports the file as truncated, which is true of what it was handed and false of
+what you get; three refusals across two runs were exactly that.
+
+So a finding about a job that changed files always names **one of those files**
+and quotes **one of the behaviours your request states** that the file falls
+short of, and that is how you read it:
+
+```
+gate: fail — src/textual/widgets/_rich_log.py — follow_end is declared and never posts FollowChanged
+```
+
+A review that can name neither a file nor a behaviour you asked for is not an
+answer at all. It is asked again, and if it still says nothing the run reports
+itself **short** rather than finished — a check that did not happen is never a
+check that passed. "The file is truncated", "the deliverable does not contain
+the actual content" and the like are not findings: they are about what the
+review was shown, and the files are on disk either way.
+
+And when the review says the work is short while the job's own reading of what
+it is judged on says nothing is left to do, those two cannot both stand. The
+first round the review buys is never refused on that ground; and if the reading
+still finds nothing to add, the **review** is what was wrong — it is recorded as
+overturned and the work is handed over as finished, rather than left as a
+shortfall you cannot act on.
+
+Where a job produced no files — a question answered in words — the message *is*
+the answer, and the review reads the message, exactly as it always did. A file
+your request named and nothing wrote is still named back to you as missing.
+
+And a write-up that arrives as a lump of data is asked once, before anything
+else, for the answer in plain words. That ask is written down against the job,
+so a run that had to ask twice never looks like one that asked once.

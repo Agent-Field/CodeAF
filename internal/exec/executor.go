@@ -13,6 +13,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -256,7 +258,22 @@ type Outcome struct {
 	// empty, which reads as "no shape recorded" rather than as a leaf with no
 	// turns.
 	PerTurn []TurnUsage
-	Stop    StopReason
+	// Meter is the bound that actually landed this leaf, with its own two
+	// numbers.
+	//
+	// THREE CEILINGS PRODUCED ONE SENTENCE. A leaf could be landed by its cost
+	// grant, by an undiscounted token ceiling three times that grant, or by a
+	// cumulative bound on prompt sent — and all three set Exhausted to
+	// StopBudget, so the journal said "it ran out of its tokens" and the surface
+	// printed the grant, which in the ink run of 2026-08-29 was a number the
+	// leaf never came near. An autopsy could not tell which ceiling had fired,
+	// and the first three readings of that run each blamed a different one.
+	//
+	// A MEASUREMENT THAT WAS NOT TAKEN IS A FACT ABOUT THE RUN (FAILSAFE.md's
+	// sixth failure) and so is a measurement whose meter nobody can name. Empty
+	// on a leaf that was not landed by a bound.
+	Meter Meter
+	Stop  StopReason
 	// Exhausted is what ran out, when something did. It is separate from Stop
 	// because the two answer different questions and the common case makes them
 	// disagree: a leaf whose budget runs out is told to land, it lands, and it
@@ -324,6 +341,88 @@ type Outcome struct {
 	// worker that actually photographs the repository before it starts fills
 	// this in; every other leaf leaves it empty, which reads as "no claim".
 	Baseline []string
+
+	// Regressed names the project's own checks that passed before this work and
+	// fail after it.
+	//
+	// It exists because a leaf's own new tests are the ONE signal that
+	// structurally cannot see a regression: the leaf wrote them, so they test
+	// what the leaf was thinking about and nothing else. Three graded runs in
+	// the 2026-08-28 sweep shipped patches that deleted attributes their
+	// repositories already had, every hidden test failed on setup, and from
+	// inside the run there was no signal at all — one of them ran its own tests
+	// thirty-three times and scored zero. Test COUNT correlates with nothing.
+	// Two measured runs of the project's own command, before and after, are the
+	// only thing that can see it, and that is what fills this in.
+	//
+	// NIL MEANS NO CLAIM — nobody looked, because the project declares no
+	// verification entrypoint, or the leaf's wall could not afford the reading,
+	// or the command would not run, or the tree never changed. Empty-non-nil is
+	// not a distinction anything downstream needs and nothing writes one: this
+	// field is nil or it is populated. A populated one is a finding the gate
+	// raises itself, with no citation to weigh, because the person never had to
+	// ask for their repository to keep working (docs/design/gate/SETTLEMENT.md
+	// §4, FAILSAFE.md clause 2).
+	Regressed []string
+
+	// OwnFailing names the red checks that FIRST APPEARED AFTER THE BASELINE:
+	// the ones this run wrote itself, and did not get passing.
+	//
+	// It is what Regressed used to swallow. A leaf whose own new checks are red
+	// has not finished; a leaf that turned somebody else's check red has broken
+	// the repository, and calling the first one the second is how happy-dom's
+	// nemotron n1 run was failed for breaking checks it had written that hour
+	// while the grader scored the same tree 9 of 9.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim.
+	OwnFailing []string
+
+	// Removed names the PUBLIC names this work deleted: a name the tree spelled
+	// before the job's first change that the finished tree does not, in the
+	// files the run's own record says it changed.
+	//
+	// It is Regressed's other half and it is the half a suite cannot see. A
+	// check proves something is exercised; it never proves nothing else exists.
+	// igel s11 deleted eight public class attributes off `Igel` and its own
+	// reading of the finished tree came back BETTER — named 2 → 14, red 2 → 0 —
+	// while all twenty-four hidden tests failed at setup on `Igel.results_path`.
+	//
+	// Nil on every worker that cannot take two readings of the tree, which reads
+	// as no claim and never as nothing removed. See verify.Surface.
+	Removed []string
+
+	// Unbound names what this work READS that nothing in the tree binds: an
+	// attribute a class reaches for and no code assigns, a binding an import
+	// asks an in-tree module for that the module does not define.
+	//
+	// It is the question one step further back than Removed. That one compares
+	// two readings and reports a name that USED to be there; this needs only the
+	// tree as it stands, and it is the one measurement a run gets on a project
+	// with no baseline at all. igel s14 imported `temp_post_req_data_path` from
+	// a module it had just stopped binding it in, all twenty-four hidden tests
+	// failed on `ImportError`, and the only thing the run could say was that its
+	// own checks were red. See verify.UnboundReferences.
+	//
+	// Nil on every worker with no workspace to read, which reads as no claim.
+	Unbound []string
+
+	// Verification is the whole photograph the two readings above came out of:
+	// the entrypoint that was run, the budget it was run on, and both readings'
+	// complete rosters rather than only their red halves.
+	//
+	// Regressed is one subtraction over it. The delivery gate needs the other
+	// two. WHICH CHECKS EXIST answers whether anything at all exercises a
+	// behaviour the request asked for, and WHICH CHECKS STOPPED EXISTING is the
+	// one thing that catches a worker deleting the test that was failing it —
+	// neither question can be asked of a list of failures. The Taken flag is
+	// what keeps the gate honest about a project that declares no verification:
+	// nobody looked and nothing may be concluded, which is a different fact from
+	// a suite that came back clean. See docs/design/gate/ACCEPTANCE.md.
+	//
+	// A zero value is a photograph nobody took, which is what every worker that
+	// cannot take two readings leaves here.
+	Verification verify.Reading
 
 	// Account is the worker's structured account of the work itself: the files
 	// it changed, the checks it ran, and what each one found. See [Account] for
@@ -655,4 +754,95 @@ func (o *Outcome) Overran() bool {
 
 func (o *Outcome) String() string {
 	return fmt.Sprintf("%s in %d turns, %d tool calls, $%.4f", o.Stop, o.Turns, o.ToolCalls, o.Usage.Cost)
+}
+
+// RanOutOfRoom reports that an error is a worker that was still working when
+// the clock stopped it, and how long it was given.
+//
+// It exists so that "the ending was the clock" is asked of the TYPE rather than
+// of the sentence, at every level that has to decide what happens next. The one
+// that matters is the node's: an ending that is exhaustion is not a failure, so
+// the node goes back on the queue with its record intact rather than being
+// settled failed with a run's worth of work in it (see resident.Runner.runOne).
+func RanOutOfRoom(err error) (time.Duration, bool) {
+	var abandoned *Abandoned
+	if errors.As(err, &abandoned) && abandoned != nil {
+		return abandoned.After, true
+	}
+	return 0, false
+}
+
+// Requeued is the whole rule an exhausted node is judged by, and it is asked by
+// both schedulers: the resident's, which drives `aforge do` and the chat, and
+// the one-shot [Scheduler] that drives `aforge run`.
+//
+// AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK. The worker ran out
+// of the room it was given; that is the queue's input and the growth governor's,
+// so the node is offered again and the next claim carries on from the record
+// this one left. The ink run of 2026-08-29 journaled exactly that sentence and
+// then settled the node failed in the same second, over a twenty-six kilobyte
+// patch and seventy-three minutes of unspent wall — because the sentence was in
+// one place and the decision was in another.
+//
+// IT IS GATED ON THERE BEING SOMETHING TO RESUME FROM, which is what keeps it
+// from being an unbounded retry: a claim that reads an empty record is the same
+// cold start again, and an attempt that recorded not one turn before the clock
+// stopped it has told us the only thing it is going to.
+//
+// The record is read through a function rather than passed in because reading it
+// costs a query on the resident's side, and the question is only reached for an
+// ending that is exhaustion in the first place — a run whose leaves fail for
+// ordinary reasons must not pay for a record it will never consult. What comes
+// back is the room the worker was given and how much of its work survived, which
+// is what the release sentence and the stream line are both composed from.
+func Requeued(err error, record func() int) (allowed time.Duration, recorded int, requeue bool) {
+	allowed, spent := RanOutOfRoom(err)
+	if !spent || record == nil {
+		return 0, 0, false
+	}
+	if recorded = record(); recorded <= 0 {
+		return 0, 0, false
+	}
+	return allowed, recorded, true
+}
+
+// Meter is one bound, named, with what it reached and what it allowed.
+//
+// It is a value rather than a sentence because the two readers want different
+// things from it: the journal wants the figures so a later run can be compared
+// with this one, and the person wants a line. Composing the line from the
+// figures keeps the two from disagreeing, which is the whole of the defect it
+// answers — the ink run of 2026-08-29 printed a grant of 150,000 beside a leaf
+// that had been landed by a different ceiling at 240,000.
+type Meter struct {
+	// Name is the bound in one word, for a reader and for a grep: "cost",
+	// "turns", "deadline", "no-progress", "reuse", "raw".
+	Name string `json:"name,omitempty"`
+	// Reached and Allowed are the bound's own two numbers, in the bound's own
+	// unit. Zero Allowed means the bound has no figure worth printing (a
+	// structural detector rather than a ceiling).
+	Reached int `json:"reached,omitempty"`
+	Allowed int `json:"allowed,omitempty"`
+	// Unit is what those numbers count, so a line can be composed without the
+	// reader having to know which bound spells its allowance in what: "tokens",
+	// "turns", "prompt tokens sent".
+	Unit string `json:"unit,omitempty"`
+}
+
+// Named reports that a bound actually said something.
+func (m Meter) Named() bool { return strings.TrimSpace(m.Name) != "" }
+
+// Words is the bound in a person's own sentence, with its figures.
+func (m Meter) Words() string {
+	if !m.Named() {
+		return ""
+	}
+	if m.Allowed <= 0 {
+		return m.Name
+	}
+	unit := m.Unit
+	if unit == "" {
+		unit = "tokens"
+	}
+	return fmt.Sprintf("%s: %d of %d %s", m.Name, m.Reached, m.Allowed, unit)
 }

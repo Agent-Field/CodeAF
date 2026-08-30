@@ -118,6 +118,18 @@ type Spec struct {
 	Method      string   `json:"method,omitempty"`
 	Done        Done     `json:"done,omitzero"`
 	Sources     []string `json:"sources,omitempty"`
+	// Accept is the acceptance checklist: the behaviours the REQUEST states,
+	// read from the request before any work existed. Done is the criterion the
+	// planner wrote about what the work will produce; this is what the person
+	// asked for, and the two are different objects because they answer to
+	// different authors. See accept.go.
+	//
+	// It travels here rather than beside the gate for the reason Done does: this
+	// is the one object in the system carried forward verbatim through a retry
+	// (RetargetSpec), so a repair round is judged against the same checklist its
+	// predecessor was. Render deliberately omits it — the worker is never shown
+	// the list it will be checked on.
+	Accept []Point `json:"accept,omitempty"`
 }
 
 // Empty reports whether this spec carries nothing. An empty spec renders to the
@@ -128,6 +140,7 @@ func (s Spec) Empty() bool {
 	return strings.TrimSpace(s.Instruction) == "" &&
 		strings.TrimSpace(s.Method) == "" &&
 		len(s.Sources) == 0 &&
+		len(s.Accept) == 0 &&
 		s.Done.Empty()
 }
 

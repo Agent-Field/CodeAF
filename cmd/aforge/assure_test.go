@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -78,7 +80,7 @@ func TestOnlyTheAsksOwnWordsAdmitAGap(t *testing.T) {
 		"a different span still admits":         {quote: "compare the two parsers", spent: []string{"the benchmark numbers"}, admitted: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := revision.AdmitGapCitation(intent, []string{test.quote}, test.spent)
+			refusal := revision.AdmitGapCitation(revision.Grounds{Intent: intent}, []string{test.quote}, test.spent)
 			if test.admitted && refusal != "" {
 				t.Fatalf("a legitimate citation was refused: %q", refusal)
 			}
@@ -111,7 +113,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 		"no citation at all is refused":      {quote: "  "},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := revision.AdmitGapRevision(intent, method, []string{test.quote})
+			refusal := revision.AdmitGapRevision(revision.Grounds{Intent: intent, Method: method}, []string{test.quote})
 			if test.admitted && refusal != "" {
 				t.Fatalf("a grounded gap was refused its round: %q", refusal)
 			}
@@ -131,7 +133,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 	}
 	// A job with no working method is the ordinary case and must not become
 	// a job where every gap is grounded by an empty string.
-	if refusal := revision.AdmitGapRevision(intent, "", []string{"any calendar year present"}); refusal == "" {
+	if refusal := revision.AdmitGapRevision(revision.Grounds{Intent: intent}, []string{"any calendar year present"}); refusal == "" {
 		t.Fatal("an empty working method grounded a gap it never contained")
 	}
 }
@@ -165,15 +167,89 @@ func TestTheGapLedgerCountsOnlyTheRoundsThatWereBought(t *testing.T) {
 	if len(spent) != 1 || spent[0] != "every part" {
 		t.Fatalf("ledger = %v, want only the citation that bought a round", spent)
 	}
-	if refusal := revision.AdmitGapCitation("answer every part", []string{"every part"}, spent); refusal == "" {
+	if refusal := revision.AdmitGapCitation(revision.Grounds{Intent: "answer every part"}, []string{"every part"}, spent); refusal == "" {
 		t.Fatal("a span that already bought a round bought a second one")
 	}
-	if refusal := revision.AdmitGapCitation("answer every part", []string{"answer"}, spent); refusal != "" {
+	if refusal := revision.AdmitGapCitation(revision.Grounds{Intent: "answer every part"}, []string{"answer"}, spent); refusal != "" {
 		t.Fatalf("a refused citation blocked its own words forever: %q", refusal)
 	}
 	// The lineage is this job's, never the one whose id merely starts the same.
 	if got := revision.SpentCitations(graph, "job-x1"); len(got) != 0 {
 		t.Fatalf("a repair round read its parent's ledger as its own: %v", got)
+	}
+}
+
+// WORDS SPENT ON A ROUND THAT MOVED THE TREE ARE NOT SPENT. The ledger used to
+// be a count of one wearing an invariant's clothes: words that bought a round
+// could never buy another, whatever that round did. That is the same species of
+// mistake as a retry count, and the settle lane already built the thing that
+// decides it properly — the growth journal records, per round, how many files
+// the work actually left behind. So the ledger bounds SCOPE against a finite
+// ask and the journal bounds REPETITION against measured change, and EVERYTHING
+// UNKNOWN STAYS SPENT so the direction never moves where the evidence is absent.
+func TestTheLedgerReleasesOnlyTheWordsWhoseRoundMovedTheTree(t *testing.T) {
+	for name, test := range map[string]struct {
+		growth *store.JobGrowth
+		spent  bool
+	}{
+		"a round that wrote seven files": {
+			growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1,
+				Allowed: true, Measured: true, Produced: 7},
+		},
+		"a round that wrote nothing":   {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Allowed: true, Measured: true}, spent: true},
+		"a round nobody measured":      {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Allowed: true, Produced: 7}, spent: true},
+		"a round the governor refused": {growth: &store.JobGrowth{Reason: resident.GrowGap, Lineage: "job", Round: 1, Measured: true, Produced: 7}, spent: true},
+		"no journal at all":            {spent: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			graph := openCacheStore(t)
+			if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+				{ID: "job", Brief: "answer every part"}}},
+				store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.RecordDeliveryGate("job", store.DeliveryGate{
+				Gap: "no numbers", Quote: "every part", Round: 1, Extended: true}); err != nil {
+				t.Fatal(err)
+			}
+			if test.growth != nil {
+				if err := graph.RecordJobGrowth("job", *test.growth); err != nil {
+					t.Fatal(err)
+				}
+			}
+			spent := revision.SpentCitations(graph, "job")
+			if got := len(spent) > 0; got != test.spent {
+				t.Fatalf("ledger = %v, want spent=%t", spent, test.spent)
+			}
+			refusal := revision.AdmitGapCitation(revision.Grounds{Intent: "answer every part"},
+				[]string{"every part"}, spent)
+			if test.spent && refusal == "" {
+				t.Fatal("words whose round changed nothing bought another round")
+			}
+			if !test.spent && refusal != "" {
+				t.Fatalf("words whose round wrote seven files were refused: %q", refusal)
+			}
+		})
+	}
+	// And a sibling lineage's productivity is not evidence about this one: a
+	// bound that borrowed it would let one branch of a job buy the other's
+	// rounds.
+	graph := openCacheStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "answer every part"}}},
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job", store.DeliveryGate{
+		Gap: "no numbers", Quote: "every part", Round: 1, Extended: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordJobGrowth("job", store.JobGrowth{Reason: resident.GrowGap,
+		Lineage: "job-n2", Round: 1, Allowed: true, Measured: true, Produced: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if spent := revision.SpentCitations(graph, "job"); len(spent) == 0 {
+		t.Fatal("one lineage's productive round released another lineage's words")
 	}
 }
 
@@ -449,32 +525,56 @@ func TestTheRoundCapStillBoundsEvenACitedLineage(t *testing.T) {
 	}
 }
 
-// A REFUSED MECHANICAL GAP IS NOT A WHOLE DELIVERY. Every other refusal on this
-// event is the gate being caught in an error of OPINION — a judge named
-// something the request never set, or something already on disk, or something
-// already in the text — and a run whose only complaint was wrong delivered what
-// was asked for, so it exits 0. The mechanical half holds no opinion. It says a
-// file the plan itself promised is missing or empty, and refusing its citation
-// declines to buy a repair round without making the file appear. Under the old
-// rule a headless run that produced nothing at all reported settled, done and
-// exit 0 under a note explaining that the review had overreached.
-func TestARefusedMechanicalGateIsPartialAndARefusedJudgeIsWhole(t *testing.T) {
+// ONLY A REFUSAL CHECKED AGAINST THE WORLD DELIVERS WHOLE. Refused holds two
+// categorically different refusals. One weighed the finding against the
+// filesystem or against the delivered text and found it wrong — the file is
+// there, the things it names are there — and that acquits, because charging it a
+// non-zero code would teach a harness to distrust the gate's own corrections.
+// The other checked only where the review got its words and declined to BUY a
+// round; it settles nothing about whether the work landed, because no ruling
+// about a citation makes missing work appear. The DeepSWE sweep exited 0 seven
+// times out of eight over the second kind, each time with a review that was
+// right (bench/deepswe/AUTOPSY.md, docs/design/gate/SETTLEMENT.md §2).
+func TestOnlyARefusalCheckedAgainstTheWorldDeliversWhole(t *testing.T) {
 	graph := openCacheStore(t)
-	for name, gate := range map[string]store.DeliveryGate{
-		"mechanical": {Gap: "report.md", Quote: "report.md", Quotes: []string{"report.md"},
-			Mechanical: true, Refused: "what the review asked for next is not in the request"},
-		"judged": {Gap: "no chart of the results", Quote: "a chart of the results",
-			Quotes:  []string{"a chart of the results"},
-			Refused: "what the review asked for next is not in the request"},
+	for name, test := range map[string]struct {
+		gate  store.DeliveryGate
+		whole bool
+	}{
+		"a file the plan promised and the disk does not hold": {
+			gate: store.DeliveryGate{Gap: "report.md", Quote: "report.md", Quotes: []string{"report.md"},
+				Mechanical: true, Refused: "what the review asked for next is not in the request"},
+		},
+		"a finding refused for where its words came from": {
+			gate: store.DeliveryGate{Gap: "no chart of the results", Quote: "a chart of the results",
+				Quotes:  []string{"a chart of the results"},
+				Refused: "what the review asked for next is not in the request"},
+		},
+		"a finding whose repair nothing would fund": {
+			gate: store.DeliveryGate{Gap: "no chart of the results", Quotes: []string{"a chart of the results"},
+				Refused: "no more work could be started on it", Unclosed: true},
+		},
+		"a finding the disk overturned": {
+			gate: store.DeliveryGate{Gap: "no report.md", Quotes: []string{"report.md"},
+				Refused:    "what it asked for is already on disk under the name the request used",
+				Overturned: true},
+			whole: true,
+		},
+		"a finding the delivered text overturned": {
+			gate: store.DeliveryGate{Gap: "the twelve profiles are missing", Quotes: []string{"twelve profiles"},
+				Refused:    "everything it names is already in the delivered text, in the words the request used",
+				Overturned: true},
+			whole: true,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			id := "job-" + name
+			id := "job-" + strings.ReplaceAll(name, " ", "-")
 			if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
 				{ID: id, Brief: "write the report"}}},
 				store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "write report.md"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := graph.RecordDeliveryGate(id, gate); err != nil {
+			if err := graph.RecordDeliveryGate(id, test.gate); err != nil {
 				t.Fatal(err)
 			}
 			node, found, err := graph.Node(id)
@@ -482,12 +582,11 @@ func TestARefusedMechanicalGateIsPartialAndARefusedJudgeIsWhole(t *testing.T) {
 				t.Fatalf("node %s: found %t, err %v", id, found, err)
 			}
 			watch := &settlementWatch{graph: graph}
-			whole := watch.deliveredWhole(node)
-			if gate.Mechanical && whole {
-				t.Fatal("a run that never wrote the file the plan promised delivered whole")
-			}
-			if !gate.Mechanical && !whole {
-				t.Fatal("a gap the system itself overruled was charged a non-zero exit code")
+			if whole := watch.deliveredWhole(node); whole != test.whole {
+				if test.whole {
+					t.Fatal("a finding the system overturned against the world was charged a non-zero exit code")
+				}
+				t.Fatal("a finding nobody closed and nothing overturned was delivered as done")
 			}
 		})
 	}
@@ -509,5 +608,58 @@ func TestARefusedMechanicalGateIsPartialAndARefusedJudgeIsWhole(t *testing.T) {
 	}
 	if watch := (&settlementWatch{graph: graph}); !watch.deliveredWhole(node) {
 		t.Fatal("a mechanical gap the repair round closed was still called partial")
+	}
+}
+
+// AND THE STREAM SAYS WHICH FINDING, NOT ONLY THAT ONE WAS REFUSED. Ten runs
+// printed "gate: refused — what the review asked for next is not in the request"
+// and not one of them told the person watching what the review had said was
+// missing — which was, every time, the whole news. FAILSAFE clause 3.
+func TestTheRefusalLineNamesTheFindingBeforeTheReason(t *testing.T) {
+	verdict, detail := gateWords(store.DeliveryGate{
+		Gap:     "The deliverable does not contain the code that writes feature_schema.joblib.",
+		Refused: "what the review asked for next is not in the request",
+	})
+	if verdict != "refused" {
+		t.Fatalf("verdict = %q, want refused", verdict)
+	}
+	if !strings.Contains(detail, "feature_schema.joblib") {
+		t.Fatalf("the line never names the finding: %q", detail)
+	}
+	if !strings.Contains(detail, "not in the request") {
+		t.Fatalf("the line never says why nothing was bought: %q", detail)
+	}
+	if !strings.HasPrefix(detail, "The deliverable does not contain") {
+		t.Fatalf("the reason is standing in front of the news: %q", detail)
+	}
+	// A refusal with no finding behind it still says the only thing it knows.
+	if _, only := gateWords(store.DeliveryGate{Refused: "no more work could be started on it"}); only != "no more work could be started on it" {
+		t.Fatalf("a refusal with no gap said %q", only)
+	}
+}
+
+// THE MEASUREMENT REACHES THE GATE, AND THE GATE RAISES IT WITHOUT BEING ASKED.
+// A worker that took two readings of the project's own verification hands back
+// the checks its change turned red; the seam that assembles what the gate is
+// shown has to carry them, or the whole measurement is a number in a struct
+// nobody reads. Everything else about the record is unchanged.
+func TestWhatTheWorkTurnedRedReachesTheGateAndBecomesAFinding(t *testing.T) {
+	broke := []string{"tests/test_widget.py::test_size_is_known"}
+	evidence := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{
+		Baseline:  []string{"one check was already red before this began"},
+		Regressed: broke,
+	}, nil, true, "")
+	if len(evidence.Regressed) != 1 || evidence.Regressed[0] != broke[0] {
+		t.Fatalf("the gate was never shown what the work turned red: %v", evidence.Regressed)
+	}
+	regression, raised := revision.Regressions(evidence.Regressed)
+	if !raised || !regression.Sourced || regression.Pass {
+		t.Fatalf("a measured regression did not become a finding: %+v", regression)
+	}
+	// And a worker that took no reading says nothing, which is not the same
+	// fact as a worker that read twice and found nothing broken.
+	quiet := gateEvidence(store.Node{}, plan.Spec{}, &exec.Outcome{}, nil, true, "")
+	if len(quiet.Regressed) != 0 {
+		t.Fatalf("a worker that measured nothing claimed something: %v", quiet.Regressed)
 	}
 }

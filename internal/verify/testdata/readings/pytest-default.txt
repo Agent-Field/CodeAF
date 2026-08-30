@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.3, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.12.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 47 items
+
+tests/test_log.py ..                                                     [  4%]
+tests/test_widget.py .............................................       [100%]
+
+============================= 47 passed in 17.24s ==============================

@@ -1,0 +1,11 @@
+EEEEEEEEEEEEEEEEEEEEEEEE                                                 [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_fit_persists_feature_schema_and_description_metadata __
+>       monkeypatch.setattr(Igel, "results_path", results_dir)
+E       AttributeError: <class 'igel.igel.Igel'> has no attribute 'results_path'
+
+=========================== short test summary info ============================
+ERROR tests/test_igel/test_feature_schema_persistence.py::test_fit_persists_feature_schema_and_description_metadata
+ERROR tests/test_igel/test_feature_schema_persistence.py::test_predict_applies_feature_schema_and_preserves_selected_feature_order
+ERROR tests/test_igel/test_feature_schema_persistence.py::test_predict_uses_duplicate_alias_when_canonical_feature_is_missing
+ERROR tests/test_igel/test_feature_schema_persistence.py::test_fit_rejects_unknown_include_columns

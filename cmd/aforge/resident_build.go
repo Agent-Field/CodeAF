@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"log"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -46,7 +49,7 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		compiler = compiler.WithOneShotErrands()
 	}
 	reconciler := resident.New(graph,
-		compileIntent(settings, compiler, taskClient, plans),
+		compileIntent(settings, compiler, taskClient, planClient, plans, graph),
 		planSubtree(settings, planClient, taskClient, plans, graph, terrainRoot),
 	)
 	if oneShotErrand {
@@ -115,8 +118,23 @@ func rethinkAfterCancel(settings config.Config, planClient *liveClient,
 // resident.Compiled, because nothing between the compile and the splice acts on
 // it. The journal wants it anyway, so it is left as a memo keyed on the goal
 // both halves share. A nil registry simply drops it.
-func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *liveClient, plans *jobPlans) resident.CompileFunc {
+//
+// planClient is here for the acceptance checklist and nothing else. THIS IS THE
+// ONE PASS IN THE SYSTEM THAT HOLDS THE REQUEST VERBATIM: everything downstream
+// holds the compiled goal, which is this program's reading of the ask. A
+// checklist of what the person asked for has to be read off the person's own
+// words or it is a standard we wrote for ourselves, and the gate may not hold
+// anybody to one of those (docs/design/gate/ACCEPTANCE.md, and the grounding
+// invariant in internal/revision/grounding.go that says the same thing about a
+// review's findings).
+func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, planClient *liveClient,
+	plans *jobPlans, graph *store.Store) resident.CompileFunc {
 	return func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
+		// A compile that had to be repaired to be read says so, against the job
+		// root — the compile runs before the job has an id of its own, and the
+		// run that lost four minutes to a silent stream lost them here and in the
+		// planning pass behind it. See withRepairJournal.
+		ctx = withRepairJournal(ctx, graph, store.RootID)
 		augmented := graphContext
 		if sk := selfKnowledge(settings, taskClient.Model()); sk != "" {
 			augmented += "\n\nMeasured execution costs (this system's own measured history):\n" + sk
@@ -129,6 +147,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *
 			plans.noteReading(brief.Goal, brief.Structure)
 		}
 		return resident.Compiled{
+			Accept:          acceptanceChecklist(ctx, settings, planClient, instruction),
 			Goal:            brief.Goal,
 			Title:           brief.Title,
 			Contract:        brief.Contract,
@@ -146,4 +165,36 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *
 			Subharness:      brief.Subharness,
 		}, nil
 	}
+}
+
+// acceptanceChecklist reads the person's request for the behaviours it states.
+//
+// It is one call on the request alone, and everything about it is fail-quiet: no
+// client, no request, a call that fails or a request that states nothing
+// checkable all return an empty checklist, and every reader downstream of an
+// empty checklist behaves exactly as it did before this existed. A CAPABILITY
+// THAT CANNOT WORK IS ABSENT, NOT BROKEN.
+//
+// The spend is journaled with the rest of the plan's, because reading the ask is
+// part of what structuring this job cost.
+func acceptanceChecklist(ctx context.Context, settings config.Config, planClient *liveClient,
+	request string) []plan.Point {
+	if planClient == nil || strings.TrimSpace(request) == "" {
+		return nil
+	}
+	_, structuring := planClient.Snapshot()
+	if structuring == nil {
+		return nil
+	}
+	// The call runs on the compile's own context, so what it spends is already
+	// billed where the compile's spend is billed and there is no second ledger
+	// to write it into. The returned usage is the plan package's running total
+	// for a caller assembling a whole plan's cost; this caller is assembling
+	// one call.
+	points, _, err := plan.Acceptance(settings.Context(ctx, "compile"), structuring, request)
+	if err != nil {
+		log.Printf("note: could not read what the request asks for: %v", err)
+		return nil
+	}
+	return points
 }

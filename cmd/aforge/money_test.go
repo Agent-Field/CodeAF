@@ -92,7 +92,7 @@ func TestStructuringCallsReachTheRail(t *testing.T) {
 func TestHumanFailureDropsTheInternalIDAndKeepsTheCause(t *testing.T) {
 	node := store.Node{ID: "task-9", Title: "audit the billing code", Brief: "audit the billing code"}
 	failure := humanFailure(node, errors.New("node 7: openrouter: 500 upstream is unavailable"),
-		[]string{"/w/job/01-notes.md"})
+		[]string{"/w/job/01-notes.md"}, "")
 	if failure == nil {
 		t.Fatal("a real error humanized to nil")
 	}
@@ -120,7 +120,7 @@ func TestHumanFailureDropsTheInternalIDAndKeepsTheCause(t *testing.T) {
 	if !strings.Contains(body, "/w/job/01-notes.md") {
 		t.Fatalf("the partial work is unreachable again: %q", body)
 	}
-	if humanFailure(node, nil, nil) != nil {
+	if humanFailure(node, nil, nil, "") != nil {
 		t.Fatal("a nil error became a failure")
 	}
 }

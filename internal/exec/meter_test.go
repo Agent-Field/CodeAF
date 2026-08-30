@@ -44,17 +44,21 @@ func (p *pressureCompleter) CompleteWithMessages(_ context.Context, messages []a
 	}, nil
 }
 
-// The third bound, measured.
+// The third bound, measured — and measured again, on the run that retired it.
 //
-// The two bounds that were already there are both grants: what the leaf cost,
-// and the same grant undiscounted. Neither can see the sum of what went on the
-// wire, which is the quantity a loop moves when nothing ever leaves its
-// transcript — measured at 7.45x duplication, with the worst node metering 54%
-// of its grant while sending 265k tokens and stopping itself at turn 17.
+// It was written to catch what neither grant can see: the sum of what went on
+// the wire, the quantity a loop moves when nothing ever leaves its transcript.
+// The quantity is real. Bounding it was not the answer, because Σ over turns of
+// the prompt is turns × mean-context for ANY transcript that only grows — ink
+// s9 of 2026-08-29 stopped at a duplication factor of 8.9× and the audited
+// runaway this was built for ran 11.2×, and no detector lives in a gap of
+// 1.26×. All three of that run's leaves were landed here, at turns 13, 12 and
+// 9 of a 200-turn grant, with a third of their money unspent.
 //
-// The bound fires at the threshold and not one turn before it, and it fires into
-// the landing reserve the grants already use rather than into a stop of its own.
-func TestCumulativePressureLandsTheLeafAtTheReuseCeilingAndNeverBefore(t *testing.T) {
+// SO IT LANDS NOBODY. It crosses, it is still crossed, and it reaches the leaf
+// as the wrap-up warning — where firing early costs a sentence instead of the
+// leaf's work. See PERF.md, "A leaf's bounds".
+func TestCumulativePressureWarnsTheLeafRatherThanLandingIt(t *testing.T) {
 	const window = 200_000
 	ceiling := ctxbudget.For(window).ReuseCeiling()
 	const perTurn = 30_000
@@ -71,20 +75,25 @@ func TestCumulativePressureLandsTheLeafAtTheReuseCeilingAndNeverBefore(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Stop != StopBudget || outcome.Exhausted != StopBudget {
-		t.Fatalf("stop=%q exhausted=%q, want the landing the grants already take",
+	// The leaf runs to its TURN cap, not to the reuse ceiling: with a grant it
+	// cannot spend, the only bound left that may land it is the backstop.
+	if outcome.Stop == StopBudget || outcome.Exhausted == StopBudget {
+		t.Fatalf("stop=%q exhausted=%q — the reuse bound landed a leaf inside its grant",
 			outcome.Stop, outcome.Exhausted)
 	}
-	if client.landed != crossing+1 {
-		t.Fatalf("the landing was ordered on turn %d, want the turn after the %dth — %d tokens sent "+
-			"against a %d-token ceiling", client.landed, crossing, crossing*perTurn, ceiling)
+	// It was crossed, several times over, and the leaf kept working.
+	if sent := outcome.contextPressure(); sent < ceiling {
+		t.Fatalf("the run sent %d prompt tokens against a %d ceiling; the fixture no longer crosses it",
+			sent, ceiling)
 	}
-	if sent := (client.landed - 1) * perTurn; sent < ceiling {
-		t.Fatalf("the bound fired at %d tokens, below its own %d-token ceiling", sent, ceiling)
+	if outcome.Turns <= crossing+landingTurns {
+		t.Fatalf("the leaf ran %d turns and stopped at the old bound's %d — it is still landing work",
+			outcome.Turns, crossing+landingTurns)
 	}
-	if outcome.Turns != crossing+landingTurns {
-		t.Fatalf("the leaf ran %d turns, want %d work turns plus a %d-turn landing",
-			outcome.Turns, crossing, landingTurns)
+	// AND THE WARNING REACHED IT. The evidence is demoted, not discarded.
+	if used := budgetUsed(outcome, 100_000_000, window); used <= wrapUpAt {
+		t.Fatalf("budgetUsed = %.2f: the reuse pressure never raised the wrap-up warning past %.2f",
+			used, wrapUpAt)
 	}
 	// The ledger is what the bound was read off, and it has to sum to the row
 	// the journal already wrote.

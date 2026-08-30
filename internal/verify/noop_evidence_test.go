@@ -1,4 +1,4 @@
-package fullverification
+package verify
 
 import "testing"
 

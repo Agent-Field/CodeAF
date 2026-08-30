@@ -87,7 +87,7 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	flags.SetOutput(io.Discard)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	maxSeconds := flags.Int("max-seconds", defaultWakeMaxSeconds, "maximum resident pass duration")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "max-seconds": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

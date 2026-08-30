@@ -55,7 +55,7 @@ func runChat(args []string) error {
 	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -154,17 +154,32 @@ type brainOptions struct {
 	// cannot let the choice be the variable it is measuring. Empty is the
 	// ordinary path, where the compiler chooses and usually chooses nothing.
 	subharness string
-	// produced is told, as each leaf lands, the absolute paths that leaf's
-	// workspace recorded it writing. It is the registry's own list rather than
-	// anything read back out of prose, and it exists because the workspace dies
-	// with the worker goroutine: nothing downstream of the run can ask it what
-	// was written unless somebody catches the answer on the way past.
+	// wall is how long this brain's work has to finish in. Zero is a window,
+	// which has no wall; an errand's is its own timeout, and it is handed on so
+	// the work can see the clock it is being judged against.
+	wall time.Duration
+	// produced is the job's record of what its work left behind: told, as each
+	// leaf lands, the absolute paths that leaf's workspace recorded it writing.
+	// It is the registry's own list rather than anything read back out of prose,
+	// and it exists because the workspace dies with the worker goroutine:
+	// nothing downstream of the run can ask it what was written unless somebody
+	// catches the answer on the way past.
 	//
 	// Only an errand wires it — `aforge do` is one process around one job, so
 	// the paths a leaf recorded here are the paths its footer prints and its
 	// --json carries. Nil is every other driver, which reads files off the graph
 	// like any other reader.
-	produced func(paths ...string)
+	//
+	// IT READS AS WELL AS WRITES, AND THAT IS THE WHOLE OF THE CHANGE. It was a
+	// write-only sink for a while — a func the wiring could tell things and
+	// could never ask anything — so the delivery gate was handed a second,
+	// narrower record instead: the artifacts of the ONE LEAF in front of it. A
+	// repair round writes nothing, because the work landed under its parent, so
+	// the gate judging one was told the run had left nothing behind and refused
+	// a delivery whose files were on disk and in this registry the whole time
+	// (2026-08-29, bench/deepswe textual s5 and igel s5;
+	// docs/design/gate/SETTLEMENT.md §5).
+	produced artifactRecord
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
 	consent func(store.Node, planEstimate) bool
@@ -188,7 +203,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 // taken off. Nothing here starts a goroutine or holds the terminal; start does
 // that, once, on a brain that has already been built.
 func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, error) {
-	brain := &chatBrain{window: w, session: session}
+	brain := &chatBrain{window: w, session: session, wall: opts.wall}
 	path, database, graph := w.path, w.database, w.graph
 	newClient := opts.newClient
 	if newClient == nil {
@@ -543,7 +558,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// which not starting the work is still free.
 	desk := newConsentDesk(graph).WithHeadless(opts.consent)
 	desk.Rehydrate()
-	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
+	// Declared before it is built so the leaf builder inside can reach it. The
+	// one thing it says back to the runner is how long this leaf's own watchdog
+	// is, which is what keeps the claim reaper above every deadline actually
+	// granted (resident.Runner.RaiseStaleAge).
+	var runner *resident.Runner
+	runner = resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
 		// Nothing above this line spends anything, which is the whole point of
 		// its position: a job whose estimate crosses the threshold is held and
@@ -578,6 +598,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
+		// WHERE THIS JOB'S WORK HAPPENS IS A PROPERTY OF THE JOB, said once,
+		// here, by the only code that decides it. Four paths grow a running job
+		// and every one of them has to weigh what the last round changed
+		// against what the job is about — which cannot be read without knowing
+		// which tree to read it in. Threading it through four signatures owned
+		// by four waves is how a fact comes to be true on whichever caller
+		// somebody remembered. See resident.RememberJobWorkspace.
+		resident.RememberJobWorkspace(graph, node, jobDir)
 		jobSpace = jobSpace.WithScratch(scratchRoot)
 		if opts.sharedWorkspace {
 			// Whose directory this is, said as its own fact. The engine reads it
@@ -634,8 +662,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// exactly what their own fan-in measures — see gatheringGrant. Reflexes use
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
-		deadline := exec.SubharnessFor(subharness).Deadline(tokens)
-		watchdog := deadline + 2*time.Minute
+		leafRoom := exec.SubharnessFor(subharness)
+		deadline := leafRoom.Deadline(tokens)
+		watchdog := leafRoom.Watchdog(tokens)
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
 			deadline = reflexDeadline
@@ -782,8 +811,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if fold {
 			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
 				exec.FoldTurns, pushed, tokens)
-			deadline = exec.SubharnessFor(subharness).Deadline(tokens)
-			watchdog = deadline + 2*time.Minute
+			deadline = leafRoom.Deadline(tokens)
+			watchdog = leafRoom.Watchdog(tokens)
 			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
 		}
 		// Journaled either way, so a benchmark can tell a fold that fired from a
@@ -799,7 +828,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if modeErr := graph.RecordLeafMode(node.ID, leafMode); modeErr != nil {
 			log.Printf("note: could not journal the dispatch shape of %s: %v", node.ID, modeErr)
 		}
-		worker := executorFor(subharness, build)
+		// The worker, and the record that it is this one. Both come out of the
+		// same call because the record is worthless if a dispatch path can get
+		// its executor without leaving it — see runningWorker.
+		worker := runningWorker(node.ID, subharness, build, "")
 		// The steering mailbox: user messages anchored to this node land in
 		// the worker's transcript before its next turn. The cursor starts at
 		// zero so guidance sent while the node was still queued applies too.
@@ -896,16 +928,38 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		// The pickup bank. A node whose attempt counter is already above zero has
 		// been claimed before, which means a previous run of this leaf ended
-		// without settling it — its process went away, or the whole surface did —
-		// and the startup sweep put it back on the queue. It used to come back to
-		// an empty context and a directory full of its own work, and the surface
-		// said so out loud: "each starts again from the beginning". It does not
-		// have to. What that attempt reached is on its own record and its files are
-		// still on disk, and both ride in as one more input under the same headers
-		// a re-decomposed leaf already gets. See resident.Bank.
+		// without settling it — its process went away, the whole surface did, or
+		// the claim reaper took it back — and it is on the queue again. It used to
+		// come back to an empty context and a directory full of its own work, and
+		// the surface said so out loud: "each starts again from the beginning". It
+		// does not have to. What that attempt reached is on its own record and its
+		// files are still on disk, and both ride in as one more input under the
+		// same headers a re-decomposed leaf already gets. See resident.Bank.
+		//
+		// AND THE RESUMPTION IS JOURNALED, because the promise above was made on
+		// 2026-08-29 and quietly not kept: the seed was assembled from a turn-number
+		// window read across every attempt in the record at once, so a leaf on its
+		// third claim was handed an interleaving of two earlier attempts and opened
+		// by exploring the repository it had spent forty minutes in. Nothing in the
+		// store said whether a claim had resumed or started over, which is why it
+		// took a transcript autopsy to find out. Now the row says so and the
+		// headless stream reads it (store.EventLeafResumed).
 		if node.Attempt > 0 {
-			if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
+			if bank, recorded := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
 				inputs = append(inputs, bank.Input())
+				if recorded > 0 {
+					if resumeErr := graph.RecordLeafResumed(node.ID, store.LeafResumed{
+						Turns: recorded, Files: bank.Artifacts,
+					}); resumeErr != nil {
+						log.Printf("note: could not journal that %s resumed: %v", node.ID, resumeErr)
+					}
+					// AND IT IS A ROUND. A leaf resumed in place spends a body
+					// of work exactly as a spliced repair does, and the growth
+					// ledger never saw one — so eight exhaustions of one lineage
+					// cost ink s10 its whole wall while the standstill rule,
+					// which counts rounds out of that ledger, weighed five.
+					resident.NoteResumedRound(graph, node, bank.Artifacts)
+				}
 			}
 		}
 		task := exec.Task{
@@ -986,6 +1040,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		//
 		// In a build with no specialist the menu is empty, the condition below
 		// reads exactly as it always did, and not one extra call is made.
+		// The acceptance checklist, journaled against the work it will be used
+		// to judge, before that work starts. It is written here rather than at
+		// plan time because a node has to exist for an event to hang on, and
+		// because this is the one place that knows which spec this leaf is
+		// actually running with — a spliced repair inherits its predecessor's
+		// checklist and must be seen to.
+		//
+		// It is also the only place a person watching a headless run learns the
+		// checklist exists at all: the stream reads this event (see narrateOne
+		// in do.go). A fail-safe that does not reach the person reading the
+		// verdict is decoration — FAILSAFE clause 3.
+		journalAcceptance(graph, node, task.Spec)
 		specialists := exec.MenuTextExcept(subharness)
 		attempts := 1
 		if !isReflex && (escalatable || specialists != "") {
@@ -1002,6 +1068,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// by one worker serves its siblings.
 		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, workingModel))
 		var outcome *exec.Outcome
+		// Every call this leaf makes, banked under its node as the provider
+		// answers. See leafBanker.
+		banker := newLeafBanker(graph, node.ID)
 		var spent exec.Usage
 		// The same spend with its per-turn shape kept, accumulated across every
 		// attempt this node makes. See leafShape.
@@ -1059,7 +1128,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// journal and on disk either way. See resident.Bank.
 			if attempt > 0 {
 				attempted := task
-				if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines()); !bank.Empty() {
+				if bank, _ := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines()); !bank.Empty() {
 					attempted.Inputs = append(append([]exec.Input{}, inputs...), bank.Input())
 				}
 				// The fold is released here and nowhere else. Whatever brought
@@ -1070,8 +1139,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					attempted.Fold = false
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
-					watchdog = build.deadline + 2*time.Minute
-					worker = executorFor(subharness, build)
+					watchdog = leafRoom.Watchdog(openTokens)
+					worker = runningWorker(node.ID, subharness, build, "")
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
 						Handles: handles, Turns: openTurns, Tokens: openTokens,
@@ -1155,16 +1224,36 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// The budget shape belongs to the worker, not to the leaf:
 					// the generalist's fifteen-minute backstop applied to a
 					// coding pipeline is a guillotine at its first merge.
-					build.deadline = exec.SubharnessFor(chosen).Deadline(tokens)
-					watchdog = build.deadline + 2*time.Minute
-					worker = executorFor(chosen, build)
+					chosenRoom := exec.SubharnessFor(chosen)
+					build.deadline = chosenRoom.Deadline(tokens)
+					watchdog = chosenRoom.Watchdog(tokens)
+					worker = runningWorker(node.ID, chosen, build,
+						"escalated from "+escalatedFrom+" after a failed attempt")
 					shape = chosen
 				}
 				task = attempted
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
 			runCtx = armTranscript(runCtx, graph, node.ID, build.model)
+			runCtx = armBilling(runCtx, banker)
+			// THE REAPER MUST NOT FIRE BELOW THIS LEAF'S OWN WATCHDOG. The
+			// runner's claim reaper is a constant and this figure is not — it
+			// scales with the budget the leaf was granted — so a well-fed leaf
+			// could be entitled to run longer than the reaper's window and be
+			// taken off its own work by the one mechanism that exists to notice
+			// work nobody is doing. This is the only place both numbers are
+			// known, so it is where they are reconciled.
+			runner.RaiseStaleAge(watchdog)
 			outcome, err = runLeafWithWatchdog(runCtx, worker, task, watchdog)
+			// AN ATTEMPT THAT RAN OUT OF ROOM SAYS SO. It is not a failure and it
+			// is not a restart — it is exhaustion, which the growth governor
+			// already weighs — but until this line nothing wrote it down, and the
+			// silence is what made the ink run of 2026-08-29 unreadable: its first
+			// attempt spent its whole fifteen-minute deadline, its retry began
+			// four minutes later inside the same claim, and the store's only
+			// account of either was a gap between two transcript flushes. See
+			// store.EventLeafExhausted.
+			journalLeafExhaustion(graph, node.ID, attempt+1, build.deadline, watchdog, outcome, err)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
 			}
@@ -1201,7 +1290,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
 					outcome.Text, store.UserCancelReason, workerModel)
 			}
-			result := leafSpend(spent, spentShape, workerModel)
+			result := leafSpend(spent, spentShape, workerModel, banker.banked())
 			result.Summary = outcome.Text
 			result.ServiceRequests = outcome.ServiceRequests
 			return result, nil
@@ -1223,7 +1312,25 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// has only prose to go on. A leaf that failed halfway still wrote what it
 		// wrote, so this is above the failure branch and not inside the happy one.
 		if opts.produced != nil && len(absolute) > 0 {
-			opts.produced(absolute...)
+			opts.produced.add(absolute...)
+		}
+		// Work that is finished and is NOT in the workspace is the one thing a
+		// person cannot find for themselves: there is no file to open, the
+		// artifact list is correctly empty, and the checkout it is in is under
+		// aforge's own state root under a digest of a path. So it is said here,
+		// above the failure branch and above the happy one, because a gate
+		// failure is exactly the ending that produces it — and it is said with a
+		// progress payload, which is what carries it out of the record and into
+		// the headless stream beside the ✗.
+		withheld := ""
+		if outcome != nil {
+			withheld = outcome.Account.WithheldWords()
+		}
+		if withheld != "" {
+			_, _ = thread.Record(graph, store.Message{
+				Role: store.RoleSystem, NodeID: node.ID, Body: withheld,
+				Progress: &store.MessageProgress{Phase: "work left behind", Latest: withheld},
+			})
 		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
 		// which edits the job's unstarted remainder only when this result
@@ -1271,7 +1378,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// path to find. Naming them in the error text is enough — the error
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
-			failure := humanFailure(node, err, absolute)
+			failure := humanFailure(node, err, absolute, withheld)
 			// A sibling's failure is the board note nobody should have to
 			// remember to write: the workers still running are about to lean on
 			// a result that is not coming, and the reason it died is the fact
@@ -1299,7 +1406,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// task twice by the time we arrive here, so this is the most
 			// expensive kind of result there is — and returning a bare zero
 			// value is what made real spend journal as $0.00 on the daily rail.
-			return leafSpend(spent, spentShape, workerModel), failure
+			return leafSpend(spent, spentShape, workerModel, banker.banked()), failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -1325,7 +1432,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// replan was asked to find a remainder rather than whether one exists.
 		// So the judge runs first: a checked "done" ships the result as-is,
 		// and a named gap becomes the replan's target instead of a guess.
-		if !isReflex && outcome.Overran() {
+		// A LEAF THAT RAN OUT OF TIME RAN OUT OF ROOM. Overran deliberately
+		// excludes the clock — it answers "was this leaf too big for its token
+		// envelope" — and reading it here meant the one ending that most needs
+		// more room got none: the ink run of 2026-08-29 spent its whole
+		// deadline, landed with a half-finished implementation, and was
+		// delivered as a failure rather than continued. leafRanOutOfRoom is the
+		// predicate the record already uses for exactly this question, and the
+		// judge below is what stops a finished leaf being continued anyway.
+		if !isReflex && leafRanOutOfRoom(outcome) {
 			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text,
 				exec.MenuTextExcept(promisedWorker(node)), workerModel)
 			if remainder.Checked && remainder.Done {
@@ -1342,6 +1457,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if clause := surpriseEvidence(graph, node.ID); clause != "" {
 					gap = strings.TrimSpace(gap + "\n\n" + clause)
 				}
+				// The recorded work is NOT passed in from here any more. It is
+				// read at the splice, from the lineage, so that every reason a
+				// job grows — this overrun, the gate's gap round, a cooperative
+				// split, a deferred resumption — is seeded by one rule instead
+				// of by whichever caller somebody remembered to wire. Passing it
+				// from here worked on this path and on none of the others, and
+				// the textual run of 2026-08-29 spliced fourteen cold children
+				// on `reason: gap` to prove it. See resident.LineageBank.
 				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
 					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
@@ -1427,61 +1550,137 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			records := gateEvidence(node, task.Spec, outcome, assembledArtifacts(absolute, inputs), true)
-			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
+			records := gateEvidence(node, task.Spec, outcome,
+				jobArtifacts(opts.produced, absolute), true, jobDir)
+			// Whatever the gate's own call has to be repaired to get an answer is
+			// journaled against this node, so a delivery that took three model
+			// calls to judge says so rather than looking like one that took one.
+			gateCtx := withRepairJournal(ctx, graph, node.ID)
+			// AND THE DELIVERABLE'S OWN SHAPE IS REPAIRED BEFORE ANYTHING READS
+			// IT. A worker that answered the handover with a data object has
+			// broken the shape it was asked for, which is the one failure this
+			// system has a seam for everywhere except here; without it a model
+			// quirk became three silent re-drives and a partial run
+			// (revision.ReshapeDelivery, FAILSAFE.md's seventeenth chapter). The
+			// result is assigned back to text because the handover is what the
+			// person reads and what the node's summary keeps, not only what the
+			// gate is shown.
+			if reshaped, ok := revision.ReshapeDelivery(gateCtx, settings, planClient, node, text); ok {
+				text = reshaped
+				outcome.Text = reshaped
+			}
+			gate := revision.JudgeDeliverable(gateCtx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
+			if gate.Fault != "" {
+				// THE GATE FAULTED, AND A RUN WHOSE CHECK DID NOT HAPPEN IS NOT
+				// A RUN THAT PASSED ITS CHECK.
+				//
+				// This is the s4 sweep's second fatal shape, closed. The gate
+				// answered with something no reader could parse; the seam
+				// continued it, asked again, and still got nothing; and the old
+				// path took that for an abstention and delivered the work as
+				// done over exit 0. What is recorded instead is a delivery whose
+				// gap was never closed — Unclosed, which is the field the exit
+				// code turns on — so the run ends PARTIAL with the reason on the
+				// stream, and the reservation rides the delivery so the person
+				// reading it knows nothing confirmed this.
+				_ = graph.RecordDeliveryGate(node.ID, store.DeliveryGate{
+					Gap: revision.GateFaultWords(gate.Fault), Unclosed: true,
+				})
+				notes = append(notes, revision.GateFaultHandover(gate.Fault))
+			}
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
-					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical}
-			if gate.Pass {
-				outcome.Verdict = revision.GateVerdict(gate)
-				// Quorum: two cheap validators independently verify the pass.
-				// Both must ACCEPT; any REJECT buys one revision round, then
-				// the result commits unconditionally (no second gate).
-				if settings.Quorum {
-					accepts, rejects := quorumVerify(ctx, settings, boostClients, node.ID,
-						node.Provenance.Intent, text)
-					if accepts == 2 {
-						log.Printf("quorum: committed on 2/2")
-					} else {
-						repair := task
-						repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
-							Title:     "a review of your own first draft",
-							Artifacts: append([]string(nil), absolute...),
-							Result: "Two independent verifiers found gaps that must be closed:\n" + rejects +
-								"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
-								"\n\n" + revision.GateRevisionContract,
-						})
-						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
-						polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
-						if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
-							spent.PromptTokens += polished.Usage.PromptTokens
-							spent.CompletionTokens += polished.Usage.CompletionTokens
-							spent.CachedTokens += polished.Usage.CachedTokens
-							spent.Cost += polished.Usage.Cost
-							spentTurns += polished.Turns
-							outcome = polished
-							workerModel = provider.CallFrom(retryCtx).Model()
-							text = polished.Text
-							absolute = absolute[:0]
-							for _, artifact := range polished.Artifacts {
-								absolute = append(absolute, filepath.Join(jobDir, artifact))
+					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
+					// The acceptance mapping as the gate settled it. It is the
+					// evidence behind the verdict rather than the verdict, and a
+					// pass with every point exercised has to be tellable apart
+					// from a pass over an empty checklist.
+					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured,
+					// And what the gate actually held between its fence
+					// markers. An autopsy asking whether a refusal read the
+					// world or a sentence has nothing else to go on.
+					Subject: gate.Subject,
+					// And which behaviour of the request it was allowed to
+					// convict on — or that the request stated none, which is
+					// the same event without this field.
+					HeldPoint: gate.HeldPoint,
+					// And its conclusion. The mapping is the evidence; this is
+					// the finding, and it is recorded as a list of its own so
+					// the stream can say it and an autopsy can find it without
+					// reading a paragraph out of the middle of the gap.
+					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable,
+					// And the half of it the assertion door found: behaviours a
+					// check names and no assertion weighs, each carrying the
+					// observables nothing asserted.
+					Unasserted: gate.Unasserted,
+					// And the definitions this run reshaped that the rest of
+					// the project still uses the old way — the finding no
+					// suite and no name comparison can make, because the name
+					// is still there and nobody wrote a check for it.
+					Consumers: gate.Consumers,
+					// And the names it READS that nothing in the tree binds —
+					// the finding igel s14 could only spell as "the checks this
+					// work wrote fail", never as the one name they failed on.
+					Unbound: gate.Unbound,
+					// And the checks the run wrote and did not get passing,
+					// which is a different state from a broken repository and
+					// was spelled the same way until it had a field.
+					OwnFailing: gate.OwnFailing,
+					// And which measurement raised it, so a reader comparing
+					// this round against the last one compares a kind and a
+					// list of names rather than two sentences.
+					Finding: gate.Finding}
+				if gate.Pass {
+					outcome.Verdict = revision.GateVerdict(gate)
+					// Quorum: two cheap validators independently verify the pass.
+					// Both must ACCEPT; any REJECT buys one revision round, then
+					// the result commits unconditionally (no second gate).
+					if settings.Quorum {
+						accepts, rejects := quorumVerify(ctx, settings, boostClients, node.ID,
+							node.Provenance.Intent, text)
+						if accepts == 2 {
+							log.Printf("quorum: committed on 2/2")
+						} else {
+							repair := task
+							repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+								Title:     "a review of your own first draft",
+								Artifacts: append([]string(nil), absolute...),
+								Result: "Two independent verifiers found gaps that must be closed:\n" + rejects +
+									"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+									"\n\n" + revision.GateRevisionContract,
+							})
+							retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+							retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
+							retryCtx = armBilling(retryCtx, banker)
+							polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, exec.WatchdogAbove(deadline))
+							if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
+								spent.PromptTokens += polished.Usage.PromptTokens
+								spent.CompletionTokens += polished.Usage.CompletionTokens
+								spent.CachedTokens += polished.Usage.CachedTokens
+								spent.Cost += polished.Usage.Cost
+								spentTurns += polished.Turns
+								outcome = polished
+								workerModel = provider.CallFrom(retryCtx).Model()
+								text = polished.Text
+								absolute = absolute[:0]
+								for _, artifact := range polished.Artifacts {
+									absolute = append(absolute, filepath.Join(jobDir, artifact))
+								}
+								// A repair round rewrites the list wholesale, so the
+								// errand is told again; it keeps a set, and a path it
+								// already has costs nothing to hear twice.
+								if opts.produced != nil && len(absolute) > 0 {
+									opts.produced.add(absolute...)
+								}
+								if len(absolute) > 0 {
+									text += summaryFileList + strings.Join(absolute, "\n")
+								}
 							}
-							// A repair round rewrites the list wholesale, so the
-							// errand is told again; it keeps a set, and a path it
-							// already has costs nothing to hear twice.
-							if opts.produced != nil && len(absolute) > 0 {
-								opts.produced(absolute...)
-							}
-							if len(absolute) > 0 {
-								text += summaryFileList + strings.Join(absolute, "\n")
-							}
+							log.Printf("quorum: revised after reject")
 						}
-						log.Printf("quorum: revised after reject")
 					}
 				}
-			}
 				// The grounding check the extension has always had, applied one
 				// layer earlier: to the revision round. A gap the review cannot
 				// quote from the ask or from the working method is a standard
@@ -1491,8 +1690,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// So it downgrades to a note: journaled, said, carried on the
 				// delivery, and free.
 				ungrounded, closed := "", ""
-				if !gate.Pass {
-					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Cited())
+				// A finding the run MEASURED goes through none of this. The
+				// three doors below all ask where a review got its words, and a
+				// check that passed before the work and fails after it has no
+				// words to weigh: the person never had to ask for their
+				// repository to keep working, so grounding it would refuse it
+				// every time. See revision.Judgment.Sourced.
+				if !gate.Pass && !gate.Sourced {
+					ungrounded = revision.AdmitGapRevision(gate.Grounds, gate.Cited())
 					// The same refusal, for the gap the record has already
 					// closed rather than the one the request never set. A span
 					// of the ask naming a file the run produced is not a thing
@@ -1510,14 +1715,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						closed = revision.AdmitGapArtifact(gate.Cited(), records)
 					}
 					// And the same refusal for the gap the deliverable itself
-					// has already closed. The artifact half asks the disk; this
-					// half asks the text the person is about to read, which is
-					// the half that was missing when a gate looked at twelve
-					// verbatim profiles and reported that the twelve were not
-					// there. A repair round bought on that verdict replaced a
-					// correct answer with a broken one.
+					// has already closed — but ONLY where the deliverable is the
+					// whole of what the run left behind. The artifact half asks
+					// the disk; this half asks the text the person is about to
+					// read, which is the half that was missing when a gate
+					// looked at twelve verbatim profiles and reported that the
+					// twelve were not there. A repair round bought on that
+					// verdict replaced a correct answer with a broken one. Where
+					// the run DID leave files behind, the record is the world and
+					// the text is a claim about it, so the rule reads the record
+					// and declines — see revision.AdmitGapPresent, which is
+					// handed the record for exactly that reason.
 					if ungrounded == "" && closed == "" && !gate.Mechanical {
-						closed = revision.AdmitGapPresent(gate.Cited(), text)
+						closed = revision.AdmitGapPresent(gate.Cited(), text, records)
 					}
 				}
 				switch {
@@ -1534,6 +1744,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// invented a requirement, and charging the model's rating for
 					// that would teach the profile the reviewer's mistake.
 				case closed != "":
+					// The only refusal that acquits. Both doors behind `closed`
+					// weigh the finding against the world — the file is on disk,
+					// or the things it names are in the text the person is about
+					// to read — so the review lost on evidence and the delivery
+					// stands whole. A provenance refusal is not that and does not
+					// set this: it declines to buy a round and leaves the finding
+					// where it was. See store.DeliveryGate.Overturned.
+					evidence.Overturned = true
 					evidence.Refused = closed
 					notes = append(notes, revision.GapClosedNote(gate.Gaps, closed))
 					// Same reasoning, one step stronger: the work produced what
@@ -1574,6 +1792,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// shared working tree's lease to land, which every sibling
 					// view's landing waits on; a composition takes neither.
 					composedOnly := revision.Composable(worker, outcome)
+					// THE WORLD AS THE FINDING FOUND IT. A repair round is
+					// allowed to close a finding about the tree or about a
+					// check only if it could have changed one, and whether it
+					// did is a measurement rather than a claim: the record is
+					// stamped here and again at the re-judgement, and two equal
+					// stamps are a round that moved nothing. It is taken above
+					// the branch because both kinds of repair are asked the same
+					// question — a composition moves nothing by construction,
+					// and an engine re-run that edited no file moves nothing in
+					// fact. See revision.TreeStamp.
+					foundWorldAs := revision.TreeStamp(jobArtifacts(opts.produced, absolute))
 					var polished *exec.Outcome
 					polishModel := workerModel
 					if composedOnly {
@@ -1619,8 +1848,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						})
 						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
+						retryCtx = armBilling(retryCtx, banker)
 						var polishErr error
-						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, exec.WatchdogAbove(deadline))
 						if model := provider.CallFrom(retryCtx).Model(); model != "" {
 							polishModel = model
 						}
@@ -1643,7 +1873,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// errand is told again; it keeps a set, and a path it
 							// already has costs nothing to hear twice.
 							if opts.produced != nil && len(absolute) > 0 {
-								opts.produced(absolute...)
+								opts.produced.add(absolute...)
 							}
 							if len(absolute) > 0 {
 								text += summaryFileList + strings.Join(absolute, "\n")
@@ -1651,9 +1881,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						}
 					}
 					if polished != nil {
-						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-							gateEvidence(node, task.Spec, outcome, absolute, true), polishModel)
-						evidence.PolishClosed = closed.Checked && closed.Pass
+						reread := gateEvidence(node, task.Spec, outcome,
+							jobArtifacts(opts.produced, absolute), true, jobDir)
+						closed := revision.JudgeDeliverable(withRepairJournal(ctx, graph, node.ID),
+							settings, planClient, graph, node, text, task.Contract,
+							reread, polishModel)
+						// Did the round move anything? Same stamp, same record,
+						// taken after everything the repair was going to do.
+						evidence.Unmoved = revision.TreeStamp(reread.Artifacts) == foundWorldAs
+						// A REPAIR THAT DID NOT MOVE THE TREE MAY NOT CLOSE A
+						// FINDING WHOSE GROUND IS THE TREE OR A READING. The
+						// composition rewrites the account and runs nothing, so
+						// a second judge reading the better account is reading
+						// the same world the first one failed; ink s5 and ofetch
+						// s5 both settled whole that way over findings about the
+						// substance of the work and the state of their own
+						// suites. What such a round may still close is a finding
+						// whose only ground was the delivered text — a wrong
+						// summary, a missing explanation — which is the case
+						// Compose was built for and which writing really does
+						// fix. See revision.GroundedInTheWorld, and
+						// docs/design/gate/SETTLEMENT.md §8.
+						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
 						if evidence.PolishClosed {
@@ -1667,6 +1916,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							unmet = closed
 							evidence.Gap, evidence.Quote = closed.Gaps, closed.Quote
 							evidence.Quotes, evidence.Mechanical = closed.Citations, closed.Mechanical
+							// And WHICH MEASUREMENT raised it, for the same
+							// reason and in the same breath. It is what makes
+							// the finding comparable across rounds, so a
+							// reading taken over the revised text that carried
+							// the first reading's word would tell the governor
+							// the job is still working on something it has
+							// moved on from. See store.DeliveryGate.Finding.
+							evidence.Finding = closed.Finding
 						}
 					} else {
 						outcome.Verdict = provider.VerdictSemanticFailure
@@ -1690,12 +1947,34 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// from them: a repair asked to say what was wrong needs to
 						// READ what was done, and everything that ever reached it
 						// before was a list of names.
-						extension := revision.ExtendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
+						// THE FINDING THIS ROUND IS BEING BOUGHT FOR travels
+						// with the call that buys it. The growth governor weighs
+						// a round against the thing it was bought for, and the
+						// only place that thing is known in structured form is
+						// here, on the gate's own evidence — the judgement's
+						// gap is a paragraph, and a paragraph reworded reads as
+						// new work. It rides the context because the two hops
+						// between here and the governor are owned by other
+						// waves and a fact threaded through signatures is a
+						// fact that works on whichever caller somebody
+						// remembered. See resident.FindingOf.
+						growCtx := resident.WithFinding(ctx, resident.FindingOf(evidence))
+						extension := revision.ExtendForGap(growCtx, graph, node, outcome.Text, unmet, absolute,
 							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot),
 							outcomeRecords(outcome)...)
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
+						evidence.Unclosed = extension.Unclosed
+						// AND A FINDING THE JOB'S OWN COVERAGE READING CONTRADICTED
+						// IS A FINDING THAT LOST. The gate said the delivery was
+						// short; the reading of what this job is judged on, taken
+						// over everything that landed, said nothing is left
+						// uncovered. Two readings of one world, and the broader
+						// measurement settles it — so the verdict is taken again
+						// from the settled fields (store.DeliveryGate.Whole) rather
+						// than handed over as a partial nobody can act on.
+						evidence.Overturned = extension.Overturned
 						if extension.Spliced > 0 {
 							extended = true
 							// The receipt on the summary is what tells every reader
@@ -1785,7 +2064,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			}
 		}
-		result := leafSpend(spent, spentShape, workerModel)
+		result := leafSpend(spent, spentShape, workerModel, banker.banked())
 		result.Summary = text
 		result.Promote = promoted
 		result.ServiceRequests = outcome.ServiceRequests
@@ -1804,6 +2083,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	brain.settings = settings
 	brain.reconciler = reconciler
 	brain.runner = runner
+	// A GATE ALWAYS PRECEDES THE WALL. The governor decides that a job has run
+	// out of wall, and the runner is the only thing that can act on it: stopping
+	// a job's queued work is stopping claims, and a claim belongs to whoever
+	// dispatched it. So the two are wired here, once, on the same terms as the
+	// satisfaction gate above. See resident.SetJobCloser and Runner.CloseOut.
+	resident.SetJobCloser(runner.CloseOut)
 	brain.consent = desk
 	brain.workspaceRoot = workspaceRoot
 	// Everything below this line is the conversation: the commander the surface
@@ -2004,6 +2289,19 @@ type chatBrain struct {
 	// caller, and every test that does not ask otherwise — cancels at once,
 	// which is what a one-shot's wall means.
 	leafGrace time.Duration
+	// wall is when this brain's work has to be over, for the callers that have
+	// one. Zero is a window, which has none.
+	//
+	// IT IS THE SAME WALL THE ERRAND IS WATCHING AND THAT IS THE POINT. The
+	// wall used to live only in the settlement watcher's own context while the
+	// brain ran on context.Background() — so every rule in the program that
+	// asks "is there time left to finish another round of work" was reading a
+	// deadline that did not exist, and answering no-limit. revision's outOfWall
+	// is one such rule and it has never fired in a headless run; the growth
+	// governor's is the other, and between them ink s10 and happy-dom s10 spent
+	// 5401 seconds each and settled nothing. A clock the machinery cannot see
+	// bounds nothing but the person's patience.
+	wall time.Duration
 
 	closers    []func()
 	background sync.WaitGroup
@@ -2015,9 +2313,9 @@ type chatBrain struct {
 	// never will: a plan that was rejected has no job to land, and a process
 	// that is stopping has no next landing. Both may be nil on a brain a test
 	// assembles by hand, which is why the flush checks.
-	plans  *jobPlans
-	ledger *store.Store
-	closeOnce  sync.Once
+	plans     *jobPlans
+	ledger    *store.Store
+	closeOnce sync.Once
 }
 
 // closing registers something built here that must be given back. They are
@@ -2049,6 +2347,16 @@ func (b *chatBrain) closeAll() {
 func (b *chatBrain) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	runCtx, runCancel := context.WithCancel(context.Background())
+	if b.wall > 0 {
+		// The deadline rides the RUN context — the loops that claim, execute
+		// and grow — and not the background one, which owns the housekeeping a
+		// shutdown is entitled to finish. A caller that sets it cancels at the
+		// wall anyway (see the errand's settle()); what this adds is that the
+		// work can SEE the wall coming while there is still time to act on it.
+		walled, releaseWall := context.WithDeadline(runCtx, time.Now().Add(b.wall))
+		release := runCancel
+		runCtx, runCancel = walled, func() { releaseWall(); release() }
+	}
 	b.cancel, b.runCancel = cancel, runCancel
 	b.runDone = make(chan struct{})
 	graph, session := b.window.graph, b.session
@@ -2310,9 +2618,9 @@ func (s *sharedLines) lines() []string {
 
 // leafBank is everything a dead attempt of this leaf leaves for the next one.
 //
-// Three sources, one composition. What the attempt had in hand comes from its
+// Four sources, one composition. What the attempt had in hand comes from its
 // outcome when there is one — a leaf abandoned by the watchdog has none, which
-// is exactly the case the other two exist for. What it said as it went comes
+// is exactly the case the others exist for. What it said as it went comes
 // from its own record in the journal (the progress rows a long worker posts,
 // which for a top-level or craft-rooted leaf are anchored to itself) joined with
 // whatever it shared to the board in this process, which the journal cannot
@@ -2320,9 +2628,28 @@ func (s *sharedLines) lines() []string {
 // artifact list and from the directory itself, because a register that died with
 // its process remembers nothing and the files are still there.
 //
-// The directory is only read when it is the job's own. See ownWorkspace.
+// AND WHAT IT ACTUALLY DID comes from its recorded transcript. The three sources
+// above are all things the attempt CHOSE to say, and an attempt killed mid-turn
+// said almost none of them: on the happy-dom run of 2026-08-28 a leaf ran the
+// project's test file seventy-one times across three starts and handed its
+// successor a partial of "" every time, while every one of those turns sat in the
+// store under its own node. See resident.BankedRun.
+//
+// THE FILE LIST IS SOURCED FROM THE WORLD (FAILSAFE.md rule 2). The workspace
+// photographs the tree before a leaf runs and diffs it after, and that reading
+// is true of a file written by a shell command, a build, or anything else that
+// never went through a tool — which on a repository-shaped job is nearly all of
+// them. It is asked for by this leaf's own key, so a shared workspace answers
+// with what THIS node changed rather than with the user's whole checkout, and
+// that is why it is not behind ownWorkspace. Listing the directory is: Existing
+// names every file at the workspace root, which is the job's deliverables when
+// the job owns the directory and somebody else's repository when it does not.
+//
+// The turn count comes back beside the bank because the caller journals it: a
+// leaf that resumed and a leaf that started over are the two things the ink run
+// of 2026-08-29 could not be read to tell apart. See store.EventLeafResumed.
 func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir string,
-	ownWorkspace bool, outcome *exec.Outcome, shared []string) resident.Bank {
+	ownWorkspace bool, outcome *exec.Outcome, shared []string) (resident.Bank, int) {
 	bank := resident.Bank{}
 	if outcome != nil {
 		bank.Partial = outcome.Text
@@ -2334,10 +2661,123 @@ func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir
 		bank = bank.WithArtifacts(absolute...)
 	}
 	bank = bank.WithShared(resident.BankedProgress(graph, node.ID)...).WithShared(shared...)
-	if ownWorkspace && space != nil {
-		bank = bank.WithArtifacts(space.Existing()...)
+	block, turns := resident.BankedRun(graph, node.ID)
+	bank.Transcript = block
+	if space != nil {
+		changed := space.Artifacts(node.ID)
+		absolute := make([]string, 0, len(changed))
+		for _, artifact := range changed {
+			absolute = append(absolute, filepath.Join(jobDir, artifact))
+		}
+		bank = bank.WithArtifacts(absolute...)
+		if ownWorkspace {
+			bank = bank.WithArtifacts(space.Existing()...)
+		}
 	}
-	return bank
+	return bank, turns
+}
+
+// journalLeafExhaustion writes down an attempt that ended because it ran out of
+// the room it was granted, and writes nothing for one that ended any other way.
+//
+// TWO ENDINGS ARE THE SAME FACT and they arrive by different doors. The
+// executor's own loop notices its deadline, its turn cap or its token budget
+// between turns and lands an outcome saying which (exec.Outcome.Overran); the
+// watchdog above it notices a leaf that did not come back at all and returns
+// exec.Abandoned. Both are "the clock, and nothing else", which is precisely
+// what a reader must not have to infer from a gap in the record.
+//
+// A journal write that fails is noted and dropped. This is an account of the
+// work and never a part of it: a leaf that did its job must not be failed
+// because the row about it could not be written.
+func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
+	deadline, watchdog time.Duration, outcome *exec.Outcome, err error) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" {
+		return
+	}
+	record := store.LeafExhausted{Attempt: attempt}
+	var abandoned *exec.Abandoned
+	switch {
+	case errors.As(err, &abandoned):
+		record.Bound = string(exec.StopDeadline)
+		record.Allowed = watchdog.Round(time.Second).String()
+		record.Reason = "the worker did not come back within " + record.Allowed +
+			" and was stopped — its work is recorded and the node goes back on the queue"
+	case err == nil && outcome != nil && leafRanOutOfRoom(outcome):
+		bound := outcome.Stop
+		if bound == exec.StopDone || bound == "" {
+			bound = outcome.Exhausted
+		}
+		record.Bound = string(bound)
+		record.Turns = outcome.Turns
+		record.Allowed = exhaustionAllowance(bound, deadline)
+		// THE BOUND THAT FIRED NAMES ITSELF. Three ceilings shared the
+		// StopReason "budget", so the record could not say which had landed the
+		// leaf and the sentence below quoted a grant the leaf had not reached.
+		// The executor knows; this is where it is written down.
+		if meter := outcome.Meter; meter.Named() {
+			record.Meter, record.Reached = meter.Name, meter.Reached
+			record.Allowance, record.Unit = meter.Allowed, meter.Unit
+		}
+		record.Reason = exhaustionWords(bound, record.Allowed, outcome.Turns)
+		if words := outcome.Meter.Words(); words != "" {
+			record.Reason += " (" + words + ")"
+		}
+	default:
+		return
+	}
+	if journalErr := graph.RecordLeafExhausted(nodeID, record); journalErr != nil {
+		log.Printf("note: could not journal that %s ran out of room: %v", nodeID, journalErr)
+	}
+}
+
+// leafRanOutOfRoom is exec.Outcome.Overran plus the wall clock.
+//
+// Overran deliberately excludes StopDeadline, because it answers a different
+// question: whether this leaf was too big for its ENVELOPE, which is what the
+// growth governor buys more room against. Running out of TIME is the same fact
+// for the purpose of the record — the attempt was still working when it was told
+// to stop — and it is the one that actually ended the ink run's attempts, so a
+// record built only on Overran would have written down nothing.
+func leafRanOutOfRoom(outcome *exec.Outcome) bool {
+	return outcome.Overran() || outcome.Stop == exec.StopDeadline ||
+		outcome.Exhausted == exec.StopDeadline
+}
+
+// exhaustionAllowance spells the room this attempt was given, in the unit that
+// ran out. Only the wall is known here as a duration; the turn and token caps
+// are the executor's own and it reports what it reached rather than what it was
+// allowed, so those are left unsaid rather than guessed at.
+func exhaustionAllowance(bound exec.StopReason, deadline time.Duration) string {
+	if bound == exec.StopDeadline && deadline > 0 {
+		return deadline.Round(time.Second).String()
+	}
+	return ""
+}
+
+// exhaustionWords is the one sentence a person reads. It names what ran out in
+// ordinary words — the machinery vocabulary law — and it never says "failed",
+// because an attempt that was still working when its budget ended did not.
+func exhaustionWords(bound exec.StopReason, allowed string, turns int) string {
+	subject := "the room it was given"
+	switch bound {
+	case exec.StopDeadline:
+		subject = "its time"
+		if allowed != "" {
+			subject = "its " + allowed
+		}
+	case exec.StopTurnCap:
+		subject = "its turns"
+	case exec.StopBudget:
+		subject = "its tokens"
+	case exec.StopOverrun:
+		subject = "far more than this kind of work usually takes"
+	}
+	words := "it was still working when it ran out of " + subject
+	if turns > 0 {
+		words += fmt.Sprintf(" — %d turns in", turns)
+	}
+	return words
 }
 
 // tasteBriefBytes bounds settled taste inside a leaf's brief. Taste is a short
@@ -2351,7 +2791,42 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 	if node.Parent == store.RootID {
 		brief = resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 	}
-	return withTasteBrief(graph, brief)
+	return withOpenFindings(graph, node, withTasteBrief(graph, brief))
+}
+
+// withOpenFindings puts what the job is measurably still short of at the top of
+// the brief, verbatim from the record.
+//
+// THIS IS THE COMPOSER'S JOB AND NOT A MODEL'S. The findings reach a worker
+// today by being written into a goal, handed to a planner, and restated in
+// whatever words that planner chooses — and a model summarising a page of
+// instructions drops a two-item list most times it is asked. Measured, on the
+// textual run of 2026-08-29: the coverage gate reported the same two unexercised
+// behaviours on all three of its rounds, those rounds briefed fourteen nodes,
+// and THIRTEEN OF THE FOURTEEN BRIEFS NAME NEITHER BEHAVIOUR. The job measured
+// its shortfall three times, spent fourteen leaves, and never told a worker what
+// it was.
+//
+// So the section is composed here, from store.DeliveryGate and
+// store.VerificationReading, at the last moment before a worker reads anything —
+// which is the only point downstream of every planner. It goes FIRST, because a
+// worker that reads one section reads the first one, and because what a round
+// exists to close belongs above the assignment that was already attempted once.
+//
+// It is silent when the record names nothing, which is every first attempt at
+// every job: a heading announcing no findings teaches the model that the heading
+// means nothing.
+func withOpenFindings(graph *store.Store, node store.Node, brief string) string {
+	// The LINEAGE, not the node. A repair round is a fresh id spliced beside the
+	// work it repairs, so a reader that asked this node would find a new row
+	// with nothing on it and conclude the job was short of nothing — which is
+	// the same mistake the seed made on the other side of this wave.
+	lineage, _ := resident.OverrunLineage(node.ID)
+	section := resident.ReadOpenFindings(graph, lineage).Words()
+	if section == "" {
+		return brief
+	}
+	return section + "\n\n" + brief
 }
 
 // leafOutputHint decides where, if anywhere, a leaf is invited to write a file,
@@ -2389,15 +2864,138 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // executor, written by the runner, and never once carried across this seam, so
 // the leaf rows — the ones holding almost all the tokens — journalled a warm
 // prefix as a cold run. Anything added to the ledger belongs here, once.
-func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string) resident.ExecResult {
+func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked exec.Usage) resident.ExecResult {
+	// THE SUMMED ROW IS THE REMAINDER, NEVER THE TOTAL. Calls banked as they
+	// were billed are already on disk, and summing them again here would charge
+	// the node twice for one leaf. What is left over is real spend nobody has
+	// written down: a worker that drives another process makes no call this
+	// adapter can see, so a leaf that escalated from a banking worker to one of
+	// those must still journal the second attempt.
+	//
+	// Clamped at zero per field rather than trusted, because the two totals are
+	// summed from the same responses in different places and an arithmetic
+	// disagreement must not become a negative row in the ledger.
+	left := exec.Usage{
+		PromptTokens:     atLeastZero(spent.PromptTokens - banked.PromptTokens),
+		CompletionTokens: atLeastZero(spent.CompletionTokens - banked.CompletionTokens),
+		CachedTokens:     atLeastZero(spent.CachedTokens - banked.CachedTokens),
+		Cost:             spent.Cost - banked.Cost,
+	}
+	// A residue of tokens nobody spent is a residue of money nobody spent. Cost
+	// is a float summed twice over, so it never lands exactly on zero, and a row
+	// carrying a billionth of a cent and no tokens is noise wearing a receipt.
+	if left.PromptTokens == 0 && left.CompletionTokens == 0 {
+		left.Cost = 0
+	}
+	if left.Cost < 0 {
+		left.Cost = 0
+	}
 	return resident.ExecResult{
-		PromptTokens:     spent.PromptTokens,
-		CompletionTokens: spent.CompletionTokens,
-		CachedTokens:     spent.CachedTokens,
-		Cost:             spent.Cost,
+		PromptTokens:     left.PromptTokens,
+		CompletionTokens: left.CompletionTokens,
+		CachedTokens:     left.CachedTokens,
+		Cost:             left.Cost,
 		Turns:            shape,
 		Model:            model,
+		SpendBanked:      banked.PromptTokens > 0 || banked.CompletionTokens > 0 || banked.Cost > 0,
 	}
+}
+
+// atLeastZero is the clamp above, named so the reason it exists is readable at
+// each of the three places it is applied.
+func atLeastZero(count int) int {
+	if count < 0 {
+		return 0
+	}
+	return count
+}
+
+// leafBanker writes one usage row per billed response, under the leaf's node,
+// at the moment the provider answers.
+//
+// THE MONEY IS DURABLE BEFORE THE WORK IS. The totals above are assembled in
+// memory and reach the journal once, on the way out of the run, which means
+// every ending that returns no outcome returns no money either: the ink run of
+// 2026-08-29 made a hundred and nine billed calls, was given up on by its
+// watchdog, and left a usage table holding the planner's row and nothing else.
+// So the executor's total stops being the only record. See
+// provider.WithBilling for why the row is written at the adapter's own door
+// rather than at one more ending.
+//
+// It is a counter as well as a writer, because the runner has to know whether
+// to write the summed row at all: two records of one call is worse than one,
+// and a leaf whose calls were banked here is a leaf whose total is already on
+// disk (see resident.ExecResult.SpendBanked).
+type leafBanker struct {
+	graph  *store.Store
+	nodeID string
+	mutex  sync.Mutex
+	rows   int
+	// total is what this banker has actually written, so the landing can journal
+	// the REMAINDER rather than the whole — see leafSpend.
+	total exec.Usage
+	// noted keeps a failing journal quiet after the first complaint. A store
+	// that cannot take a usage row will not take the next hundred either, and a
+	// leaf must not spend its log on saying so once per call.
+	noted bool
+}
+
+func newLeafBanker(graph *store.Store, nodeID string) *leafBanker {
+	return &leafBanker{graph: graph, nodeID: nodeID}
+}
+
+// bank writes one call's row. It is called from the provider's decode, which is
+// whatever goroutine the call was made on — a leaf's parallel tool batch can
+// have several open at once — so it holds a lock over the counter.
+func (b *leafBanker) bank(billed provider.Billed) {
+	if b == nil || b.graph == nil || billed.Empty() {
+		return
+	}
+	err := b.graph.RecordUsage(store.NodeUsage{
+		NodeID:           b.nodeID,
+		PromptTokens:     billed.PromptTokens,
+		CompletionTokens: billed.CompletionTokens,
+		CachedTokens:     billed.CachedTokens,
+		Cost:             billed.Cost,
+		Model:            billed.Model,
+	})
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if err != nil {
+		if !b.noted {
+			b.noted = true
+			log.Printf("note: could not bank a call against %s: %v", b.nodeID, err)
+		}
+		return
+	}
+	b.rows++
+	b.total.PromptTokens += billed.PromptTokens
+	b.total.CompletionTokens += billed.CompletionTokens
+	b.total.CachedTokens += billed.CachedTokens
+	b.total.Cost += billed.Cost
+}
+
+// banked is what this leaf's calls have already put on disk, which is what the
+// landing roll-up subtracts so the same money is not journaled twice.
+func (b *leafBanker) banked() exec.Usage {
+	if b == nil {
+		return exec.Usage{}
+	}
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.total
+}
+
+// armBilling points one leaf run's billing at its own node, exactly as
+// armTranscript points its record. Both belong to the attempt rather than to
+// the worker, and both are armed at every place a leaf is run — the attempt
+// loop and the two gate repair rounds — so a repair's spend is banked by the
+// same rule its turns are recorded by.
+func armBilling(ctx context.Context, banker *leafBanker) context.Context {
+	if banker == nil {
+		return ctx
+	}
+	return provider.WithBilling(provider.WithCallNode(ctx, banker.nodeID), banker.bank)
 }
 
 // leafShape accumulates one attempt's per-turn ledger onto whatever earlier
@@ -2420,9 +3018,62 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 	return shape
 }
 
+// artifactRecord is the job's own account of what its work left behind, with
+// both halves it needs to be a record at all: a leaf tells it what it wrote, and
+// anybody judging the job can ask it what exists.
+//
+// ONE RECORD. The settlement narrates this list under the deliverable and the
+// delivery gate is held to it, and for a while those were two different lists —
+// see brainOptions.produced and docs/design/gate/SETTLEMENT.md §5. An interface
+// rather than the concrete registry so that chat.go, which every driver shares,
+// does not learn the errand's own type.
+type artifactRecord interface {
+	add(paths ...string)
+	list() []string
+}
+
+// jobArtifacts is what the run left behind, as one list, for a gate that is
+// about to be asked whether the person got what they asked for.
+//
+// The job's record leads because it is the complete one: every leaf that has
+// landed, filtered against the disk when it is read. The leaf's own paths follow
+// because this is called before the leaf that produced them has necessarily been
+// announced on every path through the caller, and a record missing the file
+// being judged is the defect this whole seam exists to close. Order is the
+// record's own — a person reading the block reads the job's files first — and a
+// path already in it is not repeated.
+//
+// A nil record is every driver but the errand, and there the leaf's list is the
+// whole of what anybody holds, which is exactly what the gate was given before.
+func jobArtifacts(record artifactRecord, leaf []string) []string {
+	var known []string
+	if record != nil {
+		known = record.list()
+	}
+	if len(known) == 0 {
+		return leaf
+	}
+	seen := make(map[string]bool, len(known)+len(leaf))
+	joined := make([]string, 0, len(known)+len(leaf))
+	for _, paths := range [][]string{known, leaf} {
+		for _, path := range paths {
+			if path == "" || seen[path] {
+				continue
+			}
+			seen[path] = true
+			joined = append(joined, path)
+		}
+	}
+	return joined
+}
+
 // gateEvidence is the record the delivery gate is held to, assembled from the
 // three things the caller holds and the judge cannot see: what the run left
 // behind, what it ran, and what the person actually asked for.
+//
+// What the run left behind is the JOB's record and not this leaf's — see
+// jobArtifacts, and SETTLEMENT.md §5 for the repair round that was judged
+// against an empty list while its parent's files sat on disk.
 //
 // The two additions past the files and the run tail are what made the gate stop
 // judging prose. The request's own named files, settled against the artifact
@@ -2432,47 +3083,22 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 // produced convicts a claim that it was written. The done-criterion is the
 // standard the plan set before the work started; it travels verbatim through
 // retries, so it is the only standard here the run itself cannot have moved.
-// assembledArtifacts is what a node that ASSEMBLES other nodes' results left
-// behind: its own files, and the files those results were handed on with.
-//
-// The gate judges the node under the root, and for a divided job that node is
-// the assembly — a summary written over seven finished workers. Judged on its
-// own artifacts it has none, because a summary writes nothing, and the judge
-// read exactly that: "no source code, test files, or package structure appear
-// in the deliverable or the run records" — with seven packages and 121 green
-// tests on the disk beside it. The gap it named bought a revision that ran all
-// seven workers again, doubling the bill for work that was already done.
-//
-// The results the assembly consumed already carry the paths their producers
-// wrote them out with (store.DependencyInput.Artifacts); the gate is shown the
-// same list the assembler was. Own files first, then each input's, once each.
-func assembledArtifacts(own []string, inputs []exec.Input) []string {
-	seen := make(map[string]bool, len(own))
-	combined := make([]string, 0, len(own))
-	add := func(path string) {
-		if path == "" || seen[path] {
-			return
-		}
-		seen[path] = true
-		combined = append(combined, path)
-	}
-	for _, path := range own {
-		add(path)
-	}
-	for _, input := range inputs {
-		for _, path := range input.Artifacts {
-			add(path)
-		}
-	}
-	return combined
-}
-
-func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string, observed bool) revision.Evidence {
+func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string,
+	observed bool, workspace string) revision.Evidence {
 	evidence := revision.Evidence{
 		Artifacts: artifacts,
 		Named:     revision.NamedFiles(node.Provenance.Intent),
 		Done:      spec.Done,
 		Observed:  observed,
+		// The acceptance checklist rides on the spec for the reason the
+		// criterion does: it is the one object carried forward verbatim through
+		// a retry, so a repair round is judged against the same list its
+		// predecessor was. It is read here and nowhere else, and the worker was
+		// never shown it — see plan/accept.go.
+		Accept: spec.Accept,
+		// And where the work happened, so the gate can take its own reading of
+		// the tree it is judging when the worker left one untaken.
+		Workspace: workspace,
 	}
 	if outcome != nil {
 		evidence.Ran = outcome.Ran
@@ -2482,6 +3108,30 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// "`make all` exited 2, therefore this change is broken" from a run tail
 		// it cannot rerun.
 		evidence.Baseline = outcome.Baseline
+		// And its opposite number: the project's own checks this work turned
+		// red, measured twice with the project's own command. The gate raises
+		// that as a finding of its own before it buys a judge (revision.
+		// Regressions), so this field is what makes a regression a blocker
+		// rather than something a leaf's own green tests can talk over.
+		evidence.Regressed = outcome.Regressed
+		// And its near neighbour, which is a different finding in different
+		// words: the checks this run WROTE and did not get passing. See
+		// revision.OwnChecksFailing.
+		evidence.OwnFailing = outcome.OwnFailing
+		// And the names the work deleted, which the suite could not have told
+		// anyone about: a project only owns checks for what somebody wrote
+		// checks for. See revision.RemovedPublicNames.
+		evidence.Removed = outcome.Removed
+		// And what it READS that nothing binds. The gate re-takes this reading
+		// for itself wherever it has a workspace; this is the leaf's own answer,
+		// which stands where it does not. See revision.UnboundNames.
+		evidence.Unbound = outcome.Unbound
+		// And the whole photograph those two lists were subtracted out of. The
+		// gate needs the rosters, not the failures: which checks exist is what
+		// answers whether anything exercises what the request asked for, and
+		// which checks stopped existing is what catches a worker deleting the
+		// test that was failing it. See docs/design/gate/ACCEPTANCE.md.
+		evidence.Verification = outcome.Verification
 		// And the account of the work itself, when the worker kept one: the
 		// files it changed and the checks it ran. The gate that used to be
 		// handed "the run ended without saying how it went" is handed the diff
@@ -3102,7 +3752,7 @@ func leafCause(node store.Node, err error) string {
 //
 // The partial files ride below too, for the retry and for the person who wants
 // them, not for the notification.
-func humanFailure(node store.Node, err error, artifacts []string) error {
+func humanFailure(node store.Node, err error, artifacts []string, withheld string) error {
 	if err == nil {
 		return nil
 	}
@@ -3113,6 +3763,13 @@ func humanFailure(node store.Node, err error, artifacts []string) error {
 	body := clipUTF8Bytes(firstLine(cause), failureCauseBytes) + "\n\n" + strings.TrimSpace(err.Error())
 	if len(artifacts) > 0 {
 		body += "\n\nFiles it left behind:\n" + strings.Join(artifacts, "\n")
+	}
+	// A leaf that worked in its own view and did not deliver leaves an empty
+	// artifact list and a full checkout, so the line above is silent on exactly
+	// the ending that has the most to say. The error is what a failed node
+	// records and what every reader downstream opens, so the sentence rides it.
+	if withheld = strings.TrimSpace(withheld); withheld != "" {
+		body += "\n\n" + withheld
 	}
 	return errors.New(body)
 }
@@ -3132,16 +3789,6 @@ func shouldGate(node store.Node, outcome *exec.Outcome, continuing bool) bool {
 func shouldPromoteReflex(node store.Node, outcome *exec.Outcome) bool {
 	return node.Group == resident.ReflexGroup && outcome != nil &&
 		(outcome.Promote || outcome.Overran())
-}
-
-// leafDeadline scales the hang backstop with the granted budget, as the
-// headless runner does: 15 minutes floor, one minute per 50k tokens above it.
-func leafDeadline(budget int) time.Duration {
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(budget/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
-	return deadline
 }
 
 // jobPlans retains each planned job's graph for the lifetime of its run, so
@@ -3873,6 +4520,17 @@ func armTranscript(ctx context.Context, graph *store.Store, nodeID, model string
 // has its own deadline, so this only fires when a worker is wedged past every
 // limit it was given — turning a silent forever-hang into a recorded failure.
 func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
+	// The worker runs on a context THIS function can end, so that giving up on
+	// it is an act rather than a departure. See the watchdog branch below.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	// What the worker is doing, listened to without taking the report away from
+	// the claim reaper that is also listening (exec.AlsoWithLiveness).
+	// The clock starts now, not at the first mark: a worker that never reports
+	// anything must accumulate silence from the moment it started, or the
+	// window would re-arm over it forever.
+	life := &leafLife{last: time.Now()}
+	ctx = exec.AlsoWithLiveness(ctx, life.working)
 	// THE RECORD IS MADE DURABLE ON EVERY WAY OUT OF THIS FUNCTION, and there
 	// are three: the leaf landing, the leaf panicking into the guard below, and
 	// the watchdog giving up on a leaf that is still running. Only the first is
@@ -3915,15 +4573,130 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 	// nothing. One per leaf and one per gate revision, on every job.
 	watchdog := time.NewTimer(timeout)
 	defer watchdog.Stop()
-	select {
-	case result := <-done:
-		return result.outcome, result.err
-	case <-watchdog.C:
-		// Typed, and the sentence is unchanged. What the type carries that the
-		// sentence could not is that this ending is the clock and nothing else,
-		// which is the one fact the retry above must not have to guess at.
-		return nil, &exec.Abandoned{After: timeout}
+	for {
+		select {
+		case result := <-done:
+			return result.outcome, result.err
+		case <-watchdog.C:
+			// A WORKER INSIDE A CALL IS NOT A WORKER THAT DID NOT COME BACK.
+			// The window bounds SILENCE, exactly as the claim reaper's does
+			// (FAILSAFE.md's seventh failure), and this timer is the same
+			// question asked one level down: the reaper asks whether anybody is
+			// working the node, and this asks whether THIS worker still is. A
+			// leaf demonstrably waiting on a model call or a shell command has
+			// answered it, so the window is re-armed over the silence that is
+			// actually left rather than spent on a leaf that is working.
+			if quiet, busy := life.silence(time.Now()); busy || quiet < timeout {
+				remaining := timeout - quiet
+				if busy || remaining <= 0 {
+					remaining = timeout
+				}
+				watchdog.Reset(remaining)
+				continue
+			}
+			// A CLAIM IS NOT TAKEN FROM A WORKER, THE WORKER IS STOPPED. Giving
+			// up used to mean returning and leaving the goroutine running: it
+			// kept spending, kept writing to the workspace, and kept whatever
+			// child processes its last command had started, for as long as its
+			// own deadline had left. Now the context it runs on is ended, which
+			// is the same signal the leaf's own deadline sends and which every
+			// belt already lands on — so what comes back is a leaf that landed
+			// after being stopped, with its spend banked and its record flushed,
+			// rather than a nil outcome and a sentence about abandonment.
+			stop()
+			// How long a stopped worker is given to land: the longest span this
+			// leaf was ever observed inside. It is measured rather than chosen,
+			// and it is the honest bound — a worker that took four minutes to
+			// answer one call may need four minutes to notice it was stopped.
+			// A worker that never marked anything is given nothing, because the
+			// journal is then the only account of it and that is the account
+			// the record already holds.
+			grace := time.NewTimer(life.longest())
+			defer grace.Stop()
+			select {
+			case result := <-done:
+				return result.outcome, result.err
+			case <-grace.C:
+				// Typed, and the sentence is unchanged. What the type carries
+				// that the sentence could not is that this ending is the clock
+				// and nothing else, which is the one fact the retry above must
+				// not have to guess at.
+				return nil, &exec.Abandoned{After: timeout}
+			}
+		}
 	}
+}
+
+// leafLife is what the node watchdog above knows about the worker under it:
+// whether it is inside a call right now, when it was last inside one, and the
+// longest it has ever been inside one.
+//
+// IT IS THE SAME EVIDENCE THE CLAIM REAPER READS, from the same seam. A worker
+// says a call is in flight through the context (exec.Working), for free, from
+// the code that is waiting; the reaper listens because it is deciding whether
+// the NODE is held by anybody, and this listens because the watchdog is
+// deciding whether THIS worker is still working. Both are armed, because
+// exec.AlsoWithLiveness composes rather than displaces.
+type leafLife struct {
+	mutex sync.Mutex
+	// open is how many spans are in flight. A batch of tools runs in parallel,
+	// so several are ordinarily open at once.
+	open int
+	// last is when a span was last opened or closed — the newest moment this
+	// worker demonstrably did something — and, before the first span, the
+	// moment the worker started.
+	last time.Time
+	// longestSpan is the longest completed span, which is what a stopped worker
+	// is given to notice and land.
+	longestSpan time.Duration
+}
+
+// working is the exec.LivenessMark this listener installs.
+func (l *leafLife) working() func() {
+	began := time.Now()
+	l.mutex.Lock()
+	l.open++
+	l.last = began
+	l.mutex.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			ended := time.Now()
+			l.mutex.Lock()
+			defer l.mutex.Unlock()
+			if l.open > 0 {
+				l.open--
+			}
+			l.last = ended
+			if span := ended.Sub(began); span > l.longestSpan {
+				l.longestSpan = span
+			}
+		})
+	}
+}
+
+// silence is how long this worker has shown no sign of life, and whether it is
+// showing one right now.
+//
+// A WORKER THAT HAS NEVER MARKED ANYTHING IS SILENT FOR AS LONG AS IT HAS
+// EXISTED, which is the reading the watchdog had before any of this and the
+// correct one for a belt that reports nothing — so last is seeded with the
+// moment the worker started rather than left zero.
+func (l *leafLife) silence(now time.Time) (time.Duration, bool) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if l.open > 0 {
+		return 0, true
+	}
+	return now.Sub(l.last), false
+}
+
+// longest is the longest span this worker was observed inside, and zero for one
+// that was never observed inside any.
+func (l *leafLife) longest() time.Duration {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	return l.longestSpan
 }
 
 // quorumVerify runs two independent validator calls against a cheap model in
@@ -3943,7 +4716,10 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: "You are a deliverable verifier. Reply with exactly one line: ACCEPT or REJECT: <reason>."}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
 	}
-	type verdict struct{ accept bool; reason string }
+	type verdict struct {
+		accept bool
+		reason string
+	}
 	ch := make(chan verdict, 2)
 	for range 2 {
 		go func() {
@@ -4330,6 +5106,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// each branch is what makes it impossible for one exit to journal a
 		// shape and leave the reason behind.
 		structure := plans.takeReading(compiled.Goal)
+		// Every structured call this planner makes reports what it had to do to
+		// get an answer, against the id this job's nodes will be minted under —
+		// which is filed before a single one of them exists, and is therefore
+		// the only anchor that covers the planner at all. See withRepairJournal.
+		ctx = withRepairJournal(ctx, history, prefix)
 		// Built before the scale gate rather than after it. A one-node job still
 		// buys a contract call, and that call was the last structuring round-trip
 		// in the system that reported nothing at all — the poster used to be
@@ -4357,16 +5138,65 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 				// for a decomposed job and not for the commonest job there is.
 				// Journaling the one node costs one event and closes that gap.
 				document := taskSpecGraph(compiled.Goal, method)
+				// The acceptance checklist is stamped on the node that
+				// DELIVERS, which for a one-node job is this one. It is the
+				// request's own list and not this leaf's, so it belongs to
+				// whoever hands the finished thing over and to nobody else —
+				// holding a contributing worker to the whole request's
+				// behaviours would be judging it for work that was never its.
+				document.Nodes[0].Spec.Accept = compiled.Accept
 				leaf = document.Nodes[0].Spec
 				plans.put(prefix, document, prefix, "", nil)
 			}
 			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteSingleLeaf, 1)
-			return store.Subtree{Nodes: []store.NodeSpec{{
-				ID:    prefix,
-				Brief: compiled.Goal,
-				Stage: 1,
-				Spec:  resident.EncodeSpec(leaf),
-			}}}, nil
+			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
+		}
+		// THE SMALLEST ADMISSIBLE PLAN, for when the planner cannot draw one.
+		//
+		// A planning pass that fails before any node exists used to end the run:
+		// exit 1, zero nodes, a third of a cent spent, and nothing attempted on
+		// work the same harness had scored 17/20 on a sweep earlier. That is the
+		// clause FAILSAFE.md puts hardest — a fail-safe never fails a run before
+		// any work has started when something is still possible — and something
+		// always is here, because the shape it falls back to is not invented for
+		// the occasion: it is the same one leaf every non-project ask already
+		// gets, three screens up, with the compiled goal as its brief.
+		//
+		// It is reached only after the structured-answer seam has spent its own
+		// repairs on the failing call, so what arrives here is a planner that was
+		// continued, asked again, and still could not answer. One worker on the
+		// whole goal is worse than a plan and enormously better than nothing.
+		smallest := func(err error) (store.Subtree, error) {
+			log.Printf("note: the planner could not draw a plan for %s (%v); running it as one piece of work", prefix, err)
+			if progress != nil {
+				// The person watching a plan take shape is told the shape
+				// changed, in the same replaceable row every other planning
+				// phase uses. Silence here is how the s4 run read as a hang.
+				progress(plan.ProgressUpdate{Phase: plannerFellBack})
+			}
+			journalRepair(history, prefix, store.StructuredRepair{
+				Lane: "plan", Kind: "fell back", Line: plannerFellBack,
+			})
+			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteSingleLeaf, 1)
+			// The working method rides along when the compile already wrote one.
+			// Buying a fresh structuring call here would be asking the same
+			// model family, one breath after it failed to answer, for a second
+			// thing nobody is waiting on — and the leaf runs perfectly well
+			// without one, which is what an unplannable job used to get instead
+			// of a leaf at all.
+			leaf := plan.Spec{}
+			if method := strings.TrimSpace(compiled.Contract); method != "" {
+				leaf = taskSpecGraph(compiled.Goal, method).Nodes[0].Spec
+			}
+			// AND THE CHECKLIST TRAVELS DOWN THIS PATH TOO. It was already read
+			// — the compile call that failed to draw a plan read the request and
+			// wrote it — and dropping it here is the difference between a run
+			// the gate can hold to what was asked and one it can only read the
+			// deliverable's prose against. textual s7 fell back here, derived no
+			// acceptance checklist, journaled no `acceptance` event at all, and
+			// its gates weighed nothing but wording.
+			leaf.Accept = compiled.Accept
+			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
 		}
 		// Structuring runs on the plan slot; the retained snapshot is the work
 		// slot, because that is who the leaves run on and whose model the
@@ -4447,9 +5277,13 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			Progress:   progress,
 		})
 		if err != nil {
-			return store.Subtree{}, err
+			return smallest(err)
 		}
 		gatePlanDivision(graph, compiled.Goal)
+		// The acceptance checklist, on the one node that hands the finished
+		// thing over. See plan.Graph.SetAcceptance for why it goes there and
+		// nowhere else.
+		graph.SetAcceptance(compiled.Accept)
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
 		// The same run context the spine and briefs were built with: the contract
@@ -4468,11 +5302,44 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
-			return store.Subtree{}, err
+			return smallest(err)
 		}
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		journalScaleGate(history, prefix, compiled, structure, store.ScaleRoutePlanned, len(subtree.Nodes))
 		return subtree, nil
+	}
+}
+
+// plannerFellBack is what a person is told when the planner could not draw a
+// plan and the work went ahead as one piece anyway. It names what happened and
+// what is happening instead, in that order, because the second half is the part
+// that decides whether anyone needs to do anything.
+const plannerFellBack = "the planner could not lay this out — running it as one piece of work"
+
+// singleLeafPlan is the whole job as one node: the smallest plan this system
+// admits, and the shape every non-project ask already takes.
+//
+// It is a function rather than four lines written twice because its second
+// caller is the planner's fail-safe, and a fallback that built its own slightly
+// different shape would be a second answer to "what is the smallest plan" —
+// which is exactly the kind of drift the one-source-of-truth law is about.
+func singleLeafPlan(prefix, goal string, leaf plan.Spec) store.Subtree {
+	return store.Subtree{Nodes: []store.NodeSpec{{
+		ID:    prefix,
+		Brief: goal,
+		Stage: 1,
+		Spec:  resident.EncodeSpec(leaf),
+	}}}
+}
+
+// journalRepair files one row about a model call this run had to repair. Failing
+// to write it is a note and never a job: this is an account of the work.
+func journalRepair(history *store.Store, node string, repair store.StructuredRepair) {
+	if history == nil {
+		return
+	}
+	if err := history.RecordStructuredRepair(node, repair); err != nil {
+		log.Printf("note: could not journal a repair for %s: %v", node, err)
 	}
 }
 
@@ -5485,4 +6352,32 @@ func validLearnedKind(kind store.FactKind) bool {
 	default:
 		return false
 	}
+}
+
+// journalAcceptance writes the acceptance checklist onto the node it governs.
+//
+// Best-effort in the same sense every other journal write on this path is: a
+// write that fails costs an autopsy and a stream line, never the work. An empty
+// checklist writes nothing at all — a request that states no checkable behaviour
+// has no checklist, and a row saying so is a row every reader has to learn to
+// ignore.
+func journalAcceptance(graph *store.Store, node store.Node, spec plan.Spec) {
+	if graph == nil || len(spec.Accept) == 0 {
+		return
+	}
+	points := make([]store.AcceptancePoint, 0, len(spec.Accept))
+	for _, point := range spec.Accept {
+		points = append(points, store.AcceptancePoint{
+			Behaviour: point.Behaviour, Quote: point.Quote,
+		})
+	}
+	if err := graph.RecordAcceptance(node.ID, store.Acceptance{Points: points}); err != nil {
+		log.Printf("note: could not journal what %s is to be accepted on: %v", node.ID, err)
+	}
+	// AND IT IS REMEMBERED AGAINST THE JOB HERE, WHERE IT IS READ. The gate was
+	// the only writer of that memory, so a job whose first node is handed over
+	// without a delivery gate left it empty and the continuation — planned
+	// afresh, carrying no Accept of its own — reached the run's only gate with
+	// no checklist to settle. See revision.RememberChecklistForRequest.
+	revision.RememberChecklistForRequest(node.Provenance.Intent, spec.Accept)
 }

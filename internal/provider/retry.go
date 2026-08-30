@@ -340,8 +340,17 @@ func backoffFor(attempt int, providerWait time.Duration) time.Duration {
 // ([Client.completionWall]) — the same figure a stream on that lane is cut
 // at, so a wedged endpoint costs a headless worker minutes rather than the
 // whole run.
+//
+// AND AN ENDPOINT THAT ANSWERS WHOLE IS BOUNDED IN TOTAL WHATEVER IT WAS ASKED
+// FOR. A gateway that takes `stream: true` and generates the entire reply before
+// it sends a header has no silence to measure and no first token to wait for, so
+// the streaming transport's header deadline would be a deadline on the
+// generation rather than on a stall. [Client.unstreamable] is that endpoint
+// having said so on the wire, and from then on its calls are bounded the way an
+// answer with no inside can be — by the adaptive budget and, on a lane we have
+// measured, by that lane's wall.
 func (c *Client) clientFor(model string, stream bool, maxTokens int) http.Client {
-	if stream {
+	if stream && !c.unstreamable.Load() {
 		client := *c.stream
 		client.Timeout = 0
 		return client

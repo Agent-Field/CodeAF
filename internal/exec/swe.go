@@ -172,7 +172,9 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	runCtx, cancel := context.WithTimeout(ctx, s.deadline)
 	defer cancel()
 
-	trace := newTracer(s.workspace, task.leafKey())
+	// The coding pipeline leaves the same record the other two belts do; see
+	// tracer.sink for why the seam is the recorder rather than each loop.
+	trace := newRecordingTracer(ctx, s.workspace, task.leafKey())
 	defer trace.close()
 
 	// Where this leaf's engine runs, and how what it writes gets back to the
@@ -687,8 +689,21 @@ func (s *SWE) substrate(ctx context.Context, task Task, view *sweView, outcome *
 	// Artifacts name files in the shared workspace, so only a change that
 	// reached it may be recorded: work still sitting on an undelivered branch is
 	// real, is in the account, and is not in a directory the rest of the job can
-	// open. The refusal sentence is what says where it is.
+	// open.
+	//
+	// This is the one place in the run that knows both halves of that sentence
+	// at once, so it is where the second half is written down. Without it the
+	// account said "measured, and here are the files" and every reader after it
+	// — the composer that writes prose about a repository, the gate, the person
+	// — had no way to learn that none of those files were anywhere they could
+	// look. See Account.Withheld.
 	if dir != s.workspace.Root() {
+		if account != nil {
+			account.Withheld = dir
+			if view != nil {
+				account.WithheldBranch = view.branch
+			}
+		}
 		return nil
 	}
 	paths := make([]string, 0, len(changed))

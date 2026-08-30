@@ -472,9 +472,9 @@ func (runner *pipeline) run(
 		}
 	}
 	verificationJustifiedPass := result.Status == "pass"
-	verifiedTree, haveVerifiedTree := "", false
+	verifiedTree, haveVerifiedTree := worktreeSnapshot{}, false
 	if verificationJustifiedPass {
-		verifiedTree, haveVerifiedTree = runner.worktreeFingerprint(ctx)
+		verifiedTree, haveVerifiedTree = runner.worktreeSnapshot(ctx)
 	}
 	runner.runHygieneCleanup(ctx, baseSHA, finalAudit.Status)
 	scheduler.ForceSweepWorktrees(ctx, runner.workspace, runner.dbPath, projectID)
@@ -504,14 +504,41 @@ func (runner *pipeline) run(
 		}
 	}
 	if verificationJustifiedPass {
-		finalTree, haveFinalTree := runner.worktreeFingerprint(ctx)
-		if !haveVerifiedTree || !haveFinalTree {
-			result.Status = "fail"
-			result.Reason = "could not establish final worktree state after post-audit phases"
-		} else if finalTree != verifiedTree {
+		finalTree, haveFinalTree := runner.worktreeSnapshot(ctx)
+		switch {
+		case !haveVerifiedTree || !haveFinalTree:
+			// The tree could not be measured. That is an absence of evidence,
+			// and it used to be spent as evidence of a fault: the run was failed
+			// outright for "could not establish final worktree state", and the
+			// over-budget scan below it manufactured a fresh marker on every
+			// call so the loop could never converge either. Both revoked a pass
+			// the world had already justified.
+			//
+			// So the answer is taken from the world instead of guessed. The
+			// question the fingerprint was standing in for is whether the
+			// post-audit phases broke the change, and the project's own
+			// entrypoints answer that directly. Green keeps the pass; red fails
+			// on the real failure, in the project's own words.
+			runner.note("[codeaf] the worktree could not be fingerprinted — " +
+				"re-running full project verification to settle the pass from the world instead\n")
+			verification := runner.runProjectVerification(ctx)
+			if verification.Failed != nil {
+				result.Status = "fail"
+				result.Reason = "post-audit verification failed: " + verification.Failure
+			}
+		case finalTree.Digest != verifiedTree.Digest:
 			// PR-ready and hygiene run after the audit. A prior pass only describes
 			// the pre-format tree, so repeat the same process-derived verification
 			// floor against the final files before preserving pass.
+			//
+			// maxStableReverifications is not the detector and must not be read as
+			// one. The detector is the comparison: the leaf is finished and
+			// nothing but the verification is running, so a tree that differs
+			// ACROSS one verification was changed BY that verification. The count
+			// is only how many times a settling tree is given to settle — two,
+			// because one verification that writes a file it then reuses settles
+			// on the second, and a tree still moving on the third is moving every
+			// time.
 			const maxStableReverifications = 2
 			beforeVerification := finalTree
 			for attempt := 1; attempt <= maxStableReverifications; attempt++ {
@@ -522,18 +549,23 @@ func (runner *pipeline) run(
 					result.Reason = "post-audit verification failed: " + verification.Failure
 					break
 				}
-				afterVerification, haveAfterVerification := runner.worktreeFingerprint(ctx)
+				afterVerification, haveAfterVerification := runner.worktreeSnapshot(ctx)
 				if !haveAfterVerification {
-					result.Status = "fail"
-					result.Reason = "could not establish worktree state after post-audit verification"
+					// Same rule as above, one layer in: the verification that
+					// just ran came back green, and a measurement nobody could
+					// take is not grounds to revoke that.
+					runner.note("[codeaf] the worktree could not be fingerprinted after re-verification — " +
+						"the verification itself came back green, so the pass stands\n")
 					break
 				}
-				if afterVerification == beforeVerification {
+				if afterVerification.Digest == beforeVerification.Digest {
 					break
 				}
 				if attempt == maxStableReverifications {
 					result.Status = "fail"
-					result.Reason = "post-audit verification is self-mutating or exceeded the fingerprint budget: the worktree could not stabilize during bounded re-verification"
+					result.Reason = "post-audit verification rewrites the worktree every time it runs (" +
+						strings.Join(worktreeMutations(beforeVerification, afterVerification), ", ") +
+						"): the tree cannot be verified in a settled state"
 					break
 				}
 				beforeVerification = afterVerification
@@ -1959,12 +1991,38 @@ func (runner *pipeline) auditTreeFingerprint(ctx context.Context) (string, bool)
 	return head + "|" + status, true
 }
 
-const (
-	worktreeFingerprintMaxFiles = 4096
-	worktreeFingerprintMaxBytes = 8 * 1024 * 1024
-	worktreeFingerprintTimeout  = 2 * time.Second
-)
+// worktreeFingerprintTimeout is the fingerprint's ONE budget, and it is a
+// deadline rather than a size.
+//
+// It is derived from the thing it guards. A fingerprint is taken at most three
+// times around one post-audit verification, and that verification's own ceiling
+// is fullVerificationTimeoutMS — ten minutes. Two seconds is a three-hundredth
+// of it, so the whole of the measurement costs under one percent of the single
+// cheapest thing it is measuring. PERF.md carries the same derivation.
+//
+// There is deliberately no file-count and no byte budget beside it. There used
+// to be: 4096 files and 8 MiB, spent hashing EVERY tracked or unignored file in
+// the repository. aforge's own tree is 3,746 files and 75 MB — nine times that
+// budget, and one tracked 9 MB file exceeds it alone — so on this repository
+// every single fingerprint came back over budget, and over budget returned a
+// FRESH NONCE that no two calls could ever agree on. The post-audit
+// stabilisation loop compares two fingerprints for equality, so it could never
+// converge, and five leaves across two measured runs died on
+// "self-mutating or exceeded the fingerprint budget" having mutated nothing.
+// A measurement that cannot be taken must never be reported as a measurement
+// that came back different; that is the whole lesson, and it is why the
+// snapshot below answers with a THIRD state instead.
+const worktreeFingerprintTimeout = 2 * time.Second
 
+// worktreeFileFingerprint is one path as the fingerprint sees it.
+//
+// Mode and ContentHash are what the digest is taken over. Size and ModTimeNano
+// are the CACHE KEY and nothing else — a file whose metadata is untouched
+// cannot have new bytes, so its hash is carried forward instead of read again.
+// They are deliberately out of the digest itself: a formatter that rewrites a
+// file with byte-identical content has changed the tree's mtimes and has not
+// changed the tree, and a gate that failed a run over that would be reporting
+// the clock rather than the work.
 type worktreeFileFingerprint struct {
 	Mode        os.FileMode
 	Size        int64
@@ -1973,146 +2031,242 @@ type worktreeFileFingerprint struct {
 	ContentHash string
 }
 
-// worktreeFingerprint hashes the content and modes of every tracked or
-// unignored file. Unlike `git status --porcelain`, it detects a formatter
-// changing the bytes of an already-modified file; unlike HEAD+diff, it does not
-// mistake a history-only rewrite with an identical checked-out tree for a
-// source mutation. File count, bytes, and wall time are bounded. Metadata lets
-// unchanged files reuse their prior content hash; only new or metadata-changed
-// files are read again.
-func (runner *pipeline) worktreeFingerprint(ctx context.Context) (string, bool) {
+// worktreeSnapshot is one observation of what this worktree is holding that git
+// does not already have committed: the digest two observations are compared by,
+// and the per-path detail that says WHICH paths moved when they disagree.
+type worktreeSnapshot struct {
+	Digest string
+	Files  map[string]worktreeFileFingerprint
+}
+
+// worktreeSnapshot photographs the CHANGE, not the repository.
+//
+// git is asked what differs from HEAD — modified, staged, deleted, renamed and
+// untracked-but-not-ignored — and only those paths are hashed. That is the
+// structural correction of the old scan, and it fixes both of its faults at
+// once. It is bounded by the size of the leaf's own change set rather than by
+// the size of somebody's repository, so the budget that used to decide the
+// verdict never binds; and it still sees a formatter re-editing a file that was
+// already modified, which is the case `git status` alone cannot answer, because
+// the bytes of every listed path are read.
+//
+// Nothing is lost by not hashing the clean files. A verification that mutates a
+// file which was clean makes that file appear in this list, so the list itself
+// changes; a verification that mutates a file already in the list changes that
+// file's content hash. Ignored files are out, as they were before: a build
+// writing its own output into an ignored path is not a mutation of anybody's
+// source.
+//
+// The second return is the honest third state. False means NOT MEASURED — the
+// deadline expired, git refused, a file could not be read — and every caller is
+// required to treat it as an absence of evidence rather than as evidence of
+// change.
+func (runner *pipeline) worktreeSnapshot(ctx context.Context) (worktreeSnapshot, bool) {
 	runner.fingerprintMu.Lock()
 	defer runner.fingerprintMu.Unlock()
 	fingerprintCtx, cancel := context.WithTimeout(ctx, worktreeFingerprintTimeout)
 	defer cancel()
-	command := exec.CommandContext(fingerprintCtx, "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	command.Dir = runner.workspace
-	stdout, err := command.StdoutPipe()
-	if err != nil || command.Start() != nil {
-		return "", false
+
+	head, ok := runner.fingerprintGit(fingerprintCtx, "rev-parse", "HEAD")
+	if !ok {
+		return worktreeSnapshot{}, false
 	}
-	raw, readErr := io.ReadAll(io.LimitReader(stdout, worktreeFingerprintMaxBytes+1))
-	if len(raw) > worktreeFingerprintMaxBytes {
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		return runner.overBudgetFingerprint(), true
+	// --porcelain=v1 is pinned rather than left to git's default so the parsing
+	// below is reading a format that is promised not to move. -z is what makes a
+	// path with a newline in it readable at all, and -uall is load-bearing: with
+	// git's default, a whole untracked DIRECTORY is reported as one entry
+	// ending in a slash, and a directory is not a thing that can be hashed.
+	raw, ok := runner.fingerprintGit(fingerprintCtx, "status", "--porcelain=v1", "-z", "-uall")
+	if !ok {
+		return worktreeSnapshot{}, false
 	}
-	waitErr := command.Wait()
-	if fingerprintCtx.Err() != nil && ctx.Err() == nil {
-		return runner.overBudgetFingerprint(), true
+
+	entries, ok := parseGitStatusZ(raw)
+	if !ok {
+		return worktreeSnapshot{}, false
 	}
-	if readErr != nil || waitErr != nil {
-		return "", false
-	}
-	paths := strings.Split(string(raw), "\x00")
-	if len(paths) > 0 && paths[len(paths)-1] == "" {
-		paths = paths[:len(paths)-1]
+	paths := make([]string, 0, len(entries))
+	for path := range entries {
+		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	if len(paths) > worktreeFingerprintMaxFiles {
-		return runner.overBudgetFingerprint(), true
-	}
-	remainingBytes := int64(worktreeFingerprintMaxBytes - len(raw))
+
 	digest := sha256.New()
-	nextFiles := make(map[string]worktreeFileFingerprint, len(paths))
+	_, _ = digest.Write([]byte(head + "\x00"))
+	files := make(map[string]worktreeFileFingerprint, len(paths))
 	for _, relative := range paths {
 		if fingerprintCtx.Err() != nil {
-			if ctx.Err() == nil {
-				return runner.overBudgetFingerprint(), true
-			}
-			return "", false
+			return worktreeSnapshot{}, false
 		}
-		path := filepath.Join(runner.workspace, filepath.FromSlash(relative))
-		info, statErr := os.Lstat(path)
-		_, _ = digest.Write([]byte(relative + "\x00"))
-		if os.IsNotExist(statErr) {
-			state := worktreeFileFingerprint{Missing: true}
-			nextFiles[relative] = state
-			_, _ = digest.Write([]byte("missing\x00" + state.ContentHash + "\x00"))
+		state, ok := runner.fingerprintFile(fingerprintCtx, relative)
+		if !ok {
+			return worktreeSnapshot{}, false
+		}
+		files[relative] = state
+		_, _ = digest.Write([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%v\x00%s\x00",
+			relative, entries[relative], state.Mode, state.Missing, state.ContentHash)))
+	}
+	runner.fingerprintFiles = files
+	return worktreeSnapshot{Digest: fmt.Sprintf("%x", digest.Sum(nil)), Files: files}, true
+}
+
+// worktreeFingerprint is the digest alone, for the callers that only ever ask
+// "is this the same tree it was" — the verification timeout memo, which replays
+// a recorded hang only while the files it hung on are byte identical.
+func (runner *pipeline) worktreeFingerprint(ctx context.Context) (string, bool) {
+	snapshot, ok := runner.worktreeSnapshot(ctx)
+	if !ok {
+		return "", false
+	}
+	return snapshot.Digest, true
+}
+
+// fingerprintGit runs one read-only git command under the fingerprint's own
+// deadline. It is not gitOutput because that helper answers an empty string for
+// both "git said nothing" and "git could not be run", and the difference
+// between those two is exactly what this measurement is required to keep.
+func (runner *pipeline) fingerprintGit(ctx context.Context, args ...string) (string, bool) {
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = runner.workspace
+	output, err := command.Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimRight(string(output), "\n"), true
+}
+
+// parseGitStatusZ reads `git status --porcelain=v1 -z` into path → status code.
+//
+// The one shape that is not a flat list is a rename or a copy: git writes the
+// destination in the entry and the source as the NEXT record, with no status
+// letters of its own. Both paths are kept, because a rename is a change to both
+// ends and a gate that watched only one of them would miss a verification that
+// moved a file back.
+func parseGitStatusZ(raw string) (map[string]string, bool) {
+	entries := map[string]string{}
+	records := strings.Split(raw, "\x00")
+	for i := 0; i < len(records); i++ {
+		record := records[i]
+		if record == "" {
 			continue
 		}
-		if statErr != nil {
-			return "", false
+		if len(record) < 4 || record[2] != ' ' {
+			// Not a status record. The format is fixed at two status letters, a
+			// space and a path, so anything else means this is not the output
+			// this function was written for and guessing at it would be worse
+			// than saying so.
+			return nil, false
 		}
-		state := worktreeFileFingerprint{
-			Mode: info.Mode(), Size: info.Size(), ModTimeNano: info.ModTime().UnixNano(),
-		}
-		cached, haveCached := runner.fingerprintFiles[relative]
-		metadataUnchanged := haveCached && !cached.Missing && cached.Mode == state.Mode &&
-			cached.Size == state.Size && cached.ModTimeNano == state.ModTimeNano
-		if metadataUnchanged {
-			state.ContentHash = cached.ContentHash
-		}
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			if !metadataUnchanged {
-				target, linkErr := os.Readlink(path)
-				if linkErr != nil {
-					return "", false
-				}
-				remainingBytes -= int64(len(target))
-				if remainingBytes < 0 {
-					return runner.overBudgetFingerprint(), true
-				}
-				sum := sha256.Sum256([]byte(target))
-				state.ContentHash = fmt.Sprintf("%x", sum[:])
-			}
-		case info.Mode().IsRegular():
-			if !metadataUnchanged {
-				contentHash, consumed, ok := boundedFileHash(fingerprintCtx, path, remainingBytes)
-				if !ok {
-					return runner.overBudgetFingerprint(), true
-				}
-				remainingBytes -= consumed
-				state.ContentHash = contentHash
+		code, path := record[:2], record[3:]
+		entries[path] = code
+		if code[0] == 'R' || code[0] == 'C' {
+			i++
+			if i < len(records) && records[i] != "" {
+				entries[records[i]] = code
 			}
 		}
-		nextFiles[relative] = state
-		_, _ = digest.Write([]byte(fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00", state.Mode, state.Size, state.ModTimeNano, state.ContentHash)))
 	}
-	runner.fingerprintFiles = nextFiles
-	return fmt.Sprintf("%x", digest.Sum(nil)), true
+	return entries, true
 }
 
-func (runner *pipeline) overBudgetFingerprint() string {
-	runner.fingerprintNonce++
-	return fmt.Sprintf("changed:worktree-fingerprint-budget:%d", runner.fingerprintNonce)
+// fingerprintFile is one path's contents, reusing the previous observation's
+// hash when the metadata says the bytes cannot have moved.
+func (runner *pipeline) fingerprintFile(ctx context.Context, relative string) (worktreeFileFingerprint, bool) {
+	path := filepath.Join(runner.workspace, filepath.FromSlash(relative))
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		// A deleted path is a real state and not a failure: git named it because
+		// it is gone, and gone is what the digest records.
+		return worktreeFileFingerprint{Missing: true}, true
+	}
+	if err != nil {
+		return worktreeFileFingerprint{}, false
+	}
+	state := worktreeFileFingerprint{
+		Mode: info.Mode(), Size: info.Size(), ModTimeNano: info.ModTime().UnixNano(),
+	}
+	if cached, ok := runner.fingerprintFiles[relative]; ok && !cached.Missing &&
+		cached.Mode == state.Mode && cached.Size == state.Size &&
+		cached.ModTimeNano == state.ModTimeNano {
+		state.ContentHash = cached.ContentHash
+		return state, true
+	}
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		target, err := os.Readlink(path)
+		if err != nil {
+			return worktreeFileFingerprint{}, false
+		}
+		sum := sha256.Sum256([]byte(target))
+		state.ContentHash = fmt.Sprintf("%x", sum[:])
+	case info.Mode().IsRegular():
+		hash, ok := fileContentHash(ctx, path)
+		if !ok {
+			return worktreeFileFingerprint{}, false
+		}
+		state.ContentHash = hash
+	}
+	return state, true
 }
 
-func boundedFileHash(ctx context.Context, path string, remaining int64) (string, int64, bool) {
-	if remaining < 0 {
-		return "", 0, false
-	}
+// fileContentHash reads one file under the fingerprint's deadline. There is no
+// byte allowance: the deadline is the budget, and a change set large enough to
+// exhaust it answers "not measured" rather than "changed".
+func fileContentHash(ctx context.Context, path string) (string, bool) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", 0, false
+		return "", false
 	}
 	defer file.Close()
 	digest := sha256.New()
 	buffer := make([]byte, 64*1024)
-	limited := io.LimitReader(file, remaining+1)
-	consumed := int64(0)
 	for {
 		if ctx.Err() != nil {
-			return "", consumed, false
+			return "", false
 		}
-		read, readErr := limited.Read(buffer)
+		read, err := file.Read(buffer)
 		if read > 0 {
-			consumed += int64(read)
 			_, _ = digest.Write(buffer[:read])
-			if consumed > remaining {
-				return "", consumed, false
-			}
 		}
-		if readErr == io.EOF {
+		if err == io.EOF {
 			break
 		}
-		if readErr != nil {
-			return "", consumed, false
+		if err != nil {
+			return "", false
 		}
 	}
-	return fmt.Sprintf("%x", digest.Sum(nil)), consumed, true
+	return fmt.Sprintf("%x", digest.Sum(nil)), true
 }
+
+// worktreeMutations names the paths two observations disagree about, so a
+// verdict about a tree that would not settle can say WHAT would not settle
+// instead of asserting it. Bounded, because this ends up in one sentence a
+// person reads.
+func worktreeMutations(before, after worktreeSnapshot) []string {
+	moved := []string{}
+	for path, state := range after.Files {
+		previous, known := before.Files[path]
+		if !known || previous.Missing != state.Missing ||
+			previous.ContentHash != state.ContentHash || previous.Mode != state.Mode {
+			moved = append(moved, path)
+		}
+	}
+	for path := range before.Files {
+		if _, known := after.Files[path]; !known {
+			moved = append(moved, path)
+		}
+	}
+	sort.Strings(moved)
+	if len(moved) > worktreeMutationsNamed {
+		moved = moved[:worktreeMutationsNamed]
+	}
+	return moved
+}
+
+// worktreeMutationsNamed is how many paths a self-mutation verdict spells out.
+// Three is what fits in a sentence; the finding is that the tree will not
+// settle, and the fourth path does not change it.
+const worktreeMutationsNamed = 3
 
 func auditBlockerCount(result auditorgate.GateResult) int {
 	if result.Verdict == nil {

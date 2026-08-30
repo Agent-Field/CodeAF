@@ -72,9 +72,12 @@ One `exec.SubharnessInfo` registered at startup:
   examples (comfortably atomic / borderline / oversized) in the style of
   `plan/size.go` sizeAnchors. This is the *initial* setting of the
   subharness's hardness; measurement replaces it (below).
-- **Budget shape** — deadline floor and scaling, so `leafDeadline` and the
-  watchdog fit the subharness (a swe run is minutes-to-an-hour, not a linear
-  leaf's 15-minute floor).
+- **Budget shape** — deadline floor and scaling, so `SubharnessInfo.Deadline`
+  and the watchdog over it (`SubharnessInfo.Watchdog`) fit the subharness (a
+  swe run is minutes-to-an-hour, not a linear leaf's 15-minute floor). Leaving
+  all three fields zero is how a registration says "linear's shape"; writing
+  linear's numbers out again is a second author of them and fails
+  `TestOnlyTheSubharnessTableSizesALeafsRoom`.
 
 ## Selection — where the choice is made
 

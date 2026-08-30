@@ -420,6 +420,655 @@ A node with **no** write scope is read-only work — its brief says `THIS IS REA
 find out, do not change anything` — and writing nothing is the whole of what it was asked
 for. It is never held to this.
 
+## When a review says something is missing — why it says partial, not finished
+
+Before a run's answer is handed over, one review reads it against your own request and
+asks the only question that matters: would you accept this as done? Its default is to
+pass. When it fails, it has to name the missing thing concretely enough that a worker
+could close it from those words alone.
+
+A named gap buys **one revision round** — the same work again with the review's words in
+front of it — and, if the gap survives that, the work that closes it, planned and queued
+like any other piece. You see one line: `a review found this still missing: … — finishing
+that before delivering`.
+
+**Three things can stop that round being bought, and only one of them means the review was
+wrong.**
+
+- **It is already there.** The file the review says is missing is on disk under the name
+  you used. The review was checked against the world and lost, and the answer is handed
+  over as finished: `a review raised this: … — I've delivered as it stands, because what
+  it asked for is already on disk under the name the request used.` Where a run wrote no
+  files at all — a question answered in prose — the answer itself is what it left behind,
+  and things named in the text you are about to read count the same way. **Where the run
+  did leave files behind, what the answer SAYS about them is never evidence:** a summary
+  claiming work was done is the thing being checked, not the world it is checked against,
+  and a run once shipped "all three files are implemented and committed" over a file that
+  had never been written.
+- **The review asked for something you never asked for.** Nothing is redone, because a
+  round bought against a standard aforge set for itself cannot converge on anything. You
+  are told, in the delivery: `— I've delivered as it stands, because what the review asked
+  for next is not in the request, and I don't redo work over a standard the request never
+  set. Say the word and I will.`
+- **Nothing more could be started.** No money, no rounds, no room, or not enough time left
+  on the run to finish a repair: `I'm handing this over with a reservation — a review found
+  this still missing: … I've taken it as far as repair takes it: there is not enough time
+  left on the run to finish it.`
+
+**Only the first of those is a finished run.** The other two hand over something the run
+itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
+**exit 2: the run handed over less than it promised, and the finding it is short of is
+named on the last line.** That is the whole difference: a refusal that was checked against
+the world overturns the finding, and a refusal about where the review got its words does
+not, because no ruling about a quotation makes missing work appear.
+
+Watching a headless run, the line names the finding first and the reason second:
+
+```
+gate: refused — The deliverable does not contain the code that writes feature_schema.joblib — what the review asked for next is not in the request
+```
+
+## The last line of a headless run — `partial`, and why the run says it is short
+
+An exit code is what a script reads and it is the one thing you cannot see in a terminal.
+So a run that ends short says it out loud, once, last, under the ✓ rows:
+
+```
+partial — gate: The deliverable does not contain the code that writes feature_schema.joblib (not repaired: the same words were already worked on once)
+```
+
+The finding comes first because the finding is the news; the reason is why nothing further
+ran — a refusal in the review's own words, or `nothing further was started`. A run that
+prints no such line finished whole, and `aforge do` left with 0.
+
+One shortfall has no repair to explain, and drops the `gate:` and the reason with it: a run
+whose project declares a suite that could not be read. Nothing was refused and nothing was
+short — the check itself never happened, which is why the line names the measurement rather
+than a finding:
+
+```
+partial — nothing in this project's verification could be read: `npx ava --tap` was killed at its ceiling of 1m53s without finishing
+```
+
+A gap that a repair round closed is **not** short. You see `gate: pass — <what the first
+reading said was missing> — closed by the repair`: the work was redone and re-read, checks
+that were passing before were checked again, and the exit code is 0. Only a finding that
+was still standing when the run stopped makes it partial.
+
+A run that stopped because it had stopped getting anywhere says that instead, and it says
+it in front of any review finding — the review says what is missing, this says why nothing
+more was bought to go and get it:
+
+```
+partial — no relevant progress in 3 rounds; last change: src/grid.ts
+```
+
+`last change` is the newest file the run changed that the request was actually about; when
+there has never been one it says `nothing this job is about has changed`. A run stopped
+because its wall could not hold another round of work says `partial — no time left for
+another round of work` — which is a run choosing to stop while there is still time to
+check what it did, not a run that ran out of time.
+
+## When aforge decides there is nothing left to do — and when it may not
+
+Before buying more work, aforge asks whether everything the request is judged on is
+already covered by work that has landed or is running. When the answer is yes, it stops
+and says `everything this job is judged on is already covered by work that has landed or
+is already running — handing over what's done`.
+
+**That answer never wins over something measured.** It is a reading of the plan, and a plan
+can look complete over a tree that is not: checks can be failing, a behaviour the request
+asks for can have no check at all, a change can have deleted public names or left the
+callers of something it rewrote behind. While any of those stands on the job, the work
+carries on regardless of what the coverage reading said — and it makes no difference
+whether the round is a repair, a continuation of work that ran out, or a reaction to a
+result that contradicted the plan.
+
+What still stops the work is the rest of it: the round cap, a job that has stopped changing
+anything, one finding worked on twice, and the wall.
+
+## When one thing is worked on twice and still stands
+
+A review finding buys work. **Each thing it names buys at most two rounds.** If the first
+round ends and that thing is still missing, a second round is bought; if that one ends and
+it is STILL missing, nothing more is bought for it — it is handed over named instead of
+repaired, and the last line counts and names what stood:
+
+```
+partial — 1 behaviour stood through 2 rounds of repair: Count a circuit failure for body-read/stream-consumption errors
+```
+
+**It is counted thing by thing, not review by review.** A review usually names several
+things at once and the list it names changes from one reading to the next — two behaviours
+this time, five the next, with one of them in both. What matters is each behaviour, each
+check, each deleted name on its own: it is the same one when it is the same KIND of
+finding — a check that used to pass and now fails, a check that was removed, a public name
+the change deleted, a behaviour nothing exercises, callers a rewritten definition left
+behind — spelled the same way. A round is bought as long as the review still names
+something that has not already had its two rounds; the ones that have ride along without
+buying anything.
+
+The wording you see on the work's own record when nothing in the review can buy a round is
+`everything still missing here has already had two rounds of work aimed straight at it, so
+this is handed over with it named rather than repaired`.
+
+## When the wall gets close — the work is checked before the clock stops
+
+A job that has not finished when its wall arrives is a job nothing ever judged: the review
+happens when a job finishes, and a job cut off mid-step never finishes. So aforge stops
+buying new work while there is still room to check what it did. Two things do it, and they
+answer the same question from opposite ends:
+
+- Work that would need another round is not bought. The line is `partial — no time left
+  for another round of work`.
+- A job that has never been reviewed at all is wound up: the parts that have not begun are
+  retired, the parts in flight are asked to stop, and the job is handed over to be checked
+  as it stands. You see `handing this over to be checked while there is still time`, and
+  the parts that were retired say `there was not enough time left on this run to finish
+  this, so it was handed over to be checked as it stands`.
+
+How close is "close" is measured on the errand itself — the pace this job's own rounds have
+kept, plus what this project's own checks cost to read on this machine. It is not a fixed
+number of seconds, and a job that has not yet shown a pace is never wound up early.
+
+## When the repair only rewrote the summary — a round that changed nothing on disk
+
+Sometimes the work has already landed and what is wrong is the account of it, so instead
+of running the worker again aforge rewrites the summary over the change that is already
+there. Nothing runs; only the words are new. **That kind of round can close a review's
+finding about the summary — a wrong description, a missing explanation — and it is not
+allowed to close one about the work itself.**
+
+The files on disk are stamped before the round and again after it, and if nothing moved,
+a finding about a file, about a check the run ran, or about a change no test has been run
+against still stands. The run ends partial and the last line says which round it was:
+
+```
+partial — gate: The missing element is the substance of the work (not repaired: the repair rewrote the account and changed nothing on disk)
+```
+
+A finding that only ever concerned the wording still closes this way, and so does anything
+where the project's own checks ran on the change and came back green.
+
+## When the review itself could not be read — unchecked, and said so
+
+The review is a model call like any other, and a model can answer with something that is
+not an answer: prose where an object was asked for, or a reply cut off before it finished.
+When that happens the answer is asked for again, once, with the format stated and the
+offending reply quoted back. If the second attempt is unreadable too, **the review did not
+happen** — and a run whose own check did not happen is not a run that passed its check.
+
+The work is still handed over: it was done, and it is yours. What it carries is a
+reservation naming what is missing, which is the check and not the work:
+
+```
+I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for.
+```
+
+Watching a headless run you see it as the review's own line:
+
+```
+gate: fail — the review could not be read, so this delivery was never checked
+```
+
+**The run lands partial.** `aforge do` leaves with exit **2**, not 0. This used to be exit
+0 with the work reported as done — the review was treated as having no opinion rather than
+as having failed to give one — and that is the single difference. Nothing is being said
+about the work; nobody looked at it.
+
+## When a model's answer is cut off or comes back as prose — the ↻ lines
+
+Every place aforge asks a model for a structured answer — planning a job, compiling your
+request, reviewing a delivery — the reply is given room sized to what was asked for, and
+repaired when it does not fit. Two things go wrong and both are said out loud:
+
+```
+  ↻ plan: answer cut at the ceiling — continued
+  ↻ gate: the answer was not readable — asked again
+  ↻ compile: the answer was still not readable — giving up on it
+```
+
+- **cut at the ceiling** means the model ran out of output room mid-answer. The half that
+  arrived is kept and the rest is asked for, joined onto it. It is not bought a second
+  time; a re-ask spends the same tokens to hit the same wall.
+- **not readable** means nothing usable came back at all. The model is asked once more with
+  the shape stated and its own reply quoted, so it can correct rather than start over.
+- **giving up on it** is the third line and the only one that changes the outcome. What
+  happens next depends on which call it was: a review that gives up hands the work over
+  unchecked, above; planning that gives up runs the job as one piece of work, below.
+
+The word before the colon is the call: `plan`, `gate`, or `compile`. Every one of these
+lines is also kept with the job, so a run can be read back afterwards and its repairs
+counted.
+
+## When the planner cannot lay a job out — one worker instead of nothing
+
+Planning is itself a model call, and it can fail before any piece of work exists. It used
+to end the run there: no tasks, nothing attempted, and an error where an answer should be.
+
+It now falls back to **the smallest plan there is** — one worker, given the whole compiled
+goal — which is the same shape every single-step ask already gets. You see:
+
+```
+  the planner could not lay this out — running it as one piece of work
+```
+
+One worker on the whole job is worse than a plan and enormously better than nothing, and
+the run goes on to deliver, be reviewed, and land like any other — **with the acceptance
+checklist it already read off your request**, so a job that fell back here is still held to
+the behaviours you stated rather than only to how its answer reads.
+
+## What the review is allowed to hold you to — the request, the method, and what was promised
+
+A review may only ask for things that were promised **before the work started**: your own
+request, the working method that kind of work was held to, and what the plan itself said it
+would produce. Those three cannot have moved in response to what the work turned out to be,
+which is what makes them safe to buy work against.
+
+A review's finding is accepted when it quotes one of those — **including a quotation that
+skips a middle**, with `...` between two parts of your sentence, which is how anybody
+quotes a long request — or when it names a file one of them names, under either spelling,
+or when every distinctively spelled name in it is a name one of them uses. So "the code
+that writes feature_schema.joblib is not there" is held to, even though it quotes no whole
+clause of the request, because every name in it is yours.
+
+An ordinary word is not a name. A finding built out of your vocabulary but asking for
+something you never asked for — "March refers to any calendar year present in the data" —
+names nothing distinctive, so it is refused, and the run tells you so rather than quietly
+redoing work against it.
+
+## When the work broke something that was working — checks that passed before and fail after
+
+A run working in a repository reads that repository's **own** way of checking itself — the
+verification command declared in its `package.json` scripts, its `Makefile` targets, its CI
+workflow, `go.mod`, `Cargo.toml`, or a Python project with a suite — and takes two readings
+of it: one before it touches anything, and one after, when the tree actually changed.
+
+**It reads the runner, not the script around it.** A lifecycle script that lints and
+typechecks on its way to the suite is followed into its own body — through a Makefile's own
+variables and past `npx`, `pnpm exec` or `poetry run` — and the runner found there is asked
+for its own machine-readable account: JSON from vitest, jest and `go test`, the
+line-per-check summary from pytest, TAP from mocha. Your flags on it are kept. This is why a
+formatting complaint no longer reads as a broken suite; it used to exit first, and the
+report was "`pnpm test` exited 1 and named 0 checks" of a suite that was green. Where that
+invocation names nothing — a flag aimed at a plugin this machine lacks — the runner is asked
+again in its plainest form, inside the same budget. A runner aforge has not met is invoked
+as your project declares it and read as plain text, as everything was before.
+
+**It reads the package your work is in, not the whole workspace.** A repository that
+declares what it is made of — `workspaces` in a `package.json`, `packages:` in
+`pnpm-workspace.yaml`, `lerna.json`, `[workspace] members` in `Cargo.toml`, `use` in a
+`go.work`, or a manifest in each package under a turbo/nx/rush root — is read in the package
+the work touched, found by the nearest manifest above the files that changed. A root command
+whose whole job is to fan out over packages says nothing about any of them: measured at one
+project's own base commit, the declared root command exited 1 in five seconds naming no
+check, and the same reading taken inside the package named 173.
+
+**And it reads the checks next to your change before it reads the whole suite.** Two things
+count as next to it, and both are relationships rather than resemblances: the test file
+**named after** what you touched, by the runner's own convention — `test_thing.py`,
+`thing.test.ts`, `thing_test.go` — together with the test files sitting beside it; and the
+test files whose **import lines** name it, including through a package's own front door,
+because `from textual.widgets import RichLog` is an import of `_rich_log.py` and the
+package's `__init__.py` is the only thing that says so. Only import lines are read and only
+whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
+does not have to spell a path**: a name it uses that this repository has a file for — an
+`IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
+decides which package is read. It resolves to **every** file of that name rather than the
+first one found, so a repository that keeps a documented example beside the real widget does
+not send the reading to the example. And when your request writes a name both ways — `Log`
+and `RichLog` in one sentence — the short one counts as a name too, so a change to both is
+read on both sides. A short word you only ever write on its own is not treated as a name.
+
+If the selection still comes to more than an eighth of the suite it is not a scope any more,
+so it is cut back to the checks your change is actually in. The whole suite is what is tried
+if that names nothing. A reading is scoped before it
+is bounded, because a budget cannot rescue a measurement of the wrong size: one project's
+whole suite is 3,422 checks and takes over thirteen minutes, against the five and a half
+minutes its run could afford, so the only reading it had was one that could never finish.
+The line in the record says which it was — `scope: touched packages (3 files)` or
+`whole` — and the two are never compared with each other, because a whole reading minus a
+scoped one would report every check that was not selected as one that had disappeared.
+
+**And the checks beside what you changed are read on the second pass.** The scope of the
+first reading comes from your request, because when it is taken nothing has changed yet — and
+a request is not a change. One run asked for two widgets by name, only one of the two names
+matched a file, and the test file sitting next to the other one was never read on either
+side. So the second reading takes the checks next to your change as well: the files the run
+actually touched, put through the same beside-and-imports rule. If your request matched
+nothing at all and the whole suite ran out of time, the second reading is aimed at your
+change instead of at the same ceiling — you get the checks for the work that was just done
+rather than nothing.
+
+**And the checks the run wrote itself are always read.** A scope is worked out from your
+request, before any work exists, so it can never contain a test file the run goes on to
+create — one run wrote about forty checks into a new file and every reading it took named
+the same two checks the old file already had, so nothing it had just written was ever
+measured and nothing it had just covered stopped being reported as covered by nothing. The
+second reading therefore takes the checks next to your change plus **every test file the run
+left behind**, read off the tree rather than off the run's own account of itself. It costs
+no extra reading, and a new test that is red is not reported as something the work broke —
+a check that did not exist before cannot have been passing before. It is still a leaf that
+has not finished, and the acceptance line is where you see that.
+
+**And the record always says what was read, whoever read it.** The two readings above
+are taken by the worker that does the work; when the work went to a worker that does not
+photograph, the check at the end of the job takes its own reading of the tree it is judging.
+Either way there is a row in the run's record saying what ran, what it named — or, when
+there was no reading, which of the reasons it was: your project declares no way of checking
+itself, there was no time left to size a reading against, or there was nothing to read.
+Silence used to mean all of those at once.
+
+**A suite that never got as far as running a check is not a suite with a failing check in
+it.** When your project's runner is asked for a machine-readable report and prints none — an
+import that will not resolve, a config that will not load — the record says its suite failed
+to collect and quotes the runner's own words, rather than inventing a result out of the
+error text. Nothing is compared against a reading like that in either direction, so a broken
+import can never be reported as work you broke.
+
+**A reading that is cut keeps what it named, on both sides.** A command killed at its ceiling having
+already printed some of its checks is a partial reading: it can say a check for something
+exists, and it is never used to say the work broke something, because the checks it never
+reached are missing from it for a reason that has nothing to do with your change. That holds
+for the reading taken after the work as much as for the one before it — and when a command
+ran but printed nothing a check could be read out of, the record says that, rather than the
+same words it would use for a project it could not read at all.
+
+**And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
+reading is a fact about your project or about the time available, and a later round inherits
+it rather than paying to learn it twice. A scoped reading that ran out of time is not one of
+those: it is a fact about a size aforge chose, and the run now knows how fast this project's
+checks go — so the next reading is the checks your change is in, rather than the same
+ceiling again.
+
+**Repair rounds are measured against the tree the job started with.** The first reading
+belongs to the whole job, not to one attempt: a second or third round inherits it rather
+than photographing a tree its own earlier round has already changed. Without that, a check
+broken in round one is red in round two's baseline and is never reported again. It also
+means a repair round runs the suite once rather than twice.
+
+**A behaviour you asked for that no check covers keeps the run from ending clean.** The
+check at the end of a job maps every behaviour your request states against the checks that
+exist, and it holds that mapping to the same standard it holds a quotation to: a check
+covers a behaviour only when the check itself — its name, or the file it lives in — spells
+the names your sentence spelled. A judge saying so is not enough. What is left over is
+named, it buys a repair round, and while any of it is still open the run ends `partial`
+with the count in the last line, whatever else was settled or overturned along the way.
+
+**And a public name your code had before the work and does not have after it is a finding
+at every check of the job, not only the one that lost it.** A suite only covers what somebody wrote a check for, so it can come back greener on a
+change that broke every caller outside it: one job deleted eight public attributes off a
+class, the project's own checks went from two passing to fourteen, and all twenty-four of
+the hidden ones it was really measured on failed on their first line. So the names are read
+as well as the checks — what your source files publish before the work and what they publish
+after, for the files the job actually changed. Python, TypeScript, JavaScript, Go and Rust, each by its own
+idea of public: an underscore, `private`, an unexported name and a non-`pub` item all mean
+the author called it internal. It is read conservatively and says nothing it is not sure of.
+A rename reads as the old name going, which is what everyone calling it sees.
+
+**And a name your code kept, whose definition the work rewrote, is read against everything
+that still uses it.** Deleting a name is only half of what breaks callers; the other half is
+keeping the name and changing what stands behind it, and no suite and no list of names can
+see that. One job rebound a module's `configs` from a dictionary to an object of its own
+with no item assignment on it — same name, checks still green, every one of the twenty-four
+hidden tests failing on the first line that wrote into it. So the same two readings that
+say which names went also say which names STAYED and are no longer the same thing — a
+definition whose own text your project spelled one way before the job and another way
+after — and every place in your project that still uses those names is found and counted
+by what it DOES with them: calls it with so many
+arguments, indexes it, assigns into an index, reaches a member off it, iterates it. That
+goes in front of the check at the end of the job with the file, the line number and the line
+itself, and it may refuse the work on one of those lines — `configs changed and its 14
+consumers still use it as subscript-assign: tests/test_igel.py:92, …`. It is measured
+against the tree as your job FOUND it, not as the last attempt left it, so it is the same
+finding at every check of that job until the work puts things back. It is read
+conservatively, from the shape of the code and never from what anything means: nothing here
+resolves a type or follows an import, a name it cannot look for whole has no consumers
+rather than the wrong ones, and prose in a document that happens to spell the name is not a
+usage site.
+
+**And a name your code READS that nothing in your project defines is caught before anything
+runs it.** The other two readings both ask about a name that used to be there. This one asks
+whether a name is there at all: an attribute a class reaches for on itself that no code
+anywhere assigns, and an import that asks one of your own modules for a binding that module
+does not define. One job rewrote a module so that three paths became local variables inside a
+function, left an `import` of one of them standing in another file, and every one of the
+twenty-four checks it was really measured on failed on that single line — while the only
+thing the run could say was that its own tests were red, never which name they were red
+about. So it says the name, the file and the line, and where it looked: `this work reads
+names nothing defines: temp_post_req_data_path (igel/servers/fastapi_server.py:1,
+igel/configs.py binds no top-level temp_post_req_data_path)`. Python, TypeScript and
+JavaScript; Go and Rust are left to their own compilers, which answer this better. It is
+read from your files with no type checker and nothing that resolves a type, and it is
+deliberately timid: a class that sets its attributes through `setattr`, a class built on a
+base your project does not itself declare, an import from a package outside your tree, a
+module that re-exports with `*` — each of those makes the question unanswerable rather than
+answered, and it says nothing at all. A name assigned ANYWHERE in your project counts as
+bound, including by a test. It buys a repair round, it stops the work landing clean, and the
+next check of the same job re-reads the tree — so binding the name closes it.
+
+**A check the run wrote itself and did not get passing is a different finding from a check
+it broke.** Only a check that was in your project's roster before the work, and green there,
+can be reported as broken by it. A red check that first appears after the work is the run's
+own unfinished business, and it says so — `the checks this work wrote fail: …` — because a
+run told it damaged your repository and a run told its new tests do not pass will do two
+different things about it. Both stop the work landing clean and both buy a repair round.
+
+A check that passed before and fails after is a finding the run raises about itself, and it
+is a blocker. Nothing is weighed about where it came from: you never have to ask for your
+repository to keep working. It reads:
+
+```
+This work broke checks that were passing before it: tests/test_igel/test_feature_schema.py::TestFeatureSchema::test_fit_writes_schema, … They were measured twice with the project's own command, before the work and after it.
+```
+
+That buys the repair round like any other finding, and if nothing closes it the run lands
+partial rather than finished. Checks that were **already** red before the work began are
+named separately and are never held against the change.
+
+**Why this exists.** A worker's own new checks are the one signal that structurally cannot
+see a breakage, because the worker wrote them. Three measured runs shipped a change that
+deleted an attribute the repository already had, watched their own narrow checks stay
+green, and reported success while every one of the repository's own checks failed on setup.
+
+**When there is no reading — and how you find out.** A project that declares no way to check
+itself has nothing there to read. Work whose whole time budget is too short to hold a real
+reading takes none, rather than spending an eighth of its life on something cut off before
+it says anything: below about eight minutes of wall, nothing is measured. A suite too large
+for that eighth is begun and cut off at its ceiling. A tree the job has not changed is not
+read twice.
+
+**Each of those is recorded with its reason and the exact invocation**, so work that
+measured nothing is legible apart from work whose project had nothing to measure — they used
+to be the same silence, and one of them costs an eighth of the wall. The reason is settled
+once per job, so a repair round inherits it rather than paying again. In every one of these
+cases the behaviour is what it would have been without any of this, and nothing is claimed
+about checks nobody read.
+
+## What "acceptance" means — the checklist read off your request before the work starts
+
+Before anything runs, your request is read once for the **behaviours it states** — a rule
+the result must follow, a case it must handle, a transition it must make, an outcome it
+must produce. Each one carries the words of yours it came from. That list is the acceptance
+checklist, and if a headless run has one you see it once, near the start:
+
+```
+  acceptance — 6 points from the request  14s
+```
+
+The list is held by the review and **never shown to the worker**. A worker handed the list
+of things it will be checked on writes checks for the list and nothing else, which is the
+whole problem this exists to fix.
+
+Nothing can get onto the list that is not yours. Every point has to quote your request, by
+the same rule a review's finding does — a verbatim span, a quotation that skips a middle, a
+file you named, or the distinctively spelled names you used. A point this program wrote for
+itself is dropped before the review ever sees it. And the list can never be longer than
+your request has clauses — text either side of a full stop, semicolon, colon, question or
+exclamation mark: past that it has stopped describing what you asked for. It counts clauses
+rather than lines because one line of yours often states several things at once, and a
+checklist that read "defaults are threshold = 5, cooldown = 30000, halfOpenMaxRequests = 1"
+as one behaviour had nothing fine enough to match a check to.
+
+**When there is no list.** A request that states no checkable behaviour — a question, a
+lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
+exactly as it would have without any of this.
+
+## When nothing checks what you asked for — "no check exercises …"
+
+At the end, the review asks one more question of every verdict it reaches — whether it was
+about to accept the work or has already found something else missing: for each behaviour on
+the checklist, **is there a check that would fail if this were absent or wrong?** Where the
+review has already named a gap, both gaps travel together, so the repair round is told about
+each of them.
+
+It answers that from two places, and the worker's own account of its checking is not one of
+them. It reads the check declarations in the change itself, and it reads the identities the
+project's **own** verification command printed when it ran. A sentence in the answer
+claiming every check passes is weighed as prose: those are checks the same worker wrote,
+and counting them proves nothing about what you asked for.
+
+A behaviour nothing exercises is a finding, and it reads:
+
+```
+The request asks for behaviours that no check exercises. Nothing in this project's own verification would fail if each of these were absent or wrong, so nothing that has been run says whether the work does them:
+no check exercises: A half-open probe holds its slot across internal retries
+no check exercises: A parse or hook failure is not retried by status-based retry logic
+Write the check for each, and make it pass.
+```
+
+Like a broken check, nothing is weighed about where it came from — it is a measurement of
+the repository rather than a reading of your words — so it buys the repair round straight
+away, and the round is asked to write the check and make it pass. It buys that round **even
+when the review's own finding is refused**: a ruling about where a review got its words says
+nothing about a behaviour nothing exercises. If nothing closes it the run lands partial
+rather than finished.
+
+Watching a headless run, it is one line under the verdict — the first behaviour named, the
+rest counted:
+
+```
+  gate: fail — The deliverable is a report about the work rather than the work.  14m39s
+  no check exercises — A half-open probe holds its slot across internal retries — and 2 more  14m39s
+```
+
+## When a check names what you asked for and asserts nothing about it
+
+A check can run a behaviour and weigh nothing about it. One run was asked that
+`RichLog.write(expand=True)` keep its full-width rendering; it wrote a check that called
+`write("short", expand=True)` and then asserted only that the widget had more than zero
+lines. The check was real, it ran, it passed, and it would have passed just as happily with
+the behaviour broken.
+
+So there is a second question, asked of every pairing the first one accepts: **do the
+check's own assertions name any of the identifiers your request spelled?** Those
+identifiers are read out of your words by shape — a name with a dot, an underscore or an
+interior capital in it (`is_following_end`, `RichLog.write`, `max_scroll_y`), and a name
+you bound to something (`expand=True`, `follow_end(animate: bool = False)`). The
+assertions are read out of the file the same way: `assert` and `pytest.raises` in Python,
+`expect(...)` and `assert.*` in JavaScript, the `if` beside a `t.Fatalf` in Go, `assert!`
+in Rust. Setup is not an assertion, so a name that appears only in the call is a name the
+check mentions rather than one it checks.
+
+Where no assertion names any of them, the behaviour stays open and reads:
+
+```
+1 behaviour the request states is asserted by no check. A check names each of these and runs it, and then asserts nothing about the identifiers the request spelled — so it would pass whether the behaviour is right or wrong:
+asserted by no check: RichLog.write(expand=True) no longer preserves full-width justified rendering — observables never asserted: richlog.write, full-width, expand
+Write the check for each, and make it pass.
+```
+
+Under a headless run it is its own line, `asserted by no check — …`, and it buys the
+repair round exactly as an unexercised behaviour does.
+
+**Your own words count as identifiers where the tree agrees.** "the vertical scrollbar
+position" names `ScrollBar.position` — the project's own public names are read as a
+vocabulary, and consecutive words of yours that spell the words a name is built out of name
+that name. Two words at least, and only names that have an owner: one word is a word, and
+"after users scroll up" is not a reference to a `ScrollUp` class that happens to exist.
+
+**Every one of them has to be asserted, not just one.** A check that weighs the scroll
+position and never reads the scrollbar has answered half of what you asked, and the line
+names the half it missed: `observables never asserted: ScrollBar.position`. Where a name
+you wrote is qualified, a check satisfies it through the member — you write
+`ScrollBar.position`, the check writes `bar.position`.
+
+**Every silence here favours the check.** A behaviour of yours with no identifier in it —
+"it must post only when the boolean actually changes" — is asked nothing; only checks
+the run itself wrote are read; a file in a language this program has no reader for, or a
+check whose declaration it cannot find, is left alone. Hyphenated English — "full-width",
+"half-open" — is not a name unless you wrote it as a selector like `#follow-log` or the
+project declares it, and a bare class name is what a check builds rather than what it
+weighs.
+
+**The question is asked again on every round, and the answer is the job's.** The checklist
+was read off your request, and every round of the job has the same request — so a repair
+round whose own plan carries no checklist inherits it rather than asking nothing. What the
+last measurement found nothing exercising is carried the same way: **a behaviour measured
+once as unexercised stays that way until a measurement says otherwise**, so a round whose
+worker took no reading cannot quietly drop it. The set only shrinks on evidence — a round
+that wrote the missing checks grows the project's own roster, and the next mapping is what
+notices. The finding's last line is the score, over both halves: `3 of the 17 behaviours
+this request states still have no check that asserts them.`
+
+**Why this exists.** Two measured runs handed over wrong answers at exit 0 because the
+review believed the worker's own sentence about its own checks. One claimed all 56 of them
+passed and failed 6 of 47 hidden ones; the other claimed 31 of 31 and was one hidden check
+short of a complete solve. In both, the behaviours that failed were stated
+in the request and exercised by nothing the worker wrote.
+
+A reading that **ran and named nothing** is still a reading: the project was asked how it
+checks itself, it answered, and nothing it printed exercises anything you asked for. That is
+the finding above, for every behaviour on the list.
+
+**When it does not happen.** If the project declares no way to check itself and the change
+produced no readable diff, nothing can be matched, and the answer is handed over as
+finished rather than failed — nobody looked is not the same as something is wrong; the run
+says so rather than passing in silence. Behaviours you stated on one line are gathered into
+one thing to go and check, and eight of those are named at most; the rest are counted.
+
+**But a project that HAS a suite nobody could read is a different answer.** Where the
+project declares a way of checking itself and this run could not read it — the command was
+killed at its ceiling, or the run's time was too short to hold a reading — the review has
+been left with nothing but the answer's own words, and a run does not call that finished. It
+lands partial, exit 2, and the last line says so:
+
+```
+partial — nothing in this project's verification could be read: `npx ava --tap` was killed at its ceiling of 1m53s without finishing
+```
+
+The two silences are told apart deliberately. A project with nothing to read leaves the
+question unanswerable and finishes; a project whose suite could not be read leaves it
+unanswered, and that is a fact about the run rather than about your request. Where no worker
+took a reading at all, the review takes one itself before it decides, on the same share of
+the time everything else here is held to, and remembers it for the rest of the job.
+
+## When a check the work deleted stops existing
+
+Taking out the check that is failing is the cheapest way there is to make a suite green, so
+that is checked too. A check declaration the change **removes**, and a check the project's
+own command reported before the work and did not report after it, are both findings:
+
+```
+This work removed checks that existed before it: keeps the half-open slot across internal retries. A check that was there and is not was deleted, renamed or skipped; whatever it was holding is now held by nothing.
+```
+
+A check that merely moved between files, or was re-indented, is not this: it is added and
+removed in the same change and cancels. And a run that reported no check identities on
+either reading raises nothing — plenty of verification commands say only `ok`, and a quiet one is
+not a suite that lost everything.
+
+**A check you REWROTE is not a check you removed.** Most runners spell a check's name as a
+path — a describe chain, `file.py::Class::test_thing`, `TestThing/subtest` — and that path,
+plus the code names the title opens with, is what the check is ABOUT. Replacing
+`IntersectionObserver > observe() > Does nothing` with real checks under the same
+`observe()` leaves nothing uncovered, so it raises nothing: the run reports it as replaced
+and moves on. Only a check whose subject has no check at all after it is called removed.
+Whether the checks that replaced it PASS is a separate question, and it has its own words —
+`the checks this work wrote fail: …`. A runner whose names carry no path at all, such as
+TAP's plain sentences, has nothing here to read, and its checks are compared by name exactly
+as before.
+
 ## Why it kept spawning the same worker over and over — the repeat guard
 
 If a run seemed to run the same brief again and again — worker after worker sent at one

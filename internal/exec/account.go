@@ -55,6 +55,42 @@ type Account struct {
 	// writer handed the goal of describing it can read it instead of inferring
 	// it. Empty when nothing was derived, which reads as no claim.
 	Patch string
+
+	// Withheld is where this change set actually IS, when it is not in the
+	// workspace anybody else can open: the directory of the leaf's own view and
+	// the branch its work sits on. Empty is the ordinary case and means the
+	// change set is in the shared tree.
+	//
+	// It exists because a change set has two properties that were being read as
+	// one. Whether work was DONE is answered by the repository — files, a range,
+	// a diff — and stayed true of a leaf whose delivery gate failed, because the
+	// leaf really had written all of it. Whether the work is WHERE ANYBODY CAN
+	// SEE IT is a different question with a different answer, and nothing asked
+	// it. A measured run finished a complete implementation inside its view,
+	// failed the gate, merged nothing, and ended with an empty workspace and no
+	// sentence anywhere naming the checkout the work was in: 67% of that run's
+	// spend, on files the person never saw.
+	Withheld       string
+	WithheldBranch string
+}
+
+// WithheldWords is the one sentence a person is owed about work that is real,
+// finished and not in their tree — where it is, and the two things they can do
+// with it. Empty when nothing was withheld.
+//
+// It is a method rather than a stored string so there is one wording of it, and
+// so the fact and the sentence cannot drift apart: everything it says is read
+// off the fields above.
+func (a *Account) WithheldWords() string {
+	if a == nil || strings.TrimSpace(a.Withheld) == "" {
+		return ""
+	}
+	words := fmt.Sprintf("This work is written and it is not in your workspace: %d file(s) are in %s",
+		len(a.Files), a.Withheld)
+	if branch := strings.TrimSpace(a.WithheldBranch); branch != "" {
+		words += ", on branch " + branch + " — `git merge " + branch + "` brings it over"
+	}
+	return words + "."
 }
 
 // Range is the span of repository history one node's work occupies: the commit
@@ -94,7 +130,13 @@ func (r Range) Derived() bool {
 // zero edits, because there was nothing left to do. This is how that case is
 // recognised without asking a model: the substrate says the work exists.
 func (a *Account) Landed() bool {
-	return a != nil && a.Range.Derived() && len(a.Files) > 0
+	// Withheld is the third clause and it is not a detail. The other two say the
+	// change set was measured and is not empty; both are true of work sitting on
+	// a branch in a checkout nobody else can open, and a reader told that such
+	// work has landed goes on to write prose about a repository that does not
+	// hold it. Composable is exactly that reader.
+	return a != nil && a.Range.Derived() && len(a.Files) > 0 &&
+		strings.TrimSpace(a.Withheld) == ""
 }
 
 // ChangeRange names the span in one clause for a reader who is about to be shown

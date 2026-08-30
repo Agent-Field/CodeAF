@@ -176,6 +176,116 @@ locally.
   hand-edit a plan. To *do* a job, `aforge do` is the one that thinks while it
   works.
 
+## Writing the task for `aforge do`
+
+The task is whatever you pass, byte for byte, and it may begin with anything.
+A brief written as a bullet list is a brief:
+
+```
+aforge do "- Update the display style property
+- Keep the grid measurable"
+```
+
+A flag is only a flag when `do` declares one by that name, so a leading `-` on
+your own words is your own words. A misspelling is still refused — `--dbb` is an
+error rather than part of the task — and `--` ends the flags if you ever need a
+task that is one dashed word.
+
+You can also hand it the task on standard input: `aforge do -` reads it, and so
+does `aforge do` with something piped in. `aforge do` with nothing piped and
+nothing typed prints the usage instead of waiting.
+
+## When a run says `✗ … the call was retried`
+
+A line like
+
+```
+  ✗ Core engine                  — nothing came back from the model in 1m30s → the call was retried, routed away from deepinfra
+```
+
+means one model call went quiet and was cut. **The call was asked again, not the
+work.** Everything the worker had already done is still in hand, and the endpoint
+that went quiet is set aside for a few minutes so the retry goes somewhere else.
+
+## When work is picked up again, restarted or resumed — `⏳`, `↻` and `✗`
+
+If a piece of work does have to be picked up again, the stream says so and says
+why. Four lines, and they are four different things:
+
+```
+  ⏳ Core engine                  — it was still working when it ran out of its 15m0s — 72 turns in
+  ↻ Core engine                  — picked up again from 45 recorded turns
+  ✗ Core engine                  — picked up again — no sign of life for 24m3s …
+  ↻ Core engine                  — resumed from 45 recorded turns, already holding styles.ts, grid-layout.ts
+```
+
+`⏳` is work that ran out of the room it was given — its time, its turns or its
+tokens. **Nothing failed**: it was still working, and what it reached is kept.
+
+`↻ picked up again from N recorded turns` is what follows it: the piece goes
+back on the queue with its record, and the count is how much is waiting there
+for whoever takes it next. **This is progress, not a fault** — running out of
+room is the input the planner uses to decide whether the piece needs more of it.
+
+`✗ picked up again` is the backstop, and it is the only one of the four that is
+a fault. Work is only taken off a worker that has shown **no sign of life** for
+the whole window, which is well past any deadline the worker itself was given. A
+command that is still running counts, however long it takes — a build or a test
+suite that takes ten minutes is a worker at work, not a worker to interrupt. A
+worker that keeps working keeps its work.
+
+And the worker is **stopped first**. Nothing else can pick the work up until the
+one that had it has actually let go, so two workers never share one folder.
+
+`↻ resumed from N recorded turns` is the piece being taken up again, and the
+count is the point. It continues from what it had reached: an outline of every
+turn it took, the last of them word for word, and the files it had already
+changed. **It does not start over.**
+
+## When a worker catches its own mistake before handing work over
+
+A worker reads the project's own checks and the project's own public names
+before it starts and again when it thinks it has finished. If that second
+reading finds something **the worker itself broke**, the work is not handed over
+yet — the worker is told, while it is still sitting there with the whole job in
+mind, and asked to settle it:
+
+```
+  ↻ Core engine                  — closing its own finding: lost public names (3 names)  1m12s
+```
+
+Four things it will be told about, and they are all things measured off the files
+rather than anybody's opinion:
+
+- **lost public names** — a name the project spelled before this work and does
+  not spell now, in a file this work changed.
+- **unbound names** — a name this work's code reads that nothing anywhere
+  defines. This is the one that breaks every test on import.
+- **its own checks** — the checks this work wrote are red.
+- **checks it turned red** — checks that passed before this work and fail after.
+
+**Why it is done this way.** The alternative is to hand the work over, let the
+review catch it, and put a fresh worker on the repair — and a fresh worker has
+none of the reasoning that caused the mistake. In one measured run three fresh
+workers each deleted what the last one had relied on. The one who made the
+mistake is the cheapest person to ask, and they are still there.
+
+### What it costs, and the two limits on it
+
+**Nothing extra unless something is actually wrong.** A worker whose second
+reading is clean is handed over immediately.
+
+- **Only what the worker had left.** It gets no new time, no new turns and no new
+  money — it spends what it had not spent of its own. A worker that is out of
+  room hands the work over with the finding, exactly as before.
+- **Once per kind of finding.** If the second look is still red, the work is
+  handed over and the finding goes to the review the way it always did. It is
+  never asked about the same thing twice.
+
+The worker may also answer that the finding has to stand — a name it deliberately
+renamed, a check the request asked it to remove — and say so in what it hands
+over. That is a real answer, not a refusal.
+
 ## There is no web surface
 
 Everything is the terminal chat and these commands. If you want aforge running

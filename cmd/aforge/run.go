@@ -47,7 +47,7 @@ func runExecute(args []string) error {
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model (default AFORGE_PLAN_MODEL)")
 	subharness := flags.String("subharness", "", "force every leaf of this run onto one worker, for measuring workers against each other (default: what the graph chose)")
-	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true, "model": true, "plan-model": true, "subharness": true})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -214,11 +214,11 @@ func runExecute(args []string) error {
 	}
 	// The deadline is a hang backstop, not a work limit, so it scales with the
 	// budget the operator granted: a 2M-token leaf doing honest work with
-	// reasoning on runs well past the quarter hour that fits the default.
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
+	// reasoning on runs well past the quarter hour that fits the default. The
+	// shape is asked for rather than worked out here — see
+	// exec.SubharnessInfo.Deadline, which is the one place in the process that
+	// knows it.
+	deadline := exec.SubharnessFor(exec.LinearSubharness).Deadline(*maxTokens)
 	mediaTools := &exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient, WorkingModel: settings.Model,
 		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
@@ -305,8 +305,10 @@ func runExecute(args []string) error {
 	}
 	// The watchdog sits above every deadline a leaf was given: it only fires
 	// when an executor is wedged past all of them, and it turns that from a
-	// silent forever-hang into a recorded failure the run survives.
-	scheduler.NodeTimeout = deadline + 2*time.Minute
+	// silent forever-hang into a node that goes back on the queue with whatever
+	// it had reached. The pad above the deadline is the subharness table's, for
+	// the same reason the deadline is.
+	scheduler.NodeTimeout = exec.SubharnessFor(exec.LinearSubharness).Watchdog(*maxTokens)
 	clock := newClockWatch()
 	scheduler.OnEvent = func(event exec.Event) {
 		clock.sample()

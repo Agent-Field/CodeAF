@@ -40,11 +40,7 @@ func runExec(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
 	asJSON := flags.Bool("json", false, "print a machine-readable result")
 	output := flags.String("o", "", "write the machine-readable result to this file")
-	if err := flags.Parse(reorder(args, map[string]bool{
-		"w": true, "system": true, "turns": true, "budget": true, "timeout": true,
-		"model": true, "plan-model": true, "context-fill": true, "completion-reserve": true,
-		"o": true,
-	})); err != nil {
+	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
@@ -199,11 +195,10 @@ func execDeadline(maxTokens, timeoutSeconds int) time.Duration {
 	if timeoutSeconds > 0 {
 		return time.Duration(timeoutSeconds) * time.Second
 	}
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(maxTokens/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
-	return deadline
+	// The shape is the generalist's, asked for and never worked out again:
+	// exec.SubharnessInfo.Deadline is the one place in the process that knows
+	// the floor and the per-token scaling.
+	return exec.SubharnessFor(exec.LinearSubharness).Deadline(maxTokens)
 }
 
 func execExitCode(stop exec.StopReason, text string) int {
