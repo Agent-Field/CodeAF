@@ -94,6 +94,15 @@ type Ask struct {
 	// tolerance in provider.DecodeJSONObject is what stands in for it.
 	Routed bool
 
+	// JSON asks for an object on the wire without pinning its shape: JSON mode
+	// rather than a strict schema. It is for an ask whose shape is the prompt's
+	// to extend — the compile's menu, charter and model note are fields the
+	// prompt adds when they apply, and a schema would have to know every one.
+	// A prompt alone was not enough: a model handed an issue written in Markdown
+	// answered in Markdown, twice, and the whole job was forfeit for $0.0007.
+	// It goes out on every send of the ask, the repairs included.
+	JSON bool
+
 	// Answers is how many objects of the schema's item shape the ask expects
 	// back — the fan-out's permitted width, a panel's seat count. Zero and one
 	// both mean "one object", which is every other call in the system.
@@ -278,9 +287,11 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 // Neither is a nicety — two appends onto one slice with spare capacity write
 // over each other, and a repair would go out carrying the first send's ceiling.
 func (a Ask) request(ceiling int) []ai.Option {
-	options := make([]ai.Option, 0, 2)
+	options := make([]ai.Option, 0, 3)
 	if a.Routed && len(a.Schema) > 0 {
 		options = append(options, ai.WithSchema(a.Schema))
+	} else if a.JSON {
+		options = append(options, ai.WithJSONMode())
 	}
 	return append(options, ai.WithMaxTokens(ceiling))
 }
