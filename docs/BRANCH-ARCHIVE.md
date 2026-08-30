@@ -1,8 +1,12 @@
 # Branch archive — 2026-08-30
 
-Two branches live on origin: `master` (the release line) and `staging` (the
+Three branches live on origin: `master` (the release line), `staging` (the
 working line, accumulated from `chat-v3-task` and the measured `chat-v3-fix`
-sweep). Everything else was tagged and deleted on 2026-08-30. A tag keeps every
+sweep), and `dev` — cut from `staging` at `8c243a13` on 2026-08-30, and the
+line development branches off from. Feature and design work starts at `dev` on
+a `santosh/<topic>` branch and merges back to `dev`; `dev` moves into `staging`
+when the line is proven. Everything else was tagged and deleted on 2026-08-30.
+A tag keeps every
 commit forever and stays out of the branch list; bring one back with
 
     git branch <name> archive/2026-08-30/<slug> && git push origin <name>
