@@ -31,6 +31,14 @@ so in one line and NOTHING HAPPENS: nothing is cancelled, nothing is spent, and
 you carry on with the work in your own hands exactly as you were. A no is not a
 failure and is not worth a paragraph in your report.
 
+AND ONE ANSWER IS NOT ABOUT THE DIVISION AT ALL. Where what is left of the work
+cannot be done by a worker — an approval or a signature only a named person may
+give, a credential nobody here holds, a decision that is theirs to make — you are
+told that in one line and told to STOP rather than to carry on. Do that: say in
+your report what has to be done and who has to do it, and do not go looking for
+something adjacent you could do instead. Work that has been read and handed back
+to a person is not work you can make progress on by finding a nearby file.
+
 AND THEN THE PLAN ITSELF IS READ, ONCE, BEFORE ANY PART EXISTS. Somebody sees
 the whole division at once — your evidence, the work it came out of, and every
 part beside its siblings, which is the one view you do not have — and may

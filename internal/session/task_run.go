@@ -2969,8 +2969,23 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// A NODE WITH NOTHING DRAWN, A ROAD THAT IS OFF, AND A DIVISION THE GATES OR
 		// THE REVIEWER REFUSED ALL ANSWER THE SAME EMPTY STRING, and the node then
 		// runs as one worker — which is what every task did before this existed.
+		//
+		// EXCEPT FOR THE ONE ANSWER THAT IS NOT ABOUT THE DIVISION. The reviewer
+		// that reads a drawn division may come back saying the work left over is
+		// not work for any worker at all, and it says so having read the parts, the
+		// brief and the evidence together, before this node has spent anything. It
+		// was measured being thrown away: a task whose whole remainder was an
+		// approving review GitHub only takes from a human ran anyway for nine
+		// minutes and $1.24, fixed a file in an empty repository looking for
+		// something it could do, and was failed by the check. So it lands here
+		// instead, needing a person, with the reader's own sentence as its report
+		// ([Agent.landNeedsPerson]) — and this line is where the saving is, because
+		// everything past it is the run, the check and the repair round.
 		if handedOut == "" {
-			handedOut = child.divideFromSketch(ctx)
+			var person string
+			if handedOut, person = child.divideFromSketch(ctx); person != "" {
+				return a.landNeedsPerson(node, tree, person, log)
+			}
 		}
 
 		var wrote []string

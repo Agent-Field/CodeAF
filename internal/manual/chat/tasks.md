@@ -2329,6 +2329,17 @@ stages of one procedure and not a division at all — in which case nothing is s
 worker carries on, exactly as a no from either test above. So the parts you see may be fewer
 than the worker asked for, and their briefs may not be word for word what it wrote.
 
+**And it has one more answer, which is not about the split at all.** The mastermind may
+read the work and find that what is left of it **cannot be done by a worker** — an approving
+review only a named person may give, a credential or an account nobody here holds, a
+decision that is yours to make, or a step that is somebody else's system doing something by
+itself. When it says that, the task does **not** start a worker: it lands straight away
+needing your look, with the mastermind's own sentence as its report, and the only thing
+spent on it is that one reading. The next section, *A task that landed needing your look
+without doing anything*, is what you see. This is a deliberate word the mastermind has to
+reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
+this, has refused a division and the worker carries on with the work exactly as above.
+
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
 worker wrote it**. It had already passed the two tests that were measured, and a second opinion that

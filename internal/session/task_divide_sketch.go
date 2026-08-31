@@ -69,6 +69,8 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -96,8 +98,22 @@ type drawnDivision struct {
 func (d drawnDivision) proposes() bool { return d.sketch.split() }
 
 // divideFromSketch puts the drawing this node was admitted with to the division
-// road, on the worker's behalf, and answers what the worker is told about it — an
-// empty string when nothing was handed out, whatever the reason.
+// road, on the worker's behalf, and answers two things: what the worker is told
+// about it — an empty string when nothing was handed out, whatever the reason —
+// and THE PERSON'S OWN JOB, which is empty on every road but one.
+//
+// THE SECOND ANSWER IS WHY THIS FUNCTION IS ASKED BEFORE THE FIRST REQUEST AND
+// NOT AFTER IT. The reviewer that reads a drawn division may come back saying the
+// work left over is not work for any worker at all — an approving review only a
+// person may give, a credential nobody here holds — and it says it having read
+// the parts, the evidence and the brief together, for about two cents, before
+// this node has spent anything. That finding used to reach exactly nobody: it was
+// journalled, the empty string above was returned, and the worker ran anyway. On
+// the cell that produced this wave that was nine minutes, $1.24, a repair round
+// and two checks, spent fixing a file in an empty repository over two GitHub
+// approvals nothing in this building was ever going to be allowed to give. So the
+// sentence is handed back, and [Agent.workTaskNode] lands the node on it
+// ([Agent.landNeedsPerson]) instead of starting a worker.
 //
 // IT ASKS THE SAME THREE QUESTIONS THE BELT ASKS BEFORE IT OFFERS THE VERB
 // ([Agent.mayDivide]): the road is on, this agent is a worker that may have
@@ -110,35 +126,40 @@ func (d drawnDivision) proposes() bool { return d.sketch.split() }
 // divided — by this, or by its own first worker before a provider fault sent
 // [Agent.workTaskNode] round again — and dividing the same work twice would hand
 // out five parts nobody drew.
-func (a *Agent) divideFromSketch(ctx context.Context) string {
+func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 	if !a.mayDivide() {
-		return ""
+		return "", ""
 	}
 	graph := a.graph()
 	parent := a.config.taskID
 	node := graph.node(parent)
 	if node == nil || len(graph.children(parent)) > 0 {
-		return ""
+		return "", ""
 	}
 	drawn := node.drawn()
 	if !drawn.proposes() {
-		return ""
+		return "", ""
 	}
 	proposal, ok := drawn.proposal(node.ownBrief())
 	if !ok {
-		return ""
+		return "", ""
 	}
 	args, err := json.Marshal(proposal)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	answer, _ := a.divideOnce(ctx, args, divisionBySketch)
+	answer, person, _ := a.divideOnce(ctx, args, divisionBySketch)
+	// THE PERSON'S JOB IS CARRIED STRAIGHT OUT, and nothing below it runs. There
+	// are no parts to describe on this road and no worker to describe them to.
+	if person != "" {
+		return "", person
+	}
 	// WHETHER THE PARTS EXIST IS ASKED OF THE GRAPH AND NEVER OF THE SENTENCE.
 	// Every refusal on that road is an ordinary receipt written for a person to
 	// read over a worker's shoulder, and matching prose to decide whether work was
 	// handed out would put a road behind a wording somebody is free to improve.
 	if len(graph.children(parent)) == 0 {
-		return ""
+		return "", ""
 	}
 	var out strings.Builder
 	out.WriteString(divisionAlreadyHandedOut)
@@ -148,7 +169,42 @@ func (a *Agent) divideFromSketch(ctx context.Context) string {
 		out.WriteString("\n")
 		out.WriteString(after)
 	}
-	return out.String()
+	return out.String(), ""
+}
+
+// landNeedsPerson settles a node whose work turned out to be work only a person
+// can do, WITHOUT EVER STARTING A WORKER FOR IT.
+//
+// IT IS NOT A NEW ENDING, and that is deliberate down to the line: it is
+// [Agent.landShifted] with a different reason (task_run.go), which is itself the
+// unverified landing reached by a third road. The branch is committed and kept
+// ([keptWork]) exactly as it is for the landing nobody could judge, the report
+// leads with [needsLookLead] in the same person's words, and everything
+// downstream — the settle card, the rail's mark, the note's "needs your look"
+// verb, the bubbling of a still-undecided child up to whoever is left to decide
+// ([Agent.bubbleUnverifiedChildren]) — is machinery that was already there.
+// Nothing about this landing has to know why it was asked for.
+//
+// UNVERIFIED RATHER THAN FAILED IS THE STATE THAT MATCHES THE SENTENCE. Nothing
+// went wrong, nobody made a finding against the work, and there is nothing to try
+// again: what is left needs a person, and the one state in this graph that WAITS
+// ON A PERSON is this one. Failing it would put a ✗ beside work that was read
+// correctly and stopped early, and done would claim something happened.
+//
+// THE REASON RIDES IN THE REPORT AND NOWHERE ELSE, which is what puts it in front
+// of both readers without a second channel: the person reads it on the card, whose
+// first line is this one, and the model reads it inside the landing note. There is
+// no worker's own account to stand under it, because there was no worker.
+//
+// AND IT IS CALLED BEFORE THE FIRST REQUEST, which is the whole saving. The
+// worktree and the child agent are already made by then and both are cheap; what
+// is on the other side of this line is the run, the check, the repair round and
+// the check again.
+func (a *Agent) landNeedsPerson(node *TaskNode, tree taskTree, why string, log io.Writer) TaskState {
+	merge, kept := keptWork(tree, node.title(), nil)
+	fmt.Fprintf(log, "no worker was started: %s\n", why)
+	node.finish(needsLookLead+why, kept, tree.branch, merge)
+	return TaskUnverified
 }
 
 // divisionAlreadyHandedOut is the one sentence of the harness's own that stands
