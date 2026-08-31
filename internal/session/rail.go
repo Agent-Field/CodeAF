@@ -46,8 +46,27 @@ func (a *Agent) railBlockLocked() error {
 	if spent < rail {
 		return nil
 	}
-	return fmt.Errorf("%w: this session has spent $%.2f of its $%.2f rail — raise it to keep going",
-		ErrSpendRail, spent, rail)
+	// THE TRIP LINE NAMES THE LIMIT, THE FIGURE AND THE DOOR, in one line, and
+	// says nothing about it twice (docs/design/spending/DESIGN.md).
+	//
+	// It says `limit` and not `rail`: the machinery's word is this file's and the
+	// person's word is theirs. And it names `/budget` rather than a bare letter,
+	// because the person reading this is standing in front of a message box —
+	// their refused message is still in it, theirs to send again — and every
+	// printable key there belongs to that box. A door a refusal names has to be
+	// one that works from where the refusal is read.
+	return fmt.Errorf("%w: conversation limit reached · %s spent of %s · /budget changes it",
+		ErrSpendRail, railMoney(spent), railMoney(rail))
+}
+
+// railMoney writes a figure the way a limit is written: whole dollars when the
+// figure is whole, cents when it is not. `$500.00` is a number somebody typed
+// with two cells of noise on the end.
+func railMoney(usd float64) string {
+	if usd == float64(int64(usd)) {
+		return fmt.Sprintf("$%d", int64(usd))
+	}
+	return fmt.Sprintf("$%.2f", usd)
 }
 
 // railCap holds a run's fuel tank to the session's own rail.

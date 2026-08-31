@@ -171,3 +171,121 @@ degrades the same way and never shows the limit without the spend.
    daily limit", "why did it stop and ask me about money", "what does per plan
    mean"), the three tabs named, `b` and `/budget` in the keys and commands
    tables. Gates green.
+
+---
+
+## What the code made us bend, and why
+
+The design above is the intent and is unchanged. This section is the build's
+record of every place the code contradicted a detail, what was kept, and what
+was given up. It was written in the same commits as the work.
+
+### 1. `per task` and `per standing run` are readings, not editors
+
+**The design asked for seven rows a person can turn. This build has four.**
+`docs/LIMITS.md` says it in its own words: *"a task carries no dollar cap of its
+own: its money bound is whatever rail the conversation that started it
+carries"*. The `$50 · 6h` the design quotes is the **workflow** run bound and
+wall clock (`internal/craft`), which are per-workflow-file values and not
+per-profile settings; the adaptive run's tank (`session.DefaultRunCapUSD`) is
+set per run on the composer's third line; a standing order's per-firing rail is
+`per_run_usd` on the `stand` tool, written per item.
+
+So the two rows exist and say **what is true**, and the cursor steps over them:
+
+```
+ per task          no limit of its own   it spends against the day and this conversation
+ per standing run  $5 a firing           each order may name its own
+```
+
+The design's own instruction settles it — *decide from what is real, never
+invent a rail*. A row that pretended to edit a rail nothing reads would have
+been worse than the absence it was covering, and the person who came to the tab
+asking "what may a task spend" now gets an answer instead of a blank.
+
+### 2. `b` is a verb on the strip, and `/budget` is what the trip line names
+
+**Every printable key on this surface belongs to a text box.** The composer
+takes them; every place has its own box at its foot (`placeBase.box`); the
+settings panel searches on them. `verbstrip.go` states it as the product and not
+a compromise, and adds the only exception: *a bare letter may be a verb while
+the strip naming it is drawn*.
+
+So `b` is real where it can be real — `→` on a row of the spend place opens the
+strip and `b` is `the limits` — and every line that names a door names the door
+that works **where that line is read**:
+
+| where | what it names |
+|---|---|
+| the spend place's pointer line | `enter`, and `/budget sets the limits` |
+| a refused turn, read over the message box | `/budget changes it` |
+| the status line's money segment | the press itself |
+
+The design's intent (one chord for the rails, wherever a rail is named) is kept;
+its letter is kept only where it does not eat somebody's sentence.
+
+### 3. The trip line is the conversation's, not the day's
+
+`internal/session` enforces one money rail — the conversation's ceiling
+(`ErrSpendRail`). **The daily budget is not enforced in the v3 chat at all**: it
+is read for home's pulse and for a standing firing's rail, and the
+`Daily budget reached -- ` question belongs to the resident's journal
+(`internal/store/usage.go`), which is a different product in the same binary and
+keeps its own vocabulary (CLAUDE.md). So the line worded at the seam is:
+
+```
+conversation limit reached · $2.05 spent of $2 · /budget changes it
+```
+
+— the design's shape, the design's word (`limit`, never `rail`), against the
+rail this surface actually has.
+
+### 4. `no limit` is the value, not the receipt
+
+The design puts `no limit` in the value column and a live fact in the receipt,
+and the code already had the mechanism for exactly that: `Setting.EmptyLabel`,
+which every non-money row uses for its off state and which every surface already
+blanks before it seeds an edit box. So a money row at zero **reads nothing** and
+takes its empty label — `no limit`, `never asks`, `practice off` — which buys
+three things at once: `$0` renders nowhere, the edit box opens empty on a row
+holding nothing, and the receipt column is freed for the fact it should have
+been carrying (`$4.25 today`, `this one $0.41`).
+
+The receipts the design names that have no reading behind them are **absent**
+rather than invented: nothing counts how often the plan gate asked this week, so
+`per plan` carries no receipt.
+
+### 5. The receipt is a ranked fact, not a right-hand column
+
+`overlayRow` draws a row as a label and one right-aligned note. Rather than
+grow a third column, the money rows hand it a note built by `rowfit` — value,
+then the environment pin, then the receipt — so the receipt is the first thing
+off a narrow row exactly as the design's *Narrow widths* asks, and no figure is
+ever cut in half.
+
+### 6. The money segment is this conversation's spend
+
+The design reads the status line's `$` as the day's figure. In this build that
+segment is `a.cost` — **what this conversation has spent** — and home's pulse is
+where the day's figure and its ceiling are drawn. The segment was left meaning
+what it means; its warm ink at four fifths is therefore measured against the
+`per conversation` limit, which is the rail its own figure is bounded by. A
+segment that warmed against a denominator it was not counting would be the one
+thing worse than not warming at all.
+
+### 7. First run's third rail is `per conversation`
+
+The design's rails screen asks for the day, the plan, and *"whichever real rail
+the design settles on"*. §1 settles it: the third real rail a new person can
+answer is their own conversation's ceiling. The screen is otherwise the
+design's, word for word.
+
+### 8. Registry labels are unchanged; the tab's labels are the design's
+
+`daily budget`, `ask before spending`, `practice budget` and `session ceiling`
+are still the registry's labels, because the v2 sheet and the model-facing
+`change_setting` tool read them and a key's name is not a person's word for its
+scope. The Spending tab's own labels — `per day`, `per plan`, `practice`,
+`per conversation` — are the design's, and they live in the one place this
+surface already keeps its skin (`settingUI`). Every key and every environment
+variable is untouched.
