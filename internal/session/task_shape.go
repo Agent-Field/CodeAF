@@ -285,24 +285,40 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 
 type briefWatchKey struct{}
 
-// WithBriefWatch asks the shaper to report its answer as it arrives.
+// BriefWatch is told what the shaper has produced so far, on every delta.
 //
-// The callback is handed the whole accumulated text on every delta, on the
-// goroutine making the call, in order. A surface must therefore treat it as a
-// wire and not as a hand into its own state: take a copy, hand it to whatever
-// owns the screen, and return.
+// IT IS HANDED BOTH HALVES BECAUSE ON A THINKING MODEL ONE OF THEM IS EMPTY FOR
+// THE WHOLE WAIT. The shaper sits on the careful tier and is deliberately
+// allowed to reason (see [Agent.shapeBrief]), and a reasoning model spends the
+// visible seconds producing reasoning: a run measured against a real endpoint
+// sent 437 stream events across twenty-five seconds and not one of them was an
+// answer delta. A watch given only the answer is therefore a watch that hears
+// nothing at all for exactly the wait it was built for.
+//
+// So `answer` is the reply text accumulated so far and `thinking` is the
+// reasoning text accumulated so far, and it is the CALLER that decides what to
+// do with each. Nothing here presents one as the other.
+//
+// Both are the whole of what has arrived, every time, on the goroutine making
+// the call, in order. A surface must treat this as a wire and not as a hand into
+// its own state: take the strings, hand them to whatever owns the screen, and
+// return. `thinking` is bounded — the last [PartialStringLimit] bytes of it —
+// because reasoning has no ceiling worth trusting and a preview is a tail.
+type BriefWatch func(answer, thinking string)
+
+// WithBriefWatch asks the shaper to report what it is producing as it arrives.
 //
 // A nil watch installs nothing, so a caller may pass one it computed without
 // branching around this line.
-func WithBriefWatch(ctx context.Context, watch func(string)) context.Context {
+func WithBriefWatch(ctx context.Context, watch BriefWatch) context.Context {
 	if watch == nil {
 		return ctx
 	}
 	return context.WithValue(ctx, briefWatchKey{}, watch)
 }
 
-func briefWatchFrom(ctx context.Context) func(string) {
-	watch, _ := ctx.Value(briefWatchKey{}).(func(string))
+func briefWatchFrom(ctx context.Context) BriefWatch {
+	watch, _ := ctx.Value(briefWatchKey{}).(BriefWatch)
 	return watch
 }
 
@@ -312,19 +328,34 @@ func briefWatchFrom(ctx context.Context) func(string) {
 //
 // The accumulator lives here, one per attempt, which is what makes a repair
 // round start from nothing.
-func watchedShapeContext(ctx context.Context, watch func(string)) context.Context {
+func watchedShapeContext(ctx context.Context, watch BriefWatch) context.Context {
 	if watch == nil {
 		return provider.WithoutStream(ctx)
 	}
-	var seen strings.Builder
+	var answer strings.Builder
+	// The reasoning goes into the bounded buffer the partial-argument scanner
+	// already uses for the same job (toolhint.go): a think has no length anybody
+	// can promise, and what a watcher wants from it is the end.
+	var thinking tailBuffer
 	return provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
-		// ONLY THE ANSWER'S OWN TEXT. A reasoning delta is the model's working and
-		// is never shown (provider's stream.go says so of the kind itself), and
-		// the boundary events carry nothing to accumulate.
-		if event.Kind != provider.StreamDelta || event.Delta == "" {
+		// THE TWO KINDS THAT CARRY WORDS, KEPT APART. StreamReasoning is the
+		// model's working and StreamDelta is what it is actually answering; they
+		// are accumulated separately so that nothing downstream can show one and
+		// call it the other. Every other kind is a boundary with nothing in it.
+		switch event.Kind {
+		case provider.StreamDelta:
+			if event.Delta == "" {
+				return
+			}
+			answer.WriteString(event.Delta)
+		case provider.StreamReasoning:
+			if event.Delta == "" {
+				return
+			}
+			thinking.writeString(event.Delta)
+		default:
 			return
 		}
-		seen.WriteString(event.Delta)
-		watch(seen.String())
+		watch(answer.String(), thinking.text())
 	})
 }

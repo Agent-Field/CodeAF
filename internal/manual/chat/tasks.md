@@ -85,8 +85,9 @@ A still line here would mean something is wrong. If the mark is not turning, afo
 waiting on the shaper — look for the task's own row on the roster instead.
 
 **You can watch the brief being written.** One dim row under the phase row carries the
-newest words of it as they arrive, and `→` with an empty box (or a click on that row) opens
-it into the last six lines. It is a preview of the wait and nothing is kept from it — the
+newest words as they arrive — the model's own reasoning in italics while it is still
+thinking, then your brief upright once it starts writing one — and `→` with an empty box
+(or a click on that row) opens it into the last six lines. It is a preview of the wait and nothing is kept from it — the
 whole block disappears when the task starts. The commands page has it in full, under *Can I
 see the brief while it is being written*.
 

@@ -40,7 +40,14 @@ func shapingApp(t *testing.T, briefs ...string) *app {
 // as the lane delivers it: the raw accumulated text of a JSON object nobody has
 // finished writing.
 func shaping(a *app, at int, brief string) {
-	a.shapingTail(a.waits[at].seq, `{"title":"a name","brief":"`+brief)
+	a.shapingTail(a.waits[at].seq, shapingRead{answer: `{"title":"a name","brief":"` + brief})
+}
+
+// thinking feeds one reading in which the shaper has produced REASONING and no
+// answer at all — which a run against a real endpoint showed is the whole of a
+// twenty-five-second wait on a model that thinks before it writes.
+func thinking(a *app, at int, text string) {
+	a.shapingTail(a.waits[at].seq, shapingRead{thinking: text})
 }
 
 // ── 1. the tail ─────────────────────────────────────────────────────────────
@@ -105,7 +112,7 @@ func TestTheFormingTailShowsTheBriefBeingWrittenAndNeverAddsARow(t *testing.T) {
 func TestTheFormingTailIsNeverUnsaidByAnEmptyFragment(t *testing.T) {
 	a := shapingApp(t, "write the release notes")
 	shaping(a, 0, "Write the release notes for v2.4.")
-	a.shapingTail(a.waits[0].seq, `{"title":"a name","brief":"`)
+	a.shapingTail(a.waits[0].seq, shapingRead{answer: `{"title":"a name","brief":"`})
 	if body := plainRowsText(a.preflightRows(72)); !strings.Contains(body, "release notes for v2.4") {
 		t.Fatalf("an empty fragment wiped the tail:\n%s", body)
 	}
@@ -386,5 +393,64 @@ func TestTheShapingPreviewReadsThePartialAnswerThroughTheOneScanner(t *testing.T
 	// A FIELD THAT HAS NOT OPENED YET IS NOTHING AT ALL, rather than a guess.
 	if early := shapingPreview(`{"title":"release`); early != "" {
 		t.Fatalf("the preview invented a brief: %q", early)
+	}
+}
+
+// ── 7. the shaper that thinks before it writes ──────────────────────────────
+
+// THE DEFECT A REAL RUN FOUND, and the one the synthetic tests above could not:
+// the shaper sits on the careful tier and is allowed to reason, so against a
+// real endpoint the whole visible wait was 437 reasoning events and NOT ONE
+// answer delta. A preview that could only draw the brief drew nothing at all for
+// exactly the wait it was built for.
+//
+// So the row shows whatever the shaper is producing: its working while it works,
+// its brief the moment there is one.
+func TestTheTailShowsTheShaperThinkingUntilTheBriefStarts(t *testing.T) {
+	a := shapingApp(t, "write the release notes")
+
+	thinking(a, 0, "The audience here is people who already use the product, so the note has to name what changed for them.")
+	rows := a.preflightRows(72)
+	if len(rows) != 4 {
+		t.Fatalf("a shaper that is thinking drew %d rows, want the block and one tail:\n%s",
+			len(rows), plainRowsText(rows))
+	}
+	if body := plainRowsText(rows); !strings.Contains(body, "name what changed for them") {
+		t.Fatalf("the tail says nothing while the shaper thinks:\n%s", body)
+	}
+	// AND IT IS SAID IN THE INK A THINK IS SAID IN, so nobody reads the model's
+	// working as their own brief.
+	if !strings.Contains(rows[3].text, a.pal.italic("")) && !strings.Contains(rows[3].text, "\x1b[3m") {
+		t.Fatalf("the reasoning is not drawn as a think: %q", rows[3].text)
+	}
+
+	// THE BRIEF TAKES THE ROW THE MOMENT THERE IS ONE.
+	shaping(a, 0, "Write the release notes for v2.4.")
+	body := plainRowsText(a.preflightRows(72))
+	if !strings.Contains(body, "release notes for v2.4") {
+		t.Fatalf("the brief did not take the row from the think:\n%s", body)
+	}
+	if strings.Contains(body, "name what changed for them") {
+		t.Fatalf("the think is still on screen under the brief:\n%s", body)
+	}
+
+	// AND IT NEVER GIVES IT BACK. More reasoning arriving after the brief has
+	// started must not un-say something a person has begun reading.
+	thinking(a, 0, "second thoughts about the audience")
+	if body := plainRowsText(a.preflightRows(72)); !strings.Contains(body, "release notes for v2.4") {
+		t.Fatalf("later reasoning took the row back from the brief:\n%s", body)
+	}
+
+	// The fold opens on a think as readily as on a brief — it is the same row.
+	b := shapingApp(t, "write the release notes")
+	if b.openForming() {
+		t.Fatal("→ opened a block with nothing produced at all")
+	}
+	thinking(b, 0, strings.Repeat("working out what this kind of work needs settled. ", 20))
+	if !b.openForming() {
+		t.Fatal("→ would not open the window on a shaper that is thinking")
+	}
+	if want := 3 + formingWindowLines; len(b.preflightRows(72)) != want {
+		t.Fatalf("the think's window is %d rows, want %d", len(b.preflightRows(72)), want)
 	}
 }

@@ -1140,14 +1140,23 @@ conversation up the screen — the words on it change, the height does not. It i
 line the brief lays out to at your terminal's width, so it fills up left to right and then
 starts again, and the end of it is where the model's pen is.
 
-**It appears only when there is something to show.** Before the first words arrive there is
-no fourth row at all, and a task you approved from a proposal card never grows one — that
-brief was written before you were asked, so there is no stream behind the wait.
+**While the model is still thinking, the row shows its thinking, in italics.** The shaper
+runs on the careful-work model and is allowed to reason before it writes, and on some models
+that is most of the wait — so the row shows whatever is actually being produced. Italic is
+the model working; upright is your brief. **The brief takes the row the moment there is a
+brief and never gives it back**, so nothing you have started reading is un-said.
+
+**It appears only when there is something to show.** Before the model has produced anything
+there is no fourth row at all, and a task you approved from a proposal card never grows one
+— that brief was written before you were asked, so there is no stream behind the wait.
 
 **`▸` on the row means there is more behind it.** Press the row, or press `→` with an empty
 box, and the one line becomes the last six lines of the brief so far; `←` or another press
 shuts it again and `▾` goes back to `▸`. No new key is involved — it is the same fold every
 block on this surface has.
+
+Nothing about the preview is kept. The reasoning in particular is never written anywhere,
+never sent anywhere, and is not part of the brief the worker is given.
 
 The preview is **telemetry about a wait, not a transcript**. When the brief lands, the
 preview and the whole forming block disappear in the same frame, and what stays is the

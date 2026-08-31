@@ -86,6 +86,21 @@ import (
 // is the emptiness law read at the shape of a block rather than at a number —
 // machinery for the plural case does not appear in the singular case.
 
+// previewing is what the tail should be showing, and whether it is the model's
+// working rather than its answer.
+//
+// THE BRIEF WINS THE MOMENT THERE IS A BRIEF, AND NEVER GIVES THE ROW BACK. A
+// shaper on the careful tier reasons first and writes second, so the row starts
+// as the think and becomes the brief — and a row that flicked back to reasoning
+// on a pause would be the surface un-saying something a person had begun to
+// read.
+func (p preflight) previewing() (string, bool) {
+	if p.tail != "" {
+		return p.tail, false
+	}
+	return p.think, true
+}
+
 // formingWindowLines is how much of the brief the opened window holds.
 //
 // SIX, WHICH IS TWICE THE THOUGHT WINDOW AND FOR A DIFFERENT REASON. The
@@ -250,7 +265,8 @@ func (a *app) formingMark() string {
 // that does not ([palette.fade]). The fold mark rides the FIRST of them, in the
 // indent's own cells.
 func (a *app) formingPreviewRows(p *preflight, at, width int) []row {
-	lines := formingTailLines(p.tail, width-4)
+	text, thinking := p.previewing()
+	lines := formingTailLines(text, width-4)
 	if len(lines) == 0 {
 		return nil
 	}
@@ -267,6 +283,13 @@ func (a *app) formingPreviewRows(p *preflight, at, width int) []row {
 		lead := formingIndent
 		if i == 0 {
 			lead = bandFoldMark(a.pal, !p.open) + " "
+		}
+		// THE MODEL'S WORKING IS SAID IN THE INK THIS SURFACE SAYS IT IN. A live
+		// think is italic here exactly as it is in the thought window one file
+		// over (thinking.go), so a person reading the row can tell the shaper's
+		// reasoning from the brief it has started writing without being told.
+		if thinking {
+			line = a.pal.italic(line)
 		}
 		out = append(out, row{
 			text:  a.pal.dim(formingRail) + a.pal.fade(lead+line, 1),
@@ -355,7 +378,7 @@ func (a *app) openForming() bool {
 	}
 	a.clampWaitAt()
 	p := &a.waits[a.waitAt]
-	if p.open || p.tail == "" {
+	if text, _ := p.previewing(); p.open || text == "" {
 		return false
 	}
 	p.open = true

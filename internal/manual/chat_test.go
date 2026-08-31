@@ -636,6 +636,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I see the brief while it is being written", "commands"},
 		{"what is the line under shaping the brief", "commands"},
 		{"several tasks forming at once", "commands"},
+		{"why is the line under shaping the brief in italics", "commands"},
 
 		// The answer that gets moved because it ran long. People meet this as a
 		// line that appeared under a reply they were reading, so they say it back

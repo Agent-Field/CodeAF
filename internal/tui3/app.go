@@ -3329,7 +3329,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.done {
 			return a, nil
 		}
-		a.shapingTail(msg.wait, msg.text)
+		a.shapingTail(msg.wait, msg.read)
 		return a, a.pumpShaping(msg.wait, msg.stream)
 
 	case taskStartedMsg:

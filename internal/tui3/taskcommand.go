@@ -181,19 +181,20 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea
 	// backlog of superseded tails is a queue of things nobody will ever want to
 	// look at. A frame that misses a fragment misses nothing, because the next
 	// fragment carries the whole answer again.
-	stream := make(chan string, 1)
+	stream := make(chan shapingRead, 1)
 	return tea.Batch(a.pumpShaping(seq, stream), func() tea.Msg {
 		defer close(stream)
-		watched := session.WithBriefWatch(ctx, func(text string) {
+		watched := session.WithBriefWatch(ctx, func(answer, thinking string) {
+			read := shapingRead{answer: answer, thinking: thinking}
 			select {
-			case stream <- text:
+			case stream <- read:
 			default:
 				select {
 				case <-stream:
 				default:
 				}
 				select {
-				case stream <- text:
+				case stream <- read:
 				default:
 				}
 			}
@@ -203,25 +204,33 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea
 	})
 }
 
-// shapingTailMsg carries one reading of the brief being written, off the lane
-// [app.startTaskDoor] opened, and carries the lane back with it so the pump can
-// ask for the next one. done says the shaping call has returned and nothing
-// more is coming.
+// shapingRead is one reading of what the shaper has produced, and it is two
+// strings because on a thinking model one of them is empty for the whole wait
+// (internal/session's [session.BriefWatch]). They are kept apart the whole way
+// so that nothing can draw the model's working and call it somebody's brief.
+type shapingRead struct {
+	answer   string
+	thinking string
+}
+
+// shapingTailMsg carries one reading off the lane [app.startTaskDoor] opened,
+// and carries the lane back with it so the pump can ask for the next one. done
+// says the shaping call has returned and nothing more is coming.
 type shapingTailMsg struct {
 	wait   uint64
-	text   string
+	read   shapingRead
 	done   bool
-	stream <-chan string
+	stream <-chan shapingRead
 }
 
 // pumpShaping waits for the next reading and hands it to the update lane. It is
 // one message per fragment the surface actually gets to draw rather than one per
 // token: the lane holds only the newest text, so a shaper writing faster than
 // the frame clock collapses into whatever was there when the pump came round.
-func (a *app) pumpShaping(seq uint64, stream <-chan string) tea.Cmd {
+func (a *app) pumpShaping(seq uint64, stream <-chan shapingRead) tea.Cmd {
 	return func() tea.Msg {
-		text, open := <-stream
-		return shapingTailMsg{wait: seq, text: text, done: !open, stream: stream}
+		read, open := <-stream
+		return shapingTailMsg{wait: seq, read: read, done: !open, stream: stream}
 	}
 }
 
@@ -291,6 +300,18 @@ type preflight struct {
 	// written before the person was ever asked, and on every road until the first
 	// fragment lands; a block with nothing to show draws no tail at all.
 	tail string
+	// think is what the shaper is REASONING while it has not started writing —
+	// the model's working, kept apart from its answer all the way down
+	// (internal/session's [session.BriefWatch]) and drawn in the italic this
+	// surface already draws a think in (thinking.go).
+	//
+	// IT IS HERE BECAUSE ON A THINKING SHAPER IT IS THE ONLY THING THERE IS. The
+	// shaper is allowed to reason, and a run measured against a real endpoint
+	// spent the whole twenty-five seconds producing reasoning and never one
+	// answer delta — so a block that could only draw the brief drew nothing for
+	// exactly the wait it was built for. The brief takes the row the moment there
+	// is a brief, and never gives it back.
+	think string
 	// open is the window somebody asked for: the last few lines of the brief
 	// rather than the newest one. It is per-wait, because in a block of several
 	// only the pointed one shows anything at all.
@@ -423,26 +444,34 @@ func (a *app) dropWait(at int) {
 	a.touch()
 }
 
-// shapingTail records one reading of the brief being written.
+// shapingTail records one reading of what the shaper has produced.
 //
-// IT DIGESTS THE STREAM THROUGH THE ONE SCANNER THIS SURFACE HAS. What arrives
+// IT DIGESTS THE ANSWER THROUGH THE ONE SCANNER THIS SURFACE HAS. What arrives
 // is a prefix of the shaper's JSON answer, and a prefix of a JSON object is not
 // a payload — [shapingPreview] is the same tolerant read of one field that a
 // forming tool call's arguments go through, which is the whole reason there is
-// no second parser here to drift from the first.
+// no second parser here to drift from the first. The reasoning is plain text and
+// goes through nothing at all.
 //
-// A reading that says LESS than what is already on screen is dropped. The field
-// being followed opens before it has any content, so the first fragments after
-// the brief's opening quote legitimately answer with nothing — and a tail that
-// blanked itself every time the model paused would flicker at a person who is
-// reading it.
-func (a *app) shapingTail(seq uint64, text string) {
+// A READING THAT SAYS LESS THAN WHAT IS ON SCREEN IS DROPPED, on both halves.
+// The field being followed opens before it has any content, so the fragments
+// after the brief's opening quote legitimately answer with nothing — and a
+// preview that blanked itself every time the model paused would flicker at the
+// person reading it.
+func (a *app) shapingTail(seq uint64, read shapingRead) {
 	at := a.waitAtSeq(seq)
 	if at < 0 {
 		return
 	}
-	if preview := shapingPreview(text); preview != "" {
-		a.waits[at].tail = preview
+	p := &a.waits[at]
+	changed := false
+	if preview := shapingPreview(read.answer); preview != "" && preview != p.tail {
+		p.tail, changed = preview, true
+	}
+	if think := strings.TrimSpace(read.thinking); think != "" && think != p.think {
+		p.think, changed = think, true
+	}
+	if changed {
 		a.touch()
 	}
 }
