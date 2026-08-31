@@ -188,6 +188,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// copy onto main and reported somebody else's fixes as its own.
 		{"why is my task waiting on its parts", "how-tasks-run"},
 		{"can a task run git pull", "how-tasks-run"},
+		// The two stages a person waits through with the work not obviously
+		// moving. They are asked in front of a card that has only just appeared
+		// and a status line nobody has read before, so they are asked in the
+		// words on the screen and in the words of somebody who thinks it hung.
+		{"my task says sizing the work", "how-tasks-run"},
+		{"task appeared and then nothing happened", "how-tasks-run"},
+		{"how long does sizing the work take", "how-tasks-run"},
+		{"what does briefing a worker mean", "how-tasks-run"},
+		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
 		// WHERE a task may write, which is a different question from WHOSE work
 		// it may take — and the one a person asks after reading a refusal that
 		// named a directory they recognise.
