@@ -87,7 +87,15 @@ jobs:
           # in. internal/swepro/EMBEDDING.md is the to-do.
           pkgs="$(go list ./... | grep -v '/internal/swepro/' | awk -v s="$SHARD" 'NR % 3 == s')"
           echo "shard ${SHARD}: $(echo "$pkgs" | wc -l) packages, skipping ${skip}"
-          go test -timeout 8m -skip "^(${skip})$" $pkgs
+          # -p 1: ONE PACKAGE AT A TIME WITHIN A SHARD. The second full run died
+          # the same way as the first — a runner shutdown with slow packages in
+          # flight and no Go timeout — after sharding had already cut each
+          # machine's load to a third. Halving the peak again by serialising is
+          # the experiment that settles whether the killer is memory: if a shard
+          # still dies at -p 1, it is not, and the package that was running is
+          # the suspect by name. The shards keep the wall clock acceptable
+          # while each one runs serial.
+          go test -p 1 -timeout 8m -skip "^(${skip})$" $pkgs
 
   # ONE NAME FOR THE THREE, for the same reason cross build has one below: a
   # branch rule can only require a name it can spell, and a matrix's legs are
