@@ -327,11 +327,13 @@ func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
 	// harness naming its own paperwork; the noun is what makes the row a sentence
 	// somebody watching their turn stop can act on.
 	said := 0
+	starts := map[time.Time]bool{}
 	for _, one := range log.all() {
 		if one.Phase != PhaseBriefing {
 			continue
 		}
 		said++
+		starts[one.Since] = true
 		if one.Detail != checkpointBriefingWho {
 			t.Fatalf("the briefing phase named %q, want %q", one.Detail, checkpointBriefingWho)
 		}
@@ -339,11 +341,20 @@ func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
 			t.Fatal("the briefing phase carries no start, so nothing can count up from it")
 		}
 	}
-	// TWICE, ONCE PER CALL. A surface drops a phase it has not heard again for
-	// fifteen seconds and nothing here beats, so a single post would go dark
-	// halfway through the stage it was added to cover.
-	if said != 2 {
-		t.Fatalf("the handover said it was briefing %d times, want one per model call", said)
+	if said == 0 {
+		t.Fatal("the handover never said it was briefing anybody")
+	}
+	// AND IT IS ONE STAGE WITH ONE CLOCK ON IT, over both model calls.
+	//
+	// This used to be posted TWICE, once per call, because a surface drops a
+	// phase it has not heard again for [provider.PhaseWindow] and nothing in this
+	// package beat. It beats now (phasenews.go's [phaseHeldBeat]), so the stage
+	// is opened once and held — and what a repeat means has changed with it: a
+	// beat says the SAME sentence from the SAME start, and a second start would
+	// be the clock a person is reading going back to zero halfway through.
+	if len(starts) != 1 {
+		t.Fatalf("the briefing was said from %d different starts, want one stage with one clock",
+			len(starts))
 	}
 
 	// AND IT IS CLOSED. A phase left open is a clock a surface goes on drawing for

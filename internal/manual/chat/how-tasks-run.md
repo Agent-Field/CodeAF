@@ -1080,6 +1080,10 @@ itself off the screen when the writing ends, because this road can still decide 
 was already finished and leave the turn exactly where it was — in which case no task starts
 and no line claims one did.
 
+**It stays up for the whole wait.** The line keeps saying itself while the writing runs, so
+a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
+whole of it. It does not go blank partway through and it does not restart at zero.
+
 ## The three ways a task can land
 
 Every task ends in exactly one of three states, and the words are the same everywhere you

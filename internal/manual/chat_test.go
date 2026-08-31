@@ -808,6 +808,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does first word mean while it is waiting", "screen"},
 		{"how long until it gives up on this one", "screen"},
 		{"what does still working mean", "screen"},
+		// AND THE STAGE THAT LASTS. A reading between rounds can run for minutes,
+		// and until the beat was written the line went blank after fifteen
+		// seconds while the work carried on — so these are asked in the words of
+		// somebody watching that happen, and in the word the line now wears.
+		{"what does taking stock mean", "screen"},
+		{"the status line went blank while it was still working", "screen"},
+		{"does a slow stage stop being shown", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply
