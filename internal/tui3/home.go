@@ -1249,6 +1249,13 @@ func (h *homeView) build() {
 	// number would take the exchange off the screen at the instant it asked a
 	// question (homeexchange.go).
 	previousExchange := h.focusedExchange()
+	// AND THE ROW ITSELF, WHATEVER KIND OF ROW IT IS. The four followers above
+	// each know one kind of thing, and the drop-up a typed query raises is made
+	// of rows none of them can see: an offered place, an offered command, `ask
+	// here` (homeplaces.go, homeslash.go, homeexchange.go). This is the whole
+	// line, matched back afterwards by what it STANDS FOR rather than by its
+	// number ([homeLine.sameRow]).
+	previousLine, hadLine := h.focusedLine()
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -1270,15 +1277,27 @@ func (h *homeView) build() {
 	// before this box could also search (see [homeAction]).
 	h.cursor, h.top = h.clamp(0), 0
 	if h.searching() {
-		h.picked = h.picked && h.pointable(previous.Transcript)
+		// THE ROW A PERSON WALKED ONTO IS THE ROW THEY ARE STILL ON, and it does
+		// not have to be a conversation. `picked` is the decision to stop writing
+		// and start choosing ([homeView.move] states it), and the question asked
+		// here used to be the narrower "is that CONVERSATION still on the list" —
+		// which is false for every other row the drop-up offers, so a cursor
+		// resting on a place or a command was forgotten by every rebuild. The slow
+		// tick rebuilds three seconds at a time ([app.refreshHome]), so a person
+		// who had stopped typing and touched nothing watched the selection walk
+		// back down to the action row on its own, over and over.
+		h.picked = h.picked && hadLine && h.pointSame(previousLine)
 		if !h.picked {
 			// AND THE ACTION ROW IS AT THE BOTTOM NOW, so resting on it is no
 			// longer the same thing as resting at the top of the list ([homeAction]
 			// says why it moved). It is found rather than counted to: how many rows
 			// a query left above it is not a number this function knows.
 			h.pointAction()
-			return
 		}
+		// Either way the cursor is where it belongs: [homeView.pointSame] put it
+		// back on the row that was chosen, and the followers below are about a
+		// list nobody is filtering.
+		return
 	}
 	if previousExchange != nil {
 		h.pointExchange(previousExchange)
@@ -1742,13 +1761,61 @@ func (h *homeView) query() string {
 // searching reports whether anything is typed at all.
 func (h *homeView) searching() bool { return h.query() != "" }
 
-// pointable reports whether a transcript is still a row on this list.
-func (h *homeView) pointable(transcript string) bool {
-	if transcript == "" {
+// sameRow reports whether two lines stand for THE SAME THING. Not the same line
+// number — the list is rebuilt and re-sorted under the cursor constantly — and
+// not the same painted text either, since a row's margin changes as the work
+// behind it does. It is what lets a cursor be put back where a person left it
+// ([homeView.pointSame]).
+//
+// EVERY STOP THIS COLUMN HAS IS ANSWERED HERE, and that is the law rather than
+// an implementation detail: a kind this switch does not know is a row somebody
+// can walk onto and then be walked off again by the next rebuild, which is
+// exactly the defect this function was written to end. So a new cursor stop
+// gets its case here in the same change that gives it its case in
+// [homeLine.stop].
+//
+// The identity is whatever the row is ABOUT — a conversation is its transcript,
+// a project or a fold is its directory, a place or a `since you left` line is
+// its place word, a command is its entry in the one command table
+// (homeslash.go), an errand is the live exchange itself. The two rows that
+// stand for a thing that does not exist yet — the action row and `ask here` —
+// are their kind and nothing else, because there is only ever one of each.
+func (l homeLine) sameRow(other homeLine) bool {
+	if l.kind != other.kind {
 		return false
 	}
-	for _, line := range h.lines {
-		if line.kind == homeSession && line.row.Transcript == transcript {
+	switch l.kind {
+	case homeSession:
+		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript
+	case homeItem:
+		return l.item.ID != "" && l.item.ID == other.item.ID
+	case homeQuiet, homeItemFold, homeProject:
+		return l.dir != "" && l.dir == other.dir
+	case homeExchangeRow:
+		return l.ex != nil && l.ex == other.ex
+	// the router's lane: an offered place and an offered command
+	// (homeplaces.go, homeslash.go).
+	case homePlace:
+		return l.project != "" && l.project == other.project
+	case homeCommand:
+		return l.cmd != nil && l.cmd == other.cmd
+	// the switcher's and the phone's own rows (place_home.go, homephone.go).
+	case homeLedger, homePhoneNews, homePhoneMore:
+		return l.project != "" && l.project == other.project && l.dir == other.dir
+	case homeAction, homeAskHere, homeSwitchFold:
+		return true
+	}
+	return false
+}
+
+// pointSame puts the cursor back on the row a person had chosen, and reports
+// whether that row is still on the list at all. A false answer is the row
+// having gone — the conversation filtered away, the command no longer matching
+// the word — and the caller decides where the cursor goes instead.
+func (h *homeView) pointSame(want homeLine) bool {
+	for at, line := range h.lines {
+		if line.sameRow(want) {
+			h.cursor = at
 			return true
 		}
 	}

@@ -211,3 +211,75 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 		t.Fatalf("the box still holds %q after /home ran", text)
 	}
 }
+
+// TestHomeSlashSelectionSurvivesTheSlowTick: the drop-up's selection is a thing
+// a person DID, and nothing but another key of theirs may move it.
+//
+// THE BUG THIS PINS. Home's slow tick rebuilds the whole column every three
+// seconds ([app.refreshHome]), and the rebuild used to keep the cursor only
+// when it stood on a conversation — every other row the drop-up offers was
+// forgotten, and the cursor was put back on `start a new conversation`, which
+// is the LAST row of a drop-up. So somebody who had walked up onto `/settings`
+// and then sat still watched the selection fall back down to the bottom on its
+// own, with nothing typed and nothing touched.
+func TestHomeSlashSelectionSurvivesTheSlowTick(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/set")
+	a.homeKey(key("up"))
+	a.homeKey(key("up"))
+	if k := homeKindAt(a); k != homeCommand {
+		t.Fatalf("two ↑ landed on %v, want a command row", k)
+	}
+	chosen := a.home.lines[a.home.cursor].cmd
+
+	// Three beats of the tick and three paints, and not one keystroke between
+	// them — which is a person reading the row they just walked onto.
+	for i := 0; i < 3; i++ {
+		a.refreshHome()
+		_ = homeText(a)
+	}
+	if k := homeKindAt(a); k != homeCommand {
+		t.Fatalf("the selection walked off onto %v with nothing typed:\n%s", k, homeText(a))
+	}
+	if got := a.home.lines[a.home.cursor].cmd; got != chosen {
+		t.Fatalf("the selection moved to /%s, want the /%s it was left on", got.name, chosen.name)
+	}
+}
+
+// TestHomeOfferedPlaceSelectionSurvivesTheSlowTick is the same law over the
+// OTHER kind of row the typed drop-up offers — a place (homeplaces.go). It is a
+// separate test because the defect was never about commands: the rebuild asked
+// whether the cursor stood on a conversation, so a place row snapped back to
+// the action row too, and had done since before the composer answered a slash.
+func TestHomeOfferedPlaceSelectionSurvivesTheSlowTick(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "sett")
+	for i := 0; i < len(a.home.lines) && homeKindAt(a) != homePlace; i++ {
+		a.homeKey(key("up"))
+	}
+	if k := homeKindAt(a); k != homePlace {
+		t.Fatalf("↑ never reached the offered place; it rests on %v:\n%s", k, homeText(a))
+	}
+	word := a.home.lines[a.home.cursor].project
+
+	for i := 0; i < 3; i++ {
+		a.refreshHome()
+		_ = homeText(a)
+	}
+	if k := homeKindAt(a); k != homePlace {
+		t.Fatalf("the selection walked off the place onto %v with nothing typed:\n%s", k, homeText(a))
+	}
+	if got := a.home.lines[a.home.cursor].project; got != word {
+		t.Fatalf("the selection moved to the %q place, want the %q it was left on", got, word)
+	}
+}
