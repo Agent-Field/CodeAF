@@ -933,7 +933,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// the same distinction the card gets (task_beat.go).
 	defer node.beatPhase(taskBeatRepairing)()
 
-	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
+	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""

@@ -165,6 +165,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// copy onto main and reported somebody else's fixes as its own.
 		{"why is my task waiting on its parts", "how-tasks-run"},
 		{"can a task run git pull", "how-tasks-run"},
+		// WHERE a task may write, which is a different question from WHOSE work
+		// it may take — and the one a person asks after reading a refusal that
+		// named a directory they recognise.
+		{"can a task edit files in another repo", "how-tasks-run"},
+		{"why did the task say outside your copy", "how-tasks-run"},
+		{"my task wrote in the wrong repository", "how-tasks-run"},
+		{"can a task push or open a PR", "how-tasks-run"},
+		{"why can a task not push", "how-tasks-run"},
+		{"is a task allowed to use gh api", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
 		// Written from a real run: a task made a symlink so a scorer would find
