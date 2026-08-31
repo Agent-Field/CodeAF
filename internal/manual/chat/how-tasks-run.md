@@ -1005,9 +1005,11 @@ how**. It happens in two places:
   hands, and asked to hand it out.
 
 **How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
-seconds**, measured at thirteen. It carries no numbers — how many parts there are is
-exactly what it is deciding — and the roster says what happened afterwards, either
-`split into 3 parts:` or the task carrying on as one worker.
+seconds**, measured at thirteen. It is given at most **three minutes**, and a reading nobody
+could get is not a refusal: an ordinary division goes ahead as the worker wrote it, and one
+that only this reading could have allowed does not. It carries no numbers — how many parts there are is exactly what it is deciding —
+and the roster says what happened afterwards, either `split into 3 parts:` or the task
+carrying on as one worker.
 
 **Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
 a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
