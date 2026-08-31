@@ -338,21 +338,26 @@ func TestAHoldWithSomethingToDoIsRefused(t *testing.T) {
 	}
 }
 
-func TestStandingValidateStillRefusesAnExplicitZeroRail(t *testing.T) {
+// ZERO IS NO LIMIT AND A NEGATIVE NUMBER IS STILL A REFUSAL. Zero used to be
+// refused here, which made [standing.Item]'s own documented contract
+// unreachable — [Agent.runStandingItem] has only ever stopped a firing when the
+// rail is positive — so the one thing a person could not ask for was the
+// standing order bounded by nothing but the machine's daily rail.
+func TestStandingValidateRefusesANegativeRailAndNotAnExplicitZero(t *testing.T) {
 	store := newFakeStanding(t)
 	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
 	at := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
 	args := json.RawMessage(`{"op":"propose","words":"remind me later",` +
 		`"when":{"kind":"at","at":` + strconv.Quote(at) + `},` +
 		`"does":{"kind":"say","say":"time to leave"},` +
-		`"rails":{"per_run_usd":0}}`)
+		`"rails":{"per_run_usd":-1}}`)
 
 	text, isError, err := agent.standTool(context.Background(), args)
-	if err != nil || !isError || !strings.Contains(text, "an item needs a per-run budget") {
-		t.Fatalf("zero rail = %q isError=%v err=%v", text, isError, err)
+	if err != nil || !isError || !strings.Contains(text, "a per-run budget cannot be negative") {
+		t.Fatalf("negative rail = %q isError=%v err=%v", text, isError, err)
 	}
 	if len(store.created) != 0 {
-		t.Fatal("an explicit zero rail created an item")
+		t.Fatal("a negative rail created an item")
 	}
 }
 

@@ -2,9 +2,18 @@
 
 ## The daily rail
 
-Aforge spends real money, so it works against a ceiling: **$20.00 a day** by
+Aforge spends real money, so it works against a ceiling: **$500.00 a day** by
 default, resetting at your local midnight. The ceiling counts everything —
 your jobs, charter firings, media, document OCR, its own practice.
+
+That figure is deliberately large. It is a **backstop against something going
+wrong**, not a budget: nobody chose it for you, so it sits where nobody would
+defend the spend rather than where an ordinary day's work reaches it. If you
+want a number you actually chose, `/budget default 40` is the whole of it — the
+rail works exactly the same at forty dollars.
+
+**A ceiling of `0` is no ceiling at all**, and it stays that way across
+restarts.
 
 ## Pause and ask, never spend on
 
@@ -12,8 +21,8 @@ When the day's spend reaches the ceiling, aforge does not stop mid-thought and
 it does not quietly keep going. It stops *claiming new work* and posts one
 question:
 
-> Daily budget reached -- $20.00 spent of $20.00. Say the word and I'll continue
-> (raises today's rail by $20.00).
+> Daily budget reached -- $500.00 spent of $500.00. Say the word and I'll continue
+> (raises today's rail by $500.00).
 
 Say "yes" — or "go ahead", "continue", "do it" — and the rail is raised by one
 full budget unit plus anything already overshot, and work resumes where it
@@ -24,7 +33,7 @@ not once per attempt.
 
 | you type | what happens |
 | --- | --- |
-| `/budget` | `spent $3.40 of $20 · resets midnight` |
+| `/budget` | `spent $3.40 of $500 · resets midnight` |
 | `/budget 25` | raises **today's** ceiling to $25 |
 | `/budget default 25` | changes the standing default to $25, from tomorrow on |
 | `/budget unlimited today` | no ceiling until local midnight; the default is untouched |
@@ -52,8 +61,10 @@ There is no fixed per-job dollar cap — a job's budget is written into its brie
 grounded in what similar work has actually cost.
 
 Charters are capped explicitly: each one carries a per-firing budget (default
-**$0.15**) and a max-per-day (default **10**). A firing that would cross the
-daily rail is deferred and you are asked first.
+**$5.00**) and a max-per-day (default **10**). A firing that would cross the
+daily rail is deferred and you are asked first. A per-firing budget of **0** is
+no per-firing limit — such a charter is bounded by the daily rail and its
+max-per-day alone.
 
 ## When a worker runs out of time — what happens to what it did
 
@@ -166,10 +177,14 @@ like a job that is still going.
 
 ## The practice carve-out
 
-Aforge's own practice has its own pocket: **$2.00 a day**, spent as at most two
-firings of $1.00. When that is gone, practice stops for the day. It never asks
-you to raise a rail on its own behalf — it just defers. The daily rail still
-applies on top.
+Aforge's own practice has its own pocket: **$50.00 a day**, spent as at most two
+firings of half of it. When that is gone, practice stops for the day. It never
+asks you to raise a rail on its own behalf — it just defers. The daily rail
+still applies on top.
+
+**This is the one pocket where `0` does not mean "no limit".** Zero turns
+practice off. Practice is work aforge does while nobody is watching, so there is
+no way to ask for it unbounded, on purpose.
 
 ## The provider rate limiter
 

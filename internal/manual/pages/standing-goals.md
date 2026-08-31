@@ -54,8 +54,10 @@ schedule.
 
 Every charter carries three limits, stated on that card before you agree:
 
-- **per-firing budget** — what one firing may spend. Default **$0.15**, or the
-  measured cost of similar work when aforge has actually measured it.
+- **per-firing budget** — what one firing may spend. Default **$5.00**, or the
+  measured cost of similar work when aforge has actually measured it. **`0` is
+  no per-firing limit**: the charter is then bounded by the daily rail and its
+  max-per-day alone.
 - **max per day** — default **10** firings; a reminder gets **1**.
 - **expiry** — default **never**. Only a reminder for a single moment expires,
   and it expires within a day of that moment; a rule that repeats does not

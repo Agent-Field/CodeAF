@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // CharterWatch preserves the user's cadence words beside their executable
@@ -50,8 +52,10 @@ type CharterSpec struct {
 }
 
 // defaultPerFiringBudgetUSD backstops a spec whose measured cost never
-// arrived; a charter cannot exist with a non-positive per-firing rail.
-const defaultPerFiringBudgetUSD = 0.15
+// arrived; a charter cannot exist with a non-positive per-firing rail. It is
+// [standing.DefaultPerRunUSD] and not a second figure — see that constant for
+// why one number is the whole point.
+const defaultPerFiringBudgetUSD = standing.DefaultPerRunUSD
 
 // reminderExpiryWindow keeps a fired-once reminder alive long enough to be
 // delivered late, then retires it before a second scheduled day.

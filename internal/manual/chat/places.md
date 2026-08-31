@@ -186,7 +186,7 @@ covered**, the box stays exactly where it was, and three lines appear in the air
  it will run on its own and tell you when it lands                                    a task
  · in ~/aforge-v2, on master                                                alt+w to move it
  · execution runs on opus 4.1                                                alt+o to change
- · it may spend up to $10.00 before it asks                                    type a number
+ · it may spend up to $100.00 before it asks                                    type a number
  alt+enter send it off · enter talk about it first · esc back to spend
 ```
 
@@ -206,7 +206,7 @@ Each one is edited on the line that shows it.
   inside the layer, and `enter` on a row binds it **for this task only**. Nothing is written
   to your settings. With nothing anywhere able to say what execution runs on, the line is
   absent and so is the key.
-- **`it may spend up to $10.00 before it asks`** — the cap. **Type a number** while the
+- **`it may spend up to $100.00 before it asks`** — the cap. **Type a number** while the
   layer is up and the figure changes as you type; `backspace` takes a character off. It is
   a real limit and not a label: the task stops and asks you when it reaches it. See the
   tasks page, *a task started from the composer carries a cap*.

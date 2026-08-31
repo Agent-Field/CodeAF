@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 )
 
 func registry(t *testing.T, dir string) *Settings {
@@ -1087,3 +1088,176 @@ func TestTheRoutingRowReadsAsAChoiceAndAsAnAnswer(t *testing.T) {
 		t.Fatalf("a word this build does not know is in force as %q, want %q", got, DefaultRouting)
 	}
 }
+
+// ── THE SPEND RAILS ─────────────────────────────────────────────────────────
+//
+// Two facts about every money row, pinned together because they are one
+// decision: the shipped number is LARGE — a rail nobody chose must be a
+// backstop against a runaway and never the thing that interrupts ordinary work
+// — and the row says out loud what zero means, because "$0" on a ceiling reads
+// as the opposite of what the code does with it.
+
+// TestSpendRailsShipLargeEnoughNotToHinder is the guard on the raise itself. It
+// is written as floors and not as equalities on purpose: raising a rail further
+// is always allowed, and only a quiet DROP back towards the figures that made
+// aforge stop mid-errand ($20 a day, a $3 consent gate, a 15-cent standing
+// firing) is the regression worth a failing build.
+func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
+	floors := []struct {
+		what  string
+		value float64
+		floor float64
+	}{
+		{"the daily rail", DefaultDailyBudgetUSD, 500},
+		{"the plan consent gate", DefaultPlanConsentUSD, 100},
+		{"the practice carve-out", DefaultPracticeBudgetUSD, 50},
+		{"the lifted-tier cap", taxonomy.DefaultTierCapUSD, 25},
+		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 5},
+	}
+	for _, floor := range floors {
+		if floor.value < floor.floor {
+			t.Fatalf("%s ships at $%v, under the $%v this build promises",
+				floor.what, floor.value, floor.floor)
+		}
+	}
+	// The session ceiling is the one rail that ships OFF rather than large, and
+	// that is the same promise said the other way: a default here would box in
+	// every sitting at a number nobody chose.
+	if DefaultSpendRailUSD != 0 {
+		t.Fatalf("the session ceiling ships at $%v, want it off", DefaultSpendRailUSD)
+	}
+}
+
+// TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the four rows a
+// person actually turns. For each it checks the shipped reading against the
+// constant that owns it — one source of truth, so a raise that forgot the row
+// fails here — and then writes 0 and reads the receipt back.
+func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
+	for _, name := range []string{
+		"AFORGE_DAILY_BUDGET", "AFORGE_PRACTICE_BUDGET", "AFORGE_PLAN_CONSENT",
+	} {
+		t.Setenv(name, "")
+	}
+	rails := []struct {
+		key      string
+		shipped  float64
+		zeroSays string
+	}{
+		{KeyDailyBudget, DefaultDailyBudgetUSD, noLimitWord},
+		{KeyPlanConsent, DefaultPlanConsentUSD, "never asks"},
+		// The carve-out is the deliberate exception: zero switches practice off
+		// rather than uncapping it, and the receipt has to say THAT and not
+		// "no limit", or the row would be lying in the calmest possible voice.
+		{KeyPracticeBudget, DefaultPracticeBudgetUSD, "practice off"},
+		{KeySpendRail, DefaultSpendRailUSD, noLimitWord},
+	}
+	for _, rail := range rails {
+		dir := t.TempDir()
+		rows := registry(t, dir)
+		row, ok := rows.Row(rail.key)
+		if !ok {
+			t.Fatalf("%s is not registered", rail.key)
+		}
+		if got, want := row.Value(), formatDollars(rail.shipped); got != want {
+			t.Fatalf("%s ships reading %q, want %q — the row and the constant have drifted",
+				rail.key, got, want)
+		}
+		if err := row.Apply("0"); err != nil {
+			t.Fatalf("%s could not be set to 0: %v", rail.key, err)
+		}
+		reread, ok := registry(t, dir).Row(rail.key)
+		if !ok {
+			t.Fatalf("%s went missing after a write", rail.key)
+		}
+		if reread.Value() != "$0" {
+			t.Fatalf("%s reads %q after being set to 0", rail.key, reread.Value())
+		}
+		if got := reread.Receipt(); got != rail.zeroSays {
+			t.Fatalf("%s at 0 says %q, want %q", rail.key, got, rail.zeroSays)
+		}
+		// And a rail that is ON says nothing extra: the receipt is for the
+		// state a number cannot express, never a second copy of the value.
+		if err := reread.Apply("12.50"); err != nil {
+			t.Fatalf("%s could not be set back: %v", rail.key, err)
+		}
+		if got := mustRow(t, registry(t, dir), rail.key).Receipt(); got != "" {
+			t.Fatalf("%s at $12.50 grew a receipt: %q", rail.key, got)
+		}
+	}
+}
+
+// TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord is the one row with two
+// things to say at once. "no limit" alone would hide the figure a person came
+// to the row to read.
+func TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord(t *testing.T) {
+	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	dir := t.TempDir()
+	rows := NewSettings(SettingsOptions{
+		ProfileDir:    dir,
+		ModelValue:    func(slot string) string { return slot + "/model" },
+		SetModel:      func(string, string) error { return nil },
+		SplitPct:      func() int { return 0 },
+		SpentTodayUSD: func() (float64, bool) { return 4.25, true },
+	})
+	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "$4.25 today" {
+		t.Fatalf("the shipped rail's receipt = %q", got)
+	}
+	if err := mustRow(t, rows, KeyDailyBudget).Apply("0"); err != nil {
+		t.Fatal(err)
+	}
+	rows = NewSettings(SettingsOptions{
+		ProfileDir:    dir,
+		ModelValue:    func(slot string) string { return slot + "/model" },
+		SetModel:      func(string, string) error { return nil },
+		SplitPct:      func() int { return 0 },
+		SpentTodayUSD: func() (float64, bool) { return 4.25, true },
+	})
+	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "no limit · $4.25 today" {
+		t.Fatalf("a removed rail's receipt = %q", got)
+	}
+}
+
+// TestZeroMeansNoLimitEverywhereARailIsEnforced is the other half of the
+// promise, checked where the number is READ rather than where it is shown: a
+// row that says "no limit" over machinery that still stops the work would be
+// the worst of the three possible states.
+func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
+	t.Setenv("AFORGE_DAILY_BUDGET", "0")
+	dir := t.TempDir()
+	if rail, err := DailyBudgetUSDAt(dir); err != nil || rail != 0 {
+		t.Fatalf("the daily rail refused 0: %v %v", rail, err)
+	}
+	t.Setenv("AFORGE_PLAN_CONSENT", "0")
+	if gate, err := PlanConsentUSDAt(dir); err != nil || gate != 0 {
+		t.Fatalf("the consent gate refused 0: %v %v", gate, err)
+	}
+	t.Setenv("AFORGE_RESPONSE_LIFT_CAP", "0")
+	if cap := ResponseLiftCapAt(dir); cap != 0 {
+		t.Fatalf("the lifted-tier cap refused 0: %v", cap)
+	}
+	// A persisted 0 must survive a restart on every one of them, which is the
+	// bug this shape exists for: a reader that tested the NUMBER before it
+	// tested whether a value was written at all would hand back the default
+	// and quietly put a ceiling back over somebody who removed one.
+	for _, name := range []string{"AFORGE_DAILY_BUDGET", "AFORGE_PLAN_CONSENT", "AFORGE_RESPONSE_LIFT_CAP"} {
+		t.Setenv(name, "")
+	}
+	for _, key := range []string{KeyDailyBudget, KeyPlanConsent, KeySpendRail, KeyResponseLiftCap} {
+		if err := writeProfileValue(dir, key, 0.0); err != nil {
+			t.Fatalf("write %s: %v", key, err)
+		}
+	}
+	if rail, err := DailyBudgetUSDAt(dir); err != nil || rail != 0 {
+		t.Fatalf("a persisted daily 0 read back as %v (%v)", rail, err)
+	}
+	if gate, err := PlanConsentUSDAt(dir); err != nil || gate != 0 {
+		t.Fatalf("a persisted consent 0 read back as %v (%v)", gate, err)
+	}
+	if rail := SpendRailUSDAt(dir); rail != 0 {
+		t.Fatalf("a persisted session 0 read back as %v", rail)
+	}
+	if cap := ResponseLiftCapAt(dir); cap != 0 {
+		t.Fatalf("a persisted lift cap of 0 read back as %v", cap)
+	}
+}
+

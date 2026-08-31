@@ -109,8 +109,11 @@ func TestEnterThreeTimesLandsTheDefaultsInTheProfile(t *testing.T) {
 	if a.setup.step() != setupBudget {
 		t.Fatal("enter on the crew goes on to the ceiling")
 	}
-	if !strings.Contains(setupScreen(a), "$20") {
-		t.Fatalf("the ceiling step must show the default it will keep; got:\n%s", setupScreen(a))
+	// The figure is read from the constant the screen itself interpolates, so a
+	// raised rail moves both together rather than leaving the test pinning a
+	// number nobody ships.
+	if want := "$" + setupBudgetDefault(); !strings.Contains(setupScreen(a), want) {
+		t.Fatalf("the ceiling step must show %s, the default it will keep; got:\n%s", want, setupScreen(a))
 	}
 	pressSetup(a, key("enter"))
 	if a.setup.open {

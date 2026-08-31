@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -127,9 +128,10 @@ func standingRails(proposed store.CharterSpecRails, reminder bool, graphContext 
 
 const (
 	// defaultStandingCostUSD backstops a rule proposed before anything has been
-	// measured. It matches the store's own per-firing backstop, so the number a
-	// proposal says and the number a charter is created with are one number.
-	defaultStandingCostUSD = 0.15
+	// measured. It IS the store's own per-firing backstop rather than a copy of
+	// it, so the number a proposal says and the number a charter is created
+	// with are one number that cannot drift.
+	defaultStandingCostUSD = standing.DefaultPerRunUSD
 	// defaultStandingMaxPerDay is the ordinary daily ceiling. A reminder gets
 	// one, because one a day is all a reminder is.
 	defaultStandingMaxPerDay = 10

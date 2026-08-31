@@ -2,6 +2,7 @@ package head
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -231,7 +232,10 @@ func TestSurgeryConsequenceThresholdsBothSides(t *testing.T) {
 func TestConsequentialCancelAsksOneStructuredConfirmBeforeCommand(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceSurgeryJob(t, graph, "expensive", "Audio render", "render the audio")
-	if err := graph.RecordUsage(store.NodeUsage{NodeID: "expensive", Cost: 0.85}); err != nil {
+	// Spelled from the gate for [TestConfirmSurgeryGatesTheKeyPathExactlyAsASentenceIsGated]'s
+	// reason: a literal under a raised gate is a test that passes about nothing.
+	loss := store.SurgerySpendGateUSD * 3.4
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "expensive", Cost: loss}); err != nil {
 		t.Fatal(err)
 	}
 	user := postUser(t, graph, "gate", "cancel the audio job")
@@ -244,7 +248,7 @@ func TestConsequentialCancelAsksOneStructuredConfirmBeforeCommand(t *testing.T) 
 	}
 	reply := waitForAgentReply(t, graph, "gate", user.Seq)
 	if !strings.Contains(reply.Body, `"kind":"confirm"`) || !strings.Contains(reply.Body, `"default":"2"`) ||
-		!strings.Contains(reply.Body, "~$0.85 spent") || len(reply.Options) != 2 {
+		!strings.Contains(reply.Body, fmt.Sprintf("~$%.2f spent", loss)) || len(reply.Options) != 2 {
 		t.Fatalf("confirm reply = %+v", reply)
 	}
 	// The gate owns the words. A model that spoke over it would be a second

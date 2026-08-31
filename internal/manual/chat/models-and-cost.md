@@ -412,7 +412,7 @@ An adaptive run's page pins one line at the top, and it names the model doing th
 next to the money it is spending:
 
 ```
-◐ main ▸ ship the parser fix · planner: kimi-k3 · $0.87 / $2.00 · working
+◐ main ▸ ship the parser fix · planner: kimi-k3 · $0.87 / $100.00 · working
 ```
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
@@ -1283,6 +1283,40 @@ What it turns off is exactly the automatic threshold check. Still working:
 
 With a `--host` remote launch the flag is **refused rather than ignored**, because it cannot
 travel to the other machine.
+
+## What am I allowed to spend — the limits aforge ships with, and turning them off
+
+Every limit aforge ships with is a **backstop against something going wrong**, not a
+budget. Nothing here is a number anybody chose for you, so all of them start large enough
+that ordinary work never reaches them:
+
+| What | Ships at | What happens when it is reached |
+| --- | --- | --- |
+| **daily budget** | `$500` a day, across everything on this machine | aforge stops and asks. Nothing dies, and one word carries it on |
+| **ask before spending** | `$100` | a planned job estimated above this quotes its price and its step count and waits for your go-ahead |
+| **session ceiling** | off | when you set one, this conversation stops starting new turns past it |
+| **practice budget** | `$50` a day | the slice aforge may spend practicing on itself when you are away |
+| **a task's own cap** | `$100` a run | the third line of the composer layer, and you can type over it |
+| **a standing order's firing** | `$5` a firing | that one firing stops there |
+
+They live on the **Spending** rows of `/settings`, and `/budget` is the daily one on its
+own.
+
+**Zero means no limit.** On the daily budget, on the session ceiling, on a standing
+order's per-firing figure — type `0` and the rail is gone, and it stays gone across
+restarts. The row says so back to you in dim text beside the number: `no limit`. The
+`ask before spending` row reads `never asks` at zero.
+
+**One row means the opposite, and says so.** `practice budget` at `0` turns self-practice
+**off** rather than uncapping it. Practice is work aforge does while nobody is watching,
+so it is the one pocket that always has a bottom — there is no way to ask for unlimited
+practice, on purpose.
+
+**The daily budget is the one worth setting.** Five hundred dollars is where a runaway
+lives, not where your month lives. If you want aforge to stop at a figure you actually
+chose, put that figure on the `daily budget` row — the rail is exactly as good at
+twenty dollars as at five hundred, and the only reason it does not ship at twenty is
+that twenty was stopping work nobody wanted stopped.
 
 ## Spending limits
 

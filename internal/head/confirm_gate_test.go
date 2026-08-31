@@ -1,6 +1,7 @@
 package head
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -31,7 +32,11 @@ func TestConfirmSurgeryGatesTheKeyPathExactlyAsASentenceIsGated(t *testing.T) {
 	t.Run("a large loss asks and journals nothing", func(t *testing.T) {
 		graph := openHeadStore(t)
 		spliceSurgeryJob(t, graph, "expensive", "Expensive job", "render the whole catalogue")
-		if err := graph.RecordUsage(store.NodeUsage{NodeID: "expensive", Cost: 1.75}); err != nil {
+		// The loss is spelled FROM THE GATE and not as a literal, so raising the
+		// gate cannot quietly turn this case into the cheap one above it and
+		// leave the test passing about nothing.
+		loss := store.SurgerySpendGateUSD * 7
+		if err := graph.RecordUsage(store.NodeUsage{NodeID: "expensive", Cost: loss}); err != nil {
 			t.Fatal(err)
 		}
 		asked, err := New(&fakeClient{}, graph).ConfirmSurgery("keys", store.CommandCancel, "expensive")
@@ -39,7 +44,7 @@ func TestConfirmSurgeryGatesTheKeyPathExactlyAsASentenceIsGated(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !asked {
-			t.Fatal("$1.75 of work was thrown away without a word")
+			t.Fatalf("$%.2f of work was thrown away without a word", loss)
 		}
 		questions, err := graph.OpenQuestions("keys", 10)
 		if err != nil || len(questions) != 1 {
@@ -50,7 +55,7 @@ func TestConfirmSurgeryGatesTheKeyPathExactlyAsASentenceIsGated(t *testing.T) {
 			t.Fatalf("confirm question = %+v", question)
 		}
 		if !strings.Contains(question.Text, "Cancel Expensive job") ||
-			!strings.Contains(question.Text, "$1.75 spent") {
+			!strings.Contains(question.Text, fmt.Sprintf("$%.2f spent", loss)) {
 			t.Fatalf("the question does not name the loss: %q", question.Text)
 		}
 		// The answer is what journals the command, through the same encoded

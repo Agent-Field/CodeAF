@@ -219,8 +219,8 @@ bills of $9.50–15.80, against $2.33 for the run that never rolled four.
 
 **The knobs** are `internal/config`'s `ResponseLimitsAt`: `response.attempts`
 (N, default 4), `response.lift_after` (K, default 1 — the count was never what
-was wrong), `response.lift_cap_usd` (default $2 on a lifted tier per piece of
-work), each with an `AFORGE_RESPONSE_*` pin. They are values in one struct, not
+was wrong), `response.lift_cap_usd` (default $25 on a lifted tier per piece of
+work — see [LIMITS.md](LIMITS.md); 0 is no cap), each with an `AFORGE_RESPONSE_*` pin. They are values in one struct, not
 constants at the sites that need them.
 
 **Where it is wired.** `internal/session/taxonomy_boundary.go` is the adapter and

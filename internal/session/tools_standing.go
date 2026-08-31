@@ -72,9 +72,10 @@ import (
 // audit gate, so these per-item rails are a quiet backstop, not a negotiation.
 const (
 	// standDefaultPerRunUSD is what one firing may spend, probe and judgment
-	// included. Fifteen cents is a cheap look plus a small model's answer, with
-	// room for one short task turn.
-	standDefaultPerRunUSD = 0.15
+	// included. It is [standing.DefaultPerRunUSD] and not a figure of its own,
+	// because the schema this file shows the model, the charter the store
+	// creates and the price the proposal quotes have to be one number.
+	standDefaultPerRunUSD = standing.DefaultPerRunUSD
 	// standDefaultMaxPerDay is how many times an item may fire in a local
 	// day.
 	standDefaultMaxPerDay = 10

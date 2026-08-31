@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -939,7 +940,7 @@ func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
 					t.Fatalf("reminder cadence compiled to %+v, want at tomorrow 09:00", schedule)
 				}
 			},
-			wantExpiry: "once", wantMax: 1, wantCost: 0.15,
+			wantExpiry: "once", wantMax: 1, wantCost: standing.DefaultPerRunUSD,
 		},
 	}
 	for _, test := range tests {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -203,7 +204,12 @@ func run() error {
 	}
 }
 
-const usageText = `aforge — build and revise task graphs
+// usageText is a var and not a const for ONE reason: the dollar figures in the
+// environment table are the real defaults, interpolated from the constants that
+// own them ([config.DefaultDailyBudgetUSD] and the rest). They were typed out by
+// hand here once, and every one of them was stale by the time somebody read it —
+// which is the one-source-of-truth law's own worked example.
+var usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
   aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
@@ -297,15 +303,17 @@ Environment:
                        always wins; these exist so a harness can set the walls
                        once for a campaign instead of on every call.
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
-  AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
-  AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
+  AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total nodes
+  AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  daily dollar rail (0 = unlimited)
+  AFORGE_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
+                       and waits for your word (0 = never asks)
   AFORGE_IMAGE_MODEL          image-generation model (catalog-resolved by default)
   AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
   AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
   AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
   AFORGE_VISION_MODEL         image-inspection proxy model (talk/work/catalog-resolved by default)
   AFORGE_DOC_ENGINE           auto (default), local, free, or ocr document-reading rung
-  AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
+  AFORGE_PRACTICE_BUDGET  ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
@@ -315,7 +323,7 @@ Environment:
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
-  AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
+  AFORGE_SWE_MAX_COST  ` + usageDollars(exec.DefaultSWEMaxCost) + `  dollar ceiling on one swe leaf's run inside the
                        coding pipeline. A backstop, not a budget — the daily
                        rail is the budget.
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
@@ -332,6 +340,13 @@ Environment:
   and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
   them to the profile's config.json. A variable set here always wins, and that
   row reads read-only in the sheet rather than fighting your shell.`
+
+// usageDollars writes a default the way the table has always written it: the
+// shortest form that is still the same number, so 500 stays 500 and 2.5 stays
+// 2.5 rather than growing a trailing zero nobody typed.
+func usageDollars(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
 
 func usage() error {
 	fmt.Println(usageText)

@@ -112,7 +112,16 @@ const (
 	// DefaultDailyBudgetUSD is the policy rail across every task using the
 	// resident store. Token slices shape leaves internally; dollars decide when
 	// new work needs the user's word. Zero disables the rail.
-	DefaultDailyBudgetUSD = 20.0
+	//
+	// IT IS DELIBERATELY LARGE — a backstop against a runaway, never a budget.
+	// It sat at $20 and a single ordinary day of agent work reached it, so the
+	// rail stopped being the thing that catches a loop and became the thing
+	// that interrupts work: a person who had chosen no number at all was being
+	// asked to raise a ceiling they never set. A rail nobody chose must only
+	// fire where nobody would defend the spend, and $500 in one day is that
+	// place. The number a person actually budgets with is the one they write
+	// into the row themselves — and 0 there removes the rail entirely.
+	DefaultDailyBudgetUSD = 500.0
 
 	// preferredImageModel is the drawing default the operator asked for, with
 	// the previous leader kept underneath for a catalog that does not
@@ -172,7 +181,15 @@ const (
 
 	// DefaultPracticeBudgetUSD is the daily carve-out reserved for self-origin
 	// curiosity work. The global rail remains an additional ceiling.
-	DefaultPracticeBudgetUSD = 2.0
+	//
+	// IT IS A CARVE-OUT AND NOT A RAIL, which is why 0 reads the opposite way
+	// here than it does on every other money row in this file: 0 is no practice
+	// at all (internal/resident's WithPracticeLoop switches the loop off), never
+	// unbounded practice. There is no way to spell "practice without a ceiling"
+	// and that is deliberate — self-origin work runs while nobody is watching,
+	// so it is the one pocket that always has a bottom. Raised with the rail
+	// above so the carve-out is a real slice of a real day.
+	DefaultPracticeBudgetUSD = 50.0
 
 	DefaultPracticeIdle = 20 * time.Minute
 

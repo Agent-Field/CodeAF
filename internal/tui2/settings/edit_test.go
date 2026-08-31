@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -41,11 +42,16 @@ func TestNumericRowOpensAnInlineEditorAndCommitsOnEnter(t *testing.T) {
 	if !s.editing {
 		t.Fatal("enter on a dollar row must open the inline editor")
 	}
-	if got := s.editor.text(); got != "20" {
-		t.Fatalf("editor opened on %q, want the number without its unit", got)
+	// Spelled from the constant the row reads, so raising the shipped rail is
+	// one edit and not two.
+	shipped := strconv.FormatFloat(config.DefaultDailyBudgetUSD, 'f', -1, 64)
+	if got := s.editor.text(); got != shipped {
+		t.Fatalf("editor opened on %q, want %q — the number without its unit", got, shipped)
 	}
 
-	s.press(namedKey(tea.KeyBackspace), namedKey(tea.KeyBackspace))
+	for range shipped {
+		s.press(namedKey(tea.KeyBackspace))
+	}
 	s.typeText("7.5")
 	s.press(namedKey(tea.KeyEnter))
 
@@ -82,8 +88,8 @@ func TestEscInsideTheEditorKeepsTheStoredValue(t *testing.T) {
 	if _, pending := s.pending[r.setting.Key]; pending {
 		t.Fatal("a cancelled edit must not be staged")
 	}
-	if got := s.value(r); got != "$20" {
-		t.Fatalf("value = %q, want the stored value back", got)
+	if want := "$" + strconv.FormatFloat(config.DefaultDailyBudgetUSD, 'f', -1, 64); s.value(r) != want {
+		t.Fatalf("value = %q, want %q — the stored value back", s.value(r), want)
 	}
 }
 

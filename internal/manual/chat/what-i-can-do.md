@@ -807,7 +807,7 @@ When the manual has nothing on a topic, the answer is:
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
 
-## Can you change my aforge settings for me, or tell me what a preference is set to?
+## Can you change my aforge settings for me — set my daily budget, change a preference, or tell me what one is set to?
 
 Yes to both, and a change is permanent. Ask in your own words — "use
 `deepseek/deepseek-v4-pro` for planning", "set my daily budget to 5", "stop
@@ -841,7 +841,7 @@ act, not a read.
 You are told on screen what moved. A dim line lands in the transcript:
 
 ```
-settings · daily budget · $10 → $5
+settings · daily budget · $500 → $50
 ```
 
 A key the registry does not have is never written. It comes back as
