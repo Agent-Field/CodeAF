@@ -216,7 +216,7 @@ preset:
 
 | class | as shipped |
 | --- | --- |
-| reflex | `nex-agi/nex-n2-mini` |
+| reflex | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash` |
 | careful work | `qwen/qwen3.8-27b` |
 | mastermind | `moonshotai/kimi-k3:low` |
@@ -239,7 +239,7 @@ say rather than the default.
 
 | | frugal | balanced | max |
 | --- | --- | --- | --- |
-| reflex | `nex-n2-mini` | `nex-n2-mini` | `nex-n2-mini` |
+| reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
 | small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
 | careful work | `qwen3.8-27b` | `qwen3.8-27b` | `kimi-k3` |
 | mastermind | `qwen3.8-27b` | `kimi-k3:low` | `kimi-k3:high` |

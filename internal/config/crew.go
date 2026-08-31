@@ -65,19 +65,19 @@ const DefaultCrew = CrewBalanced
 // presets read as one dial rather than three unrelated opinions.
 var crewModels = map[string]map[string]string{
 	CrewFrugal: {
-		ModelTierReflex:     "nex-agi/nex-n2-mini",
+		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash",
 		ModelTierHigh:       "qwen/qwen3.8-27b",
 		ModelTierMastermind: "qwen/qwen3.8-27b",
 	},
 	CrewBalanced: {
-		ModelTierReflex:     "nex-agi/nex-n2-mini",
+		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash",
 		ModelTierHigh:       "qwen/qwen3.8-27b",
 		ModelTierMastermind: "moonshotai/kimi-k3:low",
 	},
 	CrewMax: {
-		ModelTierReflex:     "nex-agi/nex-n2-mini",
+		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-pro",
 		ModelTierHigh:       "moonshotai/kimi-k3",
 		ModelTierMastermind: "moonshotai/kimi-k3:high",
