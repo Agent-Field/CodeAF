@@ -287,7 +287,8 @@ func bakedPermissionRules(_ context.Context, call steploop.ToolCall) permission.
 	return rules
 }
 
-// WebSearchFlags are the two feature flags consulted by webSearchEnabled.
+// WebSearchFlags are the two feature flags that select the legacy keyed
+// providers ahead of Firecrawl's keyless default.
 type WebSearchFlags struct {
 	Exa      bool
 	Parallel bool
@@ -298,7 +299,6 @@ type FilterInput struct {
 	ProviderID string
 	ModelID    string
 	AgentName  string
-	Flags      WebSearchFlags
 }
 
 // New returns a registry bound to workDir.
@@ -418,11 +418,6 @@ func (r *Registry) DefinitionsFor(input FilterInput) []steploop.ToolDefinition {
 	return FilterDefinitions(r.Definitions(), input)
 }
 
-// WebSearchEnabled ports registry.ts:78-83.
-func WebSearchEnabled(providerID string, flags WebSearchFlags) bool {
-	return providerID == "codeaf" || flags.Exa || flags.Parallel
-}
-
 // FilterDefinitions applies the registry's provider, specialist-mode, and
 // model-family visibility rules. It is separate from Registry so plugin/custom
 // definitions can pass through the same isolation seam.
@@ -455,9 +450,8 @@ func FilterDefinitions(
 		if input.AgentName == "coder" && (id == "task" || id == "plandb") {
 			continue
 		}
-		if id == "websearch" && !WebSearchEnabled(input.ProviderID, input.Flags) {
-			continue
-		}
+		// aforge-embed: D13 — websearch is no longer provider- or flag-gated.
+		// Firecrawl's keyless endpoint is behind it on every ordinary belt.
 		if allExclusive.Has(id) {
 			if _, ok := myExclusive[id]; !ok {
 				continue

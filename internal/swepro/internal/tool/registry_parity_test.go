@@ -21,7 +21,8 @@ func TestRegistryModelFilteringParity(t *testing.T) {
 	// Every model family — non-gpt, gpt, the gpt variants upstream excluded,
 	// and the benchmark's deepseek — gets the same coder toolset, including
 	// both single-file (edit/write) and multi-file (apply_patch) editors.
-	want := []string{"bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"}
+	// V7: Firecrawl makes websearch part of the ordinary keyless coder belt.
+	want := []string{"bash", "read", "glob", "grep", "edit", "write", "webfetch", "websearch", "apply_patch"}
 	for _, modelID := range []string{
 		"anthropic/claude-opus-4-6",
 		"openai/gpt-5.4",
@@ -80,25 +81,9 @@ func TestRegistrySpecialistIsolationParity(t *testing.T) {
 	}
 }
 
-func TestWebSearchEnabledParity(t *testing.T) {
-	cases := []struct {
-		provider string
-		flags    WebSearchFlags
-		want     bool
-	}{
-		{"codeaf", WebSearchFlags{}, true},
-		{"openrouter", WebSearchFlags{}, false},
-		{"openrouter", WebSearchFlags{Exa: true}, true},
-		{"openrouter", WebSearchFlags{Parallel: true}, true},
-	}
-	for _, test := range cases {
-		if got := WebSearchEnabled(test.provider, test.flags); got != test.want {
-			t.Errorf("WebSearchEnabled(%q, %#v) = %v", test.provider, test.flags, got)
-		}
-	}
-}
-
 func TestRegistryFixtureParity(t *testing.T) {
+	// V7: Deleting the provider gate also removes every frozen
+	// webSearchEnabled fixture; the fixture file deliberately has no rows now.
 	file, err := os.Open("testdata/registry-fixtures.json")
 	if err != nil {
 		t.Fatal(err)
@@ -111,36 +96,16 @@ func TestRegistryFixtureParity(t *testing.T) {
 		if err := json.Unmarshal(scanner.Bytes(), &fixture); err != nil {
 			t.Fatal(err)
 		}
-		var args []json.RawMessage
-		if err := json.Unmarshal([]byte(fixture.ArgsJSON), &args); err != nil {
-			t.Fatal(err)
-		}
-		var provider string
-		var flags struct {
-			Exa      bool `json:"exa"`
-			Parallel bool `json:"parallel"`
-		}
-		if err := json.Unmarshal(args[0], &provider); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal(args[1], &flags); err != nil {
-			t.Fatal(err)
-		}
-		got := WebSearchEnabled(provider, WebSearchFlags{Exa: flags.Exa, Parallel: flags.Parallel})
-		data, err := json.Marshal(got)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(data) != fixture.OutJSON {
-			t.Errorf("%s: got %s want %s", fixture.Name, data, fixture.OutJSON)
+		if fixture.Fn == "webSearchEnabled" {
+			t.Fatalf("deleted webSearchEnabled gate still has fixture %q", fixture.Name)
 		}
 		count++
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count != 4 {
-		t.Fatalf("fixture count = %d", count)
+	if count != 0 {
+		t.Fatalf("fixture count = %d, want 0 after deleting the gate", count)
 	}
 }
 
