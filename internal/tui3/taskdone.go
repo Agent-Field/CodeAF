@@ -53,6 +53,9 @@ type taskDone struct {
 	// title and subtitle are the identity (taskident.go), frozen at landing.
 	title, subtitle string
 	failed          bool
+	// ending is why a failed node stopped, as the engine said (taskending.go),
+	// and "" when it did not say.
+	ending session.TaskEnding
 	// unverified is the third settled state (session's TaskUnverified), and it
 	// is a FIELD OF ITS OWN rather than a value of failed: the run finished, no
 	// finding was made against it, and a card that folded it into the failure
@@ -170,6 +173,7 @@ func (a *app) landedCard(node *taskNode) {
 		title:      title,
 		subtitle:   taskSubtitleOf(title, node.assignment),
 		failed:     node.state == session.TaskFailed,
+		ending:     node.ending,
 		unverified: node.state == session.TaskUnverified,
 		span:       node.elapsed,
 		spawned:    node.spawnedAt(),
@@ -371,7 +375,7 @@ func (a *app) doneTail(card *taskDone) string {
 		// AN UNVERIFIED NODE DID NOT STOP. It ran to the end and its branch was
 		// kept because nothing merges on an answer nobody gave, so it takes the
 		// half of the sentence that is true of it (task.go's [taskBranchKept]).
-		kept := taskStoppedKept
+		kept := endingKept(card.ending)
 		if card.unverified {
 			kept = taskBranchKept
 		}

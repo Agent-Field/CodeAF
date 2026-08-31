@@ -847,6 +847,11 @@ read them.
 yours, and the report leads with the task's own account of the work, with what it was
 checked on under it — no lead word at all.
 
+**Halted.** `task 7 lost the connection: <title>`, `task 7 went in circles: <title>`,
+`task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`. Nothing was
+found wrong with the work; the branch is kept and the task can be run again from it. The
+rail draws these with `!` (see the section on the words under a stopped task).
+
 **Failed.** `task 7 failed: <title>`. Somebody looked and made a finding — or a limit fired
 and the work did not hold when it was checked afterwards. The branch is kept. Anything
 waiting on it fails with it. A limit firing on its own is no longer enough: work that was
@@ -1376,6 +1381,37 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, not accepted, blocked by another task
+
+A task that did not finish keeps its branch, and the row under its name on the rail says
+**why** it stopped. The same words lead the task's card. They are three kinds of news:
+
+- `stopped — branch kept`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`).
+  Nothing is wrong with the work; it is on that branch.
+- `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
+  on from its branch: say `continue task 7` or start a task that builds on that branch.
+  - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
+    closed socket). The call was retried, and then one more worker was run on the same
+    model in the same working copy; this row means both were spent.
+  - `went in circles — branch kept`: the worker kept making the same calls and its own loop
+    guard ended the turn (its last words are `this turn is going in circles · stopping here
+    with anything remaining left undone`).
+  - `blocked by another task — branch kept`: the calls it kept making were writes into a
+    working copy another task holds, and every one was refused. Wait for that task's report,
+    then run this one again on top of it.
+  - `out of steps — branch kept`: a step, no-progress or time limit fired and the work did
+    not hold when it was checked.
+- `✗` and one of these — **something was found**, and the report says what:
+  - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
+  - `ended with an error — branch kept`: a working copy could not be made, the worker would
+    not start, or an error nobody classified.
+
+The first cause wins: a check that refuses a run which had already given up is written as
+`went in circles`, because that is what happened first. A task that lands as `!` is not
+`failed` in what it asks of you — it is not asking whether the work is right, it is asking
+you to pick it up. A task from before these words existed reads `stopped — branch kept`
+whatever ended it.
+
 ## What happens when a task fails
 
 Endings are checked in a fixed order, and the first match wins:
@@ -1388,7 +1424,8 @@ Endings are checked in a fixed order, and the first match wins:
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
 | 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
-| 6 | The run errored | `it ended with an error: <err>` |
+| 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
+| 6b | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
 | 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
