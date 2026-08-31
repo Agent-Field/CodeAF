@@ -60,13 +60,13 @@ func TestADroppedLaneComesBackAfterTwoHalfLives(t *testing.T) {
 	for range 3 {
 		dropped = dropped.Observe(false)
 	}
-	if back := dropped.Toward(prior, 2*HalfLife, HalfLife); back.Upper(z90) < talkNeed {
-		t.Fatalf("twenty minutes later the lane was still refused at a bound of %.3f", back.Upper(z90))
+	if back := dropped.Toward(prior, 2*QualityHalfLife, QualityHalfLife); back.Upper(z90) < talkNeed {
+		t.Fatalf("two half-lives later the lane was still refused at a bound of %.3f", back.Upper(z90))
 	}
 	// And it comes back to the PRIOR rather than to certainty: a lane that has
 	// been forgotten is one nobody has judged, which is the mass Beta(8, 1)
 	// carries and no more.
-	forgotten := dropped.Toward(prior, 100*HalfLife, HalfLife)
+	forgotten := dropped.Toward(prior, 100*QualityHalfLife, QualityHalfLife)
 	if mass := forgotten.A + forgotten.B; mass < 8.99 || mass > 9.01 {
 		t.Fatalf("a forgotten belief kept %.3f observations of evidence rather than the prior's nine", mass)
 	}
@@ -96,9 +96,9 @@ func TestTheGateItselfDropsAndRestoresALane(t *testing.T) {
 		t.Fatalf("three answers nobody could use left the lane in the candidate set: %+v", front)
 	}
 	later := talk
-	later.Now = noon.Add(2 * HalfLife)
+	later.Now = noon.Add(2 * QualityHalfLife)
 	if front := frontierFor(agedFor(l, row.ID.Model, later), later, gateOptions{}, nil); len(front) != 1 {
-		t.Fatalf("twenty minutes with nothing new held the lane out of the set: %+v", front)
+		t.Fatalf("two half-lives with nothing new held the lane out of the set: %+v", front)
 	}
 }
 
@@ -108,7 +108,7 @@ func agedFor(l Ledger, model string, req Request) []Belief {
 	beliefs := l.Beliefs(model)
 	for i, belief := range beliefs {
 		if since := req.Now.Sub(belief.QualityAt); since > 0 && !belief.QualityAt.IsZero() {
-			beliefs[i].Quality = belief.Quality.Toward(qualityPrior(belief.Facts.Quant), since, HalfLife)
+			beliefs[i].Quality = belief.Quality.Toward(qualityPrior(belief.Facts.Quant), since, QualityHalfLife)
 		}
 	}
 	return beliefs
@@ -255,4 +255,52 @@ func scoredLane(choice Choice, lane string) *Scored {
 		}
 	}
 	return nil
+}
+
+// ── C1 AGAIN: A GATE THAT CANNOT FIRE IS NOT A LENIENT GATE ─────────────────
+
+// TestTheGateStillFiresWhenEveryRequestTakesMinutes is the second half of the
+// bug the bound was meant to fix, and the half the first fix caused.
+//
+// Ageing quality at [HalfLife] made the gate INERT rather than absorbing. A
+// tool loop's request takes minutes, so a belief about answers was forgotten
+// faster than answers arrived to build it: the evidence sat for ever at the
+// prior's nine observations, and at that mass the 90% bound on a lane refusing
+// one answer in six is still 1.000. Every lane passed every gate for ever,
+// which reads as "the gate never fires" and is exactly as wrong as "the gate
+// always fires". [QualityHalfLife] is the fix: it must be long enough that
+// evidence gathered at the pace of real requests outruns the forgetting.
+func TestTheGateStillFiresWhenEveryRequestTakesMinutes(t *testing.T) {
+	l := newLedger()
+	row := cloudflareRow()
+	l.Prime(row, SheetWeight)
+
+	// A tool loop on a slow lane: one answer every five minutes and forty
+	// seconds, which is what `bench/lanelab`'s `work` scenario measures, and one
+	// refusal in every six.
+	const cadence = 340 * time.Second
+	at := noon
+	for n := range 60 {
+		at = at.Add(cadence)
+		l.NoteOutcome(Outcome{ID: row.ID, Accepted: n%6 != 0, Reason: "empty", At: at})
+	}
+
+	req := Request{
+		Model: row.ID.Model, PromptTokens: 4000, Visible: 0, MaxTokens: 2000,
+		ValueOfTime: 90, QualityNeed: workNeed, Horizon: 40, Now: at,
+	}
+	beliefs := agedFor(l, row.ID.Model, req)
+	if len(beliefs) != 1 {
+		t.Fatalf("the ledger lost the only lane it was taught: %+v", beliefs)
+	}
+	quality := beliefs[0].Quality
+	if mass := quality.A + quality.B; mass < 20 {
+		t.Fatalf("five hours of answers left %.1f observations of evidence — forgetting outran the evidence", mass)
+	}
+	if bound := quality.Upper(z90); bound >= workNeed {
+		t.Fatalf("a lane refusing one answer in six kept a bound of %.3f against a need of %.2f", bound, workNeed)
+	}
+	if front := frontierFor(beliefs, req, gateOptions{}, nil); len(front) != 0 {
+		t.Fatalf("the gate kept a lane that refuses one answer in six: %+v", front)
+	}
 }

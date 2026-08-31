@@ -322,7 +322,7 @@ func (c *chooser) Choose(req Request) Choice {
 		// on the way in. Without this the drop would be permanent — which is the
 		// absorbing gate [Beta.Upper] and [Beta.Toward] were written to end.
 		if since := req.Now.Sub(belief.QualityAt); since > 0 && !belief.QualityAt.IsZero() {
-			belief.Quality = belief.Quality.Toward(qualityPrior(belief.Facts.Quant), since, HalfLife)
+			belief.Quality = belief.Quality.Toward(qualityPrior(belief.Facts.Quant), since, QualityHalfLife)
 		}
 		aged[belief.ID] = belief
 	}
