@@ -580,9 +580,9 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 // The number is the one the sentence's token carries and the one on the chip it
 // was sent from, so a reader can see which file `[image #1]` was.
 //
-// It is a MARKER and not a rendering. A terminal cell is not a place to show a
-// picture, and the honest thing to draw for one is the name of the file the
-// person pointed at, in the voice the surface uses for its own asides.
+// The marker stays above the rendering because it carries the correspondence:
+// the name, its clickable file door, and the `[image #n]` the model was handed.
+// The thumbnail under the line is the look; this is how a reader names it.
 func chipMarkers(chips []chip, pal palette) string {
 	if len(chips) == 0 {
 		return ""
@@ -683,7 +683,7 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	// (turncontext.go).
 	a.said(entry{
 		kind: entryUser, text: userLine(shown, chips, a.pal), turn: a.turn,
-		context: a.turnContext(),
+		context: a.turnContext(), pictures: chipPaths(pictures), picturesHere: true,
 	})
 	// And it is marked until the far end has it, for [app.submittingShown]'s
 	// reason and by the same door (echo.go). A message carrying files has a

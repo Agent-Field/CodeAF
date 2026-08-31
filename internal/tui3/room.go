@@ -493,7 +493,7 @@ func (a *app) openRoom(id uint64, title string) {
 		stick:    true,
 		dirty:    true,
 	}
-	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal)
+	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal, !a.hosted())
 	a.room = room
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
 	// The journal records what was said and never where the saying went, so the
@@ -594,7 +594,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	}
 	a.room.loading = false
 	if msg.err == nil {
-		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail)
+		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail, !a.hosted())
 	}
 	a.roomResolveUnfinished()
 	a.roomTouched()
@@ -814,9 +814,8 @@ type journalLine struct {
 	ToolCallID string        `json:"toolCallId"`
 	// Parts are the message's non-text content parts as the journal kept them —
 	// WHERE the bytes were, never the bytes (session's sessionfile.go). The path
-	// is the only field a page needs: a picture is drawn as its name here for the
-	// reason it is drawn as its name in the conversation (attach.go's
-	// [chipMarkers]).
+	// is the only field a page needs: it keeps the marker's name and supplies the
+	// same thumbnail the conversation draws (attach.go's [chipMarkers]).
 	Parts []journalPart `json:"parts"`
 }
 
@@ -858,23 +857,23 @@ type journalPart struct {
 // the journal is EVIDENCE, not a prerequisite (internal/session says so where it
 // mints the path), and a room that refused to open because a file was not there
 // would be refusing to show the live work as well.
-func readRoomJournal(path string, pal palette) ([]entry, int) {
-	return readRoomJournalTail(path, pal, roomTail)
+func readRoomJournal(path string, pal palette, picturesHere bool) ([]entry, int) {
+	return readRoomJournalTail(path, pal, roomTail, picturesHere)
 }
 
 // readRoomJournalTail lets another bounded page choose its own rendered-line
 // window. A non-positive block limit keeps every block; the caller still owns
 // its final line cap after wrapping.
-func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
+func readRoomJournalTail(path string, pal palette, limit int, picturesHere bool) ([]entry, int) {
 	lines := readJournalLines(path)
-	return shapeRoomJournal(lines, pal, limit)
+	return shapeRoomJournal(lines, pal, limit, picturesHere)
 }
 
-func readRoomJournalBytes(data []byte, pal palette, limit int) ([]entry, int) {
-	return shapeRoomJournal(scanJournalLines(bytes.NewReader(data)), pal, limit)
+func readRoomJournalBytes(data []byte, pal palette, limit int, picturesHere bool) ([]entry, int) {
+	return shapeRoomJournal(scanJournalLines(bytes.NewReader(data)), pal, limit, picturesHere)
 }
 
-func shapeRoomJournal(lines []journalLine, pal palette, limit int) ([]entry, int) {
+func shapeRoomJournal(lines []journalLine, pal palette, limit int, picturesHere bool) ([]entry, int) {
 	// The results, indexed by the call each one answered. A result with no id is
 	// skipped rather than kept under "", for the reason session's own index skips
 	// it: it is a message no call can claim.
@@ -894,7 +893,7 @@ func shapeRoomJournal(lines []journalLine, pal palette, limit int) ([]entry, int
 			// The pictures are part of what was said, so a message that was only a
 			// picture is still a message: the markers alone are the line
 			// (replay.go's [replayUserLine], whose rule this is).
-			said := journalUserText(text, line.Parts, pal)
+			said, pictures := journalUserText(text, line.Parts, pal)
 			if said == "" {
 				continue
 			}
@@ -908,7 +907,10 @@ func shapeRoomJournal(lines []journalLine, pal palette, limit int) ([]entry, int
 			// opened turn one, and everything after it is somebody steering work that
 			// was already running. It is the one message on this surface that folds,
 			// and brieffold.go states why.
-			out = append(out, entry{kind: entryUser, text: said, turn: turn, brief: turn == 1})
+			out = append(out, entry{
+				kind: entryUser, text: said, turn: turn, brief: turn == 1,
+				pictures: pictures, picturesHere: picturesHere,
+			})
 
 		case "assistant":
 			if text != "" {
@@ -1007,7 +1009,7 @@ func scanJournalLines(reader io.Reader) []journalLine {
 // rule applied to what a FILE kept rather than to what an open agent answered —
 // same markers, same separator — because a message drawn one way in the
 // conversation and another way on a page is two records of one thing.
-func journalUserText(text string, parts []journalPart, pal palette) string {
+func journalUserText(text string, parts []journalPart, pal palette) (string, []string) {
 	pictures := make([]chip, 0, len(parts))
 	for _, part := range parts {
 		if part.Type != journalPartImage {
@@ -1017,7 +1019,7 @@ func journalUserText(text string, parts []journalPart, pal palette) string {
 			pictures = append(pictures, chip{path: path})
 		}
 	}
-	return userLine(text, pictures, pal)
+	return userLine(text, pictures, pal), chipPaths(pictures)
 }
 
 // journalPartImage is the one non-text part a person's message can carry today,

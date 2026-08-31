@@ -741,8 +741,7 @@ type remotePrefetchedMsg struct {
 // and modification time have not moved is answered out of the cache after one
 // small stat.
 func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
-	r := a.rfiles
-	if r == nil || ev.Kind != session.EventToolEnd {
+	if a.rfiles == nil || ev.Kind != session.EventToolEnd {
 		return nil
 	}
 	name := ""
@@ -757,6 +756,18 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 		}
 	}
 	if name == "" {
+		return nil
+	}
+	return a.prefetchPath(name, required)
+}
+
+// prefetchPath starts one best-effort mirror fill. required is reserved for a
+// finished picture tool whose result has promised a picture; replayed user
+// attachments are optional, stay inside the ordinary size heuristic, and say
+// nothing when their old bytes can no longer cross.
+func (a *app) prefetchPath(name string, required bool) tea.Cmd {
+	r := a.rfiles
+	if r == nil {
 		return nil
 	}
 	target := a.remoteTarget(name)
@@ -794,23 +805,34 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 // prefetchReplayedPictures gives a resumed hosted conversation the same image
 // surface as a live one. Replay builds rows without replaying old events, so
 // Init must explicitly start the fetches for picture rows already on screen.
+// The walk starts at the live edge so the shared three-slot budget goes first
+// to the rows nearest the place a resumed conversation opens.
 func (a *app) prefetchReplayedPictures() tea.Cmd {
 	if a.rfiles == nil {
 		return nil
 	}
 	commands := make([]tea.Cmd, 0, prefetchAtOnce)
-	for i := range a.entries {
+	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
-		if e.kind != entryTool || !picturesAFile(e.tool) || e.status.live() {
-			continue
+		if e.kind == entryUser && len(e.pictures) > 0 && !e.picturesHere {
+			for _, picture := range e.pictures {
+				if cmd := a.prefetchPath(picture, false); cmd != nil {
+					commands = append(commands, cmd)
+				}
+				if len(commands) == prefetchAtOnce {
+					return tea.Batch(commands...)
+				}
+			}
 		}
-		cmd := a.prefetchWritten(session.Event{Kind: session.EventToolEnd, Tool: e.tool,
-			Args: e.detail.Args, Output: e.detail.Output})
-		if cmd != nil {
-			commands = append(commands, cmd)
-		}
-		if len(commands) == prefetchAtOnce {
-			break
+		if e.kind == entryTool && picturesAFile(e.tool) && !e.status.live() {
+			cmd := a.prefetchWritten(session.Event{Kind: session.EventToolEnd, Tool: e.tool,
+				Args: e.detail.Args, Output: e.detail.Output})
+			if cmd != nil {
+				commands = append(commands, cmd)
+			}
+			if len(commands) == prefetchAtOnce {
+				return tea.Batch(commands...)
+			}
 		}
 	}
 	return tea.Batch(commands...)

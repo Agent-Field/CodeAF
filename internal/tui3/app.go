@@ -264,6 +264,17 @@ type entry struct {
 	// history every time the person walked into a different room.
 	context string
 
+	// pictures are the resolved paths of the PICTURES this message carried, in
+	// the tray order its `[image #n]` tokens and `[#n name]` markers use.
+	// picturesHere says those paths name this machine rather than the engine's.
+	//
+	// IT IS A SLICE OF PATHS AND NOT CHIPS FOR [entry.hung]'s BUDGET REASON. A
+	// chip's file flag is a fact about the tray and every path here is already a
+	// picture; retaining that larger staging shape on every transcript block
+	// would make the hot entry carry a distinction no renderer can read.
+	pictures     []string
+	picturesHere bool
+
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
 	// [entry.stand] are: the outcome lands on the block minutes after it was

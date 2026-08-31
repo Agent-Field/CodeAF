@@ -667,6 +667,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 		a.renderIdentity++
 		e.identity = a.renderIdentity
 	}
+	// A PICTURE-BEARING USER ENTRY KEEPS THIS ORDINARY ROW KEY. The picture
+	// cache below it keys the file's own mtime and size, while this row memo may
+	// keep painted cells until the next palette repaint or remote-file restyle.
+	// That bounded staleness is the trade for keeping settled transcript blocks
+	// out of the per-frame path; tool rows make the opposite trade because their
+	// lines already bypass this cache.
 	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
 	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
@@ -778,7 +784,23 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// turn it adds nothing at all — which is nearly every turn, and is why this
 		// line changes no frame most people will ever look at.
 		//
-		return a.turnContextRows(a.linkPaths(out), e.context, width)
+		out = a.turnContextRows(a.linkPaths(out), e.context, width)
+		// THE PICTURE COMES LAST. The context pass above may append to its final
+		// prose row, and the path pass must never scan the thumbnail's SGR bytes;
+		// appending here makes both relationships structural rather than hopeful.
+		// Each picture is its own stacked block in tray order, fitted to the
+		// sentence's column and to the same unasked-for cap tool rows use.
+		cap := previewCap(layoutTier(width) == tierPhone)
+		for _, path := range e.pictures {
+			picture, drawn := a.pictureRowsFor(path, e.picturesHere, width-userLeadCols, cap)
+			if !drawn {
+				continue
+			}
+			for _, row := range picture {
+				out = append(out, userLead+row)
+			}
+		}
+		return out
 
 	case entrySteer:
 		// ONE CORRECTION, WHERE IT WAS SAID (steerelbow.go). It is a block of its
