@@ -283,3 +283,151 @@ func TestHomeOfferedPlaceSelectionSurvivesTheSlowTick(t *testing.T) {
 		t.Fatalf("the selection moved to the %q place, want the %q it was left on", got, word)
 	}
 }
+
+// TestHomeSlashActionRowSaysItWillRun: the resting row and the foot under it
+// both name what enter will actually do with a slash line.
+//
+// THE ROW MAY NOT PROMISE A CONVERSATION IT WILL NOT START. Enter on the action
+// row dispatches a "/" line ([app.homeEnter]), and the row went on reading
+// `+ start a new conversation: "/settings"` while it did — which is the one row
+// on this screen whose whole job is to say what the key means.
+func TestHomeSlashActionRowSaysItWillRun(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/settings")
+	if k := homeKindAt(a); k != homeAction {
+		t.Fatalf("the cursor left the action row onto %v", k)
+	}
+	text := homeText(a)
+	if !strings.Contains(text, homeStartGlyph+" run /settings") {
+		t.Fatalf("the action row does not say it will run the command:\n%s", text)
+	}
+	if strings.Contains(text, homeStartWord+`: "/settings"`) {
+		t.Fatalf("the action row still offers to start a conversation with the command:\n%s", text)
+	}
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter runs this command") {
+		t.Fatalf("the foot reads %q, want it naming the run", hint)
+	}
+
+	// An ordinary sentence is untouched: the row and the foot say what they have
+	// always said, quoted words and all.
+	a.homeKey(key("esc"))
+	typeHome(a, "pricing")
+	if text := homeText(a); !strings.Contains(text, homeStartWord+`: "pricing"`) {
+		t.Fatalf("a sentence lost the row it has always had:\n%s", text)
+	}
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter starts a new conversation and sends this") {
+		t.Fatalf("a sentence's foot reads %q", hint)
+	}
+}
+
+// TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder: choosing a command
+// that TAKES words leaves "/model " in the box with the caret after it — the
+// name and a space, never the "<slug>" the row is drawn with.
+//
+// This is what running the one [chooseCommand] over both boxes buys: home used
+// to write [command.typed] and put a literal "<slug>" in front of the person.
+func TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/model")
+	// Up to the "/model <slug>" row — the one that TAKES words. Its neighbour is
+	// the argless form, which runs and opens the picker instead, so the walk
+	// looks for the row by what it is rather than counting keystrokes.
+	for i := 0; i < len(a.home.lines); i++ {
+		if line := a.home.lines[a.home.cursor]; line.kind == homeCommand && line.cmd.args != "" {
+			break
+		}
+		a.homeKey(key("up"))
+	}
+	chosen := a.home.lines[a.home.cursor]
+	if chosen.kind != homeCommand || chosen.cmd.args == "" {
+		t.Fatalf("↑ never reached a command that takes words:\n%s", homeText(a))
+	}
+	// The ROW says "/model <slug>", because that is what the command wants said
+	// to it. What lands in the box is the other half of the bargain.
+	if word := chosen.cmd.typed(); !strings.Contains(word, "<") {
+		t.Fatalf("the row reads %q, so this test is no longer about a placeholder", word)
+	}
+	runCmd(a.homeEnter())
+	if got := a.home.box.String(); got != "/model " {
+		t.Fatalf("choosing /model <slug> left %q in the box, want %q", got, "/model ")
+	}
+}
+
+// TestHomeSlashMentionRewritesTheTokenInPlace: a slash word inside a sentence
+// is a MENTION — the token is rewritten, the list is sealed, and nothing runs.
+// It is the same bargain chat's list makes, and it is the same code making it.
+func TestHomeSlashMentionRewritesTheTokenInPlace(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "what does /sett")
+	for i := 0; i < len(a.home.lines) && homeKindAt(a) != homeCommand; i++ {
+		a.homeKey(key("up"))
+	}
+	if k := homeKindAt(a); k != homeCommand {
+		t.Fatalf("↑ never reached a command row; it rests on %v:\n%s", k, homeText(a))
+	}
+	runCmd(a.homeEnter())
+	if got := a.home.box.String(); got != "what does /settings" {
+		t.Fatalf("the mention left %q in the box", got)
+	}
+	if a.at(pageSettings) {
+		t.Fatal("a command mentioned inside a sentence ran")
+	}
+}
+
+// TestHomeSlashDoesNotSwallowATypedPath: an absolute path begins with a slash
+// too, and a folder that exists is still a folder.
+//
+// `/tmp/alpha` has opened a conversation in that directory since long before
+// this box could dispatch anything, and the dispatch must not take the gesture
+// away. The row says which of the two it means, and enter does that one.
+func TestHomeSlashDoesNotSwallowATypedPath(t *testing.T) {
+	lab := newHomeLab(t)
+	dir := t.TempDir()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, dir)
+	if got := a.home.runLabel(dir); got != "" {
+		t.Fatalf("a real folder was read as the command %q", got)
+	}
+	// The label itself rather than the painted row: a temp directory's path is
+	// longer than the column, and this test is about which of the two readings
+	// the row took, not about where it was cut.
+	if got := a.home.startLabel(); got != homeStartWord+" in "+dir {
+		t.Fatalf("the action row says %q, want it offering the folder", got)
+	}
+	if hint := a.homeHintWords(); strings.Contains(hint, "enter runs this command") {
+		t.Fatalf("the foot called a folder a command: %q", hint)
+	}
+
+	// And a slash line that is NOT a folder is still a command.
+	a.homeKey(key("esc"))
+	typeHome(a, "/settings")
+	if got := a.home.runLabel("/settings"); got != "run /settings" {
+		t.Fatalf("the command reads %q", got)
+	}
+	// AND A WORD THE TABLE KNOWS BEATS A FOLDER OF THE SAME NAME. `/home` is a
+	// command and a directory a Linux box really has, and the thirty words
+	// somebody chose to learn win — which is the order the dispatcher itself
+	// takes (app.go's [app.slash] tries the table, then the disk).
+	if got := a.home.runLabel("/home"); got != "run /home" {
+		t.Fatalf("/home reads %q, want the command", got)
+	}
+}

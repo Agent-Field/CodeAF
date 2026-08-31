@@ -1,8 +1,6 @@
 package tui3
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -11,10 +9,10 @@ import (
 // answer the same characters by starting a conversation with them, which is
 // the one screen where a command typed in full did nothing it promised. This
 // file is home's half of that parity: the offers in the drop-up, and the enter
-// that runs them. The ranking, the token-finding and the sealing are not
-// reimplemented — they are the chat composer's own [menu], synced against
-// home's box, so the two surfaces cannot grow two answers to what "/mo"
-// offers.
+// that runs them. The ranking, the token-finding, the sealing AND the choosing
+// are not reimplemented — they are the chat composer's own [menu] and its own
+// [chooseCommand], run over home's box, so the two surfaces cannot grow two
+// answers to what "/mo" offers or to what enter does with the row.
 //
 // THE DISPATCH IS NOT HERE EITHER. [app.homeSlash] hands the line to
 // [app.slash] — the same switch chat's enter runs — so a command behaves on
@@ -90,34 +88,30 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	return a.slash(line)
 }
 
-// homeRunCommand is enter on an offered command row, and it is [app.runMenu]'s
-// mechanics over home's box: the token is rewritten with the chosen word, and
-// then the row does what it says — run bare, or hold the box for the words it
-// takes. A token that is not the whole line is a MENTION and never a command:
-// the row rewrites the word and seals the list, exactly as chat's list does, so
-// "/settings is what I want" becomes a sentence rather than a dispatch.
+// homeRunCommand is enter on an offered command row, and it is LITERALLY chat's
+// own gesture: [chooseCommand] rewrites the token with the chosen word over
+// home's box and home's list, and then the row does what it says — run bare, or
+// hold the box for the words it takes. A token that is not the whole line is a
+// MENTION and never a command, so "/settings is what I want" becomes a sentence
+// rather than a dispatch. This used to be a hand copy of that function, which is
+// how it came to be missing its clamp and to be writing [command.typed]'s
+// "<slug>" placeholder into the box.
+//
+// THE TWO LINES CHAT DOES AFTER THE DISPATCH ARE NOT DONE HERE, and their
+// absence is the difference between the surfaces rather than an omission: this
+// screen has no recall list to remember a command into and no draft to drop
+// (`↑` here walks the drop-up), so `remember` and `dropDraft` would be two
+// no-ops standing where a person could read them as a promise ([app.runMenu]
+// states the other half).
+//
+// The rebuild happens on every road out, because all three change the box and
+// the drop-up is built from it.
 func (a *app) homeRunCommand(line homeLine) tea.Cmd {
 	h := &a.home
-	chosen := line.cmd
-	at := h.cmd.at
-	end := tokenEnd(h.box.value, at)
-	word := chosen.typed()
-	if at != 0 || strings.TrimSpace(string(h.box.value[end:])) != "" {
-		head := append([]rune(nil), h.box.value[:at]...)
-		tail := append([]rune(nil), h.box.value[end:]...)
-		h.box.value = append(append(head, []rune(word)...), tail...)
-		h.box.cursor = at + len([]rune(word))
-		h.cmd.dismiss(at)
-		h.build()
-		return nil
-	}
-	h.cmd.close()
-	if chosen.args != "" {
-		h.box.setText(word + " ")
-		h.build()
-		return nil
-	}
-	h.box.reset()
+	word, run := chooseCommand(&h.box, &h.cmd, *line.cmd)
 	h.build()
+	if !run {
+		return nil
+	}
 	return a.slash(word)
 }

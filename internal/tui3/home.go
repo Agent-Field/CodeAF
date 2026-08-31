@@ -309,6 +309,12 @@ const (
 	// fresh one, and the manual has said "conversation" since before home
 	// existed.
 	homeStartWord = "start a new conversation"
+	// homeRunWord is what that same row says instead when the box holds a
+	// COMMAND rather than a sentence. Enter dispatches a "/" line and never
+	// sends it ([app.homeEnter]), so a row still offering to start a
+	// conversation with it would be the one row on this screen that names the
+	// wrong key's meaning — see [homeView.runLabel].
+	homeRunWord = "run"
 	// homeStartGlyph marks it. A plain `+` on purpose: it is the one row on the
 	// column that is not a thing that exists yet, and every other glyph here is
 	// a state something is in.
@@ -2712,7 +2718,13 @@ func (a *app) homeEnter() tea.Cmd {
 		// chat — and the conversation-scoped ones act on the conversation this
 		// window holds behind the screen, which is parity rather than a
 		// limitation: the window always holds one.
-		if line := strings.TrimSpace(h.box.String()); strings.HasPrefix(line, "/") {
+		// AND A FOLDER THAT EXISTS IS STILL A FOLDER. An absolute path begins with
+		// a slash too, and `/tmp/alpha` is a place this row has opened a
+		// conversation in since long before it could dispatch anything. Which of
+		// the two a leading slash means is [homeView.runLabel]'s one question,
+		// asked here and by the row itself, so the screen cannot promise one
+		// meaning while the key takes the other.
+		if line := strings.TrimSpace(h.box.String()); h.runLabel(line) != "" {
 			return a.homeSlash(line)
 		}
 		return a.homeStart(strings.TrimSpace(h.box.String()))
@@ -3080,7 +3092,48 @@ func (h *homeView) startLabel() string {
 	if place := h.typedPlace(text); place != "" {
 		return homeStartWord + " in " + place
 	}
+	// THE SAME QUESTION IN THE SAME ORDER [app.homeEnter] ASKS IT, which is the
+	// whole reason this label exists: a row that ranked the two readings of a
+	// leading slash differently from the key would be wrong about the one line
+	// it is there to be right about.
+	if word := h.runLabel(text); word != "" {
+		return word
+	}
 	return homeStartWord + ": " + strconv.Quote(text)
+}
+
+// runLabel is the action row's label when what is typed is a COMMAND, and "" for
+// everything else — which makes it the one question `is this line a command`,
+// asked by the label, by the foot and by enter itself so that the three cannot
+// come to disagree ([app.homeEnter], [app.homeHintWords], homephone.go's narrow
+// column).
+//
+// A LEADING SLASH IS NOT ENOUGH, because `/tmp/alpha` is a place. The two are
+// separated in THE ORDER THE DISPATCHER ITSELF SEPARATES THEM (app.go's
+// [app.slash]): a word the table knows is a command whatever else it might also
+// be — `/home` is the command even on a machine that has a `/home` directory,
+// because the table is a short list a person chose to learn and the disk is not
+// — and only then is a line that resolves to a real folder the path row's
+// ([homeView.typedPlace] resolves and never creates). What is neither is still a
+// command, so an unknown one is refused in the dispatcher's own words rather
+// than quietly becoming the first message of a conversation.
+//
+// THE LINE IS NOT QUOTED, unlike the sentence a conversation would be started
+// with. Quotes there mark words being carried somewhere as text; a command is
+// not being carried anywhere, it is being run, and `run "/settings"` would read
+// as a quoting that a command line does not do.
+func (h *homeView) runLabel(text string) string {
+	if !strings.HasPrefix(text, "/") {
+		return ""
+	}
+	word := strings.TrimPrefix(text, "/")
+	if at := strings.IndexAny(word, " \t"); at >= 0 {
+		word = word[:at]
+	}
+	if !knownCommand(word) && h.typedPlace(text) != "" {
+		return ""
+	}
+	return homeRunWord + " " + text
 }
 
 // homeHeld reports whether another window is holding this conversation, from
@@ -4667,6 +4720,13 @@ func (a *app) homeHintWords() string {
 		// would be this line lying about the next keystroke. It names the arrow
 		// and not a count, because the row it passes through on the way is the
 		// one named two clauses earlier.
+		// AND A COMMAND IS THE THIRD READING, so the foot says so rather than
+		// promising a conversation the key will not start. `ask here` is still
+		// true of a "/" line — the words can be asked about as words — so the
+		// clause that changes is the one that stopped being true.
+		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
+			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
+		}
 		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"

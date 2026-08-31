@@ -698,6 +698,13 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	case homeAction:
 		label := homeStartWord
 		if text := strings.TrimSpace(h.box.String()); text != "" {
+			// A COMMAND IS SAID THE SAME WAY IN BOTH COLUMNS. Enter dispatches a
+			// "/" line here exactly as it does on a wide frame ([app.homeEnter] is
+			// the one router), so the clause comes from the one place it is
+			// spelled ([homeView.runLabel]) rather than being written again narrower.
+			if word := h.runLabel(text); word != "" {
+				return homeStartGlyph + " " + word, "", nil
+			}
 			label += ": " + text
 		}
 		return homeStartGlyph + " " + label, "", nil
