@@ -57,6 +57,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
 		{"where are my conversations saved", "sessions-and-rewind"},
+		// A secret that reached a tool result, asked the two ways it is asked:
+		// before it happens, by somebody deciding whether to trust the thing, and
+		// after it happens, by somebody who has just watched a token go past.
+		{"does aforge save my API keys", "sessions-and-rewind"},
+		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},

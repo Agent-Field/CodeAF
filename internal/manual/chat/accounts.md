@@ -402,7 +402,10 @@ a byte is written, then renamed over the old one — so keys are never briefly r
 by anybody else, and a killed process leaves the previous file intact.
 
 aforge never logs a key. No access key, refresh key, client secret or pasted key is
-printed, returned in an error, or written anywhere but the store file.
+printed, returned in an error, or written anywhere but the store file. And a key that
+reaches aforge from somewhere else entirely — a shell command that printed one, a config
+file that was read — is replaced with `[redacted token · …]` before the result is kept,
+shown or sent to the model; the conversations page has the shapes it recognises.
 
 A `credentials.json` that has become unreadable reads as nothing connected — the safe
 answer, which asks you to sign in again rather than promising access that cannot be
