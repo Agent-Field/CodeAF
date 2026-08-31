@@ -862,3 +862,75 @@ the next run, and then failed on a first request arriving with an `order` it
 could not have learned. The velocity ledger it was all written around is per
 CLIENT, so the tests had never needed to think about it. A home per test binary
 and a registry per test client end both halves.
+
+## What the Go simulator found in the shipped code
+
+C6 asked for a second simulator that drives the real registry rather than a
+model of it, and said the ship decision would be taken there. It was, and what
+it found first was not a number: three of the mechanisms the ship decision was
+about were not running at all, and no unit test could tell, because each failure
+lives in the seam between two lanes that were written apart and were each right
+on their own.
+
+**No shipped build could hedge.** `lane.Chooses()` asked whether the registry's
+chooser was the package's own `*chooser` type and read that as "nobody is home",
+which it was in the wave the check was written. Then the real chooser took that
+name and the check inverted in silence. The transport's own suite proved the
+hedge worked in the one configuration no binary runs, because every test in it
+pinned a stub chooser to make the check true. A feature check that reads a type
+name rots on a rename; the gate on the next line — is there a Choice for THIS
+call, and does it name a second lane — asks a better question about the request
+in hand and cannot rot that way, so the check is gone and the rig no longer
+pins.
+
+**The quality gate could not fire, which is not the same as being lenient.**
+C1's correction is right and its half-life was wrong. Beliefs about answers were
+forgotten at `HalfLife`, ten minutes, but a tool loop's request takes minutes:
+on a slow lane the forgetting outran the evidence, the mass stood for ever at
+the prior's nine observations, and at nine observations the 90% upper bound on a
+lane refusing one answer in six is 1.000. Every lane passed every gate for ever.
+The fix is a second half-life, not a wider gate, because the two things this
+package believes about a lane change on two scales: how quick a lane is right
+now is a fact about load and is stale in minutes, while whether it returns a
+usable answer at all is a fact about the deployment behind it and holds for
+hours. `QualityHalfLife` is six times `HalfLife` for that reason.
+
+**The gate never reads the sheet's `status`.** `lane.Facts` has no such field
+and `decodeSheet` does not decode it, so a build will happily route to an
+endpoint the router itself has marked down. The reference model refuses those
+lanes and the shipped one admits them, which is one of the two reasons the two
+capability gates do not admit the same set. This one is left for the lane that
+owns the sheet's shape.
+
+## The λ = 0 row, and why no correct build can pass it
+
+With those two fixed, the Go run passes the ship gate in `talk` and `work` on
+every seed and fails `offpath` on every seed. It is worth being exact about what
+that failure is, because it is three separate things and only one of them is a
+defect in this package.
+
+The first is arithmetic that got better: the quality fix moved the modal lane's
+share of `offpath` from 97% to 63% and the p90 penalty from −27.5% to −18.7%.
+The gate still refuses it.
+
+The second is that **C3 cannot be satisfied at λ = 0 by any correct
+implementation of this design.** The gate asks for a p90 speed improvement of at
+least 30% in every scenario. λ is the statement that a second is worth nothing,
+and a router told a second is worth nothing and then graded on seconds is being
+graded on a term it was instructed to ignore. What the shipped router does at
+λ = 0 is exactly what it was told: 22% off the bill for 3.7× the wait. That is
+the objective, obeyed. The gate's speed clause needs to become a GUARD at λ = 0
+— the wait must not blow out — rather than a demand for an improvement the
+instruction forbids it to seek.
+
+The third is the real defect, and it is not in this package: **the shipped
+non-interactive path sends λ = 0 on every request.** `internal/session/loop.go`
+calls `lane.Lambda(false, false, 0, 0, 0)`, and with slack, expected and
+deadline all zero neither the critical-path branch nor the deadline branch can
+ever fire, so every background request declares that nobody is waiting. The
+simulator measures what that declaration buys and it is not a trade anyone would
+choose: a fifth off the money for nearly four times the wait. Nothing is wrong
+with the router. The caller is telling it something false, because the caller
+does not yet compute the three durations that would make it true. Until it does,
+background work wants a small positive λ rather than a zero — a task nobody is
+watching still has an owner who will read it eventually.

@@ -169,6 +169,22 @@ func (l e2eLane) stub() lanestub.Lane {
 			// answer LENGTH a request is scored on is [Request.Visible] and
 			// [Request.Hidden], which is a different number and a belief about
 			// the future rather than a fact about this stream.
+			//
+			// WHICH MEANS THESE FIVE SCENARIOS PROVE THE DESIGN ON FIRST TOKENS
+			// AND NOT ON RATES, and that is a property of the instrument rather
+			// than a gap somebody forgot to fill. Twenty-four is under
+			// [ratedFloor], so no sighting here teaches the rate at all. Raising
+			// it does not fix that, it moves the lie: the wire cannot deliver a
+			// rate on a hundredfold clock, because a world rate of 60 tokens a
+			// second is 6000 on the wire, its token gap is 167µs, and the Go
+			// timer's own overshoot is about half a millisecond for any sleep
+			// under two. A rate read off this socket is a measurement of the
+			// scheduler. Scripting longer answers therefore buys a belief about
+			// the machine and costs a tenfold slower suite. `bench/lanelab/gosim`
+			// is where the rate half is exercised: it takes the first token off
+			// the wire and carries the drawn rate beside the stream, which is the
+			// change this file would need before it could make a claim about
+			// tokens a second.
 			Tokens:     lanestub.DefaultTokens,
 			Heartbeats: true,
 			Tools:      l.tools, Quant: l.quant, Context: l.context, MaxOut: l.maxOut,
