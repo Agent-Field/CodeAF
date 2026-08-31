@@ -32,6 +32,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // placeDoor is WHICH ROAD a directory came in by. It is carried rather than
@@ -65,6 +66,25 @@ func (a *app) referPlace(chosen chosenPlace) {
 	path := strings.TrimSpace(chosen.Path)
 	if path == "" {
 		return
+	}
+	// The session is told first, because the session's answer is the fact the
+	// line below reports: ReferPlace snaps the path to its repository root and
+	// stamps the conversation's meta, so the next task about this folder finds
+	// it at the SAID rung and nobody is asked. A refusal here is rare — every
+	// door stats the directory before building a chosenPlace — but when it
+	// comes, the refusal IS the line, and no pick is kept for a place the
+	// conversation did not gain. The assertion is the surface's usual manner
+	// with an optional slice of the agent: a scripted test agent and a hosted
+	// connection honestly lack it, and for them the line alone is the whole
+	// act, exactly as it was before the session learned to remember.
+	if door, ok := a.agent.(placeReferrer); ok {
+		ref, err := door.ReferPlace(path, session.PlaceSaid)
+		if err != nil {
+			a.noteFacts(err.Error())
+			a.touch()
+			return
+		}
+		path = ref.Path
 	}
 	a.placeChosen = path
 	a.keepFolderPick(path)
@@ -208,15 +228,35 @@ func (a *app) folderCandidates() []folderCand {
 	return out
 }
 
+// placeReferrer is the slice of the agent that remembers what the conversation
+// is about — session.Agent's accrual door (internal/session/places.go). It is
+// asserted rather than added to [Agent], because a scripted test agent and a
+// hosted connection honestly lack it, and a capability that cannot work is
+// absent, not broken.
+type placeReferrer interface {
+	ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error)
+	Places() []session.PlaceRef
+}
+
 // referredPlaces are the directories this conversation is already ABOUT, most
-// recently referred first.
-//
-// IT ANSWERS NOTHING IN THIS BUILD, and the hook is here rather than the layer
-// being left out because it is lane P2's whole surface area on this side: a
-// conversation-level place is a `PlaceRef` on the session's meta, and the day
-// that field exists this is the one function that reads it. Nothing else in
-// this file has to change.
-func (a *app) referredPlaces() []string { return nil }
+// recently referred first — the session's own answer, read off the meta the
+// accrual door stamps. This is the one function on this side that reads it,
+// exactly as the hook promised when it answered nothing.
+func (a *app) referredPlaces() []string {
+	door, ok := a.agent.(placeReferrer)
+	if !ok {
+		return nil
+	}
+	refs := door.Places()
+	if len(refs) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		paths = append(paths, ref.Path)
+	}
+	return paths
+}
 
 // touchedRoots are the directories this conversation's own tool calls named,
 // MOST RECENT FIRST — the recency weighting the design asks for, said as an
