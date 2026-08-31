@@ -531,3 +531,166 @@ func TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt(t *testing.T) {
 		t.Fatalf("shift+tab left the cursor on %d", a.hop.at)
 	}
 }
+
+// ── QUICK SWITCHING — the press is the switch (hop.go's second mode) ────────
+
+// TestQuickSwitchingSwitchesOnThePressAndTheCardFades is the default gesture:
+// each press of the chord lands you in the next conversation at once, the card
+// is a receipt, and the pause after the last press is what puts it away.
+func TestQuickSwitchingSwitchesOnThePressAndTheCardFades(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("the first press left the surface on %q", a.file)
+	}
+	if !a.hopShowing() || !a.hop.live {
+		t.Fatal("the receipt card is not up over the conversation just landed in")
+	}
+	// THE `you are here` MARK MOVED WITH THE SURFACE: the row slid to wears it,
+	// and the row just left does not.
+	if !a.hop.rows[a.hop.at].here || a.hop.rows[a.hop.at].note != hopHereWord {
+		t.Fatalf("the mark did not move with the switch: %+v", a.hop.rows[a.hop.at])
+	}
+	for at, row := range a.hop.rows {
+		if at != a.hop.at && row.here {
+			t.Fatalf("row %d still claims to be where you are", at)
+		}
+	}
+
+	drive(t, a, key(hopOpenKey))
+	if a.file != "/tmp/lab/price-scrape.jsonl" {
+		t.Fatalf("the second press left the surface on %q", a.file)
+	}
+
+	// A STALE FADE IS OUTRUN BY CONSTRUCTION: the timer an earlier press
+	// scheduled carries an earlier pulse, and the card ignores it.
+	drive(t, a, hopSettleMsg{pulse: a.hop.pulse - 1})
+	if !a.hopShowing() {
+		t.Fatal("a stale fade timer took the card down")
+	}
+	drive(t, a, hopSettleMsg{pulse: a.hop.pulse})
+	if a.hopShowing() {
+		t.Fatal("the fade left the card up")
+	}
+	if a.file != "/tmp/lab/price-scrape.jsonl" {
+		t.Fatalf("the fade moved the surface to %q — it is a receipt, not a commit", a.file)
+	}
+	// AND THE BURST IS SEALED: `tab` goes back to where the burst STARTED, not
+	// to the stepping stone it passed through (hop.go's [app.hopSeal]).
+	if last, ok := a.lastBehind(); !ok || last != a.convKey("/tmp/lab/this-one.jsonl") {
+		t.Fatalf("tab would go to %q after the burst", last)
+	}
+	if a.openCount() != 3 {
+		t.Fatalf("%d conversations are open after the burst — switching is not closing", a.openCount())
+	}
+}
+
+// TestQuickSwitchingEscTakesTheWholeBurstBack is the undo: the surface has
+// already moved, and `esc` is the person saying they were only looking.
+func TestQuickSwitchingEscTakesTheWholeBurstBack(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey), key(hopOpenKey))
+	if a.file != "/tmp/lab/price-scrape.jsonl" {
+		t.Fatalf("two presses landed on %q", a.file)
+	}
+	drive(t, a, key("esc"))
+	if a.hopShowing() {
+		t.Fatal("esc left the card up")
+	}
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatalf("esc left the surface on %q rather than where the burst began", a.file)
+	}
+}
+
+// TestTouchingAnythingButTheChordConvertsTheReceiptToTheBrowsingCard: an arrow
+// is the person looking rather than switching, so the card stops fading, the
+// cursor moves without the surface moving, and `enter` is the commit again.
+func TestTouchingAnythingButTheChordConvertsTheReceiptToTheBrowsingCard(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey))
+	landed := a.file
+	drive(t, a, key("down"))
+	if a.hop.live {
+		t.Fatal("an arrow left the card fading")
+	}
+	if a.file != landed {
+		t.Fatalf("an arrow moved the surface to %q", a.file)
+	}
+	// THE FADE TIMER THE SLIDE SCHEDULED IS DEAD NOW: a card being read must
+	// never go down on its own.
+	drive(t, a, hopSettleMsg{pulse: a.hop.pulse})
+	if !a.hopShowing() {
+		t.Fatal("the fade took down a card somebody was reading")
+	}
+	drive(t, a, key("enter"))
+	if a.hopShowing() {
+		t.Fatal("enter left the card up")
+	}
+}
+
+// TestTypingRidesStraightThroughALiveCard: under quick switching the switch
+// already happened, so a letter typed while the receipt lingers lands in the
+// draft rather than being eaten by it. The browsing card swallows the same
+// letter on purpose, and the pair of claims is the difference between the modes.
+func TestTypingRidesStraightThroughALiveCard(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey), key("z"))
+	if a.hopShowing() {
+		t.Fatal("typing left the receipt up")
+	}
+	if a.input.String() != "z" {
+		t.Fatalf("the letter typed over the receipt became %q rather than draft", a.input.String())
+	}
+}
+
+// TestTheReverseChordEntersTheRingAtTheFarEnd: with the card down, the reverse
+// chord opens the ring at the open conversation longest unlooked-at — and under
+// quick switching it lands there at once.
+func TestTheReverseChordEntersTheRingAtTheFarEnd(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	a.keysDisambiguated = true
+	keepThree(t, a)
+
+	drive(t, a, key(hopBackKey))
+	if a.file != "/tmp/lab/price-scrape.jsonl" {
+		t.Fatalf("the reverse chord landed on %q rather than the far end of the ring", a.file)
+	}
+	if !a.hopShowing() || !a.hop.live {
+		t.Fatal("the receipt card is not up after a reverse entry")
+	}
+}
+
+// TestQuickSwitchingOffIsTheBrowsingCardAlone: the setting turns the chord back
+// into a menu — nothing moves until `enter`.
+func TestQuickSwitchingOffIsTheBrowsingCardAlone(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = false
+	keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey))
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatalf("with quick switching off the press moved the surface to %q", a.file)
+	}
+	if !a.hopShowing() || a.hop.live {
+		t.Fatal("the card should be up, and browsing rather than fading")
+	}
+}

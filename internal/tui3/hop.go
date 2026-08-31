@@ -65,6 +65,25 @@ import (
 // subject, the same dim tail dropped in the same order (switcher.go's
 // [switcherLine]) — because a person who has read home once should not have to
 // learn a second list.
+//
+// ── QUICK SWITCHING — the press is the switch ───────────────────────────────
+//
+// By default ([config.DefaultQuickSwitch]) the chord does not open a menu: it
+// SWITCHES, on the spot, the way a browser's ctrl+tab does — and the card is a
+// receipt over the conversation just landed in, fading on its own after
+// [hopSettle]. Pressing again keeps going round the ring; `esc` takes the whole
+// burst back; touching any other key converts the receipt into the browsing
+// card, which holds still and waits for `enter`, because that person has stopped
+// switching and started reading. The setting turns the chord back into a menu.
+//
+// IT COMMITS ON THE PRESS AND NEVER ON A RELEASE, and that is a law rather than
+// a shortcut. Windows commits alt+tab when the modifier comes up, but a key
+// RELEASE only exists on terminals speaking the kitty keyboard protocol with
+// flags this surface deliberately does not request (app.go's enhancements arm
+// states the ruling) — a gesture built on one would work at the desk and die
+// inside tmux. Chrome commits ctrl+tab eagerly on every press and nobody can
+// feel the difference, because there is no difference to feel: by the time a
+// release could have been heard, you are already there.
 
 // hopOpenKey is the key that opens the switcher, and it is `ctrl+k` for four
 // reasons stated in the order they were weighed:
@@ -226,7 +245,30 @@ type hopCard struct {
 	// say is the one line the card's foot carries about what just happened: a
 	// refusal, or the warning the arm above raised. It is cleared by the next key.
 	say string
+	// from is the conversation the card opened over — the place `esc` goes back
+	// to. It matters under quick switching, where the surface has already moved
+	// by the time anyone presses it; with the setting off it is simply where you
+	// already are, and `esc` going there is `esc` doing nothing, which is right.
+	from string
+	// live is quick switching in progress: every press of the chord has switched
+	// the surface, and the card is a receipt that will fade on its own. It ends
+	// the moment any key that is not the chord arrives — an arrow, a fold, a
+	// close — because that person has stopped switching and started looking, and
+	// a card must never fade out from under somebody who is reading it.
+	live bool
+	// pulse numbers the fade timers, so a tick scheduled by an early press is
+	// stale by construction once a later press has scheduled its own.
+	pulse int
 }
+
+// hopSettle is how long the card lingers after the last press of the chord
+// before fading. Long enough to read the row you landed on and the two around
+// it; short enough that the card is gone before the next sentence is typed. The
+// switch itself happened ON the keypress, so nothing at all is waiting on this.
+const hopSettle = 900 * time.Millisecond
+
+// hopSettleMsg is one fade timer coming due.
+type hopSettleMsg struct{ pulse int }
 
 // hopShowing is the one predicate the frame asks.
 func (a *app) hopShowing() bool { return a.hop.open && len(a.hop.rows) > 0 }
@@ -281,7 +323,7 @@ func (a *app) hopOpen() {
 		// the same refusal said where the rows are actually counted.
 		return
 	}
-	a.hop = hopCard{open: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1}
+	a.hop = hopCard{open: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -334,8 +376,44 @@ func (a *app) hopClose() {
 	if !a.hop.open {
 		return
 	}
+	if a.hop.live {
+		a.hopSeal()
+	}
 	a.hop = hopCard{}
 	a.touch()
+}
+
+// hopSeal restacks the previous-stack at the end of a quick burst so that `tab`
+// goes back to where the burst STARTED rather than to its last stepping stone.
+//
+// Cycling A → B → C attached B on the way through, which put B where `tab`
+// looks; but the person's own history is "I was in A, now I am in C", and B was
+// three hundred milliseconds of passing scenery. Windows restacks its window
+// order at exactly this moment for exactly this reason.
+func (a *app) hopSeal() {
+	from, front := a.convKey(a.hop.from), a.convKey(a.file)
+	if from == "" || from == front || a.behind[from] == nil {
+		return
+	}
+	a.rememberOpen(from)
+	a.rememberOpen(front)
+}
+
+// hopSettled is the fade timer coming due: the card goes, and nothing else
+// happens, because the switch it was a receipt for happened on the keypress.
+// A stale pulse is a timer some earlier press scheduled, outrun by a later one.
+func (a *app) hopSettled(msg hopSettleMsg) {
+	if !a.hop.open || !a.hop.live || msg.pulse != a.hop.pulse {
+		return
+	}
+	a.hopClose()
+}
+
+// hopTick schedules the fade and outdates every timer before it.
+func (a *app) hopTick() tea.Cmd {
+	a.hop.pulse++
+	pulse := a.hop.pulse
+	return tea.Tick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
 }
 
 // hopReading is the card's whole reading: the conversations in the keeper,
@@ -606,10 +684,33 @@ func runningTasks(agent Agent) int {
 func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	if !a.hop.open {
-		if !a.hopOpens(key) || !a.hopMayOpen() {
+		forward, backward := a.hopOpens(key), a.hopBacks(key)
+		if (!forward && !backward) || !a.hopMayOpen() {
 			return nil, false
 		}
 		a.hopOpen()
+		if !a.hop.open {
+			// Nowhere to go; the open refused. The key is still spent — a chord
+			// that fell through to mean something else would be a keystroke with
+			// two meanings on one screen.
+			return nil, true
+		}
+		if backward {
+			// THE REVERSE CHORD ENTERS AT THE OTHER END OF THE RING — the open
+			// conversation you have not looked at for longest — which is the row
+			// alt+shift+tab has selected first on every desktop since Windows 3.
+			a.hop.at = hopLastStop(a.hop.rows)
+		}
+		if at := a.hop.at; a.hopQuick && at < len(a.hop.rows) && a.hop.rows[at].open && !a.hop.rows[at].here {
+			// QUICK SWITCHING: the press IS the switch. The card stays up as a
+			// receipt and fades on its own; there is nothing to commit, because
+			// it already happened. A card with no open row to slide to — one
+			// conversation, everything else behind the fold — opens as the
+			// browsing card instead: a receipt for a switch that did not happen
+			// would fade before its fold line could be read.
+			a.hop.live = true
+			return a.hopSlide(), true
+		}
 		return nil, true
 	}
 	if key == "ctrl+c" {
@@ -622,26 +723,55 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	say := a.hop.say
 	a.hop.say = ""
 	_ = say
+	// THE CHORD KEEPS SWITCHING, EVERYTHING ELSE STOPS IT. While the card is
+	// live, another press of the chord is one more step of the same gesture; any
+	// other key is the person changing what they are doing — looking, folding,
+	// closing — and the card converts to the browsing one, which moves without
+	// switching and never fades out from under a reader.
 	switch {
-	case a.hopOpens(key), key == "down", key == "tab", key == "ctrl+n":
+	case a.hopOpens(key):
+		a.hopWalk(1)
+		if a.hop.live {
+			return a.hopSlide(), true
+		}
+		return nil, true
+	case a.hopBacks(key):
+		a.hopWalk(-1)
+		if a.hop.live {
+			return a.hopSlide(), true
+		}
+		return nil, true
+	case key == "down", key == "tab", key == "ctrl+n":
+		a.hop.live = false
 		a.hopWalk(1)
 		return nil, true
-	case a.hopBacks(key), key == "up", key == "shift+tab", key == "ctrl+p":
+	case key == "up", key == "shift+tab", key == "ctrl+p":
+		a.hop.live = false
 		a.hopWalk(-1)
 		return nil, true
 	case key == hopFoldKey:
+		a.hop.live = false
 		a.hopSpread(true)
 		return nil, true
 	case key == hopShutKey:
+		a.hop.live = false
 		a.hopSpread(false)
 		return nil, true
 	case key == hopAwayKey:
+		a.hop.live = false
 		return a.hopAway(), true
 	case key == "enter":
 		return a.hopTake(), true
 	case key == "esc":
+		return a.hopBack(), true
+	}
+	if a.hop.live {
+		// TYPING RIDES STRAIGHT THROUGH A LIVE CARD. Under quick switching the
+		// switch already happened and the card is only lingering; a person who
+		// lands in a conversation and starts a sentence must not lose its first
+		// letter to a receipt. The card goes, and the key means what it means.
 		a.hopClose()
-		return nil, true
+		return nil, false
 	}
 	// A DIGIT TAKES ITS ROW OUTRIGHT. Eight is the cap (keeper.go's [convCap]),
 	// so every row this card can hold has a digit, and the digit is drawn on it.
@@ -653,12 +783,87 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 	// ANYTHING ELSE PUTS IT AWAY AND IS SWALLOWED. A person who reached for a
-	// key that means nothing here has stopped switching; the card goes, and the
-	// keystroke is not also delivered to the conversation underneath, because a
-	// letter that arrived in a draft on the way out of an overlay is a letter
-	// nobody typed on purpose.
+	// key that means nothing on the BROWSING card has stopped switching; the
+	// card goes, and the keystroke is not also delivered to the conversation
+	// underneath, because a letter that arrived in a draft on the way out of an
+	// overlay it was aimed at is a letter nobody typed on purpose.
 	a.hopClose()
 	return nil, true
+}
+
+// hopLastStop is where the reverse chord enters the ring: the last row that is
+// not the one you are standing in — the open conversation longest unlooked-at.
+func hopLastStop(rows []hopRow) int {
+	for at := len(rows) - 1; at >= 0; at-- {
+		if !rows[at].here {
+			return at
+		}
+	}
+	return 0
+}
+
+// hopSlide is one step of quick switching: the surface actually moves to the
+// row under the cursor, and the card stays up over it as a receipt.
+//
+// ONLY A ROW THIS PROCESS HOLDS IS SLID TO. Opening a closed conversation
+// replays a journal and takes a lock, which is far too much to do to three rows
+// in passing on the way to a fourth; those rows keep their `enter`, and the
+// fold that reveals them already converts the card to browsing.
+func (a *app) hopSlide() tea.Cmd {
+	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
+		return a.hopTick()
+	}
+	row := a.hop.rows[a.hop.at]
+	front := a.convKey(a.file)
+	if !row.open || a.convKey(row.file) == front {
+		return a.hopTick()
+	}
+	// The row being left gets the note it would have been built with had the
+	// card opened here — asked of the agent NOW, while it is still on this side
+	// of the attach and there is still an agent on the loop to ask.
+	wasNote := hopNote(needsPerson(a.agent), runningTasks(a.agent), 0)
+	cmd, ok := a.bringForward(row.file)
+	if !ok {
+		// The conversation went away mid-burst. The card stops fading and says
+		// so where the person is looking; they are mid-gesture, and a receipt
+		// that vanished while carrying a refusal would be a refusal nobody saw.
+		a.hop.say, a.hop.live = hopGoneWord, false
+		a.touch()
+		return nil
+	}
+	// THE `you are here` MARK MOVES WITH THE SURFACE. The rows stay frozen —
+	// nothing is re-read, nothing renumbers — but a card whose mark stayed on
+	// the conversation three steps back would be lying about the one fact the
+	// person is mid-gesture about.
+	for i := range a.hop.rows {
+		held := &a.hop.rows[i]
+		switch {
+		case a.convKey(held.file) == front:
+			held.here, held.note = false, wasNote
+		case held.here:
+			held.here, held.note = false, ""
+		}
+	}
+	a.hop.rows[a.hop.at].here = true
+	a.hop.rows[a.hop.at].note = hopHereWord
+	a.touch()
+	return tea.Batch(cmd, a.hopTick())
+}
+
+// hopBack is `esc`: back to the conversation the card opened over, card down.
+// Under quick switching the surface has already moved, so this is the undo; on
+// the browsing card nothing moved, and going where you already are is staying.
+func (a *app) hopBack() tea.Cmd {
+	from := a.hop.from
+	// NOT A SEAL. Going back is the burst being taken back, and a previous-stack
+	// restacked for it would put the abandoned stepping stones where `tab` looks.
+	a.hop.live = false
+	a.hopClose()
+	if from == "" || a.convKey(from) == a.convKey(a.file) {
+		return nil
+	}
+	cmd, _ := a.bringForward(from)
+	return cmd
 }
 
 // hopOpens reports whether this key is a way in — the binding, or the alias on a

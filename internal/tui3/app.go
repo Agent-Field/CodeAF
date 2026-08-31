@@ -1666,6 +1666,11 @@ type app struct {
 	// (hop.go). It is a field of the app rather than of a place because it
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard
+	// hopQuick is the `quick switch` setting (config.KeyQuickSwitch): whether
+	// the switcher's chord switches on each press or opens a card that waits
+	// for `enter`. Read at boot and again at each turn's end, the way the
+	// other panel rows arrive.
+	hopQuick bool
 	// hopKnown is how many conversations the last reading of this machine saw,
 	// and it is what lets the switcher be ADVERTISED without a disk walk on the
 	// frame (hop.go's [app.hopAvailable]). It is refreshed off the loop by
@@ -2054,6 +2059,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// a keystroke ([app.railStow]), and a re-read would be the surface putting the
 	// column back at the end of the turn a person had just closed it in.
 	a.railAway = !config.TaskColumnAt(a.profileDir)
+	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	// And the approval countdown, on the same terms (consent.go).
 	a.askWait = a.consentWait()
 	// The ledger of what this profile has been told, and whether this build is
@@ -2411,6 +2417,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// nothing repaints for it: it lands in the first moments of a session and
 		// the frame that reads it is whatever frame comes next.
 		a.hopKnown = msg.n
+		return a, nil
+
+	case hopSettleMsg:
+		// THE PAUSE AFTER THE LAST PRESS OF THE CHORD (hop.go). While quick
+		// switching, the card is a receipt for a switch that has already
+		// happened, and this is the moment it fades.
+		a.hopSettled(msg)
 		return a, nil
 
 	case tea.KeyboardEnhancementsMsg:
@@ -4191,6 +4204,7 @@ func (a *app) settle() tea.Cmd {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.notices.enabled = config.HintsAt(a.profileDir)
 	// A turn ending is the moment most hints become true — the answer was long,

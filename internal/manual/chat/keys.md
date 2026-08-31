@@ -1203,8 +1203,17 @@ starting work here, so the box is still standing when you come back.
 
 ## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
 
-**Press `ctrl+k`.** A card is drawn in the middle of whatever you are looking at, the screen
-behind it dims, and on it are **the conversations this terminal has open**:
+**Press `ctrl+k` and you are in your previous conversation, at once.** Press it again and
+you are one further back. This is quick switch, the default: the press is the switch, the
+way a browser's `ctrl+tab` changes tabs. A card is drawn over the conversation you just
+landed in — the screen behind it dims — showing **the conversations this terminal has
+open**, and when you stop pressing, the card fades by itself after about a second. `esc`
+takes the whole thing back to where you started. There is nothing to confirm: by the time
+the card fades you are already there.
+
+Touch any other key while the card is up — an arrow, `→`, `ctrl+w` — and the card stops
+fading and holds still, so you can look around without switching; `enter` then goes. With
+quick switch turned off in `/settings`, `ctrl+k` always opens this holding card and waits.
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -1231,18 +1240,18 @@ has that one row, and the fold has the rest of the machine in it.
 
 | Key | What it does |
 | --- | --- |
-| `ctrl+k` | Open the card. Pressed again with the card up, it steps one further down — tap it like alt+tab |
+| `ctrl+k` | Switch to the previous conversation at once; each further press goes one older. With quick switch off, it opens the card and steps the cursor instead |
 | `ctrl+tab` | The same key, on terminals that can send it. See below |
 | `ctrl+shift+k` / `ctrl+shift+tab` | Up one, on those same terminals |
-| `tab` / `↓` | Down one |
+| `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
-| `1`…`9` | Go to that row outright — the number is drawn on the rows that have one |
+| `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
 | `enter` | Go to the row you are on |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
 | `ctrl+w` | Close the conversation under the cursor. See below |
-| `esc` | Put the card away. You are exactly where you were |
-| any other key | Puts the card away, and does nothing else — the key does not land in your message |
+| `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
+| any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
 It works **in a conversation and on every place** — home, tasks, standing, memory, spend,
 search, settings — because it is drawn over the screen rather than being a screen of its
@@ -1282,6 +1291,34 @@ did.
 The card is **frozen the moment it opens**. A conversation that finishes a turn while you
 are looking at the card does not re-rank the list under your finger.
 
+## Switch without pressing enter — quick switch, it goes when I stop pressing, it switched right away
+
+**Quick switch is on by default**: `ctrl+k` switches on the press, the card over the new
+conversation is a receipt, and pausing is what makes it fade — there is no `enter` in the
+gesture at all. `ctrl+shift+k` (where the terminal can send it) cycles the other way, and
+with the card down it enters at the far end of the ring: the open conversation you have
+not looked at for longest.
+
+Three things to know about the fast gesture:
+
+- **`esc` is the undo.** However many presses deep you are, `esc` puts you back in the
+  conversation the first press left, with the card down.
+- **`tab` afterwards returns to where you started.** Cycling through two conversations on
+  the way to a third does not make a stepping stone "the last one" — after the card fades,
+  `tab` goes back to the conversation you were actually in before the burst.
+- **You can start typing immediately.** A letter typed while the card is still fading lands
+  in your message; the receipt never eats a keystroke.
+
+**To turn it off**: `/settings`, interface, the row named `quick switch`. Off, `ctrl+k`
+opens the card, the cursor steps, and nothing moves until `enter` — the same card, held
+open, that any non-chord key converts the fading one into.
+
+It commits on the press and never on releasing `ctrl`, deliberately: a terminal only
+reports key releases under an optional protocol that dies inside tmux and most terminals,
+and a gesture that worked at the desk and died over ssh would be worse than one honest
+gesture everywhere. Chrome's `ctrl+tab` commits on the press too — there is no difference
+to feel.
+
 ## Why ctrl+k and not ctrl+tab or alt+tab
 
 `ctrl+tab` **is** bound — but only on terminals that can send it, and many cannot.
@@ -1303,7 +1340,9 @@ and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS
 **`ctrl+shift+k` is the reverse, under the same rule.** An ordinary terminal sends
 `ctrl+shift+k` and `ctrl+k` as the same byte, so it is bound only where the terminal
 answered the keyboard query — and it costs nothing that half the terminals in the world
-cannot send it, because **`shift+tab` walks the card back on every one of them**.
+cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
+card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
+unlooked-at — and under quick switch lands you in it at once.
 
 ## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
 

@@ -524,6 +524,11 @@ var settingUI = map[string]settingMeta{
 		about: "stands the task roster beside the chat. ctrl+g closes it and " +
 			"brings it back; this is where the answer is remembered.",
 	},
+	config.KeyQuickSwitch: {
+		tab: tabDisplay, label: "quick switch", widget: widgetToggle,
+		about: "ctrl+k switches conversations on the press — pause and the card " +
+			"fades, esc goes back. Off, it opens the card and waits for enter.",
+	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
 		about: "one-line tips above the box until you have used what each one " +

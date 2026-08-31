@@ -13,6 +13,8 @@ invalidates:
   - "The card lists the conversations this terminal has OPEN, and every other conversation on the machine is behind a fold at its foot — `→` reaches them, `←` puts them away. Taking a row from the fold opens it beside the one you are in, which is what `enter` on home already did. So the key acts on a session that has just started, where nothing but the current conversation is open."
   - "`ctrl+shift+k` and `ctrl+shift+tab` walk the card back, on terminals that answered the keyboard query. `shift+tab` does it on every terminal."
   - "`ctrl+w` closes the conversation under the cursor. It was the box's delete-a-word key and only that; while the switcher is up it is the way out of a conversation instead, and the two never meet on one screen. A conversation with work running in it takes two presses, with the work named in between."
+  - "The chord SWITCHES ON THE PRESS by default (`ui.quick_switch`, on): `ctrl+k` lands you in the previous conversation at once, another press goes one older, and the card is a receipt that fades about a second after the last press — there is no `enter` in the gesture. `esc` takes the whole burst back, `tab` afterwards returns to where the burst started, and a letter typed while the card lingers lands in the draft rather than being eaten. Any non-chord key — an arrow, the fold, `ctrl+w` — converts the receipt into the holding card, which never fades and waits for `enter`; the setting turned off makes every press open that holding card, which is the behaviour the first cut shipped."
+  - "With the card down, `ctrl+shift+k` now opens the ring at its far end — the open conversation longest unlooked-at — where before it did nothing until the card was up."
 ---
 
 The keeper has held eight conversations alive since the conversations wave, and
@@ -37,6 +39,13 @@ person who has just started aforge holds one conversation, so the key did
 nothing, was advertised nowhere, and could only be found by somebody who already
 knew that `enter` on home opens a second one. The feature was invisible until you
 had learned the thing it exists for.
+
+Quick switch commits on the press and never on releasing `ctrl`, deliberately:
+key releases only exist under kitty-protocol flags this surface does not request
+(the ruling in app.go stands), so a release-built gesture would work at the desk
+and die inside tmux. Chrome's `ctrl+tab` commits eagerly too; with the switch
+already made, a release has nothing left to say. The pause-then-fade is not a
+commit timer — nothing waits on it — which is what makes a short one safe.
 
 `ctrl+k` rather than `ctrl+tab` because `ctrl+tab` has no legacy encoding: it
 arrives as a bare `tab` unless the terminal speaks the kitty keyboard protocol,

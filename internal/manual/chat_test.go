@@ -57,6 +57,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// already know from every other program, the thing they are looking for,
 		// and the two spellings of the key.
 		{"alt tab between conversations", "keys"},
+		{"switch chats without pressing enter", "keys"},
+		{"ctrl+k switched me right away how do I stop that", "keys"},
+		{"it goes when I stop pressing", "keys"},
 		{"switch between my open chats", "keys"},
 		{"is there a conversation switcher", "keys"},
 		{"how do I get to my other conversation without going home", "keys"},
@@ -381,7 +384,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it say elsewhere", "home"},
 		{"can I work on two repos in one terminal", "home"},
 		{"can I work on two projects at once", "home"},
-		{"how do I switch back to the last conversation", "home"},
+		{"how do I switch back to the last conversation", "keys"},
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
