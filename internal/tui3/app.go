@@ -2272,6 +2272,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.clampScroll()
 		return a, nil
 
+	case laneNewsMsg:
+		// THE LANE LAYER SAID SOMETHING (lanes.go's [PostLaneNews]). Nothing is
+		// read out of the message and nothing is stored from it: the news is
+		// already on the desk by the time this arrives, and this exists only to
+		// ask for the frame that draws it. A rescue that was drawn at the next
+		// keystroke instead would be a rescue nobody saw happen.
+		return a, nil
+
 	case sigQuitMsg:
 		// A REAL SIGINT OR SIGTERM, forwarded by this package's own handler
 		// (tui3.go's [forwardSignals]) because Bubble Tea's answers SIGINT by

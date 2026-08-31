@@ -1027,6 +1027,22 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	return fill.done()
 }
 
+// pinnedLane is the MACHINE this conversation is held to, and empty for every
+// row that names none — which is both `auto` and `openrouter`.
+//
+// It exists because [picker.pin] is the settings row VERBATIM, which is what
+// [picker.marked] needs to tell the three rungs of the fold apart, and is
+// exactly the wrong thing to hand to anything that draws a lane's name: the row
+// reading `auto` drew a model whose speed came `via auto`, a machine no router
+// has ever heard of.
+func (p *picker) pinnedLane() string {
+	switch strings.ToLower(strings.TrimSpace(p.pin)) {
+	case "", config.LaneAuto, config.LaneOpenRouter:
+		return ""
+	}
+	return p.pin
+}
+
 // marked is the row an overlay's chosen band belongs to: the model in use, and
 // — inside an open fold — the lane this conversation is actually held to, which
 // is the pin when there is one and the `auto` row when there is not.
@@ -1132,7 +1148,7 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 	// one, so every other row's `via` is what auto would do (lanes.go).
 	pin := ""
 	if model.ID == p.current {
-		pin = p.pin
+		pin = p.pinnedLane()
 	}
 	note := modelNoteVia(model, pin)
 	if level == "" {

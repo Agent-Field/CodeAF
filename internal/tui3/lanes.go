@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // ── THE SURFACE'S SIDE OF LANES ─────────────────────────────────────────────
@@ -37,16 +38,6 @@ import (
 // Nothing here fetches, and nothing here chooses. The ledger read is memory
 // only by its own contract, and the chooser is pure — both are safe on a draw
 // path, which is where every function below is called from.
-
-// laneHalfLife is how fast confidence in a lane's numbers decays with nothing
-// new arriving: after ten minutes the variance has doubled, so the belief is
-// worth half what it was.
-//
-// IT IS THE LEDGER'S OWN NUMBER AND MUST NOT BECOME A SECOND ONE. internal/lane
-// exports `HalfLife`; this constant is here only because this branch was cut
-// before that export landed, and the merge that brings them together deletes it
-// and passes `lane.HalfLife` instead.
-const laneHalfLife = 10 * time.Minute
 
 // ── WHAT THE LAYER THAT SENT THE ANSWER TELLS US ────────────────────────────
 
@@ -90,6 +81,12 @@ type LaneNews struct {
 func (n LaneNews) rescued() bool {
 	return n.Hedged && n.Winner != "" && !strings.EqualFold(n.Winner, n.Lane)
 }
+
+// laneNewsMsg wakes the loop so a frame is drawn for news that arrived from
+// somewhere other than a keystroke. It carries nothing — [PostLaneNews] has
+// already put the news on the desk — because a message that carried the news
+// would be a second copy of it, arriving after the first.
+type laneNewsMsg struct{}
 
 // laneSightings is the most of our own answers one lane's sparkline draws. Eight
 // because that is what fits in the tail of a row a person is scanning, and
@@ -233,8 +230,8 @@ func laneViews(model string, now time.Time) []laneView {
 		}
 		ttft, rate := belief.TTFT, belief.Rate
 		if !belief.At.IsZero() {
-			ttft = ttft.Predict(now.Sub(belief.At), laneHalfLife)
-			rate = rate.Predict(now.Sub(belief.At), laneHalfLife)
+			ttft = ttft.Predict(now.Sub(belief.At), lane.HalfLife)
+			rate = rate.Predict(now.Sub(belief.At), lane.HalfLife)
 		}
 		view := laneView{
 			Name:      belief.ID.Lane,
@@ -361,11 +358,14 @@ func (a *app) laneNow(model string, views []laneView) (string, bool) {
 // session (the settings panel's slot rows, the composer's), and a row that said
 // nothing there would be the same list telling two stories.
 func laneAuto(model string, views []laneView, now time.Time) string {
-	choice := lane.Default().Chooser().Choose(lane.Request{
-		Model:   model,
-		Visible: laneTalkTokens,
-		Now:     now,
-	})
+	// THE QUESTION IS THE TURN'S OWN, and it is asked through the transport's
+	// spelling of it ([provider.LaneTalkAsk]) rather than one written here. A
+	// request built on this side with λ left at zero asks "which is CHEAPEST",
+	// which is a perfectly correct answer to a question a conversation never
+	// asks — and the row then named a machine the very next turn did not use.
+	// One shape, stated where the wire states it, so the `auto` row and the
+	// request it predicts cannot drift.
+	choice := lane.Default().Chooser().Choose(provider.LaneTalkAsk(model, now))
 	if len(choice.Order) > 0 && choice.Order[0] != "" {
 		return choice.Order[0]
 	}
@@ -406,10 +406,20 @@ func laneRateWord(rate float64) string {
 // laneSpeedWord is what a model row gains when its lanes are known:
 // `▲0.8s 58t/s · via cloudflare`. Every part is dropped when nobody measured
 // it, and the whole thing is dropped when nothing is.
+//
+// THE NUMBERS BELONG TO THE LANE THE ROW NAMES, and that is the whole of this
+// function's care. It used to draw the numbers of whichever lane this file's
+// own sort put first and then write somebody else's name after them — which was
+// invisible while the chooser had no opinion and the two always agreed, and
+// became a row saying one machine's speed under another machine's name the
+// moment the chooser landed. A row like that is worse than a blank one: it is a
+// measurement attributed to a machine that did not make it.
 func laneSpeedWord(views []laneView, now string) string {
-	best, ok := bestLane(views)
+	best, ok := laneExactly(views, now)
 	if !ok {
-		return ""
+		if best, ok = bestLane(views); !ok {
+			return ""
+		}
 	}
 	parts := make([]string, 0, 2)
 	if word := laneSecondsWord(best.TTFT); word != "" {
@@ -427,6 +437,22 @@ func laneSpeedWord(views []laneView, now string) string {
 		return via
 	}
 	return speed + " · " + via
+}
+
+// laneExactly is one lane's view by its whole name, false when nothing is
+// believed about a lane by that name — which is every reading of an empty name.
+// It is the strict sibling of [laneNamed], which matches the part of a name a
+// person half-remembers; a row's own numbers may not be found that loosely.
+func laneExactly(views []laneView, name string) (laneView, bool) {
+	if strings.TrimSpace(name) == "" {
+		return laneView{}, false
+	}
+	for _, view := range views {
+		if strings.EqualFold(view.Name, name) {
+			return view, view.Known
+		}
+	}
+	return laneView{}, false
 }
 
 // laneUpMark is the one glyph on a model's row that says the number after it is
@@ -757,6 +783,7 @@ func (a *app) pinLane(model, name string) {
 		return
 	}
 	_ = config.SetLaneBorrow(a.profileDir, slot, false)
+	a.laneRowChanged()
 	a.noteFacts("lane · "+strings.ToLower(name), name)
 	a.touch()
 }
@@ -771,6 +798,7 @@ func (a *app) clearLanePin(model string) {
 		a.note(err.Error())
 		return
 	}
+	a.laneRowChanged()
 	a.noteFacts("lane · auto", config.LaneAuto)
 	a.touch()
 }
@@ -788,8 +816,39 @@ func (a *app) setLaneRouterOnly(model string) {
 		a.note(err.Error())
 		return
 	}
+	a.laneRowChanged()
 	a.noteFacts("lane · openrouter", config.LaneOpenRouter)
 	a.touch()
+}
+
+// laneRowChanged hands the row this surface just wrote to the layer that sends
+// requests, so the very next turn goes where the person said.
+//
+// IT IS THE WRITE AND NOT A READ, and that is the whole design of the seam
+// (internal/provider's lanepin.go). The transport may not read a settings file
+// in front of somebody's first token, so a pin that only took effect at the
+// next launch was the alternative — and a picker that says `pinned` over a
+// conversation that is still going somewhere else is a surface lying about a
+// setting a person is looking at.
+//
+// A SURFACE OVER A CONNECTION WRITES NOTHING HERE, because it has already
+// written nothing at all: the pin sites above refuse a session with no profile
+// directory, which is exactly the hosted case, and the far machine's own
+// launch resolved its own row.
+func (a *app) laneRowChanged() {
+	if a.profileDir == "" {
+		return
+	}
+	slot := laneSlotFor(a.model)
+	if name, pinned := config.LanePinned(a.profileDir, slot); pinned {
+		provider.SetLanePin(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
+		return
+	}
+	if strings.EqualFold(config.LaneAt(a.profileDir, slot), config.LaneOpenRouter) {
+		provider.SetLanePin(provider.LanePin{OpenRouter: true})
+		return
+	}
+	provider.SetLanePin(provider.LanePin{})
 }
 
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────
@@ -840,4 +899,27 @@ func (a *app) laneRider() string {
 		rider += " · " + word
 	}
 	return rider
+}
+
+// ── THE KEYSTROKE ───────────────────────────────────────────────────────────
+
+// typingAgent is the OPTIONAL half of [Agent]: an engine that can be told a
+// person has started writing.
+//
+// It is a separate interface rather than a method on [Agent] for the reason the
+// task door is one (app.go's taskCommandAgent): probing is a thing only a
+// session with a real transport under it has, and a door that does not offer it
+// — a connection to another machine, a test double — makes the capability
+// ABSENT rather than present and failing.
+type typingAgent interface{ Typing() }
+
+// laneTyping tells the engine somebody is writing, and does nothing at all for
+// a door that cannot hear it. See [app.key] for why it is called on every
+// character rather than on the first.
+func (a *app) laneTyping() {
+	typing, ok := a.agent.(typingAgent)
+	if !ok {
+		return
+	}
+	typing.Typing()
 }

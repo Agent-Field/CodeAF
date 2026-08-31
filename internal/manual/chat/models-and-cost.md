@@ -1301,6 +1301,8 @@ So, with the **routing** row on the Providers tab left alone, aforge asks for tw
 
 Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
 
+**One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
 **You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row beside it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
@@ -1431,7 +1433,30 @@ session spends. It does nothing under `routing: price` — nobody is buying seco
 and nothing while an answer is already flowing normally.
 
 Turn it off if you are paying for every token and never mind waiting. With it off, the
-`auto` row in the model picker says `no rescue`, so you can see the promise it is making.
+`auto` row in the model picker says `no rescue`, so you can see the promise it is making
+— and the measurement described in the next section stops being bought as well. The two
+are one row because they are one promise: aforge may spend a little extra to keep an
+answer moving.
+
+## Why aforge sends something when you start typing — the one-token measurement
+
+While you are typing, and before you press enter, aforge sends **one token** to each of
+the two lanes your next message would most likely go to, and times how long the first
+word took to come back. It does that for two reasons: the router's own published figures
+are a half-hour average over everybody's prompts, and this is a measurement of **your**
+path to that machine taken seconds ago — and the connection is left warm, so the real
+answer's first word is not also paying for a handshake.
+
+**What it costs.** About **two hundredths of a cent** per turn: ten tokens in and one
+token out, twice.
+
+**How often.** At most one pair every **twenty seconds** per model, however fast you
+type — so a long message buys one, not one per keystroke. None at all when the **speed
+guard** is off, when `routing` is `off`, when the lane row says `openrouter`, or when
+the connection pool is already being rate-limited.
+
+**Nothing ever waits for it.** It is sent and forgotten; a message you send a moment
+later does not wait on it, and a probe that fails teaches nothing and changes nothing.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 

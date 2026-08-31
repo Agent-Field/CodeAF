@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -1775,6 +1776,17 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	if item.row.Key == config.KeyWork {
 		a.workMode = config.WorkAt(a.profileDir)
 		a.touch()
+	}
+	// THE TWO LANE ROWS LAND ON THE LIVE TRANSPORT, not at the next launch.
+	// They are the panel's half of what the picker does when somebody pins from
+	// it (lanes.go's laneRowChanged): a settings row that a person watched
+	// themselves change, and that then did nothing to the very next answer,
+	// would be the panel telling them something untrue.
+	switch item.row.Key {
+	case config.LaneSettingKey(talkSlot), config.LaneBorrowKey(talkSlot):
+		a.laneRowChanged()
+	case config.KeyLaneGuard:
+		provider.SetLaneGuard(config.LaneGuardAt(a.profileDir))
 	}
 	a.sheet.msg = ""
 	a.sheet.rows = a.sheet.registry.Rows()

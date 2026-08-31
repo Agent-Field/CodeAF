@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -143,15 +144,31 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 }
 
 // AND THE MODEL'S OWN ROW GAINS THE SPEED, which is the same belief said in one
-// line: the best lane's first token, its rate, and who is answering.
-func TestTheModelRowCarriesTheSpeedOfItsBestLane(t *testing.T) {
+// line: the first token of the lane that would answer, its rate, and its name.
+//
+// THE INVARIANT IS THAT THE THREE ARE ONE LANE'S, and it is asserted rather than
+// a lane name, because WHICH lane answers is a sampled decision the chooser
+// makes afresh at every moment ([lane.Choose] seeds on the request's own Now).
+// A test that named cloudflare passed only while nothing was choosing; what a
+// person can be promised is that the numbers on the row belong to the machine
+// the row names, whichever machine that turns out to be.
+func TestTheModelRowCarriesTheSpeedOfTheLaneItNames(t *testing.T) {
 	laneLab(t, threeLanes())
 	note := modelNote(Model{ID: flash, ContextLength: 1_000_000})
-	if !strings.Contains(note, "▲0.8s") || !strings.Contains(note, "58t/s") {
-		t.Fatalf("the row says %q, want the posterior of the best lane", note)
-	}
-	if !strings.Contains(note, "via cloudflare") {
+	at := strings.Index(note, "via ")
+	if at < 0 {
 		t.Fatalf("the row says %q, want the lane that is answering", note)
+	}
+	named := strings.TrimSpace(note[at+len("via "):])
+	view, known := laneExactly(laneViews(flash, timeNow()), named)
+	if !known {
+		t.Fatalf("the row names %q, which nothing is believed about:\n%s", named, note)
+	}
+	wantTTFT := laneUpMark + laneSecondsWord(view.TTFT)
+	wantRate := strconv.Itoa(int(math.Round(view.Rate))) + "t/s"
+	if !strings.Contains(note, wantTTFT) || !strings.Contains(note, wantRate) {
+		t.Fatalf("the row says %q, want %s %s — the numbers of the lane it names",
+			note, wantTTFT, wantRate)
 	}
 }
 
