@@ -137,10 +137,12 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 		t.Fatalf("the refusal must carry the sentinel: %v", err)
 	}
 	want := "conversation limit reached · $2.05 spent of $2 · /budget changes it"
-	if got := err.Error(); !strings.HasSuffix(got, want) {
-		t.Fatalf("the refusal reads\n  %s\nwant it to end\n  %s", got, want)
+	if got := err.Error(); got != want {
+		t.Fatalf("the refusal reads\n  %s\nwant\n  %s", got, want)
 	}
-	for _, banned := range []string{"rail —", "ceiling", "raise it to keep going"} {
+	// AND THE SENTINEL'S OWN WORDS REACH NOBODY. A sentinel is matched, never
+	// read, and `%w` in front of a sentence is the machinery talking over it.
+	for _, banned := range []string{"rail", "ceiling", "raise it to keep going", "session:"} {
 		if strings.Contains(err.Error(), banned) {
 			t.Fatalf("the refusal still says %q: %s", banned, err)
 		}
@@ -152,5 +154,9 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 	}
 	if got := railMoney(4.1); got != "$4.10" {
 		t.Fatalf("a part-dollar limit reads %q", got)
+	}
+	// AND A SUB-CENT FIGURE IS A FIGURE. `$0.00 spent of $0.00` names nothing.
+	if got := railMoney(0.0006); got != "$0.0006" {
+		t.Fatalf("a sub-cent figure reads %q", got)
 	}
 }

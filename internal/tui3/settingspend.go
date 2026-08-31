@@ -160,8 +160,14 @@ func railSpell(value string) string {
 }
 
 func railFigure(usd float64) string {
-	if usd == float64(int64(usd)) {
+	switch {
+	case usd == float64(int64(usd)):
 		return "$" + strconv.FormatInt(int64(usd), 10)
+	case usd < 0.01:
+		// AND A SUB-CENT LIMIT IS STILL A LIMIT. Two decimals turn a tenth of a
+		// cent into `$0.00`, which is the one reading this tab exists to never
+		// give: the figure a person typed rendered as its own opposite.
+		return fmt.Sprintf("$%.4f", usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
 }

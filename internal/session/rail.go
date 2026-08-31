@@ -55,16 +55,36 @@ func (a *Agent) railBlockLocked() error {
 	// their refused message is still in it, theirs to send again — and every
 	// printable key there belongs to that box. A door a refusal names has to be
 	// one that works from where the refusal is read.
-	return fmt.Errorf("%w: conversation limit reached · %s spent of %s · /budget changes it",
-		ErrSpendRail, railMoney(spent), railMoney(rail))
+	return spendRailReached{said: fmt.Sprintf(
+		"conversation limit reached · %s spent of %s · /budget changes it",
+		railMoney(spent), railMoney(rail))}
 }
 
-// railMoney writes a figure the way a limit is written: whole dollars when the
-// figure is whole, cents when it is not. `$500.00` is a number somebody typed
-// with two cells of noise on the end.
+// spendRailReached is the refused turn's error, and it exists for ONE reason:
+// the sentinel's own words must not reach a person.
+//
+// `fmt.Errorf("%w: …", ErrSpendRail, …)` prints the sentinel in front of the
+// sentence, so what a person read on the refused turn was `session: the spend
+// rail was reached: conversation limit reached · …` — the machinery's name for
+// the mechanism, twice, over the sentence written for them. A sentinel is
+// matched with [errors.Is] and never read, so it says nothing here: this type
+// carries the sentence, unwraps to the sentinel, and every existing
+// `errors.Is(err, ErrSpendRail)` is unchanged.
+type spendRailReached struct{ said string }
+
+func (e spendRailReached) Error() string { return e.said }
+func (e spendRailReached) Unwrap() error { return ErrSpendRail }
+
+// railMoney writes a figure the way money is written on this line: whole dollars
+// when the figure is whole, cents when it is not, and four decimals under a cent
+// — because `$0.00 spent of $0.00` is a refusal that names no figure at all,
+// which is the one thing a refusal has to do.
 func railMoney(usd float64) string {
-	if usd == float64(int64(usd)) {
+	switch {
+	case usd == float64(int64(usd)):
 		return fmt.Sprintf("$%d", int64(usd))
+	case usd < 0.01:
+		return fmt.Sprintf("$%.4f", usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
 }

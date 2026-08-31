@@ -228,6 +228,18 @@ func TestNoLimitIsAWordAndZeroIsNeverDrawn(t *testing.T) {
 	if strings.Contains(frame, "$0") {
 		t.Fatalf("a bare zero reached the Spending tab:\n%s", frame)
 	}
+	// AND NEITHER DOES A SUB-CENT LIMIT ROUND ITSELF INTO ONE. A tenth of a cent
+	// written as `$0.00` is the figure a person typed rendered as its opposite.
+	if got := railFigure(0.0001); got != "$0.0001" {
+		t.Fatalf("a sub-cent limit reads %q", got)
+	}
+	if err := mustSpendRow(t, a, config.KeySpendRail).Apply("0.0001"); err != nil {
+		t.Fatal(err)
+	}
+	a.sheet.build()
+	if got := a.sheet.spendNote(itemFor(t, a, config.KeySpendRail), 160, false); !strings.Contains(got, "$0.0001") {
+		t.Fatalf("the conversation row reads %q for a tenth of a cent", got)
+	}
 	for _, word := range rows {
 		if !strings.Contains(frame, word) {
 			t.Fatalf("%q never reached the tab:\n%s", word, frame)

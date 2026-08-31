@@ -2314,6 +2314,23 @@ func moneyValue(value float64) string {
 	return formatDollars(value)
 }
 
+// spentFigure is how a SPEND is written, which is not how a LIMIT is written.
+//
+// A limit is a figure somebody typed and [formatDollars] writes it back the
+// shortest way that is still the same number — right for a config file and right
+// for `$500`. A spend is a measurement nobody chose, and the shortest honest
+// form of one is a disaster: four fifths of a tenth of a cent came out of the
+// provider as 0.0005688764200000001 and went onto the row exactly like that,
+// twenty-two digits of float noise where a person wanted to read a price. So a
+// spend is cents, and four decimals under a cent — the same ladder the surface's
+// own money word uses, so the receipt and the figure beside it agree.
+func spentFigure(usd float64) string {
+	if usd < 0.01 {
+		return fmt.Sprintf("$%.4f", usd)
+	}
+	return fmt.Sprintf("$%.2f", usd)
+}
+
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
 // or an uncounted day renders nothing at all rather than $0.00, which would be
 // a claim nobody made.
@@ -2322,10 +2339,14 @@ func (s *Settings) spentTodayReceipt() string {
 		return ""
 	}
 	spent, counted := s.options.SpentTodayUSD()
-	if !counted {
+	// AND A DAY THAT HAS COST NOTHING SAYS NOTHING. Counted-zero and
+	// not-counted are different facts about the seam and the SAME fact about
+	// the money: no call has been paid for today, and `$0 today` beside a limit
+	// is the emptiness law broken on the one row that exists to state a figure.
+	if !counted || spent <= 0 {
 		return ""
 	}
-	return formatDollars(spent) + " today"
+	return spentFigure(spent) + " today"
 }
 
 // spentThisSessionReceipt is the conversation ceiling's own receipt: what THIS
@@ -2343,7 +2364,7 @@ func (s *Settings) spentThisSessionReceipt() string {
 	if !counted || spent <= 0 {
 		return ""
 	}
-	return "this one " + formatDollars(spent)
+	return "this one " + spentFigure(spent)
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {
