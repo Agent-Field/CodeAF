@@ -274,6 +274,12 @@ func newTestApp(agent Agent) *app {
 	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
 	// asserts the Mac reading against every place on purpose.
 	a.chords = chordSpelling{meta: chordAltWord}
+	// AND IT PINS QUICK SWITCHING OFF, for the sixth time for the same reason.
+	// [newApp] reads the profile to decide whether the switcher's chord switches
+	// on the press or opens a card that waits (hop.go's ui.quick_switch), so a
+	// developer who turned it off in their own aforge would run a different
+	// suite. The quick behaviour has tests of its own that turn it on outright.
+	a.hopQuick = false
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
@@ -376,6 +382,18 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}
 	case "shift+tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "ctrl+tab":
+		// The switcher's alias, which a terminal that disambiguates can send
+		// (hop.go). It is spelled out here because `tab` is not a rune and the
+		// ctrl fall-through above only builds single-rune chords.
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl}
+	case "ctrl+shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl | tea.ModShift}
+	case "ctrl+shift+k":
+		// The switcher's reverse (hop.go), spelled out for the reason above it:
+		// the ctrl fall-through builds single-rune chords with one modifier, and
+		// this one carries two.
+		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl | tea.ModShift}
 	case "shift+left":
 		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	case "shift+right":

@@ -53,6 +53,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// screen is actually showing them.
 		{"I clicked on the task and there is nothing there at all", "task-rooms-after-restart"},
 		{"nothing on this page yet", "reading-a-task-page"},
+		// The switcher, asked in the words people bring to it: the gesture they
+		// already know from every other program, the thing they are looking for,
+		// and the two spellings of the key.
+		{"alt tab between conversations", "keys"},
+		{"switch chats without pressing enter", "keys"},
+		{"ctrl+k switched me right away how do I stop that", "keys"},
+		{"it goes when I stop pressing", "keys"},
+		{"switch between my open chats", "keys"},
+		{"is there a conversation switcher", "keys"},
+		{"how do I get to my other conversation without going home", "keys"},
+		{"what does ctrl+k do", "keys"},
+		{"why does ctrl+tab do nothing", "keys"},
+		{"what did my other chats do while I was away", "keys"},
+		// And the tasks page's tree, asked by somebody looking at a page that is
+		// hiding rows from them on purpose.
+		{"where did the workers go on the task page", "tasks"},
+		{"what does +3 under mean", "tasks"},
+		{"expand a task to see what ran under it", "tasks"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
@@ -424,7 +442,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it say elsewhere", "home"},
 		{"can I work on two repos in one terminal", "home"},
 		{"can I work on two projects at once", "home"},
-		{"how do I switch back to the last conversation", "home"},
+		{"how do I switch back to the last conversation", "keys"},
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
