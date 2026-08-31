@@ -154,7 +154,7 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 
 	ledger := lane.Default().Ledger()
 	for _, row := range rows {
-		ledger.Prime(row, SheetWeight)
+		ledger.Prime(row, lane.SheetWeight)
 	}
 
 	// ── 2. five real calls, with the chooser on ─────────────────────────────
@@ -300,7 +300,10 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 	}
 	belief, _ := ledger.Belief(slow.ID)
 	watch := lane.NewWatch(pin, belief, time.Now())
-	budget := lane.NewBudget(6, 0.1)
+	// The shipped budget, so that this test is measuring the router somebody
+	// gets rather than an allowance written here: two hedges in any twenty
+	// requests and a tenth of recent spend. One request needs one of them.
+	budget := lane.DefaultBudget()
 
 	rescue, err := streamPinned(ctx, key, pin, watch, budget, ledger)
 	if err != nil {
