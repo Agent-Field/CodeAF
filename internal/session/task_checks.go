@@ -11,7 +11,8 @@ package session
 //
 //	(a) THE CHECK THE WORK DECLARES — every command the node's own document
 //	    names, read out of the brief and the frozen acceptance the node was
-//	    finished against ([declaredChecks]).
+//	    finished against, and kept only if the checker could really run it where
+//	    it is standing ([declaredChecks], [runnableHere]).
 //	(b) THE CHECK THE WORK RAN — every command the last worker itself ran as one
 //	    command, read off its own tool receipts ([ranChecks]).
 //	(c) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
@@ -91,10 +92,36 @@ package session
 // is it one simple command, and would a blanket allow still stop and ask about
 // it — because what changed is which words are read off the receipt, not what the
 // auditor may run.
+//
+// ── THE THIRD MEASURED FAILURE: A DOOR ONTO A WORD THAT IS NOT A PROGRAM ──
+//
+// Source (a) used to admit EVERY backticked span that had the shape of a
+// command, on the reasoning written at [declaredChecks] that a dead entry costs
+// a line of a refusal and a missing check costs a verdict. A real acceptance
+// then backticked the things prose backticks — a remote, a branch, a repository,
+// a rule identifier — and the door read:
+//
+//	You may run: origin, main, Agent-Field/agentfield, js/polynomial-redos, …
+//
+// The checker did exactly what it was told it could do. It ran them, one after
+// another, collected the shell's 127s and 126s, and wrote "Ran the named checks:
+// all refused or exit 126/127" into a finding A PERSON THEN READ as the state of
+// the work. A dead entry does not cost a line of a refusal; it costs the finding
+// the whole audit exists to produce, because a model handed a door believes the
+// door.
+//
+// SO A DECLARED SPAN IS A DOOR ONLY IF IT COULD RUN WHERE THE CHECKER STANDS —
+// its first word is a program the shell would find, or the span names a file
+// really sitting in the ground the auditor was put in ([runnableHere]). Both
+// halves are questions asked of the machine the check would run on rather than
+// of a list this package keeps, which is the same law the rest of this file is
+// made of. What the work RAN (source (b)) is not asked: a receipt is the work
+// having already run the thing, which is a better answer than any lookup.
 
 import (
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -243,7 +270,7 @@ func plainDoor(allowed []string) auditDoor {
 func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 	var checks []string
 	if node != nil {
-		checks = appendChecks(checks, declaredChecks(node.instruction()))
+		checks = appendChecks(checks, declaredChecks(node.instruction(), place.ground))
 		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
@@ -455,12 +482,18 @@ func appendChecks(checks, more []string) []string {
 // rule that looked for a build system's name would be the constant this file
 // replaced, wearing a regexp.
 //
-// A backtick span that is not a command comes back as nothing rather than as a
-// door: the filter is [commandLike], and a path, an option or a sentence fails
-// it. Some noise survives — a brief that backticks a filename gets that filename
-// on the list — and that is the right way to be wrong. A dead entry costs a line
-// of a refusal; a missing check costs a verdict.
-func declaredChecks(text string) []string {
+// TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
+// questions. [commandLike] asks whether the span has the SHAPE of one command —
+// a path, an option or a sentence fails it. [runnableHere] then asks whether it
+// is a command AT ALL WHERE THE CHECKER WILL BE STANDING, which is the question
+// the third measured failure at the top of this file was made of: prose
+// backticks a branch and a repository as readily as it backticks a build, and
+// every one of those has the shape of a command.
+//
+// THE GROUND IS THE DIRECTORY THE CHECKER WILL BE PUT IN, threaded down from the
+// caller that already knows it. A span resolved against any other directory
+// would be admitted or refused on the strength of a tree nobody is standing in.
+func declaredChecks(text, ground string) []string {
 	var out []string
 	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
 	// pair of them. A fenced block splits into empty pieces around its own
@@ -468,7 +501,7 @@ func declaredChecks(text string) []string {
 	// [commandLike] on their own without a special case for fences.
 	spans := strings.Split(text, "`")
 	for index := 1; index < len(spans); index += 2 {
-		if command, ok := commandLike(spans[index]); ok {
+		if command, ok := commandLike(spans[index]); ok && runnableHere(ground, command) {
 			out = append(out, command)
 		}
 	}
@@ -477,11 +510,61 @@ func declaredChecks(text string) []string {
 		if !strings.HasPrefix(line, "$ ") {
 			continue
 		}
-		if command, ok := commandLike(strings.TrimPrefix(line, "$ ")); ok {
+		command, ok := commandLike(strings.TrimPrefix(line, "$ "))
+		if ok && runnableHere(ground, command) {
 			out = append(out, command)
 		}
 	}
 	return out
+}
+
+// runnableHere is the question the third measured failure at the top of this
+// file put to source (a): COULD THE CHECKER ACTUALLY RUN THIS WHERE IT IS BEING
+// PUT? A word that is neither a program nor a file is not a check, however
+// command-shaped the prose around it was.
+//
+// THERE ARE TWO WAYS TO BE RUNNABLE AND THIS ASKS BOTH, because a check is a
+// file or it is a command and that is the same division the door itself is built
+// on:
+//
+//   - THE FIRST WORD IS A PROGRAM THE SHELL WOULD FIND ([onThePath]). That is the
+//     operating system answering, not a list — the checker's bash searches the
+//     same PATH this process holds, so a lookup here is the lookup the shell is
+//     about to do.
+//   - OR THE SPAN NAMES A FILE THE GROUND REALLY HOLDS, which is [fileChecksIn],
+//     the same reading that decides which spellings of a file check open. Asking
+//     it here rather than writing a second resolver is what keeps one answer to
+//     "does this check name a file": a span admitted by this question is the same
+//     span [auditDoorFor] is about to build a [fileCheck] out of.
+//
+// A DEAD ENTRY IS NOT REFUSED FOR BEING DANGEROUS, and nothing here is a safety
+// argument. The floor under what may be typed is unchanged; what changed is that
+// the door no longer offers things that cannot be typed at all.
+func runnableHere(ground, command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	if onThePath(fields[0]) {
+		return true
+	}
+	return len(fileChecksIn(ground, command)) > 0
+}
+
+// onThePath asks whether one word names a program the checker's shell would
+// find, and it asks it ONLY OF A BARE WORD.
+//
+// A word with a directory in it is a path, and a path is a question about the
+// ground the checker stands in rather than about the PATH — the lookup would
+// resolve it against THIS process's working directory, which is not where the
+// check is going to run and so is not an answer to anything. Those words are
+// left for [fileChecksIn], which resolves against the right directory.
+func onThePath(word string) bool {
+	if word == "" || filepath.Base(word) != word {
+		return false
+	}
+	_, err := exec.LookPath(word)
+	return err == nil
 }
 
 // ranChecks is source (b): what the last worker ITSELF ran, read off the

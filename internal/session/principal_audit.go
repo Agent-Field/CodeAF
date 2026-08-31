@@ -91,7 +91,11 @@ const (
 // places this build is meant to be general: the work says how it is checked.
 func (a *Agent) sessionChecks() []string {
 	principal := a.who()
-	checks := declaredChecks(principal.Ask() + "\n" + principal.Acceptance())
+	// The deliverable tree is where [Agent.runSessionChecks] will start every one
+	// of these, so it is the directory a declared check has to be runnable in —
+	// the same tree, asked the same question, as the one the checks are run in.
+	tree := a.deliverableTree()
+	checks := declaredChecks(principal.Ask()+"\n"+principal.Acceptance(), tree)
 	graph := a.tasker()
 	if graph == nil {
 		return trimChecks(checks)
@@ -106,7 +110,6 @@ func (a *Agent) sessionChecks() []string {
 		}
 	}
 	graph.mu.Unlock()
-	tree := a.deliverableTree()
 	for _, node := range nodes {
 		if !node.stateNow().settled() {
 			continue
