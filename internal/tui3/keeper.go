@@ -29,15 +29,19 @@ import (
 // window. `behind` describes a position on a screen nobody can see, which makes
 // it furniture; `open` describes what is true.
 
-// convCap is how many conversations this process holds at once.
+// THERE IS NO CAP ON HOW MANY CONVERSATIONS THIS PROCESS HOLDS. There was one —
+// eight — and its own comment said that a cap hit in practice by somebody who
+// was not testing it is evidence the number is wrong. It was hit in a day of
+// ordinary use, and the owner's ruling on 2026-08-31 was to remove the limit
+// rather than to raise it: "that is pointless".
 //
-// EIGHT, because of what one costs — a few goroutines, its transcript, one file
-// descriptor and a five-second presence tick, which is megabytes rather than
-// gigabytes — because it is roughly the number of projects a person genuinely
-// has in flight, and because a cap that can only be hit on purpose never has to
-// be explained. If it is ever hit in practice by somebody who was not testing
-// it, that is evidence the number is wrong and not that the person is.
-const convCap = 8
+// WHAT ONE OPEN CONVERSATION COSTS is still what it always was — a few
+// goroutines, its transcript, one file descriptor and a five-second presence
+// tick — and nothing evicts. So the memory of a window grows with the number of
+// conversations somebody opens, and stops growing when they stop; `/quit` and
+// `ctrl+w` on the switcher are what give one back. A future lane that wants a
+// number here should read that history first: a limit is not the answer to a
+// cost nobody has measured being a problem.
 
 // WorkspaceGoneWord is what any door says about a workspace that is not there.
 // It names the path the caller gave and nothing beyond it, because the caller is
@@ -48,13 +52,6 @@ const convCap = 8
 // directory disappears between that stat and the open. Two spellings of one
 // refusal would drift, and this is the sentence the manual quotes.
 const WorkspaceGoneWord = "that folder is gone"
-
-// convCapWord is the refusal at the cap, said in home's own voice, with the one
-// door out of it named. The count is interpolated from [convCap] because a
-// number written twice is a number that drifts.
-func convCapWord() string {
-	return itoa(convCap) + " open is as many as aforge holds — /quit closes this one"
-}
 
 // kept is one conversation this process holds that is not on screen: the bundle
 // the door built around its agent, the readings the person left in it, and the
@@ -107,9 +104,9 @@ type behindStirMsg struct{ key string }
 //
 // The alternative — keep every lane subscribed to the program loop and discard
 // the messages on arrival — was rejected: it wakes the frame for events nobody
-// is watching, which on eight conversations is the exact cost this design exists
-// to avoid, and it needs the discard to be correct, which is a conversation id
-// on every message type.
+// is watching, which on a window full of them is the exact cost this design
+// exists to avoid, and it needs the discard to be correct, which is a
+// conversation id on every message type.
 type behindWatch struct {
 	key   string
 	agent Agent
@@ -312,10 +309,15 @@ func (w *behindWatch) run() {
 	}
 }
 
-// stirDepth is how many conversations may be owed a look at once. It is the cap
-// because at most that many can be open, and a stir is dropped rather than
-// queued twice for one conversation ([behindWatch.stir]).
-const stirDepth = convCap
+// stirDepth is how deep the shared stir lane is, and it is A BUFFER RATHER THAN
+// A LIMIT: nothing refuses a conversation because this number is small. A stir
+// says "read the agent" and nothing else, at most one is outstanding per
+// conversation ([behindWatch.stir]), and one that finds the lane full is dropped
+// because the wakeups already queued will say the same sentence. Eight is enough
+// that a person switching between a handful of conversations never loses a
+// frame, and a window holding thirty loses nothing a later wakeup does not
+// carry.
+const stirDepth = 8
 
 // waitStir takes one conversation's stir off the shared lane and asks for the
 // next. It is the pump every other standing lane on this surface uses, in the
@@ -563,19 +565,6 @@ func (a *app) lastConversation() tea.Cmd {
 	return cmd
 }
 
-// roomForAnother reports whether this process may open one more conversation,
-// and says so in home's own voice when it may not.
-//
-// THE CAP IS CHECKED AFTER THE KEEPER, NEVER BEFORE IT. Attaching something
-// already open is never capped, and a path that canonicalises to a transcript
-// this process holds is an attach rather than a second conversation.
-func (a *app) roomForAnother() (string, bool) {
-	if len(a.behind)+1 < convCap {
-		return "", true
-	}
-	return convCapWord(), false
-}
-
 // closeFront ends the conversation on screen for real and brings the most
 // recently open one forward, or reports that there was nothing to come forward.
 //
@@ -621,9 +610,11 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // IN PARALLEL, and is safe to call twice.
 //
 // PARALLEL BECAUSE THE GRACES OVERLAP RATHER THAN SUM. [session.Agent.Close] is
-// bounded on every axis and its phases are sequential, so eight closes in a row
-// is eight times the wait — and every one of those clocks exists precisely so a
-// quit never waits on somebody else's courtesy.
+// bounded on every axis and its phases are sequential, so a row of closes is
+// that many times the wait — and every one of those clocks exists precisely so a
+// quit never waits on somebody else's courtesy. Nothing caps how many
+// conversations a window holds, so a serial quit would get slower the more of
+// them somebody had open; this one does not.
 func (a *app) closeEverything() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {

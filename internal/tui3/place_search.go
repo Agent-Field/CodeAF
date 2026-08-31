@@ -333,10 +333,6 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 		a.pageMsg = homeGoneWord + " · " + where
 		return nil
 	}
-	if word, room := a.roomForAnother(); !room {
-		a.pageMsg = word
-		return nil
-	}
 	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
 	// rather than closed and put in the keeper, exactly as home's own door leaves
 	// it — which is the whole of what makes any of these places a way BETWEEN

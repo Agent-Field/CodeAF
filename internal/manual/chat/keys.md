@@ -1271,9 +1271,11 @@ else — and says so by not being there: no card, and the legend above the box d
 it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
 / commands`, dropping clauses from the left as the frame narrows.
 
-**Eight conversations is the cap** on what one terminal holds at once. Taking a ninth row
-says `8 open is as many as aforge holds — /quit closes this one` and leaves you where you
-were.
+**There is no cap** on what one terminal holds at once: taking a row is never refused for
+having too many open. The card draws the first twelve rows and hands a digit to the first
+nine; past that the cursor is the way, and home is the page that shows every conversation
+you have. Nothing closes one for you — `/quit` closes the one in front, `ctrl+w` here closes
+the one under the cursor.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1373,7 +1375,9 @@ says `that is the only conversation open — /quit closes aforge`.
 `that one is not open here — enter opens it`. There is nothing to close: this terminal is
 not holding it.
 
-Eight is the cap on how many one terminal holds. `ctrl+w` is how you make room.
+Nothing caps how many one terminal holds, so `ctrl+w` is never about making room. It is
+about ending something you are done with: a conversation left open goes on running, holding
+its transcript's lock and its share of this window's memory, until you close it.
 
 ## `tab` still goes straight to the last one
 
