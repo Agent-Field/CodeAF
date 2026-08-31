@@ -3857,6 +3857,13 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// every in-turn node unwatched.
 		after = a.taskUpdate(ev)
 
+	case session.EventTaskPhase:
+		// WHICH OF ITS THREE LIVES A RUNNING NODE IS IN (taskphase.go). It rides
+		// both lanes for the reason the update above does — a node proposed in
+		// this turn is checked long after the turn ends — and the fold is
+		// idempotent, so taking it on both is harmless.
+		a.taskPhaseMoved(ev)
+
 	case session.EventOrchestrateNote, session.EventOrchestrateFuel, session.EventOrchestratePause:
 		// The three things an adaptive run says. They arrive on the STANDING lane
 		// in every real session — the run outlives the turn that asked for it, so

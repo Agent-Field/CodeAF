@@ -620,12 +620,16 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
-	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go). A
-	// node under check is running — nothing landed, nothing was undone — so an
-	// outside reader watching only the state sees an unbroken "running" across a
-	// worker, a check and three repair rounds; the phase is what tells those
-	// apart, and a check that ends in an error still puts the word back.
-	defer node.beatPhase(taskBeatChecking)()
+	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go), AND
+	// SO DOES THE CARD ([EventTaskPhase]). A node under check is running —
+	// nothing landed, nothing was undone — so a reader watching only the state
+	// sees an unbroken "running" across a worker, a check and three repair
+	// rounds; the phase is what tells those apart, and a check that ends in an
+	// error still puts the word back.
+	//
+	// A check has no rounds and nothing to report yet, so it carries neither —
+	// the emptiness law, one field at a time.
+	defer a.enterPhase(node, taskBeatChecking, 0, 0, "")()
 
 	// STAGED, NOT COMMITTED. `git diff` in a worktree shows changes to tracked
 	// files only, so an auditor looking at a node whose whole work was three NEW
@@ -928,12 +932,14 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// that sent the work back is not on the wire (task_contract.go's Mending).
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
-	// AND THE PULSE SAYS SO TOO, for the surface's reason one layer out: a repair
-	// round is the node still working, and a reader outside the process is owed
-	// the same distinction the card gets (task_beat.go).
-	defer node.beatPhase(taskBeatRepairing)()
+	// AND THE PULSE AND THE CARD SAY WHICH ROUND THIS IS. A repair round is the
+	// node still working, and a reader outside the process is owed the same
+	// distinction the card gets (task_beat.go, [EventTaskPhase]) — with the two
+	// facts a person watching a second minute of it actually wants: how far
+	// through the rounds this is, and what the check said that sent it back.
+	defer a.enterPhase(node, taskBeatRepairing, round, a.config.TaskRepairRounds, taskFindingLine(verdict.evidence))()
 
-	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
+	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
@@ -1340,6 +1346,13 @@ func auditGroundFor(node *TaskNode, tree taskTree, changed []string, log io.Writ
 // node's start is the original tree, everything younger that the node did not
 // write is what the run left behind. That is a reading of mtimes and it is
 // stated as one — it is the only ground truth a directory keeps about itself.
+// AND THE RESTORE IS CUT FROM THE GROUND, which is the whole of what made two
+// finished tasks read as incomplete (issue #76). The check stands where the work
+// stood: the repository the work was ABOUT, not whichever one the conversation
+// happened to be opened in. For a worktree that is the same sentence twice — the
+// branch was cut from the ground, so `tree.root` IS the ground — and for every
+// other mode it is the road below, which is the reason the modes carry their
+// ground at all.
 func restoreTaskWork(node *TaskNode, tree taskTree, wrote []string) (auditGround, string) {
 	if strings.TrimSpace(tree.dir) == "" {
 		return auditGround{}, "there is no working copy to restore"
@@ -1347,7 +1360,77 @@ func restoreTaskWork(node *TaskNode, tree taskTree, wrote []string) (auditGround
 	if tree.root != "" && strings.TrimSpace(tree.branch) != "" {
 		return restoreFromBranch(tree, wrote)
 	}
+	if ground := strings.TrimSpace(tree.ground); ground != "" && ground != tree.dir {
+		// A MIRRORED FOLDER IS RESTORED FROM THE FOLDER ITSELF. The node worked in
+		// a copy, so the original is sitting there untouched — which is a better
+		// answer than any reading of timestamps, and the only one available for a
+		// tree whose every file was copied in after the clock started
+		// ([copyOriginal] would have called the whole mirror "left behind").
+		if _, isRepo := repositoryRoot(ground); !isRepo {
+			return restoreFromFolder(tree, wrote)
+		}
+	}
+	if ground := strings.TrimSpace(tree.ground); ground != "" {
+		if root, isRepo := repositoryRoot(ground); isRepo && hasCommit(root) {
+			return restoreFromGround(root, tree, wrote)
+		}
+	}
 	return restoreByCopy(node, tree, wrote)
+}
+
+// restoreFromGround is the road for work that has no branch of its own but
+// stands on a repository anyway: the person's own "here", or a task working
+// beside a repository it reads.
+//
+// It is [restoreFromBranch]'s argument with the one word changed. A detached
+// checkout of the GROUND'S HEAD is the tree as it was before the work, and what
+// the node wrote laid over it is the restore. The person's uncommitted changes
+// are not in it, which is exactly right: they are not part of what ships either.
+func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround, string) {
+	holder, err := os.MkdirTemp("", "aforge-check-")
+	if err != nil {
+		return auditGround{}, "a fresh checkout could not be made: " + err.Error()
+	}
+	dir := filepath.Join(holder, "check")
+	remove := func() {
+		unlock := lockGitRoot(tree.place, root)
+		_, _ = git(root, "worktree", "remove", "--force", dir)
+		_, _ = git(root, "worktree", "prune")
+		unlock()
+		_ = os.RemoveAll(holder)
+	}
+	unlock := lockGitRoot(tree.place, root)
+	out, err := git(root, "worktree", "add", "--detach", dir, "HEAD")
+	unlock()
+	if err != nil {
+		_ = os.RemoveAll(holder)
+		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+	}
+	if problem := layWork(tree.dir, dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	stageTaskWork(dir, wrote)
+	return auditGround{dir: dir, restored: true, drop: remove}, ""
+}
+
+// restoreFromFolder is the mirror's road: a fresh copy of the ground folder,
+// which the node never touched, with what the node wrote laid over it.
+func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
+	dir, err := os.MkdirTemp("", "aforge-check-")
+	if err != nil {
+		return auditGround{}, "a clean copy could not be made: " + err.Error()
+	}
+	remove := func() { _ = os.RemoveAll(dir) }
+	if problem := mirrorGround(tree.ground, dir); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	if problem := layWork(tree.dir, dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, problem
+	}
+	return auditGround{dir: dir, restored: true, drop: remove}, ""
 }
 
 // restoreFromBranch is the repository road: a detached checkout of the node's

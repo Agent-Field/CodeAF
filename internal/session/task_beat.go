@@ -72,13 +72,18 @@ import (
 // them: the check is "checking" and never "audit", for task_audit.go's
 // vocabulary law — this file is read by other programs, but the words a program
 // reads end up on somebody's screen.
+//
+// THE WORDS ARE THE CONTRACT'S, not this file's. task_contract.go exports the
+// same three strings for the surface that draws them off [EventTaskPhase], and a
+// pulse on disk saying one thing while a card says another would be two accounts
+// of one moment — so there is one spelling and these are names for it.
 const (
 	// taskBeatWorking is the node's own worker, in its worktree.
-	taskBeatWorking = "working"
+	taskBeatWorking = TaskPhaseWorking
 	// taskBeatChecking is the gate looking at what the worker left.
-	taskBeatChecking = "checking"
+	taskBeatChecking = TaskPhaseChecking
 	// taskBeatRepairing is a repair round closing named gaps.
-	taskBeatRepairing = "repairing"
+	taskBeatRepairing = TaskPhaseRepairing
 )
 
 // taskBeatSuffix names the sidecar. It is not `.jsonl` and it is not `_<id>`,

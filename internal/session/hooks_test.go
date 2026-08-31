@@ -103,7 +103,13 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// node is running in a tree this agent is writing in (treehold.go). The
 		// claim comes after the scope because the scope is about the writer and
 		// the claim is about everybody else.
-		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "task-git"}},
+		//
+		// AND THE GROUND COMES BEFORE THE GIT GUARD, which is the one order in
+		// this list that a person would notice being wrong: the git guard's
+		// sentences are about a task's OWN copy, so a command aimed at another
+		// directory has to meet the path law first or be refused with a
+		// paragraph that is false about every path in it (taskoutside.go).
+		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "task-ground", "task-git"}},
 		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "loop"}},
 	} {
 		if !sameNames(expected.got, expected.want) {

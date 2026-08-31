@@ -22,12 +22,51 @@ Saying no, or redirecting the proposal, raises nothing. One forming look for bot
 task begins; only the card, which asks before the model spends your money, is particular
 to the proposed one.
 
+## Which folder does a task work in — I opened aforge in my home folder, can a task work in a different repo, why did my task work in the wrong project
+
+Every task has a **ground**: the one repository or folder the work is about. It is settled
+before you are asked to approve anything, out of what this conversation already holds, and
+the first of these that answers wins:
+
+1. **You said so** — a path in your own request, or `ground` on the proposal.
+2. **What the conversation touched** — the repositories behind every file this conversation
+   has read, edited, grepped or written, and every `cd` it ran, weighted so that lately
+   counts for more. One repository ahead of the rest is the ground. **Two with real weight
+   is a question, never a guess:** you are asked which one, and nothing starts until you
+   answer.
+3. **Where you are standing**, when that is a repository — what tasks have always used. A
+   conversation opened inside its own project still gets exactly it.
+4. **Nothing** — the conversation's own folder, when there is no repository anywhere.
+
+So a conversation opened in your home directory that has spent an hour reading
+`~/code/thing` sends its task to `~/code/thing`, and not to the empty workspace beside the
+session.
+
+**How it stands on that ground is not asked either — it follows from the work.** A
+repository the task writes in gets `git worktree add -b <branch> <dir> HEAD` cut **from that
+repository** and merged back into it; your uncommitted changes are not carried. A repository
+the task only reads — a whole contract that names no file — is left alone, and the task gets
+a folder of its own. A plain folder with no history behind it is **copied** into the task's
+folder, and the files the task wrote are laid back over it by name when it lands. And "work
+here" is you saying so: the task works in that folder itself, with nothing isolating it.
+
+**Two refusals and one correction.** A task whose contract names an absolute path outside
+its ground, in no repository, is turned back before anything is spent: `this task names a
+folder it does not stand in: <path>`. A `ground` naming something that is not on this
+machine is `this task names a folder that is not there: <path>`. And a brief that names a
+path inside a *different* repository **re-grounds** the task onto that one — the brief knew
+something the evidence did not — though nothing ever overrides a path you named yourself.
+
+The check runs where the work stood, cut from the same ground; the card and the `/history`
+row carry the ground and how the task stood on it.
+
 ## Does a task touch my working copy?
 
-By default, no. Each code task gets its own checkout of the repository the conversation is
-about, on its own branch, so you can keep working in yours while it runs. If your request
-explicitly names another folder, the task works in that exact folder instead; its card and
-its `/history` record show the resolved `where`.
+By default, no. Each code task gets its own checkout of **the repository the work is about**
+— its ground, resolved from what this conversation has been reading and editing (above) — on
+its own branch, so you can keep working in yours while it runs. If your request explicitly
+names another folder, the task works in that exact folder instead; its card and its
+`/history` record show the resolved `where`.
 
 aforge runs `git worktree add -b <branch> <dir> HEAD` off your **current HEAD**.
 
@@ -59,9 +98,12 @@ They work. A conversation opened where there is no project — your home directo
 folder, a launcher; the place line reads `aforge` — has a **workspace of its own**, and
 aforge quietly makes that workspace a git repository the moment the conversation opens.
 
-So a task with no named place takes the ordinary road described above, against that
-repository instead of a project's: a worktree at `<session folder>/trees/<task id>`, a
-branch `task/<title>-<6 hex>` off its HEAD, and a merge home when the task lands. Work that
+So a task in a conversation that has been nowhere else takes the ordinary road described
+above, against that repository instead of a project's: a worktree at `<session
+folder>/trees/<task id>`, a branch `task/<title>-<6 hex>` off its HEAD, and a merge home
+when the task lands. **A conversation that HAS been somewhere else goes there instead** — if
+you have been reading a real project in this conversation, that project is the task's
+ground and the workspace beside the session is not used at all. Work that
 needs no repository at all — filing an issue with `gh`, reading something, writing a
 document — simply runs, and its card and `/history` record name the task folder it stood
 in.
@@ -291,6 +333,73 @@ the one that answered the same zero by reading its own work spent most of its ca
 changing things it had never measured — and built from scratch something that already
 existed, without ever spending the one step it would have cost to ask.
 
+## Where a task may write — its own copy, and nowhere else on the machine
+
+A task **works in one directory** and may **write only there**. That directory is its own
+copy of the repository — a worktree cut from yours, or your folder itself when there is no
+repository. Everywhere else on the machine it may **read as much as it likes** and change
+nothing.
+
+**Reading anywhere is the point.** A task briefed about a repository it is not standing in
+still has to look at it: `read`, `grep`, `ls`, `cat`, and `git log`, `git show`, `git diff`,
+`git status`, `git branch -a`, `git remote -v` against **any** repository on the machine all
+run normally. Looking has never been what goes wrong.
+
+**Writing anywhere else is refused before it runs**, and the task reads the refusal and
+carries on. It covers every hand that names its target:
+
+| Aimed outside its copy | What it looks like |
+| --- | --- |
+| `write` and `edit` | any path outside the task's own copy |
+| a shell command that moved first | `cd ~/code/yours && git checkout -b fix`, `cd ~/code/yours && mkdir -p src` |
+| git pointed somewhere else | `git -C ~/code/yours add .`, `GIT_DIR=~/code/yours/.git git update-ref …`, `--work-tree=` |
+| the file hands | `cp`, `mv`, `rm`, `mkdir`, `touch`, `tee`, `chmod`, `sed -i`, `patch` |
+| a redirection | `echo x > ~/code/yours/NOTES.md` |
+
+The wording it reads names **both the path and the directory it may write in**:
+
+> /Users/you/code/yours/NOTES.md is outside your copy — this task works in
+> /Users/you/.aforge/v3/projects/…/trees/1; read anywhere, write only there. Say what needs
+> changing out there in your report; what you write in your copy comes home on its own.
+
+**The machine's scratch is not yours.** `/tmp`, the temp directory and `/dev/null` are
+written freely — that is where a command line puts what it is about to read back.
+
+**What it cannot see.** It reads the paths a command *names*. `cd elsewhere && python
+fix.py`, where the script writes what it likes, is not caught, and neither is a path built
+out of a shell variable. What it does close is every shape that says its target out loud.
+
+**Why it exists.** A conversation opened in a home directory handed out two tasks whose
+brief named a repository somewhere else by its full path. Both worked in that live checkout,
+were refused with a sentence about "your own copy" that was false about the path they had
+named, and went around it three ways — plumbing commands, then `GIT_DIR=`, then the forge's
+own API. Two commits landed on a branch of the person's repository from work nobody had
+approved landing there.
+
+## Can a task push, or open a pull request? No — its work comes home through its landing
+
+**`git push` is refused**, wherever the task is standing, and so is anything that changes a
+project on GitHub, GitLab or another host:
+
+| Refused | |
+| --- | --- |
+| `git push` (any remote, any branch) | |
+| `gh api` carrying a change — `-X POST/PUT/PATCH/DELETE`, or any `-f`, `-F`, `--input` | |
+| `gh pr create`, `gh pr merge`, `gh issue create`, `gh release create`, and the rest that write | |
+| `curl`/`wget` posting to a host that hosts repositories | |
+
+> git push is not yours to run: This task's work comes home through its landing, and a pull
+> request is the person's or the conversation's to open — say what you want in it in your
+> report.
+
+**Reading the host is untouched**: `gh pr list`, `gh pr view`, `gh pr diff`, `gh issue view`,
+`gh run list` and `gh api` GETs are how a task finds out what it is fixing.
+
+**So how does the work get to you?** Every path the task passed to `write` or `edit` is
+staged by name and merged home onto your branch when the task lands — that is the road, and
+it is the only one. If the work should become a pull request, the task says so in its
+report and you or the conversation opens it.
+
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
 A task works in **its own copy of the repository**, and its copy shares the repository's
@@ -312,7 +421,8 @@ refused before they run, and the task reads the refusal and keeps working:
 | Refused | Because |
 | --- | --- |
 | `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
-| `pull`, `fetch`, `push`, `clone`, `remote`, `submodule` | a task's copy is a copy of what **you** have, and it reaches no remote |
+| `pull`, `fetch`, `clone`, `remote`, `submodule` | they bring in work the task did not do, and a task reports what it writes as its own |
+| `push` | a task's work comes home through its landing, not over a remote (the section above) |
 | `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
 | `reset --hard`, `--merge`, `--keep`, and `restore --source` | they throw the working copy away or fetch a file off another branch (plain `git reset` to unstage, and `git restore <path>`, are fine) |
 
@@ -322,6 +432,11 @@ The wording it reads names the verb and what it may do instead, for example:
 > only what you write here comes home. Look with git status, diff, log and show — any
 > branch, as much as you want. What you write with write and edit in this copy comes home
 > on its own.
+
+**These sentences are for the task's OWN copy, and are never said about anywhere else.** A
+command aimed at another directory is answered by the path law above instead — "outside your
+copy" — because "this is your own copy" is false about a repository the task is not standing
+in, and a refusal a model can see through is a refusal it goes around.
 
 **None of this applies to you.** In your own conversation, in your own checkout, aforge
 runs whatever git you ask for. The rule exists because a task reports work as *its own*,
@@ -837,6 +952,40 @@ The model is told plainly not to quietly spend another task on it:
 
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
+
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, the task finished but the card is still busy, my task went quiet after the last line
+
+A task has three lives and one state. Its worker writes the work; a second look reads what
+the worker left; a round closes the gaps that look named. **All three are `running`** —
+nothing has landed and nothing was undone between them — so the card, the rail row, the
+room header and the home row say which of the three it is in:
+
+- `checking what it left` — the worker is finished and its work is being read.
+- `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
+  second number is `task.repair_rounds` (default 1), so with the default you will only
+  ever see `round 1 of 1`.
+- Nothing at all while the task is simply working. The row draws what it always drew: the
+  call it is inside, its clock, its tokens and its spend.
+
+**Under a round, one dim line says what was found**, in the checker's own sentence with
+what happened in front of it:
+
+```
+closing gaps · round 1 of 1
+not done — go test ./... reports no test files
+```
+
+That line is the reason the work is being done again. It takes the row the clock and the
+spend would have had, because the clock is true every second and this is not.
+
+**How long it can take.** Both are full model runs on your work, so minutes each is
+normal — a check on a large change has been four minutes, and a round is a second worker
+doing the last ten percent of the job. The whole time is on the one task's clock and the
+whole cost is on the one task's bill, because you asked for one piece of work.
+
+**If the row says nothing and the clock is still going**, the task is at its own work and
+the heartbeat is the thing to read — see the heartbeat section on this page for telling a
+working task from a hung one.
 
 ## The three ways a task can land
 
@@ -1393,9 +1542,11 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.
-  - `went in circles — branch kept`: the worker kept making the same calls and its own loop
-    guard ended the turn (its last words are `this turn is going in circles · stopping here
-    with anything remaining left undone`).
+  - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
+    ended the turn (its last words are `this turn is going in circles · stopping here
+    with anything remaining left undone`). Repetition is the whole of it: the same call
+    three times in a row, the same failure three times, the same argument refused twice,
+    or five rounds that read nothing new.
   - `blocked by another task — branch kept`: the calls it kept making were writes into a
     working copy another task holds, and every one was refused. Wait for that task's report,
     then run this one again on top of it.
@@ -1405,6 +1556,14 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
   - `ended with an error — branch kept`: a working copy could not be made, the worker would
     not start, or an error nobody classified.
+
+**Being quiet is not going in circles**, and a task that was working cannot land here for
+it. A worker committing, pushing and writing files says very little, and the `[silent]`
+notes that ask it to write its plan down never stop it — they spend none of the loop
+guard's limit. Neither does a shell command that changed the working folder: that is
+counted as work, the same as an `edit` or a `write`. If a row says `went in circles`, the
+worker had genuinely stopped making progress, and its transcript shows what it kept
+repeating.
 
 The first cause wins: a check that refuses a run which had already given up is written as
 `went in circles`, because that is what happened first. A task that lands as `!` is not
