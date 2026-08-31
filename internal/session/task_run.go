@@ -273,8 +273,27 @@ type TaskNode struct {
 	// to the spec because a node restored from a checkpoint has no spec worth
 	// asking — the design it was written from is gone, and the kind is the one
 	// word its history still needs (task_store.go).
-	kind  TaskKind
-	brief string
+	kind TaskKind
+	// Ground is the repository or folder THIS WORK IS ABOUT, absolute, and Mode
+	// is how the node stands on it ([TaskMode]). They are settled before the
+	// node's first tool call — at the door for work somebody proposed
+	// (taskstands.go), and by the working copy itself for everything else — and
+	// they never move afterwards.
+	//
+	// THEY ARE WHAT EVERY OTHER PART OF THE MACHINERY ASKS. The guard asks which
+	// directory a write may land in, the audit asks which repository a clean
+	// restore is cut from, a card asks which project to name, and a checkpoint
+	// carries them so a resumed node knows the same thing this one did. Before
+	// they existed each of those answered for itself out of the worktree it
+	// happened to hold, and issue #76 is what that cost: four parts of one
+	// program disagreeing about which repository an hour of work was for.
+	//
+	// They are exported among unexported neighbours because they are read from
+	// every one of those places by name; like the fields around them they are
+	// guarded by the graph's lock and written once.
+	Ground string
+	Mode   TaskMode
+	brief  string
 	// adjudicated says this node has already spent its one tiebreak: a division
 	// the evidence gate refused on the floor has been put to the mastermind once
 	// on the strength of a judge's wide reading, and the answer — whatever it was
@@ -775,6 +794,12 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		spec:      spec,
 		kind:      spec.kind(),
 		state:     TaskQueued,
+		// WHERE THE WORK STANDS, carried from the door that resolved it
+		// (taskstands.go). A door that resolved none — a design, a subharness run,
+		// a scripted graph — admits with nothing here and the working copy fills it
+		// in from the repository it is cut from ([TaskNode.setTree]).
+		Ground: spec.ground,
+		Mode:   spec.mode,
 	}
 	g.mu.Lock()
 	if g.nodes == nil {
@@ -1873,8 +1898,36 @@ func (n *TaskNode) setTree(tree taskTree) {
 	n.worktree = tree.dir
 	n.branch = tree.branch
 	n.merge = tree.merge
+	// THE RECORD IS WHAT HAPPENED AND NOT WHAT WAS PLANNED. The ground and the
+	// mode are written from the tree that was actually made, so a proposal that
+	// meant to cut a branch and found a repository with no commit under it says
+	// what it really got. A tree that knows neither leaves what the door resolved
+	// standing.
+	if tree.ground != "" {
+		n.Ground, n.Mode = tree.ground, tree.mode
+	}
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
+}
+
+// groundNow is the node's ground and mode, read under the graph's lock like
+// every other field beside them.
+func (n *TaskNode) groundNow() (string, TaskMode) {
+	if n == nil || n.graph == nil {
+		return "", ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.Ground, n.Mode
+}
+
+// stand is the node's ground in the shape the working copy is prepared from. It
+// is deliberately not the spec's: a node that has already run once — a resume, a
+// repair round, a re-model — stands where it stood, and the ladder is climbed
+// exactly once, at the door.
+func (n *TaskNode) stand() taskStand {
+	ground, mode := n.groundNow()
+	return taskStand{dir: ground, mode: mode}
 }
 
 // openRoom returns the node's room, opening it on first use — the runner
@@ -1987,10 +2040,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		where = n.spec.where
 	}
 	return TaskNotice{
-		ID:        n.id,
-		Title:     n.spec.title,
-		Kind:      n.kind,
-		Where:     where,
+		ID:    n.id,
+		Title: n.spec.title,
+		Kind:  n.kind,
+		Where: where,
+		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
+		// only on the proposal: a row drawn from a checkpoint, a roster replayed
+		// after a resize and a card watching work land all ask the same question,
+		// and only the node knows the answer.
+		Ground:    n.Ground,
+		Mode:      n.Mode,
 		DependsOn: n.dependsOn,
 		Parent:    n.parent,
 		State:     n.state,
@@ -2791,7 +2850,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTreeAt(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.spec.where)
+		tree, err = prepareTaskTreeOn(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.stand())
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -2802,6 +2861,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// that dies leaves a checkpoint that knows where this node's work is.
 	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
+	// AND WHAT THAT DIRECTORY IS A COPY OF, whenever the two are different
+	// (taskstands.go). It is the first thing anybody reading this log after a
+	// surprise wants to know, and the emptiness law is why it is not printed for a
+	// task standing in the directory it is already working in.
+	if tree.ground != "" && tree.ground != tree.dir {
+		fmt.Fprintf(log, "standing on %s · %s\n", tree.ground, tree.mode)
+	}
 
 	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
 	// auxiliary usage — the pocket the title and the compaction summary come out
@@ -3268,14 +3334,22 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return taskTree{}, false
 	}
+	ground, mode := n.groundNow()
 	if merge == mergeInPlace {
-		return taskTree{dir: dir, merge: mergeInPlace}, true
+		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}, true
 	}
-	root, ok := repositoryRoot(workspace)
+	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is the
+	// ground and not whatever this process happens to be standing in. A node
+	// resumed against the wrong repository is a branch that cannot be found, and
+	// before the ground was recorded that was every node whose conversation was
+	// opened outside the project it was working on.
+	root, ok := repositoryRoot(ground)
 	if !ok {
-		return taskTree{}, false
+		if root, ok = repositoryRoot(workspace); !ok {
+			return taskTree{}, false
+		}
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place}, true
+	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}, true
 }
 
 // withReport joins the runner's own sentence and the child's words, dropping
@@ -4939,6 +5013,14 @@ type taskTree struct {
 	// is the zero Place for the legacy layout, and for an in-place tree, which
 	// takes no lock at all.
 	place Place
+	// ground is the repository or folder the work is ABOUT and mode is how this
+	// tree stands on it (taskstands.go). For a worktree they say the same thing
+	// root and branch already do; for every other mode they are the only record
+	// of it — a mirror's landing has nowhere else to learn which folder to copy
+	// itself back into, and an audit restore has nowhere else to learn which
+	// repository to cut a clean copy from.
+	ground string
+	mode   TaskMode
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -4986,7 +5068,7 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
 	where = strings.TrimSpace(where)
 	if strings.EqualFold(where, "in place") {
-		return taskTree{dir: workspace, merge: mergeInPlace}, nil
+		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeInPlace}, nil
 	}
 	if where != "" {
 		dir, err := resolveTaskWhere(where, workspace)
@@ -5003,7 +5085,7 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return taskTree{}, fmt.Errorf("task workspace: %w", err)
 		}
-		return taskTree{dir: dir, merge: mergeInPlace}, nil
+		return taskTree{dir: dir, merge: mergeInPlace, ground: dir, mode: TaskModeInPlace}, nil
 	}
 	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
 	// for it. A conversation opened outside any project has a workspace of its
@@ -5017,16 +5099,29 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 	// from an older build, or one whose git init failed, which is not a
 	// repository and runs in place and says so.
 	root, ok := repositoryRoot(workspace)
-	if !ok {
-		return taskTree{dir: workspace, merge: mergeInPlace}, nil
+	if !ok || !hasCommit(root) {
+		// A directory that is no repository, and a repository with no commit to
+		// branch from, are one answer: there is nothing to cut a worktree off, and
+		// pretending to isolate is worse than not isolating.
+		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeFolder}, nil
 	}
-	if _, err := git(root, "rev-parse", "--verify", "HEAD"); err != nil {
-		// A repository with no commits has no HEAD to branch from. The honest
-		// answer is the non-repository one.
-		return taskTree{dir: workspace, merge: mergeInPlace}, nil
-	}
+	return cutTaskWorktree(place, root, session, id, title)
+}
 
-	dir := filepath.Join(root, filepath.FromSlash(tasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
+// hasCommit reports whether a repository has a HEAD to branch from. A fresh
+// `git init` has none, and every road that would cut a branch has to ask.
+func hasCommit(root string) bool {
+	_, err := git(root, "rev-parse", "--verify", "HEAD")
+	return err == nil
+}
+
+// taskOwnFolder is the directory ONE NODE WORKS IN, wherever the work is about:
+// trees/<id> under the session that proposed it, or — for the layout that has no
+// session folder — the same name under the repository being borrowed. It is the
+// path prepareTaskTree has always used, lifted out so that the modes that are
+// not a worktree can stand in the same place a worktree would have.
+func taskOwnFolder(place Place, workspace, session string, id uint64) (string, os.FileMode) {
+	dir := filepath.Join(workspace, filepath.FromSlash(tasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
 	mode := os.FileMode(0o755)
 	if trees := place.Trees(); trees != "" {
 		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
@@ -5034,7 +5129,27 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 	// Git resolves symlinks before it registers a worktree. Record that same
 	// spelling from the start so the checkpoint, cleanup and git all name one
 	// directory even while the final path does not exist yet.
-	dir = canonicalPath(dir)
+	return canonicalPath(dir), mode
+}
+
+// cutTaskWorktree is the branch itself: `git worktree add -b` off the GROUND's
+// HEAD, in a directory of the node's own.
+//
+// THE REPOSITORY IT CUTS FROM IS AN ARGUMENT NOW, and that one change is most of
+// what issue #76 came to. It used to be whatever repository the conversation
+// happened to be standing in, which for a chat opened in a home directory was an
+// empty repository the door had just minted — so the work was isolated from
+// nothing, guarded as though it were, and checked in a tree that held none of it.
+// The ground is resolved from evidence instead (taskstands.go) and handed here.
+//
+// WHAT THE BRANCH CARRIES IS HEAD AND NOTHING ELSE: the person's uncommitted
+// changes stay in their checkout, unread and untouched, and the record says so
+// so that nobody has to find out by looking.
+func cutTaskWorktree(place Place, root, session string, id uint64, title string) (taskTree, error) {
+	// THE LEGACY LAYOUT HANGS OFF THE REPOSITORY, not off the workspace: a
+	// conversation standing in a subdirectory of a project still puts its
+	// worktrees in one place, which is what keeps a sweep able to find them.
+	dir, mode := taskOwnFolder(place, root, session, id)
 	branch := "task/" + slugify(title) + "-" + shortID()
 
 	defer lockGitRoot(place, root)()
@@ -5062,7 +5177,107 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
+	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: root, mode: TaskModeWorktree}, nil
+}
+
+// prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the
+// road every ordinary task takes now.
+//
+// The five modes are five different promises about one directory, and each is
+// kept here or not made at all ([TaskMode] says what each one is for):
+//
+//   - WORKTREE cuts the branch from the ground itself.
+//   - REFERENCE gives the node a folder of its own and leaves the ground alone.
+//     The read-only half is the guard's to enforce; what this owes is a working
+//     copy that is not inside the thing being read.
+//   - MIRROR copies the folder in, so that a folder with no history behind it
+//     still gets the isolation a repository gets for free.
+//   - IN PLACE and FOLDER are the two honest un-isolations: the work happens in
+//     the ground, because somebody said "here" or because there is nowhere else.
+//
+// A GROUND NOBODY RESOLVED FALLS BACK TO THE OLD ROAD, unchanged. Every door
+// that admits a node does not resolve one — a subharness run, a design, a graph
+// scripted by a test — and the tree they get is the tree they always got, with
+// its ground filled in from the repository it was actually cut from.
+func prepareTaskTreeOn(place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
+	ground := canonicalPath(strings.TrimSpace(stand.dir))
+	if ground == "" {
+		return prepareTaskTreeAt(place, workspace, session, id, title, "")
+	}
+	switch stand.mode {
+	case TaskModeInPlace, TaskModeFolder:
+		if err := os.MkdirAll(ground, 0o755); err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
+		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
+	case TaskModeReference, TaskModeMirror:
+		dir, mode := taskOwnFolder(place, workspace, session, id)
+		if err := os.MkdirAll(dir, mode); err != nil {
+			return taskTree{}, fmt.Errorf("task workspace: %w", err)
+		}
+		if stand.mode == TaskModeMirror {
+			if problem := mirrorGround(ground, dir); problem != "" {
+				return taskTree{}, errors.New(problem)
+			}
+		}
+		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
+	}
+	root, ok := repositoryRoot(ground)
+	if !ok || !hasCommit(root) {
+		// The ground turned out to have no history to branch from between the
+		// proposal and this moment, or never had one. The honest answer is the one
+		// the old road gives: work in it and say so, rather than claim a branch
+		// that was never cut.
+		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: TaskModeInPlace}, nil
+	}
+	return cutTaskWorktree(place, root, session, id, title)
+}
+
+// mirrorGround copies a plain folder into the node's own directory so that work
+// on it is isolated the way work on a repository is.
+//
+// IT SKIPS WHAT THE AUDIT'S OWN COPY SKIPS and stops where it stops
+// ([copyOriginal], [auditRestoreEntries]): a repository's metadata and the
+// harness's own corner are nobody's deliverable, and a folder holding a build
+// output big enough to cost minutes is a folder this is not worth doing to.
+// Refusing loudly beats a task that appears to hang before its first step.
+func mirrorGround(ground, dir string) string {
+	visited := 0
+	var walk func(relative string) string
+	walk = func(relative string) string {
+		entries, err := os.ReadDir(filepath.Join(ground, filepath.FromSlash(relative)))
+		if err != nil {
+			return ""
+		}
+		for _, entry := range entries {
+			child := entry.Name()
+			if relative != "" {
+				child = relative + "/" + entry.Name()
+			}
+			if entry.Name() == ".git" || child == aforgeDroppings {
+				continue
+			}
+			if visited++; visited > auditRestoreEntries {
+				return fmt.Sprintf("%s holds more than %d files, which is more than a task can be given a copy of", ground, auditRestoreEntries)
+			}
+			source := filepath.Join(ground, filepath.FromSlash(child))
+			target := filepath.Join(dir, filepath.FromSlash(child))
+			if entry.IsDir() {
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					return "this folder could not be copied for the task: " + err.Error()
+				}
+				if problem := walk(child); problem != "" {
+					return problem
+				}
+				continue
+			}
+			if err := copyPath(source, target); err != nil {
+				return "this folder could not be copied for the task: " + err.Error()
+			}
+		}
+		return ""
+	}
+	return walk("")
 }
 
 // inOwnSpace is [standingInOwnSpace] asked of a whole Config, and the two
@@ -5189,6 +5404,9 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
 func (t taskTree) comeHome(title string, wrote []string) (string, string) {
+	if t.mode == TaskModeMirror {
+		return t.landMirror(wrote)
+	}
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, ""
 	}
@@ -5238,6 +5456,27 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
 	return mergeMerged, leftBehindSentence(left, false)
+}
+
+// landMirror brings a mirrored folder home: the files the node wrote, laid over
+// the ground BY NAME, and the ones it wrote and then deleted taken away again.
+//
+// IT IS THE AUDIT'S OWN LAYING ([layWork]) and not a second copier, for the
+// reason the restore states about itself: what ships is `wrote` and there may
+// only ever be one reading of it. A mirror that landed by walking its own
+// directory would carry back everything a build left in it.
+//
+// The outcome is the in-place one, because from where the person sits that is
+// what happened: their folder has the work in it, there is no branch, and there
+// is nothing to merge. How it got there is [TaskNode.Mode]'s to say.
+func (t taskTree) landMirror(wrote []string) (string, string) {
+	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
+		return mergeInPlace, ""
+	}
+	if problem := layWork(t.dir, t.ground, wrote); problem != "" {
+		return mergeInPlace, "its work is in " + t.dir + " and could not be copied back into " + t.ground + ": " + problem
+	}
+	return mergeInPlace, ""
 }
 
 // conflictSentence is what a person reads when a branch would not merge: which

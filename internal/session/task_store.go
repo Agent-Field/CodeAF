@@ -160,6 +160,19 @@ type taskRecord struct {
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on,omitempty"`
 
+	// Ground is the repository or folder the work IS ABOUT and Mode is how the
+	// node stands on it ([TaskMode]). Where says which directory the worker typed
+	// in; these say which project that directory was a copy of, and a resumed node
+	// needs them to find its own branch again — the repository it merges into is
+	// the ground, and reading it off the conversation's workspace was the bug this
+	// pair exists to end (taskstands.go).
+	//
+	// THEY ARE ADDITIVE AND ABSENCE IS ORDINARY. A checkpoint written before they
+	// existed decodes with neither, and the node it rebuilds falls back to exactly
+	// the road it took when it was written.
+	Ground string   `json:"ground,omitempty"`
+	Mode   TaskMode `json:"groundMode,omitempty"`
+
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
 	// work). They are absent in every checkpoint written before a task could
@@ -604,6 +617,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Brief:       n.spec.brief,
 		Deliverable: n.spec.deliverable,
 		Where:       n.spec.where,
+		Ground:      n.Ground,
+		Mode:        n.Mode,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -1083,6 +1098,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			maxSteps:    record.MaxSteps,
 			noProgress:  record.NoProgress,
 		},
+		Ground:      record.Ground,
+		Mode:        record.Mode,
 		state:       record.State,
 		report:      record.Report,
 		ending:      record.Ending,

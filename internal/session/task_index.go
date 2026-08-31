@@ -157,6 +157,17 @@ type TaskIndexEntry struct {
 	// Where is the worker's resolved directory, or the explicit placement from a
 	// restored proposal that has not started yet.
 	Where string `json:"where,omitempty"`
+	// Ground is the repository or folder the work WAS ABOUT, absolute, and Mode
+	// is how it stood on it ([TaskMode]). Where names a task folder under a
+	// session, which tells a person where the machinery was; these tell them
+	// where their work went, which is the question a row in a project's own
+	// history is asked (taskstands.go).
+	//
+	// THEY ARE ADDITIVE AND ABSENCE IS UNKNOWN, like Files beside them: a row
+	// written before they existed says nothing about its ground, and a reader
+	// draws nothing rather than assuming the session's own folder.
+	Ground string   `json:"ground,omitempty"`
+	Mode   TaskMode `json:"groundMode,omitempty"`
 	// Status is the node's final state — "done", "failed", "unverified" — or its
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
@@ -682,8 +693,11 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// (task_contract.go says so out loud): reading n.kind rather than
 		// re-deriving it from the spec is what keeps the row and the roster from
 		// ever disagreeing about one piece of work.
-		Kind:         n.kind,
-		Where:        strings.TrimSpace(n.worktree),
+		Kind:  n.kind,
+		Where: strings.TrimSpace(n.worktree),
+		// The node's own ground and mode, settled before it ran and never moved.
+		Ground:       strings.TrimSpace(n.Ground),
+		Mode:         n.Mode,
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,

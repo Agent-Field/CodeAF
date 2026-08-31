@@ -134,6 +134,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// WHICH PROJECT THE WORK IS ABOUT, asked the four ways people meet it: the
+		// plain question, the conversation opened in the wrong place, the wish to
+		// send work somewhere else, and the complaint after it went wrong.
+		{"which folder does a task work in", "how-tasks-run"},
+		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
+		{"can a task work in a different repo", "how-tasks-run"},
+		{"my task worked in the wrong project", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.

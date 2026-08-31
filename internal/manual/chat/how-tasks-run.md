@@ -22,12 +22,51 @@ Saying no, or redirecting the proposal, raises nothing. One forming look for bot
 task begins; only the card, which asks before the model spends your money, is particular
 to the proposed one.
 
+## Which folder does a task work in — I opened aforge in my home folder, can a task work in a different repo, why did my task work in the wrong project
+
+Every task has a **ground**: the one repository or folder the work is about. It is settled
+before you are asked to approve anything, out of what this conversation already holds, and
+the first of these that answers wins:
+
+1. **You said so** — a path in your own request, or `ground` on the proposal.
+2. **What the conversation touched** — the repositories behind every file this conversation
+   has read, edited, grepped or written, and every `cd` it ran, weighted so that lately
+   counts for more. One repository ahead of the rest is the ground. **Two with real weight
+   is a question, never a guess:** you are asked which one, and nothing starts until you
+   answer.
+3. **Where you are standing**, when that is a repository — what tasks have always used. A
+   conversation opened inside its own project still gets exactly it.
+4. **Nothing** — the conversation's own folder, when there is no repository anywhere.
+
+So a conversation opened in your home directory that has spent an hour reading
+`~/code/thing` sends its task to `~/code/thing`, and not to the empty workspace beside the
+session.
+
+**How it stands on that ground is not asked either — it follows from the work.** A
+repository the task writes in gets `git worktree add -b <branch> <dir> HEAD` cut **from that
+repository** and merged back into it; your uncommitted changes are not carried. A repository
+the task only reads — a whole contract that names no file — is left alone, and the task gets
+a folder of its own. A plain folder with no history behind it is **copied** into the task's
+folder, and the files the task wrote are laid back over it by name when it lands. And "work
+here" is you saying so: the task works in that folder itself, with nothing isolating it.
+
+**Two refusals and one correction.** A task whose contract names an absolute path outside
+its ground, in no repository, is turned back before anything is spent: `this task names a
+folder it does not stand in: <path>`. A `ground` naming something that is not on this
+machine is `this task names a folder that is not there: <path>`. And a brief that names a
+path inside a *different* repository **re-grounds** the task onto that one — the brief knew
+something the evidence did not — though nothing ever overrides a path you named yourself.
+
+The check runs where the work stood, cut from the same ground; the card and the `/history`
+row carry the ground and how the task stood on it.
+
 ## Does a task touch my working copy?
 
-By default, no. Each code task gets its own checkout of the repository the conversation is
-about, on its own branch, so you can keep working in yours while it runs. If your request
-explicitly names another folder, the task works in that exact folder instead; its card and
-its `/history` record show the resolved `where`.
+By default, no. Each code task gets its own checkout of **the repository the work is about**
+— its ground, resolved from what this conversation has been reading and editing (above) — on
+its own branch, so you can keep working in yours while it runs. If your request explicitly
+names another folder, the task works in that exact folder instead; its card and its
+`/history` record show the resolved `where`.
 
 aforge runs `git worktree add -b <branch> <dir> HEAD` off your **current HEAD**.
 
@@ -59,9 +98,12 @@ They work. A conversation opened where there is no project — your home directo
 folder, a launcher; the place line reads `aforge` — has a **workspace of its own**, and
 aforge quietly makes that workspace a git repository the moment the conversation opens.
 
-So a task with no named place takes the ordinary road described above, against that
-repository instead of a project's: a worktree at `<session folder>/trees/<task id>`, a
-branch `task/<title>-<6 hex>` off its HEAD, and a merge home when the task lands. Work that
+So a task in a conversation that has been nowhere else takes the ordinary road described
+above, against that repository instead of a project's: a worktree at `<session
+folder>/trees/<task id>`, a branch `task/<title>-<6 hex>` off its HEAD, and a merge home
+when the task lands. **A conversation that HAS been somewhere else goes there instead** — if
+you have been reading a real project in this conversation, that project is the task's
+ground and the workspace beside the session is not used at all. Work that
 needs no repository at all — filing an issue with `gh`, reading something, writing a
 document — simply runs, and its card and `/history` record name the task folder it stood
 in.

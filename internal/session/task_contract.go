@@ -125,6 +125,43 @@ func TaskKindWord(kind TaskKind) string {
 	return ""
 }
 
+// TaskMode is HOW a task stands on its ground — the one word that says whether
+// the work is isolated from the place it is about, and how it comes back to it.
+//
+// IT IS DERIVED FROM THE DELIVERABLE AND NEVER ASKED. Nobody is made to answer a
+// question about worktrees to get a piece of work started: the ground is
+// resolved from what the conversation already holds (taskstands.go's ladder) and
+// the mode falls out of what the work has to leave behind — writing in a
+// repository is a branch, reading one is not, and a folder that has no history
+// to branch from is copied or worked in directly.
+//
+// IT IS A RECORD, NOT A SCREEN WORD. A surface says "in ~/x · branch off main",
+// which is these facts spelled as a sentence; none of these five strings is
+// meant to be drawn as it stands.
+type TaskMode string
+
+const (
+	// TaskModeWorktree is a branch cut FROM THE GROUND off its HEAD, worked in a
+	// directory of the task's own and merged back when it lands. It is what
+	// ordinary work in a repository gets, and the person's uncommitted changes
+	// are not carried into it — the branch comes off HEAD and nothing else.
+	TaskModeWorktree TaskMode = "worktree"
+	// TaskModeReference is work that only READS its ground: the task gets a
+	// folder of its own to write in and the ground stays read-only for it.
+	TaskModeReference TaskMode = "reference"
+	// TaskModeMirror is a plain folder — no history to branch from — copied into
+	// the task's own directory, worked in there, and landed back by name.
+	TaskModeMirror TaskMode = "mirror"
+	// TaskModeInPlace is the person saying "here": the work happens in the ground
+	// itself, with nothing isolating it and the turn's file ledger (recovery.go)
+	// as the only undo there is.
+	TaskModeInPlace TaskMode = "in place"
+	// TaskModeFolder is the honest nothing — the conversation's own folder, with
+	// no repository anywhere under it. The work happens there because there is
+	// nowhere else it could be about.
+	TaskModeFolder TaskMode = "folder"
+)
+
 // TaskEnding is WHY a node that settled `failed` stopped where it did — the one
 // word under the state that tells a person whether to look for a fault, wait,
 // or steer. A `failed` node carries exactly one, or none; the report's first
@@ -308,6 +345,19 @@ type TaskNotice struct {
 	// Where says where the task will work. A proposal carries the resolved task
 	// folder or explicit path; later notices carry the worker's actual directory.
 	Where string
+	// Ground is the repository or folder THE WORK IS ABOUT, absolute, and Mode is
+	// how the task stands on it (taskstands.go resolves both). Where says which
+	// directory the worker types in; these two say which project that directory is
+	// a copy of, which is the fact a person needs to read before they approve
+	// anything — a card that named only a task folder under a session was telling
+	// somebody where the machinery was, never where their work was going.
+	//
+	// They are on the PROPOSAL and on every update, because the answer is settled
+	// before the countdown starts and never moves afterwards. Empty Ground is the
+	// emptiness law and not a claim: a notice written by a door that never
+	// resolved one has nothing to say about it.
+	Ground string
+	Mode   TaskMode
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64
