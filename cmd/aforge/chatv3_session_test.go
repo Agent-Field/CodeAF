@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,9 +9,11 @@ import (
 )
 
 // A second window in the same directory resumes the same transcript, which the
-// first one is holding open. That is the ordinary case, not the exotic one, and
-// it must not be a crash.
-func TestASecondWindowOnALockedSessionStartsANewOne(t *testing.T) {
+// first one is holding open. It used to be handed a NEW conversation and one
+// sentence about it, which is the defect this lane ends: the chat the person
+// came back for was still running, and nothing led them to it. Now it is a
+// refusal that says where the conversation is and what lets go of it.
+func TestASecondWindowOnALockedSessionIsRefusedAndNamesTheWayOut(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	workspace := t.TempDir()
 
@@ -45,30 +46,43 @@ func TestASecondWindowOnALockedSessionStartsANewOne(t *testing.T) {
 		t.Fatalf("the first window moved its own file to %s", firstCfg.SessionFile)
 	}
 
-	second, secondCfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
-	if err != nil {
-		t.Fatalf("a contended resume must not fail: %v", err)
+	second, secondCfg, _, err := openV3Agent(cfg, workspace, v3OpenSession)
+	if err == nil {
+		_ = second.Close()
+		t.Fatal("a contended resume opened a conversation anyway")
 	}
-	defer func() { _ = second.Close() }()
-	if notice != "session open elsewhere — started a new one" {
-		t.Fatalf("the second window said %q", notice)
+	// THE SENTENCE IS THE FEATURE. It says where the conversation is, in the
+	// words a person would use about it; it points at MOVING it here rather than
+	// at starting a different one, which is what somebody who meets this
+	// actually wants; and it names the one command that lets go of a workspace —
+	// spelled with its --workspace, because without one that command means the
+	// home directory.
+	said := err.Error()
+	for _, want := range []string{
+		"open in another window",
+		"press enter on it to move it here",
+		"aforge engine --stop --workspace " + workspace,
+	} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("the refusal said %q, which does not carry %q", said, want)
+		}
 	}
-	if secondCfg.SessionFile == transcript {
-		t.Fatal("the second window took the locked file")
+	// AND IT DOES NOT OFFER A NEW CONVERSATION AS THE WAY OUT. That was the old
+	// answer, it answered a question nobody asked, and the manual quotes this
+	// sentence — so a road back to it here would be a road back to it there.
+	if strings.Contains(said, "start a new conversation") {
+		t.Fatalf("the refusal still offers a new conversation: %q", said)
 	}
-	// A second conversation about the same project is a second FOLDER in the
-	// same bucket, never a second journal in the first one's folder.
-	if directory := filepath.Dir(secondCfg.SessionFile); directory == filepath.Dir(transcript) {
-		t.Fatalf("the new session shares the first one's folder: %s", directory)
+	// AND NOTHING WAS MINTED ON THE WAY PAST. The old fallback left a second
+	// folder in this project's bucket every time somebody opened a second
+	// terminal; a refusal that still did that would be the same litter with a
+	// worse ending.
+	if secondCfg.SessionFile != transcript {
+		t.Fatalf("the refused window moved the session file to %s", secondCfg.SessionFile)
 	}
-	if bucket := sessionBucket(secondCfg.SessionFile); bucket != sessionBucket(transcript) {
-		t.Fatalf("the new session landed in %s, want this project's bucket %s", bucket, sessionBucket(transcript))
-	}
-	if !strings.HasSuffix(secondCfg.SessionFile, ".jsonl") {
-		t.Fatalf("the new session is named %s", secondCfg.SessionFile)
-	}
-	if _, err := os.Stat(secondCfg.SessionFile); err != nil {
-		t.Fatalf("the new session file was not created: %v", err)
+	spoken, empty := v3ScanBucket(sessionBucket(transcript))
+	if len(spoken)+len(empty) != 1 {
+		t.Fatalf("the refused window left %d folders in the bucket, want the one the first window is in", len(spoken)+len(empty))
 	}
 }
 

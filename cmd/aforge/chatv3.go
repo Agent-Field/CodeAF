@@ -61,6 +61,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
 	at := flags.String("at", "", "reach a machine that has no ssh, by the name `aforge serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
+	// --no-host is the escape hatch off the local dial, and it means here
+	// exactly what it means on `aforge engine`: open this conversation in this
+	// process and never look for a session host. It exists because a fallback
+	// nobody can ask for is a fallback nobody can use on the day the host
+	// itself is the thing that is wrong.
+	noHost := flags.Bool("no-host", false, "open this conversation in this process instead of attaching to this workspace's session host")
 	oneModel := flags.Bool("one-model", false,
 		"every text call this session makes runs on the session model: the tier rows, the role pins, "+
 			"the fallback chain and the task model all stand down")
@@ -81,9 +87,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -97,6 +103,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// still the other machine's.
 	if *oneModel && strings.TrimSpace(*at) != "" {
 		return fmt.Errorf("--one-model settles this machine's model rows; over --at the far machine answers them, so the two cannot be combined")
+	}
+	// --no-host is about the session host on THIS machine, and over --host or
+	// --at the conversation is on the far machine either way — there is no
+	// local host in the picture for the flag to refuse. Accepting it and doing
+	// nothing is the shrug this tree does not do, so the pair is named.
+	if *noHost && strings.TrimSpace(*host) != "" {
+		return fmt.Errorf("--no-host keeps a conversation in this process; over --host the conversation is on the far machine, so the two cannot be combined — `ssh %s aforge engine --no-host` is where that setting lives", strings.TrimSpace(*host))
+	}
+	if *noHost && strings.TrimSpace(*at) != "" {
+		return fmt.Errorf("--no-host keeps a conversation in this process; over --at the conversation is on the far machine, so the two cannot be combined")
 	}
 	// TWO WAYS TO REACH ONE MACHINE IS NOT TWO MACHINES. Naming both is a
 	// person saying two different things about where the work is, and guessing
@@ -169,6 +185,29 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			noCompact: *noCompact,
 			yolo:      *yolo,
 			budget:    chatBudget(*maxHours, *maxCost).Set(),
+		})
+	}
+
+	// THE FOURTH DOOR, AND THE ONLY ONE WITH NO MACHINE IN IT: this workspace's
+	// own session host, on a unix socket, when a conversation here is already
+	// running in one. It is never STARTED from here — [v3HostRoad] is the whole
+	// of the rule and chatv3_local.go states why a plain local launch stays in
+	// its own process.
+	//
+	// It forks HERE, beside the other two, and for their reason: the launch
+	// below assembles this machine's models, keys, gate and session files, and
+	// the process on the other end of that socket has already assembled its own.
+	if workspace, take := v3HostRoad(v3HostChoice{
+		noHost: *noHost,
+		shaped: *yolo || *noCompact || *oneModel || chatBudget(*maxHours, *maxCost).Set(),
+	}); take {
+		return openChatV3Local(localLaunch{
+			workspace: workspace,
+			session:   strings.TrimSpace(*file),
+			model:     strings.TrimSpace(*model),
+			level:     level,
+			once:      strings.TrimSpace(*once),
+			pick:      pickSession,
 		})
 	}
 
@@ -953,17 +992,23 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 	return manager
 }
 
-// openV3Agent opens the session this run writes, and NEVER crashes on a
-// contended one.
+// openV3Agent opens the session this run writes.
 //
 // A resumed transcript is this directory's most recent, which is exactly the
-// file a second window in the same directory is already holding open. Session
-// answers that with [session.ErrSessionLocked] — the right answer, since two
-// writers on one journal is a corrupted journal — and the right thing to do
-// with it is not to refuse to start. A person who opened a second window asked
-// for a second conversation; they get one, in a new file, and are told which
-// road they came down. The alternative is a launcher that fails on the second
-// terminal for a reason nobody outside this tree could guess.
+// file a second window in the same directory may already be holding open.
+// Session answers that with [session.ErrSessionLocked] — the right answer,
+// since two writers on one journal is a corrupted journal.
+//
+// SILENTLY STARTING A NEW CONVERSATION IS DEAD, and killing it is the point of
+// this lane. This door used to mint a sibling session and say "session open
+// elsewhere — started a new one", which sounds like an explanation and is
+// actually the defect: the conversation the person came back for was still
+// running a few inches away, in another terminal or in this workspace's session
+// host, and nothing on the screen led them to it. The road that does lead there
+// is tried BEFORE this function is ever called ([v3HostRoad] and
+// chatv3_local.go), so a lock that reaches this line is one no host is holding —
+// an older build, or a window that has stopped answering. That is a fact worth
+// a sentence, and the sentence names the one command that lets go of it.
 //
 // It returns the config as it ended up, because the session file may have moved.
 //
@@ -981,20 +1026,33 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if !errors.Is(err, session.ErrSessionLocked) {
 		return nil, cfg, "", err
 	}
-	place, nextErr := v3NextSession(cfg.Place, workspace)
-	if nextErr != nil {
-		return nil, cfg, "", err
+	return nil, cfg, "", errors.New(sessionHeldElsewhereSentence(workspace))
+}
+
+// sessionHeldElsewhereSentence is what a person reads when the conversation
+// they asked for is being written by something else.
+//
+// IT POINTS AT THE HAND-OFF AND NOT AT A NEW CONVERSATION. What somebody who
+// meets this actually wants is to CONTINUE the conversation here — issue #71's
+// own words — so the sentence names the move: open aforge in this directory and
+// press enter on that row. "Start a new conversation here" was the old way out
+// and it is not offered as the way out any more, because it answers a question
+// nobody asked.
+//
+// IT NAMES THE WORKSPACE IN THE COMMAND AND NOT A JOURNAL PATH. The path is
+// aforge's own bookkeeping and there is nothing to do with it; and `aforge
+// engine --stop` with no --workspace means the HOME directory rather than this
+// one, so the flag is spelled out. It is [staleEngineHostSentence]'s voice,
+// said about this machine.
+//
+// ONE SENTENCE IN ONE PLACE. Every door that meets a held journal says exactly
+// this, and the manual quotes it — a refusal spelled two ways is two refusals
+// to a person who met one of them last week.
+func sessionHeldElsewhereSentence(workspace string) string {
+	if strings.TrimSpace(workspace) == "" {
+		return "this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
 	}
-	next, nextErr := v3PointAt(cfg, place)
-	if nextErr != nil {
-		return nil, cfg, "", err
-	}
-	cfg = next
-	agent, err = open(cfg)
-	if err != nil {
-		return nil, cfg, "", err
-	}
-	return agent, cfg, "session open elsewhere — started a new one", nil
+	return fmt.Sprintf("this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", workspace)
 }
 
 // ── governance: what a session may do, on whose models, for how much ────────
