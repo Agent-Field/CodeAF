@@ -1172,6 +1172,25 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	defer done()
 	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointSketchAsk)}
 	began := time.Now()
+	// AND THE PERSON IS TOLD WHAT THIS SILENCE IS, because it is one: a turn stops
+	// mid-round, a mastermind is shown an account of the work and asked what is
+	// left of the ask, and the reading is bounded at [checkpointSketchWindow] —
+	// ten to thirty seconds on the measured runs, with nothing whatever drawn for
+	// it until now.
+	//
+	// `taking stock` AND NOT `checking`, which is the phase the gates at the end
+	// of a turn wear (loop.go). Those read an ANSWER and decide whether it
+	// finished; this reads the whole ask against everything that has been done, in
+	// the middle of the work, and the two waits mean different enough things that
+	// spelling them the same way would be the surface saying one sentence for two
+	// stages. The stage lasts the length of the call and the clock counts the
+	// whole of it, because a held phase says itself again while it lasts
+	// (phasenews.go).
+	//
+	// AND IT COMES OFF ON EVERY WAY OUT — the reading that answered, the one that
+	// failed, the one the window cut short — which is what the defer is for.
+	a.tellPhase(provider.PhaseTakingStock, "", began)
+	defer a.endPhase()
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
 		ai.WithMaxTokens(checkpointSketchTokens),
 		ai.WithTemperature(checkpointSketchTemp))
@@ -2587,14 +2606,14 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// is true, and it takes itself off the screen when the stage ends, whichever
 	// way this ends.
 	//
-	// AND IT IS SAID TWICE, ONCE PER CALL. A surface drops a phase it has not
-	// heard again for fifteen seconds (internal/tui3's phaseWindow) and nothing
-	// here beats, so a single post would go dark halfway through a thirty-second
-	// stage — which is the defect, not the fix. The two calls are the seam this
-	// has, and [briefingSince] is carried into both so the clock a person reads
-	// counts the whole stage rather than restarting at the boundary.
-	briefingSince := time.Now()
-	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
+	// AND IT IS SAID ONCE, FOR THE WHOLE STAGE. It used to be posted twice, once
+	// per model call, because nothing beat and a surface drops a phase it has not
+	// heard again for [provider.PhaseWindow] — so a single post went dark halfway
+	// through a thirty-second stage. That is no longer true of any holder: a
+	// phase held open re-says itself while it lasts (phasenews.go's
+	// [phaseHeldBeat]), so the two calls below are one stage with one clock on
+	// it, counting from here to whichever ending this road takes.
+	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
 	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
 	if !remains {
 		if sketch.saysDone() {
@@ -2638,8 +2657,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with nothing in any file saying it had happened. So the ladder is walked
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
-	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	// AND THE CLOCK COMES OFF WITH THE WRITING, which is where the stage the
+	// person was watching actually ends: everything below is bookkeeping over
+	// text already in hand.
 	a.endPhase()
 	goal, carried := written, carryRungHandoff
 	if strings.TrimSpace(goal) == "" {

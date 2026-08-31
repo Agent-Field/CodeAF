@@ -84,6 +84,13 @@ seconds.
 A still line here would mean something is wrong. If the mark is not turning, aforge is not
 waiting on the shaper — look for the task's own row on the roster instead.
 
+**You can watch the brief being written.** One dim row under the phase row carries the
+newest words as they arrive — the model's own reasoning in italics while it is still
+thinking, then your brief upright once it starts writing one — and `→` with an empty box
+(or a click on that row) opens it into the last six lines. It is a preview of the wait and nothing is kept from it — the
+whole block disappears when the task starts. The commands page has it in full, under *Can I
+see the brief while it is being written*.
+
 **If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
 answer that was not readable — the task starts with exactly your sentence and the plain
 done-condition `Complete the brief and report the result and checks run.`, which is what
@@ -226,13 +233,14 @@ head is intentionally still — it is the empty identity slot, not a second anim
 one second there is no number. In the plain-text tier the row uses a still `*`, so only the
 clock moves.
 
-A still forming row would mean something is wrong. If the braille mark is not turning and
-the clock is not climbing while the row still says `forming…`, nothing more of the proposal
-is arriving. When the proposal lands, the forming row is supposed to stop: the same block
+The moving row is the display's local clock. It says the proposal call remains open; it
+does not prove that network fragments are arriving, so it can keep moving while a provider
+is slow or stalled. When the proposal lands, the forming row stops and the same block
 becomes the question with its options and countdown. If the stream or turn ends first, it
-settles as `cancelled · the proposal never arrived`. If the call is refused before it ever
-becomes a question, it settles as `not started · the call was refused` instead of moving
-forever.
+settles as `cancelled · the proposal never arrived`. If the request is cut and retried, the
+partial block disappears because that attempt's half-arrived call was discarded; a new
+proposal fragment starts a new block. If the call is refused before it ever becomes a
+question, it settles as `not started · the call was refused` instead of moving forever.
 
 ## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
 
@@ -1155,7 +1163,7 @@ stopped, because there is nothing left to stop. The log file it was writing is s
 this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
 was started here or by a task's worker in its own checkout.
 
-## A task started from the composer carries a cap — how much a task may spend before it asks
+## A task started from the composer carries a cap — how much a task may spend before it asks, how do I set a spend limit on a task before I send it
 
 A task started with **`alt+enter`** from the composer on home or on any other place goes out
 with a **spend cap** on it. The composer layer's third line is where you read it and where

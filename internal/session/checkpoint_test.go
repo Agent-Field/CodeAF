@@ -859,6 +859,86 @@ func TestASidecarThatMissesItsWindowIsACarryOn(t *testing.T) {
 	}
 }
 
+// ── the word the mark's reading wears ───────────────────────────────────────
+
+// TestTheMarksReadingSaysTakingStockAndTakesItBack is the third stage that used
+// to run in the dark.
+//
+// A turn stops mid-round, a mastermind is shown an account of the work and asked
+// what is left of the ask, and the reading is bounded at
+// [checkpointSketchWindow] — ten to thirty seconds on the measured runs, with a
+// screen that drew nothing whatever for it. It is now a stage with a word, and
+// the word is `taking stock`: what this reader does is weigh the whole ask
+// against everything that has been done, which is not what the gates at the end
+// of a turn do when they say `checking`.
+func TestTheMarksReadingSaysTakingStockAndTakesItBack(t *testing.T) {
+	log := watchPhases(t)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse(checkpointChainSketch), nil
+		},
+	}}
+	agent := checkpointAgent(t, completer)
+	workedTurn(agent, "read the four modules and fix what is broken", 3)
+
+	agent.readMark(context.Background())
+
+	news := log.all()
+	said := false
+	for _, one := range news {
+		if one.Phase == provider.PhaseTakingStock {
+			said = true
+			if one.Since.IsZero() {
+				t.Fatal("the reading carries no start, so nothing can count up from it")
+			}
+		}
+	}
+	if !said {
+		t.Fatalf("the mark's reading drew nothing; phases were %v", phaseWords(news))
+	}
+	// AND IT COMES OFF THE SCREEN WITH THE READING. A stage that is over and
+	// still drawn is the defect the phase clock exists for.
+	if len(news) == 0 || news[len(news)-1].Phase != "" {
+		t.Fatalf("the reading left a clock running; phases were %v", phaseWords(news))
+	}
+}
+
+// AND ON EVERY WAY OUT, which for this reader means the one that matters most:
+// a mastermind that never answered inside its window. A stage cleared only on
+// the happy path is a clock a person watches for a whole window after the work
+// behind it gave up.
+func TestAMarkReadingThatMissedItsWindowStillTakesItsClockOff(t *testing.T) {
+	log := watchPhases(t)
+	agent := checkpointAgent(t, &holdingCompleter{})
+	workedTurn(agent, "work through the four things I listed", 3)
+
+	ctx, done := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer done()
+	agent.readMark(ctx)
+
+	news := log.all()
+	if len(news) == 0 || news[len(news)-1].Phase != "" {
+		t.Fatalf("a reading that never answered left a clock running; phases were %v", phaseWords(news))
+	}
+}
+
+// AND A MARK WITH NOTHING TO SHOW A READER DRAWS NOTHING. No call is made, so
+// there is no wait, and a word for a stage nobody waits through is the surface
+// narrating machinery.
+func TestAMarkThatAsksNobodyDrawsNoClock(t *testing.T) {
+	log := watchPhases(t)
+	agent := checkpointAgent(t, &scriptedCompleter{})
+
+	if read := agent.readMark(context.Background()); read.asked {
+		t.Fatal("a turn with nothing in it still paid for a reading")
+	}
+	for _, one := range log.all() {
+		if one.Phase == provider.PhaseTakingStock {
+			t.Fatal("a reading that never happened drew a clock")
+		}
+	}
+}
+
 // holdingCompleter answers nothing at all: it waits for its context and reports
 // what ended it, which is what a provider that is thinking too slowly does.
 type holdingCompleter struct{}

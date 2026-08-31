@@ -70,6 +70,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// after it happens, by somebody who has just watched a token go past.
 		{"does aforge save my API keys", "sessions-and-rewind"},
 		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
+		{"if a task prints a token is it saved", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
@@ -208,6 +209,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a task allowed to use gh api", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
+		// #85 flagged the token on a task's belt as an open hole; the read is
+		// refused inside a task now, and these are the words somebody meets it in.
+		{"can a task read my github token", "how-tasks-run"},
+		{"my task said gh auth token is not yours to run", "how-tasks-run"},
+		{"does a task have my credentials", "how-tasks-run"},
 		// Written from a real run: a task made a symlink so a scorer would find
 		// its fixtures, measured against the symlink, and reported the work done.
 		// The check now runs somewhere the symlink is not, and these are the
@@ -634,6 +640,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// shaping line. Its still head mark is deliberate; the row below must move.
 		{"the proposal card is frozen", "tasks"},
 		{"the forming card is not moving", "tasks"},
+		// The wait a person can now see into: the preview row under the phase
+		// row, asked the three ways somebody meets it — wanting it, describing
+		// it, and asking what the extra line is.
+		{"can I see the brief while it is being written", "commands"},
+		{"what is the line under shaping the brief", "commands"},
+		{"several tasks forming at once", "commands"},
+		{"why is the line under shaping the brief in italics", "commands"},
 
 		// The answer that gets moved because it ran long. People meet this as a
 		// line that appeared under a reply they were reading, so they say it back
@@ -806,6 +819,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does first word mean while it is waiting", "screen"},
 		{"how long until it gives up on this one", "screen"},
 		{"what does still working mean", "screen"},
+		// AND THE STAGE THAT LASTS. A reading between rounds can run for minutes,
+		// and until the beat was written the line went blank after fifteen
+		// seconds while the work carried on — so these are asked in the words of
+		// somebody watching that happen, and in the word the line now wears.
+		{"what does taking stock mean", "screen"},
+		{"the status line went blank while it was still working", "screen"},
+		{"does a slow stage stop being shown", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply
@@ -831,6 +851,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
+
+		// The 2026-08-31 incident, asked the ways a person describes what they
+		// saw: a serving endpoint leaked the model's own tool grammar as text,
+		// and the screen filled with markup instead of an answer.
+		{"the screen filled with weird tokens instead of an answer", "models-and-cost"},
+		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
+		{"the model kept writing its own internal markup", "models-and-cost"},
+
+		// /model while a task runs: the task keeps its model, and the person
+		// who watched the old voice continue asks why.
+		{"I changed the model but my task is still on the old one", "models-and-cost"},
+		{"does /model change the model my running task uses", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

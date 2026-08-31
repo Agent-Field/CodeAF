@@ -172,6 +172,23 @@ type PresenceTask struct {
 	// has not. A surface drawing an age must read that emptiness as "not yet"
 	// rather than as an age of zero (the emptiness law).
 	StartedAt time.Time `json:"startedAt,omitzero"`
+	// Phase is WHICH OF ITS LIVES the node is in, in the words task_contract.go
+	// exports ([TaskPhaseChecking] and the others) — the same spelling the pulse
+	// on disk and [EventTaskPhase] carry, so a row drawn in another window and
+	// the card in front of the person are never two vocabularies for one moment.
+	//
+	// IT IS HERE BECAUSE `running` STOPS BEING THE WHOLE TRUTH FOR MINUTES AT A
+	// TIME. The state stays `running` across a worker, a check and every repair
+	// round, so a window reading only [PresenceTask.State] drew `running` while
+	// the node had been under a check for four minutes — the same silence the
+	// live window's own row was fixed for.
+	//
+	// AND WORKING IS WRITTEN AS NOTHING. A node getting on with the work is what
+	// a running row has always meant, so the ordinary life is left off the file
+	// entirely rather than spelled out: the phase is written only where it is
+	// news, and an absent field draws exactly the row it drew before this
+	// existed — which is also every row written by a build older than this field.
+	Phase string `json:"phase,omitempty"`
 	// Files are the paths this node has written SO FAR — repo-relative,
 	// slash-spelled, in the order it first wrote them, capped at
 	// [taskFilesLimit] ([TaskNode.wrote] is where they accumulate).
@@ -334,6 +351,28 @@ func (p SessionPresence) Holds(id string) bool {
 		}
 	}
 	return false
+}
+
+// Phase answers which of its lives the node with this id is in, in
+// task_contract.go's words, and "" for a node this session does not name, one
+// getting on with the work, and one running under a build that did not write the
+// field ([PresenceTask.Phase]).
+//
+// IT IS THE SAME JOIN AS [SessionPresence.Holds] AND IS SPELLED BESIDE IT for
+// that method's reason: the two answer one question about one row — is this node
+// out, and what is it doing — and a surface asking them of two different loops is
+// a surface that can draw a phase on a row it also calls finished.
+func (p SessionPresence) Phase(id string) string {
+	want := strings.TrimSpace(id)
+	if want == "" {
+		return ""
+	}
+	for _, task := range p.RunningTasks {
+		if strings.TrimSpace(task.ID) == want {
+			return task.Phase
+		}
+	}
+	return ""
 }
 
 // Fresh reports whether this claim is still worth believing at now — see the
@@ -818,11 +857,23 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		if node == nil || node.state.settled() {
 			continue
 		}
+		// THE PHASE IS READ OFF THE NODE, NOT OUT OF ITS PULSE FILE. The word is
+		// already on the node under the lock this loop is holding
+		// ([TaskNode.life], written by [Agent.enterPhase]), and reaching through
+		// the pulse's mutex — which a disk write is held under — from inside the
+		// graph's lock is the one thing the beat must never do. A node that has
+		// not started yet has no life at all, and that empty is written as
+		// nothing like the working one.
+		phase := node.life
+		if phase == TaskPhaseWorking {
+			phase = ""
+		}
 		out = append(out, PresenceTask{
 			ID:        strconv.FormatUint(node.id, 10),
 			Title:     strings.TrimSpace(node.spec.title),
 			State:     string(node.state),
 			StartedAt: node.started,
+			Phase:     phase,
 			// A COPY, TAKEN UNDER THE LOCK THE LIST IS APPENDED UNDER
 			// ([TaskNode.noteWrote]), so a refresh carries one whole instant of
 			// the node's writing and never half an append. A node that has

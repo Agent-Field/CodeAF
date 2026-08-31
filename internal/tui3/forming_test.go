@@ -53,6 +53,16 @@ func formingRow(t *testing.T, a *app) string {
 	return toolRowAt(t, a)
 }
 
+// plainStringRowsText keeps the forming-card string rows distinct from the
+// typed forming-block rows used by taskcommand_test.go.
+func plainStringRowsText(rows []string) string {
+	var out []string
+	for _, line := range rows {
+		out = append(out, plain(line))
+	}
+	return strings.Join(out, "\n")
+}
+
 func toolEntries(a *app) int {
 	n := 0
 	for i := range a.entries {
@@ -307,7 +317,7 @@ func TestTheFormingCardMovesBetweenPaints(t *testing.T) {
 	a.paints = 0
 	a.clock = func() time.Time { return base.Add(500 * time.Millisecond) }
 	firstRows := a.taskFormingRows(card, 60, false)
-	first := plainRowsText(firstRows)
+	first := plainStringRowsText(firstRows)
 	if row := plain(firstRows[1]); strings.Contains(row, "0s") || strings.Contains(row, taskFormingWord+" ·") {
 		t.Fatalf("a forming card under one second is timing itself: %q", row)
 	}
@@ -317,7 +327,7 @@ func TestTheFormingCardMovesBetweenPaints(t *testing.T) {
 
 	a.paints = spinnerStep
 	a.clock = func() time.Time { return base.Add(2 * time.Second) }
-	second := plainRowsText(a.taskFormingRows(card, 60, false))
+	second := plainStringRowsText(a.taskFormingRows(card, 60, false))
 	if first == second {
 		t.Fatalf("the forming card is the same picture two paints apart: %q", first)
 	}
@@ -326,7 +336,7 @@ func TestTheFormingCardMovesBetweenPaints(t *testing.T) {
 	}
 	// Hold elapsed time still so only the spinner can make these pictures differ.
 	a.paints = 0
-	sameTime := plainRowsText(a.taskFormingRows(card, 60, false))
+	sameTime := plainStringRowsText(a.taskFormingRows(card, 60, false))
 	if sameTime == second {
 		t.Fatalf("the forming card's mark stayed still while its clock was fixed: %q", second)
 	}
@@ -346,16 +356,16 @@ func TestTheFormingCardMovesBetweenPaints(t *testing.T) {
 	a.linear = true
 	a.paints = 0
 	a.clock = func() time.Time { return base.Add(2 * time.Second) }
-	still := plainRowsText(a.taskFormingRows(card, 60, false))
+	still := plainStringRowsText(a.taskFormingRows(card, 60, false))
 	if !strings.Contains(still, glyphRunASCII+" "+taskFormingWord+" · 2s") {
 		t.Fatalf("the linear forming card has no still running mark: %q", still)
 	}
 	a.paints = spinnerStep
-	if got := plainRowsText(a.taskFormingRows(card, 60, false)); got != still {
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); got != still {
 		t.Fatalf("the linear tier animated the forming card's mark: %q then %q", still, got)
 	}
 	a.clock = func() time.Time { return base.Add(4 * time.Second) }
-	if got := plainRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, glyphRunASCII+" "+taskFormingWord+" · 4s") {
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, glyphRunASCII+" "+taskFormingWord+" · 4s") {
 		t.Fatalf("the linear forming card's clock did not climb: %q", got)
 	}
 
@@ -466,8 +476,9 @@ func TestTheFormingCardIsNeverServedFromTheRowCache(t *testing.T) {
 	drive(t, a, streamClosedMsg{gen: a.gen})
 }
 
-// C8: retrying re-anchors the surviving forming card's elapsed clock without discarding its title.
-func TestARetryRestartsTheFormingCardsClock(t *testing.T) {
+// C8: retrying discards the half-arrived call, so its forming card disappears
+// and the replacement attempt starts a separate card and clock.
+func TestARetryDiscardsTheFormingCard(t *testing.T) {
 	base := time.Now()
 	a, agent := formingTurn(t)
 	a.clock = func() time.Time { return base }
@@ -478,25 +489,36 @@ func TestARetryRestartsTheFormingCardsClock(t *testing.T) {
 		t.Fatal("the forming fragment raised no card")
 	}
 	a.clock = func() time.Time { return base.Add(8 * time.Second) }
-	if got := plainRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 8s") {
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 8s") {
 		t.Fatalf("the first attempt's clock never advanced: %q", got)
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventRetrying, Text: "asking again"}})
 
+	if card = a.formingCard(); card != nil {
+		t.Fatalf("retrying kept the dead attempt's forming card: %+v", card)
+	}
+	if got := plainStringRowsText(plainRows(a)); strings.Contains(got, taskFormingWord) || strings.Contains(got, "Fix the nil-map") {
+		t.Fatalf("the discarded proposal is still on screen: %q", got)
+	}
+	if a.formingCardLive() {
+		t.Fatal("the discarded card still claimed the frame clock")
+	}
+
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c2", taskTool, taskTool+" Retry cleanly", "{\"title\":\"Retry\"")})
 	card = a.formingCard()
 	if card == nil {
-		t.Fatal("retrying settled the forming card instead of reusing it")
+		t.Fatal("the replacement attempt raised no fresh forming card")
 	}
-	immediate := plainRowsText(a.taskFormingRows(card, 60, false))
+	immediate := plainStringRowsText(a.taskFormingRows(card, 60, false))
 	if strings.Contains(immediate, "8s") || strings.Contains(immediate, "0s") {
-		t.Fatalf("the retried card kept the dead attempt's clock: %q", immediate)
+		t.Fatalf("the replacement card kept the dead attempt's clock: %q", immediate)
 	}
-	if !strings.Contains(immediate, "Fix the nil-map") {
-		t.Fatalf("the retried card lost its title: %q", immediate)
+	if !strings.Contains(immediate, "Retry cleanly") {
+		t.Fatalf("the replacement card has the wrong title: %q", immediate)
 	}
 	a.clock = func() time.Time { return base.Add(10 * time.Second) }
-	if got := plainRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
-		t.Fatalf("the retried card did not count from the retry: %q", got)
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
+		t.Fatalf("the replacement card did not count from its first fragment: %q", got)
 	}
 
 	agent.finish()
@@ -523,7 +545,7 @@ func TestARefusedTaskCallSettlesItsFormingCard(t *testing.T) {
 	if a.formingCard() != nil {
 		t.Fatal("a refused propose_task left its card forming")
 	}
-	settled := plainRowsText(a.taskCardRows(card, 60, false))
+	settled := plainStringRowsText(a.taskCardRows(card, 60, false))
 	if !strings.Contains(settled, taskFormingRefused) {
 		t.Fatalf("the refused proposal does not say what happened: %q", settled)
 	}
@@ -532,7 +554,7 @@ func TestARefusedTaskCallSettlesItsFormingCard(t *testing.T) {
 	}
 	a.paints += spinnerStep
 	a.clock = func() time.Time { return base.Add(10 * time.Second) }
-	if got := plainRowsText(a.taskCardRows(card, 60, false)); got != settled {
+	if got := plainStringRowsText(a.taskCardRows(card, 60, false)); got != settled {
 		t.Fatalf("the refused proposal kept moving: %q then %q", settled, got)
 	}
 	a.state = stateIdle
@@ -565,12 +587,12 @@ func TestANewTaskCallRestartsTheFormingCardsClock(t *testing.T) {
 	if card.callID != "c2" {
 		t.Fatalf("the forming card kept call id %q, want c2", card.callID)
 	}
-	immediate := plainRowsText(a.taskFormingRows(card, 60, false))
+	immediate := plainStringRowsText(a.taskFormingRows(card, 60, false))
 	if strings.Contains(immediate, "8s") || strings.Contains(immediate, "0s") {
 		t.Fatalf("the corrected call inherited the first call's clock: %q", immediate)
 	}
 	a.clock = func() time.Time { return base.Add(10 * time.Second) }
-	if got := plainRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
 		t.Fatalf("the corrected call did not count from its own first fragment: %q", got)
 	}
 

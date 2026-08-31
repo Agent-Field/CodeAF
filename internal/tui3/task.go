@@ -923,6 +923,29 @@ func (a *app) dropFormingCard() {
 	}
 }
 
+// dropRetryingFormingCard removes the partial proposal drawn by an attempt the
+// session has cut and discarded. Unlike [app.dropFormingCard], this does not
+// settle the block: the transcript contains no call to account for, and the
+// replacement attempt must begin with a fresh card and a fresh argument stream.
+//
+// The card is normally the newest entry because [app.formTask] closes live text
+// before appending it. The empty-entry fallback preserves every later index if
+// a person steered while the call was arriving; removing from the middle would
+// move selection and hover targets that are held by index.
+func (a *app) dropRetryingFormingCard() {
+	at := a.formingCardAt()
+	if at < 0 {
+		return
+	}
+	if at == len(a.entries)-1 {
+		a.entries = a.entries[:at]
+	} else {
+		a.entries[at].card = nil
+		a.entries[at].stale = true
+	}
+	a.touch()
+}
+
 // refuseFormingCard settles the block when propose_task returns without ever
 // raising a proposal. That result is a third ending, distinct from a turn or a
 // stream dying halfway through the call, so it keeps its own words.

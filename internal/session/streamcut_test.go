@@ -223,3 +223,52 @@ func countOfKind(events []Event, kind EventKind) int {
 	}
 	return count
 }
+
+// TestALeakOfToolMarkupIsCutAndAskedAgain: the fourth failure plane rides the
+// same ladder as the other three. The adapter cut a reply that was the model's
+// own tool grammar as text (provider's [MachineryLeak]); this side asks again,
+// keeps none of the markup, and says what happened in a person's words.
+func TestALeakOfToolMarkupIsCutAndAskedAgain(t *testing.T) {
+	const markup = `<｜DSML｜_web_search>{"query":"x"}<｜/DSML｜_web_search>`
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutMachinery, markup),
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("here is the real answer"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "look this up")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	retry, retried := firstOfKind(collected, EventRetrying)
+	if !retried {
+		t.Fatalf("no retry was announced; events were %v", kinds(collected))
+	}
+	if !strings.Contains(retry.Text, "internal markup") {
+		t.Fatalf("the retry note = %q, want it to name the markup", retry.Text)
+	}
+	if _, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("a turn that recovered still ended in an error; events were %v", kinds(collected))
+	}
+	// AND THE MARKUP NEVER REACHES THE TRANSCRIPT — not the retry that was
+	// sent, and not the session's own record. This is the property the
+	// 2026-08-31 session lacked: the leak sat in the context and every re-ask
+	// answered into a conversation already full of it.
+	for _, message := range completer.request(1) {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, "DSML") {
+				t.Fatalf("the leaked markup was re-sent to the model: %q", part.Text)
+			}
+		}
+	}
+	for _, message := range agent.snapshot() {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, "DSML") {
+				t.Fatalf("the leaked markup was recorded: %q", part.Text)
+			}
+		}
+	}
+}
