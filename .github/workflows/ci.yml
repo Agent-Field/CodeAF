@@ -1,0 +1,80 @@
+name: PR gate
+
+# THE LIGHT GATE, AND IT IS DELIBERATELY LIGHT. Work moves into `dev` many
+# times a day, much of it written by agents, and a gate that takes fifteen
+# minutes is a gate people learn to route around. So this one asks only the
+# questions whose answer is always the same on every machine and whose failure
+# always means somebody broke something: does the tree compile, does vet find a
+# real bug, and does the manual still know about the feature that just landed.
+#
+# The whole suite is not here. It runs on the way into `staging`, and nightly
+# against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
+# in that place and what has to be true before it moves.
+on:
+  pull_request:
+    branches:
+      - dev
+  # Also on the push, because a merge of two individually-green branches can
+  # still be red, and the merge is exactly the moment nobody is watching.
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The name of this job is the name of the required status check in
+  # .github/rulesets/dev.json. Renaming it silently un-protects the branch, so
+  # the two move together or not at all.
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Several sessions work this tree at once and a half-finished file breaks
+      # the build for everyone. This is the cheapest way to find that out, and
+      # the one failure that blocks every other kind of work.
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # THE PACKED CORPORA ARE GENERATED FROM THE FOLDERS. A page edited without
+      # a build ships yesterday's manual, so regenerate and demand the tree come
+      # back clean. The packer is a pure function of the folder — an identical
+      # folder rewrites identical bytes — so a diff here means a real drift.
+      - name: The packed corpora match their folders
+        run: |
+          set -euo pipefail
+          go generate ./internal/manual ./internal/swepro/internal/baked ./internal/swepro/internal/assets
+          if ! git diff --exit-code; then
+            echo
+            echo 'A packed corpus disagrees with the folder it is generated from.'
+            echo 'Run `make build` (or `make embed`) and commit the regenerated'
+            echo '.pack.gz beside the Markdown you changed.'
+            exit 1
+          fi
+
+      # THE MANUAL LAW, ENFORCED HERE BECAUSE IT IS THE LAW AGENTS BREAK MOST.
+      # A feature that ships without its page is a feature the running chat will
+      # deny having. These are the three gates CLAUDE.md names — every slash
+      # command and alias, every tool on the belt, every probe question still
+      # reaching the page that answers it — and they cost six seconds.
+      - name: The manual knows about the features
+        run: |
+          set -euo pipefail
+          go test ./internal/manual/
+          go test -run 'Manual' ./internal/tui3/ ./internal/session/

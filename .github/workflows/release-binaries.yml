@@ -1,15 +1,21 @@
 name: Release binaries
 
+# NOTHING HERE PUBLISHES BY ITSELF. A release is a person deciding to cut one,
+# and the only thing that starts one is a semver tag. There is deliberately no
+# branch trigger: a merge landing on a branch must never turn into a download
+# somebody else installs, because the whole point of `staging` is that a build
+# is soaked before it is offered.
+#
+# AND A RELEASE COMES OFF `staging`. The publish job below refuses a tag whose
+# commit is not on that branch, so the ordering — dev, then staging, then a tag
+# — cannot be skipped by tagging the wrong thing. docs/rules/promotion.md is the
+# runbook.
+#
+# workflow_dispatch builds the six binaries and uploads them as workflow
+# artifacts so a build can be looked at. It does not publish; only a tag does.
 on:
-  pull_request:
-    branches:
-      - master
   push:
-    branches:
-      - master
     tags:
-      # Semver tags are the named channel. Everything else that lands on master
-      # publishes an edge build instead — see the version job below.
       - "v*"
   workflow_dispatch:
 
@@ -53,9 +59,9 @@ jobs:
               prerelease=true
             fi
           else
-            # The edge channel: every master push publishes, nothing about it
-            # claims to be a release. Callers that want a build off master ask
-            # for build-<sha12> by name.
+            # A manual dispatch, which builds and never publishes. The name is
+            # still computed so the artifacts are labelled with the commit they
+            # came from rather than with an empty string.
             tag="build-${GITHUB_SHA::12}"
             title="AForge ${GITHUB_SHA::12}"
             latest=false
@@ -77,14 +83,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # The narrow suite around the things a shipped binary depends on to start
+      # at all. The whole suite already ran on the way into `staging`, and the
+      # tag is on `staging` or the publish refused — so this is a last look at
+      # the release surface, not a second full check.
+      #
+      # It honours .github/known-red.txt for the same reason ci-full.yml does:
+      # a release must not be blocked by a failure somebody already owes, and it
+      # must be blocked by any other one.
       - name: Test release surface
-        run: >-
-          go test
-          ./cmd/aforge
-          ./internal/config
-          ./internal/exec/...
-          ./internal/filelock
-          ./internal/lease
+        run: |
+          set -euo pipefail
+          skip="$(grep -v -e '^#' -e '^[[:space:]]*$' .github/known-red.txt | paste -sd'|' -)"
+          go test -skip "^(${skip})$" \
+            ./cmd/aforge \
+            ./internal/config \
+            ./internal/exec/... \
+            ./internal/filelock \
+            ./internal/lease
 
   build:
     needs: [test, version]
@@ -138,15 +154,36 @@ jobs:
           if-no-files-found: error
 
   release:
-    # Pull requests and manual dispatches build and upload artifacts and stop
-    # there. Publishing is a consequence of landing on master or of cutting a
-    # tag, never of somebody pressing a button on a branch.
-    if: github.event_name == 'push'
+    # A manual dispatch builds and uploads artifacts and stops there. Publishing
+    # is a consequence of a tag and of nothing else.
+    if: github.ref_type == 'tag'
     needs: [build, version]
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
+      # THE TAG HAS TO BE ON `staging`. Tagging is the one step of the promotion
+      # that no branch rule can police — a tag can be cut anywhere, including on
+      # a dev commit that has soaked nowhere. So it is policed here, before a
+      # single byte is published, and the failure names the fix.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag is on staging
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/staging:refs/remotes/origin/staging
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/staging; then
+            echo
+            echo "Refusing to publish ${GITHUB_REF_NAME}."
+            echo "${GITHUB_SHA} is not on origin/staging, so this commit has not"
+            echo "been through the full check and has soaked nowhere."
+            echo
+            echo "Promote it first — docs/rules/promotion.md — then tag the commit"
+            echo "that staging points at."
+            exit 1
+          fi
+          echo "${GITHUB_SHA} is on origin/staging."
       - uses: actions/download-artifact@v4
         with:
           pattern: aforge-*
