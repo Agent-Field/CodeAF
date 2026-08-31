@@ -81,9 +81,9 @@ machine before the turn starts. A picture gets its numbered picture chip and `[i
 an ordinary file gets its unnumbered file chip.
 
 A folder is not attached, and a drop containing prose or a path that is not a real local
-file remains ordinary text. The same 10MB picture limit, 16MB ordinary-file limit, and
-32MB total ordinary-file limit apply. The visible chip is the confirmation that the drop
-landed; if there is no chip, no file will be sent.
+file remains ordinary text. The 10MB picture limit always applies; over a connection the
+16MB ordinary-file limit and 32MB total ordinary-file limit apply too. The visible chip is
+the confirmation that the drop landed; if there is no chip, no file will be sent.
 
 A full tray does not stop the command: `/attach` adds a second file rather than sending
 the first.
@@ -102,18 +102,19 @@ multiplexers in front of them — *type* the same path instead, one character at
 with nothing marking it as a paste at all.
 
 Either way you get the chip. When the characters stop arriving, aforge reads the run that
-just landed, and if every word in it is a real file on the machine you are sitting at, the
-path comes out of the box and the files go on the tray.
+just landed, and if one complete terminal reading of it names real files on the machine
+you are sitting at, the path comes out of the box and the files go on the tray.
 
 **Nothing happens while you are still typing.** A half-arrived path names nothing, so
 aforge says nothing about it — no complaint, no half-attached file. Only a run that names
 files that are really there is ever converted.
 
 **Every shape a terminal writes is understood:** backslashed spaces
-(`Screenshot\ 2026-08-27\ at\ 1.21.14\ PM.png`), `'single'` and `"double"` quotes,
-`file://` URLs with their `%20` escapes, several files in one drop, `~` for your home
-directory, and a drop dropped after words you had already typed — `what font is` followed
-by a screenshot keeps the words and puts `[image #1]` where the path was.
+(`Screenshot\ 2026-08-27\ at\ 1.21.14\ PM.png`), raw un-escaped spaces, `'single'` and
+`"double"` quotes, `file://` URLs and bare paths with `%20` escapes, several files joined
+by spaces or newlines, and the narrow no-break space macOS puts before `AM` or `PM` in a
+screenshot name. `~` means your home directory. A drop after words you had already typed
+keeps the words and puts `[image #1]` where the path was.
 
 **Typing a slash command is untouched.** `/help`, `/model`, `/export` and the rest are
 told from a dropped path by the separator inside it: `/var/folders/…` has one, `/help`
@@ -344,7 +345,8 @@ so `/attach` is the general word and `/image` is the specific one.
 
 On the tray the two are told apart by their own glyph — `▣ #1 shot.png` for a picture,
 `▤ server.log` for a file — and by the number, which only a picture carries. In the
-transcript a picture is marked `[#1 shot.png]` and a file `[server.log]`.
+transcript a picture keeps its `[#1 shot.png]` marker and draws a thumbnail underneath;
+an ordinary file remains the `[server.log]` marker alone.
 
 ## Drag a file in, or paste a path
 
