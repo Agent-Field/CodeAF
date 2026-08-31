@@ -217,7 +217,7 @@ var settingUI = map[string]settingMeta{
 			"Any key stops the clock; 0 turns it off.",
 	},
 	config.KeyBashBackgroundAfter: {
-		tab: tabSession, label: "background after", widget: widgetText,
+		tab: tabSafety, label: "background after", widget: widgetText,
 		about: config.BashBackgroundAfterHint,
 	},
 	// THE FOUR ssh ROWS ARE THIS CONVERSATION'S TOO, because a connection to

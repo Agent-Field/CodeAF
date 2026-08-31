@@ -1348,7 +1348,7 @@ Session · Context · Workspace · Display · Spending · Safety · Tasks · Pro
 ```
 
 **Session** — the rows this conversation carries that belong nowhere else: "memory",
-"fallback models", "background after", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
+"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
 "ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with
@@ -1376,8 +1376,8 @@ and "practice". `/budget` and `/limits` open it. *Models, context, and what it c
 every row and every door onto them.
 
 **Safety** — what aforge may do without asking you first. Rows: "ask before running",
-"tool exceptions", "shell command rules", "guardian", "approval countdown", "task
-countdown", "who settles work that needs a look".
+"tool exceptions", "shell command rules", "guardian", "approval countdown", "background
+after", "task countdown", "who settles work that needs a look".
 
 **Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
 work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task model",

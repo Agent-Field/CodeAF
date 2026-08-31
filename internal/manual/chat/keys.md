@@ -2060,7 +2060,7 @@ The **background after** row is different. Its key is
 `bash.background_after_seconds`, and the session engine and the visible countdown arm
 from it together at launch. A change lands on the **next session**, not at the end of the
 current turn. Because this row controls how hard the machine may be worked,
-`change_setting` refuses it; open `/settings`, choose the Session tab, and change the row
+`change_setting` refuses it; open `/settings`, choose the Safety tab, and change the row
 yourself.
 
 With `ui.mouse` off, every drag belongs to your terminal permanently, and `ctrl+s` has
