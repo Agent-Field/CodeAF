@@ -1220,6 +1220,14 @@ func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 	if cut.Reason == provider.CutBabble {
 		return babbleRetries
 	}
+	// A machinery leak gets the babble budget for the babble reason: the answer
+	// came back wrong-shaped, and asking the same lane again returns the same
+	// shape. The one re-ask exists because the ledger struck the lane on the
+	// cut, so the next ask lands on a different endpoint serving the same
+	// model — where the same model usually answers in language.
+	if cut.Reason == provider.CutMachinery {
+		return babbleRetries
+	}
 	if !rerouted {
 		return blindRetries
 	}
@@ -1261,6 +1269,8 @@ func cutNotice(cut *provider.StreamCut) string {
 		return "the model went quiet mid-reply — asking again"
 	case provider.CutOverrun:
 		return "the reply kept going and never finished — asking again"
+	case provider.CutMachinery:
+		return "the model answered in its own internal markup instead of words — that text was dropped, asking again"
 	default:
 		return "nothing came back from the model — asking again"
 	}
@@ -1281,6 +1291,8 @@ func hopNotice(cut *provider.StreamCut, next string) string {
 		return "the model kept going quiet mid-reply — finishing this one on " + next
 	case provider.CutOverrun:
 		return "the reply kept running on without finishing — finishing this one on " + next
+	case provider.CutMachinery:
+		return "the model kept answering in its own internal markup — finishing this one on " + next
 	default:
 		return "nothing kept coming back from the model — finishing this one on " + next
 	}

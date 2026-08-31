@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
+
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -274,5 +276,40 @@ func TestAnOverlayRowNeverOutgrowsItsWidth(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A SWITCH MADE WHILE WORK IS RUNNING SAYS WHAT IT DID NOT TOUCH. A task's
+// model is frozen at admission, so the person who runs /model mid-task and
+// watches the task keep its old voice has been told nothing — unless the note
+// says so at the moment they acted. On 2026-08-31 somebody did exactly this
+// and could not tell a working feature from a broken one.
+func TestSwitchingModelsMidTaskSaysRunningWorkKeepsItsModel(t *testing.T) {
+	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
+	a := pickerApp(t, agent, pickerCatalog)
+	a.taskUpdate(update(7, "long triage", session.TaskRunning, session.TaskNotice{}))
+
+	typeLine(t, a, "/model gpt-5-classic")
+	// The frame wraps the note to its width, so the sentence is read back with
+	// the wrap taken out rather than matched against one lucky layout.
+	got := strings.Join(strings.Fields(plain(frame(a))), " ")
+	if !strings.Contains(got, "tasks already running keep the model they started on") {
+		t.Fatalf("the switch did not say what it left alone:\n%s", got)
+	}
+}
+
+// And with nothing running, the line is just the model — a clause about tasks
+// on an idle session is noise about work that does not exist.
+func TestSwitchingModelsOnAnIdleSessionSaysOnlyTheModel(t *testing.T) {
+	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
+	a := pickerApp(t, agent, pickerCatalog)
+
+	typeLine(t, a, "/model gpt-5-classic")
+	got := plain(frame(a))
+	if strings.Contains(got, "already running") {
+		t.Fatalf("an idle switch talked about running tasks:\n%s", got)
+	}
+	if !strings.Contains(got, "model · gpt-5-classic") {
+		t.Fatalf("the switch was not said out loud:\n%s", got)
 	}
 }

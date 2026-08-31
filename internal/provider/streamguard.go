@@ -202,6 +202,13 @@ const (
 	// CutOverrun is a reply that never stopped: an endpoint that kept writing
 	// past the wall its own history earned it. See [wallFor].
 	CutOverrun
+	// CutMachinery is a reply that is the model's own tool grammar written as
+	// text: the request declared tools, the answer called none, and the content
+	// spells a declared tool's name fenced in delimiter bytes inside
+	// delimiter-dense text. It means the serving endpoint did not parse its
+	// model's chat template, and the reply is unusable no matter how healthy
+	// the stream that carried it was. See [MachineryLeak].
+	CutMachinery
 )
 
 // StreamCut is the error a guarded stream fails with. It is a distinct type
@@ -260,6 +267,8 @@ func (c *StreamCut) Error() string {
 		return fmt.Sprintf("the model stopped mid-reply and went quiet for %s", roundSeconds(c.Waited))
 	case CutOverrun:
 		return fmt.Sprintf("the reply ran past %s without finishing and was cut", roundSeconds(c.Waited))
+	case CutMachinery:
+		return "the reply was the model's own internal markup instead of an answer and was cut"
 	default:
 		return "the reply stopped being language and was cut"
 	}

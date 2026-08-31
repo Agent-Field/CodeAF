@@ -749,6 +749,19 @@ func (c *Client) completionInOnePiece(
 		0,
 		response.Usage.CacheReadTokens(),
 	)
+	// Both epilogues or neither: the whole-body path reads the same fourth
+	// failure plane the streamed one does, and for the same reason — every
+	// headless worker answers whole, and a guard on one transport is a guard a
+	// change of default silently removes.
+	if cut := c.machineryCut(ctx, request, &response, served, began, responseText(&response)); cut != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			began: logBegan, status: status, served: served, err: cut,
+			responseBody: payload,
+		})
+		c.bill(ctx, c.modelFor(request), &response)
+		return nil, false, cut
+	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it. The caller decides whether to ask again.
 	relearned := c.learnFromAnswer(c.modelFor(request), request, &response)
@@ -881,6 +894,30 @@ func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text s
 	cut.Provider = strings.TrimSpace(served)
 	cut.Ran = c.clock().Sub(began)
 	cut.Tokens = outputTokens(nil, text)
+}
+
+// machineryCut reads a COMPLETE answer for the fourth failure plane — the
+// reply that is the model's own tool grammar written as text ([MachineryLeak])
+// — and returns the cut to fail the call with, or nil for a clean answer.
+//
+// It runs at the epilogue rather than inside the read loop because the shape
+// can only be judged whole: a healthy tool-calling reply and a leak can share
+// their first five hundred bytes. And it does everything the mid-stream cuts
+// do, for the same reasons written at their site: the lane is struck so the
+// ladder's next ask lands somewhere else, and the endpoint pin is released
+// because an endpoint serving unparsed grammar is failing this lineage.
+func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+	// It answers to the same switch the degeneration guard does, because it is
+	// the same kind of judgment — a reading of the reply's shape — and `reply
+	// guard off` promises the person sees whatever arrives.
+	if !babbleGuardOn(ctx) || !MachineryLeak(request, response) {
+		return nil
+	}
+	cut := &StreamCut{Reason: CutMachinery}
+	c.stampCut(cut, served, began, text)
+	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	c.releaseEndpoint(ctx, c.modelFor(request))
+	return cut
 }
 
 // completeWithMessagesStreaming performs one completion over a GUARDED stream:
@@ -1334,6 +1371,21 @@ func (c *Client) completeWithMessagesStreaming(
 		)
 	} else {
 		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
+	}
+	// A reply that is the model's own tool grammar as text ends the call as a
+	// cut even though every stream bound was met: the endpoint answered 200 and
+	// served something no reader of it can use. The row carries the cut, and
+	// the money is still banked — the provider counted these tokens whether or
+	// not the answer was language. It sits on BOTH epilogues or on neither,
+	// exactly as the learning below: the leak is a property of the endpoint,
+	// not of the transport that carried it.
+	if cut := c.machineryCut(ctx, request, response, served, began, content.String()); cut != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+		})
+		c.bill(ctx, c.modelFor(request), response)
+		return nil, false, cut
 	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it — the same reading [Client.completionInOnePiece] makes about the

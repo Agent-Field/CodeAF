@@ -170,6 +170,32 @@ A slug the catalog has never carried is still **taken at its word**, exactly as 
 aforge may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
+## I changed the model but my task is still on the old one — /model does not move a running task's model
+
+`/model` moves the **conversation**. Work already handed over is not moved: a task's model
+is settled the moment the task is admitted and kept for its whole life, so a task that was
+running when you switched carries on in the voice it started in. That is deliberate — the
+switch you made mid-thought does not silently change the terms of work you already
+approved.
+
+When you switch while tasks are running, the note in the conversation says so in the same
+line that names the new model:
+
+```
+model · anthropic/claude-opus-5 — tasks already running keep the model they started on
+```
+
+With nothing running, the note is just `model · <the model>`.
+
+**To move one running task**, walk into its room and press the `task <model>` part of the
+status line — the ordinary picker opens aimed at that task, and the change takes effect on
+the task's next turn. That room is the only door; there is no command or setting that
+re-models running work from outside.
+
+**New tasks follow the switch.** Work admitted after `/model` runs on the model the
+conversation is now on — unless you have set `task.model` in settings, which always wins,
+or you name a model for that one task in words.
+
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
@@ -893,6 +919,42 @@ or `off`, and the default is **on**. Off means you see whatever arrives. You can
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
 reading.
+
+## Strange tags instead of an answer — the reply was tool markup, odd tokens like `<|...|>` on the screen
+
+Some providers serve a model without translating its private tool-calling syntax, and the
+model — asked to use a tool — writes the call as visible text: angle brackets, bars, a tool
+name, a run of JSON, and no answer anywhere in it. The reply is well-formed as far as the
+connection can tell, so without its own guard aforge would show it to you and keep going.
+
+aforge reads the finished reply's shape — mostly symbols, a tool it was actually offered
+spelled inside the markup, and no real tool call attached — and cuts it. **None of the
+markup is kept**: not in the conversation, not sent back to the model. A dim line says
+
+```
+the model answered in its own internal markup instead of words — that text was dropped, asking again
+```
+
+and the same question is asked **once** more. The provider that served the markup is set
+aside first, so the retry genuinely lands somewhere else. If the markup keeps coming, the
+turn moves to the next model in your `fallback models` row, saying so:
+
+```
+the model kept answering in its own internal markup — finishing this one on openai/gpt-5-mini
+```
+
+With nowhere left to go, the turn ends in
+`the reply was the model's own internal markup instead of an answer and was cut`, and
+`/model` is the door — a different model, or the same model once its provider recovers.
+
+**What it will not cut.** A reply with a fenced code block in it is never judged — asking
+what a tool call looks like gets you an honest answer full of exactly this syntax. Prose
+that merely names a tool is safe: the markup has to be the substance of the reply, not a
+word in a sentence. And a conversation with no tools available cannot trigger it at all.
+
+**The switch is the same one.** `reply guard` on the **Providers** tab of `/settings`
+turns this off together with the repetition guard above; off means you see whatever
+arrives.
 
 ## Why does the same conversation suddenly cost more — what this conversation has cost with /cost
 
