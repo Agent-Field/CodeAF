@@ -38,10 +38,28 @@ jobs:
   # tests that fail on a clean tree; they are skipped here so that red in this
   # job means this change caused it. The ledger is the debt and shrinking it is
   # the work — see the file's own header.
-  full-tests:
-    name: full tests
+  #
+  # IN THREE SHARDS, BECAUSE THE MACHINE IS SMALL AND THE BINARIES ARE NOT. A
+  # free-plan private repository gets a two-core, seven-gigabyte runner, and this
+  # repository's test binaries are heavy — internal/tui3's links most of the
+  # product. The suite's first run died of exactly that: every package result in
+  # by seven minutes except the eight link-heaviest, then thirteen silent
+  # minutes, then the runner itself was shut down under it. Test time was never
+  # the problem — 483 seconds across 82 packages — the peak was. Three machines
+  # holding a third of the load each stay comfortably inside their memory, and
+  # the suite's wall clock becomes compile-plus-a-few-minutes.
+  #
+  # The split is round-robin over `go list` order, computed at run time. Not a
+  # hand-kept list of packages per shard: a list would go stale with the next
+  # package added, and stale here means silently untested.
+  full-tests-shard:
+    name: full tests ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -52,19 +70,40 @@ jobs:
       # A short TMPDIR, because at least one test builds a unix socket under it
       # and the default runner path is long enough to overflow the 104-byte
       # sun_path limit. Cheaper to give it room than to skip the test.
+      #
+      # The eight-minute -timeout is per test binary and exists so that a hang
+      # says which package hung — the alternative was the thirteen silent
+      # minutes above, which named nothing.
       - name: Test
         env:
           TMPDIR: /tmp/aforge-ci
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR"
           skip="$(grep -v -e '^#' -e '^[[:space:]]*$' .github/known-red.txt | paste -sd'|' -)"
-          echo "Skipping ${skip}"
           # internal/swepro is excluded the same way the Makefile excludes it —
           # it arrived with its own failures and fixing them was not on the way
           # in. internal/swepro/EMBEDDING.md is the to-do.
-          pkgs="$(go list ./... | grep -v '/internal/swepro/')"
-          go test -skip "^(${skip})$" $pkgs
+          pkgs="$(go list ./... | grep -v '/internal/swepro/' | awk -v s="$SHARD" 'NR % 3 == s')"
+          echo "shard ${SHARD}: $(echo "$pkgs" | wc -l) packages, skipping ${skip}"
+          go test -timeout 8m -skip "^(${skip})$" $pkgs
+
+  # ONE NAME FOR THE THREE, for the same reason cross build has one below: a
+  # branch rule can only require a name it can spell, and a matrix's legs are
+  # not spellable in advance.
+  full-tests:
+    name: full tests
+    needs: [full-tests-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        run: |
+          set -euo pipefail
+          result='${{ needs.full-tests-shard.result }}'
+          echo "full tests shards: ${result}"
+          [ "$result" = "success" ]
 
   # EVERY PLATFORM THE PRODUCT SHIPS ON, COMPILED. This is the one gate here
   # whose answer is identical on every machine and every run, so it is the one
