@@ -102,27 +102,15 @@ func run() error {
 	// because none of them registers anything of its own.
 	installSubharnesses()
 	if len(os.Args) < 2 {
-		// No arguments opens the resident surface. On branch chat-v3 that
-		// surface IS v3 (docs/CHAT-V3.md, "Entry and cutover"); v2 stays
-		// reachable behind its flag until the V3-3 deletion.
+		// No arguments opens the chat surface, and that surface is v3. The v2
+		// surface and its --v2 door (flag and environment pin both) were removed
+		// after v3 had been the default long enough that nothing opened them.
 		tuneForTheSurface()
-		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
-			return runChatV2(rest)
-		}
 		return runChatV3(nil)
 	}
 	switch os.Args[1] {
 	case "chat":
 		tuneForTheSurface()
-		// The v2 surface is chosen before the old one reads a flag, so the old
-		// path runs the same bytes it ran yesterday (11.1: disconnect, don't
-		// delete). Without --v2 or AFORGE_CHAT_V2 nothing here changes.
-		if v2, rest := wantChatV2(os.Args[2:], os.Getenv); v2 {
-			return runChatV2(rest)
-		}
-		// On branch chat-v3, `aforge chat` IS v3 (docs/CHAT-V3.md, "Entry and
-		// cutover"). runChat stays reachable through the no-argument path
-		// until v3 reaches parity in substance.
 		return runChatV3(os.Args[2:])
 	case "resume":
 		// The chat surface, opened on the list of conversations this directory
