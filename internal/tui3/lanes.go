@@ -467,18 +467,16 @@ func laneRateWord(rate float64) string {
 // moment the chooser landed. A row like that is worse than a blank one: it is a
 // measurement attributed to a machine that did not make it.
 func laneSpeedWord(views []laneView, now string) string {
-	best, ok := laneExactly(views, now)
+	best, ok := laneShown(views, now)
 	if !ok {
-		if best, ok = bestLane(views); !ok {
-			return ""
-		}
+		return ""
 	}
 	parts := make([]string, 0, 2)
 	if word := laneSecondsWord(best.TTFT); word != "" {
 		parts = append(parts, laneUpMark+word)
 	}
-	if best.Rate > 0 {
-		parts = append(parts, strconv.Itoa(int(math.Round(best.Rate)))+"t/s")
+	if word := laneRateTight(best.Rate); word != "" {
+		parts = append(parts, word)
 	}
 	speed := strings.Join(parts, " ")
 	if now == "" {
@@ -489,6 +487,37 @@ func laneSpeedWord(views []laneView, now string) string {
 		return via
 	}
 	return speed + " · " + via
+}
+
+// laneShown is THE LANE A MODEL'S ROW SPEAKS FOR: the one the chooser would
+// send the next turn to when anything is believed about it, and the best-known
+// lane otherwise. False when nothing is believed at all, which is every row on
+// a machine that has just started.
+//
+// It is one function because the row's numbers and the row's NAME have to come
+// from the same view. They did not always: the tail drew whichever lane this
+// file's own sort put first and then wrote the chooser's name after them, which
+// was invisible while the two agreed and became a measurement attributed to a
+// machine that did not make it the moment they stopped.
+func laneShown(views []laneView, now string) (laneView, bool) {
+	if best, ok := laneExactly(views, now); ok {
+		return best, true
+	}
+	return bestLane(views)
+}
+
+// laneRateTight is a throughput in the picker row's own spelling — `58t/s`,
+// with no space in it.
+//
+// IT IS TIGHTER THAN THE FOLD'S ([laneRateWord]) ON PURPOSE. Inside an unfolded
+// model the rate sits in a row of four numbers with room around them and reads
+// as a measurement; on the model's own line it is one ranked fact among seven
+// competing for a sixty-cell frame, and the space would be a cell spent on air.
+func laneRateTight(rate float64) string {
+	if rate <= 0 {
+		return ""
+	}
+	return strconv.Itoa(int(math.Round(rate))) + "t/s"
 }
 
 // laneExactly is one lane's view by its whole name, false when nothing is
@@ -513,48 +542,63 @@ func laneExactly(views []laneView, name string) (laneView, bool) {
 // cannot draw the separator either.
 const laneUpMark = "▲"
 
-// laneNameWidth is the column the lane names sit in, so the numbers under an
-// unfolded model line up and can be read down rather than across. Fourteen
-// takes every lane name the sheet has published so far and truncates the rest.
-const laneNameWidth = 14
-
-// laneRowText is one lane under an unfolded model, as the row's two halves: the
-// name, and the dim tail of what is believed about it.
+// ── ONE LANE'S ROW, RANKED ──────────────────────────────────────────────────
 //
-//	cloudflare      0.8s  58 t/s  100%  $1.3  ▁▂▁▃▁▂  no tools
+// laneRowPlan is one lane under an unfolded model as a row the fitter can lay
+// out at any width (rowfit.go): the name, and what is believed about it in the
+// order it would be given up.
+//
+//	cloudflare · 0.8s · 58 t/s · $1.32/M · no tools · 100% · ▁▂▁▃▁▂
+//
+// THE ORDER IS WHAT WOULD CHANGE THE ANSWER YOU GET:
+//
+//	1  the name        which machine this is — the primary, never given up
+//	2  the first token the wait you will feel, and the number the whole fold
+//	                   exists to compare
+//	3  the throughput  how fast it writes once it has started
+//	4  the price out   what an answer from it costs
+//	5  the note        THE ONE THING WRONG WITH IT, and it outranks uptime
+//	                   deliberately: `no tools` means the answer comes back
+//	                   WRONG and `out ≤ 65k` means it comes back HALF, while a
+//	                   99% uptime is a failure you find out about immediately
+//	                   and retry through. A defect that is invisible in the
+//	                   answer beats a defect that announces itself.
+//	6  the uptime      how often it is there at all
+//	7  the sparkline   our own last sightings — the most expensive cells on the
+//	                   row and the least readable at a glance, so they are the
+//	                   first thing a narrow frame spends
 //
 // EVERY FIELD DISAPPEARS WHEN IT IS UNKNOWN and the row stays readable without
 // it, which is why the tail is joined rather than laid out in fixed columns
 // past the name: a row of empty columns is a row that looks broken.
-func laneRowText(view laneView) (string, string) {
+func laneRowPlan(view laneView) rowPlan {
 	// THE NAME IS LOWERCASED, as every name this surface draws is. The wire
 	// spells a lane however its vendor felt that morning — `Cloudflare`,
 	// `DeepInfra`, `GMICloud` — and a column of three different capitalisation
 	// styles is a column that reads as three different kinds of thing.
-	label := strings.ToLower(view.Name)
-	if len(label) < laneNameWidth {
-		label += strings.Repeat(" ", laneNameWidth-len(label))
-	}
-	parts := make([]string, 0, 6)
-	if word := laneSecondsWord(view.TTFT); word != "" {
-		parts = append(parts, word)
-	}
-	if word := laneRateWord(view.Rate); word != "" {
-		parts = append(parts, word)
-	}
+	plan := rowPlan{primary: strings.ToLower(view.Name)}
+	uptime := rowField{}
 	if view.Uptime > 0 {
-		parts = append(parts, strconv.Itoa(int(math.Round(view.Uptime)))+"%")
+		uptime = rowSay(strconv.Itoa(int(math.Round(view.Uptime))) + "%")
 	}
+	price := rowField{}
 	if view.PriceOut > 0 {
-		parts = append(parts, "$"+perMillion(view.PriceOut)+"/M")
+		price = rowSay("$"+perMillion(view.PriceOut)+"/M", "$"+perMillion(view.PriceOut))
 	}
-	if spark := barSpark(view.Sightings, 0, laneSightings); spark != "" {
-		parts = append(parts, spark)
+	plan.fields = []rowField{
+		rowSay(laneSecondsWord(view.TTFT)),
+		rowSay(laneRateWord(view.Rate), laneRateTight(view.Rate)),
+		price,
+		rowSay(laneNote(view)),
+		uptime,
+		rowSay(barSpark(view.Sightings, 0, laneSightings)),
 	}
-	if note := laneNote(view); note != "" {
-		parts = append(parts, note)
-	}
-	return label, strings.Join(parts, "  ")
+	return plan
+}
+
+// laneRowText is that plan in room cells, as the row's two halves.
+func laneRowText(view laneView, room int) (string, string) {
+	return laneRowPlan(view).fit(room)
 }
 
 // laneMaxOutFloor is the output ceiling below which a lane is worth warning
