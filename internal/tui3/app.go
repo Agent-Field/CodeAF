@@ -3123,6 +3123,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
+	case roomJobLogMsg:
+		// A BACKGROUND JOB'S LOG, ONE READING LATER (roomjoblog.go). The reader
+		// itself decides whether another beat is owed, because the row it watches
+		// is what says the work is over.
+		return a, tea.Batch(a.roomJobRead(msg), a.wake())
+
 	case homeNewsMsg:
 		a.tookHomeNews(msg)
 		return a, nil
