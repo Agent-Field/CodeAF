@@ -588,8 +588,20 @@ func contextWord(tokens int) string {
 // modelNote is the dim tail of one picker row: "128k · $0.08/$0.15 per M ·
 // elo 1243", with each part left out when the catalog never said. Empty when
 // nothing is known, which is what a built-in row answers.
-func modelNote(model Model) string {
-	parts := make([]string, 0, 4)
+func modelNote(model Model) string { return modelNoteVia(model, "") }
+
+// modelNoteVia is that tail with the LANES on the end of it, and the lane the
+// caller already knows this model is pinned to — empty when it is not pinned or
+// when the caller has no profile to ask.
+//
+//	1M · $0.09/$0.18 per M · elo 1290 · ▲0.8s 58t/s · via cloudflare
+//
+// THE SPEED IS THE POSTERIOR OF THE BEST LANE, and it is absent whole whenever
+// the ledger has never heard of this model — which is every row on a machine
+// that has just started, and is why the tail is exactly what it always was
+// there (lanes.go states the three laws this obeys).
+func modelNoteVia(model Model, pin string) string {
+	parts := make([]string, 0, 5)
 	if window := contextWord(model.ContextLength); window != "" {
 		parts = append(parts, window)
 	}
@@ -601,6 +613,19 @@ func modelNote(model Model) string {
 	}
 	if modalities := ModalityWord(model.Input, model.Output); modalities != "" {
 		parts = append(parts, modalities)
+	}
+	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
+	// milliseconds cannot change a figure rounded to a tenth of a second, and
+	// threading a moment through every list on this surface to prove it would
+	// be a parameter nobody could ever see the effect of.
+	now := timeNow()
+	views := laneViews(model.ID, now)
+	via := pin
+	if via == "" {
+		via = laneAuto(model.ID, views, now)
+	}
+	if speed := laneSpeedWord(views, via); speed != "" {
+		parts = append(parts, speed)
 	}
 	return strings.Join(parts, " · ")
 }
