@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -22,8 +23,8 @@ func clearWebSearchFlags(t *testing.T) {
 
 func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
 	// V7: An openrouter caller with no flags or keys reaches Firecrawl, sends
-	// the minimum-credit request, and receives rendered results with Firecrawl
-	// named in the title and metadata.
+	// one main-content request, and receives rendered page content with
+	// Firecrawl named in the title and metadata.
 	t.Setenv("CODEAF_WEBSEARCH_PROVIDER", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
 	t.Setenv("EXA_API_KEY", "")
@@ -52,11 +53,12 @@ func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
 		if payload.Params.Arguments["query"] != "go tools" || payload.Params.Arguments["limit"] != float64(8) {
 			t.Errorf("arguments = %#v", payload.Params.Arguments)
 		}
-		if _, found := payload.Params.Arguments["scrapeOptions"]; found {
-			t.Errorf("default search requested page content: %#v", payload.Params.Arguments)
+		scrape, ok := payload.Params.Arguments["scrapeOptions"].(map[string]any)
+		if !ok || scrape["onlyMainContent"] != true {
+			t.Errorf("default search omitted page content: %#v", payload.Params.Arguments)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(writer, `{"result":{"content":[{"type":"text","text":"{\"success\":true,\"data\":{\"web\":[{\"title\":\"Go tools\",\"url\":\"https://go.dev/doc\",\"description\":\"Go documentation.\"}]}}"}]}}`)
+		_, _ = io.WriteString(writer, `{"result":{"content":[{"type":"text","text":"{\"success\":true,\"data\":{\"web\":[{\"title\":\"Go tools\",\"url\":\"https://go.dev/doc\",\"description\":\"Go documentation.\",\"markdown\":\"# Go tools\\n\\nInstall and use the toolchain.\"}]}}"}]}}`)
 	}))
 	ctx := WithWebHTTPClient(context.Background(), server.Client())
 	ctx = WithWebSearchEndpoints(
@@ -67,7 +69,7 @@ func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantOutput := "1. Go tools — https://go.dev/doc\n   Go documentation."
+	wantOutput := "1. Go tools — https://go.dev/doc\n   Go documentation.\n\n# Go tools\n\nInstall and use the toolchain."
 	if result.Output != wantOutput || result.Title != "Firecrawl Web Search: go tools" {
 		t.Fatalf("result = %#v", result)
 	}
@@ -105,9 +107,30 @@ func TestFirecrawlWebSearchSendsOptionalBearer(t *testing.T) {
 	}
 }
 
-func TestFirecrawlPreferredLivecrawlRequestsAndCapsContent(t *testing.T) {
-	// V7: Firecrawl requests paid page content only for livecrawl: preferred,
-	// then caps each Markdown body by runes before rendering it.
+func TestFirecrawlLiveWebSearchReturnsPageContent(t *testing.T) {
+	if os.Getenv("AFORGE_LIVE_FIRECRAWL") != "1" {
+		t.Skip("set AFORGE_LIVE_FIRECRAWL=1 to call the live endpoint")
+	}
+	t.Setenv("CODEAF_WEBSEARCH_PROVIDER", "firecrawl")
+	clearWebSearchFlags(t)
+	ctx := WithWebOutputDir(context.Background(), t.TempDir())
+	result, err := executeWebTest(t, New(t.TempDir()), ctx, "websearch", map[string]any{
+		"query": "Go programming language release notes", "numResults": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Title != "Firecrawl Web Search: Go programming language release notes" {
+		t.Fatalf("Title = %q", result.Title)
+	}
+	if !strings.Contains(result.Output, " — http") || !strings.Contains(result.Output, "\n\n") {
+		t.Fatalf("live Firecrawl result did not carry page content: %q", result.Output)
+	}
+}
+
+func TestFirecrawlAlwaysRequestsAndCapsContent(t *testing.T) {
+	// V7: Firecrawl always requests main-page content, then caps each Markdown
+	// body by runes before rendering it.
 	t.Setenv("CODEAF_WEBSEARCH_PROVIDER", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
 	clearWebSearchFlags(t)
@@ -136,7 +159,7 @@ func TestFirecrawlPreferredLivecrawlRequestsAndCapsContent(t *testing.T) {
 	)
 	ctx = WithWebOutputDir(ctx, t.TempDir())
 	result, err := executeWebTest(t, New(t.TempDir()), ctx, "websearch", map[string]any{
-		"query": "unicode", "livecrawl": "preferred", "contextMaxCharacters": 4,
+		"query": "unicode", "contextMaxCharacters": 4,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +173,7 @@ func TestFirecrawlPreferredLivecrawlRequestsAndCapsContent(t *testing.T) {
 	// float-to-int conversion, so a value beyond MaxInt64 cannot become a
 	// negative rune-slice bound and crash the tool loop.
 	result, err = executeWebTest(t, New(t.TempDir()), ctx, "websearch", map[string]any{
-		"query": "unicode", "livecrawl": "preferred", "contextMaxCharacters": 1e30,
+		"query": "unicode", "contextMaxCharacters": 1e30,
 	})
 	if err != nil {
 		t.Fatal(err)

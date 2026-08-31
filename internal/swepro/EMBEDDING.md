@@ -534,9 +534,9 @@ keep their precedence, and Firecrawl answers every remaining session. The
 session hash and its FNV-1a implementation are gone.
 
 *Wire and result shape.* Firecrawl uses one stateless `firecrawl_search`
-`tools/call`. Plain searches request snippets only. `livecrawl: preferred` adds
-Markdown scraping, whose per-result content is capped before the readable
-numbered result block is returned. `FIRECRAWL_API_KEY`, read directly rather
+`tools/call`. Every search requests main-content Markdown, whose per-result
+content is capped before the readable numbered result block is returned.
+`FIRECRAWL_API_KEY`, read directly rather
 than added to the frozen environment inventory, becomes an optional bearer
 header. The existing two-endpoint test seam is widened to include Firecrawl;
 Exa and Parallel keep their request and response paths unchanged. The schema

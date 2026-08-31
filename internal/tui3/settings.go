@@ -577,14 +577,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "keep drafts", widget: widgetToggle,
 		about: "keeps the half-typed message in the box across a restart, per directory.",
 	},
-	config.KeyNerdFont: {
-		tab: tabDisplay, label: "nerd font", widget: widgetToggle,
-		about: "draws the chrome with Nerd Font icons. Turn it off if icons show as boxes.",
-	},
-	config.KeyLinearMode: {
-		tab: tabDisplay, label: "linear mode", widget: widgetToggle,
-		about: "single column, no motion, no spinners — the accessible rendering.",
-	},
 	config.KeyTaskColumn: {
 		tab: tabDisplay, label: "task column", widget: widgetToggle,
 		about: "stands the task roster beside the chat. ctrl+g closes it and " +
@@ -594,11 +586,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
 		about: "one-line tips above the box until you have used what each one " +
 			"teaches. Off silences them, and what's-new lines with them.",
-	},
-	config.KeyRailState: {
-		tab: tabDisplay, label: "sidebar", widget: widgetCycle,
-		about: "how much of the right rail stands beside the chat: the full " +
-			"column, a one-column handle, or nothing.",
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,

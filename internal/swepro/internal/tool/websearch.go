@@ -36,9 +36,9 @@ var webSearchSchema = fmt.Sprintf(`{
 	"properties":{
 		"query":{"type":"string","description":"Websearch query"},
 		"numResults":{"type":"number","description":"Number of search results for Exa or Firecrawl (default: 8; Parallel ignores it)"},
-		"livecrawl":{"type":"string","enum":["fallback","preferred"],"description":"Exa live-crawl mode; for Firecrawl, 'preferred' also requests page content and costs scrape credits"},
+		"livecrawl":{"type":"string","enum":["fallback","preferred"],"description":"Exa live-crawl mode; Firecrawl always returns main-page Markdown and ignores this knob"},
 		"type":{"type":"string","enum":["auto","fast","deep"],"description":"Search type for Exa only; Firecrawl and Parallel ignore it"},
-		"contextMaxCharacters":{"type":"number","description":"Maximum context characters for Exa, or Markdown runes per Firecrawl result when livecrawl is 'preferred' (Firecrawl default: %d, maximum: %d; Parallel ignores it)"}
+		"contextMaxCharacters":{"type":"number","description":"Maximum context characters for Exa, or Markdown runes per Firecrawl result (Firecrawl default: %d, maximum: %d; Parallel ignores it)"}
 	},
 	"required":["query"]
 }`, firecrawlContextCharacters, firecrawlMaxContextCharacters)
@@ -216,8 +216,9 @@ func callWebSearchProvider(
 			headers["Authorization"] = "Bearer " + key
 		}
 	}
-	// aforge-embed: D13 — Firecrawl adds a stateless snippet-only request path;
-	// paid page content remains explicit through livecrawl: preferred.
+	// aforge-embed: D13 — Firecrawl returns the main-page Markdown the issue's
+	// zero-setup contract promises. The optional key raises the public quota; it
+	// does not decide whether a result carries content.
 	if provider == "firecrawl" {
 		endpoint = options.firecrawlURL
 		if endpoint == "" {
@@ -227,11 +228,9 @@ func callWebSearchProvider(
 		arguments = map[string]any{
 			"query": input.Query,
 			"limit": nonzeroOr(input.NumResults, 8),
-		}
-		if input.Livecrawl == "preferred" {
-			arguments["scrapeOptions"] = map[string]any{
+			"scrapeOptions": map[string]any{
 				"formats": []string{"markdown"}, "onlyMainContent": true,
-			}
+			},
 		}
 		if key := strings.TrimSpace(os.Getenv("FIRECRAWL_API_KEY")); key != "" {
 			headers["Authorization"] = "Bearer " + key
@@ -241,7 +240,7 @@ func callWebSearchProvider(
 	if err != nil || provider != "firecrawl" {
 		return result, err
 	}
-	return parseFirecrawlResults(result, input.Livecrawl == "preferred", firecrawlContentLimit(input))
+	return parseFirecrawlResults(result, true, firecrawlContentLimit(input))
 }
 
 func firecrawlContentLimit(input webSearchInput) int {

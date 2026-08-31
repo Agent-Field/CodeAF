@@ -110,9 +110,6 @@ const (
 	KeyVisionModel    = "vision_model"
 	KeyAttribution    = "attribution"
 	KeySplitPct       = "split_pct"
-	KeyLinearMode     = "linear_mode"
-	KeyNerdFont       = "nerd_font"
-	KeyRailState      = "rail_state"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
 	// what was typed, and what was half-typed. They are one pair of questions —
@@ -218,13 +215,12 @@ const (
 	KeyTimestamps = "ui.timestamps"
 
 	// KeyTaskColumn is whether the v3 chat opens with the task roster's column
-	// standing beside the conversation. It is a BOOLEAN where the v2 sidebar
-	// ([KeyRailState]) is a choice, because the v3 column has no middle rung: its
-	// two narrower tiers are decided by the frame's own width, and the one answer
-	// a person gives it by hand is whether the column is there at all.
+	// standing beside the conversation. It is a BOOLEAN — the column has no
+	// middle rung: its two narrower tiers are decided by the frame's own width,
+	// and the one answer a person gives it by hand is whether the column is
+	// there at all.
 	//
-	// It is a separate row from the v2 sidebar and must stay one. They are two
-	// surfaces with two shapes, and a person who put v3's column away has said
+	// A person who put v3's column away has said
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
 	// KeyHints is whether the v3 chat shows its earned hints — the one-line tips
@@ -471,27 +467,6 @@ const (
 	KeyContextReuse      = "context_reuse_pct"
 )
 
-// RailStates are the three rungs the v2 right rail collapses through, in the
-// order the chord walks them.
-//
-// IT IS A CHOICE AND NOT A BOOLEAN, and that is the whole reason it is not
-// shaped like [KeyLinearMode]. The rail used to be a drawer with two positions
-// — there, or not there — and the middle rung is what makes the third state
-// worth persisting: a slim handle keeps the ONE thing a hidden rail cannot say
-// (something landed in a conversation you are not in) without keeping the
-// twenty-eight columns that made the open rail read as clutter.
-var RailStates = []string{RailOpen, RailSlim, RailHidden}
-
-// The three rungs by name. They are the strings on disk and in the environment,
-// so they are spelled once here and never quoted anywhere else.
-const (
-	// RailOpen is the full column: threads over work, roughly 30 columns.
-	RailOpen = "open"
-	// RailSlim is the handle: one column carrying at most the unseen dot.
-	RailSlim = "slim"
-	// RailHidden is no rail at all.
-	RailHidden = "hidden"
-)
 
 // ToolApprovalModes are the three answers the tool gate can be set to, in the
 // order they widen: ask about everything, run everything, refuse everything.
@@ -984,34 +959,17 @@ var OperatorEnvPins = []string{
 	// The subharness sets it on the children it spawns; a user who set it
 	// would simply lose their own program.
 	"AFORGE_SWEPRO",
-	// AFORGE_CHAT_V2 selects the chat surface being built beside the current
-	// one, and with it the resident's room-addressing policy. It is plumbing
-	// for the same reason AFORGE_SWEPRO is — it decides which program the
-	// binary is before anything reads a preference — and it is temporary
-	// besides: it disappears one wave after the new surface becomes the
-	// default, which is exactly the lifetime a persisted setting must not have.
-	"AFORGE_CHAT_V2",
-	// AFORGE_CHAT_TRACE turns on the v2 chat surface's journal-versus-screen
-	// trace (internal/tui2/chat/engine.go), which writes into the chat.log the
-	// entry point already opens. It is plumbing rather than a setting for the
-	// reason the whole list exists: it changes nothing about the product, only
-	// how much the build says about itself while a fault is being chased, and a
-	// preference the sheet offered to persist would be a preference for a
-	// noisier log forever. The one line that reports an actual divergence is not
-	// behind it — that one is always on, because a condition that eats replies
-	// does not get to wait for an operator to opt in.
-	"AFORGE_CHAT_TRACE",
 	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,
 	// because there is no question a person using aforge would ask that it
-	// answers. It is plumbing for the same reason AFORGE_CHAT_TRACE is —
-	// diagnostic output a preference sheet has no business persisting.
+	// answers. It is plumbing: diagnostic output a preference sheet has no
+	// business persisting.
 	"AFORGE_WIRE_LOG",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
-	// plumbing for the reason AFORGE_CHAT_V2 is — a wave's escape hatch, not a
+	// plumbing for the reason AFORGE_SWEPRO is — a wave's escape hatch, not a
 	// preference — and it has the same lifetime: it disappears once the gate
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
@@ -1021,7 +979,7 @@ var OperatorEnvPins = []string{
 	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
 	// task's worker carries divide_work, and the sizing judgments read measured
 	// overrun base rates. Set it to 0 and the tree is byte-identical to before
-	// the wave. It is plumbing for the reason AFORGE_CHAT_V2 is — it decides
+	// the wave. It is plumbing for the reason AFORGE_SWEPRO is — it decides
 	// which decomposition doctrine the binary runs, not a preference the
 	// product has an opinion about — and it has the same lifetime: it
 	// disappears when nobody has a reason to turn the default off any more,
@@ -1091,20 +1049,6 @@ const (
 	DefaultSplitPct = 80
 	MinSplitPct     = 25
 	MaxSplitPct     = 85
-
-	// DefaultLinearMode leaves the full v2 surface running: most people want
-	// the motion and the layout, so the accessible single-column rendering
-	// (10.1.5) is a door someone walks through on purpose, not a default they
-	// have to walk back out of.
-	DefaultLinearMode = false
-
-	// DefaultNerdFont draws the v2 chrome with Nerd Font icons, because that is
-	// what the user asked the surface to look like (12.7). Default-on is only
-	// defensible because turning it off costs nothing: the plain tier is not a
-	// degradation but the designed floor — same segments, same order, same
-	// tints, same widths, asserted by a parity gate rather than hoped for — so
-	// a user whose font is not patched loses one keystroke and no layout.
-	DefaultNerdFont = true
 
 	// DefaultHistoryEnabled remembers what was typed, because a prompt is the
 	// most expensive sentence in the product to re-type and the up arrow is the
@@ -1205,20 +1149,9 @@ const (
 	// pinned six months ago and forgot.
 	DefaultSearchProvider = SearchProviderAuto
 
-	// DefaultRailState opens the rail on a window that has never been told
-	// otherwise, and the reason is the one thing a hidden default cannot do:
-	// THE RAIL TEACHES BY EXISTING. A first-run window with no column beside it
-	// is a window whose threads and whose running work are facts the reader has
-	// to be told about in prose; a column that is simply there is the same
-	// sentence said once, in furniture. After the reader collapses it we never
-	// open it again on their behalf — the handle's dot is the only attention
-	// ask this surface has left.
-	DefaultRailState = RailOpen
-
 	// DefaultTaskColumn stands the v3 task column up on a session that has never
-	// been told otherwise, for [DefaultRailState]'s reason said about a different
-	// surface: the column is how a person finds out that this chat runs work you
-	// can walk away from. Once they put it away we never stand it up again on
+	// been told otherwise: THE COLUMN TEACHES BY EXISTING — it is how a person
+	// finds out that this chat runs work you can walk away from. Once they put it away we never stand it up again on
 	// their behalf — the strip is what keeps running work reachable from a frame
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
@@ -2169,33 +2102,6 @@ func (s *Settings) build() []Setting {
 
 	rows = append(rows,
 		Setting{
-			Key: KeyNerdFont, Category: CategoryInterface, Kind: SettingBool,
-			Label: "nerd font", Env: "AFORGE_NERD_FONT",
-			Hint: "draw the v2 chrome with Nerd Font icons instead of the plain glyphs. " +
-				"Turn it off if icons show as boxes — nothing moves, the same marks are drawn " +
-				"as plain characters. Patched fonts work best in their Mono variant. " +
-				"A change lands the next time aforge starts.",
-			read:  func() string { return formatBool(NerdFontAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyNerdFont, raw) },
-		},
-		Setting{
-			Key: KeyLinearMode, Category: CategoryInterface, Kind: SettingBool,
-			Label: "linear mode", Env: "AFORGE_CHAT_LINEAR",
-			Hint: "single column, no motion, no spinners — the accessible rendering (10.1.5) " +
-				"in the v2 chat surface. A change lands the next time aforge starts.",
-			read:  func() string { return formatBool(LinearModeAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
-		},
-		Setting{
-			Key: KeyRailState, Category: CategoryInterface, Kind: SettingChoice,
-			Label: "sidebar", Env: "AFORGE_RAIL", Choices: RailStates,
-			Hint: "how much of the right rail stands beside the chat: open is the full column, " +
-				"slim is a one-column handle that still shows the unseen dot, hidden is nothing. " +
-				"ctrl+o walks the three; this is where the answer is remembered.",
-			read:  func() string { return RailStateAt(dir) },
-			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
-		},
-		Setting{
 			Key: KeyTaskColumn, Category: CategoryInterface, Kind: SettingBool,
 			Label: "task column",
 			Hint: "whether the task roster stands in a column on the right of the chat: the " +
@@ -2780,27 +2686,10 @@ func AttributionAt(profileDir string) bool {
 	return DefaultAttribution
 }
 
-// LinearModeAt resolves whether the v2 chat surface renders in the accessible
-// single-column mode (10.1.5): one column, no motion, no spinners. A
-// malformed pin reads as the default rather than refusing a launch over a
-// rendering preference.
-func LinearModeAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_CHAT_LINEAR")); raw != "" {
-		if value, err := parseBool(raw); err == nil {
-			return value
-		}
-		return DefaultLinearMode
-	}
-	if value, ok := persistedBool(profileDir, KeyLinearMode); ok {
-		return value
-	}
-	return DefaultLinearMode
-}
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
-// into ~/.aforge/v3/history.jsonl. It is shaped exactly like [LinearModeAt],
-// including the forgiveness: a malformed pin reads as the default rather than
-// refusing a launch over a recall list.
+// into ~/.aforge/v3/history.jsonl. A malformed pin reads as the default
+// rather than refusing a launch over a recall list.
 func HistoryEnabledAt(profileDir string) bool {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_HISTORY")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
@@ -2829,44 +2718,7 @@ func DraftPersistAt(profileDir string) bool {
 	return DefaultDraftPersist
 }
 
-// RailStateAt resolves how much of the v2 right rail this window opens with.
-// It is shaped exactly like [LinearModeAt], including the forgiveness: a
-// spelling nobody recognises reads as the default rather than refusing a launch
-// over a rendering preference.
-//
-// The environment PINS it, which is the ordinary registry contract and is worth
-// one sentence here because of what it means for the chord: while AFORGE_RAIL
-// is set, ctrl+o still moves the rail for this window and [SaveRailState] still
-// writes what the reader chose — the pin decides where the NEXT window opens,
-// not what this one may do. A key that stopped working because a variable was
-// exported would be the affordance lying (5.20).
-func RailStateAt(profileDir string) string {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_RAIL")); raw != "" {
-		if state := strings.ToLower(raw); knownRailState(state) {
-			return state
-		}
-		return DefaultRailState
-	}
-	if value, ok := persistedString(profileDir, KeyRailState); ok {
-		if state := strings.ToLower(strings.TrimSpace(value)); knownRailState(state) {
-			return state
-		}
-	}
-	return DefaultRailState
-}
 
-// SaveRailState records the rung the reader collapsed to.
-//
-// It is EXPORTED where [writeBool] and friends are not, because this row is the
-// one interface setting whose value is chosen by a keystroke rather than by
-// visiting the sheet. The surface has no profile directory of its own — the
-// entry point wires the reader and the writer as a pair, the way
-// [Options.SaveSplitPct] already does for the divider — so this is that pair's
-// other half, and it goes through the same [writeChoice] the sheet's own row
-// does. Two doors, one validation.
-func SaveRailState(profileDir, state string) error {
-	return writeChoice(profileDir, KeyRailState, state, RailStates)
-}
 
 // TaskColumnAt resolves whether the v3 chat stands its task column up, default
 // on. A row that will not parse reads as the default rather than as off, for
@@ -2881,7 +2733,7 @@ func TaskColumnAt(profileDir string) bool {
 
 // SaveTaskColumn records what the person did to the column with their hands.
 //
-// It is EXPORTED for [SaveRailState]'s reason, and it is the v3 half of the same
+// It is EXPORTED because the surface writes it from a chord, and it is the v3 half of the same
 // bargain: this is the one interface row whose value is normally chosen by a
 // keystroke rather than by visiting the sheet, so the key needs a door to disk
 // that goes through the same writer the row's own does. Two doors, one
@@ -2900,61 +2752,8 @@ func HintsAt(profileDir string) bool {
 	return DefaultHints
 }
 
-func knownRailState(state string) bool {
-	for _, known := range RailStates {
-		if known == state {
-			return true
-		}
-	}
-	return false
-}
 
-// NerdFontAt resolves whether the v2 chat surface draws its chrome with Nerd
-// Font icons (12.7). It is shaped exactly like [LinearModeAt], including the
-// forgiveness: a malformed pin reads as the default rather than refusing a
-// launch over a rendering preference.
-//
-// This is only the persisted layer of the answer. The command line outranks it,
-// and two things outrank everything: linear mode forces the plain tier — a
-// screen reader reads a private-use codepoint as nothing or as garbage, and a
-// tier that made the accessible mode less accessible would be the affordance
-// lying — and a terminal that cannot draw private use at all vetoes it. See
-// cmd/aforge/chatv2_nerdfont.go, which is where those four layers meet.
-func NerdFontAt(profileDir string) bool {
-	value, _ := NerdFontChosenAt(profileDir)
-	return value
-}
 
-// The sources [NerdFontChosenAt] can name, and the empty string it returns when
-// nobody has chosen at all.
-const (
-	NerdFontSourceNone      = ""
-	NerdFontSourceEnv       = "AFORGE_NERD_FONT"
-	NerdFontSourcePersisted = KeyNerdFont
-)
-
-// NerdFontChosenAt is [NerdFontAt] that also says WHO chose, so a launcher can
-// tell a decision from a default. It matters for exactly one reason: the
-// terminal veto (tokens.DetectGlyphSet) sits BELOW a human's choice and above
-// the built-in default, and a resolver that could not tell the two apart would
-// either override a user or never veto anything.
-//
-// The source is empty when nobody chose — including when the pin is set to
-// something unparseable, because a value nobody can read is not a choice, and
-// it is not a reason to refuse a launch either: it reads as the default,
-// exactly where [LinearModeAt] stops.
-func NerdFontChosenAt(profileDir string) (bool, string) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_NERD_FONT")); raw != "" {
-		if value, err := parseBool(raw); err == nil {
-			return value, NerdFontSourceEnv
-		}
-		return DefaultNerdFont, NerdFontSourceNone
-	}
-	if value, ok := persistedBool(profileDir, KeyNerdFont); ok {
-		return value, NerdFontSourcePersisted
-	}
-	return DefaultNerdFont, NerdFontSourceNone
-}
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {
