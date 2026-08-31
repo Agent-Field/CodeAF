@@ -161,10 +161,17 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	if got := settingTabs[a.sheet.tab]; got != tabSession {
 		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
 	}
-	for _, want := range []string{"memory", "fallback models", "ssh reuse"} {
+	for _, want := range []string{"memory", "fallback models", "ssh reuse", "background after"} {
 		if !sheetHas(a, want) {
 			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
 		}
+	}
+	// The new clock makes this tab one row taller than its 16-row window. Walk
+	// to its last row and prove the old tail is still reachable through the
+	// panel's ordinary scroll rather than silently clipped off it.
+	cursorTo(t, a, config.KeySpendRail)
+	if !sheetHas(a, "session ceiling") {
+		t.Fatalf("the Session tab cannot scroll to its last row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 	if sheetHas(a, "compact at") {
 		t.Fatal("a Context row is showing on the Session tab")

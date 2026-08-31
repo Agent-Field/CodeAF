@@ -216,6 +216,10 @@ var settingUI = map[string]settingMeta{
 		about: "seconds an approval question waits before it answers no for you. " +
 			"Any key stops the clock; 0 turns it off.",
 	},
+	config.KeyBashBackgroundAfter: {
+		tab: tabSession, label: "background after", widget: widgetText,
+		about: config.BashBackgroundAfterHint,
+	},
 	// THE FOUR ssh ROWS ARE THIS CONVERSATION'S TOO, because a connection to
 	// another machine is a property of the session that runs over it and of
 	// nothing else on this screen — a change lands on the next launch, which the
@@ -574,8 +578,8 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTaskColumn: {
 		tab: tabDisplay, label: "task column", widget: widgetToggle,
-		about: "stands the task roster beside the chat. ctrl+g closes it and " +
-			"brings it back; this is where the answer is remembered.",
+		about: "stands the task roster beside the chat. With no foreground command " +
+			"to background, ctrl+g closes it and brings it back; this is where the answer is remembered.",
 	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,

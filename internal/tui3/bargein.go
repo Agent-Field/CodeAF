@@ -104,13 +104,6 @@ const bargeKey = "shift+enter"
 // and sends`; they are the same three words because they are the same act.
 const bargeSendWord = "stops and sends"
 
-// bargeHint is the hint slot's line while a turn is running with something in
-// the box. It teaches BOTH meanings, because the whole defect here is that the
-// safe one is discoverable and the urgent one is not — and it names them in the
-// order a person meets them: the key they are about to press, then the key they
-// did not know about (render.go's [app.hintWord] for the slot's grammar).
-var bargeHint = "enter waits · " + bargeKey + " " + bargeSendWord
-
 // bargeOffered reports whether the chord should be named — which is exactly
 // whether it would DO anything if it were pressed right now.
 //

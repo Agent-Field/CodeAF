@@ -183,7 +183,7 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 	if a.bargeOffered() {
 		t.Fatal("the chord is offered on a terminal that never said it could send it")
 	}
-	if got := a.hintWord(); got != steerShortHint {
+	if got := a.hintWord(); got != steerShortHint+" · esc interrupt" {
 		t.Fatalf("hint = %q, want the plain-enter steer where the chord cannot work", got)
 	}
 	if strings.Contains(plain(frame(a)), bargeKey) {
@@ -206,7 +206,8 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 
 // ── discoverability ─────────────────────────────────────────────────────────
 
-// THE HINT TEACHES BOTH MEANINGS, AND ONLY IN THE ONE STATE THEY ARE BOTH TRUE.
+// H2: the stop-and-send chord joins the one composed running-turn line only in
+// the state where the chord and the sentence it would send are both present.
 func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T) {
 	a, _ := bargeable(t, "reading the tree. ")
 
@@ -221,17 +222,17 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	if !strings.Contains(got, "enter") || !strings.Contains(got, bargeKey) {
 		t.Fatalf("hint = %q, want both meanings named", got)
 	}
-	// AND THE LINE IS THE WHOLE OF THAT STATE'S KEYS, which since the splice
-	// landed is three of them rather than two: the chord that stops shares the
-	// slot with the chord that steers, on a session and a terminal that have both
-	// (steer.go's [app.typingHint]). What this asserts is that the slot is
+	// AND THE LINE IS THE WHOLE OF THAT STATE'S KEYS: the chord that stops shares
+	// the slot with the plain steer and the final interrupt clause, on a session
+	// and a terminal that have both (steer.go's [app.runHint]). What this asserts
+	// is that the slot is
 	// composed rather than authored — a second copy of the sentence here would be
 	// the test agreeing with itself.
-	if got != a.typingHint() {
-		t.Fatalf("hint = %q, want %q", got, a.typingHint())
+	if got != a.runHint() {
+		t.Fatalf("hint = %q, want %q", got, a.runHint())
 	}
-	if !strings.HasSuffix(got, bargeKey+" "+bargeSendWord) {
-		t.Fatalf("hint = %q, want it to end with the chord this file is about", got)
+	if !strings.Contains(got, hintSegment+bargeKey+" "+bargeSendWord+hintSegment) {
+		t.Fatalf("hint = %q, want the chord between the send and stop clauses", got)
 	}
 	// A session with no splice behind it reads exactly as this line always did,
 	// and steer_test.go's own case asserts that.
@@ -251,8 +252,10 @@ func TestTheChordAndTheParkedBlockSayTheSameThreeWords(t *testing.T) {
 	if !strings.HasSuffix(parkedHint[1], bargeSendWord) {
 		t.Fatalf("the parked block no longer says %q: %q", bargeSendWord, parkedHint[1])
 	}
-	if !strings.HasSuffix(bargeHint, bargeKey+" "+bargeSendWord) {
-		t.Fatalf("the hint no longer names the chord and what it does: %q", bargeHint)
+	a, _ := bargeable(t, "reading the tree. ")
+	typeInto(t, a, "no, the other file")
+	if hint := a.typingHint(); !strings.HasSuffix(hint, bargeKey+" "+bargeSendWord) {
+		t.Fatalf("the live hint no longer names the chord and what it does: %q", hint)
 	}
 }
 

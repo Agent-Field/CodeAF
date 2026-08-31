@@ -348,8 +348,8 @@ func TestEscWithNothingWaitingIsStillJustTheInterrupt(t *testing.T) {
 	}
 }
 
-// And while something is waiting, the line under the box says what the next esc
-// will do rather than the plain stop it used to promise.
+// H4: the empty running line is the plain interrupt, while a parked message
+// changes its last clause to the same stop-and-send wording as the block.
 func TestTheHintSaysWhatEscDoesWhileAMessageIsWaiting(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
 	if got := a.hintWord(); got != "esc interrupt" {
