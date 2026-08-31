@@ -1025,6 +1025,14 @@ func (s *jobSink) text() string {
 // skipped because a job whose last write was a newline still has something to
 // say about how it went.
 func (s *jobSink) lastNonEmptyLine() string {
+	// A JOB WITH NO SINK HAS SAID NOTHING, and this reads as exactly that. The
+	// footer walks every live row (jobfooter.go's runningFooter), and a row
+	// built without a sink used to take this call as a nil-pointer panic that
+	// the guard then swallowed — eighteen recovered faults per test run, each
+	// one a tool result silently losing its footer.
+	if s == nil {
+		return ""
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lines := strings.Split(string(s.ring), "\n")

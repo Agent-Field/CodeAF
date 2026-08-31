@@ -42,6 +42,10 @@ func liveJob(agent *Agent, id int, kind jobKind, label string) {
 	defer agent.jobs.mu.Unlock()
 	agent.jobs.jobs = append(agent.jobs.jobs, &job{
 		id: id, kind: kind, label: label, command: label,
+		// The sink is real so the rows this fixture plants walk the same footer
+		// code a live job does: a nil sink here cost every tool result in these
+		// cases its job footer, behind a recovered panic nobody saw.
+		sink:    &jobSink{},
 		started: time.Now(), done: settled, stop: func() {},
 	})
 }
