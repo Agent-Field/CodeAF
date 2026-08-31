@@ -100,6 +100,27 @@ func TestAUsersPictureDegradesByTheThumbnailRungs(t *testing.T) {
 	}
 }
 
+// A disabled path door stays disabled even on a terminal that can paint the
+// picture. The exact-path marker pass is a better resolver, not a second link
+// setting of its own.
+func TestAUsersPictureMarkerRespectsDisabledPathLinks(t *testing.T) {
+	dir := t.TempDir()
+	path := writePicture(t, dir, "shot.png", wideTestPicture())
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.pal = newPalette(tokens.TrueColor, false)
+	a.pathLinks = false
+	e := entry{kind: entryUser, text: "look [#1 shot.png]", pictures: []string{path}, picturesHere: true}
+	body := strings.Join(a.renderEntry(0, &e, 60), "\n")
+	if strings.Contains(body, "\x1b]8;;") {
+		t.Fatalf("a disabled marker became a terminal door: %q", body)
+	}
+	for _, r := range body {
+		if r >= 0xE000 && r <= 0xF8FF {
+			t.Fatalf("a disabled marker leaked its private mask: %q", body)
+		}
+	}
+}
+
 // Q3: picture-only and mixed attachment messages keep every marker and draw only pictures.
 func TestPictureOnlyAndMixedMessagesDrawTheirPictures(t *testing.T) {
 	t.Run("picture only", func(t *testing.T) {

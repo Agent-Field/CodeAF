@@ -566,6 +566,133 @@ func TestReplayPrefetchSpendsItsBudgetAtTheLiveEdge(t *testing.T) {
 	}
 }
 
+// The three-slot limit is a concurrency cap, not a replay cutoff. Every older
+// picture already has a row waiting for it, so each completion starts the next
+// transfer until the visible journal has been mirrored.
+func TestReplayPrefetchContinuesPastTheFirstThreePictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	for i := 0; i < prefetchAtOnce+2; i++ {
+		target := fmt.Sprintf("/srv/app/in/picture-%d.png", i)
+		wire.farFile(target, "image/png", "picture bytes", int64(i+1))
+		a.entries = append(a.entries, entry{
+			kind: entryUser, pictures: []string{target}, picturesHere: false,
+		})
+	}
+
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+	if fetched := wire.fetched(); len(fetched) != prefetchAtOnce+2 {
+		t.Fatalf("replay fetched %d pictures and left older rows blank: %v", len(fetched), fetched)
+	}
+	if len(a.rfiles.replay) != 0 || len(a.rfiles.prefetching) != 0 {
+		t.Fatalf("replay did not drain: queued=%d active=%d", len(a.rfiles.replay), len(a.rfiles.prefetching))
+	}
+}
+
+func drainReplayPrefetches(first tea.Cmd, a *app) {
+	commands := []tea.Cmd{first}
+	for len(commands) > 0 {
+		cmd := commands[0]
+		commands = commands[1:]
+		if cmd == nil {
+			continue
+		}
+		switch msg := cmd().(type) {
+		case tea.BatchMsg:
+			commands = append(commands, msg...)
+		case remotePrefetchedMsg:
+			commands = append(commands, a.remotePrefetched(msg))
+		}
+	}
+}
+
+// A person's accepted picture may be larger than the two-megabyte heuristic
+// for speculative model output. Replay follows the actual ten-megabyte image
+// contract so a valid attachment does not become a permanent blank row.
+func TestReplayPrefetchUsesTheImageLimitForUserPictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	target := "/srv/app/in/large.png"
+	body := strings.Repeat("x", prefetchMax+1)
+	wire.farFile(target, "image/png", body, 1700)
+	a.entries = []entry{{kind: entryUser, pictures: []string{target}, picturesHere: false}}
+
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+	if fetched := wire.fetched(); len(fetched) != 1 || fetched[0] != target {
+		t.Fatalf("a valid replayed image over the speculation heuristic stayed blank: %v", fetched)
+	}
+}
+
+// Task-room journals load after the conversation's Init and keep their own row
+// cache. They therefore need both a fetch trigger and a redraw when it lands.
+func TestAHostedTaskRoomPrefetchesAndRestylesItsPictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	target := "/srv/app/in/room.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.room = &taskRoom{entries: []entry{{
+		kind: entryUser, pictures: []string{target}, picturesHere: false,
+	}}}
+
+	cmd := a.prefetchRoomPictures()
+	answer := run(cmd)
+	if batch, ok := answer.(tea.BatchMsg); ok && len(batch) == 1 {
+		answer = run(batch[0])
+	}
+	msg := answer.(remotePrefetchedMsg)
+	a.room.entries[0].stale = false
+	a.room.dirty = false
+	a.remotePrefetched(msg)
+	if !a.room.entries[0].stale || !a.room.dirty {
+		t.Fatal("the mirrored task-room picture did not invalidate the room row cache")
+	}
+}
+
+// A marker shows a basename but opens the full journal identity. Resolving the
+// visible name against the workspace root would point at a different file.
+func TestAHostedPictureMarkerKeepsItsFullRemotePath(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, door := hostedFixture(t)
+	target := "/srv/app/in/nested/chart.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.entries = []entry{{kind: entryUser, text: userLine("look", []chip{{path: target}}, a.pal),
+		pictures: []string{target}, picturesHere: false}}
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+
+	rows := userEntryRows(t, a, 80)
+	if !strings.Contains(strings.Join(rows, "\n"), "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("the replay marker is not a door:\n%s", strings.Join(rows, "\n"))
+	}
+	if len(door.minted) != 1 || door.minted[0] != target {
+		t.Fatalf("the basename marker opened %v, want the full journal path", door.minted)
+	}
+}
+
+// A long marker may wrap through the private mask one fragment at a time. No
+// mask rune reaches the terminal, and every fragment keeps the one exact door.
+func TestAWrappedHostedPictureMarkerRestoresEveryFragment(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, door := hostedFixture(t)
+	target := "/srv/app/in/nested/a-very-long-chart-name.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.entries = []entry{{kind: entryUser, text: userLine("look", []chip{{path: target}}, a.pal),
+		pictures: []string{target}, picturesHere: false}}
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+
+	body := strings.Join(userEntryRows(t, a, 12), "\n")
+	for _, r := range body {
+		if r >= 0xE000 && r <= 0xF8FF {
+			t.Fatalf("a wrapped marker leaked its private mask: %q", body)
+		}
+	}
+	if !strings.Contains(body, "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("the wrapped marker fragments are not doors:\n%s", body)
+	}
+	if len(door.minted) != 1 || door.minted[0] != target {
+		t.Fatalf("the wrapped marker opened %v, want the full journal path", door.minted)
+	}
+}
+
 // Q10: a live hosted send records the person's local path and reads it instead
 // of the mirror. This drives the attachment and enter doors that set the flag.
 func TestALiveHostedUserPictureDrawsFromTheLocalDisk(t *testing.T) {

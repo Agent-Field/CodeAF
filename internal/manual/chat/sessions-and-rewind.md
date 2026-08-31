@@ -703,6 +703,13 @@ there without a single character of the secret surviving.
 a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
 does — so nothing on the belt is worse off for this.
 
+**Inside a task the read itself is refused.** A token never has to be shown to be spent, and
+a task runs unattended in a copy of your repository and holds no login of yours, so `gh
+auth token` is answered there with `gh auth token is not yours to run` before the command
+runs — in every spelling, `$(gh auth token)` inside another command included. The page on
+how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always
+did.
+
 **What is recognised**, by shape rather than by service, so a provider that mints the same
 shape is covered without aforge having heard of it:
 

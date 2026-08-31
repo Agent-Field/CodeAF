@@ -495,6 +495,7 @@ func (a *app) openRoom(id uint64, title string) {
 	}
 	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal, !a.hosted())
 	a.room = room
+	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
 	// The journal records what was said and never where the saying went, so the
 	// mark is put on here — from the node the engine published, the same source
@@ -549,11 +550,11 @@ func (a *app) openRoom(id uint64, title string) {
 		// AND A JOB'S PAGE IS A LIVE READING OF ITS LOG (roomjoblog.go). The row
 		// carries the path, the file is the entire record of what the work did, and
 		// until this the page was three static lines under a moving clock.
-		a.roomPump = tea.Batch(a.roomJobOpen(), a.wake())
+		a.roomPump = tea.Batch(a.roomJobOpen(), prefetch, a.wake())
 		return
 	}
 	room.lane, room.stop = lane, stop
-	a.roomPump = tea.Batch(waitRoom(lane, room.gen), a.wake())
+	a.roomPump = tea.Batch(waitRoom(lane, room.gen), prefetch, a.wake())
 }
 
 // openFarRoom opens a hosted node immediately and asks the engine for its
@@ -598,15 +599,16 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	}
 	a.roomResolveUnfinished()
 	a.roomTouched()
+	prefetch := a.prefetchRoomPictures()
 	node := a.tasks[a.room.id]
 	if node != nil && node.kind == session.TaskKindJob {
-		return nil
+		return prefetch
 	}
 	if roomRowDone(node) {
 		a.room.done = true
-		return nil
+		return prefetch
 	}
-	return farRoomTick(a.room.gen)
+	return tea.Batch(prefetch, farRoomTick(a.room.gen))
 }
 
 // farRoomEvery is deliberately slower than the paint clock: a journal tail is
@@ -1102,6 +1104,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	if room == nil {
 		return nil
 	}
+	var after tea.Cmd
 	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.event],
 	// thinking.go): the first thing a turn says that is not reasoning ends the
 	// reasoning block, and EventThinking is exempt because it is the marker that
@@ -1138,6 +1141,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 
 	case session.EventToolEnd:
 		a.roomCloseTool(ev, toolOK, "")
+		after = a.prefetchWritten(ev)
 
 	case session.EventToolFailed:
 		a.roomCloseTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
@@ -1169,7 +1173,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		a.roomNote("error: " + errText(ev.Err))
 	}
 	a.touch()
-	return tea.Batch(waitRoom(room.lane, room.gen), a.wake())
+	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
 }
 
 // roomSay grows the node's live block, opening one when the last thing on the

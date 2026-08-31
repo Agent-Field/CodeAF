@@ -933,7 +933,9 @@ a file first, then drag that in, or use `/image <path>`.
 A dragged or pasted picture is measured **at the moment you drop it**, and one over the
 ceiling is refused there rather than attached and refused later. Nothing is lost when
 that happens: the path stays in your message box as the text it arrived as, so you can
-still ask aforge to look at the file where it lies.
+still ask aforge to look at the file where it lies. Pressing `enter` on that retained
+absolute path repeats the attachment refusal; it is not treated as an unknown slash
+command and the path remains in the box.
 
 A picture that is dragged in but **does not exist on this machine** is not refused at
 all — the paste was never a picture, so the text goes into the message box unchanged

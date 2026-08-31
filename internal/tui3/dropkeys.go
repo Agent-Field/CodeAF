@@ -390,7 +390,14 @@ func (a *app) droppedLine(line string) bool {
 	}
 	held := len(a.chips)
 	if !a.pasteFiles(line) {
-		return false
+		// The path DID resolve, so a false answer here is the attachment door's
+		// own refusal — an oversize picture or hosted file — and never evidence
+		// that this was an unknown slash command. Keep the path in the box so the
+		// refusal does not also take away the thing the person can edit or retry.
+		a.input.setText(line)
+		a.drop.took++
+		a.touch()
+		return true
 	}
 	a.drop.took++
 	// WHAT HAPPENED IS SAID OUT LOUD, because this door is reached by somebody

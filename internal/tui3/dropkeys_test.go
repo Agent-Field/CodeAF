@@ -140,6 +140,25 @@ func TestTheEnterDoorCatchesADropTheFoldNeverSaw(t *testing.T) {
 	}
 }
 
+func TestAnOversizeDroppedPictureIsNotAnUnknownCommand(t *testing.T) {
+	name := "huge picture.png"
+	a, dir, _ := dropLab(t, map[string]int{name: maxAttachBytes + 1})
+	path := filepath.Join(dir, name)
+	typeBurst(a, path)
+	drive(t, a, key("enter"))
+
+	got := plain(frame(a))
+	if strings.Contains(got, "unknown command") {
+		t.Fatalf("an oversize picture was routed as a slash command:\n%s", got)
+	}
+	if !strings.Contains(got, name+" is over the 10MB image limit") {
+		t.Fatalf("the attachment refusal was lost:\n%s", got)
+	}
+	if draft := a.input.String(); draft != path {
+		t.Fatalf("the refusal left %q in the box, want %q", draft, path)
+	}
+}
+
 // AND A COMMAND THAT NAMES NOTHING ON THE DISK REFUSES EXACTLY AS IT DID.
 func TestAnUnknownCommandThatNamesNothingStillRefuses(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
