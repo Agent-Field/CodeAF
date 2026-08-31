@@ -68,6 +68,20 @@ func New(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// AND THE PROBE'S TRANSPORT IS WIRED HERE, at the one moment a real client
+	// exists and nothing has been sent through it (internal/provider's
+	// probe.go). It starts nothing: a prober with a transport still sends
+	// nothing until somebody starts typing, and everything about whether a probe
+	// is worth buying — is anybody waiting, has one been bought in the last
+	// twenty seconds, is the pool already pacing — is asked at that moment
+	// rather than here. A build against a base that is not a router refuses and
+	// the registry keeps the empty prober, which is the tested empty state.
+	//
+	// The gate is this session's own reading of "is anybody waiting on this
+	// model": a probe is bought for a person about to send something, and a
+	// process with no window open is a process where nobody is
+	// ([someoneIsWatching]).
+	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
 	return newAgent(config, client)
 }
 
@@ -357,6 +371,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 // which is what lets the field it writes be read afterwards without a lock,
 // exactly as [Agent.presence] is.
 func (a *Agent) startLaneBeat() {
+	// THE SESSION'S LANE CONTEXT IS MINTED FIRST AND UNCONDITIONALLY, above
+	// every refusal below, because it is not the beat's: a probe rides it too
+	// (lanenews.go's [Agent.Typing]), and a session that runs no beat may still
+	// buy a measurement. It is cancelled once, by Close.
+	a.laneCtx, a.laneStop = context.WithCancel(context.Background())
 	if a.config.Routing == provider.RoutingOff {
 		return
 	}
@@ -367,13 +386,13 @@ func (a *Agent) startLaneBeat() {
 	if len(models) == 0 {
 		return
 	}
-	ctx, stop := context.WithCancel(context.Background())
-	a.laneStop = stop
+	ctx := a.laneCtx
 	// THE INTERVAL IS THE LANE PACKAGE'S OWN AND IS NOT RESTATED HERE. Zero asks
 	// [lanes.Beat] for its default, which is the same five minutes that package
 	// already publishes as the age at which a cached sheet is stale — and a
 	// second spelling of that number here is a number that would drift, so that
 	// one session fetched on a clock the cache disagreed with.
+	a.laneBeating = true
 	go lanes.Beat(ctx, lanes.Default().Sheet(), models, 0)
 }
 
