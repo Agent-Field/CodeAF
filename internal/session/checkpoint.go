@@ -632,6 +632,50 @@ const checkpointRemainsAsk = "[still asked] Above is what the person asked for a
 // this door does, which is carry on rather than start anything.
 const checkpointCarryOnNote = "the ask is not finished · carrying on rather than stopping here"
 
+// checkpointCarryOnCap is HOW MANY TIMES ONE ASK MAY BE CARRIED ON before the
+// harness stops carrying it.
+//
+// THE MEASURED FAILURE. 2026-08-31, 15:36:25–15:41:45Z: a conversation was
+// waiting on GitHub's checks for two pull requests, with a watch of its own
+// running over `gh pr checks`. Every turn ended by saying so — "the watch fires
+// when the pending count settles; nothing actionable until then" — and every
+// turn was read, found unfinished (it WAS unfinished; the checks had not
+// landed), and carried on. Twenty times in five minutes, each one a reader call
+// and another poll of the same command, for about a third of a dollar and no
+// progress at all, until the ceiling converted the wait into a task whose
+// acceptance nobody could ever fail.
+//
+// THE GATE ABOVE ([Agent.turnIsWaitingOnItsOwnWork]) is what that particular
+// conversation needed, and this is what every OTHER shape of the same loop
+// needs: a reader that answers "not finished" to the same stopped turn three
+// times running has stopped being evidence and started being an echo. THREE,
+// because one carry-on that lands is the whole feature working, a second is a
+// model that needed telling twice, and by the third the reader is repeating
+// itself — and because the price of being wrong is small in one direction and
+// was a third of a dollar in five minutes in the other.
+//
+// IT IS COUNTED ON THE TURN'S METER AND NOWHERE ELSE, so it means what its
+// name says: a carry-on continues the turn it re-opened (loop.go), the meter
+// belongs to that turn, and the count therefore spans exactly one ask and dies
+// with it.
+const checkpointCarryOnCap = 3
+
+// checkpointCarriedOnNote is the ONE line a person reads when an ask has been
+// carried on as many times as it is going to be.
+//
+// It is the sixth in the register ([checkpointCarryOnNote] names four of the
+// others): an observation, a middle dot, a promise, all lowercase, no full stop.
+// WHAT IT OBSERVES IS THE HONEST THING — the ask really is still not finished,
+// which is what the reading just said — and what it promises is that the
+// harness is going to stop pushing rather than push a fourth time.
+//
+// It is a function and not a constant because the number in it is
+// [checkpointCarryOnCap] and a number written twice is a number that will drift.
+func checkpointCarriedOnNote() string {
+	return fmt.Sprintf("carried on %d times and it is still not finished · stopping here rather than carrying on again",
+		checkpointCarryOnCap)
+}
+
 // checkpointCarryOnLead opens the synthetic continuation the running model is
 // handed, and it is the reader's line that follows it.
 //
@@ -661,6 +705,13 @@ const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not
 type checkpointMeter struct {
 	// rounds is how many tool batches this turn has FINISHED.
 	rounds int
+	// carriedOn is how many times this turn has already been re-opened by
+	// [Agent.checkpointReopen], and it is what [checkpointCarryOnCap] bounds.
+	//
+	// IT LIVES HERE FOR THE REASON EVERYTHING ELSE ON THIS METER DOES: it is a
+	// fact about ONE answer. A counter that remembered yesterday's carry-ons
+	// would refuse to carry on a conversation that had never asked for it.
+	carriedOn int
 	// marks is how many of the ladder's rungs have already fired.
 	marks int
 	// firstAt is where the FIRST rung stands when the pre-turn race has already
@@ -2037,9 +2088,33 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	// THE CHEAP EXCLUSIONS FIRST, then the two gates. A question to the person is
-	// a string test on what was just said; the exposure reading walks the turn's
-	// messages, and there is no sense walking them for a turn that is waiting.
+	// a string test on what was just said and a live job is a walk of a short
+	// slice; the exposure reading walks the turn's messages, and there is no
+	// sense walking them for a turn that is waiting.
 	if endsAskingThePerson(said) {
+		return false, false
+	}
+	// AND A TURN WAITING ON ITS OWN BACKGROUND WORK IS WAITING, NOT STOPPING.
+	//
+	// This is [endsAskingThePerson]'s law with the other party changed. That gate
+	// exists because a turn that asked a question has a wake-up coming — the
+	// person's answer — and re-opening it would be the harness answering
+	// something addressed to somebody else. A turn that ends while a job this
+	// conversation started is still running is in the same position: a process
+	// job, a render and a hand each queue their exit as an OWED note that starts
+	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
+	// continuation the reader would buy already exists and is already on its way.
+	//
+	// A WATCH IS THE ONE THAT DOES NOT WAKE, and it is included anyway. Its news
+	// rides the ambient lane and waits for a turn boundary
+	// ([Agent.enqueueWatchNote]), so a conversation waiting on one really does go
+	// quiet until the person says something — and that is a gap in the WAKE lane,
+	// which is the lane that can close it. Carrying on was never a fix for it:
+	// what it actually bought, measured, was twenty more polls of the command the
+	// watch was already running.
+	//
+	// See [checkpointCarryOnCap] for the five minutes this was measured in.
+	if a.turnIsWaitingOnItsOwnWork() {
 		return false, false
 	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
@@ -2102,14 +2177,44 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		hub.send(Event{Kind: EventNotice, Text: checkpointStoppedNote + decision.Reason})
 		return false, false
 	}
+	// AND CARRYING ON HAS A CEILING OF ITS OWN, WHICH IS THE ONLY COUNTER BESIDE
+	// THE METER THIS FILE ALLOWS AND THE REASON IT IS ALLOWED.
+	//
+	// The re-open's own digest says there is no re-open counter and there must not
+	// be one, and that stands for the QUESTION IT WAS ABOUT: how long a turn may
+	// run is the meter's to answer, and a second clock over the same thing would
+	// be two policies pretending to be one. This answers a different question —
+	// how many times the same reading may be believed about the same stopped turn
+	// — and the measured run is what says it needs answering separately, because
+	// the meter said yes twenty times running while nothing whatever moved
+	// ([checkpointCarryOnCap]).
+	//
+	// IT IS ASKED AFTER THE READING AND NOT BEFORE IT, which costs one call and
+	// buys the only thing worth having here: the line a person reads is TRUE. A
+	// cap that fired before the reader would have to guess that the ask was still
+	// unfinished, and would say so out loud on the turn where the model had
+	// finally finished it.
+	if meter.carriedOn >= checkpointCarryOnCap {
+		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote()})
+		return false, false
+	}
 	// THE METER IS CHARGED BEFORE THE CONTINUATION IS WRITTEN, so a re-open that
 	// lands on the ceiling hands the work over instead of asking the model for one
 	// more round nobody is going to watch. The mark's own reading is made there and
 	// not reused from here: they ask different questions, and a shape is what the
 	// handover needs.
+	//
+	// AND CARRY-ONS CAN NO LONGER REACH THE CEILING BY THEMSELVES. The rungs
+	// stand at [checkpointPrice] and its doublings ([checkpointMarkAt]), and the
+	// gate above lets this line be reached at most [checkpointCarryOnCap] times
+	// in a turn — a count that does not reach the FIRST rung, let alone the
+	// ceiling. So a turn that still crosses it crossed it on rounds of its own
+	// WORK, which is the exact turn the ceiling was written for, and there is
+	// nothing further to guard here.
 	if a.checkpointRound(ctx, hub, user, meter, turn, started, model) {
 		return false, true
 	}
+	meter.carriedOn++
 	hub.send(Event{Kind: EventNotice, Text: checkpointCarryOnNote})
 	a.record(textMessage("user", checkpointCarryOnLead+decision.Brief))
 	return true, false
@@ -2324,6 +2429,25 @@ func (a *Agent) readRemains(ctx context.Context) string {
 func endsAskingThePerson(said string) bool {
 	said = strings.TrimRight(strings.TrimSpace(said), "`*_\"'”’) \t\n")
 	return strings.HasSuffix(said, "?")
+}
+
+// turnIsWaitingOnItsOwnWork reports that this conversation started background
+// work that is still running at the moment the turn ended.
+//
+// IT IS THE LIVE WORK TREE'S OWN ANSWER and not a second reading of the
+// registry: [Agent.jobsWorkingNow] is what the head count over the roster
+// column is drawn from (jobrow.go), so "aforge thinks something is running" is
+// one fact with one definition, and the gate above cannot come to disagree with
+// the number a person is looking at while they read its line.
+//
+// A TASK NODE IS DELIBERATELY NOT ONE OF THESE, which falls out of borrowing
+// that function rather than being decided here. A node's landing wakes a turn
+// through machinery of its own and is READ FOR WHAT REMAINS when it does — that
+// is the price gate's `user.wake` law a few lines up — and a gate that went
+// quiet while any sub-task was out would take that reading away from the very
+// turn it was written for.
+func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
+	return len(a.jobsWorkingNow()) > 0
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one
