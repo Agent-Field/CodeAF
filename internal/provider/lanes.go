@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -378,4 +381,109 @@ func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, 
 type lanesState struct {
 	mu   sync.Mutex
 	last map[string]laneAsk
+}
+
+// ── THE ONE THING internal/lane MAY NOT OWN ─────────────────────────────────
+
+// sheetTimeout bounds one sheet fetch. It is the fifteen seconds the catalog
+// reader already uses for the same router over the same connection
+// (internal/catalog's fetch), and it is stated as one figure because a beat
+// that hangs is a beat that stops beating: nothing waits on this, so the only
+// thing a longer deadline could buy is a goroutine parked on a dead socket.
+const sheetTimeout = 15 * time.Second
+
+// sheetFetcher is the connection `internal/lane` is forbidden to open for
+// itself, handed to it at construction through [lanes.WireSheet].
+//
+// A STRUCTURAL TEST IN THAT PACKAGE FAILS THE BUILD IF IT SO MUCH AS IMPORTS A
+// TRANSPORT, and it is right to: a package that could open a connection is a
+// package where somebody eventually opens one on the send path. So this is the
+// whole of the transport behind the sheet — one GET, the house headers, and a
+// status that is not a success turned into an error rather than into forty
+// kilobytes of somebody's HTML.
+//
+// It carries its own client rather than the adapter's, because the adapter's
+// two are shaped for a conversation: one has the caller's configured timeout on
+// it and the other deliberately has none at all, so that a stream may run for
+// as long as an answer takes. Neither is the right shape for a background read
+// of a small JSON document.
+type sheetFetcher struct {
+	// http is the client this fetch rides. It is a field only so a test can
+	// hand in one pointed at an httptest server; nil is the real one.
+	http *http.Client
+}
+
+// Fetch GETs url and hands back its body, which the caller closes.
+func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadCloser, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	// AN EMPTY BEARER IS A REAL STATE AND NOT A MISTAKE. The sheet is a public
+	// document, and a client may be built before the person has pasted a key
+	// (see [NewClient]); sending `Bearer ` with nothing after it is how a
+	// request that would have worked earns a 401.
+	if bearer = strings.TrimSpace(bearer); bearer != "" {
+		request.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	// And this read is attributed like every other read this binary makes of
+	// the router — the values are the package's own constants and no caller
+	// carries them (attribution.go).
+	ApplyAttribution(request.Header)
+	client := f.http
+	if client == nil {
+		client = &http.Client{Timeout: sheetTimeout}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		// The body is drained a little before it is closed so the connection
+		// goes back to the pool rather than being torn down, which is the same
+		// courtesy the catalog reader pays on the same host.
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		response.Body.Close()
+		return nil, fmt.Errorf("lane sheet: %s", response.Status)
+	}
+	return response.Body, nil
+}
+
+// LaneSheetAvailable reports whether base is a router that publishes a lane
+// sheet this build can read.
+//
+// IT IS THE BASE URL AND NEVER THE MODEL ID, which is where it parts company
+// with [Client.isOpenRouter]. That one is also true of a client whose model is
+// spelled `openrouter/...` behind somebody's own gateway, and it is right to
+// be: the ledger still learns from what that gateway serves. But the sheet is
+// fetched FROM THE BASE URL, so a base that is not the router has no sheet to
+// give however the model is spelled.
+//
+// It is exported because two callers need the same answer and a second spelling
+// of it would drift: this package wires the sheet at construction, and the
+// session decides whether to run a beat at all (internal/session's agent.go).
+func LaneSheetAvailable(base string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(base)), "openrouter.ai")
+}
+
+// wireLaneSheet points the live lane sheet at the router this client talks to.
+//
+// IT IS CALLED FROM THE CONSTRUCTOR AND FROM NOWHERE ELSE. Wiring is not a
+// fetch — it hands the sheet a base, a bearer and something that can open a
+// connection, and nothing goes to the network until a beat calls Refresh — but
+// it is still a write to a process-wide seam, and a write repeated per request
+// is a lock taken in front of somebody's first token for no gain.
+//
+// A CLIENT BUILT WITHOUT A KEY STILL WIRES. `/models/{id}/endpoints` is a
+// public document, so a session that opens on the first-run screen and is
+// handed its key a minute later still has a prior for its first call; the key
+// this carries is the one the client was constructed with, and the sheet does
+// not chase [Client.SetAPIKey] because a bearer buys nothing on a public read.
+func (c *Client) wireLaneSheet() {
+	base := strings.TrimSpace(c.config.BaseURL)
+	if !LaneSheetAvailable(base) {
+		return
+	}
+	lanes.WireSheet(base, strings.TrimSpace(c.config.APIKey), sheetFetcher{})
 }

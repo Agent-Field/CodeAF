@@ -1754,6 +1754,17 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
+	// laneStop ends this session's lane-sheet beat (agent.go's
+	// [Agent.startLaneBeat]), and is nil for every session that runs no beat —
+	// routing off, a base that is not a router, no model to fetch a sheet for.
+	//
+	// It is a CANCEL AND NOT A WAIT, which is where it parts company with
+	// memoryStop above. A memory pass owes the store a write and Close waits for
+	// it; a beat owes nothing to anybody — the sheet it was about to fetch is a
+	// prior the next session will fetch again — so a quit cuts it and does not
+	// look back.
+	laneStop context.CancelFunc
+
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there
