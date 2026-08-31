@@ -2781,7 +2781,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// could not answer has learned nothing about the work, and throwing away a
 	// prepared worktree over that is throwing away the part that was expensive.
 	for {
-		worker, err := a.newTaskAgent(ctx, tree.dir, node, "")
+		worker, err := a.newTaskAgent(ctx, taskGroundDir(node, tree), node, "")
 		if err != nil {
 			node.end(TaskEndingError)
 			node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)

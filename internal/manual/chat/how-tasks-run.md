@@ -291,6 +291,73 @@ the one that answered the same zero by reading its own work spent most of its ca
 changing things it had never measured — and built from scratch something that already
 existed, without ever spending the one step it would have cost to ask.
 
+## Where a task may write — its own copy, and nowhere else on the machine
+
+A task **works in one directory** and may **write only there**. That directory is its own
+copy of the repository — a worktree cut from yours, or your folder itself when there is no
+repository. Everywhere else on the machine it may **read as much as it likes** and change
+nothing.
+
+**Reading anywhere is the point.** A task briefed about a repository it is not standing in
+still has to look at it: `read`, `grep`, `ls`, `cat`, and `git log`, `git show`, `git diff`,
+`git status`, `git branch -a`, `git remote -v` against **any** repository on the machine all
+run normally. Looking has never been what goes wrong.
+
+**Writing anywhere else is refused before it runs**, and the task reads the refusal and
+carries on. It covers every hand that names its target:
+
+| Aimed outside its copy | What it looks like |
+| --- | --- |
+| `write` and `edit` | any path outside the task's own copy |
+| a shell command that moved first | `cd ~/code/yours && git checkout -b fix`, `cd ~/code/yours && mkdir -p src` |
+| git pointed somewhere else | `git -C ~/code/yours add .`, `GIT_DIR=~/code/yours/.git git update-ref …`, `--work-tree=` |
+| the file hands | `cp`, `mv`, `rm`, `mkdir`, `touch`, `tee`, `chmod`, `sed -i`, `patch` |
+| a redirection | `echo x > ~/code/yours/NOTES.md` |
+
+The wording it reads names **both the path and the directory it may write in**:
+
+> /Users/you/code/yours/NOTES.md is outside your copy — this task works in
+> /Users/you/.aforge/v3/projects/…/trees/1; read anywhere, write only there. Say what needs
+> changing out there in your report; what you write in your copy comes home on its own.
+
+**The machine's scratch is not yours.** `/tmp`, the temp directory and `/dev/null` are
+written freely — that is where a command line puts what it is about to read back.
+
+**What it cannot see.** It reads the paths a command *names*. `cd elsewhere && python
+fix.py`, where the script writes what it likes, is not caught, and neither is a path built
+out of a shell variable. What it does close is every shape that says its target out loud.
+
+**Why it exists.** A conversation opened in a home directory handed out two tasks whose
+brief named a repository somewhere else by its full path. Both worked in that live checkout,
+were refused with a sentence about "your own copy" that was false about the path they had
+named, and went around it three ways — plumbing commands, then `GIT_DIR=`, then the forge's
+own API. Two commits landed on a branch of the person's repository from work nobody had
+approved landing there.
+
+## Can a task push, or open a pull request? No — its work comes home through its landing
+
+**`git push` is refused**, wherever the task is standing, and so is anything that changes a
+project on GitHub, GitLab or another host:
+
+| Refused | |
+| --- | --- |
+| `git push` (any remote, any branch) | |
+| `gh api` carrying a change — `-X POST/PUT/PATCH/DELETE`, or any `-f`, `-F`, `--input` | |
+| `gh pr create`, `gh pr merge`, `gh issue create`, `gh release create`, and the rest that write | |
+| `curl`/`wget` posting to a host that hosts repositories | |
+
+> git push is not yours to run: This task's work comes home through its landing, and a pull
+> request is the person's or the conversation's to open — say what you want in it in your
+> report.
+
+**Reading the host is untouched**: `gh pr list`, `gh pr view`, `gh pr diff`, `gh issue view`,
+`gh run list` and `gh api` GETs are how a task finds out what it is fixing.
+
+**So how does the work get to you?** Every path the task passed to `write` or `edit` is
+staged by name and merged home onto your branch when the task lands — that is the road, and
+it is the only one. If the work should become a pull request, the task says so in its
+report and you or the conversation opens it.
+
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
 A task works in **its own copy of the repository**, and its copy shares the repository's
@@ -312,7 +379,8 @@ refused before they run, and the task reads the refusal and keeps working:
 | Refused | Because |
 | --- | --- |
 | `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
-| `pull`, `fetch`, `push`, `clone`, `remote`, `submodule` | a task's copy is a copy of what **you** have, and it reaches no remote |
+| `pull`, `fetch`, `clone`, `remote`, `submodule` | they bring in work the task did not do, and a task reports what it writes as its own |
+| `push` | a task's work comes home through its landing, not over a remote (the section above) |
 | `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
 | `reset --hard`, `--merge`, `--keep`, and `restore --source` | they throw the working copy away or fetch a file off another branch (plain `git reset` to unstage, and `git restore <path>`, are fine) |
 
@@ -322,6 +390,11 @@ The wording it reads names the verb and what it may do instead, for example:
 > only what you write here comes home. Look with git status, diff, log and show — any
 > branch, as much as you want. What you write with write and edit in this copy comes home
 > on its own.
+
+**These sentences are for the task's OWN copy, and are never said about anywhere else.** A
+command aimed at another directory is answered by the path law above instead — "outside your
+copy" — because "this is your own copy" is false about a repository the task is not standing
+in, and a refusal a model can see through is a refusal it goes around.
 
 **None of this applies to you.** In your own conversation, in your own checkout, aforge
 runs whatever git you ask for. The rule exists because a task reports work as *its own*,
