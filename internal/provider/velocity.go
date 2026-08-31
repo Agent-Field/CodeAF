@@ -217,8 +217,13 @@ func (c *Client) routingFor(intent RoutingIntent) RoutingStrategy {
 // silently drops it, because a planning call that was supposed to think and did
 // not is a wrong answer rather than a slow one.
 type providerPrefs struct {
-	Sort              string    `json:"sort,omitempty"`
-	Order             []string  `json:"order,omitempty"`
+	Sort  string   `json:"sort,omitempty"`
+	Order []string `json:"order,omitempty"`
+	// Only is a DEMAND rather than a ranking: the request goes to exactly these
+	// lanes or it does not go at all. It is what a pin sends, and what the
+	// second request of a hedged pair sends so that the pair cannot both land
+	// on the lane that is already stalling (hedge.go).
+	Only              []string  `json:"only,omitempty"`
 	Ignore            []string  `json:"ignore,omitempty"`
 	AllowFallbacks    *bool     `json:"allow_fallbacks,omitempty"`
 	RequireParameters *bool     `json:"require_parameters,omitempty"`
