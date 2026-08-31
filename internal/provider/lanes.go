@@ -152,8 +152,19 @@ func callHorizonFrom(ctx context.Context) int {
 // is a person saying that speed is not worth money on any of their calls, and
 // no call site may override it. Below that the call site's own figure applies,
 // and below that the default follows who is waiting.
-func (c *Client) laneValueOfTime(strategy RoutingStrategy, knobs callKnobs) float64 {
-	if strategy == RoutingPrice {
+//
+// THE ROW A PERSON WROTE AND THE DEFAULT DERIVED FROM WHO IS WAITING ARE NOT
+// THE SAME FACT, and reading them through one value silently made λ a dead
+// letter for every background call. [Client.routingFor] answers `price` for an
+// unattended call because nobody said otherwise; taking that as "a person said
+// speed is worthless" then discarded the call site's own λ, so a task node that
+// declared its wait was worth something was routed as though it had declared
+// the opposite — and no test could see it, because the caller had said the
+// right thing. So the veto is asked of [Client.routingChoice], which reports
+// whether a person really said, and the stated figure below it is authoritative
+// for everybody else.
+func (c *Client) laneValueOfTime(knobs callKnobs) float64 {
+	if chosen, said := c.routingChoice(); said && chosen == RoutingPrice {
 		return 0
 	}
 	if knobs.lambda.said {
@@ -197,6 +208,33 @@ func (c *Client) laneRequest(model string, knobs callKnobs, request *ai.Request,
 		QualityNeed:  quality,
 		Horizon:      horizon,
 		Now:          laneNow(),
+	}
+}
+
+// LaneTalkAsk is the request A CONVERSATION'S OWN TURN makes, with nothing yet
+// typed into it: one model, a person waiting, an answer they will read.
+//
+// IT EXISTS SO THE PICKER ASKS THE CHOOSER THE SAME QUESTION THE WIRE WILL.
+// The `auto` row under a model says which machine would answer if you sent
+// something now (internal/tui3's laneAuto), and the only honest way to say that
+// is to ask with the request a turn really carries. A surface that built its own
+// [lanes.Request] got a different answer for the same belief — one built with λ
+// left at zero says "the cheapest machine", which is the correct answer to a
+// question a conversation never asks — and the row then named a lane the very
+// next turn did not use.
+//
+// The prompt's own length is left out and so is its cache prefix: neither is
+// known before somebody has typed, both only sharpen a ranking this row draws
+// before the fact, and inventing them would be the surface guessing at a
+// request that does not exist yet.
+func LaneTalkAsk(model string, now time.Time) lanes.Request {
+	return lanes.Request{
+		Model:       normalizeModel(model),
+		Visible:     talkTokens,
+		QualityNeed: talkQuality,
+		ValueOfTime: lanes.AttentionValue,
+		Horizon:     defaultHorizon,
+		Now:         now,
 	}
 }
 
@@ -267,9 +305,37 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	if !made {
 		return
 	}
+	// A DEMAND IS NOT A RANKING, so it replaces the object rather than joining
+	// it. `Only` is what a pin sends (lanepin.go): the request goes to exactly
+	// that machine or it does not go, which is the sentence the picker and the
+	// manual both promise — "every request for this conversation goes to that
+	// lane and nowhere else". The sort word comes off because there is nothing
+	// left to sort, the ledger's order comes off because it is a ranking over
+	// machines this request may not use, and `allow_fallbacks` goes to false
+	// because a fallback is precisely the thing a pin refuses.
+	if len(choice.Only) > 0 {
+		only := make([]string, 0, len(choice.Only))
+		for _, lane := range choice.Only {
+			if lane != "" {
+				only = append(only, lane)
+			}
+		}
+		if len(only) > 0 {
+			no := false
+			prefs.Only, prefs.Order, prefs.Sort = only, nil, ""
+			prefs.AllowFallbacks = &no
+			return
+		}
+	}
 	if len(choice.Order) > 0 {
 		order := make([]string, 0, len(choice.Order)+1)
-		if pinned != "" {
+		// AND THE AFFINITY PIN YIELDS TO A PERSON'S OWN. It leads the order for
+		// the reason stated above — a warm prefix is worth more than any lane's
+		// tariff — but it is a heuristic about a cache, and a borrowable lane
+		// pin is somebody naming the machine they want. Letting the cache jump
+		// the person would make `pinned: cloudflare, borrow when slow` mean "go
+		// wherever the last answer came from", which is not what the row says.
+		if pinned != "" && !strings.EqualFold(pinned, CurrentLanePin().pinned()) {
 			order = append(order, pinned)
 		}
 		for _, lane := range choice.Order {
@@ -301,14 +367,42 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	if knobs.laneChoice != nil {
 		return *knobs.laneChoice, true
 	}
+	// WHAT A PERSON SAID IS READ BEFORE THE BELIEF IS ASKED (lanepin.go), and
+	// two of the three rows never reach the chooser at all.
+	//
+	// `openrouter` is a person asking for NO lane, so there is no choice to
+	// make: the request goes out shaped exactly as it was before this package
+	// existed — the sort word, the strike ledger's order, the price ceiling —
+	// and with no Choice on the context nothing downstream hedges either
+	// ([Client.raceFor] reads the same absence).
+	//
+	// A STRICT PIN DOES NOT ASK EITHER, and that is the difference between a
+	// pin and a preference: a chooser that answered would name an alternative,
+	// and an alternative is a lane the person said not to use. So the pin is
+	// the whole choice, it carries no Alt, and the watch has nowhere to rescue
+	// to — which is what "and nowhere else" means when the pinned lane is slow.
+	pin := CurrentLanePin()
+	if pin.OpenRouter {
+		return lanes.Choice{}, false
+	}
 	strategy := c.routingFor(knobs.intent)
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
 	}
-	lambda := c.laneValueOfTime(strategy, knobs)
+	if named := pin.pinned(); named != "" && !pin.Borrow {
+		return lanes.Choice{Only: []string{named}}, true
+	}
+	lambda := c.laneValueOfTime(knobs)
 	ask := c.laneRequest(model, knobs, request, lambda)
 	c.rememberAsk(ask)
 	choice := lanes.Default().Chooser().Choose(ask)
+	// AND A PIN THAT MAY BE BORROWED IS A PREFERENCE, so it goes in front of
+	// the belief's own ranking rather than replacing it: the named machine is
+	// asked first, fallbacks stay on, and the Alt the chooser named is left
+	// where it is so a rescue has somewhere to go when the pin stalls.
+	if named := pin.pinned(); named != "" {
+		choice.Order = append([]string{named}, withoutEndpoint(choice.Order, named)...)
+	}
 	return choice, !choice.Empty()
 }
 
@@ -387,7 +481,7 @@ func (c *Client) askFor(model string) laneAsk {
 // ledger keeps, for the reason it keeps it: crediting an anonymous measurement
 // to some lane is how a belief learns a fact about a machine that was never
 // asked.
-func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration) {
+func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached int) {
 	served = strings.TrimSpace(served)
 	model = normalizeModel(model)
 	if !c.isOpenRouter() || model == "" || served == "" {
@@ -403,6 +497,12 @@ func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, 
 		Gap:          gap,
 		Tokens:       tokens,
 		PromptTokens: ask.prompt,
+		// AND WHAT THE ROUTER SAID IT READ BACK OUT OF THIS LANE'S CACHE. It is
+		// the usage frame's own figure and never the estimate beside it: the
+		// prompt length above is what this adapter computed before the send,
+		// and a cache hit invented from it would be a belief that a lane holds
+		// our prefix on evidence that says nothing about any lane at all.
+		CachedTokens: cached,
 		At:           now,
 	})
 	lanes.RememberPrefix(id, ask.prefix, now)

@@ -777,6 +777,7 @@ func (c *Client) completionInOnePiece(
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
 		0,
+		response.Usage.CacheReadTokens(),
 	)
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it. The caller decides whether to ask again.
@@ -1302,9 +1303,10 @@ func (c *Client) completeWithMessagesStreaming(
 			outputTokens(response, content.String()),
 			generation.Sub(firstToken),
 			widestGap,
+			response.Usage.CacheReadTokens(),
 		)
 	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0)
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
 	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it — the same reading completeOnce makes about the same fact.
