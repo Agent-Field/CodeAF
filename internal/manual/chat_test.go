@@ -183,6 +183,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the check run", "how-tasks-run"},
 		{"why did my task fail on a file it says it created", "how-tasks-run"},
 		{"does the checker see the files my task installed", "how-tasks-run"},
+		// Written from a real run: the worker's last line scrolled past and then
+		// the card said nothing for minutes while a check and a round ran, and
+		// the person watching concluded the work had hung.
+		{"task says checking what it left", "how-tasks-run"},
+		{"closing gaps what does that mean", "how-tasks-run"},
+		{"the task finished but the card is still busy", "how-tasks-run"},
+		{"my task went quiet after the last line", "how-tasks-run"},
+		{"what does round 1 of 1 mean under my task", "how-tasks-run"},
+		{"why does my task say not done under it", "how-tasks-run"},
 		// Written from a real run: a task was landed, lost bash, read and grep to
 		// the landing turn, was answered "Unknown tool" eight times, was nudged
 		// three times for the retries that answer invited, and then saved two
