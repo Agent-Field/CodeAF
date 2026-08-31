@@ -175,15 +175,25 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 
 	// WithoutStream for the title's reason: nobody asked for this call, and left
 	// on a stream it would type a document into a room where somebody is reading
-	// an answer.
+	// an answer. THE ONE EXCEPTION IS A CALLER THAT ASKED TO WATCH THIS CALL AND
+	// ONLY THIS CALL ([WithBriefWatch]) — and it is not the exception it looks
+	// like, because the observer it installs is its OWN and the conversation's is
+	// still shut out. Nothing is typed into the room; the words go to whoever is
+	// drawing the wait this call is the reason for.
+	watch := briefWatchFrom(ctx)
 	messages := []ai.Message{textMessage("system", shapePrompt), textMessage("user", request)}
 	for attempt := 0; attempt < 2; attempt++ {
 		// And a role for the same reason it is made without the stream: shaping a
 		// brief is the machine's own housekeeping beside somebody's turn, so it
 		// is priced as an errand and it never owns the clock (internal/lane's
 		// roles.go).
+		//
+		// THE WATCH IS REBUILT PER ATTEMPT, so a repair round starts its
+		// accumulation from nothing: the second answer replaces the first, and a
+		// watcher handed the two concatenated would be reading a document that
+		// was never written.
 		response, callErr := a.client.CompleteWithMessages(
-			provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
+			provider.WithRole(watchedShapeContext(ctx, watch), lane.RoleAuxiliary), messages,
 			ai.WithModel(call.Model), ai.WithTemperature(taskShapeTemp), ai.WithMaxTokens(taskShapeTokens))
 		if callErr != nil || response == nil {
 			return unshaped(request)
@@ -248,4 +258,73 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 	shaped.Title = cleanTitle(shaped.Title)
 	shaped.Where = strings.TrimSpace(shaped.Where)
 	return shaped, true
+}
+
+// ── the brief, while it is still being written ──────────────────────────────
+
+// THE GAP THIS CLOSES. `/task` says `⠙ shaping the brief… · 13s` and, until
+// this existed, said nothing else for those thirteen seconds — the longest
+// silence on the surface, in front of a person who has just typed a command and
+// has no way to tell a careful model from a stuck one. The words are being
+// written the whole time; they simply had nowhere to go.
+//
+// So the shaping call may be WATCHED, by the one caller that raised the wait,
+// and by nobody else. It is opt-in through the context for [provider.Emit]'s
+// reason — a session with no surface in front of it installs nothing and pays a
+// context lookup — and it is a separate door from the conversation's observer
+// rather than a share of it, because the two are about different things: that
+// one is the reply somebody is reading, and this is the machine's own errand
+// beside it.
+//
+// WHAT ARRIVES IS RAW AND PARTIAL AND MUST BE TREATED AS SUCH. The watcher is
+// handed the ACCUMULATED answer text so far, which is a prefix of a JSON object
+// and is therefore not JSON: nothing may unmarshal it, and nothing may act on
+// it. [PartialString] is the tolerant read of one field of such a prefix, and it
+// is the same scanner a forming tool call's arguments are previewed through —
+// one parser for the two streams, because two would drift.
+
+type briefWatchKey struct{}
+
+// WithBriefWatch asks the shaper to report its answer as it arrives.
+//
+// The callback is handed the whole accumulated text on every delta, on the
+// goroutine making the call, in order. A surface must therefore treat it as a
+// wire and not as a hand into its own state: take a copy, hand it to whatever
+// owns the screen, and return.
+//
+// A nil watch installs nothing, so a caller may pass one it computed without
+// branching around this line.
+func WithBriefWatch(ctx context.Context, watch func(string)) context.Context {
+	if watch == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, briefWatchKey{}, watch)
+}
+
+func briefWatchFrom(ctx context.Context) func(string) {
+	watch, _ := ctx.Value(briefWatchKey{}).(func(string))
+	return watch
+}
+
+// watchedShapeContext is the context one shaping attempt is made on: the
+// conversation's observer taken off it, and — for a caller that asked to watch
+// — an observer of this call's own put in its place.
+//
+// The accumulator lives here, one per attempt, which is what makes a repair
+// round start from nothing.
+func watchedShapeContext(ctx context.Context, watch func(string)) context.Context {
+	if watch == nil {
+		return provider.WithoutStream(ctx)
+	}
+	var seen strings.Builder
+	return provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
+		// ONLY THE ANSWER'S OWN TEXT. A reasoning delta is the model's working and
+		// is never shown (provider's stream.go says so of the kind itself), and
+		// the boundary events carry nothing to accumulate.
+		if event.Kind != provider.StreamDelta || event.Delta == "" {
+			return
+		}
+		seen.WriteString(event.Delta)
+		watch(seen.String())
+	})
 }
