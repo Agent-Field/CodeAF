@@ -53,6 +53,24 @@ import (
 // that appeared in two places would be two different half-lives by Christmas.
 const HalfLife = 10 * time.Minute
 
+// QualityHalfLife is how long a belief about ANSWERS takes to lose half its
+// information. It is six times [HalfLife] because the two things this package
+// believes about a lane change on two different scales, and forgetting them at
+// one rate gets one of them wrong.
+//
+// How quick a lane is right now is a fact about load: it moves minute to
+// minute, and a reading from an hour ago is worth almost nothing. Whether a
+// lane returns a usable answer at all is a fact about the deployment behind it
+// — its quantisation, its context window, its truncation — and that holds for
+// hours. Forgetting the second at the speed of the first makes the quality gate
+// inert rather than lenient: a lane whose requests take five minutes each can
+// never accumulate evidence faster than a ten-minute half-life burns it, so its
+// mass sits at the prior's, the credible bound sits at one, and a lane that
+// refuses one answer in six is never dropped. The simulator found exactly that
+// — see "Part III" in the design, C1 — and the fix is not a wider gate but a
+// memory long enough to hold the evidence the gate is asking for.
+const QualityHalfLife = 6 * HalfLife
+
 // SheetWeight is the k a caller passes to [Ledger.Prime]: the sheet's
 // pseudo-observation is worth a quarter of one of our own sightings, because it
 // is a half-hour aggregate over everybody's prompts from everywhere and ours is
@@ -358,7 +376,7 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	// last week are not the same evidence, and folding the new one in on top of
 	// the old without ageing would make them so.
 	if !belief.QualityAt.IsZero() && !o.At.IsZero() {
-		belief.Quality = belief.Quality.Toward(prior, o.At.Sub(belief.QualityAt), HalfLife)
+		belief.Quality = belief.Quality.Toward(prior, o.At.Sub(belief.QualityAt), QualityHalfLife)
 	}
 	belief.Quality = belief.Quality.Observe(o.Accepted)
 	if !o.At.IsZero() {
