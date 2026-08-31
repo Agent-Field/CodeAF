@@ -295,6 +295,29 @@ func reapSession(dir string, meta Meta, note func(string)) {
 			release()
 		}
 	}
+	// AND THE FOLDERS THIS CONVERSATION ONLY REFERRED TO. Its own working copy
+	// of one of those is a worktree cut from THAT repository rather than from
+	// the workspace above (standingtree.go), so the loop above cannot see it and
+	// the registration would be left in a repository this sweep never opened —
+	// which is the litter this function exists to prevent, in somebody else's
+	// project instead of ours. Each root is asked once however many copies hang
+	// off it, and the remove is best-effort for this function's stated reason.
+	reaped := map[string]bool{}
+	for _, tree := range meta.Trees {
+		root := strings.TrimSpace(tree.Root)
+		if root == "" || reaped[root] || strings.TrimSpace(tree.Dir) == "" {
+			continue
+		}
+		reaped[root] = true
+		release := lockGitRoot(Place{Dir: dir}, root)
+		for _, other := range meta.Trees {
+			if other.Root == root {
+				_, _ = git(root, "worktree", "remove", "--force", canonicalPath(other.Dir))
+			}
+		}
+		_, _ = git(root, "worktree", "prune")
+		release()
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
 	}

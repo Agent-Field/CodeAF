@@ -1933,6 +1933,24 @@ type app struct {
 	// what has been made (deliverables.go). It reads the same index /export
 	// writes: the artifacts field above, resolved by [app.artifactsIndex].
 	shelf shelf
+	// folder is the /folder picker: the ONE component for choosing a directory
+	// anywhere in this product (folderpick.go).
+	folder folderPick
+	// folderStore is what that picker remembers between launches — how often
+	// each directory was chosen, and the repositories under `~` as the last
+	// background scan found them (folderplace.go). folderStoreRead says the read
+	// has been ASKED FOR, which is what keeps three opens of the picker in one
+	// second from starting three walks of somebody's home directory.
+	folderStore     folderStore
+	folderStoreRead bool
+	// folderAsking is which directories' facts are in flight, so a cursor held
+	// down a list forks one git per row rather than one per keypress
+	// (homeband_repo.go's [app.repoAsking] states this law).
+	folderAsking map[string]bool
+	// placeChosen is the last directory this conversation chose, whichever road
+	// it came in by ([app.referPlace]). It is what P1 keeps; lane P2 is what
+	// turns it into a remembered set on the conversation's meta.
+	placeChosen string
 	// recentSessions answers the box's right column and the picker's rows, and
 	// resume opens one of them. Both are nil on a surface the door did not wire,
 	// and then the box says it has no sessions rather than pretending to have
@@ -3223,6 +3241,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.tookHomeRepo(msg)
 		return a, nil
 
+	case folderFactsMsg:
+		// WHAT THE MACHINE KNOWS ABOUT ONE DIRECTORY, COMING BACK. It was asked
+		// for on the keystroke that moved the picker's cursor onto that row and
+		// is answered here for the reason above: the branch and the dirty flag
+		// come out of git, and a keystroke may not wait for git (folderplace.go).
+		a.tookFolderFacts(msg)
+		return a, nil
+
+	case folderStoreMsg:
+		// THE PICKS AND THE INDEX, COMING BACK. The picker opened from memory
+		// without either; this is what turns "the order the sources handed these
+		// over" into "the order you actually use them", and it lands mid-list
+		// without touching the filter somebody is typing (folderplace.go).
+		a.tookFolderStore(msg)
+		return a, nil
+
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
 		// then ask for one more beat. It rides its own clock rather than the
@@ -3322,6 +3356,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			a.noticeEvent(eventCompacted)
 		}
+		return a, nil
+
+	case landNoteMsg:
+		// A landing's whole answer is one line, the clean one and the one that
+		// could not go in alike (landcmd.go).
+		a.note(msg.line)
 		return a, nil
 
 	case cacheNoteMsg:
@@ -5859,6 +5899,21 @@ func (a *app) slash(line string) tea.Cmd {
 		a.note("workspace · " + a.hostedPath(resolved))
 		a.touch()
 		return nil
+
+	case "folder":
+		// WHICH FOLDER DO YOU MEAN, asked at any moment. Bare, it is the picker
+		// opened on what is already known (folderpick.go); with words after it,
+		// the same picker with those words already in its box — which for a path
+		// means the columns land inside it, and for a word means the list is
+		// already narrowed. One list, one gesture, and the argument only decides
+		// where it starts.
+		return a.openFolderPick(rest)
+
+	case "land":
+		// The other end of choosing a folder: what was written for a folder this
+		// conversation only refers to, put into it. Shown first and done second
+		// (landcmd.go), and the landing itself runs off the loop.
+		return a.runLandCommand(rest)
 
 	case "image":
 		// The other door onto the tray, for a picture that is not under this
