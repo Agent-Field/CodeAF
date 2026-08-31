@@ -288,7 +288,17 @@ func (l *ledger) Note(s Sighting) {
 		belief.Rate = age(belief.Rate, s.At.Sub(belief.At), prior.rate)
 	}
 
-	if s.TTFT > 0 {
+	// AN ANSWER WITH NO TOKENS IN IT TEACHES QUALITY AND NOTHING ELSE.
+	//
+	// A first-token wait is the wait before A TOKEN, and an empty answer never
+	// had one: whatever was timed is the wait until the stream gave up, which is
+	// a fact about a failure and not about how quickly this lane starts writing.
+	// Folding it in as a first-token measurement is how a lane that returned
+	// nothing at all in eight hundred milliseconds gets believed to be the
+	// fastest lane on the sheet — the belief improving BECAUSE the answer was
+	// unusable. The usable half of an empty answer is its outcome, which
+	// [Ledger.NoteOutcome] takes, and this file takes nothing else from it.
+	if s.TTFT > 0 && s.Tokens > 0 {
 		// A first-token wait behind a long prompt is mostly prefill, which no
 		// endpoint could have avoided, so it is a noisier claim about the lane
 		// the longer the conversation is. A PROBE is the opposite: one token,
@@ -299,8 +309,11 @@ func (l *ledger) Note(s Sighting) {
 		}
 		belief.TTFT = belief.TTFT.Update(math.Log(msOf(s.TTFT)), noise)
 	}
-	// A probe is never a rate measurement: an answer one token long rates the
-	// handshake. Neither is an answer too short to have found its stride.
+	// A SHORT ANSWER TEACHES THE FIRST TOKEN AND NEVER THE RATE. A probe is one
+	// token sent on purpose and rates the handshake; a handful of tokens rates a
+	// lane that has not found its stride. The floor is [ratedFloor] and it is
+	// the same floor the transport applies to its own sightings, so that a lane
+	// cannot be believed fast on the strength of an answer that never got going.
 	if !s.Probe && s.Tokens >= ratedFloor && s.Gen > 0 {
 		if rate := s.Rate(); rate > 0 {
 			belief.Rate = belief.Rate.Update(math.Log(rate), variance(prior.rate))
@@ -325,10 +338,21 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	l.restore()
 	belief := l.beliefs[o.ID]
 	belief.ID = o.ID
+	prior := qualityPrior(belief.Facts.Quant)
 	if !belief.Quality.Known() {
-		belief.Quality = qualityPrior(belief.Facts.Quant)
+		belief.Quality = prior
+	}
+	// Forget first and observe second, for the same reason [Ledger.Note]
+	// predicts before it updates: three refusals this afternoon and three from
+	// last week are not the same evidence, and folding the new one in on top of
+	// the old without ageing would make them so.
+	if !belief.QualityAt.IsZero() && !o.At.IsZero() {
+		belief.Quality = belief.Quality.Toward(prior, o.At.Sub(belief.QualityAt), HalfLife)
 	}
 	belief.Quality = belief.Quality.Observe(o.Accepted)
+	if !o.At.IsZero() {
+		belief.QualityAt = o.At
+	}
 	l.beliefs[o.ID] = belief
 	l.save()
 }

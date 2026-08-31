@@ -163,7 +163,7 @@ func TestAMeasurementAlreadyMadeBeatsTheFileItLandedBeside(t *testing.T) {
 		t.Fatalf("saving beliefs: %v", err)
 	}
 	l := newLedger()
-	l.Note(Sighting{ID: id, TTFT: 400 * time.Millisecond, At: noon.Add(time.Hour)})
+	l.Note(Sighting{ID: id, TTFT: 400 * time.Millisecond, Tokens: 1, At: noon.Add(time.Hour)})
 	l.keepIn(stale)
 	got, _ := l.Belief(id)
 	if math.Abs(got.TTFT.Mean()-400) > 1e-9 {
@@ -176,7 +176,7 @@ func TestAMeasurementAlreadyMadeBeatsTheFileItLandedBeside(t *testing.T) {
 // one that refuses to believe.
 func TestAnUnattachedLedgerKeepsBelievingAnyway(t *testing.T) {
 	l := newLedger()
-	l.Note(Sighting{ID: ID{Model: "m", Lane: "l"}, TTFT: time.Second, At: noon})
+	l.Note(Sighting{ID: ID{Model: "m", Lane: "l"}, TTFT: time.Second, Tokens: 1, At: noon})
 	if belief, ok := l.Belief(ID{Model: "m", Lane: "l"}); !ok || !belief.Known() {
 		t.Fatal("a ledger with no store believed nothing")
 	}

@@ -268,15 +268,26 @@ var errSheetEmpty = errors.New("lane: the sheet named no lanes")
 
 // ── THE BEAT ────────────────────────────────────────────────────────────────
 
-// Beat refreshes models' sheets every `every` until ctx is done.
+// Beat refreshes models' sheets every `every` until ctx is done, and primes the
+// ledger from every reading it gets.
 //
 // IT STARTS NOTHING. Nothing in this package ever runs a goroutine of its own:
 // a session that wants a beat runs this in one it owns and can stop, which is
 // what keeps "who is fetching, and when" a question with an answer in the
 // session's own code rather than in a package nobody thought was running.
 //
+// THE REFRESH AND THE PRIMING ARE ONE ACT, and that is a correction rather than
+// a convenience. A sheet fetched into [Sheet.Rows] and never folded into the
+// ledger is a prior nothing reads: the chooser asks the LEDGER, so a build that
+// refreshed on a beat and primed somewhere else would work exactly until the
+// two drifted, and then be blind on the first call of every process with no
+// symptom but slowness. Priming here means a fresh sheet always reaches the
+// belief, in the one place a sheet is ever fresh.
+//
 // The first pass skips a model whose cached sheet is younger than the interval,
-// so opening a session a minute after closing one costs nothing.
+// so opening a session a minute after closing one costs nothing — and it primes
+// from that cached reading anyway, because a prior read off the disk is worth
+// exactly as much as one off the wire.
 func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 	if s == nil || len(models) == 0 {
 		return
@@ -290,13 +301,16 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 	for _, model := range models {
 		if canAge {
 			if age, ok := fresh.freshness(model, time.Now()); ok && age < every {
+				primeFrom(s, model)
 				continue
 			}
 		}
 		if ctx.Err() != nil {
 			return
 		}
-		_ = s.Refresh(ctx, model)
+		if err := s.Refresh(ctx, model); err == nil {
+			primeFrom(s, model)
+		}
 	}
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -309,9 +323,27 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 				if ctx.Err() != nil {
 					return
 				}
-				_ = s.Refresh(ctx, model)
+				if err := s.Refresh(ctx, model); err == nil {
+					primeFrom(s, model)
+				}
 			}
 		}
+	}
+}
+
+// primeFrom folds one model's rows into the live ledger at [SheetWeight].
+//
+// It is the only caller of [Ledger.Prime] in this package that is not a test,
+// and it asks the registry rather than holding a ledger so that a bench which
+// swapped one in is primed too.
+func primeFrom(s Sheet, model string) {
+	rows := s.Rows(model)
+	if len(rows) == 0 {
+		return
+	}
+	beliefs := Default().Ledger()
+	for _, row := range rows {
+		beliefs.Prime(row, SheetWeight)
 	}
 }
 

@@ -56,13 +56,6 @@ import (
 // because a choice that reads the wall is a choice no test can pin.
 
 const (
-	// beliefHalfLife is how long a belief sitting with no evidence takes to be
-	// worth half of what it was. It is the ageing the chooser applies on read —
-	// see [Posterior.Predict], which widens the variance and never moves the
-	// estimate — and it is ten minutes because that is the window an endpoint's
-	// load is a fact about.
-	beliefHalfLife = 10 * time.Minute
-
 	// ExplorationHorizon is how many more calls a session must expect to make
 	// before exploration is worth its full width.
 	//
@@ -103,6 +96,40 @@ const (
 	// nobody is being rescued by it.
 	hedgeFloor   = 700 * time.Millisecond
 	hedgeCeiling = 8 * time.Second
+
+	// medianObservations is how many requests a published percentile row stands
+	// for WHEN THE QUESTION IS HOW SURE OF THE LANE'S MEDIAN IT MAKES US.
+	//
+	// A belief's variance is two different quantities at two different moments,
+	// and this is the seam where the difference bites. Once this process has
+	// measured a lane itself, P is the variance of the MEDIAN: it shrinks like
+	// one over the number of sightings, and a draw from it is a draw of "which
+	// lane is quicker", which is exactly the question Thompson sampling exists
+	// to ask. BEFORE THAT, P IS WHATEVER THE SHEET'S SPREAD WAS — and the
+	// sheet's spread is the lane's per-request VARIABILITY, the distance between
+	// its p50 and its p90 over everybody's prompts. Drawing from that is drawing
+	// one imagined request, not one opinion about a lane, and a router that
+	// reorders lanes on an imagined request pays real money for a coin toss it
+	// can learn nothing from: the sheet has already told it both medians. The
+	// same file says so twice over — [predictive] floors this variance back UP
+	// for the hedge, precisely because there it wants the per-request question
+	// and P by then no longer answers it.
+	//
+	// Sixteen is stated rather than derived, because nothing the router
+	// publishes says how many requests are behind a percentile; it is the
+	// design's own discount for a public number ([SheetWeight] = 4) squared,
+	// which is what turns a weight in the filter's units into a count. What it
+	// buys is the property that matters: a lane the sheet has described is
+	// explored over about a quarter of its spread instead of the whole of it,
+	// and a lane this process has measured is explored on its own real
+	// uncertainty — which [Posterior.Predict] then widens again as it ages, so
+	// nothing is pinned forever.
+	//
+	// It was found by the case in `ideation/provider-routing.md`, Part III: with
+	// two thousand hidden tokens and somebody waiting, Baidu is both quicker and
+	// four times cheaper than Cloudflare, and the chooser sent a quarter of
+	// those requests to Cloudflare anyway.
+	medianObservations = SheetWeight * SheetWeight
 
 	// predictiveSpreadFloor is the smallest spread the hedge arithmetic will use
 	// for a first-token belief, in the log domain.
@@ -270,8 +297,16 @@ func (c *chooser) Choose(req Request) Choice {
 			continue
 		}
 		if since := req.Now.Sub(belief.At); since > 0 && !belief.At.IsZero() {
-			belief.TTFT = belief.TTFT.Predict(since, beliefHalfLife)
-			belief.Rate = belief.Rate.Predict(since, beliefHalfLife)
+			belief.TTFT = belief.TTFT.Predict(since, HalfLife)
+			belief.Rate = belief.Rate.Predict(since, HalfLife)
+		}
+		// AND THE QUALITY BELIEF IS AGED HERE TOO, on its own moment, because a
+		// lane the gate has dropped is a lane nothing else will ever ask about:
+		// no request goes to it, so no sighting and no outcome arrives to age it
+		// on the way in. Without this the drop would be permanent — which is the
+		// absorbing gate [Beta.Upper] and [Beta.Toward] were written to end.
+		if since := req.Now.Sub(belief.QualityAt); since > 0 && !belief.QualityAt.IsZero() {
+			belief.Quality = belief.Quality.Toward(qualityPrior(belief.Facts.Quant), since, HalfLife)
 		}
 		aged[belief.ID] = belief
 	}
@@ -425,15 +460,22 @@ func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float
 	return ignore
 }
 
-// sample is one Thompson draw from a belief, in its natural unit, with the
+// sample is one Thompson draw of a lane's MEDIAN, in its natural unit, with the
 // spread scaled by the horizon. A belief that knows nothing draws nothing —
 // zero — and the caller falls back to the frontier's own p75 figure rather than
 // inventing a number here.
+//
+// THE DRAW IS OF THE LANE AND NEVER OF ONE OF ITS REQUESTS; see
+// [medianObservations] for why those are different and for the run that found
+// the difference. The tail is priced elsewhere and on purpose: the frontier
+// prunes at the p75 ([quartileZ]) and the hedge deadline is computed from the
+// full predictive spread ([predictive]), so nothing is lost here by asking a
+// narrower question.
 func sample(posterior Posterior, draws *rand.Rand, width float64) float64 {
 	if !posterior.Known() {
 		return 0
 	}
-	spread := math.Sqrt(posterior.P) * width
+	spread := math.Sqrt(posterior.P/medianObservations) * width
 	return math.Exp(posterior.X + spread*draws.NormFloat64())
 }
 

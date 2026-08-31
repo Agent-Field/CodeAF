@@ -212,14 +212,28 @@ type Outcome struct {
 // not a dial, which is why it is stated once, here.
 const ReadRate = 18.0
 
-// PerceivedSeconds is how long an answer feels, in seconds.
+// PerceivedSeconds is how long a person WAITS on an answer, in seconds.
+//
+//	ttft  +  hidden/rate  +  visible · max(0, 1/rate − 1/ReadRate)
 //
 // Hidden tokens — reasoning, tool-call JSON, anything a person never reads —
-// are worth their full rate, because every one of them is pure waiting. Visible
-// tokens are worth at most the reading rate. That single distinction is what
-// makes a 75 tok/s lane and a 58 tok/s lane equal for a talk turn and different
-// for a tool loop, and it is why this is the objective the chooser minimises
-// rather than wall-clock time.
+// are worth their full rate, because every one of them is pure waiting.
+//
+// THE VISIBLE TERM IS THE WAIT AND NOT THE READING. Text a person reads as it
+// arrives costs them the time it takes to read it no matter which lane wrote
+// it: at the reading rate that is visible/ReadRate seconds, and NO ROUTER CAN
+// REMOVE IT. What a router can remove is the part of the wait where the reader
+// has caught up with the writer, which is the difference between the two rates
+// and nothing else. A lane at or above the reading rate therefore contributes
+// no visible wait at all, and two lanes above it are the SAME SPEED to the
+// person — the fact the whole objective is built on.
+//
+// Counting the reading time (as `visible/min(rate, ReadRate)` did) put a large
+// constant into every candidate's score. It changed no ranking, but it made
+// every ratio a simulator or a ship gate computed from these numbers — "the
+// wait improved by 30%" — a ratio of mostly reading, which is how a router with
+// no effect at all can be reported as a 5% win. The correction was found by
+// `bench/lanelab`; see ideation/provider-routing.md, Part III.
 //
 // ttft is in SECONDS and rate in TOKENS PER SECOND. A rate of zero or less is
 // a lane that never finishes, and it is reported as such rather than as a large
@@ -228,5 +242,5 @@ func PerceivedSeconds(ttft, rate float64, visible, hidden int) float64 {
 	if rate <= 0 {
 		return math.Inf(1)
 	}
-	return ttft + float64(hidden)/rate + float64(visible)/math.Min(rate, ReadRate)
+	return ttft + float64(hidden)/rate + float64(visible)*math.Max(0, 1/rate-1/ReadRate)
 }

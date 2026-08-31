@@ -106,7 +106,13 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	// usable answers is under what this request needs leaves the candidate set
 	// until the belief recovers; it is never traded off against a cheaper price,
 	// because that trade is how a router learns to ship wrong answers cheaply.
-	if req.QualityNeed > 0 && belief.Quality.Known() && belief.Quality.Mean() < req.QualityNeed {
+	//
+	// THE BOUND AND NOT THE MEAN — see [Beta.Upper], which carries the whole
+	// argument and the run that found it. In one line: the question is "could
+	// this lane be good enough", and a lane nobody has judged yet must answer
+	// yes, or the gate refuses the entire candidate set for lack of evidence
+	// and then never sends the request that would have supplied it.
+	if req.QualityNeed > 0 && belief.Quality.Known() && belief.Quality.Upper(z90) < req.QualityNeed {
 		return false
 	}
 	return true
