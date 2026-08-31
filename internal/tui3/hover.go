@@ -111,6 +111,11 @@ const (
 	// roster that is all of it. What the hover buys beyond the background step is
 	// the disclosure triangle a family root reveals in its glyph cell, which is
 	// the whole of the column's fold affordance at rest.
+	// hoverForming is a row of the forming block at the transcript tail
+	// (formingblock.go); index is the wait it belongs to. It is a kind of its own
+	// rather than a hoverEntry because that one is keyed by ENTRY and this block
+	// belongs to no entry — it is what stands where a block is about to be.
+	hoverForming
 	hoverRail
 	// hoverRailArea is the roster's non-node space. The rail remains one
 	// pointer target even between rows, because its footer offer follows the
@@ -443,6 +448,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
+		case r.hit == hitForming:
+			// THE WAIT AND NOT THE ROW. A wait's compact row and the preview under
+			// it are one thing to press, so they light together (formingblock.go's
+			// [app.formingHot]) — and the wait is named by its place in the list,
+			// which is what the row carries in place of an entry.
+			return hoverAt{kind: hoverForming, index: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
 			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is

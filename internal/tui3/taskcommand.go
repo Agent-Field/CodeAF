@@ -10,7 +10,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // taskCommandAgent is the whole of what /task needs from the session, and it is
@@ -38,11 +37,18 @@ type taskCommandAgent interface {
 type taskSizedMsg struct {
 	brief    string
 	parallel bool
+	// wait names the forming block this answer settles. Two `/task` commands can
+	// be in flight at once — the block is a list now (formingblock.go) — and a
+	// settle that took whichever block was newest would collapse somebody else's
+	// wait and leave this one turning forever.
+	wait uint64
 }
 
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
+	// wait is [taskSizedMsg.wait], for the same reason and on the same terms.
+	wait uint64
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
@@ -99,7 +105,7 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// one worker and nothing is to be read for width first, so neither the sizing
 	// call nor the person's standing answer to it has anything left to decide.
 	if solo {
-		return a.startTaskDoor(door, brief)
+		return a.startTaskDoor(door, brief, 0)
 	}
 	// And where they have said in advance that one worker is what they want and
 	// that they do not want the brief read for width first, the sizing call is
@@ -109,13 +115,13 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// (internal/splitgate), which costs nothing at all.
 	preset := config.TaskStartAt(a.profileDir)
 	if preset == config.TaskStartSingle {
-		return a.startTaskDoor(door, brief)
+		return a.startTaskDoor(door, brief, 0)
 	}
-	a.beginPreflight(taskSizingNote, brief)
+	seq := a.beginPreflight(0, taskSizingNote, brief)
 	ctx := a.ctx
 	return func() tea.Msg {
 		parallel, _, _ := door.JudgeDecomposable(ctx, brief)
-		return taskSizedMsg{brief: brief, parallel: parallel}
+		return taskSizedMsg{brief: brief, parallel: parallel, wait: seq}
 	}
 }
 
@@ -128,7 +134,11 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // says the one true thing about the pause in the same voice `sizing it up…` says
 // its own, and [app.settleShaping] collapses it the moment the task lands —
 // including when nothing shaped it, because the block was about the attempt.
-func (a *app) startTaskDoor(door taskCommandAgent, brief string) tea.Cmd {
+// seq is the wait the sizing phase already opened for this command, and zero
+// where the command opened none — the phase changes IN PLACE on the block a
+// person is already reading, rather than collapsing one block and raising
+// another under it ([app.beginPreflight]).
+func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea.Cmd {
 	ctx := a.ctx
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
@@ -159,10 +169,68 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string) tea.Cmd {
 	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
 	}
-	a.beginPreflight(taskShapingNote, brief)
+	seq = a.beginPreflight(seq, taskShapingNote, brief)
+	// AND THE BRIEF IS WATCHED WHILE IT IS WRITTEN. The shaper streams its answer
+	// to whoever asked for it (internal/session's [session.WithBriefWatch]), and
+	// what arrives here is the raw accumulated text on the goroutine making the
+	// call — so this hand does one thing with it, which is put the newest version
+	// on a lane the surface owns. Everything about reading it happens on the
+	// update lane, where the app's own state lives.
+	//
+	// The lane holds ONE text and it is the NEWEST: a preview is a tail, and a
+	// backlog of superseded tails is a queue of things nobody will ever want to
+	// look at. A frame that misses a fragment misses nothing, because the next
+	// fragment carries the whole answer again.
+	stream := make(chan shapingRead, 1)
+	return tea.Batch(a.pumpShaping(seq, stream), func() tea.Msg {
+		defer close(stream)
+		watched := session.WithBriefWatch(ctx, func(answer, thinking string) {
+			read := shapingRead{answer: answer, thinking: thinking}
+			select {
+			case stream <- read:
+			default:
+				select {
+				case <-stream:
+				default:
+				}
+				select {
+				case stream <- read:
+				default:
+				}
+			}
+		})
+		id, title, err := door.StartTask(watched, brief)
+		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err, seq}
+	})
+}
+
+// shapingRead is one reading of what the shaper has produced, and it is two
+// strings because on a thinking model one of them is empty for the whole wait
+// (internal/session's [session.BriefWatch]). They are kept apart the whole way
+// so that nothing can draw the model's working and call it somebody's brief.
+type shapingRead struct {
+	answer   string
+	thinking string
+}
+
+// shapingTailMsg carries one reading off the lane [app.startTaskDoor] opened,
+// and carries the lane back with it so the pump can ask for the next one. done
+// says the shaping call has returned and nothing more is coming.
+type shapingTailMsg struct {
+	wait   uint64
+	read   shapingRead
+	done   bool
+	stream <-chan shapingRead
+}
+
+// pumpShaping waits for the next reading and hands it to the update lane. It is
+// one message per fragment the surface actually gets to draw rather than one per
+// token: the lane holds only the newest text, so a shaper writing faster than
+// the frame clock collapses into whatever was there when the pump came round.
+func (a *app) pumpShaping(seq uint64, stream <-chan shapingRead) tea.Cmd {
 	return func() tea.Msg {
-		id, title, err := door.StartTask(ctx, brief)
-		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err}
+		read, open := <-stream
+		return shapingTailMsg{wait: seq, read: read, done: !open, stream: stream}
 	}
 }
 
@@ -198,7 +266,8 @@ const taskWideNote = "the work looks wide · one worker starts, and it can split
 const taskAdaptiveRetiredNote = "/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes"
 
 // preflight is the one visible thing a task command is becoming: the person's
-// words, its present phase, and the moment that phase began.
+// words, its present phase, the moment that phase began, and — while the shaper
+// is writing — the brief as far as it has got.
 //
 // THE WAIT DOES NOT ENTER THE NOTES LANE. Notes report facts that have landed;
 // this scaffold exists only while a command is in flight and is drawn at the
@@ -219,17 +288,74 @@ type preflight struct {
 	// message, a proposal's task simply starts existing on the update lane — and
 	// the id is how the second settle finds its own block and no other.
 	taskID uint64
-	at     time.Time
+	// seq is the wait's own identity, handed out by [app.beginPreflight] and
+	// carried back on the message that settles it. The taskID above cannot do
+	// this job: a typed command has no task to name until the door has answered,
+	// which is the exact moment the wait is over.
+	seq uint64
+	at  time.Time
+	// tail is the brief as far as the shaper has written it — the DECODED value
+	// of the one field the answer is previewed by, never the raw JSON around it
+	// ([shapingPreview]). It is empty on the proposal road, where the brief was
+	// written before the person was ever asked, and on every road until the first
+	// fragment lands; a block with nothing to show draws no tail at all.
+	tail string
+	// think is what the shaper is REASONING while it has not started writing —
+	// the model's working, kept apart from its answer all the way down
+	// (internal/session's [session.BriefWatch]) and drawn in the italic this
+	// surface already draws a think in (thinking.go).
+	//
+	// IT IS HERE BECAUSE ON A THINKING SHAPER IT IS THE ONLY THING THERE IS. The
+	// shaper is allowed to reason, and a run measured against a real endpoint
+	// spent the whole twenty-five seconds producing reasoning and never one
+	// answer delta — so a block that could only draw the brief drew nothing for
+	// exactly the wait it was built for. The brief takes the row the moment there
+	// is a brief, and never gives it back.
+	think string
+	// open is the window somebody asked for: the last few lines of the brief
+	// rather than the newest one. It is per-wait, because in a block of several
+	// only the pointed one shows anything at all.
+	open bool
 }
 
 // live reports whether a wait is up. It is the frame's eighth reason to paint.
 func (p preflight) live() bool { return p.note != "" }
 
-// begin puts the wait on screen and starts its clock.
-func (a *app) beginPreflight(note, brief string) {
-	a.wait = preflight{note: note, brief: brief, at: a.now()}
+// waiting reports whether ANY forming block is up. It is the predicate the paint
+// clock and the frame ask, and it is a question about the list rather than about
+// one wait: a second `/task` typed while the first is still shaping must not let
+// the surface go still when the first one lands.
+func (a *app) waiting() bool { return len(a.waits) > 0 }
+
+// beginPreflight puts a wait on screen and starts its clock, and answers with
+// the identity the settle will come back with.
+//
+// A seq that names a wait already on screen changes that wait's PHASE IN PLACE.
+// Sizing and shaping are two phases of one command, and a person watching must
+// see the words on the third row change rather than a block collapse and a
+// second one open under it.
+func (a *app) beginPreflight(seq uint64, note, brief string) uint64 {
+	if at := a.waitAtSeq(seq); at >= 0 {
+		a.waits[at].note = note
+		a.waits[at].at = a.now()
+		// The phase is the wait's subject, so the preview it collected under the
+		// old phase is not this phase's. Nothing has been written of the new one
+		// yet, which is the honest thing to draw.
+		a.waits[at].tail = ""
+		a.follow()
+		a.touch()
+		return seq
+	}
+	a.waitSeq++
+	a.waits = append(a.waits, preflight{seq: a.waitSeq, note: note, brief: brief, at: a.now()})
+	// THE NEWEST WAIT IS THE POINTED ONE. It is the one the person just asked
+	// for, and in a block of several it is the only one whose preview is drawn
+	// (formingblock.go) — pointing anywhere else would be the surface deciding
+	// which of somebody's commands they meant.
+	a.waitAt = len(a.waits) - 1
 	a.follow()
 	a.touch()
+	return a.waitSeq
 }
 
 // beginProposalWait is the SAME forming block raised by the OTHER door: a
@@ -244,7 +370,11 @@ func (a *app) beginProposalWait(card *taskCard) {
 	if name == "" {
 		name = card.title
 	}
-	a.wait = preflight{note: taskShapingNote, name: name, taskID: card.id, at: a.now()}
+	a.waitSeq++
+	a.waits = append(a.waits, preflight{
+		seq: a.waitSeq, note: taskShapingNote, name: name, taskID: card.id, at: a.now(),
+	})
+	a.waitAt = len(a.waits) - 1
 	a.follow()
 	a.touch()
 }
@@ -254,9 +384,14 @@ func (a *app) beginProposalWait(card *taskCard) {
 // admitted, and a failure is a fact the task's own machinery announces — the
 // block was only ever about the pause before there was anything to point at.
 func (a *app) settleProposalWait(id uint64) {
-	if id != 0 && a.wait.taskID == id {
-		a.wait = preflight{}
-		a.touch()
+	if id == 0 {
+		return
+	}
+	for i := range a.waits {
+		if a.waits[i].taskID == id {
+			a.dropWait(i)
+			return
+		}
 	}
 }
 
@@ -264,65 +399,79 @@ func (a *app) settleProposalWait(id uint64) {
 // call because they are one fact — this is no longer happening — and a surface
 // that dropped the note while leaving the clock running would keep asking for
 // frames forever on behalf of a row nobody can see.
-func (a *app) endPreflight(note string) {
-	if a.wait.note == note {
-		a.wait = preflight{}
+func (a *app) endPreflight(seq uint64, note string) {
+	if at := a.waitAtSeq(seq); at >= 0 && a.waits[at].note == note {
+		a.dropWait(at)
+		return
 	}
 	a.touch()
 }
 
-func (a *app) settleSizing()  { a.endPreflight(taskSizingNote) }
-func (a *app) settleShaping() { a.endPreflight(taskShapingNote) }
+func (a *app) settleSizing(seq uint64)  { a.endPreflight(seq, taskSizingNote) }
+func (a *app) settleShaping(seq uint64) { a.endPreflight(seq, taskShapingNote) }
 
-// preflightRows draws the forming block at the transcript tail.
-//
-//	▏ task
-//	▏ "write the release notes"
-//	▏ ⠙ shaping the brief… · 6s
-//
-// ONE HAIRLINE AND ONE SPACE IS THE WHOLE SCAFFOLD. The brief is quoted because
-// it is the person's verbatim input, and is capped at two fitted rows so a long
-// command cannot turn a transient wait into a transcript card. The count-up is
-// [countUpWord], which floors under a second by the emptiness law.
-func (a *app) preflightRows(width int) []string {
-	if !a.wait.live() || width < 3 {
-		return nil
+// waitAtSeq is a wait's place in the list, or -1 for one that has already
+// settled — which is the ordinary answer for a message that arrives after an
+// error collapsed the block, and is why every caller is written to accept it.
+func (a *app) waitAtSeq(seq uint64) int {
+	if seq == 0 {
+		return -1
 	}
-	// The linear tier's objection to a spinner is the one it makes on a tool
-	// line: a claim repeated thirty times a second is heard thirty times a second
-	// by a surface being read aloud. A still mark makes it once.
-	mark := tokens.Spinner(a.paints / spinnerStep)
-	if a.linear {
-		mark = glyphRunASCII
-	}
-	line := a.wait.note
-	if word := countUpWord(a.now().Sub(a.wait.at)); word != "" {
-		line += " · " + word
-	}
-	rail := "▏ "
-	room := width - 2
-	// The identity line is the person's words when there are person's words —
-	// quoted, because they are verbatim — and the task's own name when the block
-	// was raised by an approved proposal, plain, because the name is the
-	// surface's word and wearing quotes would claim somebody typed it.
-	var identity []string
-	switch {
-	case a.wait.brief != "":
-		identity = wrap(strconv.Quote(a.wait.brief), room)
-		if len(identity) > 2 {
-			identity = identity[:2]
-			identity[1] = fit(identity[1], room)
-			if !strings.HasSuffix(identity[1], "…") {
-				identity[1] = fit(identity[1]+"…", room)
-			}
+	for i := range a.waits {
+		if a.waits[i].seq == seq {
+			return i
 		}
-	case a.wait.name != "":
-		identity = []string{fit(a.wait.name, room)}
 	}
-	out := []string{a.pal.dim(rail + "task")}
-	for _, row := range identity {
-		out = append(out, a.pal.dim(rail+row))
+	return -1
+}
+
+// dropWait takes one wait off the list and keeps the pointer on something real.
+//
+// The pointer follows the LIST rather than the wait it was on: a block whose
+// pointed row settled must not point past its own end, and the nearest honest
+// place to stand is wherever the list now ends.
+func (a *app) dropWait(at int) {
+	if at < 0 || at >= len(a.waits) {
+		return
 	}
-	out = append(out, a.pal.dim(rail+mark+" "+fit(line, room-2)))
-	return out
+	a.waits = append(a.waits[:at], a.waits[at+1:]...)
+	if a.waitAt >= len(a.waits) {
+		a.waitAt = len(a.waits) - 1
+	}
+	if a.waitAt < 0 {
+		a.waitAt = 0
+	}
+	a.touch()
+}
+
+// shapingTail records one reading of what the shaper has produced.
+//
+// IT DIGESTS THE ANSWER THROUGH THE ONE SCANNER THIS SURFACE HAS. What arrives
+// is a prefix of the shaper's JSON answer, and a prefix of a JSON object is not
+// a payload — [shapingPreview] is the same tolerant read of one field that a
+// forming tool call's arguments go through, which is the whole reason there is
+// no second parser here to drift from the first. The reasoning is plain text and
+// goes through nothing at all.
+//
+// A READING THAT SAYS LESS THAN WHAT IS ON SCREEN IS DROPPED, on both halves.
+// The field being followed opens before it has any content, so the fragments
+// after the brief's opening quote legitimately answer with nothing — and a
+// preview that blanked itself every time the model paused would flicker at the
+// person reading it.
+func (a *app) shapingTail(seq uint64, read shapingRead) {
+	at := a.waitAtSeq(seq)
+	if at < 0 {
+		return
+	}
+	p := &a.waits[at]
+	changed := false
+	if preview := shapingPreview(read.answer); preview != "" && preview != p.tail {
+		p.tail, changed = preview, true
+	}
+	if think := strings.TrimSpace(read.thinking); think != "" && think != p.think {
+		p.think, changed = think, true
+	}
+	if changed {
+		a.touch()
+	}
 }
