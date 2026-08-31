@@ -719,10 +719,20 @@ draw from it is a draw of a single request, and reordering lanes on a single
 imagined request is paying real money for a coin toss nothing can be learned
 from: the sheet has already published both medians. The same file said so twice
 over — the hedge's `predictive()` floors that variance back UP precisely because
-there the per-request question is the right one. The chooser now draws the
-lane's median (`medianObservations`), and the tail is still priced where it
-belongs: the frontier prunes at the p75 and the hedge deadline uses the full
-predictive spread.
+there the per-request question is the right one.
+
+The correction is one variance meaning two things at two different moments, and
+the fix has to respect both. Before this process has measured a lane, its P is
+the sheet's spread and the draw is narrowed (`sheetObservations`). After it has,
+P is the variance of the median — shrunk by our own sightings, widened again by
+`Predict` as they age — and the draw is at full width, which is what lets a lane
+this router gave up on earn its way back. `Belief.At` is what separates the two,
+and it is a blunt line drawn where it is because it is the one fact that is
+certainly true on either side of it. Narrowing BOTH cases was tried first and it
+disabled §5's stated return path outright: a lane the router had stopped sending
+to could no longer be sampled back, which is a penalty box arrived at by
+arithmetic. The tail is still priced where it belongs — the frontier prunes at
+the p75 and the hedge deadline uses the full predictive spread.
 
 With both fixed, the case above goes from 306 requests in 400 reaching the
 quicker, cheaper lane to 397.
@@ -730,8 +740,8 @@ quicker, cheaper lane to 397.
 **What is deferred, and named so it is not forgotten:** a `Posterior` still
 carries one variance where the design needs two — the lane's per-request spread
 (aleatoric, which the tail and the hedge want) and our uncertainty about its
-median (epistemic, which the sampler and the refusal want). Every consumer in
-this package works around the conflation in its own way. Carrying both on the
+median (epistemic, which the sampler and the refusal want). `Belief.At` is a
+proxy for the difference and not the difference itself. Carrying both on the
 belief is the right shape and it is a contract change for a later wave.
 
 ## C6 — the simulator has to judge the shipped code
@@ -775,3 +785,80 @@ next run — a real router given an opinion about a lane that does not exist, an
 scenarios whose starting ledger was whatever the last run left behind. It showed
 up as scenario 3 choosing a different victim on two runs of the same fixed
 Tuesday. Every scenario now takes a home of its own.
+
+---
+
+## What merging the lanes together showed
+
+The five wave-1 lanes each held their own half of a seam and each was right
+alone. Four things only appeared when the halves met, and every one of them is
+the same shape: two pieces of correct code doing the same job twice, or one
+piece doing a job the other had already made unnecessary.
+
+**One choice per call.** A choice is a sampled decision, so asking for it twice
+gives two answers — and a streamed call asked twice: the watch on the way in
+(to decide whether to hedge, and where to), the encoder on the way out (to write
+`provider.order`). A watch armed on a lane the wire never asked for hedges at
+the wrong moment toward the wrong alternative, and neither half looks wrong on
+its own. The call now decides once, carries the choice, and both halves read it
+— which also makes every rung of the endpoint ladder and every retry ask for the
+same lane as the request they are repeating.
+
+**One sighting per stream.** Every finished stream already reaches the belief
+through the ordinary path — that is how a machine with no sheet learns anything
+— and the hedge race noted its winner again. A lane that had been raced was
+believed on twice the evidence it had earned, and its belief moved twice as fast
+for having been looked at. The race now notes the LOSERS, which are the streams
+nothing else can see.
+
+**An order of one is not a ranking.** On a machine with no sheet the only lanes
+this package has heard of are the ones that have already served. So its first
+opinion about a model names ONE endpoint — quite possibly the slow one it is
+about to be demoted for — and that name went out as `provider.order`, in front
+of a router that knows a dozen, silently overriding a strike ledger that had
+correctly demoted it. A ledger that has heard of one lane has nothing to rank,
+and now says so.
+
+**Forgetting stops where the public reading stands.** The clamp on ageing was set
+at the sheet's spread σ², and the sheet enters the filter as a pseudo-observation
+with R = k·σ² — so a fully forgotten belief was still FOUR TIMES more certain
+than the number anybody can look up, and could never be outweighed by it however
+old it got. The gain on every refresh was pinned at one fifth, and a lane the
+router had stopped sending to crawled back toward the public reading at twenty
+per cent a beat: twenty-five minutes to return from a bad minute, in a design
+whose whole claim is that there is no penalty box. At the honest clamp, k·σ², a
+forgotten belief and a fresh sheet weigh the same. And a row now carries the
+moment it was read (`Row.At`), because a sheet folded into a belief that was
+never aged first is a fresh number weighed against ten-minute-old confidence.
+
+### And two numbers in the acceptance scenarios that no correct build could meet
+
+**"Halve the p90" (scenario 2).** Written before the scenario that would have to
+meet it existed. The script breaks one lane to about twice its healthy first
+token, so the whole of the damage is a factor of two, and an arm that removed
+every trace of it would still sit at the healthy answer time — which is more
+than half the pinned arm's p90. The bar is now the design's own ship gate: a p90
+improvement of at least 30%, plus the stronger claim the scenario really does
+make, that the ninetieth percentile of the arm that moves is better than the
+median of the arm that does not.
+
+**"Within ten requests" (scenario 3).** By the time the lane recovers, this
+process has watched it be slow five times, and one public reading is not
+entitled to erase five of its own measurements in four minutes. Measured: the
+belief comes back from about 1.9 s to about 1.16 s over two beats against a pack
+at 0.95 s, at which point the lane heads the order on roughly one request in
+fifty. Ten requests is a coin toss and a test of it is a test of a random number
+generator. Thirty requests and a third beat is where the return is a fact. What
+changed is the CLAIM; no constant was tuned to rescue the old one.
+
+### And one bug in the other instrument
+
+`internal/provider`'s own suite had the same disease as the acceptance
+scenarios, one layer out: its tests stream simulated answers through a real
+client, every finished stream teaches the process-wide lane ledger, and that
+ledger writes through a store under `AFORGE_HOME`. So the suite folded lanes
+called "quicksilver" into the belief file of whoever ran it, read them back on
+the next run, and then failed on a first request arriving with an `order` it
+could not have learned. The velocity ledger it was all written around is per
+CLIENT, so the tests had never needed to think about it. A home per test binary
+and a registry per test client end both halves.
