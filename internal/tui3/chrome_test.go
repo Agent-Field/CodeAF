@@ -1258,9 +1258,13 @@ func noteSaying(t *testing.T, a *app, want string) string {
 func threePageApp(t *testing.T) *app {
 	t.Helper()
 	a, _ := sheetApp(t)
+	// ONE CLOCK OVER THE WHOLE LAB ([pinFixtureClock] says why): the task row
+	// below is dated from the fixture clock, so the surface is put on it, and
+	// the two conversations are dated from it too rather than from the wall.
+	pinFixtureClock(a)
 	lab := newHomeLab(t)
-	here := lab.session("alpha", "one", "This conversation", "/tmp/alpha", time.Now())
-	lab.session("beta", "two", "Somewhere else", "/tmp/beta", time.Now().Add(-time.Hour))
+	here := lab.session("alpha", "one", "This conversation", "/tmp/alpha", taskFixtureNow)
+	lab.session("beta", "two", "Somewhere else", "/tmp/beta", taskFixtureNow.Add(-time.Hour))
 	a.homeRoot = lab.root
 	a.file = here
 	a.comp.tasks = []session.TaskIndexEntry{

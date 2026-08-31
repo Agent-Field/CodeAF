@@ -322,6 +322,10 @@ const taskPageTip = "ctrl+. sees every task this project has run"
 // retired when the surface comes up again over the same profile.
 func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	a, dir := sheetApp(t)
+	// The gesture that retires the hint is the task page OPENING ON ROWS, and
+	// the row seeded below is dated from the fixture clock — so the surface goes
+	// on it too ([pinFixtureClock] states the law).
+	pinFixtureClock(a)
 	if got := a.notices.current[slotHint]; got != "" {
 		t.Fatalf("a fresh surface already holds hint %q", got)
 	}
@@ -401,6 +405,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventTurnEnded:   func(t *testing.T, a *app) { a.settle() },
 		eventTaskStarted: startTask,
 		eventTaskPageOpened: func(t *testing.T, a *app) {
+			pinFixtureClock(a)
 			a.comp.tasks = []session.TaskIndexEntry{pastTask("4", "port-the-parser", "Port the parser", time.Hour)}
 			if !openTaskPlaceWithRows(a) {
 				t.Fatal("the task page did not open")

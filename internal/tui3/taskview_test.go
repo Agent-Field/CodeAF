@@ -43,6 +43,19 @@ func pastTask(id, name, title string, ago time.Duration) session.TaskIndexEntry 
 	}
 }
 
+// pinFixtureClock puts the surface on the clock its fixtures are dated from.
+//
+// A LAB THAT SEEDS [pastTask] ROWS HAS TO CALL IT, and the reason is the law
+// [taskFixtureNow] states: one clock and not two. The place opens on a window
+// [taskSheetDays] wide measured from the SURFACE'S clock, so a lab that dates
+// its rows from the fixture and leaves the surface on the wall is a lab that
+// ages its own fixtures — it passes until the wall walks past the fixture by
+// more than that window, and then the page opens with nothing on it and every
+// test about rows fails on a calendar date rather than on a change.
+func pinFixtureClock(a *app) {
+	a.clock = func() time.Time { return taskFixtureNow }
+}
+
 // taskSheetText is the page as a reader sees it.
 func taskSheetText(a *app) string {
 	width, height := a.size()
