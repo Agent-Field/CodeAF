@@ -1172,6 +1172,25 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	defer done()
 	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointSketchAsk)}
 	began := time.Now()
+	// AND THE PERSON IS TOLD WHAT THIS SILENCE IS, because it is one: a turn stops
+	// mid-round, a mastermind is shown an account of the work and asked what is
+	// left of the ask, and the reading is bounded at [checkpointSketchWindow] —
+	// ten to thirty seconds on the measured runs, with nothing whatever drawn for
+	// it until now.
+	//
+	// `taking stock` AND NOT `checking`, which is the phase the gates at the end
+	// of a turn wear (loop.go). Those read an ANSWER and decide whether it
+	// finished; this reads the whole ask against everything that has been done, in
+	// the middle of the work, and the two waits mean different enough things that
+	// spelling them the same way would be the surface saying one sentence for two
+	// stages. The stage lasts the length of the call and the clock counts the
+	// whole of it, because a held phase says itself again while it lasts
+	// (phasenews.go).
+	//
+	// AND IT COMES OFF ON EVERY WAY OUT — the reading that answered, the one that
+	// failed, the one the window cut short — which is what the defer is for.
+	a.tellPhase(provider.PhaseTakingStock, "", began)
+	defer a.endPhase()
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
 		ai.WithMaxTokens(checkpointSketchTokens),
 		ai.WithTemperature(checkpointSketchTemp))

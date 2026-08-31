@@ -98,6 +98,18 @@ const (
 	// on, before there is a task to point at (internal/session's checkpoint.go).
 	// Detail names who it is for, so the row reads "briefing a worker".
 	PhaseBriefing Phase = "briefing"
+	// PhaseTakingStock is the reading a turn stops for at a mark: a second mind
+	// is shown an account of the work so far and asked what is left of the ask
+	// (internal/session's checkpoint.go, [readMark]). It is a ten-to-thirty
+	// second call and it used to draw nothing at all.
+	//
+	// THE WORD IS THE ONE A PERSON WOULD USE for stopping to see where you are,
+	// and it is a different word from `checking` on purpose: checking is a
+	// reader deciding whether an answer is finished, and this is a reader
+	// weighing the whole ask against everything that has been done. A surface
+	// that spelled them the same way would say the same sentence twice for two
+	// waits that mean different things.
+	PhaseTakingStock Phase = "taking stock"
 )
 
 // PhaseWindow is how long a phase still describes the present: past it a surface

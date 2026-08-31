@@ -2223,6 +2223,7 @@ same clock:
 |---|---|
 | `running <tool>` | one call on the belt is executing |
 | `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work |
+| `taking stock` | the work stopped mid-round and a second model is being shown an account of it and asked what is left of what you asked for — ten to thirty seconds |
 | `tidying` | the conversation is being compacted |
 | `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
 

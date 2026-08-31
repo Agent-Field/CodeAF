@@ -806,6 +806,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and until the beat was written the line went blank after fifteen
 		// seconds while the work carried on — so these are asked in the words of
 		// somebody watching that happen, and in the word the line now wears.
+		{"what does taking stock mean", "screen"},
 		{"the status line went blank while it was still working", "screen"},
 		{"does a slow stage stop being shown", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration

@@ -118,6 +118,13 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		what: "a compaction pass",
 		news: PhaseNews{Phase: provider.PhaseTidying, Since: ago(6 * time.Second)},
 		want: "tidying · 6s",
+	}, {
+		// THE MARK'S OWN READING, which is a different wait from `checking`: a
+		// second mind weighing the whole ask against what has been done, in the
+		// middle of the work rather than at the end of an answer.
+		what: "the reading a turn stops for at a mark",
+		news: PhaseNews{Phase: provider.PhaseTakingStock, Since: ago(14 * time.Second)},
+		want: "taking stock · 14s",
 	}} {
 		news := c.news
 		news.Model, news.Role = phaseModel, lane.RoleTalk

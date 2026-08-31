@@ -46,10 +46,11 @@ type PhaseNews = provider.PhaseNews
 // below). It did not, once, and the measured cost of that was a route judge
 // that ran for a quarter of an hour and drew for fifteen seconds of it.
 const (
-	PhaseRunning  = provider.PhaseRunning
-	PhaseChecking = provider.PhaseChecking
-	PhaseTidying  = provider.PhaseTidying
-	PhaseBriefing = provider.PhaseBriefing
+	PhaseRunning     = provider.PhaseRunning
+	PhaseChecking    = provider.PhaseChecking
+	PhaseTidying     = provider.PhaseTidying
+	PhaseBriefing    = provider.PhaseBriefing
+	PhaseTakingStock = provider.PhaseTakingStock
 )
 
 var (

@@ -182,6 +182,7 @@ func (a *app) livePhase() (PhaseNews, bool) {
 //	stalled 9s · switching to parasail
 //	running go test · 41s
 //	checking · 3s
+//	taking stock · 14s
 //	tidying · 6s
 //
 // EVERY PART IS DROPPED WHEN IT IS NOT KNOWN, which is the emptiness law read
@@ -279,7 +280,13 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// worker" is the sentence that tells somebody watching their turn stop
 		// what is about to happen to it.
 		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
-	case provider.PhaseChecking, provider.PhaseTidying:
+	case provider.PhaseChecking, provider.PhaseTidying, provider.PhaseTakingStock:
+		// THREE WORDS WITH ONE SHAPE: a stage named by nothing but itself, and
+		// the clock a person is reading it against. `taking stock` shares the arm
+		// because it shares that shape, not because it means the same thing —
+		// what it means is on the manual's own page and in the phase's doc
+		// comment, and a third arm with an identical body is the second one
+		// drifting the first time somebody improves either.
 		return []rowField{rowSay(word), rowSay(countUpWord(since))}
 	}
 	// A PHASE THIS SURFACE HAS NEVER HEARD OF DRAWS NOTHING, rather than its own
