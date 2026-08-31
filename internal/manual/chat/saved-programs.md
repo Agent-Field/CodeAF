@@ -147,7 +147,8 @@ widened without you.
 ## What a run costs
 
 Everything a run spends — its model calls, and any tool call that costs model tokens —
-lands on this session's bill. It shows up in `/cost`, in the spend rail and in the status
+lands on this session's bill. It shows up in `/cost`, against this conversation's
+`per conversation` limit and in the status
 line, exactly as work you did in the conversation does.
 
 It does **not** count towards this conversation's context. A run has its own messages and

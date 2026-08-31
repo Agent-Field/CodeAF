@@ -1089,7 +1089,7 @@ is named, and it is never on any list because it is what you get when you pick n
 Beside it this build ships **specialists**: `bare`, the cheapest whole-taker for work that
 fits in one sitting, and `swe`, an end-to-end software-engineering pipeline.
 
-The **workers** row on the **Workspace** tab of `/settings` says which of them are
+The **workers** row on the **Tasks** tab of `/settings` says which of them are
 installed here. It is a list separated by commas, and **blank is all of them**, which is the default.
 The same thing written by hand in your profile's `config.json`:
 

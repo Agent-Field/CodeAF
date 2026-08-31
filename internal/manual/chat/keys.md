@@ -1414,6 +1414,30 @@ key does anything that is not on the screen.
 The **places** page has the same thing with the pointer's half beside it: *How do I move
 between the tabs with the arrow keys*.
 
+## `b` on the spend place — the letter that opens the limits, and the money figure you can press
+
+On the spend place (`/spend`, or `alt+5`) two things lead to the money limits, and neither
+one is an editor on that page — the page answers *what did it cost*, and the Spending tab
+of `/settings` is the one place *what may it spend* is set.
+
+- **`enter` on the first line.** The page's top line is a dim pointer —
+  `today $3.42 of $500 · /budget sets the limits` — and `enter` on it opens the Spending
+  tab.
+- **`→` then `b`.** `→` on any row of the page opens that row's verb strip, and this place's
+  strip is one letter: `b the limits`. Pressing `b` while the strip is drawn opens the same
+  tab. `esc` or `←` closes the strip, and walking off the row closes it too.
+
+**`b` is a verb only while the strip naming it is on screen.** That is the rule everywhere
+on this surface: a printable key belongs to the message box unless a drawn strip has
+claimed it, so there is no bare `b` anywhere else that means "the limits". The door that
+works from wherever you are standing is the command — **`/budget`**, also `/limits` — and
+that is the door a refused turn names, because your refused message is still in the box
+and every letter you type there goes into it.
+
+The third door on the same subject is the **money segment of the status line**: press
+`$0.14` and the Spending tab opens. It also brightens under the pointer, and takes the warm
+ink once this conversation has spent four fifths of its own `per conversation` limit.
+
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
@@ -1610,8 +1634,10 @@ Only the left button acts. A press is resolved in this order:
    Within the column, its own lines are asked before its task rows: a `+ /task` or
    `+ /standing` row types that command into your message box, and a row in the
    `standing` section opens `/standing` with the cursor already on that order.
-9. Two segments of the status row: `◦ keeping an eye on N`, which opens the standing
-   orders page, and the model name, which opens the model picker. A press elsewhere on
+9. Three segments of the status row: `◦ keeping an eye on N`, which opens the standing
+   orders page; the model name, which opens the model picker; and the **money figure**
+   (`$0.14`), which opens the **Spending** tab of `/settings`. Each brightens under the
+   pointer over its own cells to say it is a door. A press elsewhere on
    the status row falls through — the rest of it is figures, not controls. On a narrow
    terminal the whole two-row deck answers.
 10. A message of yours **waiting** for the answer to finish, in the block above the
