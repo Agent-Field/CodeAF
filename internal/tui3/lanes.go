@@ -72,6 +72,18 @@ type LaneNews struct {
 	Hedged bool
 	Trying bool
 
+	// Role is who the answer was for (internal/lane's roles.go), carried from
+	// the seam that already knows it (internal/session's lanenews.go).
+	//
+	// ONLY A ROLE A PERSON IS READING MOVES THE STATUS LINE. A talk turn also
+	// asks for a title, a memory reflex and a reply check, each of which comes
+	// back on its own lane at its own speed; a rider that took whichever
+	// finished last told somebody about a machine that had nothing to do with
+	// the answer they were waiting for. A role nobody named reads as hidden,
+	// which is the conservative half of that reading and the one the role table
+	// itself takes.
+	Role lane.Role
+
 	At time.Time
 }
 
@@ -973,9 +985,20 @@ func (a *app) laneRowChanged() {
 // The middle one is the only place this surface says the word "slow", and it
 // says it while something is already being done about it. A status line that
 // called an answer slow and then sat there would be a complaint.
+//
+// AND ALL THREE ARE ABOUT AN ANSWER THAT IS FINISHED, which is why the phase
+// clock takes the segment away from them while a request is actually in flight
+// (render.go's [app.servedRider]). These read the past tense; that reads the
+// present one.
 func (a *app) laneRider() string {
 	news, ok := laneNewsFor(a.model)
 	if !ok || a.now().Sub(news.At) > servedWindow {
+		return ""
+	}
+	// A ROLE NOBODY IS READING DOES NOT MOVE THIS LINE. See [LaneNews.Role]:
+	// the errands that run beside a talk turn each finish on some lane, and the
+	// last of them to finish is not the one the person is waiting on.
+	if !news.Role.Visible() {
 		return ""
 	}
 	if news.Trying && news.Alt != "" {

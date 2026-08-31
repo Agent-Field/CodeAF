@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -102,7 +103,20 @@ func (a *Agent) callRole(
 		// this package routes by price rather than by speed
 		// (internal/provider's velocity.go). This is the one place that says so,
 		// because this is the one place an errand is made.
-		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
+		//
+		// AND THE ROLE ITSELF, WHICH IS THE SENTENCE ABOVE SAID PROPERLY.
+		// internal/lane's roles.go holds what an errand's second is worth, what
+		// bar its answer has to clear, and — the half a person feels — whether
+		// anybody is reading THIS stream. Every errand made here is a side call
+		// of somebody's turn, so none of them owns the phase clock: a naming
+		// errand that answered while a person was waiting on their own slow
+		// answer used to take the status line away from it, which was half of
+		// the reported defect the clock exists for. The intent stays beside it
+		// because `provider.sort` is still built from it, and it is now a
+		// reading of the role rather than a second opinion about it.
+		callCtx := provider.WithRole(
+			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			errandRole(role))
 		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
 		// answer for it is nothing (internal/effort's RoleErrand): naming a
 		// conversation and judging a route are the session's own housekeeping,
@@ -256,3 +270,31 @@ var (
 type errStr string
 
 func (e errStr) Error() string { return string(e) }
+
+// errandRole is what one of this package's errands is FOR, in the vocabulary the
+// router and the phase clock share (internal/lane's roles.go).
+//
+// It is a table and not a stamp at each call site for the reason the roles table
+// itself is one: [Agent.callRole] is the one door every errand in this package
+// goes through, so naming the lane role here names it once for all of them, and
+// a role added to internal/roles that nobody thought about lands on the
+// conservative answer rather than on a free one.
+//
+// THE DEFAULT IS AUXILIARY BECAUSE THAT IS WHAT AN ERRAND IS: a side call of a
+// turn, made without the turn's stream, that nobody is reading. Only two kinds
+// of errand differ, and they differ in what the answer is worth rather than in
+// who is waiting — a GATE reading finished work has to be right where a title
+// merely has to be short, and the MEMORY reflex is charged and kept on its own
+// ledger.
+func errandRole(role roles.Role) lane.Role {
+	switch role {
+	case roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
+		roles.RoleGuardian, roles.RoleAuditor:
+		return lane.RoleJudge
+	case roles.RoleReflex, roles.RoleConsolidate:
+		return lane.RoleMemory
+	case roles.RolePlanner, roles.RoleDesigner, roles.RoleDivision:
+		return lane.RoleDesign
+	}
+	return lane.RoleAuxiliary
+}

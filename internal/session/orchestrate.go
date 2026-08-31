@@ -62,6 +62,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -636,7 +637,9 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (
 func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
 	ctx = p.call.context(ctx)
 	response, err := p.agent.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
+		// The plan a run is steered by: nobody reads it arriving, and it has to
+		// be right rather than soon (internal/lane's roles.go).
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
 		ai.WithModel(p.call.model),
 		ai.WithMaxTokens(orchestratePlanTokens),
