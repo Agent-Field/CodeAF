@@ -265,17 +265,29 @@ func TestAnEmptyLedgerLeavesTheRequestExactlyAsItWas(t *testing.T) {
 func TestWhoIsWaitingDecidesWhatASecondIsWorth(t *testing.T) {
 	client, _, _ := stubbedRouter(t)
 
-	if got := client.laneValueOfTime(RoutingLatency, callKnobs{intent: IntentInteractive}); got != lanes.AttentionValue {
+	if got := client.laneValueOfTime(callKnobs{intent: IntentInteractive}); got != lanes.AttentionValue {
 		t.Fatalf("a turn somebody is watching is worth %v, want %v", got, lanes.AttentionValue)
 	}
-	if got := client.laneValueOfTime(RoutingLatency, callKnobs{intent: IntentBackground}); got != 0 {
+	if got := client.laneValueOfTime(callKnobs{intent: IntentBackground}); got != 0 {
 		t.Fatalf("a call nobody is waiting on is worth %v, want price to win outright", got)
 	}
 	stated := knobsFrom(WithValueOfTime(context.Background(), 12))
-	if got := client.laneValueOfTime(RoutingLatency, stated); got != 12 {
+	if got := client.laneValueOfTime(stated); got != 12 {
 		t.Fatalf("a call site that stated λ got %v", got)
 	}
-	if got := client.laneValueOfTime(RoutingPrice, stated); got != 0 {
+	// AND A BACKGROUND CALL THAT STATED ONE IS BELIEVED. The default for a call
+	// nobody is watching is the price row, and reading that default as "a person
+	// said speed is worthless" is what made λ a dead letter on every task turn
+	// this build ever ran (bench/lanelab/REPORT.md, "the λ = 0 row").
+	background := knobsFrom(WithValueOfTime(context.Background(), 12))
+	background.intent = IntentBackground
+	if got := client.laneValueOfTime(background); got != 12 {
+		t.Fatalf("a background call that stated λ = 12 was routed at %v", got)
+	}
+	// The row a PERSON wrote still wins outright over any of it.
+	priced, _, _ := stubbedRouter(t)
+	priced.config.Routing = StaticRouting(RoutingPrice)
+	if got := priced.laneValueOfTime(stated); got != 0 {
 		t.Fatalf("the price row bought speed at %v seconds to the dollar", got)
 	}
 	silent := knobsFrom(context.Background())
@@ -490,4 +502,36 @@ func forgetLanes(t *testing.T) {
 		lanes.Default().Reset()
 		lanes.ForgetPrefixes()
 	})
+}
+
+// TestTheUsageFrameTeachesTheLedgerWhatWasCached is the last of the four things
+// an answer teaches, and the only one that comes from the router rather than
+// from a clock.
+//
+// A LANE HOLDING OUR PREFIX IS WHAT MAKES PRICE PATH-DEPENDENT: the cheapest
+// lane on the sheet is not the cheapest lane for a request whose prompt another
+// lane already has. Everything else this process knows about that is its own
+// memory of where it sent the last request; `cached_tokens` on the usage frame
+// is the only DIRECT evidence, so it is passed through and never estimated —
+// a cache hit derived from the adapter's own four-characters-a-token guess
+// would be a discount nobody granted.
+func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
+	client, _, model := stubbedRouter(t)
+	ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
+
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 1536)
+	sightings := ledger.sightings()
+	if len(sightings) != 1 {
+		t.Fatalf("%d sightings for one answer", len(sightings))
+	}
+	if got := sightings[0].CachedTokens; got != 1536 {
+		t.Fatalf("the sighting carries %d cached tokens, want the frame's own 1536", got)
+	}
+
+	// And a frame that said nothing carries nothing, which reads the same as a
+	// cold prefix — because neither is evidence of a cache.
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0)
+	if got := ledger.sightings()[1].CachedTokens; got != 0 {
+		t.Fatalf("a frame that said nothing about caching taught %d cached tokens", got)
+	}
 }

@@ -91,9 +91,23 @@ type HedgeReport struct {
 	// what is known is how many tokens it had written and what the lane
 	// charges for them.
 	waste float64
+	// primary is the lane the FIRST request was served by, whichever arm went
+	// on to win. It is a different fact from the winner and the loser, and it
+	// is the one a surface needs: "this answer started on cloudflare and
+	// finished on coreweave" cannot be said from a pair whose names swap places
+	// depending on who won.
+	primary string
 	// fault records that the verdict was about the path rather than the lane,
 	// which is what keeps the belief out of it.
 	fault bool
+	// onStart is told the moment a rescue goes out, with the lane it is going
+	// to. It is the ONE thing on this slot that is not read afterwards, and it
+	// exists because the only interesting state of a rescue is the one that is
+	// over before the call returns: while the second request is in flight and
+	// nobody has committed, which is the sentence a person reads on the status
+	// line. A caller that registers nothing is told nothing, and nothing here
+	// waits on it.
+	onStart func(alt string)
 }
 
 // Hedged reports whether a second request went out.
@@ -114,6 +128,47 @@ func (h *HedgeReport) Lanes() (winner, loser string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.winner, h.loser
+}
+
+// Primary is the lane the first request was served by, empty when no stream
+// named one. See the field for why it is not [HedgeReport.Lanes]'s loser.
+func (h *HedgeReport) Primary() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.primary
+}
+
+// OnHedgeStart registers what to do the moment a rescue goes out — once, with
+// the lane it is going to. It is called from the race's own goroutine and must
+// not block; a nil function unregisters.
+//
+// IT IS SET BEFORE THE CALL AND NEVER DURING ONE. The slot belongs to the
+// caller and is stamped on the context before the request goes out
+// ([WithHedgeReport]), which is the only moment at which nothing is reading it.
+func (h *HedgeReport) OnHedgeStart(fn func(alt string)) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onStart = fn
+}
+
+// started tells the caller a rescue is in flight, outside the lock so that a
+// slow reader cannot stall the race that is trying to rescue an answer.
+func (h *HedgeReport) started(alt string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	fn := h.onStart
+	h.mu.Unlock()
+	if fn != nil {
+		fn(alt)
+	}
 }
 
 // Reason is the watch's machine word for why the hedge went out.
@@ -646,6 +701,12 @@ func (r *hedgeRace) hedge(from int, verdict lanes.Verdict, fault bool) {
 	r.report.note(func(report *HedgeReport) {
 		report.hedged, report.reason, report.fault = true, verdict.Reason, fault
 	})
+	// AND WHOEVER IS DRAWING THIS IS TOLD NOW, not at the end. A rescue that is
+	// only reported once it has landed is a rescue a person watched as an
+	// unexplained pause; the one sentence this build says about a slow answer is
+	// said while something is already being done about it (internal/tui3's
+	// laneRider).
+	r.report.started(alt)
 	r.start(1, alt)
 }
 
@@ -815,7 +876,7 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 	r.budget.NoteRequest(now)
 	r.budget.NoteSpend(r.spent(seen), now)
 	if hedged {
-		winner, loser := "", ""
+		winner, loser, primary := "", "", ""
 		var waste, second float64
 		for _, arm := range arms {
 			if arm.index == result.index {
@@ -824,6 +885,9 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 				loser = laneOf(arm)
 				waste = r.estimate(loser, arm.watch.written())
 			}
+			if arm.index == 0 {
+				primary = laneOf(arm)
+			}
 			if arm.index == 1 {
 				second = r.armCost(seen, arm)
 			}
@@ -831,6 +895,7 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 		r.budget.NoteHedge(second, now)
 		r.report.note(func(report *HedgeReport) {
 			report.winner, report.loser, report.waste = winner, loser, waste
+			report.primary = primary
 		})
 	}
 	return result.response, result.relearned, result.err

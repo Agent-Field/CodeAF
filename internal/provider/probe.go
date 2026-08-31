@@ -141,6 +141,20 @@ func InstallLaneProber(c *Client, waiting lanes.ProbeGate) bool {
 			// and it is certainly not billed for a measurement.
 			return false
 		}
+		if !LaneGuardOn() {
+			// The speed guard off is a person saying this build may not spend
+			// extra to keep an answer moving, and a probe is exactly that spend
+			// — two hundredths of a cent, bought before anybody asked for
+			// anything (lanepin.go states the one switch).
+			return false
+		}
+		if CurrentLanePin().OpenRouter {
+			// A conversation that asked for NO lane has nothing to measure a
+			// lane FOR: nothing downstream will read the belief a probe would
+			// write, so buying one is spending money to learn a fact this
+			// session has said it does not want.
+			return false
+		}
 		if sharedLimiter.pacing(c.clock()) {
 			// The pool is already backing off a rate limit. A probe now is one
 			// more request into a queue that is the reason the last one was
@@ -190,3 +204,53 @@ func probeBody(model, lane string) []byte {
 	})
 	return bytes.TrimSpace(body)
 }
+
+// ── WHO ASKS FOR ONE ────────────────────────────────────────────────────────
+
+// ProbeLanes buys a measurement of the two lanes this model's next turn is
+// most likely to use. It is what a keystroke turns into, and it returns before
+// anything has been sent.
+//
+// THE SHAPE OF THE ASK IS THE TURN'S OWN ([LaneTalkAsk]), because probing the
+// head of a frontier computed for some other kind of request would measure two
+// machines the turn was never going to use. The head is at most two — the lane
+// the request is going to and the one a rescue would go to — and the prober's
+// own budget decides whether this pair is bought at all: at most one pair every
+// twenty seconds per model, and none when nobody is waiting.
+//
+// It is a method on the client rather than a package function because the gate
+// it eventually passes is this client's — its routing row, its rate limiter,
+// its base URL — and because a build with no router wired has no probe to buy.
+func (c *Client) ProbeLanes(ctx context.Context, model string) {
+	if c == nil || !c.isOpenRouter() {
+		return
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return
+	}
+	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(model, laneNow()))
+	head := make([]string, 0, probeHead)
+	for _, scored := range choice.Frontier {
+		if scored.ID.Lane == "" {
+			continue
+		}
+		head = append(head, scored.ID.Lane)
+		if len(head) == probeHead {
+			break
+		}
+	}
+	if len(head) == 0 {
+		// A frontier of nothing is a model nobody has measured, and there is no
+		// honest pair to buy: `provider.only` naming a lane the sheet has not
+		// published is a request that either 404s or lands somewhere else.
+		return
+	}
+	lanes.Default().Prober().Probe(ctx, normalizeModel(model), head)
+}
+
+// probeHead is how many lanes off the front of the frontier a probe pair
+// covers. It is [lane]'s own figure said once on this side of the seam: the
+// prober caps at the same two, and asking for more would be paying to measure
+// a lane the choice was never going to make.
+const probeHead = 2

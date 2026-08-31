@@ -610,3 +610,47 @@ func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
 		t.Fatalf("winner %q, loser %q; the watch hedged somewhere the choice did not name", winner, loser)
 	}
 }
+
+// ── WHAT A PERSON IS TOLD WHILE A RESCUE IS OUT ─────────────────────────────
+
+// THE MIDDLE STATE IS REPORTED AS IT HAPPENS. A rescue that was only reported
+// once it had landed is a rescue somebody watched as an unexplained pause; the
+// one sentence this build says about a slow answer is said while something is
+// already being done about it. The callback is the seam internal/session posts
+// `slow · trying …` from.
+func TestARescueTellsItsCallerTheMomentItGoesOut(t *testing.T) {
+	rig := newLaneRig(t, "rescue/announced",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 100 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 20, 2000)
+
+	var mu sync.Mutex
+	var announced []string
+	var announcedBefore bool
+	report := &HedgeReport{}
+	report.OnHedgeStart(func(alt string) {
+		mu.Lock()
+		defer mu.Unlock()
+		// The answer has not arrived yet — that is the whole claim.
+		announcedBefore = !report.Hedged() || report.Primary() == ""
+		announced = append(announced, alt)
+	})
+	ctx := WithHedgeReport(context.Background(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
+
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(announced) != 1 || announced[0] != "B" {
+		t.Fatalf("the rescue announced %v, want the one lane it went to", announced)
+	}
+	if !announcedBefore {
+		t.Fatal("the rescue was announced after it had already settled")
+	}
+	if winner, _ := report.Lanes(); winner != "B" {
+		t.Fatalf("winner %q, want the lane that answered", winner)
+	}
+}

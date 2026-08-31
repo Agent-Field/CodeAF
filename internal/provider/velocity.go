@@ -514,7 +514,15 @@ func noteServed(ctx context.Context, served, asked string) {
 // routing preference is not measured either. Measuring it would build a ledger
 // whose only possible use — demoting an endpoint on the next request — is a
 // thing this client has just promised not to do.
-func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration) {
+// cached is how many of the prompt's tokens the ROUTER SAID it read back out
+// of that endpoint's cache, from the usage frame. It is the only direct
+// evidence there is that a lane really held our prefix — every other reading of
+// it is this process's own memory of where it sent the last request — and it is
+// passed through rather than estimated, because an estimate of a cache hit is a
+// discount nobody granted. Zero is "the frame did not say", which is also what
+// a cold prefix looks like; the belief treats them the same and is right to,
+// since neither is evidence of a cache.
+func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, cached int) {
 	if c.velocity == nil || c.routing() == RoutingOff {
 		return
 	}
@@ -523,7 +531,7 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 	// (lanes.go). It is one call rather than two seams because the two are the
 	// same fact — who served, and how fast — and the strike ledger keeps its
 	// half only until the belief has been proven against it.
-	c.noteLane(model, served, ttft, tokens, elapsed, gap)
+	c.noteLane(model, served, ttft, tokens, elapsed, gap, cached)
 }
 
 // notePacedProvider folds one provider-named 429 into the ledger, under the
