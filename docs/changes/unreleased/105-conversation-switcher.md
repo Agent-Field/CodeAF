@@ -9,7 +9,10 @@ invalidates:
   - "The legend above the box read `space space home · tab last · / commands` whenever a second conversation was open. With three or more open the middle clause is now `ctrl+k switch`."
   - "The tasks place (`ctrl+.`) drew every row flat, so a run that split into eight workers arrived as eight peers of everything else. Families are now folded under their root, shut, with `+N under` on the root row; `→` opens one and `←` shuts it. Nothing about the roster column changed — this is the page catching up with it."
   - "A place's map (`alt+.`) named four chords. It names a fifth, `ctrl+k switch conversation`, wherever the switcher would act."
-  - "The switcher lists EVERY conversation on this machine, not only the ones this terminal has open: the open ones above a rule, the rest below it. Taking a row below the rule opens it beside the one you are in, which is what `enter` on home already did. So the key acts on a session that has just started, where nothing but the current conversation is open."
+  - "The switcher is a BORDERED CARD, which is the one outlined thing on this surface — ruled by the owner off SCREEN 3b. The house rule that nothing is outlined still holds everywhere else; this earns the exception because it is the only panel that floats in the middle of a page rather than taking the frame or hanging off an edge."
+  - "The card lists the conversations this terminal has OPEN, and every other conversation on the machine is behind a fold at its foot — `→` reaches them, `←` puts them away. Taking a row from the fold opens it beside the one you are in, which is what `enter` on home already did. So the key acts on a session that has just started, where nothing but the current conversation is open."
+  - "`ctrl+shift+k` and `ctrl+shift+tab` walk the card back, on terminals that answered the keyboard query. `shift+tab` does it on every terminal."
+  - "`ctrl+w` closes the conversation under the cursor. It was the box's delete-a-word key and only that; while the switcher is up it is the way out of a conversation instead, and the two never meet on one screen. A conversation with work running in it takes two presses, with the work named in between."
 ---
 
 The keeper has held eight conversations alive since the conversations wave, and

@@ -706,3 +706,35 @@ func (a *app) behindSince(file string) time.Time {
 	}
 	return held.side.since
 }
+
+// closeKept ends one conversation the keeper is holding, for real.
+//
+// IT IS [app.closeFront] WITHOUT THE HALF THAT MOVES THE SURFACE. That function
+// closes the conversation ON SCREEN and has to bring another forward in the same
+// breath; this one closes a conversation nobody is looking at, so there is
+// nothing to attach, no sidecar to restore and no draft to hand over — only the
+// agent to end, the watcher to stop, and the two places the key was remembered.
+//
+// THE DRAFT FILE GOES WITH IT, on [app.closeFront]'s own reasoning: it is crash
+// insurance for a conversation that is no longer at risk, and left behind it is
+// somebody's finished sentence orphaned in a directory (draft.go's [adoptDraft]).
+func (a *app) closeKept(file string) bool {
+	key := a.convKey(file)
+	held := a.behind[key]
+	if key == "" || held == nil {
+		return false
+	}
+	delete(a.behind, key)
+	a.forget(key)
+	held.watch.stop()
+	if held.conv.Agent != nil {
+		held.conv.Agent.Interrupt()
+		if err := held.conv.Agent.Close(); err != nil {
+			a.note("close failed: " + err.Error())
+		}
+	}
+	if held.conv.DraftFile != "" {
+		dropDraftFile(held.conv.DraftFile)
+	}
+	return true
+}

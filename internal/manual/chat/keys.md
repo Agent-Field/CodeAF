@@ -579,7 +579,7 @@ at and filtered, not edited by pointer.
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
-| `ctrl+w` | Delete the word behind the caret |
+| `ctrl+w` | Delete the word behind the caret. While the switcher is up it closes the conversation under the cursor instead |
 | `alt+backspace` | Same as `ctrl+w` |
 | `ctrl+backspace` | Same as `ctrl+w` |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
@@ -1203,37 +1203,44 @@ starting work here, so the box is still standing when you come back.
 
 ## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
 
-**Press `ctrl+k`.** A card appears in the middle of whatever you are looking at, the screen
-behind it dims, and on it is **every conversation on this machine** — the ones this terminal
-already has open above a thin rule, everything else below it.
+**Press `ctrl+k`.** A card is drawn in the middle of whatever you are looking at, the screen
+behind it dims, and on it are **the conversations this terminal has open**:
 
 ```
-3 open · 6 more on this machine     tab down · shift+tab up · enter go · esc back
-
-1 ● harness dry run on one public…  asking you something      aforge-v2    4m
-2 ○ openrouter price scrape         2 tasks running            research     1d
-3 ○ Refactor the rail scope model   you are here              aforge-v2   40m
-  ────────────────────────────────────────────────────────────────────────────
-4 ◐ The Certificate Rotation        1 task running                 infra   22m
-5 ○ Pricing Research                                        pricing-site    3h
+╭──────────────────────────────────────────────────────────────────────────────╮
+│  open              3 of 12 · tab down · shift+tab up · enter go · esc back   │
+│                                                                              │
+│  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
+│  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
+│  3 ○ Refactor the rail scope mo…  you are here              aforge-v2   40m  │
+│  ▸ 9 more on this machine · → reach them                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-**Above the rule** is one keystroke away and already running — nothing is started, nothing
-is reloaded. **Below the rule** is a conversation that is not open in this terminal; taking
-one opens it beside the one you are in, exactly as `enter` on home does, and the one you
-are in keeps running.
+Fixed columns — **number, glyph, subject, one clause, project, clock** — which is what
+makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many are
+open, of how many this machine has.
 
-It works from the **first** session: on a fresh launch you hold one conversation and the
-card still has everywhere else on the machine in it.
+**Everything else on the machine is behind the fold at the foot.** `→` reaches them and
+`←` puts them away again. A conversation below the fold is not open in this terminal;
+taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
+you are in keeps running.
+
+It works from the **first** session: on a fresh launch you hold one conversation, the card
+has that one row, and the fold has the rest of the machine in it.
 
 | Key | What it does |
 | --- | --- |
 | `ctrl+k` | Open the card. Pressed again with the card up, it steps one further down — tap it like alt+tab |
 | `ctrl+tab` | The same key, on terminals that can send it. See below |
+| `ctrl+shift+k` / `ctrl+shift+tab` | Up one, on those same terminals |
 | `tab` / `↓` | Down one |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
 | `1`…`9` | Go to that row outright — the number is drawn on the rows that have one |
 | `enter` | Go to the row you are on |
+| `→` | Open the fold — every other conversation on this machine |
+| `←` | Fold them away again |
+| `ctrl+w` | Close the conversation under the cursor. See below |
 | `esc` | Put the card away. You are exactly where you were |
 | any other key | Puts the card away, and does nothing else — the key does not land in your message |
 
@@ -1266,7 +1273,7 @@ Every row says **what changed since you last looked**, not what the conversation
 | `you are here` | the conversation you are sitting in |
 | `open in another window` | another terminal is holding it; `enter` will refuse |
 | `that folder is gone` | the project directory it worked in is not there any more |
-| *(nothing)* | a conversation below the rule with no news — quiet, and not open here |
+| *(nothing)* | quiet — nothing has happened in it since you left |
 
 Then the project it is in and how long ago you left it. That is what makes the switcher
 double as the catch-up: after twenty minutes in one chat, one key says what the other seven
@@ -1292,6 +1299,36 @@ Linux desktops.
 
 `ctrl+k` has none of those problems. Every terminal sends it, no window manager wants it,
 and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS Code.
+
+**`ctrl+shift+k` is the reverse, under the same rule.** An ordinary terminal sends
+`ctrl+shift+k` and `ctrl+k` as the same byte, so it is bound only where the terminal
+answered the keyboard query — and it costs nothing that half the terminals in the world
+cannot send it, because **`shift+tab` walks the card back on every one of them**.
+
+## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
+
+**`ctrl+w` on the row closes that conversation in this terminal.** The card stays up and
+says `closed · <name>`, so tidying three of them costs three keystrokes rather than three
+openings.
+
+**Closing is not switching.** It ends that conversation's session, and **work running inside
+it stops with it** — the same thing the quit door warns about. So:
+
+- a conversation with nothing running closes on **one** press;
+- a conversation with work in it takes **two**, and the card says what is running in
+  between: `2 tasks running · ctrl+w again to close it anyway`;
+- moving the cursor cancels that warning, so a second press never lands on a row you have
+  walked away from.
+
+`ctrl+w` on the row marked `you are here` closes the conversation you are in and brings the
+next one forward — the same thing `/quit` on it would do. With only one conversation open it
+says `that is the only conversation open — /quit closes aforge`.
+
+**`ctrl+w` on a row below the fold does nothing** and says
+`that one is not open here — enter opens it`. There is nothing to close: this terminal is
+not holding it.
+
+Eight is the cap on how many one terminal holds. `ctrl+w` is how you make room.
 
 ## `tab` still goes straight to the last one
 
@@ -2000,6 +2037,13 @@ Two more chords surprise people:
   terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
+- **`ctrl+w` means two things**, and never on the same screen: in the message box it
+  deletes the word behind the caret; while the **switcher** is up it closes the
+  conversation under the cursor. The card has taken the whole keyboard by then, and there
+  is no caret on it to delete a word behind.
+- **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
+  inside a harness design's room, while its approval row is up, it saves the design. That
+  row is modal and takes the key first.
 
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.

@@ -88,6 +88,35 @@ import (
 //     two things on two screens (chords.go's [chordMapAlias]).
 const hopOpenKey = "ctrl+k"
 
+// hopBackKey is the same gesture the other way. It is `ctrl+shift+k` and it is
+// bound ONLY where the terminal can spell it, for `ctrl+tab`'s reason exactly: an
+// ordinary terminal sends `ctrl+shift+k` and `ctrl+k` as the same byte, so
+// nothing can tell them apart until the kitty keyboard protocol's disambiguation
+// flag has been taken ([app.ctrlDigits]).
+//
+// THE ALWAYS-AVAILABLE REVERSE IS `shift+tab`, which every terminal sends as
+// CSI Z and which the card takes while it is up. That is why this chord being
+// absent on half the terminals in the world costs nothing: the gesture has a
+// spelling that always works, and this is the one people's hands reach for.
+const hopBackKey = chordCtrlWord + "shift+k"
+
+// hopFoldKey and hopShutKey open and shut the fold at the foot of the card —
+// `→` and `←`, the two keys this surface already folds with everywhere
+// (task.go's roster, place_tasks.go's families).
+const (
+	hopFoldKey = "right"
+	hopShutKey = "left"
+)
+
+// hopAwayKey closes a conversation from the card. It is `ctrl+w`, which is the
+// key the grooming drew and the key every browser and editor closes a tab with.
+//
+// IT MEANS SOMETHING ELSE IN THE MESSAGE BOX — delete the word behind the caret
+// (input.go) — and that is not a collision: the card has taken the whole
+// keyboard while it is up, and there is no caret on it to delete a word behind.
+// The manual's page about chords that mean more than one thing carries the pair.
+const hopAwayKey = chordCtrlWord + "w"
+
 // hopAlias and hopBackAlias are the muscle memory, bound ONLY where the terminal
 // says it can spell them ([app.ctrlDigits], the same reply `ctrl+1`…`ctrl+7`
 // hang off in chords.go).
@@ -170,6 +199,33 @@ type hopCard struct {
 	// rows are frozen at open. See the header: a stir must never renumber a list
 	// somebody is aiming at.
 	rows []hopRow
+	// all is the fold at the foot standing open: the conversations this terminal
+	// is NOT holding, drawn under the ones it is.
+	//
+	// THE CARD IS ABOUT WHAT IS OPEN, and the rest is behind a door. A list that
+	// mixed the two was the thing that could not be read — every row looked the
+	// same and nothing said which of them were alive — so the ring is the open
+	// ones, and `→` is how you reach anything else. It is a door and not a
+	// setting ([switcherView.all] holds the same law for home's own fold): a
+	// line that says rows are being hidden and cannot be asked to stop hiding
+	// them is a dead end somebody hits and gives up at.
+	all bool
+	// rest is how many conversations the fold is standing for, and it is zero
+	// once the fold is open, because nothing is behind it any more.
+	rest int
+	// total is how many conversations this machine has, counted once when the
+	// card opened and kept through the fold. It is what the head's `1 of 12`
+	// reads, and it may NOT be derived from rest: opening the fold empties rest,
+	// and a count that fell to `1 of 1` at that moment would be the head saying
+	// the machine shrank because somebody looked at it.
+	total int
+	// armed is the row `ctrl+w` has warned about — a conversation with work
+	// running in it, which takes a second press to close ([app.hopAway]). It is
+	// -1 when nothing is armed, and a single walk of the cursor disarms it.
+	armed int
+	// say is the one line the card's foot carries about what just happened: a
+	// refusal, or the warning the arm above raised. It is cleared by the next key.
+	say string
 }
 
 // hopShowing is the one predicate the frame asks.
@@ -219,13 +275,41 @@ func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // hopOpen builds the reading and raises the card.
 func (a *app) hopOpen() {
-	rows := a.hopReading()
-	if len(rows) < 2 {
+	rows, rest := a.hopReading(false)
+	if len(rows) < 2 && rest == 0 {
 		// Nowhere to go. The guard above has already refused this, and this is
 		// the same refusal said where the rows are actually counted.
 		return
 	}
-	a.hop = hopCard{open: true, rows: rows, at: hopFirstStop(rows)}
+	a.hop = hopCard{open: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1}
+	a.touch()
+}
+
+// hopSpread opens or shuts the fold and re-reads, keeping the cursor on the row
+// it was on.
+//
+// RE-READING IS RIGHT HERE AND WRONG EVERYWHERE ELSE. The rows are frozen against
+// a STIR — news arriving on its own must not move the row under somebody's finger
+// — and this is not news: it is the person asking for more of the list, which is
+// the one moment a list is allowed to grow.
+func (a *app) hopSpread(all bool) {
+	if a.hop.all == all {
+		return
+	}
+	if all && a.hop.rest == 0 {
+		return
+	}
+	at := a.hop.at
+	rows, rest := a.hopReading(all)
+	a.hop.rows, a.hop.rest, a.hop.all, a.hop.armed, a.hop.say = rows, rest, all, -1, ""
+	a.hop.at = min(at, max(0, len(rows)-1))
+	// AND THE CURSOR LEAVES `you are here` THE MOMENT THERE IS SOMEWHERE ELSE TO
+	// BE. Opening the fold on a session holding one conversation is a person
+	// asking for the others; leaving the cursor on the row they are already in
+	// would make `enter` do nothing at the end of that gesture.
+	if a.hop.at < len(rows) && rows[a.hop.at].here {
+		a.hop.at = hopFirstStop(rows)
+	}
 	a.touch()
 }
 
@@ -262,7 +346,7 @@ func (a *app) hopClose() {
 // unusable; [app.prev] is the order the keeper already keeps and the order `tab`
 // already walks (keeper.go's [app.rememberOpen]), so the card and the key agree
 // about what "the last one" means by construction.
-func (a *app) hopReading() []hopRow {
+func (a *app) hopReading(all bool) ([]hopRow, int) {
 	now := a.now()
 	rows := make([]hopRow, 0, hopShown)
 	for at := len(a.prev) - 1; at >= 0; at-- {
@@ -275,7 +359,13 @@ func (a *app) hopReading() []hopRow {
 		rows = append(rows, a.hopKept(held, now))
 	}
 	rows = append(rows, a.hopFront(now))
-	return append(rows, a.hopRest(rows, now)...)
+	rest := a.hopRest(rows, now)
+	if !all {
+		// THE COUNT IS STILL TAKEN. The fold has to say what is behind it, and a
+		// door that could not name what it holds is a door nobody opens.
+		return rows, len(rest)
+	}
+	return append(rows, rest...), 0
 }
 
 // hopRest is every OTHER conversation on this machine, ranked the way home ranks
@@ -527,13 +617,26 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.hopClose()
 		return nil, false
 	}
+	// EVERY KEY CLEARS THE LINE THE LAST ONE LEFT. A refusal that outlived the
+	// keystroke after it would be the card answering a question nobody asked.
+	say := a.hop.say
+	a.hop.say = ""
+	_ = say
 	switch {
 	case a.hopOpens(key), key == "down", key == "tab", key == "ctrl+n":
 		a.hopWalk(1)
 		return nil, true
-	case key == "up", key == "shift+tab", key == "ctrl+p", key == hopBackAlias && a.ctrlDigits():
+	case a.hopBacks(key), key == "up", key == "shift+tab", key == "ctrl+p":
 		a.hopWalk(-1)
 		return nil, true
+	case key == hopFoldKey:
+		a.hopSpread(true)
+		return nil, true
+	case key == hopShutKey:
+		a.hopSpread(false)
+		return nil, true
+	case key == hopAwayKey:
+		return a.hopAway(), true
 	case key == "enter":
 		return a.hopTake(), true
 	case key == "esc":
@@ -564,6 +667,12 @@ func (a *app) hopOpens(key string) bool {
 	return key == hopOpenKey || (key == hopAlias && a.ctrlDigits())
 }
 
+// hopBacks is the same question for the reverse: `ctrl+shift+k` and `ctrl+tab`'s
+// own reverse, both of them only where the terminal can spell them.
+func (a *app) hopBacks(key string) bool {
+	return (key == hopBackKey || key == hopBackAlias) && a.ctrlDigits()
+}
+
 // hopWalk moves the cursor, wrapping at both ends. It wraps because this is a
 // ring: a person who overshoots the row they wanted must not have to walk back
 // through seven conversations to reach it.
@@ -573,6 +682,10 @@ func (a *app) hopWalk(by int) {
 		return
 	}
 	a.hop.at = ((a.hop.at+by)%n + n) % n
+	// A WALK DISARMS THE CLOSE. `ctrl+w` warned about ONE row, and a warning that
+	// survived the cursor leaving it would close a conversation the person was
+	// no longer looking at.
+	a.hop.armed = -1
 	a.touch()
 }
 
@@ -649,84 +762,181 @@ func (a *app) hopOpenRows() int {
 }
 
 // ── what the card looks like ────────────────────────────────────────────────
-
-// hopHeadRoom is the head row plus the blank under it, and hopMinBody is the
-// shortest body the card will draw itself into: the head, one row, and a row of
-// air above and below. Anything tighter and the card would be a list with no
-// room to say what it is, drawn over a conversation it has hidden.
+//
+// THE CARD IS A BOX, AND IT IS THE ONE ON THIS SURFACE. The house rule is that
+// nothing is outlined — emphasis is a raised ground and an accent, never a ring
+// drawn round a thing (harnesscard.go states it) — and this is the deliberate
+// exception, ruled by the owner off SCREEN 3b's own drawing. The reason it earns
+// the exception is that it is the only thing here that FLOATS: every other panel
+// on this surface takes the frame or hangs off an edge, so its bounds are the
+// screen's. A list dropped into the middle of a dimmed transcript has no edge of
+// its own, and without one the eye reads it as text that happens to be brighter.
+//
+// THE COLUMNS ARE FIXED AND THAT IS THE WHOLE OF WHY IT SCANS. Glyph, subject,
+// one clause, project, clock — the subjects form a straight edge you read down
+// and the clauses are short enough to skip. A fluid subject column would put
+// every note at a different indent and turn eight rows into eight sentences.
 const (
-	hopHeadRoom = 2
-	hopMinBody  = 5
-	// hopInset is the air on each side of the card. One cell, which is this
-	// surface's smallest step and all the separation a card needs when
-	// everything around it is three tiers darker.
-	hopInset = 1
+	// hopSideInset is how far the box stands in from the body on each side. SIX,
+	// which is SCREEN 3b's own figure: enough that the dimmed transcript is
+	// visible past both edges, which is what says the page is still there.
+	hopSideInset = 6
+	// hopPad is the air inside the box, between its border and its rows.
+	hopPad = 2
+	// The fixed columns, in cells.
+	hopGlyphCol   = 2
+	hopSubjectCol = 34
+	hopProjectCol = 12
+	hopAgeCol     = 5
+	// hopTightSubject is what the subject column narrows to before the tail
+	// columns start being dropped: a name cut to twenty cells is still a name,
+	// and one cut to eight is a shrug.
+	hopTightSubject = 20
 )
 
-// hopCardLines is the card itself — the head row, a blank, and one line per
-// conversation — laid out to `width` and capped to `height` rows.
-//
-// A CARD THAT DOES NOT FIT DROPS ROWS FROM THE BOTTOM AND NEVER THE HEAD. The
-// head is what says how many there are and which keys move; a list that ate it
-// to show one more row would be a list a person cannot get out of.
-func (a *app) hopCardLines(width, height int, pal palette) []string {
-	if !a.hopShowing() || width < 1 || height < hopHeadRoom+1 {
-		return nil
+// hopBox is the six pieces of the border, and the ascii floor under them. The
+// flag is the palette's own ([palette.ascii]), whose one job in this codebase is
+// exactly this question.
+type hopBox struct{ tl, tr, bl, br, h, v string }
+
+func hopBoxOf(pal palette) hopBox {
+	if pal.ascii {
+		return hopBox{tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|"}
 	}
-	lines := []string{a.hopHead(width, pal), ""}
-	open := a.hopOpenRows()
-	for at, row := range a.hop.rows {
-		if len(lines) >= height {
-			break
-		}
-		// ONE RULE, AT THE SEAM. Above it is a keystroke away and already
-		// running; below it is a conversation that would be started up again.
-		// The two are different acts and the card says so once, with the
-		// thinnest mark this surface has, rather than with a word on every row.
-		if at == open && open > 0 {
-			lines = append(lines, pal.fade(rule(width), 0))
-			if len(lines) >= height {
-				break
-			}
-		}
-		lines = append(lines, hopLine(row, at, at == a.hop.at, width, pal))
-	}
-	return lines
+	return hopBox{tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│"}
 }
 
-// hopHead is the one line above the list: how many conversations are open on the
-// left, and the keys that move on the right.
+// hopMinBody is the shortest body the card will draw itself into: two border
+// rows, the head, its blank, one conversation, and a row of air above and below.
+const hopMinBody = 8
+
+// hopCardLines is the card itself — the top border, the head row, a blank, one
+// line per conversation, the fold at the foot, and the bottom border — laid out
+// to `width` and capped to `height` rows.
+//
+// A CARD THAT DOES NOT FIT DROPS CONVERSATIONS AND NEVER ITS FRAME. The head
+// says what the keys are and the borders say where the card ends; a box that ate
+// either to show one more row would be a box a person cannot get out of.
+func (a *app) hopCardLines(width, height int, pal palette) []string {
+	box := hopBoxOf(pal)
+	if !a.hopShowing() || width < 12 || height < 5 {
+		return nil
+	}
+	inner := width - 2
+	room := inner - 2*hopPad
+	pad := strings.Repeat(" ", hopPad)
+	// THE BORDER IS DIM — the tier this surface says its own furniture in (a
+	// rule, a seam, a connector). An accent border would be the box announcing
+	// itself, and what has to be read here is the list inside it.
+	edge := func(left, fill, right string) string {
+		return pal.dim(left + strings.Repeat(fill, inner) + right)
+	}
+	// The rows a person reads are laid out at `room` and then set inside the
+	// borders whole, so the band on the cursor's row covers the padding too —
+	// which is what makes it read as a row of the card rather than a highlight
+	// floating inside one.
+	inside := func(line string, band bool) string {
+		line = fit(line, room)
+		if w := room - ansi.StringWidth(line); w > 0 {
+			line += strings.Repeat(" ", w)
+		}
+		body := pad + line + pad
+		if band {
+			body = pal.cursor(body, inner)
+		}
+		return pal.dim(box.v) + body + pal.dim(box.v)
+	}
+
+	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false), inside("", false)}
+	// The frame's own rows — two borders and whatever foot the card owes — are
+	// taken off the top before a single conversation is drawn, so the last thing
+	// dropped is never the way out.
+	foot := 1
+	if a.hop.rest > 0 || a.hop.say != "" {
+		foot++
+	}
+	for at, row := range a.hop.rows {
+		if len(lines)+foot >= height {
+			break
+		}
+		lines = append(lines, inside(hopLine(row, at, at == a.hop.at, room, pal), at == a.hop.at))
+	}
+	if word := a.hopFoot(); word != "" && len(lines)+1 < height {
+		lines = append(lines, inside(pal.dim(fit(word, room)), false))
+	}
+	return append(lines, edge(box.bl, box.h, box.br))
+}
+
+// hopFoot is the one line under the rows: what the card just said, or the fold
+// standing for the conversations this terminal is not holding.
+//
+// THE SENTENCE OUTRANKS THE FOLD, and only while there is one. A refusal or a
+// receipt is about the key just pressed; the fold is always true and will still
+// be there on the next frame.
+func (a *app) hopFoot() string {
+	if a.hop.say != "" {
+		return a.hop.say
+	}
+	switch {
+	case a.hop.all:
+		return tokens.GlyphExpanded + " " + hopShutKeyWord
+	case a.hop.rest > 0:
+		return tokens.GlyphCollapsed + " " + itoa(a.hop.rest) + " more on this machine · " + hopFoldKeyWord
+	}
+	return ""
+}
+
+// The two halves of the fold's own sentence, spelled once and quoted in the
+// manual exactly as they are here.
+const (
+	hopFoldKeyWord = "→ reach them"
+	hopShutKeyWord = "← just the open ones"
+)
+
+// hopHead is the line above the list: what this card is on the left, and what
+// the keys do on the right.
 //
 // THE KEYS ARE DROPPED FROM THE RIGHT AS THE FRAME TIGHTENS, in the order a
-// person can most afford to lose them: the digits go first (every row they name
-// is also reachable with the arrows), then `esc`, then the walk — and the count
-// alone survives, because a card with no head is the one shape this refuses.
+// person can most afford to lose them — the close, then the way out, then the
+// walk — and the count alone survives, because a card with no head is the one
+// shape this refuses to draw.
 func (a *app) hopHead(width int, pal palette) string {
-	left := itoa(a.hopOpenRows()) + " open"
-	if rest := len(a.hop.rows) - a.hopOpenRows(); rest > 0 {
-		left += " · " + itoa(rest) + " more on this machine"
-	}
+	left := hopOpenWord
 	clauses := append([]string(nil), hopClauses...)
+	// ONE COUNT AND NOT TWO. The word on the left already says what this list
+	// is; the figure says how much of the machine it is showing, in the
+	// grooming's own phrasing — `8 of 11`.
+	right := itoa(a.hopOpenRows()) + " of " + itoa(a.hop.total)
 	for {
-		right := strings.Join(clauses, " · ")
-		if ansi.StringWidth(left)+2+ansi.StringWidth(right) <= width {
-			pad := width - ansi.StringWidth(left) - ansi.StringWidth(right)
-			return pal.dim(left) + strings.Repeat(" ", max(1, pad)) + pal.dim(right)
+		tail := right
+		if len(clauses) > 0 {
+			tail += " · " + strings.Join(clauses, " · ")
+		}
+		if ansi.StringWidth(left)+2+ansi.StringWidth(tail) <= width {
+			pad := width - ansi.StringWidth(left) - ansi.StringWidth(tail)
+			return pal.dim(left) + strings.Repeat(" ", max(1, pad)) + pal.dim(tail)
 		}
 		if len(clauses) == 0 {
-			break
+			return pal.dim(fit(right, width))
 		}
 		clauses = clauses[:len(clauses)-1]
 	}
-	return pal.dim(fit(left, width))
 }
 
-// hopLine is one conversation, drawn the way home draws one (switcher.go's
-// [switcherLine]): the state glyph, the subject in the body ink, and a dim tail
-// of what changed, which project it is, and how long ago you left it.
-//
-// THE TAIL IS DROPPED IN HOME'S OWN ORDER as the frame tightens — the note
-// first, then the project, then the age — so the two lists narrow the same way.
+// hopOpenWord is the card's own name for itself, and it is the word the keeper
+// already uses for a conversation this terminal is holding (keeper.go's header
+// states the law: `open`, never `behind`).
+const hopOpenWord = "open"
+
+// hopClauses are the keys the card owns, in the order a person meets them.
+var hopClauses = []string{"tab down", "shift+tab up", "enter go", hopAwayKey + " put away", "esc back"}
+
+// hopFootWords is the foot of the FRAME while the card is up — the same clauses
+// from the same list, so a person reading the bottom of the screen and a person
+// reading the top of the card are told the same things.
+var hopFootWords = strings.Join(hopClauses, " · ")
+
+// hopLine is one conversation, in five fixed columns.
 func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	switch {
@@ -734,6 +944,8 @@ func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
 	case row.moving:
 		glyph, glyphInk = tokens.GlyphWorking, pal.accent
+	case row.gone, row.held:
+		glyph, glyphInk = tokens.GlyphFailed, pal.bad
 	}
 	// THE DIGIT IS DRAWN EXACTLY WHERE IT IS BOUND, AND THE COLUMN IS HELD OPEN
 	// WHERE IT IS NOT. A row a person can take with `3` and is never told about
@@ -741,80 +953,97 @@ func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 	// `10` nothing answers is the same defect the other way round.
 	mark := "  "
 	if at < hopDigits {
-		mark = pal.dim(itoa(at+1)) + " "
+		mark = itoa(at+1) + " "
 	}
-	lead := mark + glyphInk(glyph) + " "
-	parts := []string{row.note, row.project, row.age}
-	for hopTailWidth(parts)+ansi.StringWidth(lead)+8 > width {
-		if parts[0] != "" {
-			parts[0] = ""
-			continue
+	// THE SUBJECT KEEPS ITS COLUMN AND THE TAIL GIVES WAY. Narrowing the subject
+	// first would break the straight edge the whole layout is for, so the
+	// clauses go before it does: the clock last, because it is two cells and is
+	// the one thing every row has.
+	subject, project, age := hopSubjectCol, hopProjectCol, hopAgeCol
+	fixed := func() int { return len(mark) + hopGlyphCol + subject + project + age }
+	for fixed()+2 > width {
+		switch {
+		case project > 0:
+			project = 0
+		case subject > hopTightSubject:
+			subject = max(hopTightSubject, width-len(mark)-hopGlyphCol-age-2)
+		case age > 0:
+			age = 0
+		default:
+			subject = max(4, width-len(mark)-hopGlyphCol)
 		}
-		if parts[1] != "" {
-			parts[1] = ""
-			continue
+		if project == 0 && age == 0 && subject <= hopTightSubject {
+			break
 		}
-		if parts[2] != "" {
-			parts[2] = ""
-			continue
-		}
-		break
 	}
-	tail := hopTailWidth(parts)
-	room := max(0, width-ansi.StringWidth(lead)-tail)
-	// THE SUBJECT GOES BOLD ON THE ROW THE KEYBOARD IS ON and the tail steps up
-	// with it, for switcher.go's reason exactly: dim grey on a raised ground is
-	// grey on grey.
-	name, tailInk := pal.ink(fit(row.title, room)), pal.dim
+	note := max(0, width-fixed())
+	// A ROW WITH NEWS IS AT FULL INK AND A QUIET ONE IS A STEP BACK, which is
+	// what lets the two or three that want you separate from the eight that do
+	// not with no heading saying so (SCREEN 2b's own clause).
+	name := pal.narr(fitPad(row.title, subject))
+	clause := pal.dim(fitPad(row.note, note))
+	if row.needs || row.moving {
+		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+	}
 	if sel {
-		name, tailInk = pal.bold(name), pal.ink
+		// THE ROW THE KEYBOARD IS ON TAKES THE GROUND AND THE WEIGHT. The band is
+		// applied around this line by the card; the subject going bold is the
+		// other half, and the tail steps up with it because dim grey on a raised
+		// ground is grey on grey (switcher.go holds the same rule for home).
+		name, clause = pal.bold(pal.ink(fitPad(row.title, subject))), pal.narr(fitPad(row.note, note))
 	}
-	line := lead + name
-	if pad := width - ansi.StringWidth(line) - tail; pad > 0 {
-		line += strings.Repeat(" ", pad)
+	line := pal.dim(mark) + glyphInk(fitPad(glyph, hopGlyphCol)) + name + clause
+	if project > 0 {
+		line += pal.dim(rightPad(row.project, project))
 	}
-	for _, part := range parts {
-		if part != "" {
-			line += " " + tailInk(part)
-		}
+	if age > 0 {
+		line += pal.dim(rightPad(row.age, age))
 	}
-	line = fit(line, width)
-	if !sel {
-		return line
-	}
-	return pal.cursor(line, width)
+	return line
 }
 
-func hopTailWidth(parts []string) int {
-	n := 0
-	for _, part := range parts {
-		if part != "" {
-			n += 1 + ansi.StringWidth(part)
-		}
+// fitPad is one column: cut to fit, then padded out to its full width so the
+// column after it starts in the same cell on every row.
+func fitPad(s string, width int) string {
+	if width <= 0 {
+		return ""
 	}
-	return n
+	s = fit(s, width)
+	if w := width - ansi.StringWidth(s); w > 0 {
+		s += strings.Repeat(" ", w)
+	}
+	return s
+}
+
+// rightPad is the same for a column that reads from the right — the project and
+// the clock, whose right edges are the card's own margin.
+func rightPad(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	s = fit(s, width)
+	if w := width - ansi.StringWidth(s); w > 0 {
+		s = strings.Repeat(" ", w) + s
+	}
+	return s
 }
 
 // hopOver is the whole of how the card meets the surface underneath: the body's
-// own rows are repainted at the faintest stop of the depth ladder, and the
-// card's lines are written over the middle of them.
+// own rows are repainted at the faintest stop of the depth ladder, and the card
+// is written over the middle of them.
 //
 // THE ROWS ARE REPLACED RATHER THAN THE FRAME BEING REBUILT, which is what makes
 // the card cost nothing: the body was going to be laid out anyway, the frame is
 // the same height it was before the key was pressed, and no place, room or
 // transcript has a single line about being underneath one.
-//
-// It is one function over `[]string` because both surfaces that call it — the
-// conversation (view.go) and the places (pages.go) — hold their body as rows of
-// text with marks beside them, and the marks are the caller's business: a card
-// row carries no hit, because a click on it is a click on the card.
 func (a *app) hopOver(body []string, width int, pal palette) []string {
-	// THE CARD IS INSET BY A CELL ON EACH SIDE, and that one cell is the whole of
-	// what makes it read as an object rather than as a band of text that happens
-	// to be brighter. It matters most at the right margin, where the roster's
-	// column stands: a head row laid out to the full body width put `esc back`
-	// hard against the `│`, which reads as the card having grown into the rail.
-	room := width - 2*hopInset
+	room := width - 2*hopSideInset
+	if room < 24 {
+		// Too narrow for the inset. The box takes the width it can have rather
+		// than not being drawn: a person on a sixty-column frame needs the
+		// switcher more than they need the margin.
+		room = width
+	}
 	card := a.hopCardLines(room, len(body)-2, pal)
 	if len(card) == 0 || len(body) < hopMinBody {
 		// Too short to lay a card into. The body is still faded — the card is up,
@@ -833,7 +1062,7 @@ func (a *app) hopOver(body []string, width int, pal palette) []string {
 	if top+len(card) > len(out) {
 		top = len(out) - len(card)
 	}
-	pad := strings.Repeat(" ", hopInset)
+	pad := strings.Repeat(" ", (width-room)/2)
 	for i, line := range card {
 		out[top+i] = pad + line
 	}
@@ -881,16 +1110,6 @@ func (a *app) hopFadeRail(line string) string {
 // why it is that line and not the resting foot).
 const hopMapWords = hopOpenKey + " switch conversation"
 
-// hopClauses are the four keys the card owns, in the order a person meets them,
-// and they are a list rather than a sentence because the head row DROPS them
-// from the right as the frame tightens ([app.hopHead]).
-var hopClauses = []string{"tab down", "shift+tab up", "enter go", "esc back"}
-
-// hopFootWords is the foot of the frame while the card is up: the head row's
-// clauses again, from the same list, so a person reading the bottom of the
-// screen and a person reading the top of the card are told the same four things.
-var hopFootWords = strings.Join(hopClauses, " · ")
-
 // ── how many there are, asked off the loop ──────────────────────────────────
 
 // hopCountMsg is the answer: how many conversations this machine has.
@@ -928,3 +1147,82 @@ func (a *app) countConversations() tea.Cmd {
 		return hopCountMsg{n: n}
 	}
 }
+
+// hopAway is `ctrl+w`: close the conversation under the cursor, in this terminal.
+//
+// CLOSING IS NOT SWITCHING AND THE CARD SAYS SO PLAINLY. The grooming called
+// this "put away without stopping it", and that sentence is not true of this
+// engine: closing a conversation closes its agent, and work it has running stops
+// with it — which is exactly what the quit door already warns about
+// (quitarm.go). So a conversation with nothing running closes on one press, and
+// one with work in it takes two, with the work named in between.
+//
+// A ROW THAT IS NOT OPEN HAS NOTHING TO CLOSE, and says so rather than doing
+// nothing: it is below the fold precisely because this terminal is not holding
+// it.
+func (a *app) hopAway() tea.Cmd {
+	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
+		return nil
+	}
+	row := a.hop.rows[a.hop.at]
+	if !row.open {
+		a.hop.say = hopNotOpenWord
+		a.touch()
+		return nil
+	}
+	if running := a.hopRunning(row); running > 0 && a.hop.armed != a.hop.at {
+		// THE ARM, WITH THE WORK NAMED. One keystroke that ends an hour of work
+		// is the shape stop.go's confirmation card exists to refuse.
+		a.hop.armed = a.hop.at
+		a.hop.say = itoa(running) + " " + plural("task", running) + " running · " + hopAwayKey + " again to close it anyway"
+		a.touch()
+		return nil
+	}
+	if row.here {
+		// THE ONE ON SCREEN IS THE KEEPER'S OWN DOOR, and it brings the next
+		// conversation forward as it goes (keeper.go's [app.closeFront]). The
+		// card comes down with it, because the screen underneath is about to be
+		// a different conversation.
+		a.hopClose()
+		cmd, ok := a.closeFront()
+		if !ok {
+			a.note(hopLastOneWord)
+		}
+		return cmd
+	}
+	a.closeKept(row.file)
+	// THE CARD STAYS UP AND RE-READS ITSELF. Closing is something a person does
+	// two or three of in a row, and a card that dropped after each one would make
+	// tidying up cost three openings.
+	rows, rest := a.hopReading(a.hop.all)
+	a.hop.rows, a.hop.rest, a.hop.armed = rows, rest, -1
+	a.hop.at = min(a.hop.at, max(0, len(rows)-1))
+	a.hop.say = hopClosedWord + " · " + row.title
+	if len(rows) < 2 && rest == 0 {
+		a.hopClose()
+	}
+	a.touch()
+	return nil
+}
+
+// hopRunning is how much work is turning in one row's conversation, asked only of
+// a conversation this process is holding — the others have no agent here to ask.
+func (a *app) hopRunning(row hopRow) int {
+	if row.here {
+		// THE ONE ON SCREEN IS ASKED THE SAME WAY THE OTHERS ARE — through the
+		// agent's own index rather than through the rail, so a conversation's
+		// count does not change meaning when it comes forward.
+		return runningTasks(a.agent)
+	}
+	if held := a.behind[a.convKey(row.file)]; held != nil {
+		return runningTasks(held.conv.Agent)
+	}
+	return 0
+}
+
+// The three sentences the card says about closing.
+const (
+	hopNotOpenWord = "that one is not open here — enter opens it"
+	hopClosedWord  = "closed"
+	hopLastOneWord = "that is the only conversation open — /quit closes aforge"
+)

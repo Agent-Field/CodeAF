@@ -859,6 +859,7 @@ func helpText(file string, chords chordSpelling) string {
 		// list, for the reason the manual states — a line that named it would be
 		// naming a chord half the terminals reading this cannot send.
 		"ctrl+k         the conversations this terminal has open · tab moves · enter goes",
+		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
 		// task room for the conversation; /home is a screen of every project on

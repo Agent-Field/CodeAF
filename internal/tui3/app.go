@@ -2155,6 +2155,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	// one enter continues that conversation here rather than leaving somebody
 	// with a second one they did not ask for (takeover.go).
 	a.landTakeover(a.takeOverAt)
+	// AND THE CONVERSATION THIS WINDOW OPENED ON IS STAMPED, so the switcher's
+	// own row has a clock like every other row on the card (hop.go). Every LATER
+	// conversation is stamped by [app.attachConversation]; this is the first one,
+	// which no switch ever brought forward.
+	a.frontAt = a.now()
 	return a
 }
 

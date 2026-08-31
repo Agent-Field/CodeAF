@@ -21,6 +21,12 @@ import (
 // the transcript's file name (hop.go's [hopTitle]).
 func keepThree(t *testing.T, a *app) (older, newer *fakeAgent) {
 	t.Helper()
+	// THE MACHINE IS PINNED EMPTY, and every test in this file that wants rows
+	// below the fold hands its own closure. Without a seam the switcher's reading
+	// is [session.ReadWorld] over whatever `~/.aforge` the suite is running as,
+	// so a card asserted against the developer's own conversations would pass on
+	// one machine and fail on the next (hop.go's [app.hopRest]).
+	emptyMachine(a)
 	older, newer = &fakeAgent{model: "m"}, &fakeAgent{model: "m"}
 	a.stow(Conversation{
 		Agent: older, SessionFile: "/tmp/lab/price-scrape.jsonl",
@@ -31,6 +37,11 @@ func keepThree(t *testing.T, a *app) (older, newer *fakeAgent) {
 		Workspace: "/tmp/lab", Place: "lab",
 	}, &aside{since: a.now().Add(-12 * time.Minute), title: "Refactor the rail scope model"})
 	return older, newer
+}
+
+// emptyMachine pins the world seam to a machine with nothing else on it.
+func emptyMachine(a *app) {
+	a.world = func() (session.World, bool) { return session.World{}, true }
 }
 
 // TestTheSwitcherDrawsEveryOpenConversationWithHereLast is the reading, asserted
@@ -180,7 +191,7 @@ func TestTheSurfaceUnderTheSwitcherIsDimmed(t *testing.T) {
 	// squint at is a card that has taken the keyboard for nothing.
 	head := ""
 	for _, line := range out {
-		if strings.Contains(line, "3 open") {
+		if strings.Contains(plain(line), hopOpenWord) && strings.Contains(plain(line), "tab down") {
 			head = line
 		}
 	}
@@ -195,6 +206,7 @@ func TestTheSurfaceUnderTheSwitcherIsDimmed(t *testing.T) {
 func TestASingleConversationHasNoSwitcherAndIsNeverToldAboutOne(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	emptyMachine(a)
 	// The legend slot is dropped whole under [hudTight], where the cells are
 	// worth more to the conversation's name than to a reminder (render.go).
 	a.width = 100
@@ -221,6 +233,7 @@ func TestASingleConversationHasNoSwitcherAndIsNeverToldAboutOne(t *testing.T) {
 	// this key is the only thing that gets you anywhere, so it has to be on the
 	// frame from the first one.
 	fresh := newTestApp(&fakeAgent{model: "m"})
+	emptyMachine(fresh)
 	fresh.width, fresh.file = 100, "/tmp/lab/this-one.jsonl"
 	if fresh.hopAvailable() {
 		t.Fatal("the switcher is available before anything has counted the machine")
@@ -327,10 +340,20 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	if !a.hopShowing() {
 		t.Fatal("the switcher did not open with one conversation open and another on the machine")
 	}
-	if len(a.hop.rows) != 2 {
-		t.Fatalf("the card holds %d rows: %+v", len(a.hop.rows), a.hop.rows)
+	// THE CARD IS ABOUT WHAT IS OPEN. The one conversation this terminal holds is
+	// the whole list, and the other is behind the fold with the count on it.
+	if len(a.hop.rows) != 1 || a.hop.rest != 1 {
+		t.Fatalf("the shut card holds %d rows and folds %d: %+v", len(a.hop.rows), a.hop.rest, a.hop.rows)
 	}
-	// THE ONE ON SCREEN IS THE OPEN HALF, and the other is below the rule.
+	if !strings.Contains(plain(a.hopFoot()), "1 more on this machine") {
+		t.Fatalf("the fold says %q", plain(a.hopFoot()))
+	}
+	// `→` REACHES THEM.
+	drive(t, a, key("right"))
+	if len(a.hop.rows) != 2 {
+		t.Fatalf("the card holds %d rows once the fold is open: %+v", len(a.hop.rows), a.hop.rows)
+	}
+	// THE ONE ON SCREEN IS THE OPEN HALF, and the other is below the fold.
 	if !a.hop.rows[0].open || !a.hop.rows[0].here {
 		t.Fatalf("the first row came out as %+v", a.hop.rows[0])
 	}
@@ -342,9 +365,10 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	if a.hop.rows[1].note != "" {
 		t.Fatalf("a quiet closed row says %q", a.hop.rows[1].note)
 	}
-	// THE CURSOR IS ON THE ROW THAT CAN BE TAKEN, so enter lands.
+	// OPENING THE FOLD MOVED THE CURSOR OFF `you are here`, which is what makes
+	// the whole gesture `ctrl+k → enter` on a session holding one conversation.
 	if a.hop.at != 1 {
-		t.Fatalf("the cursor opened on row %d", a.hop.at)
+		t.Fatalf("the cursor is on row %d after the fold opened", a.hop.at)
 	}
 	drive(t, a, key("enter"))
 	if opened != other {
@@ -354,5 +378,156 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	// own enter makes (keeper.go).
 	if a.openCount() != 2 {
 		t.Fatalf("%d conversations are open after taking a closed row", a.openCount())
+	}
+}
+
+// TestTheFoldKeepsTheCardAboutWhatIsOpen is the shape the owner asked for: the
+// ring is the conversations this terminal is holding, and everything else on the
+// machine is behind one door with a count on it.
+func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	rows := []session.SessionRow{{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir}}
+	for i := 0; i < 4; i++ {
+		rows = append(rows, session.SessionRow{
+			ID: itoa(i), Title: "shut chat " + itoa(i),
+			Transcript: filepath.Join(dir, "shut"+itoa(i)+".jsonl"), ProjectDir: dir,
+		})
+	}
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{Name: "lab", Dir: dir, Sessions: rows}}}, true
+	}
+
+	drive(t, a, key(hopOpenKey))
+	if len(a.hop.rows) != 1 || a.hop.rest != 4 {
+		t.Fatalf("the shut card holds %d rows and folds %d", len(a.hop.rows), a.hop.rest)
+	}
+	// THE FOLD SAYS WHAT OPENING IT WOULD BE WORTH, and names the key.
+	foot := plain(a.hopFoot())
+	if !strings.Contains(foot, "4 more on this machine") || !strings.Contains(foot, hopFoldKeyWord) {
+		t.Fatalf("the fold reads %q", foot)
+	}
+	// AND THE HEAD COUNTS ONLY WHAT IS OPEN, which is what the card is about.
+	if head := plain(a.hopHead(80, a.pal)); !strings.Contains(head, "1 of 5") {
+		t.Fatalf("the head reads %q", head)
+	}
+
+	drive(t, a, key(hopFoldKey))
+	if len(a.hop.rows) != 5 || a.hop.rest != 0 {
+		t.Fatalf("the open card holds %d rows and folds %d", len(a.hop.rows), a.hop.rest)
+	}
+	if foot := plain(a.hopFoot()); !strings.Contains(foot, hopShutKeyWord) {
+		t.Fatalf("the open fold reads %q", foot)
+	}
+	drive(t, a, key(hopShutKey))
+	if len(a.hop.rows) != 1 {
+		t.Fatalf("`←` left %d rows on the card", len(a.hop.rows))
+	}
+}
+
+// TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork is the way out, and
+// the one guard on it: closing ends the agent, so work turning inside it stops —
+// which is what the quit door already warns about, said here on the row.
+func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	older, _ := keepThree(t, a)
+
+	drive(t, a, key(hopOpenKey))
+	if a.openCount() != 3 {
+		t.Fatalf("%d conversations are open before anything is closed", a.openCount())
+	}
+	// The cursor opens on the most recent one behind this. Walk to the older.
+	drive(t, a, key("down"))
+	if !strings.Contains(a.hop.rows[a.hop.at].title, "price scrape") {
+		t.Fatalf("the cursor is on %q", a.hop.rows[a.hop.at].title)
+	}
+	drive(t, a, key(hopAwayKey))
+	if a.openCount() != 2 {
+		t.Fatalf("ctrl+w left %d open", a.openCount())
+	}
+	if older.closes == 0 {
+		t.Fatal("ctrl+w did not close the agent")
+	}
+	// THE CARD STAYS UP AND SAYS SO, because tidying up is something people do
+	// two or three of in a row.
+	if !a.hopShowing() {
+		t.Fatal("the card came down on a close")
+	}
+	if !strings.Contains(a.hop.say, hopClosedWord) {
+		t.Fatalf("the card says %q", a.hop.say)
+	}
+}
+
+// TestClosingAConversationWithWorkInItTakesTwoPresses is that guard on its own.
+func TestClosingAConversationWithWorkInItTakesTwoPresses(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	emptyMachine(a)
+	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
+		&aside{since: a.now(), title: "the busy one"})
+
+	drive(t, a, key(hopOpenKey), key(hopAwayKey))
+	if a.openCount() != 2 {
+		t.Fatalf("one press closed a conversation with work in it: %d open", a.openCount())
+	}
+	if !strings.Contains(a.hop.say, "2 tasks running") {
+		t.Fatalf("the warning reads %q", a.hop.say)
+	}
+	drive(t, a, key(hopAwayKey))
+	if a.openCount() != 1 {
+		t.Fatalf("the second press left %d open", a.openCount())
+	}
+	// AND A WALK DISARMS IT: a warning that outlived the cursor leaving the row
+	// would close a conversation nobody was looking at.
+	other := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.stow(Conversation{Agent: other, SessionFile: "/tmp/lab/other-busy.jsonl", Place: "lab"},
+		&aside{since: a.now(), title: "another busy one"})
+	drive(t, a, key(hopOpenKey), key(hopAwayKey), key("down"), key("up"), key(hopAwayKey))
+	if a.openCount() != 2 {
+		t.Fatalf("a walk did not disarm the close: %d open", a.openCount())
+	}
+}
+
+// busyAgent is a fake with work turning in it — the one door the switcher's own
+// close guard reads ([runningTasks]).
+type busyAgent struct{ *fakeAgent }
+
+func (b *busyAgent) TaskIndex() []session.TaskIndexEntry {
+	return []session.TaskIndexEntry{
+		{ID: "1", Status: string(session.TaskRunning)},
+		{ID: "2", Status: string(session.TaskRunning)},
+		{ID: "3", Status: string(session.TaskDone)},
+	}
+}
+
+// TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt is `ctrl+shift+k`,
+// which an ordinary terminal sends as a bare `ctrl+k` — so it is bound under the
+// same law as `ctrl+tab`, and `shift+tab` is the spelling that always works.
+func TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+
+	a.keysDisambiguated = false
+	if a.hopBacks(hopBackKey) || a.hopBacks(hopBackAlias) {
+		t.Fatal("the reverse chords are bound on a terminal that cannot send them")
+	}
+	a.keysDisambiguated = true
+	if !a.hopBacks(hopBackKey) || !a.hopBacks(hopBackAlias) {
+		t.Fatal("the reverse chords are not bound where the terminal answered")
+	}
+	drive(t, a, key(hopOpenKey), key(hopBackKey))
+	if a.hop.at != len(a.hop.rows)-1 {
+		t.Fatalf("ctrl+shift+k left the cursor on %d of %d", a.hop.at, len(a.hop.rows))
+	}
+	// AND `shift+tab` DOES IT ON EVERY TERMINAL, which is why the chord above
+	// being absent on half of them costs nothing.
+	a.keysDisambiguated = false
+	drive(t, a, key("shift+tab"))
+	if a.hop.at != len(a.hop.rows)-2 {
+		t.Fatalf("shift+tab left the cursor on %d", a.hop.at)
 	}
 }

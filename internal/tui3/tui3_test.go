@@ -383,6 +383,11 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl}
 	case "ctrl+shift+tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl | tea.ModShift}
+	case "ctrl+shift+k":
+		// The switcher's reverse (hop.go), spelled out for the reason above it:
+		// the ctrl fall-through builds single-rune chords with one modifier, and
+		// this one carries two.
+		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl | tea.ModShift}
 	case "shift+left":
 		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	case "shift+right":
