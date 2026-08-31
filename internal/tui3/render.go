@@ -1696,7 +1696,16 @@ const servedWindow = 10 * time.Minute
 // endpoint that IS the vendor adds nothing to "deepseek-v4-flash", and a line
 // that reads "gpt-4.1 · via openai" is a cell of chrome per frame for a word
 // the reader already has.
+//
+// THE LANE LAYER SPEAKS FIRST WHEN IT HAS SPOKEN AT ALL (lanes.go's
+// [app.laneRider]). It knows three things this reading cannot — the first-token
+// wait, that a rescue is in flight, and that one landed — and the two must not
+// both draw, or the row would say `via` twice about one answer. Where nothing
+// has posted, this is exactly the rider it has always been.
 func (a *app) servedRider() string {
+	if rider := a.laneRider(); rider != "" {
+		return rider
+	}
 	sighting, ok := servedSighting(a.model)
 	if !ok || sighting.Provider == "" {
 		return ""

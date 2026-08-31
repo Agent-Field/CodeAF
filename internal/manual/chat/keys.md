@@ -1034,12 +1034,17 @@ follows what you type. Only these keys are taken from you:
 in the status row:
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
-effort · `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+effort · `tab` and `→` open the lanes under the model the cursor is on, `tab` and
+`←` close them again · `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
 
-Its placeholder reads exactly `filter · ↑↓ · ctrl+t effort · enter switch · esc
-cancel`.
+`→` and `←` only open and close the lanes from the **end** and the **start** of what you
+have typed — with anything to step over, they move the caret through the filter text
+instead. `tab` always opens and closes. With the lanes open, `enter` on one of them pins
+it instead of switching model.
+
+Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
