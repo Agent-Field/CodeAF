@@ -1074,6 +1074,15 @@ column's width. That line is the whole handle back to the work: the number is wh
 session with no folder of its own keeps its logs where they always were, in the
 workspace's own dot directory.
 
+## Stray lines painted over the conversation, the screen glitching while a job runs — a job cannot draw on your chat
+
+**A job cannot draw on your screen.** It runs in its own terminal session, away from the
+window you are looking at, so a command that tries to open the terminal directly — a CLI
+that is itself a full-screen program, a prompt that insists on the keyboard — is refused
+by the system rather than painting its output across your conversation. Everything a job
+says goes to its log and nowhere else; if the chat's own frame ever glitches or shows
+stray lines, it is not a job doing it.
+
 **Once the job has ended the row is one line**, like every other finished row on the
 column, and the log line is folded under it rather than dropped: walk to the row and press
 `→`, or hover it and click the `▸` its glyph turns into, and the same
