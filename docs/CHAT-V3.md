@@ -458,14 +458,16 @@ longer read as the user. Bold-as-identity is retired.
 **Decision.** `internal/search` is an open registry of providers, not an Exa
 client. `Provider` (search) and `Fetcher` (page → clean text) are separate
 registries resolved independently. Auto resolution: a settings pin wins;
-else the first keyed plug that is available (Exa when `EXA_API_KEY` exists);
-else the zero-key default — DuckDuckGo's HTML endpoint for search (no key,
-scraping is the price of zero-config and the registry is the upgrade path)
-and Jina's `r.jina.ai` reader for fetches (free, 20 RPM, no key). Tavily or
-Firecrawl later is one file each: the registry, not the belt, is the
-extension point. The belt tools (`web_search`, `web_fetch`) register only
-when a provider pair resolves — a model told about a tool it cannot reach is
-worse than no tool.
+else the first keyed plug that is available (Exa or Jina Search when its key
+exists); else the explicit zero-key default — Firecrawl's keyless MCP search
+(with a free monthly allowance, snippets only) and Jina's `r.jina.ai` reader for
+fetches (free, 20 RPM, no key). A Firecrawl key raises its search ceiling and
+adds a paid fetch plug; it never gates search. DuckDuckGo stays registered as a
+pinnable safety valve. Another back end is one file plus one explicit default
+preference when it should displace a zero-key incumbent: the registry, not the
+belt, is the extension point. The belt tools (`web_search`, `web_fetch`)
+register only when a provider pair resolves — a model told about a tool it
+cannot reach is worse than no tool.
 
 ## Decision 14 — Images are context by reference, never by inline journal bytes
 
