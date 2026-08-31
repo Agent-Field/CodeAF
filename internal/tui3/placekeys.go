@@ -422,14 +422,6 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 		a.pageMsg = newUnavailableWord
 		return nil, false
 	}
-	// AND THE ROOM BEFORE THE PLACE IS LEFT, for home's reason said about this
-	// screen (home.go's [app.homeStart]): a refusal met after the place has gone
-	// has nowhere to be read, and the sentence would be sent into the
-	// conversation this window was already holding.
-	if word, room := a.roomToRenew(); !room {
-		a.pageMsg = word
-		return nil, false
-	}
 	a.leavePlace()
 	a.standDownFullscreen()
 	renewed, started := a.renew()

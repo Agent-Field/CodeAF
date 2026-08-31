@@ -6314,12 +6314,6 @@ func (a *app) renew() (tea.Cmd, bool) {
 		return nil, false
 	}
 	replacing := a.freshAndEmpty()
-	if !replacing {
-		if word, room := a.roomForAnother(); !room {
-			a.note(word)
-			return nil, false
-		}
-	}
 	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
@@ -6386,23 +6380,6 @@ func (a *app) renew() (tea.Cmd, bool) {
 		a.rememberOpen(key)
 	}
 	return cmd, true
-}
-
-// roomToRenew is [app.renew]'s own room question asked BEFORE the door is
-// opened, in the words the refusal would use, so a caller standing on a screen
-// of its own can answer on that screen instead of noting into a conversation
-// nobody is looking at.
-//
-// IT IS THE SAME QUESTION AND NOT A SECOND ONE. A fresh empty conversation is
-// replaced rather than added to, so it needs no room at all; everything else
-// asks the keeper. Home used to ask [app.roomForAnother] flat on its typed-path
-// branch and not at all on its typed-sentence branch, which is two answers to
-// one question and how the sentence came to be sent into the wrong place.
-func (a *app) roomToRenew() (string, bool) {
-	if a.freshAndEmpty() {
-		return "", true
-	}
-	return a.roomForAnother()
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────

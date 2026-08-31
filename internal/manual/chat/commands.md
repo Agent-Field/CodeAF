@@ -281,8 +281,9 @@ It ends with a note that says which of the two happened: `new conversation · <p
 when it added one, and `new session · <path>` — or just `new session` with no file — when
 it replaced a fresh empty one.
 
-At eight open it refuses with `8 open is as many as aforge holds — /quit closes this one`,
-and nothing is opened.
+**How many conversations are already open is never a reason to refuse.** There is no cap:
+the ninth and the fiftieth `/new` open exactly like the first, and the one you were in is
+left running. Nothing closes one for you — that is what `/quit` is for.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -885,7 +886,6 @@ nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
 that folder is gone · <path>
-8 open is as many as aforge holds — /quit closes this one
 ```
 
 The first is not a refusal: it is what an empty home says where its rows will be, with the
@@ -893,9 +893,9 @@ box and the keys at the foot still live — typing there offers
 `start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
 rows are the **far** machine's and that machine may simply not have been used yet. `/new is
 unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
-The last two are `enter` on a project whose folder has been deleted or moved since its last
-conversation, and `enter` when this terminal is already holding eight — in both cases home
-stays up and nothing is opened.
+The last is `enter` on a project whose folder has been deleted or moved since its last
+conversation: home stays up and nothing is opened. **How many conversations this terminal
+already holds is never a refusal** — there is no cap on that.
 
 `that folder is gone` is never said over `--host`: the folders are the far machine's and this
 one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
