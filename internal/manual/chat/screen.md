@@ -2148,17 +2148,27 @@ reading. What is dropped is the quieter background the pointer and the cursor sh
 
 ## Two other things that move on screen
 
-**The "still working" ellipsis.** When a turn is running and nothing else on screen is
-moving, two spaces then a pulsing ellipsis cycles `·` → `··` → `···` in accent, about
-300ms a step. After the stream has said nothing for **10 seconds**, ` · still working`
-is appended in dim. It is suppressed entirely while text is actively streaming, while
-any tool call is spinning, and while a sub-harness run has a step on the row under it
-(see *Saved shapes of work*) — two answers to "is this alive?" is one too many. It says
-"still working" and never "trying again": a silence is only a silence to this suffix, and
-the words change to "trying again" solely when the session has actually cut the request
-and re-sent it, which it says outright. When the reply has not started at all —
-a request is out and nothing has come back — the more specific waiting line below
-replaces this suffix instead of sitting beside it.
+**The pulsing ellipsis, and the `still working` fallback.** When a turn is running and
+nothing else on screen is moving, two spaces then a pulsing ellipsis cycles `·` → `··` →
+`···` in accent, about 300ms a step. It is suppressed entirely while text is actively
+streaming, while any tool call is spinning, and while a sub-harness run has a step on the
+row under it (see *Saved shapes of work*) — two answers to "is this alive?" is one too
+many.
+
+Beside it, aforge says as much about the wait as it honestly can, and **the most specific
+of three answers wins**:
+
+```
+  ··· thinking · 12s · friendli 38 t/s   the connection's own account of itself
+  ··· waiting for kimi-k3 · 12s          a request is out, and that is all anyone knows
+  ··· still working                      the stream has simply gone quiet
+```
+
+` · still working` is appended in dim after the stream has said nothing for **10
+seconds**, and it is the **last** of the three rather than the normal state: it is what is
+left when neither of the lines above knows anything. It says "still working" and never
+"trying again" — a silence is only a silence to this suffix, and the words change to
+`trying again` solely when the request really was cut and re-sent, which is said outright.
 
 **The compaction mark.** A compaction is drawn while it runs and left as a rule once it
 lands, so the conversation never silently loses its middle. Running, it reads
@@ -2167,11 +2177,102 @@ spinners, dim, with a count-up. Settled, it becomes a centred rule:
 `───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
 second. It is never painted the question hue, because nobody is being asked anything.
 
+## What is it doing right now — connecting, first word, thinking, writing, paced, trying again
+
+While a turn is running, the working line and the status line say what the connection to
+the model is **actually** doing, in one of a small set of words. They are reported by the
+layer holding the wire, never guessed by the screen:
+
+| The word | What is happening |
+|---|---|
+| `connecting` | the handshake — nothing has been accepted yet |
+| `first word` | the request was accepted and nothing has been written back: a queue, a cold model, or the router still walking its own endpoints |
+| `thinking` | the model **is** writing, and none of it is answer — it is reasoning, which is billed and streamed and shows nothing |
+| `writing` | the answer itself is arriving |
+| `paced` | the provider asked aforge to slow down, and it is waiting |
+| `trying again` | the same question is being asked again with one field dropped from it |
+| `switching` | a second machine is being asked the same question while the first is still live |
+
+They read like this, with a clock counting up from the moment that phase began:
+
+```
+  ··· connecting · 1.2s
+  ··· first word · 3.1s → parasail at 4.4s
+  ··· thinking · 12s · friendli 38 t/s
+  ··· writing · 4s · friendli 61 t/s
+  ··· paced · retry in 6s
+  ··· trying again · 2 of 6
+  ··· stalled 9s · switching to parasail
+```
+
+**Every part is dropped when it is not known** — no machine name, no machine name; no
+measured rate, no rate. The two waiting words, `connecting` and `first word`, are read in
+tenths, because the difference between 1.2s and 3.1s is the whole of what those seconds
+tell you; everything else is read in whole seconds.
+
+The same words also ride the status line beside your model, where they take the place of
+`via <machine>` for as long as the turn is running (see *Models, context, and what it
+costs*).
+
+## It says thinking and nothing is on the screen — is it stuck, is it frozen, why is it slow, and what still working means
+
+`thinking` means the model is writing and none of what it writes is for you. Reasoning
+models produce a run of thought before the answer, on the same connection, billed the same
+way, and on a big conversation it can run for a minute before a word of answer appears.
+Nothing is wrong. The clock beside the word counts up, so a number that is moving is a
+program that is alive and painting; a clock that has **stopped** is the thing to worry
+about. `esc` interrupts at any point.
+
+`first word` is the other slow one, and it means something different: aforge's request was
+accepted and the endpoint has written nothing at all — a queue, a cold model loading, or a
+router still choosing between its own machines.
+
+**`still working` is not the normal state.** It is the vaguest true sentence aforge has,
+and it appears only when the two more specific lines know nothing: a phase that stopped
+being refreshed, a request that has already returned, a build with nothing reporting. If
+you are reading it, the layers that would say more have nothing to say.
+
+None of these lines ever claims the network is slow or the model is confused. The screen
+sees only what it is told about the wire, and it does not pretend otherwise.
+
+## How long until it gives up on this one — the countdown after the arrow, and when there is none
+
+Sometimes the waiting line carries an arrow:
+
+```
+  ··· first word · 3.1s → parasail at 4.4s
+```
+
+Read it as: **this request has been waiting 3.1 seconds, and if it has not started
+answering by 4.4 seconds, aforge asks parasail the same question as well.** Both figures
+are seconds since the phase began, on one ruler, so the gap is readable without
+arithmetic. The moment is not a round number somebody picked: it is the deadline aforge
+already worked out from what it believes about the machine answering you, and it lands
+between **0.7 and 8 seconds**.
+
+`paced · retry in 6s` is the same shape of promise for a rate limit, and those six seconds
+are the provider's own `Retry-After` rather than anything aforge chose.
+
+**No arrow is drawn unless both halves are real** — a moment, and something that really
+happens at it. So there is no countdown when there is no other machine to go to: a
+conversation pinned to one lane, `routing` set to `off`, an endpoint that is not a router,
+or a model with only one machine behind it. You still get the phase and the count-up,
+which are true, and no promise, which is the point — aforge would rather show you nothing
+than a countdown that expires and does nothing.
+
+Turning the **speed guard** off stops the second request being bought at all; see *Models,
+context, and what it costs*.
+
 ## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
 
 Between you pressing enter and the model's first word there is a gap, and it is sometimes
 long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
 as at second fifty, so past a few seconds it starts saying what it is waiting on.
+
+**This line is the second-best answer.** Where the connection itself is reporting — which
+is most of the time on a router — you get the phase instead: `first word · 3.1s`,
+`thinking · 12s · friendli 38 t/s`. See "what is it doing" above. The `waiting for` line
+below is what is drawn when nothing on the wire has said anything at all.
 
 For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
 clock. Past 4 seconds it grows a dim tail naming the model and counting up:
@@ -2205,33 +2306,43 @@ window between a request going out and the stream first speaking, so after a thr
 `go test` the request that follows starts the clock at zero rather than inheriting the
 call's runtime.
 
-## Why did it ask a second time in parallel, and does that spend twice
+## Does it ever ask a second time in parallel, and does that spend twice
 
-An interactive reply that has produced no first token by its wait bound grows one hedge:
+Yes, once, and only when a slow answer can be moved to a **different machine**. The status
+line spells it:
 
 ```
-  no first token in 8s — asking a second time in parallel
+  stalled 9s · switching to coreweave
 ```
 
-Both requests carry the same conversation, model, level and tools. The first one is still
-live; this is not the later stall recovery cutting it. Whichever request streams the first
-word of answer or reasoning owns the reply, and the other is cancelled immediately. A
-fully formed tool call also commits its request before the call is shown or allowed to
-start, so two contenders can never run the same tool. Any events the loser produced while
-the race was undecided are discarded, so its text, thought and half-formed tool calls never
-reach the screen or conversation. At most one hedge starts per attempt — there is never a
-third request.
+One model id is served by many machines. When the one answering goes quiet — before the
+first word, or in the middle of its thinking, or mid-answer — aforge sends the same
+question to another one of them and lets the two race. Whichever writes first owns the
+reply and the other is cancelled, which is what stops the bill. Anything the loser wrote
+while the race was undecided is thrown away, so its text, its thought and its half-formed
+tool calls never reach the screen or the conversation. If text was already on the screen
+when the switch happened, a line says so:
 
-The wait is at least **8 seconds**. When this process has already measured a first-token
-time for the model, aforge waits the larger of 8 seconds or twice that latest time. A new
-model therefore gets the fixed floor; a model whose ordinary start is known to be longer
-is not duplicated prematurely.
+```
+  that lane went quiet — this answer is coming from another one
+```
 
-The duplicate can spend another completion request, although cancellation stops the loser
-as soon as the winner speaks. Only the watched chat loop hedges. Tasks, adaptive runs,
-tool execution, compaction and the session's other model errands stay single-request: no
-one is sitting in front of those calls waiting for their first word, and tool actions are
-never duplicated.
+The moment it acts at is not a fixed number of seconds. It is worked out per request from
+what the machine answering is believed to do, and it sits between **0.7 and 8 seconds** —
+see "how long until it gives up on this one" above for the countdown the status line draws
+while it is waiting.
+
+**There is no second request that asks the SAME machine again in parallel.** aforge used to
+do that on a flat eight-second wait, with no machine named and no budget, and it is gone:
+one silence now has one answer. What is left, and is a different thing, is *retrying* —
+asking again after a request has been cut or refused, one at a time. See the next section.
+
+Only work somebody is reading is rescued this way, and it is paid for out of a budget: at
+most a couple of rescues in any twenty requests, and never more than about a tenth of what
+the session has spent. Turning the speed guard off in settings sets that budget to nothing,
+and then a slow answer is simply waited out — the status line still says what is happening
+and how long it has been, and draws no countdown, because nothing is going to happen at
+the end of one.
 
 ## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go
 
@@ -2242,9 +2353,10 @@ Sometimes the wait line stops naming a model and reads this instead:
 ```
 
 That is the session asking the model again, and it is the one thing this line ever says
-that it did not work out for itself — it is reported, never guessed. Before the first
-token, the TTFT hedge above asks once in parallel and leaves the original live. After a
-stream starts, two things get its request cut and replaced: the model stopped writing
+that it did not work out for itself — it is reported, never guessed. It is asked one at a
+time: the rescue in the section above is the only thing that ever puts two requests on the
+wire at once, and it asks a different machine rather than the same one. After a stream
+starts, two things get its request cut and replaced: the model stopped writing
 (see *Models, context, and what it costs* for the exact clocks), or the reply came apart
 into repetition or jumbled text. A dim line lands in the conversation saying which:
 
@@ -2277,8 +2389,9 @@ to it. See *Models, context, and what it costs* for which model it moves to and 
 **removed from the screen**, and it is removed because it was removed everywhere: none of
 it is in the conversation, none of it is in the session file, and none of it is sent back
 to the model on the retry. Any tool call that was still arriving when the cut happened
-stops where it is and keeps its row. A TTFT hedge is different: neither contender is shown
-until one streams its first token, so there is no losing text on screen to remove.
+stops where it is and keeps its row. A rescue is different: only one of the two machines is
+ever the one you are hearing, so when it wins nothing is taken away, and when the other one
+wins you are told in a line of its own that the answer changed machines.
 
 This is the one place aforge takes something off the page that you watched arrive, and the
 difference from an interrupt is exactly that. When **you** press `esc`, the half-written

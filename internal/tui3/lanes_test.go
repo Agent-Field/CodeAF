@@ -785,7 +785,9 @@ func TestTheServedRiderSaysTheWaitInSeconds(t *testing.T) {
 	a.model = model
 	a.state = stateWorking
 
-	PostLaneNews(LaneNews{Model: model, Lane: "DigitalOcean", TTFT: 2418 * time.Millisecond, Rate: 26})
+	// The role is named because the rider draws only for a role somebody is
+	// reading, and an unnamed role is a hidden errand by construction.
+	PostLaneNews(LaneNews{Model: model, Lane: "DigitalOcean", Role: lane.RoleTalk, TTFT: 2418 * time.Millisecond, Rate: 26})
 	got := a.servedRider()
 	if !strings.Contains(got, "2.4s") {
 		t.Fatalf("a 2418ms first token reads %q", got)

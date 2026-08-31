@@ -1457,16 +1457,36 @@ minutes.
 It is left off entirely when the lane's name is already in the model id: `gpt-4.1 ·
 via openai` is a row saying the same thing twice.
 
+**While a turn is running you usually see something better than `via`.** The connection
+reports what it is doing right now, and that outranks both readings under it, so the same
+spot reads `thinking · 12s · friendli 38 t/s` or `first word · 3.1s → parasail at 4.4s`
+until the request ends. The ranking is by tense: the phase is what this request is doing,
+`via <name>` is what the **last** answer did, and the older sighting under that is what
+some answer did in the last ten minutes. Drawing the older one under a request that has
+been stalled for a minute is exactly the thing this ordering exists to stop.
+
 ## What "rescued" means on the status line, and "slow · trying …"
 
 Those two only appear together, and only when the **speed guard** is on.
 
 When an answer takes much longer to start than that lane normally takes, aforge asks
-the next-best lane the same question, and you read whichever one replies first. While
-that second request is out the status line says `slow · trying coreweave…` — the only
-place this program calls anything slow, and it says it while something is already being
-done about it. If the second lane wins, the line reads `via coreweave · rescued` for
-that answer, and goes back to normal on the next one.
+the next-best lane the same question, and you read whichever one replies first.
+
+The moment the second request goes out, the status line says so and says **why**:
+
+```
+  stalled 9s · switching to coreweave
+```
+
+The stall comes first because it is the reason — the switch on its own is the same
+sentence with the cause taken out of it. After that the line goes back to the ordinary
+phases for the new request (`first word`, then `thinking` or `writing`). Where nothing on
+the wire is reporting, the older wording `slow · trying coreweave…` is drawn instead —
+either way this is the only place the program calls anything slow, and it says it while
+something is already being done about it.
+
+If the second lane wins, the line reads `via coreweave · rescued` for that answer once the
+request has finished, and goes back to normal on the next one.
 
 Whichever way it lands, the loser is cancelled and what it told aforge about that lane
 is kept, so a rescue is also a free measurement.
