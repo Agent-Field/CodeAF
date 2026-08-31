@@ -482,6 +482,11 @@ type homeLine struct {
 	// the card beside it can never disagree about whether something is firing.
 	view StandingItemView
 	item standing.Item
+	// cmd is the command a [homeCommand] row offers — a pointer into the one
+	// command table (commands.go), which is built once at init and never
+	// rewritten, so a row can hold it without the staleness a world index would
+	// carry ([homeLine.row] states that law).
+	cmd *command
 }
 
 // homeBare is one project home knows only through the things keeping an eye on
@@ -552,6 +557,13 @@ type homeView struct {
 	// type-and-enter starts a chat exactly as it always did; one ↓ sets it, and
 	// then the list is being chosen from.
 	picked bool
+	// cmd is the command list's own state — the chat composer's [menu],
+	// synced against this box rather than chat's (homeslash.go). It is held here
+	// and not built per keystroke because the seal a chosen row leaves is a
+	// memory that must survive the rebuild: a person who picked "/model" out
+	// of the list mid-sentence has said what they meant, and the list reopening
+	// under the rewritten token would be the surface asking again.
+	cmd menu
 	// expanded is the projects somebody opened by hand, by bucket directory.
 	// It outlives a rescan and a query, because folding is a thing a person did
 	// and not a thing the data said.
@@ -1506,6 +1518,12 @@ func (h *homeView) buildWorld() {
 		// words match it, so it is the row nearest what somebody is reading
 		// upward from (homeplaces.go).
 		h.lines = append(h.lines, h.placeLines(query)...)
+		// THE COMMAND OFFERS SIT BETWEEN THE PLACES AND THE ERRAND ROWS, best match
+		// last of all (homeslash.go's [homeView.commandLines]). A slash query leaves
+		// the places empty (homeplaces.go's [placeMatches]), so the two never compete
+		// for the column; and a command is what the fingers are reaching for when a
+		// "/" was typed, so it is the first thing read out of the box.
+		h.lines = append(h.lines, h.commandLines()...)
 		h.lines = append(h.lines, homeLine{kind: homeAskHere})
 		h.lines = append(h.lines, homeLine{kind: homeAction})
 		return
@@ -1992,8 +2010,8 @@ func (l homeLine) stop() bool {
 		homeProject, homeExchangeRow:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
-	// column (homeplaces.go).
-	case homePlace:
+	// column (homeplaces.go), and an offered command is one too (homeslash.go).
+	case homePlace, homeCommand:
 		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
@@ -2618,6 +2636,18 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeAction:
 		// The row the cursor rests on while something is typed, which is what
 		// makes type-and-enter mean today what it meant yesterday.
+		//
+		// A SLASH LINE IS DISPATCHED AND NEVER SENT. Chat's composer answers a
+		// line that starts with "/" by running it (input.go's [app.enterLine]);
+		// home's used to start a conversation with it, which is the one screen
+		// where a command typed in full did nothing it promised. The same
+		// dispatcher runs it here, so every command does on home what it does in
+		// chat — and the conversation-scoped ones act on the conversation this
+		// window holds behind the screen, which is parity rather than a
+		// limitation: the window always holds one.
+		if line := strings.TrimSpace(h.box.String()); strings.HasPrefix(line, "/") {
+			return a.homeSlash(line)
+		}
 		return a.homeStart(strings.TrimSpace(h.box.String()))
 	case homePlace:
 		// ENTER GOES THERE, AND GOING TO A PLACE LEAVES YOU THERE (SCREEN 1g).
@@ -2628,6 +2658,13 @@ func (a *app) homeEnter() tea.Cmd {
 			return a.showPage(id)
 		}
 		return nil
+	case homeCommand:
+		// ENTER RUNS THE ROW THE WAY CHAT'S LIST RUNS ITS OWN (commands.go's
+		// [app.runMenu]): the token is rewritten with the chosen word, and then
+		// the one thing enter can mean on a command row is the thing the row
+		// says — run it bare, or hold the box for the words it takes
+		// (homeslash.go's [app.homeRunCommand]).
+		return a.homeRunCommand(line)
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
@@ -3794,6 +3831,10 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homePlace:
 		// A PLACE, OFFERED BECAUSE THE WORDS MATCH ITS NAME (homeplaces.go).
 		return a.homePlaceRow(line, at, width, pal)
+	case homeCommand:
+		// A COMMAND, OFFERED BECAUSE THE WORDS MATCH ITS NAME OR AN ALIAS
+		// (homeslash.go).
+		return a.homeCommandRow(line, at, width, pal)
 	case homeAskHere:
 		// The same shape as the action row under it and the same words quoted
 		// back, because they are the two readings of one sentence
