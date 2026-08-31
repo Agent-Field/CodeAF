@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -523,5 +524,77 @@ func TestTheRightArrowIsNotSeizedOnARowWithNoVerbs(t *testing.T) {
 	}
 	if !strings.Contains(homeText(a), "fold them away") {
 		t.Fatalf("the foot does not offer to put the fold back:\n%s", homeText(a))
+	}
+}
+
+// A CLICK ON A TASK ON THE CARD OPENS THAT TASK'S RECORD.
+//
+// The card names three pieces of work by their own names, and a person who
+// wants to know what one of them did aims at it and presses — which is what the
+// PHONE already answers on the identical row (homesheet.go's
+// [homeSheetHitTask], whose tap opens [app.openTaskRecord]). On the desktop card
+// the same row was dead: the owner reported being unable to click a task and go
+// inside, and every gesture on this screen — the fold line, the row in the
+// list, the tab word — answered except the one thing on it that names a piece of
+// work.
+//
+// It is the SAME DOOR as the phone's and as `enter` on the row in the tasks
+// place ([app.taskSheetInside]): the record card, over the list, on the task
+// that was pressed. Two spellings of "open this task" is two answers to which
+// card comes up.
+func TestAClickOnACardsTaskOpensThatTasksRecord(t *testing.T) {
+	a := workLab(t, 6)
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	left, right := homeColumns(width)
+	if right <= 0 {
+		t.Fatalf("a %d-column frame lent the card nothing", width)
+	}
+	at := -1
+	for y, line := range lines {
+		if strings.Contains(ansi.Strip(line), "Task 1") {
+			at = y
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the card names no task to press:\n%s", homeText(a))
+	}
+	drive(t, a, tea.MouseClickMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
+
+	if !a.at(pageTasks) {
+		t.Fatalf("a press on a task left page %v up:\n%s", a.page, homeText(a))
+	}
+	if !a.taskSheet.detailOn {
+		t.Fatal("a press on a task opened the place without the task's own record")
+	}
+	if got := homeTaskText(a.taskSheet.detail); got != "Task 1" {
+		t.Fatalf("the record that opened is %q, want the task that was pressed", got)
+	}
+}
+
+// AND THE CURSOR IN THE LEFT COLUMN NEVER MOVED. A press in the right pane acts
+// on the card, and the list is where the person left it — the law
+// [TestClickingACardsFoldLineTogglesIt] pins for the other gesture on this
+// column.
+func TestAClickOnACardsTaskLeavesTheListWhereItWas(t *testing.T) {
+	a := workLab(t, 6)
+	before := a.home.cursor
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	left, _ := homeColumns(width)
+	at := -1
+	for y, line := range lines {
+		if strings.Contains(ansi.Strip(line), "Task 0") {
+			at = y
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the card names no task to press:\n%s", homeText(a))
+	}
+	drive(t, a, tea.MouseClickMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
+	if a.home.cursor != before {
+		t.Fatalf("a press on the card moved the list's cursor from %d to %d", before, a.home.cursor)
 	}
 }

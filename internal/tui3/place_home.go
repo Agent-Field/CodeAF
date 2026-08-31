@@ -649,6 +649,12 @@ func homeCardTalkTail(keys []string, width int, pal palette) []string {
 func (a *app) homeCardWork(ctx bandContext) []string {
 	row, pal := ctx.subject.row, ctx.pal
 	var drawn [][]string
+	// named is the entry each drawn group is about, kept beside the rows so the
+	// doors below can be recorded against what was actually painted rather than
+	// against the record they were taken from — the band drops entries that come
+	// out empty, and a click resolved against the index of the source would open
+	// the row after the one under the pointer.
+	var named []session.TaskIndexEntry
 	for _, entry := range row.Tasks.Rows {
 		label := strings.TrimSpace(entry.Label)
 		if label == "" {
@@ -674,6 +680,7 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 			body = append(body, homeWorkUnder(entry, row, ctx.width, pal)...)
 		}
 		drawn = append(drawn, body)
+		named = append(named, entry)
 	}
 	if len(drawn) == 0 {
 		return nil
@@ -693,7 +700,12 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 	if len(drawn) > homeCardTasks {
 		shown = drawn[:homeCardTasks]
 	}
-	for _, group := range shown {
+	for at, group := range shown {
+		// AND EVERY NAME ROW THE CARD PAINTS IS A DOOR ONTO THAT TASK'S RECORD
+		// ([app.noteCardTask]). The rows are recorded HERE, where the fold has
+		// already decided which of them are on the frame: a door registered for a
+		// task the card is not drawing is a door onto a row nobody can see.
+		a.noteCardTask(group[0], named[at])
 		rows = append(rows, group...)
 	}
 	if more := len(drawn) - len(shown); more > 0 {
@@ -702,6 +714,60 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 			pageTasks.word(), pal.dim, pal.dim))
 	}
 	return rows
+}
+
+// ── the card's task rows, as doors ──────────────────────────────────────────
+//
+// A CARD ROW THAT NAMES A PIECE OF WORK OPENS THAT PIECE OF WORK. The phone has
+// always answered this on the identical row (homesheet.go's [homeSheetHitTask]);
+// the desktop card printed the same three names and answered nothing, which is
+// the one thing on this screen a pointer could see and not press — the owner met
+// it as "I cannot click a task and go inside".
+//
+// THE DOOR IS [app.openTaskRecord] AND NOT A SECOND SPELLING OF IT. It is the
+// same card `enter` opens on the tasks place and the same one a tap opens on the
+// phone: the record over the list, with the list parked on the row that was
+// pressed, so `esc` comes back one layer at a time.
+//
+// AND THE ROWS ARE RECORDED BY THE DRAW, for [app.bandFoldAt]'s reason stated
+// once for both registries: the card is assembled band by band, drops whole
+// bands on a short frame and folds its own work rows at [homeCardTasks], so a
+// row number computed a second time would name a different row exactly when a
+// person could not tell why. The record dies with the frame that wrote it.
+
+// cardTaskLine is one work row the card painted this frame, and the piece of
+// work it named.
+type cardTaskLine struct {
+	text  string
+	entry session.TaskIndexEntry
+}
+
+// noteCardTask records one painted work row as a door.
+func (a *app) noteCardTask(painted string, entry session.TaskIndexEntry) {
+	text := strings.TrimSpace(ansi.Strip(painted))
+	if text == "" {
+		return
+	}
+	a.home.cardTasks = append(a.home.cardTasks, cardTaskLine{text: text, entry: entry})
+}
+
+// resetCardTasks is called at the top of every card paint, beside
+// [app.resetBandFoldLines] and for its reason.
+func (a *app) resetCardTasks() { a.home.cardTasks = a.home.cardTasks[:0] }
+
+// cardTaskAt answers the piece of work whose row is in a painted frame line, for
+// a click.
+func (a *app) cardTaskAt(rowText string) (session.TaskIndexEntry, bool) {
+	plain := strings.TrimSpace(rowText)
+	if plain == "" {
+		return session.TaskIndexEntry{}, false
+	}
+	for _, line := range a.home.cardTasks {
+		if strings.Contains(plain, line.text) {
+			return line.entry, true
+		}
+	}
+	return session.TaskIndexEntry{}, false
 }
 
 // homeCardMade is the files this conversation left behind, under the words a

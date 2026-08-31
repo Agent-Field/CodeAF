@@ -680,6 +680,12 @@ type homeView struct {
 	// this frame, so a click can find one. Both die with the screen.
 	bandOpen  map[string]bool
 	foldLines []bandFoldLine
+	// cardTasks is the card's own work rows painted this frame, so a click on one
+	// can open the piece of work it names (place_home.go's [app.cardTaskAt]). It
+	// is a second registry rather than a second use of foldLines because the two
+	// answer different gestures — a fold line toggles a band and a task row opens
+	// a record — and dies with the screen exactly as that one does.
+	cardTasks []cardTaskLine
 	repos     map[string]homeRepoReading
 	// machine is what this machine has to say about ITSELF — the reading the
 	// pulse line at the top of the screen draws from, taken at most once per
@@ -3221,6 +3227,15 @@ func (a *app) homePress(x, y int) tea.Cmd {
 			a.touch()
 			return nil
 		}
+		// AND A ROW THAT NAMES A PIECE OF WORK OPENS IT, which is the other thing
+		// the card draws that a person can aim at (place_home.go's [app.cardTaskAt]
+		// says why it is the paint that recorded the row). It is the record card
+		// the phone's tap and the tasks place's enter both open, so one gesture
+		// means one thing wherever it is made.
+		if entry, ok := a.cardTaskAt(ansi.Strip(lines[y])); ok {
+			a.touch()
+			return a.openTaskRecord(&entry)
+		}
 	}
 	if row, column, ok := a.homePane(x, y); ok {
 		return a.exchangePress(column, row)
@@ -4191,6 +4206,7 @@ func homeName(row session.SessionRow) string {
 // ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	a.resetBandFoldLines()
+	a.resetCardTasks()
 	line, ok := a.home.previewLine()
 	if ok && line.kind == homeExchangeRow && line.ex != nil {
 		// THE ERRAND UNDER THE CURSOR, drawn where every other row's card is
