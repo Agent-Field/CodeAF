@@ -433,8 +433,315 @@ no penalty box has one, and it is permanent.
 
 ## Go simulator (shipped code)
 
-*Pending in this wave — `bench/lanelab/gosim` lands alongside this file and its
-run has not been made yet. No numbers here until it has.*
+*Run 2026-08-31 from the repository root, against the same sheet fixture:*
+
+```sh
+go run ./bench/lanelab/gosim -json bench/lanelab/gosim/result.json
+```
+
+*Three scenarios × three policies × eight seeds × 2000 requests = 144 000
+requests over a real socket, **57m51s** wall (3470.9 s for the whole process,
+compilation included). The raw table, the ship gate and the per-seed verdicts
+are in `gosim/result.json`.*
+
+**This is the run the ship decision is taken on.** It drives `lane.Default()`'s
+real ledger — primed from this directory's sheet fixture at `lane.SheetWeight` —
+the real chooser, the real `lane.Watch` and the real `lane.DefaultBudget()`,
+against `internal/lane/lanestub`, with the preference travelling as
+`provider.order`/`only`/`ignore` and the serving lane read off the chunks that
+come back. Nothing in it re-implements the design.
+
+```
+sheet:    bench/lanelab/sheets/deepseek-deepseek-v4-flash.json
+model:    deepseek/deepseek-v4-flash
+fetched:  2026-08-31T04:00:21+00:00
+lanes:    17 on the sheet, 17 with p50 timing
+seeds:    [7 9 11 13 15 17 19 21]    requests per cell per seed: 2000    pooled per cell: 16000
+prompt:   4000 tokens every request; read rate 18 tok/s
+wire:     100× faster than the world; 40 tokens streamed per answer (the rate filter's floor is 32)
+script:   the lane the router chose on request 0 goes to a 4s first token at request 500 of every run and recovers at request 1500
+
+   NOTE: the `strike` arm (today's velocity ledger with sort: latency) is NOT RUN:
+         `velocityLedger`, its `observe` and its `preferences` are unexported and
+         the one process-wide instance has no exported reset, so a bench cannot
+         prime it, clear it between seeds, or drive it except through a whole
+         provider.Client — and its cooldown reads the wall clock, which a run on
+         a divided clock cannot move. Reaching it needs a seam added to
+         internal/provider, which this lane may not touch. The gate below is
+         therefore taken against `default` and NOT against the mechanism the design
+         retires.
+
+── talk  (a person is watching the stream) ───────────────────────────────────────
+   lambda=90 s/$   visible=400  hidden=0  q_need=0.9  tools=no
+   15/17 lanes past the SHIPPED capability gate: DigitalOcean, StreamLake, DeepInfra, GMICloud, SiliconFlow, Alibaba, Venice, Novita, NextBit, Baidu, CoreWeave, Parasail, Phala, Azure, Cloudflare
+   the lane the router chose first, and therefore the lane this scenario breaks: Parasail
+
+   policy                  TTFT p50/p90/p99 (ms)    answer p50/p90/p99 (s)       wait p50/p90 (s)     $/1k  hedge%  modal lane
+   ---------------------------------------------------------------------------------------------------------------------------
+   default                1573     4791    50951    13.86   70.86   118.88        2.17      49.39    0.558     0.0  DigitalOcean (20%)
+   belief                  864     1769    14323    13.48   18.10    33.74        0.87       1.86    0.542     0.0  DeepInfra (57%)
+   belief+hedge            870     1767    14079    13.35   17.95    30.34        0.87       1.82    0.593     8.9  DeepInfra (56%)
+
+   14/15 gated lanes write at or above 18 tok/s at their median, and on those the 400 visible tokens add NOTHING to the wait — they are read as they arrive. So this scenario is decided by the first token, which is what its gate reads.
+     default             wait p99    97.07 s   $0.000558/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 2.6%   hedge waste $0.0000/1k   lanes used: 14   socket median 107 ms of world time
+     belief              wait p99    18.85 s   $0.000542/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 1.6%   hedge waste $0.0000/1k   lanes used: 11   socket median 97 ms of world time
+     belief+hedge        wait p99    17.46 s   $0.000593/request   8.9 hedges per 100   1277 streams abandoned   refused-and-retried 1.6%   hedge waste $0.0512/1k   lanes used: 10   socket median 98 ms of world time
+
+── work  (critical-path tool loop, nobody reads the tokens) ──────────────────────
+   lambda=90 s/$   visible=0  hidden=2000  q_need=0.97  tools=yes
+   6/17 lanes past the SHIPPED capability gate: DigitalOcean, DeepInfra, NextBit, CoreWeave, Phala, Azure
+   the lane the router chose first, and therefore the lane this scenario breaks: Phala
+
+   policy                  TTFT p50/p90/p99 (ms)    answer p50/p90/p99 (s)       wait p50/p90 (s)     $/1k  hedge%  modal lane
+   ---------------------------------------------------------------------------------------------------------------------------
+   default                1340     4095   345416    81.19  428.41   656.65       81.19     428.41    0.852     0.0  DigitalOcean (40%)
+   belief                 2358     4580    42262    37.49   67.46   127.99       37.49      67.49    1.333     0.0  NextBit (54%)
+   belief+hedge           2209     4500    44383    39.01   75.78   153.11       39.01      75.78    1.384    10.0  NextBit (56%)
+
+   no visible tokens, so nothing is read as it arrives and the wait is the whole answer
+     default             wait p99   656.65 s   $0.000852/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 3.1%   hedge waste $0.0000/1k   lanes used: 5   socket median 105 ms of world time
+     belief              wait p99   128.63 s   $0.001333/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 2.7%   hedge waste $0.0000/1k   lanes used: 6   socket median 104 ms of world time
+     belief+hedge        wait p99   154.80 s   $0.001384/request   10.0 hedges per 100   1562 streams abandoned   refused-and-retried 2.9%   hedge waste $0.1157/1k   lanes used: 6   socket median 109 ms of world time
+
+── offpath  (background, nobody is waiting, price wins outright) ─────────────────
+   lambda=0 s/$   visible=0  hidden=2000  q_need=0.97  tools=yes
+   6/17 lanes past the SHIPPED capability gate: DigitalOcean, DeepInfra, NextBit, CoreWeave, Phala, Azure
+   the lane the router chose first, and therefore the lane this scenario breaks: DigitalOcean
+
+   policy                  TTFT p50/p90/p99 (ms)    answer p50/p90/p99 (s)       wait p50/p90 (s)     $/1k  hedge%  modal lane
+   ---------------------------------------------------------------------------------------------------------------------------
+   default                1521     4133   338003    79.13  423.46   650.58       79.13     423.46    0.853     0.0  DigitalOcean (38%)
+   belief                 4071     4144   437787   336.84  512.78   796.96      341.91     540.00    0.618     0.0  DigitalOcean (97%)
+   belief+hedge           4069     4145   437816   336.28  512.36   792.08      340.97     539.37    0.623     0.7  DigitalOcean (97%)
+
+   no visible tokens, so nothing is read as it arrives and the wait is the whole answer
+     default             wait p99   650.58 s   $0.000853/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 3.1%   hedge waste $0.0000/1k   lanes used: 5   socket median 104 ms of world time
+     belief              wait p99   950.46 s   $0.000618/request   0.0 hedges per 100   0 streams abandoned   refused-and-retried 5.1%   hedge waste $0.0000/1k   lanes used: 4   socket median 100 ms of world time
+     belief+hedge        wait p99   947.07 s   $0.000623/request   0.7 hedges per 100   105 streams abandoned   refused-and-retried 5.1%   hedge waste $0.0043/1k   lanes used: 4   socket median 100 ms of world time
+
+── ship gate ── against default: the scenario's p90 improves by >= 30%,
+   AND the extra dollars per request are no more than the mean seconds saved, priced at lambda
+
+   scenario  policy              speed metric       improve   extra $/req  budget $/req   verdict
+   -------------------------------------------------------------------------------------------------
+   talk      belief              p90 first token     +63.1%     -0.000017      0.128268   PASS
+   talk      belief+hedge        p90 first token     +63.1%     +0.000034      0.129422   PASS
+   work      belief              p90 wait            +84.2%     +0.000481      1.600064   PASS
+   work      belief+hedge        p90 wait            +82.3%     +0.000532      1.561601   PASS
+   offpath   belief              p90 wait            -27.5%     -0.000235      0.000000   FAIL (p90)
+   offpath   belief+hedge        p90 wait            -27.4%     -0.000230      0.000000   FAIL (p90)
+
+   the design passes in 2/3 scenarios; 4/6 rows pass overall.
+
+── seed by seed ── is the verdict a property of the design or of the seed? ────────
+
+   offpath  belief              passes on 0/8 seeds
+   offpath  belief+hedge        passes on 0/8 seeds
+   talk  belief                 passes on 8/8 seeds
+   talk  belief+hedge           passes on 8/8 seeds
+   work  belief                 passes on 8/8 seeds
+   work  belief+hedge           passes on 8/8 seeds
+
+   wall 57m51s
+
+   wrote bench/lanelab/gosim/result.json
+```
+
+### What the run says
+
+**The shipped router beats today's default handsomely where somebody is
+waiting, and loses to it outright where nobody is.** `talk` and `work` pass on
+all eight seeds — the p90 first token is 63.1% better and the p90 work wait
+84.2% better than a request with no preference on it — and both are stable, not
+a seed. `offpath` fails on all eight, and it does not fail narrowly: **the
+router's p90 wait is 27.5% WORSE than sending no preference at all.**
+
+The `offpath` failure has one cause and it is visible in the modal-lane column.
+With λ = 0 the score is the money and nothing else, so the router goes to the
+cheapest lane that survives the gate, and on this sheet that is DigitalOcean,
+which writes at **six tokens a second**. It goes there on 97% of requests. The
+capability gate cannot refuse it — DigitalOcean takes a tool call, publishes a
+million-token context and a 99.9% five-minute uptime — so the only thing that
+could have was the quality gate, and **the quality gate never fires**.
+
+That is arithmetic, not bad luck. `Beta.Toward` forgets each count toward the
+prior over a ten-minute half life, so the evidence a lane accumulates
+SATURATES: at the rate `offpath` produces outcomes (one per request, and a
+request on a 6 tok/s lane takes about 340 s) the belief settles at a mass of
+about **twelve** — nine of them the prior's — whatever the lane really does.
+And at that mass the 90% upper bound of a Beta near 0.9 sits at or above 1.0:
+
+| accept rate | steady-state belief | mean | `Upper(1.2816)` | refused at `q_need` 0.97? |
+|---:|---|---:|---:|---|
+| 0.985 | Beta(11.03, 1.05) | 0.913 | **1.000** | no |
+| 0.950 | Beta(10.92, 1.15) | 0.905 | **1.000** | no |
+| 0.850 | Beta(10.62, 1.46) | 0.879 | **0.995** | no |
+
+**C1 traded an absorbing gate for an inert one.** Finding 2 above says the
+reference model's gate on the MEAN can never rise above 0.97 at the saturated
+mass; the shipped gate on the 90% UPPER BOUND can never fall below it. Both are
+the same saturation, read from opposite ends — and the shipped direction is the
+one that ships wrong answers, because a gate that cannot refuse is not a gate.
+Worse, it is self-reinforcing: the slower the lane the router settles on, the
+longer each request takes, the more the quality evidence decays between
+outcomes, the wider the bound, and the less able the gate becomes to refuse the
+slow lane. `offpath` is that loop closing. The prior, the half-life, the bound's
+`z` and `q_need` still have to be chosen together — Finding 2's conclusion is
+unchanged and the correction has not touched it.
+
+**The hedge is a pure cost in this run, in all three scenarios.** In `talk` it
+fires on 8.9 requests in a hundred, abandons 1277 streams, adds $0.000051 to
+each request, and moves the p90 first token from 1769 ms to 1767 ms. In `work`
+it fires on 10 in a hundred and makes the p90 wait **worse** — 67.49 s to
+75.78 s — which is not noise across sixteen thousand requests. The reason is
+structural rather than a tuning problem: **the race is decided on the first
+token and `work`'s wait is nine tenths generation**, so the lane that speaks
+first is regularly the lane that then writes slower, and the hedge picks it. A
+rescue that chooses on TTFT is the wrong decision procedure for a request whose
+prize is the rate.
+
+### Where the Go run and this model disagree
+
+A disagreement between the reference model and the shipped code is the most
+valuable thing the second simulator can produce, so all of it is listed and
+none of it is smoothed.
+
+First, where they agree, because it is worth knowing the instrument is sound.
+Charged through one price table on the same sheet, the two do-nothing
+arms — `default` here and `openrouter-default` there — land on top of each other:
+
+| | Python | Go |
+|---|---|---|
+| `talk` TTFT p50/p90/p99 (ms) | 1462 / 4694 / 49607 | 1573 / 4791 / 50951 |
+| `talk` wait p50/p90 (s), $/1k | 1.95 / 47.47, $0.565 | 2.17 / 49.39, $0.558 |
+| `work` wait p50/p90 (s), $/1k | 79.55 / 421.33, $0.852 | 81.19 / 428.41, $0.852 |
+| `offpath` wait p50/p90 (s), $/1k | 81.28 / 433.40, $0.853 | 79.13 / 423.46, $0.853 |
+
+The residual on the first token is about a tenth of a second, which is the
+socket the Go run measures and prints.
+
+**1. The gate is taken against a different, weaker baseline.** `sim.py` grades
+against `strike-ledger`. The Go run cannot: `internal/provider`'s
+`velocityLedger`, its `observe` and its `preferences` are unexported; the single
+`sharedVelocity` has no exported reset, so nothing outside that package can
+prime it, clear it between seeds, or drive it except through a whole
+`provider.Client`; and its clock is an unexported `now func() time.Time` fixed
+to `time.Now`, so a five-minute refusal cooldown cannot be moved by a run on a
+divided clock. **The two gate tables are therefore not comparable row for row.**
+For an apples-to-apples reading, this model's gate re-taken against
+`openrouter-default` is:
+
+| scenario | speed metric | Python `belief+hedge` | Go `belief+hedge` |
+|---|---|---:|---:|
+| talk | p90 first token | **+63.4% PASS** | **+63.1% PASS** |
+| work | p90 wait | **+84.5% PASS** | **+82.3% PASS** |
+| offpath | p90 wait | **+79.3% PASS** | **−27.4% FAIL** |
+
+Two of three agree to within half a point. **`offpath` is the disagreement, and
+it is a hundred points wide.** The reference model refuses DigitalOcean on
+quality and lands on DeepInfra; the shipped code cannot refuse it and lands on
+DigitalOcean. The shipped code is what ships, so the Go row is the one that
+counts and this file is the bug report.
+
+**2. The two capability gates do not admit the same lanes.** `sim.py` refuses a
+lane whose sheet `status` is not zero and admits four-bit weights; the shipped
+gate does the opposite on both counts. **`lane.Facts` has no status field and
+`decodeSheet` in `internal/lane/sheet.go` never reads `status`**, so a lane the
+router itself has marked down is invisible to this build. On this sheet: in
+`talk` both admit fifteen lanes, but Python drops Azure (`status -2`) and keeps
+AtlasCloud (`fp4`) while the shipped gate does the reverse; in `work` and
+`offpath` Python admits five and the shipped gate six, the extra one being
+Azure. **The shipped gate will route to an endpoint the router has flagged**, and
+it needs the sheet's `status` column to stop.
+
+**3. `lane.Chooses()` is inverted, and the shipped transport therefore never
+hedges.**
+
+```go
+func Chooses() bool {
+	_, empty := Default().Chooser().(*chooser)
+	return !empty
+}
+```
+
+`*chooser` is the package's own chooser and it is the REAL one — no non-test
+code anywhere calls `SetChooser`, so `Default().Chooser()` is always a
+`*chooser` and `Chooses()` is always **false**. Run, not read:
+
+```
+chooser type *lane.chooser
+lane.Chooses() = false
+```
+
+`internal/provider/hedge.go` opens `raceFor` with `if !lanes.Chooses() { return
+nil, false }`, so **no request in a shipped build can be hedged at all**. The
+transport's tests pass because they install a `pinChooser`, which is not a
+`*chooser` and so makes the check true; nothing tests the shipped case. The
+comment describes `*chooser` as "the empty chooser", which it was in the wave
+the check was written and has not been since.
+
+The consequence for the table above is direct: **the `belief+hedge` arm measures
+a mechanism the shipped binary refuses to run.** Given what that arm costs in
+this run, fixing the check without also fixing the hedge would make the build
+slower and dearer.
+
+**4. `internal/lane/e2e_test.go` never teaches its ledger a rate.**
+`e2eLane.stub()` scripts `Tokens: lanestub.DefaultTokens`, which is 24;
+`ratedFloor` in `internal/lane/belief.go` — the shortest answer worth rating —
+is 32. Every sighting those five acceptance scenarios fold in is therefore a
+first-token measurement with the rate filter switched off, and no claim about
+the belief's rate half can be made from that file. `gosim` streams 40 tokens for
+exactly this reason.
+
+**5. The wire cannot deliver a rate, and the constant `e2e_test.go` names is not
+the one that binds.** That file's note says a hundredfold speedup leaves a
+scripted duration "two orders of magnitude above the loopback round trip". On
+the machine this ran on the loopback round trip is not what binds — the Go
+timer's own floor is:
+
+```
+asked     10µs  got 644.163µs  overshoot 634.163µs
+asked     33µs  got 505.126µs  overshoot 472.126µs
+asked    100µs  got 735.854µs  overshoot 635.854µs
+asked    500µs  got 1.055622ms  overshoot 555.622µs
+asked      2ms  got 2.108796ms  overshoot 108.796µs
+```
+
+Roughly half a millisecond, and it does not shrink with the sleep. A token gap
+at thirty tokens a second and a hundredfold speedup is 333 µs, so a rate read
+off this socket is a measurement of the scheduler. `gosim` splits the difference
+explicitly — **the first token is measured off the wire and the rate is the
+world's own draw, carried beside the stream** — and prints what the socket cost
+the first token, about 100 ms of world time per cell. That is an addition to
+every arm alike, so it DILUTES every improvement ratio in the gate: the design's
+margins here are, to that extent, understated.
+
+**6. A first-token fault is a `talk` failure and not a `work` one, and only a
+simulator that runs the fault can see it.** Both programs' scenarios differ, but
+only the Go one breaks a lane mid-run. In `talk` the shipped chooser moves off
+the broken lane on the very next request and stays away until it recovers. In
+`work` it stays on the broken lane for thirty requests in a row — and it is
+right to: four seconds of first token is a tenth of a thirty-five-second answer,
+while the lane it would move to writes six seconds slower over two thousand
+hidden tokens. `-trace` shows it request by request. This is a property of the
+objective rather than of the router, and it is worth knowing before anybody
+writes an acceptance test that expects a work node to flinch.
+
+**7. The shipped ledger re-writes its whole belief file on every sighting and
+every outcome.** `Note` and `NoteOutcome` both end in `save()`, which marshals
+every belief and writes it through a temporary file and a rename, synchronously,
+under the ledger's lock. This run made about a quarter of a million of them. It
+is not a law violation — it happens after the answer, never in front of it — but
+it is a per-answer file write that nothing in the design asks for.
+
+### What this run does not decide
+
+The `strike` arm is the mechanism the design proposes to retire and it is not in
+this table. **Until it is, no row above is the ship decision the design asked
+for** — it is the ship decision against today's do-nothing default. Making it
+reachable is one exported seam in `internal/provider`: a constructor for the
+velocity ledger, or a reset and a clock on the shared one. That is smaller than
+anything else on the list at the end of this file, and it should be first.
 
 ---
 
@@ -540,6 +847,10 @@ either.
 4. Measure a real accept rate per lane, even roughly. It is the assumption the
    biggest result rests on.
 
-Then re-run `python3 sim.py --seed 7 --sweep 8` here, and run `gosim` — which is
-what actually decides. `live.sh` is worth its money only after both agree. It
+Then re-run `python3 sim.py --seed 7 --sweep 8` here, and re-run `gosim` — which
+is what actually decides. **`gosim` has now been run** and its table is in the
+section above: it passes `talk` and `work` on all eight seeds against today's
+default and fails `offpath` on all eight, for the reason item 1 names, so item 1
+is no longer a caution about a coin flip — it is the fix the shipped router is
+waiting on. `live.sh` is worth its money only after both simulators agree. It
 has never been run.
