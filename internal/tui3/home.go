@@ -1900,8 +1900,15 @@ const (
 	// so that a strong match in a weak field cannot beat a weak match in a
 	// strong one by more than the gap between them — a name is what a person
 	// remembers, and an outcome sentence is where they end up when they cannot.
+	// A REFERRED FOLDER SITS JUST UNDER THE PROJECT'S OWN NAME, and the gap is
+	// the whole of what it means: both answer "where is this conversation
+	// about", and standing in a folder is a stronger claim on the word than
+	// referring to one. So typing `wisp` still puts the wisp project's own
+	// conversations first, and the chat about wisp that was HELD somewhere else
+	// is on the list under them instead of being unfindable (homefolders.go).
 	homeFieldName    = 10
 	homeFieldProject = 6
+	homeFieldFolder  = 5
 	homeFieldTask    = 5
 	homeFieldOutcome = 3
 
@@ -1938,6 +1945,13 @@ func homeRank(row session.SessionRow, project session.Project, query string, now
 	}
 	name := strings.ToLower(homeName(row))
 	place := strings.ToLower(project.Name)
+	// The folders this conversation is about, lowercased ONCE for the whole
+	// query rather than once per word per row ([session.MatchQuality] takes its
+	// two arguments already folded, for that reason).
+	var folders []string
+	for _, folder := range homeFolderNames(row) {
+		folders = append(folders, strings.ToLower(folder))
+	}
 	total := 0
 	// EVERY WORD MUST LAND SOMEWHERE, which is the roster's rule and the reason
 	// a second word narrows instead of widening. Where each lands is its own
@@ -1950,6 +1964,16 @@ func homeRank(row session.SessionRow, project session.Project, query string, now
 		}
 		if rung, ok := session.MatchQuality(place, token); ok {
 			best = max(best, rung*homeFieldProject)
+		}
+		// AND THE FOLDERS IT IS ABOUT, WHICHEVER BUCKET IT LIVES IN. A person
+		// looking for "the conversation about wisp" types `wisp`, and before
+		// this the only conversations that answered were the ones held INSIDE
+		// wisp — the chat opened in `~` that spent an afternoon on it was
+		// findable by nothing but the title it may never have been given.
+		for _, name := range folders {
+			if rung, ok := session.MatchQuality(name, token); ok {
+				best = max(best, rung*homeFieldFolder)
+			}
 		}
 		for _, entry := range row.Tasks.Rows {
 			if best >= session.MatchWord*homeFieldTask {
@@ -4374,6 +4398,15 @@ func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh 
 	}
 	if age := sinceAt(row.At, now); age != "" {
 		parts = append(parts, age)
+	}
+	// AND WHAT THIS CONVERSATION IS ABOUT BEYOND WHERE IT STANDS, LAST
+	// (homefolders.go). It is the newest fact on the row and the only one that
+	// is not about now, so it is the one a narrow terminal spends first: the
+	// note is cut from its tail (palette.go's [overlayRowTinted]), and a row
+	// that has to choose between saying `also about wisp` and saying how long
+	// ago somebody spoke keeps the age every time.
+	if also := homeAlsoAbout(row); also != "" {
+		parts = append(parts, also)
 	}
 	return strings.Join(parts, " · ")
 }

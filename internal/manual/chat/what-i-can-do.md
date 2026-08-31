@@ -5,7 +5,11 @@ what is simply not there in this build.
 
 ## Can you read, write, create, delete, rename or move files?
 
-Yes. Three tools do this, and they work on the workspace you started aforge in.
+Yes. Three tools do this, and a path with nothing in front of it is read against the folder
+aforge is standing in — the one you started it in. A path that names somewhere else, written
+out in full or beginning with `~`, is read there. Work handed to a task is bounded much more
+tightly: a task writes in the one folder it stands on and nowhere else (*Where a task may
+write*).
 
 | Tool | What it does |
 | --- | --- |

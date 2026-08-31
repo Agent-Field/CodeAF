@@ -256,6 +256,15 @@ type SessionRow struct {
 	Tokens int
 	// Tasks is what the project's index says this session ran.
 	Tasks TaskRollup
+	// Places are the folders this conversation turned out to be ABOUT beyond
+	// the one it is standing in, newest first, exactly as places.go accrued
+	// them onto the meta. Home draws them; nothing here weighs them.
+	//
+	// A MISSING FIELD IS EVERY CONVERSATION TODAY. The set arrived on meta.json
+	// additively (place.go's [Meta.Places]), so a conversation held under an
+	// older build has none and a surface draws nothing for it — which is the
+	// emptiness law and not a conversation about nowhere.
+	Places []PlaceRef
 	// Archived says the person put this conversation away from home's resting
 	// list ([Meta.Archived]); home gathers such rows under one folded line.
 	Archived bool
@@ -405,6 +414,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 		Tokens:     meta.Tokens,
 		Open:       InUse(transcript),
 		Archived:   meta.Archived,
+		Places:     metaPlaces(meta),
 	}
 	row.Presence, row.Live = ReadSessionPresence(dir, now)
 	var mine []TaskIndexEntry
@@ -575,6 +585,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Presence:   presence,
 		Live:       live,
 		Archived:   meta.Archived,
+		Places:     metaPlaces(meta),
 	}, true
 }
 

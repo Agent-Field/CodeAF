@@ -15,9 +15,11 @@ thing.
 It opens **instantly**. Nothing is scanned when you press enter on the command: the rows
 come from what aforge has already seen, in layers, best first.
 
-1. the directories **this conversation has been reading and writing in**, most recent first
-2. every **project on this machine** — the same list `alt+w` cycles on the task composer
-3. every **repository under your home directory**, from an index built quietly in the
+1. the folders **this conversation is already about** — ones you have named here, and ones
+   a task's ground resolved to and the conversation wrote down
+2. the directories **this conversation has been reading and writing in**, most recent first
+3. every **project on this machine** — the same list `alt+w` cycles on the task composer
+4. every **repository under your home directory**, from an index built quietly in the
    background and refreshed about once a day
 
 Inside a layer the order is how often you have picked that folder here, weighted by how
@@ -78,7 +80,7 @@ A fact aforge has not established draws nothing at all rather than a blank or a 
 facts are read in the background as your cursor lands on a row, so a big repository may
 take a beat to say whether it is dirty — the keys never wait for it.
 
-## What choosing a folder actually does right now
+## What choosing a folder actually does — this conversation is now about it
 
 `enter` says one line into the conversation:
 
@@ -86,31 +88,67 @@ take a beat to say whether it is dirty — the keys never wait for it.
 folder · ~/code/agentfield
 ```
 
-and writes the choice down, so the next `/folder` opens with that folder near the top.
+and two things are then true.
 
-**That is all it does today, and it is worth being plain about.** Choosing a folder does
-**not** move this conversation's own working directory, does not change which `AGENTS.md`
-the model is reading, and does not make edits land somewhere else. The directory the
-conversation is anchored to is set at launch, or once with `/workspace <path>`, and where a
-task's work happens is decided when the task starts. If you want this conversation to be
-about a different project, start one there — `/home` lists every project on the machine and
-opens a conversation in any of them.
+**The conversation is about that folder, and it remembers.** The choice is written into the
+conversation's own record, so closing the terminal does not lose it, and the next task you
+propose **stands there**: a folder you named is the top rung of the ground ladder — "you
+said so" — so nothing has to be worked out and you are not asked. *Which folder does a task
+work in* has the whole ladder. The next `/folder` also opens with that folder on the first
+rows.
 
-## Open another project, work on a different repo, change directory
+**Your working directory does not move.** The folder aforge is standing in — the one the
+status line shows, the one the model's `AGENTS.md` and project settings come from, the one a
+bare `notes.md` in your message means — is the directory you started aforge in, and nothing
+picks it up and moves it. `/workspace <path>` sets it **once**, for a conversation that never
+had one.
 
-Three different asks, three different answers.
+So the two are different questions: **where you are standing** is fixed for the life of the
+conversation, and **what the conversation is about** grows as you name folders.
 
+If the conversation is about two folders and the work does not say which, you are asked
+once — `this conversation is about two places — <one> and <other> — so say which one this
+task is about` — and the answer is remembered.
+
+## Work on two projects in one chat, switch folders, open another repo, change directory
+
+Four asks, four answers, and the first one is new.
+
+- **"Work on my other repo in this same conversation."** — name it: `/folder`, or `/attach
+  ~/code/other`, or name the path when you ask for the work ("fix the flaky test in
+  `~/code/other`"). The conversation becomes about that folder as well as the one it is
+  standing in — a folder you picked the moment you pick it, one you named in a request as
+  soon as work is grounded there — and the next task about it needs no asking. You do not
+  have to start a second conversation for a second project.
 - **"Which folder do you mean?"** — `/folder`. It picks one, says so, and remembers it.
 - **"This chat has no project; give it one."** — `/workspace <path>`, once. A conversation
   that already has a workspace answers `this conversation already has a workspace` and
   changes nothing.
-- **"I want to work in a different project."** — `/home`, then open or start a conversation
-  under that project. A conversation is anchored where it was started; there is no command
-  that picks it up and moves it.
+- **"Move this conversation to another project."** — that one cannot be done. A conversation
+  stands where it was started; `/home` opens or starts a conversation under any project on
+  the machine, and that is the way to be standing somewhere else.
 
-There is no `cd`. Typing a path into the message box does not change anything either — the
-model reads and writes through its own tools, against the directory the conversation was
-started in.
+There is no `cd`, and a path typed into the message box does not move where you are
+standing. What it does do is tell the work where to go: a path in your own words is the
+ground ladder's top rung, so "fix the flaky test in ~/code/wisp" sends that work to
+`~/code/wisp` whatever folder this window was opened in.
+
+## Which folders is this conversation about — where can I see them
+
+Two places, and neither of them is a permanent list sitting on your screen. A folder the
+conversation merely read from shows nothing at all; it is the model looking at the disk,
+which it could always do.
+
+- **`/folder`** — the first rows are this conversation's own folders, most recently used
+  first. That is the whole set, on demand, in one keystroke.
+- **Home** — the row for a conversation that is about somewhere beyond the project it is
+  filed under ends `· also about <name>`, and `+2` when there are more; the card beside it
+  says `also about` and names them, three at a time with `▸ …N more folders` behind the
+  rest. Typing a folder's name into home's box finds conversations about it whichever
+  project they were held in. *Home* has the whole screen.
+
+Sixteen folders is as many as one conversation keeps. Past that the oldest one it worked
+out for itself is dropped; a folder you named yourself is the last thing to go.
 
 ## Attach a folder — /attach with a directory after it
 
