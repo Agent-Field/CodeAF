@@ -443,9 +443,15 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver) (*hedgeRa
 	if !c.isOpenRouter() || c.routing() == RoutingOff {
 		return nil, false
 	}
-	if !lanes.Chooses() {
-		return nil, false
-	}
+	// A build with no router wired reaches this line and stops at the next one:
+	// the Choice is put in the context by the chooser that produced it, so
+	// "there is a Choice for THIS call, and it names a second lane" answers both
+	// "is anybody home?" and "does this request have an alternative?" — and it
+	// answers them about the request in hand rather than about a type name. A
+	// separate feature check used to stand here and asked whether the registry's
+	// chooser was the package's own type; when the real chooser took that type's
+	// name the check inverted silently and no shipped build hedged at all. One
+	// gate that reads the thing itself cannot rot that way.
 	choice, ok := laneChoiceFromContext(ctx)
 	if !ok || choice.Alt == "" {
 		return nil, false

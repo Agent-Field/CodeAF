@@ -24,13 +24,6 @@ import (
 // scale changes nothing about what is being proved and takes the suite from
 // half a minute to a fifth of a second.
 
-// pinChooser is a chooser that has already decided. Its only job is to make
-// [lanes.Chooses] true: the transport refuses to hedge in a build where nothing
-// is wired in, and that refusal is a law rather than an accident.
-type pinChooser struct{}
-
-func (pinChooser) Choose(lanes.Request) lanes.Choice { return lanes.Choice{} }
-
 // scriptedLedger believes exactly what a test says it believes and records what
 // it is told.
 type scriptedLedger struct {
@@ -95,13 +88,18 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	if err != nil {
 		t.Fatal(err)
 	}
+	// THE CHOOSER IS LEFT ALONE ON PURPOSE. Every hedge proved in this file is
+	// therefore proved against the chooser a shipped binary runs, which is the
+	// case that used to go untested: a feature check that asked whether the
+	// registry held the package's own chooser type inverted when the real
+	// chooser took that name, and the suite passed anyway because it pinned a
+	// stub. Only the ledger is scripted here, because a test has to be able to
+	// say what a lane is believed to be.
 	ledger := &scriptedLedger{beliefs: map[lanes.ID]lanes.Belief{}}
 	registry := lanes.Default()
-	registry.SetChooser(pinChooser{})
 	registry.SetLedger(ledger)
 	SetHedgeBudget(lanes.NewBudget(6, 0))
 	t.Cleanup(func() {
-		registry.SetChooser(nil)
 		registry.SetLedger(nil)
 		SetHedgeBudget(nil)
 	})
@@ -587,6 +585,10 @@ func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
 	rig.believes("A", 2, 250)
 	chooser := &countingChooser{choice: choiceFor(rig.model, 12*time.Millisecond)}
 	lanes.Default().SetChooser(chooser)
+	// PUT THE REAL ONE BACK. This is the only test in the package that swaps the
+	// chooser, so it is the only one that has to restore it; a stub left in the
+	// registry answers for every test that runs after this one.
+	t.Cleanup(func() { lanes.Default().SetChooser(nil) })
 
 	// NOTHING IS PUT ON THE CONTEXT HERE. Every other test in this file hands
 	// the transport a choice by hand; this one is about the transport making it.
