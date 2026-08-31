@@ -3,6 +3,7 @@ package resident
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -125,8 +126,9 @@ func TestRedirectRemovalOfRunningWorkHonoursTheConsequenceGate(t *testing.T) {
 				}
 				return
 			}
+			spent := fmt.Sprintf("~$%.2f spent", test.cost)
 			if len(questions) != 1 || questions[0].Category != store.QuestionCategorySurgeryConfirm ||
-				questions[0].DefaultAnswer != "2" || !strings.Contains(questions[0].Text, "~$0.85 spent") {
+				questions[0].DefaultAnswer != "2" || !strings.Contains(questions[0].Text, spent) {
 				t.Fatalf("gate question = %+v", questions)
 			}
 			action, target, _, ok := store.DecodeRedirectOption(questions[0].Options[0].Value)

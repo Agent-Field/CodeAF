@@ -26,18 +26,23 @@ import "time"
 // never looser: Clamp enforces the ceilings at parse time so a compiled run
 // can trust every number it reads.
 const (
-	// DefaultRunBudgetUSD bounds a run whose file declares nothing. Small on
-	// purpose: a craft run is routine work, not an expedition, and the rail
-	// pauses-and-asks rather than failing when it is reached.
-	DefaultRunBudgetUSD = 2.50
+	// DefaultRunBudgetUSD bounds a run whose file declares nothing. It is a
+	// backstop and not a budget — the rail pauses-and-asks rather than failing
+	// when it is reached — and it was $2.50, which is under the price of the
+	// routine run it was written to wave through. A saved shape of work that
+	// stops to ask on its ordinary path is a saved shape nobody saves.
+	DefaultRunBudgetUSD = 50.0
 	// MaxRunBudgetUSD is the most a file may grant itself. Larger ambitions
 	// belong to the user, said in chat, not to a file the distiller wrote.
-	MaxRunBudgetUSD = 10.0
+	MaxRunBudgetUSD = 500.0
 	// DefaultWallClock bounds a run's total wall time; the sentinel stops
 	// opening new rounds or fan-out past it, running leaves finish normally.
-	DefaultWallClock = 30 * time.Minute
+	// Half an hour was a wall a real piece of work walked into; six hours is a
+	// working day's worth of unattended running, which is what the ceiling is
+	// for.
+	DefaultWallClock = 6 * time.Hour
 	// MaxWallClock is the ceiling a file may declare.
-	MaxWallClock = 2 * time.Hour
+	MaxWallClock = 24 * time.Hour
 	// DefaultFanCap bounds one for_each unroll; MaxFanCap is the ceiling a
 	// file may declare. Fan-out multiplies cost linearly and silently, so the
 	// default stays modest.

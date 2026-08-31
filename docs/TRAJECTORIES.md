@@ -969,9 +969,10 @@ structural finding above was left as a finding.
    `standing_run.go:501` says outright "IT IS A SESSION AND NOT A WORKTREE". The
    comment now says what the code does.
 4. `internal/manual/chat/adaptive-runs.md` — the route-judge section said a yes
-   starts a run on the default **$2.00** tank. `orchestrateDefaultCap` is `10.00`
-   (`orchestrate.go:77`) and the same page says $10.00 forty lines earlier
-   (`:78`). Corrected.
+   starts a run on the default **$2.00** tank. The engine's own default is
+   `session.DefaultRunCapUSD` (`orchestrate.go`), which the composer now reads
+   rather than spelling a second time. Corrected. The figure itself has since
+   been raised — see [LIMITS.md](LIMITS.md), which is where it is now stated.
 
 # Verified as-intended, so it is not re-audited
 

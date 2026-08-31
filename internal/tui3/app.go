@@ -1627,6 +1627,15 @@ type app struct {
 	// which is why they are read off the options and never off the profile.
 	landing     bool
 	pickSession bool
+	// takeOverAt is a conversation this launch met a lock on
+	// ([Options.TakeOver]). It is a transcript path, and the launch lands on
+	// home with that row armed instead of quietly starting a second
+	// conversation (takeover.go).
+	takeOverAt string
+	// takeover is the request this window has out for a conversation another
+	// window is holding, and the zero value is a window that has asked for
+	// nothing — which is every window almost always (takeover.go).
+	takeover takeoverWait
 	// homeDoor is where that advertisement was drawn on the last frame, for the
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
@@ -1920,6 +1929,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
 		landing:          opts.Landing,
+		takeOverAt:       opts.TakeOver,
 		pickSession:      opts.PickSession,
 		workspace:        place,
 		place:            shown,
@@ -2126,6 +2136,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// so the cursor can open on it — and it must be able to see that the picker
 	// already took the frame, because a launch gets one greeting (home.go).
 	a.landHome()
+	// AND A LAUNCH THAT MET A LOCK LANDS ON THE ROW IT COULD NOT OPEN, armed, so
+	// one enter continues that conversation here rather than leaving somebody
+	// with a second one they did not ask for (takeover.go).
+	a.landTakeover(a.takeOverAt)
 	return a
 }
 
@@ -2450,6 +2464,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case draftSaveMsg:
 		return a, a.saveDraft(msg.file)
+
+	case takeoverTickMsg:
+		// One look at the flock of a conversation this window has asked another
+		// window to let go of (takeover.go).
+		return a, a.takeoverTick(msg)
 
 	case behindStirMsg:
 		// A conversation this process holds and is not drawing has something to

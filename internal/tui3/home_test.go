@@ -3124,9 +3124,11 @@ func TestALockedRowSaysSoOnItsCardAndOnItsRowWhenTyped(t *testing.T) {
 	}
 }
 
-// ENTER REFUSES WITHOUT TRYING, keeps home open, and never touches the
-// conversation underneath.
-func TestEnterOnALockedRowRefusesInHomesOwnVoice(t *testing.T) {
+// ENTER OFFERS RATHER THAN REFUSING, keeps home open, and never touches the
+// conversation underneath. The row another terminal is holding is the row a
+// person most often wants; what it costs is said before anything is done about
+// it (takeover.go).
+func TestEnterOnALockedRowOffersToMoveItInHomesOwnVoice(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
@@ -3148,36 +3150,35 @@ func TestEnterOnALockedRowRefusesInHomesOwnVoice(t *testing.T) {
 		t.Fatalf("home tried the door it already knew was locked (%d times)", asked)
 	}
 	if !a.at(pageHome) {
-		t.Fatal("the refusal closed home")
+		t.Fatal("the offer closed home")
 	}
 	if a.file != mine {
-		t.Fatalf("the refusal moved this window to %q", a.file)
+		t.Fatalf("the offer moved this window to %q", a.file)
 	}
-	if a.home.msg != sessionBusyWord {
+	if !strings.Contains(a.home.msg, "enter again to move it here") {
 		t.Fatalf("home said %q", a.home.msg)
 	}
 	if len(a.entries) != before {
-		t.Fatalf("the refusal was written into the conversation: %v", a.entries[before:])
+		t.Fatalf("the offer was written into the conversation: %v", a.entries[before:])
 	}
-	if !strings.Contains(homeText(a), "go there, or start a new conversation here") {
-		t.Fatalf("the refusal is not on the screen:\n%s", homeText(a))
-	}
-	// NO RAW PATH ANYWHERE. The whole defect was sixty characters of somebody
-	// else's bookkeeping wrapped across two lines.
+	// AND IT STILL NAMES NO PATH. The whole original defect was sixty characters
+	// of somebody else's bookkeeping wrapped across two lines.
 	for _, banned := range []string{"transcript.jsonl", "resume failed", "aforge/v3"} {
 		if strings.Contains(homeText(a), banned) {
-			t.Fatalf("the refusal leaked %q:\n%s", banned, homeText(a))
+			t.Fatalf("the line leaked %q:\n%s", banned, homeText(a))
 		}
 	}
 }
 
-// A SECOND PRESS SAYS IT ONCE. The refusal lives in home's own line and is
-// replaced, where a note in the conversation would have stacked.
-func TestASecondEnterOnALockedRowDoesNotStack(t *testing.T) {
+// A SECOND PRESS ASKS, AND A THIRD ASKS NOTHING MORE. The line lives in home's
+// own foot and is replaced, where a note in the conversation would have stacked
+// — and the request itself is one file, written once.
+func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
 	lab.hold(theirs)
 
 	a := lab.app(mine)
@@ -3190,8 +3191,11 @@ func TestASecondEnterOnALockedRowDoesNotStack(t *testing.T) {
 	if len(a.entries) != before {
 		t.Fatalf("three presses wrote %d lines into the conversation", len(a.entries)-before)
 	}
-	if got := strings.Count(homeText(a), "go there, or start"); got != 1 {
-		t.Fatalf("the refusal is on the screen %d times", got)
+	if !a.waitingToTakeOver() {
+		t.Fatal("three presses left the window waiting for nothing")
+	}
+	if got := strings.Count(homeText(a), "waiting for the other window"); got != 1 {
+		t.Fatalf("the waiting line is on the screen %d times", got)
 	}
 }
 

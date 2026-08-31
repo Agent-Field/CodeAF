@@ -248,11 +248,14 @@ func fakeEngine(scenario string, argv []string) int {
 		})
 	case "strained":
 		// Most of the ceiling, so the cheap-run note stays silent and only the
-		// audit's own exhaustion speaks.
+		// audit's own exhaustion speaks. It is spelled AS A SHARE of the ceiling
+		// and not as a figure: a literal here quietly became "far inside" the
+		// first time the backstop was raised, and the test then passed about
+		// nothing.
 		_ = out.Encode(map[string]any{
 			"type": "terminal", "status": "pass",
 			"message": "It took five audit cycles, but the suite is green.",
-			"data":    map[string]any{"cycle": 5, "cost_usd": 8.0},
+			"data":    map[string]any{"cycle": 5, "cost_usd": DefaultSWEMaxCost * 0.8},
 		})
 	default:
 		_ = out.Encode(map[string]any{

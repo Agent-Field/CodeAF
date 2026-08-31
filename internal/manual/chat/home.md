@@ -6,7 +6,7 @@ Type `/home`. It takes the whole screen and shows **every conversation on this m
 from every project**, not just the folder this window was started in.
 
 The top line reads `aforge` on the left, with the machine's own vital signs on the
-right — `2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm` (its own section below).
+right — `2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm` (its own section below).
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot does not spend a cell naming it:
 it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
@@ -81,7 +81,7 @@ stands beside it only on a frame **160 columns or wider** (see *Why is there no 
 the right*). Top to bottom:
 
 ```
- aforge                            2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+ aforge                            2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
   home   tasks 1   standing   memory 2   spend   search   settings
  ─────────────────────────────────────────────────────────────────────────────────────────
  since you left · 3h
@@ -275,8 +275,8 @@ task:
 - **the conversation's own row** carries it in the note — `3 files made` — and its card,
   on a wide frame, has the work band with what each task came to.
 
-A conversation this window cannot open still refuses first, and says so in one line at the
-foot: `open in another window — go there, or start a new conversation here`.
+A conversation another terminal is holding is not refused: `enter` offers to MOVE it here,
+and a second `enter` does it — see *Continue a conversation from another terminal*.
 
 ## How do I clear a needs your look row — settling work that landed
 
@@ -570,7 +570,7 @@ The top line of home is the program's name and, right-aligned, what is true of t
 **whole machine** right now:
 
 ```
- aforge              2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+ aforge              2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
 ```
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
@@ -584,7 +584,7 @@ The top line of home is the program's name and, right-aligned, what is true of t
   are, and a conversation with three tasks out counts as three. It is drawn in **cyan**,
   the in-flight colour. It shows from **one** — one hand working is worth knowing — and
   disappears entirely at nothing, never `0 moving`.
-- `$0.55 / $20.00` — what the machine has spent **since midnight** against what it is
+- `$0.55 / $500.00` — what the machine has spent **since midnight** against what it is
   allowed to spend today: the tasks that ran and the standing things that fired, then your
   daily allowance. It is drawn in **green**, which is the money colour and is never spent
   on anything else. A machine with no allowance set draws the figure alone.
@@ -650,7 +650,7 @@ its own that says it in full:
 |---|---|
 | `keeping an eye on` | the **standing** place — `alt+3`, or type `standing` |
 | `since you left` | the **`since you left` ledger** at the top of home's own list, where each line is a door into the place it happened in (*What is since you left*) |
-| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $20.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
+| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $500.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
 | `agents` — the little chart | the pulse line's `4 moving`, which is the figure the chart was the shape of |
 | `thinking` — the install's rung | the `thinking` row of `/settings`, which is where that setting has always been written |
 
@@ -918,41 +918,49 @@ box when that pane holds the keyboard. Pasted newlines are kept, so a pasted par
 fine as an `ask here` question. (It used to fall through to the chat's own draft, which
 home was covering, so pasting looked like it did nothing.)
 
-## Why can't I open a session from home — open in another window
+## Continue a conversation from another terminal — move it here, it says open in another window
 
-A conversation that a **different** terminal already has open cannot be opened by this one:
-two aforge windows on one journal would both append to it and neither would end up with the
-conversation. (One this terminal is holding is a different matter entirely — `enter` goes
-to it.) Home knows this **before you press anything**.
+A conversation another terminal has open is a **door**, and pressing `enter` on it **moves
+it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
+in this one, with its work and its half-typed sentence.
 
-**On the row**, at every width: the right margin says `another window` where the age would
-be. That margin carries the one thing that decides what `enter` will do, and worst news
-comes first — `folder gone`, then `another window`, then `here` for the conversation this
-window is holding, and the age when none of them is true.
-
-**On the card**, at 160 columns and wider: the place line under the title carries the long
-form, `open in another window`, with what that window is doing after it —
-`open in another window · working`. The conversation **this** terminal is holding reads
-`open here` in the same slot, and `enter` goes to it; the lock it would meet is our own, so
-home asks itself before it asks the kernel (*Switch between projects without leaving*).
-
-**On enter.** Nothing is tried. Home stays open, nothing is written into the conversation
-underneath, and one dim line appears at the foot of the screen:
+**It takes two enters, and the first one only offers.** The first press arms the row and the
+foot line says what the second will do and what it costs:
 
 ```
-open in another window — go there, or start a new conversation here
+open in another window · working — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
 ```
 
-Pressing enter again says it once more in the same place rather than piling it up, and you
-can move straight to another row. **No file path is printed** — the path is aforge's own
-bookkeeping and not a thing you can act on.
+Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
+in the other window knows you looked.
 
-So the two things to do are exactly the two the sentence names: go to the terminal that has
-it, or type something here and start a new conversation instead.
+**The second press asks, and then waits**, because a reply is never cut:
 
-There is one case the check cannot cover: a lock taken in the instant between home drawing
-the row and your keystroke. You get the same sentence in the same place, and the
-conversation you were in is untouched.
+```
+moving it here — waiting for the other window…
+```
+
+If that window is in the middle of an answer, it finishes it first and lets go straight
+after. There is **no time limit** on the wait; after fifteen seconds the line explains
+itself — `still waiting — the other window finishes its reply first · esc stops waiting` —
+and `esc` withdraws the request, leaving the other window untouched. The moment it lets go,
+the row opens here.
+
+**What comes with it.** Tasks that were running land `paused — it resumes` and start again
+from their checkpoint in this window. The unsent sentence in the other window's box arrives
+in yours. The transcript is the same transcript, whole.
+
+**What the other window shows.** One line — `moved to another window` — and it lands on
+whatever else it was holding: another conversation you had open there, or a fresh one in the
+same folder. Nothing it was doing is lost.
+
+**`aforge chat` in a folder whose conversation is open elsewhere** does not start a second
+one silently any more. It opens home with that row pointed and already armed, so one `enter`
+continues where you left off, and `esc` gets on with the new conversation instead.
+
+**The one exception is `--host`.** The holder is a window here and the journal is on the
+other machine, so there is nobody to ask, and the row still says
+`open in another window — go there, or start a new conversation here`.
 
 ## Open another project from home
 
@@ -1470,7 +1478,7 @@ in more recently, longest wait first.
 The run is the one that used to be missing: a run that had spent its tank read as `working`
 to every other window on the machine, which is the one thing this row must never do. It now
 counts as needing you like the rest, and the line beside it is the gate's own — `out of
-fuel · $2.00 of $2.00`.
+fuel · $100.00 of $100.00`.
 
 The line above the box then repeats the question in full with the answers it will take, and
 the card — where the width draws one — has it too. A session that gave no words for what it

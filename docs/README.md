@@ -11,6 +11,7 @@ One page that says where everything is. Start here.
 | **Understand how it is built** | [ARCHITECTURE.md](ARCHITECTURE.md) — the store, the event log, the permanent spine, the resident role |
 | **Know what it promises a person** | [JOURNEY.md](JOURNEY.md) — the product law: one mouth, and the journeys we hold ourselves to |
 | **Measure it** | [../BENCHMARKS.md](../BENCHMARKS.md) — the record of what came back, with its caveats |
+| **Know what it may spend** | [LIMITS.md](LIMITS.md) — every money rail, its default, what fires when it is reached, and where `0` means no limit |
 | **Keep it fast** | [../PERF.md](../PERF.md) — the size ratchet, the allocation laws, the launch-path pins, and why none of them is a stopwatch |
 
 ## The subsystems

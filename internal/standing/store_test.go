@@ -157,6 +157,47 @@ func TestValidateAdmitsAHoldWithNoRailsAndStillRefusesAWatchWithout(t *testing.T
 	}
 }
 
+// ZERO IS THE PERSON'S OWN "NO LIMIT", and it has to be admitted here because
+// the place that enforces the rail has only ever stopped a firing when the
+// number is positive (internal/session's standing_run.go reads
+// `PerRunUSD > 0`). While [Item.Validate] refused zero, that contract was
+// unreachable: there was no way to spell the standing order bounded by nothing
+// but the machine's daily rail, which is exactly what somebody who says "just
+// keep an eye on this" is asking for.
+//
+// A NEGATIVE AMOUNT IS STILL A REFUSAL. It is not an instruction anybody meant,
+// and taking it as one would make the enforcement site's own `> 0` read as
+// "unbounded" about a number that was a typo.
+func TestValidateTakesAZeroPerRunRailAsNoLimitAndStillRefusesANegativeOne(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+
+	unbounded := reminder("watch the build until it is green", now.Add(time.Hour))
+	unbounded.Rails.PerRunUSD = 0
+	if err := unbounded.Validate(); err != nil {
+		t.Fatalf("a zero per-run rail was refused: %v", err)
+	}
+	made, err := store.Create(unbounded)
+	if err != nil {
+		t.Fatalf("a zero per-run rail could not be created: %v", err)
+	}
+	if made.Rails.PerRunUSD != 0 {
+		t.Fatalf("the store invented a rail: %v", made.Rails.PerRunUSD)
+	}
+
+	negative := reminder("remind me at 6", now.Add(time.Hour))
+	negative.Rails.PerRunUSD = -1
+	if err := negative.Validate(); err == nil {
+		t.Fatal("a negative per-run rail was admitted")
+	}
+
+	// And the DEFAULT is the one constant every reader of this number resolves
+	// to, so a raise lands in the store, the proposal and the belt tool at once.
+	if DefaultPerRunUSD <= 0 {
+		t.Fatalf("the shipped per-run default is not a rail: %v", DefaultPerRunUSD)
+	}
+}
+
 func TestSaveRewritesAndRestamps(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)

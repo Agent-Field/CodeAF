@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -65,15 +66,15 @@ import (
 // lands, the manual says plainly where you end up (places.md).
 
 // composerCapDefault is the figure the third line opens on, and it is the tank
-// the engine actually applies when nobody names one (internal/session's
-// orchestrateDefaultCap).
+// the engine actually applies when nobody names one.
 //
-// IT IS SPELLED HERE AND MEANT THERE, which is the one number this file cannot
-// interpolate: internal/session does not export it, and a surface that imported
-// a private constant would be a surface reaching through the seam it was given.
-// The manual's tasks page states the same figure, and a change to the engine's
-// default is a change to both — which is what tasks.md's own line says out loud.
-const composerCapDefault = 10.00
+// IT IS NOW ONE NUMBER AND NOT TWO. This file used to spell the figure itself,
+// with a comment asking whoever changed the engine to remember to change the
+// surface — and that is precisely the arrangement the one-source-of-truth law
+// forbids, because the reminder is only ever read by somebody who already knew.
+// [session.DefaultRunCapUSD] is the figure; this name is kept so the rest of
+// the layer reads the way it always did.
+const composerCapDefault = session.DefaultRunCapUSD
 
 // composerLayer is the layer's whole state. The zero value is closed.
 type composerLayer struct {

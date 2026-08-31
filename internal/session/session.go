@@ -201,7 +201,7 @@ const (
 	// "stuck? nudged · <tool> ×N" for the warning rungs.
 	//
 	// The first two nudges are notes in the transcript, not errors or refusals.
-	// Past that ceiling the same event accompanies the checkpoint hand-off rather
+	// Past that ceiling the same event accompanies the checkpoint take-over rather
 	// than a third note. This event is how a person gets to SEE either happen.
 	EventNudge
 	// EventNotice carries one line in Text about what the turn's own machinery is
@@ -491,6 +491,12 @@ const (
 	// evidence in #76 §5 describes: minutes of check and repair drawn as
 	// nothing at all, and a person concluding the work hung.
 	EventTaskPhase
+	// EventTakeover says another window on this machine has asked for this
+	// conversation and the turn it was in has ended (takeover.go). It rides the
+	// standing task lane and nothing else, and Text carries [TakeoverWord]. The
+	// surface that hears it lets go — detaches and closes the conversation the
+	// way /new does — and the window that asked resumes it from the checkpoint.
+	EventTakeover
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -1926,7 +1932,7 @@ type Agent struct {
 	// life of the session would be remembering answers about work that was
 	// never begun.
 	divisibleAsk string
-	// lastTurnTruncated is the honest handoff from the model loop to headless
+	// lastTurnTruncated is the honest takeover from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off
 	// prose and falsely make the node look complete.
@@ -2015,6 +2021,10 @@ type Agent struct {
 	// periodic telemetry.
 	ambient []userMessage
 	closed  bool
+	// takenOver says another window has asked for this conversation and this
+	// process has not let go of it yet (takeover.go). Set once, never cleared:
+	// the only way out is the close the ask is for.
+	takenOver bool
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be
@@ -2136,7 +2146,7 @@ type Agent struct {
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just
-	// started to collect (harness.go). It is a hand-off between two halves of
+	// started to collect (harness.go). It is a take-over between two halves of
 	// one call and never state: the turn takes it, clears it, and runs it.
 	harnessPick *harnessRoute
 

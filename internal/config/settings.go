@@ -1042,11 +1042,18 @@ var OperatorEnvPins = []string{
 // Defaults the registry owns beyond the ones config.go already declares.
 const (
 	// DefaultPlanConsentUSD is where ambition stops being cheap. Below it a
-	// plan simply runs, because asking about a two-dollar errand is the nagging
+	// plan simply runs, because asking about a small errand is the nagging
 	// nobody wants; above it the user is quoted a count and a price and gets to
 	// say no first. It is deliberately far under the daily rail: the rail is a
 	// stop after the fact, and this is the moment before.
-	DefaultPlanConsentUSD = 3.0
+	//
+	// IT WAS $3 AND $3 IS THE PRICE OF AN ORDINARY PIECE OF WORK, so the
+	// question fired on nearly every plan and became a keystroke the person
+	// owed rather than a decision they made — which is the failure mode a
+	// consent gate cannot survive, because a question asked every time is a
+	// question nobody reads. At $100 the gate fires on the plans a person
+	// would genuinely want to see priced first. 0 never asks.
+	DefaultPlanConsentUSD = 100.0
 
 	// DefaultTenureAfter is the clean-firing count a standing charter needs
 	// before it earns tenure.
@@ -1608,27 +1615,32 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
-			Hint: "what aforge may spend on your work in a day. 0 removes the rail. " +
+			Hint: "what aforge may spend on your work in a day. It starts large — " +
+				"it is a backstop against a runaway, not a budget — so set it to what " +
+				"you actually want to spend. 0 removes the rail. " +
 				"A change lands at the next rail check.",
 			read:    func() string { return formatDollars(resolvedDollars(DailyBudgetUSDAt(dir))) },
 			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
-			receipt: s.spentTodayReceipt,
+			receipt: s.dailyBudgetReceipt,
 		},
 		Setting{
 			Key: KeyPlanConsent, Category: CategorySpending, Kind: SettingDollars,
 			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
 			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
 				"the step count and the price and waits for your go-ahead. 0 never asks.",
-			read:  func() string { return formatDollars(resolvedDollars(PlanConsentUSDAt(dir))) },
-			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
+			read:    func() string { return formatDollars(resolvedDollars(PlanConsentUSDAt(dir))) },
+			write:   func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
+			receipt: func() string { return noLimitReceipt(resolvedDollars(PlanConsentUSDAt(dir)), "never asks") },
 		},
 		Setting{
 			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
 			Hint: "the slice of the day reserved for aforge practicing on itself. " +
-				"A change lands the next time aforge starts.",
-			read:  func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
-			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
+				"0 is the one money row that does not mean no limit: it turns practice " +
+				"off. A change lands the next time aforge starts.",
+			read:    func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
+			write:   func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
+			receipt: func() string { return noLimitReceipt(resolvedDollars(PracticeBudgetUSDAt(dir)), "practice off") },
 		},
 
 		// And beside the three rails on the MONEY, the one on the MACHINERY:
@@ -1918,8 +1930,9 @@ func (s *Settings) build() []Setting {
 			Hint: "what one conversation may spend before it stops starting new turns. " +
 				"0 removes the ceiling; the turn in flight always finishes. " +
 				"A change lands on the next session.",
-			read:  func() string { return formatDollars(SpendRailUSDAt(dir)) },
-			write: func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
+			read:    func() string { return formatDollars(SpendRailUSDAt(dir)) },
+			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
+			receipt: func() string { return noLimitReceipt(SpendRailUSDAt(dir), noLimitWord) },
 		},
 
 		Setting{
@@ -2224,6 +2237,46 @@ func (s *Settings) build() []Setting {
 		},
 	)
 	return rows
+}
+
+// noLimitWord is what a money row says about itself when its number is zero.
+//
+// A DOLLAR ROW READING "$0" IS THE ONE PLACE THE EMPTINESS LAW CANNOT REACH.
+// Zero on these rows is not an absence — it is the person's own instruction,
+// and the instruction it spells is the OPPOSITE of what "$0" reads as at a
+// glance: "no money at all" where the code means "no ceiling at all". Every
+// other kind of row has a word for its off state ([Setting.EmptyLabel]) and a
+// dollar row cannot borrow one, because its reading is a formatted number and
+// therefore never empty. So the word goes where a row already says the dim true
+// thing beside its value: the receipt.
+const noLimitWord = "no limit"
+
+// noLimitReceipt is that word, or nothing at all. The word is a parameter
+// because two of the four money rows mean something narrower by zero than "no
+// ceiling" — the consent gate never asks, and the practice carve-out switches
+// practice off — and a receipt that said "no limit" about either would be the
+// same lie in a smaller size.
+func noLimitReceipt(value float64, word string) string {
+	if value != 0 {
+		return ""
+	}
+	return word
+}
+
+// dailyBudgetReceipt is the daily rail's own receipt: the day's spend, and —
+// when the rail has been removed — the word that says so. Both, when both are
+// true, because "no limit" without today's figure hides the number a person
+// came to this row to see, and the figure without the word leaves them reading
+// a bare "$0" ceiling.
+func (s *Settings) dailyBudgetReceipt() string {
+	parts := make([]string, 0, 2)
+	if word := noLimitReceipt(resolvedDollars(DailyBudgetUSDAt(s.options.ProfileDir)), noLimitWord); word != "" {
+		parts = append(parts, word)
+	}
+	if spent := s.spentTodayReceipt(); spent != "" {
+		parts = append(parts, spent)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam

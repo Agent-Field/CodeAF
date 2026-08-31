@@ -56,6 +56,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
+		// The defect this build ended, asked the way somebody meets it: they
+		// opened a second terminal and were handed a conversation that was not
+		// the one they came back for.
+		{"I opened aforge in a second terminal and it started a new conversation", "sessions-and-rewind"},
+		{"why did it start a new conversation", "sessions-and-rewind"},
+		// And the same person's actual want, said the way they want it: not two
+		// windows on one chat, but this chat, here, now.
+		{"continue this chat in another terminal", "sessions-and-rewind"},
 		{"where are my conversations saved", "sessions-and-rewind"},
 		// A secret that reached a tool result, asked the two ways it is asked:
 		// before it happens, by somebody deciding whether to trust the thing, and
@@ -74,6 +82,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"why did my paste turn into a tag", "attaching-files"},
+		{"does the model see my whole paste or just the tag", "attaching-files"},
+		{"the model says it cannot see what I pasted", "attaching-files"},
 		{"how much text becomes a paste chip", "attaching-files"},
 		{"how do I edit what I pasted", "attaching-files"},
 		{"how do I stop it mid answer", "keys"},
@@ -861,6 +871,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// no longer do.
 		{"can I approve a command from home", "home"},
 		{"how do I answer a question in another window", "home"},
+		{"continue this chat in another terminal", "home"},
+		{"move the conversation to this window", "home"},
+		{"it says open in another window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
@@ -1163,6 +1176,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"someone else is typing", "staying-on-that-machine"},
 		{"why can't I type", "staying-on-that-machine"},
 		{"two terminals on the same chat", "staying-on-that-machine"},
+		{"what does --no-host do", "staying-on-that-machine"},
 		{"take over the keyboard", "staying-on-that-machine"},
 		{"my input box turned into one line", "staying-on-that-machine"},
 		{"what does typing from now mean", "staying-on-that-machine"},
