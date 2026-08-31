@@ -114,6 +114,10 @@ type Client struct {
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
 	velocity *velocityLedger
+	// laneAsks is what the last request for each model told the belief about
+	// itself (lanes.go). It is on the client because a prompt one router was
+	// sent is not evidence about another's lanes.
+	laneAsks lanesState
 	// pins is which endpoint holds each prompt lineage's cache (affinity.go).
 	// It is read at the same moment the velocity ledger is — encode time — and
 	// written from the same answers, and the two never disagree: a lane the
@@ -299,6 +303,14 @@ type callKnobs struct {
 	// resolved once here, at the top of the call, rather than at encode time,
 	// because it is a fact about the CALLER and cannot change between the two.
 	intent RoutingIntent
+	// lambda is what a second is worth to whoever is waiting on this call, in
+	// seconds per dollar, and whether the call site said (lanes.go). It is
+	// resolved here with the intent because it is the same kind of fact about
+	// the same caller.
+	lambda secondsPerDollar
+	// horizon is roughly how many more calls the work this call belongs to
+	// expects to make. It sizes exploration and nothing else (lanes.go).
+	horizon int
 	// relaxed is what this encode has been told to leave off the body, set only
 	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
 	// which is what keeps a healthy request byte-for-byte what it always was.
@@ -319,6 +331,8 @@ func knobsFrom(ctx context.Context) callKnobs {
 		cacheKey:  CacheKeyFrom(ctx),
 		effort:    effortFrom(ctx),
 		intent:    routingIntentFrom(ctx),
+		lambda:    valueOfTimeFrom(ctx),
+		horizon:   callHorizonFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
 		trace:     newCallTrace(),
 	}
@@ -853,7 +867,7 @@ func outputTokens(response *ai.Response, text string) int {
 			}
 		}
 	}
-	return len(text) / 4
+	return tokensIn(text)
 }
 
 // stampCut writes onto a cut the three facts only the read loop holds: who the

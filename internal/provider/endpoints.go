@@ -341,7 +341,7 @@ func rung(bit relaxSet) relaxStep {
 // line and does not inflate the attempt counter the person is reading.
 func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model string) []relaxStep {
 	var plan []relaxStep
-	if prefs := c.providerPreferences(model, knobs); prefs != nil &&
+	if prefs := c.providerPreferences(model, knobs, request); prefs != nil &&
 		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
 		plan = append(plan, rung(relaxEndpointFilter))
 	}
@@ -440,7 +440,7 @@ func (c *Client) recoverFromRefusal(
 	// A ceiling is on the wire when the latency ask put one there, and it is
 	// read BEFORE the memo below writes, so the plan and the memo are looking at
 	// the same request rather than at each other.
-	prefs := c.providerPreferences(model, knobs)
+	prefs := c.providerPreferences(model, knobs, request)
 	carriedCeiling := prefs != nil && prefs.MaxPrice != nil
 	// THE PHRASE LIST'S SECOND JOB. When the router's own sentence said it was
 	// the price or the account's policy that emptied the set, the first rung
@@ -822,7 +822,7 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		params = append(params, "reasoning")
 	}
-	if prefs := c.providerPreferences(model, knobs); prefs != nil {
+	if prefs := c.providerPreferences(model, knobs, request); prefs != nil {
 		if prefs.RequireParameters != nil {
 			params = append(params, "provider.require_parameters")
 		}
