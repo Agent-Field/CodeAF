@@ -402,6 +402,18 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
+	// ending is why this node stopped where it did, once it has (task_contract.go's
+	// [TaskEnding]), and "" until then and forever on a node that finished. THE
+	// FIRST CAUSE WINS: [TaskNode.end] refuses to overwrite one already written,
+	// because a check that refuses a run that had already given up is not the
+	// news — the giving up is.
+	ending TaskEnding
+	// blockedBy names the task whose working copy refused this node's writes
+	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
+	// nothing ever refused it. It is what turns a "going in circles" ending into
+	// a "blocked" one: a worker that was told no every time it tried to write is
+	// not circling, it is queued behind somebody, and the row should say whom.
+	blockedBy string
 	// room is the node as a PLACE: the child agent somebody can talk to and the
 	// live subscribers watching it work (task_room.go). It is nil until the
 	// first person enters or the runner attaches its child, and it is emptied
@@ -1197,6 +1209,57 @@ func (n *TaskNode) markStopped() {
 	n.graph.mu.Unlock()
 }
 
+// end writes why this node stopped, once. A second cause is dropped on the
+// first-cause law stated on the field: the ending a person reads is the one
+// that happened first, not the one that was written last.
+func (n *TaskNode) end(ending TaskEnding) {
+	if n == nil || n.graph == nil || ending == "" {
+		return
+	}
+	n.graph.mu.Lock()
+	if n.ending == "" {
+		n.ending = ending
+	}
+	n.graph.mu.Unlock()
+}
+
+// noteBlocked records that another task's working copy refused one of this
+// node's writes, naming the holder the way the refusal did.
+func (n *TaskNode) noteBlocked(holder string) {
+	if n == nil || n.graph == nil || strings.TrimSpace(holder) == "" {
+		return
+	}
+	n.graph.mu.Lock()
+	n.blockedBy = strings.TrimSpace(holder)
+	n.graph.mu.Unlock()
+}
+
+// blockedByNow is [TaskNode.blockedBy] read from outside the lock.
+func (n *TaskNode) blockedByNow() string {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.blockedBy
+}
+
+// endingOfClaim is what a run's LAST WORDS say about how it ended, and "" when
+// they say nothing: the loop guard's own sentence (looped.go's
+// loopLeftUndoneNote) is the one claim this package wrote rather than the
+// worker, and it is the difference between a worker that finished and one that
+// was stopped for going in circles. A worker whose writes were refused by another
+// task's working copy was not circling but queued, and is named as such.
+func endingOfClaim(claim, blockedBy string) TaskEnding {
+	if !strings.Contains(claim, loopLeftUndoneNote) {
+		return ""
+	}
+	if blockedBy != "" {
+		return TaskEndingBlocked
+	}
+	return TaskEndingCircling
+}
+
 // model is the id this node runs on, and "" for a node admitted before anybody
 // chose one — a checkpoint written by an older build, a scripted graph in a
 // test. Its caller reads that emptiness as "the conversation's own".
@@ -1846,12 +1909,27 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Mending:   n.mend,
 		Waiting:   waiting,
 		Stopped:   n.stopped,
+		Ending:    n.endingLocked(),
 		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
 		// See [TaskNode.ran] for why the swap is a second field rather than an
 		// edit to the frozen spec.
 		Model:   n.runModelLocked(),
 		CostUSD: cost,
 	}
+}
+
+// endingLocked is the ending a notice and a record carry, with the graph held.
+// A node a person stopped carries [TaskEndingStopped] whether or not anything
+// wrote it — the flag was the whole of that fact before the ending existed, and
+// it stays the source of it.
+func (n *TaskNode) endingLocked() TaskEnding {
+	if n.state != TaskFailed {
+		return ""
+	}
+	if n.stopped {
+		return TaskEndingStopped
+	}
+	return n.ending
 }
 
 // spend is what this node has cost so far, in dollars.
@@ -2095,6 +2173,23 @@ type landingAddress struct {
 	person bool
 }
 
+// haltedVerb is the verb a landing note uses for an ending that is nobody's
+// finding — and "" for the endings that are (refused, error) and for a node
+// that gave no reason, both of which stay "failed".
+func haltedVerb(ending TaskEnding) string {
+	switch ending {
+	case TaskEndingWire:
+		return "lost the connection"
+	case TaskEndingCircling:
+		return "went in circles"
+	case TaskEndingBlocked:
+		return "was blocked by another task"
+	case TaskEndingSteps:
+		return "ran out of steps"
+	}
+	return ""
+}
+
 func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	verb := "finished"
@@ -2104,6 +2199,14 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// failed. Nothing was found wrong with it: somebody pressed stop, and the
 		// only honest verb for that is the one they would use themselves.
 		verb = "stopped"
+	case notice.State == TaskFailed && haltedVerb(notice.Ending) != "":
+		// HALTED, NOT FAILED. The wire dropped, the loop guard fired, another
+		// task held the files, the steps ran out: nothing was found wrong with
+		// the work, and "failed" would send the model — and then the person —
+		// looking for a fault in work nobody has judged. The verb names what
+		// happened so the model can offer the one useful thing: running it again
+		// from its branch.
+		verb = haltedVerb(notice.Ending)
 	case notice.State == TaskFailed:
 		verb = "failed"
 	case notice.State == TaskUnverified:
@@ -2596,6 +2699,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		tree, err = prepareTaskTreeAt(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.spec.where)
 	}
 	if err != nil {
+		node.end(TaskEndingError)
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
 		return TaskFailed
 	}
@@ -2668,6 +2772,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// with the same parts already running: it must read the same sentence, and
 		// the division must not be put a second time.
 		handedOut string
+		// wireRetried says the second worker a wire death buys has been built,
+		// and the next one ends the node.
+		wireRetried bool
 	)
 	// ONE WORKER, OR TWO. The second exists for exactly one reason, stated at
 	// [terminalProviderFailure]: a node whose worker died because the PROVIDER
@@ -2676,6 +2783,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	for {
 		worker, err := a.newTaskAgent(ctx, tree.dir, node, "")
 		if err != nil {
+			node.end(TaskEndingError)
 			node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
 			return TaskFailed
 		}
@@ -2724,7 +2832,25 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// of what this node produced ([declaredFiles]).
 		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
 
-		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !a.movesForFailure(node, runErr, log) {
+		if movedFrom != "" || stopped != "" || ctx.Err() != nil {
+			break
+		}
+		// THE CONNECTION DIED, NOT THE WORK. A run whose last call ended on the
+		// wire — after the call's own retries were spent (loop.go's
+		// retryablePattern) — has learned nothing about the work and thrown
+		// away nothing on disk: the working copy, the files it wrote and its
+		// checkpoint are all still here. So it is run ONCE MORE on the same model
+		// in the same copy, the way a model move already builds a second worker
+		// below, before the wire is allowed to end the node. Once, because a
+		// provider that is down stays down for the second worker too, and a node
+		// that loops on that is a node spending money to be told the same thing.
+		if !wireRetried && diedOnTheWire(runErr) {
+			wireRetried = true
+			fmt.Fprintf(log, "the run ended on the connection rather than on the work: running again on %s\n", node.runModel())
+			retire()
+			continue
+		}
+		if !a.movesForFailure(node, runErr, log) {
 			break
 		}
 		next, moved := a.escalateNodeModel(node)
@@ -2763,6 +2889,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	case ctx.Err() != nil:
 		if node.wasStopped() {
 			merge, changed := keptWork(tree, node.title(), changed)
+			node.end(TaskEndingStopped)
 			node.finish(withReport("stopped", report), changed, tree.branch, merge)
 			return TaskFailed
 		}
@@ -2772,9 +2899,23 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return ""
 	case runErr != nil:
 		merge, changed := keptWork(tree, node.title(), changed)
+		// THE WIRE AND AN ERROR ARE DIFFERENT NEWS. Both end the node, but a
+		// person reading "lost the connection" restarts it and a person reading
+		// "ended with an error" goes looking for the fault; the report keeps the
+		// error's own words either way.
+		if diedOnTheWire(runErr) {
+			node.end(TaskEndingWire)
+			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
+			return TaskFailed
+		}
+		node.end(TaskEndingError)
 		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 		return TaskFailed
 	}
+	// WHAT THE WORKER'S LAST WORDS SAY ABOUT HOW IT ENDED is written before the
+	// gate reads them, so that a check refusing a run that had already given up
+	// does not become the reason on the row ([TaskNode.end]'s first-cause law).
+	node.end(endingOfClaim(lastSaid(child), node.blockedByNow()))
 
 	// THE GATE. Everything above is the node's own account of itself; what
 	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict
@@ -2850,6 +2991,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// exactly as it was before: somebody looked at the work and said what is
 		// missing, and that answers the claim.
 		merge, changed := keptWork(tree, node.title(), changed)
+		node.end(TaskEndingRefused)
 		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, merge)
 		return TaskFailed
 	}
@@ -2956,6 +3098,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 		fmt.Fprintf(log, "landed work was not accepted: %s\n", verdict.report())
 	}
 	merge, changed := keptWork(tree, node.title(), changed)
+	node.end(TaskEndingSteps)
 	node.finish(withReport(stopped, report), changed, tree.branch, merge)
 	return TaskFailed
 }

@@ -199,6 +199,12 @@ func (g treeClaimGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, ca
 	if !held {
 		return call, toolResult{}, true
 	}
+	// AND THE WRITER'S OWN ROW LEARNS WHO SAID NO. A worker refused here every
+	// time it tries to write ends its turn "going in circles", and the row that
+	// lands from that would say the work gave up. It did not: it was queued
+	// behind the holder, and the ending names the holder instead
+	// (task_run.go's [endingOfClaim]).
+	graph.node(g.agent.config.taskID).noteBlocked(taskStopName(claim.id, claim.title))
 	return call, toolResult{text: treeHeldRefusal(claim, shown), isError: true}, false
 }
 

@@ -148,6 +148,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// The words under a stopped row, asked the way the rail spells them and
+		// the way a person who has not read it asks.
+		{"my task says lost the connection what does that mean", "how-tasks-run"},
+		{"task went in circles", "how-tasks-run"},
+		{"what does the exclamation mark next to a task mean", "how-tasks-run"},
+		{"task blocked by another task", "how-tasks-run"},
+		{"why does it say not accepted under my task", "how-tasks-run"},
 		// Written from a real run too: a task that split its work sat waiting for
 		// its parts and was killed as stuck, and a sibling fast-forwarded its own
 		// copy onto main and reported somebody else's fixes as its own.

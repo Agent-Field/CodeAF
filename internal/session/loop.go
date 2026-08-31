@@ -123,6 +123,18 @@ var retryablePattern = regexp.MustCompile(
 		"EAI_AGAIN",
 		`upstream.?connect`,
 		"reset before headers",
+		// A STREAM THAT DIED MID-BODY. The three below are what the Go net stack
+		// says when the far end drops a connection the response was still
+		// arriving on — "read: connection reset by peer", "write: broken pipe",
+		// "unexpected EOF" — and none of them was on this list: a task node
+		// twenty-eight minutes into its work, suite green, writing its landing
+		// note, died on attempt 1 of a reset that every other line here would
+		// have retried. They are the wire and nothing else; a refusal the router
+		// made about our bytes carries a status and is answered before this
+		// pattern is asked ([provider.RefusalFrom]).
+		`connection.?reset`,
+		`broken.?pipe`,
+		`unexpected.?eof`,
 		"socket hang up",
 		"socket connection was closed",
 		`timed? out`,
