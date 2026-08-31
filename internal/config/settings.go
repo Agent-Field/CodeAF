@@ -43,18 +43,35 @@ const (
 	SettingText
 )
 
-// Category names are the four faint lowercase words the sheet may announce a
-// section with (15). There were seven, and five of them were labels doing
-// structure's job: `rhythm`, `documents & vision` and `sharing` each announced
-// two rows or one, which is a header naming a mechanism rather than a section a
-// reader could otherwise not place. Deleting them is 15's own test — the rows
-// still read, because position and spacing already said what the word said.
+// Category names are the faint lowercase words the sheet may announce a section
+// with (15). There were seven, and five of them were labels doing structure's
+// job: `rhythm`, `documents & vision` and `sharing` each announced two rows or
+// one, which is a header naming a mechanism rather than a section a reader could
+// otherwise not place. Deleting them is 15's own test — the rows still read,
+// because position and spacing already said what the word said.
+//
+// SPENDING IS MONEY AND NOTHING ELSE, and that is why there are six words here
+// rather than four. `spending` had grown to hold twenty rows answering four
+// different questions — what may it spend, what may it run without asking, how
+// does it run tasks, and which workers exist — so a person looking for "how much
+// may it spend" read about load averages and repair rounds first. The three
+// questions are three sections now, and docs/design/spending/DESIGN.md is the
+// argument: a category is what a row is ABOUT, and a category that answers four
+// questions is a drawer rather than a section.
 const (
 	// CategoryModels is what runs the work: one row per role the router has,
 	// then the capability models beside them.
 	CategoryModels = "models"
-	// CategorySpending is every dollar the product will spend without asking.
+	// CategorySpending is every dollar the product will spend without asking,
+	// and NOTHING that is not a dollar.
 	CategorySpending = "spending"
+	// CategorySafety is what aforge may do without asking you first: the
+	// approval gate, its exceptions, the model that stands in for you, and the
+	// two clocks that answer when nobody does.
+	CategorySafety = "safety"
+	// CategoryTasks is how work you can walk away from is run — how it starts,
+	// how it is checked, how much of it happens at once, and on whose hands.
+	CategoryTasks = "tasks"
 	// CategoryPractice is what aforge does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
@@ -72,9 +89,12 @@ const (
 	CategoryAppearance = CategoryInterface
 )
 
-// SettingCategories is the render order of the sheet.
+// SettingCategories is the render order of the sheet. Spending leads the three
+// new sections because "what may it spend" is the question people arrive with;
+// safety and tasks follow it in the order the design's own hierarchy names.
 var SettingCategories = []string{
-	CategoryModels, CategorySpending, CategoryPractice, CategoryInterface,
+	CategoryModels, CategorySpending, CategorySafety, CategoryTasks,
+	CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -1293,7 +1313,7 @@ func (s Setting) Accepts() string {
 	case SettingModel:
 		return "a model id, like anthropic/claude-opus-5"
 	case SettingDollars:
-		return "an amount in dollars, like 5 or 2.50"
+		return "an amount in dollars, like 5 or 2.50 — or none for no limit"
 	case SettingDuration:
 		return "a length of time, like 20m or 4h, or 0"
 	case SettingPercent:
@@ -1364,6 +1384,12 @@ type SettingsOptions struct {
 	// ceiling. The bool separates "spent nothing" from "nobody counted"
 	// (10.2.8); nil leaves the receipt off rather than printing $0.00.
 	SpentTodayUSD func() (float64, bool)
+
+	// SpentThisSessionUSD is what the conversation in front of the reader has
+	// spent, for the receipt beside its own ceiling. Nil on every door that is
+	// not a live conversation, and the bool carries the same distinction
+	// [SettingsOptions.SpentTodayUSD] carries: not counted is not zero.
+	SpentThisSessionUSD func() (float64, bool)
 
 	// ModelCost is what the provider table knows about one model's price. It is
 	// a hint beside a model row and never a filter: an unpriced model is the
@@ -1615,46 +1641,50 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
+			EmptyLabel: noLimitWord,
 			Hint: "what aforge may spend on your work in a day. It starts large — " +
 				"it is a backstop against a runaway, not a budget — so set it to what " +
-				"you actually want to spend. 0 removes the rail. " +
-				"A change lands at the next rail check.",
-			read:    func() string { return formatDollars(resolvedDollars(DailyBudgetUSDAt(dir))) },
+				"you actually want to spend. When the day's calls reach it, new work " +
+				"waits for midnight or for you to raise it here. " +
+				"Say none for no limit. A change lands at the next rail check.",
+			read:    func() string { return moneyValue(resolvedDollars(DailyBudgetUSDAt(dir))) },
 			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
-			receipt: s.dailyBudgetReceipt,
+			receipt: s.spentTodayReceipt,
 		},
 		Setting{
 			Key: KeyPlanConsent, Category: CategorySpending, Kind: SettingDollars,
 			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
+			EmptyLabel: "never asks",
 			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
-				"the step count and the price and waits for your go-ahead. 0 never asks.",
-			read:    func() string { return formatDollars(resolvedDollars(PlanConsentUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
-			receipt: func() string { return noLimitReceipt(resolvedDollars(PlanConsentUSDAt(dir)), "never asks") },
+				"the step count and the price and waits for your go-ahead — it asks, it " +
+				"does not stop. Say none and it never asks.",
+			read:  func() string { return moneyValue(resolvedDollars(PlanConsentUSDAt(dir))) },
+			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
 		},
 		Setting{
 			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
-			Hint: "the slice of the day reserved for aforge practicing on itself. " +
+			EmptyLabel: "practice off",
+			Hint: "the slice of the day reserved for aforge practicing on itself. When it " +
+				"is spent, practice stops until tomorrow and your own work is untouched. " +
 				"0 is the one money row that does not mean no limit: it turns practice " +
 				"off. A change lands the next time aforge starts.",
-			read:    func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
-			receipt: func() string { return noLimitReceipt(resolvedDollars(PracticeBudgetUSDAt(dir)), "practice off") },
+			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
+			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
-		// And beside the three rails on the MONEY, the one on the MACHINERY:
-		// which workers this install may hand a piece of work to at all. It sits
-		// here rather than beside the task rows because it is not about the work
-		// that leaves one conversation — a worker takes leaves on every surface
-		// there is — and because the specialists are the expensive way of taking
-		// a job, which is the subject the three rows above it are already on.
+		// WHICH HANDS THIS INSTALL HAS: the workers this install may hand a piece
+		// of work to at all. It is a TASK row and not a money one — it was filed
+		// under spending because specialists are the expensive way of taking a
+		// job, which is a reason to think about it and not a reason to look for
+		// it there. A person on the spending tab is asking what may be spent, and
+		// a roster of workers is not an answer to that.
 		//
 		// Its receipt names the build's own workers rather than the hint, because
 		// the hint is written once and the workers are whatever the binary ships
 		// — a sentence listing them here would be the copy that goes stale.
 		Setting{
-			Key: KeyWorkers, Category: CategorySpending, Kind: SettingText,
+			Key: KeyWorkers, Category: CategoryTasks, Kind: SettingText,
 			Label: "workers", EmptyLabel: "every worker installed", Env: EnvWorkers,
 			Hint: "which workers this install may hand a piece of work to, separated by " +
 				"commas. Blank is all of them, which is the default. The general-purpose " +
@@ -1670,7 +1700,7 @@ func (s *Settings) build() []Setting {
 		// question about a different currency: what may aforge do without
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
-			Key: KeyToolApprovalMode, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
 			Label: "ask before running", Choices: ToolApprovalModes,
 			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
 				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
@@ -1679,7 +1709,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},
 		Setting{
-			Key: KeyToolApprovals, Category: CategorySpending, Kind: SettingText,
+			Key: KeyToolApprovals, Category: CategorySafety, Kind: SettingText,
 			Label: "tool approvals", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
@@ -1690,7 +1720,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
 		},
 		Setting{
-			Key: KeyBashApprovals, Category: CategorySpending, Kind: SettingText,
+			Key: KeyBashApprovals, Category: CategorySafety, Kind: SettingText,
 			Label: "shell command rules", EmptyLabel: "none",
 			Hint: "answers for single shell commands, first match wins: " +
 				"`allow git status*, deny rm -rf *`. A `*` matches anything; an allow " +
@@ -1702,7 +1732,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBashApprovals(dir, raw) },
 		},
 		Setting{
-			Key: KeyGuardian, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyGuardian, Category: CategorySafety, Kind: SettingChoice,
 			Label: "guardian", Choices: GuardianModes,
 			Hint: "when on, a small model is asked first whether a call is plainly safe — " +
 				"read-only, inside this directory, reversible — and you are only asked about the rest. " +
@@ -1711,7 +1741,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
 		},
 		Setting{
-			Key: KeyConsentTimeout, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
 			Label: "approval countdown",
 			Hint: "how many seconds an approval question waits for you before it answers itself. " +
 				"It answers no — the call is refused and the model is told, never approved — " +
@@ -1795,7 +1825,7 @@ func (s *Settings) build() []Setting {
 		// says what STARTS when you type /task, the audit row says what has to be
 		// true before what started is allowed to land.
 		Setting{
-			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskStart, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "starting a task", Choices: TaskStartModes,
 			Hint: "what /task <brief> pays to find out. sized is the default: the brief " +
 				"is read for width first and one worker starts either way, and a brief with " +
@@ -1806,7 +1836,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},
 		Setting{
-			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
 			Hint: "when on, every task node's work is checked by an independent read-only " +
 				"auditor — it runs the repo's own verification and reads the diff — before " +
@@ -1819,7 +1849,7 @@ func (s *Settings) build() []Setting {
 		// And directly under it, the other end of the same question: what happens
 		// when the check above came back with nothing at all.
 		Setting{
-			Key: KeyTaskSettle, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskSettle, Category: CategorySafety, Kind: SettingChoice,
 			Label: "who settles a task nobody could check", Choices: TaskSettleModes,
 			Hint: "who decides about a task that finished with nobody able to say whether " +
 				"it holds. ask is the default and means you do: the landed card offers " +
@@ -1848,7 +1878,7 @@ func (s *Settings) build() []Setting {
 		// aforge may DO without asking, this says how long you get to say
 		// something about work it has already decided to hand off.
 		Setting{
-			Key: KeyTaskAutoApprove, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskAutoApprove, Category: CategorySafety, Kind: SettingCount,
 			Label: "task countdown",
 			Hint: "how many seconds a proposed task waits for you before it starts on its own. " +
 				"The countdown is your window to redirect it or wave it off, not a gate — " +
@@ -1860,7 +1890,7 @@ func (s *Settings) build() []Setting {
 		// work you handed off: how many times a task that came back with gaps is
 		// sent back to close them before it is called incomplete.
 		Setting{
-			Key: KeyTaskRepairRounds, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskRepairRounds, Category: CategoryTasks, Kind: SettingCount,
 			Label: "task repair rounds",
 			Hint: "how many times a task that came back with something missing is sent back " +
 				"to finish the job — same working copy, same brief, with the gaps in front of " +
@@ -1874,7 +1904,7 @@ func (s *Settings) build() []Setting {
 		// depths: the number you may name, and the two things the machine itself
 		// will say no to whatever you named.
 		Setting{
-			Key: KeyTaskParallel, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskParallel, Category: CategoryTasks, Kind: SettingCount,
 			Label: "tasks at once", EmptyLabel: "no limit",
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
@@ -1889,7 +1919,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeOptionalCount(dir, KeyTaskParallel, raw) },
 		},
 		Setting{
-			Key: KeyTaskMaxLoad, Category: CategorySpending, Kind: SettingText,
+			Key: KeyTaskMaxLoad, Category: CategoryTasks, Kind: SettingText,
 			Label: "busy machine",
 			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
 				"default, which is where the machine is handing out slices rather than running " +
@@ -1899,7 +1929,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeProfileNumber(dir, KeyTaskMaxLoad, raw) },
 		},
 		Setting{
-			Key: KeyTaskMinFreeMB, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskMinFreeMB, Category: CategoryTasks, Kind: SettingCount,
 			Label: "memory floor",
 			Hint: "how many MB of memory must be available before another task may start — " +
 				"1536 by default, roughly what one more task and its build need. Under it, new " +
@@ -1915,7 +1945,7 @@ func (s *Settings) build() []Setting {
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
 		Setting{
-			Key: KeyTaskModel, Category: CategorySpending, Kind: SettingText,
+			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "follows the conversation",
 			Hint: "the model a task runs on when you have not asked for another one — " +
 				"`anthropic/claude-opus-5`. Leave it blank and a task rides the model you " +
@@ -1926,13 +1956,14 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
-			Label: "session ceiling",
+			Label: "session ceiling", EmptyLabel: noLimitWord,
 			Hint: "what one conversation may spend before it stops starting new turns. " +
-				"0 removes the ceiling; the turn in flight always finishes. " +
-				"A change lands on the next session.",
-			read:    func() string { return formatDollars(SpendRailUSDAt(dir)) },
+				"When it is reached the next turn is refused and your message is still " +
+				"yours to send again once you raise it; the turn in flight always " +
+				"finishes. Say none for no limit. A change lands on the next session.",
+			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
-			receipt: func() string { return noLimitReceipt(SpendRailUSDAt(dir), noLimitWord) },
+			receipt: s.spentThisSessionReceipt,
 		},
 
 		Setting{
@@ -2249,34 +2280,38 @@ func (s *Settings) build() []Setting {
 // dollar row cannot borrow one, because its reading is a formatted number and
 // therefore never empty. So the word goes where a row already says the dim true
 // thing beside its value: the receipt.
-const noLimitWord = "no limit"
+//
+// It is EXPORTED because the surfaces say it too — the v3 spend place's pointer
+// line and the settings tab's `today` reading both have to spell "nothing bounds
+// this" and there is one spelling of it.
+const NoLimitWord = "no limit"
 
-// noLimitReceipt is that word, or nothing at all. The word is a parameter
-// because two of the four money rows mean something narrower by zero than "no
-// ceiling" — the consent gate never asks, and the practice carve-out switches
-// practice off — and a receipt that said "no limit" about either would be the
-// same lie in a smaller size.
-func noLimitReceipt(value float64, word string) string {
-	if value != 0 {
+// noLimitWord is the package-internal spelling of the same word.
+const noLimitWord = NoLimitWord
+
+// moneyValue is how EVERY dollar row reads, and the whole of what it adds is
+// that it never returns "$0".
+//
+// A row whose figure is zero returns NOTHING, which hands the reading to
+// [Setting.EmptyLabel] — the mechanism every other kind of row already uses for
+// its off state, and the one place each rail's own word for zero is written
+// down: `no limit` on the day and the conversation, `never asks` on the consent
+// gate, `practice off` on the carve-out, whose zero switches practice off rather
+// than uncapping it. Two things follow for free, and both are the reason it is
+// spelled this way rather than as a second receipt:
+//
+//   - THE EDIT BOX OPENS EMPTY on a row that holds nothing. Every surface
+//     already blanks the empty label before it seeds the box, so a person
+//     editing "no limit" is offered a place to type a number rather than a
+//     sentence to delete first.
+//   - THE RECEIPT IS FREED FOR A FACT. `no limit` is not a receipt — it is the
+//     value — and while it sat in the receipt column there was nowhere left to
+//     say what the row is actually doing right now ($4.25 today, this one $0.41).
+func moneyValue(value float64) string {
+	if value == 0 {
 		return ""
 	}
-	return word
-}
-
-// dailyBudgetReceipt is the daily rail's own receipt: the day's spend, and —
-// when the rail has been removed — the word that says so. Both, when both are
-// true, because "no limit" without today's figure hides the number a person
-// came to this row to see, and the figure without the word leaves them reading
-// a bare "$0" ceiling.
-func (s *Settings) dailyBudgetReceipt() string {
-	parts := make([]string, 0, 2)
-	if word := noLimitReceipt(resolvedDollars(DailyBudgetUSDAt(s.options.ProfileDir)), noLimitWord); word != "" {
-		parts = append(parts, word)
-	}
-	if spent := s.spentTodayReceipt(); spent != "" {
-		parts = append(parts, spent)
-	}
-	return strings.Join(parts, " · ")
+	return formatDollars(value)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -2291,6 +2326,24 @@ func (s *Settings) spentTodayReceipt() string {
 		return ""
 	}
 	return formatDollars(spent) + " today"
+}
+
+// spentThisSessionReceipt is the conversation ceiling's own receipt: what THIS
+// conversation has spent against it.
+//
+// It is the same seam as the day's and answers with the same pair, for the same
+// reason: a door with no conversation behind it — the v2 sheet, the model's own
+// settings tool, a headless read — has not counted zero, it has not counted, and
+// the row draws nothing rather than a $0.00 nobody earned.
+func (s *Settings) spentThisSessionReceipt() string {
+	if s.options.SpentThisSessionUSD == nil {
+		return ""
+	}
+	spent, counted := s.options.SpentThisSessionUSD()
+	if !counted || spent <= 0 {
+		return ""
+	}
+	return "this one " + formatDollars(spent)
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {
@@ -3956,11 +4009,28 @@ func writeTenure(profileDir, raw string) error {
 // Parsers. Their errors are the words the row shows under itself, so they read
 // like a person talking rather than a validator.
 
+// noLimitWords are every way a person spells "take the limit off" on a money
+// row, and they all land the same zero.
+//
+// NO LIMIT IS A WORD AND A NUMBER IS A NUMBER. `0` has always been the
+// instruction, and `0` is the one spelling of it that reads at a glance as its
+// own opposite — "no money at all" where the code means "no ceiling at all". A
+// person who wants the rail gone types what they mean, and every word they might
+// reach for is here rather than in a refusal that tells them to type a digit.
+// The row then READS `no limit` ([Setting.EmptyLabel]), so what was typed and
+// what is shown agree.
+var noLimitWords = []string{"none", "no", "off", "unlimited", "∞", "no limit", "nolimit", "never"}
+
 func parseDollars(raw string) (float64, error) {
 	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "$"))
+	for _, word := range noLimitWords {
+		if strings.EqualFold(text, word) {
+			return 0, nil
+		}
+	}
 	value, err := strconv.ParseFloat(text, 64)
 	if err != nil || value < 0 {
-		return 0, fmt.Errorf("that's not a dollar amount")
+		return 0, fmt.Errorf("that's not a dollar amount — a number, or none for no limit")
 	}
 	return value, nil
 }
