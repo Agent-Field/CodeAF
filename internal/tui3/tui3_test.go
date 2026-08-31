@@ -376,6 +376,13 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}
 	case "shift+tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "ctrl+tab":
+		// The switcher's alias, which a terminal that disambiguates can send
+		// (hop.go). It is spelled out here because `tab` is not a rune and the
+		// ctrl fall-through above only builds single-rune chords.
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl}
+	case "ctrl+shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl | tea.ModShift}
 	case "shift+left":
 		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	case "shift+right":

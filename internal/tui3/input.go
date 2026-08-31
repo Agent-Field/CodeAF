@@ -303,6 +303,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.takeRoomPump()
 	}
 
+	// THE SWITCHER IS READ HERE, ABOVE THE PLACES AND BELOW THE THREE QUESTIONS,
+	// and it is ONE arm for both roads (hop.go). It belongs above the places
+	// because it is drawn over them as well as over the conversation — a card
+	// that had to be claimed twice would be a card whose two claims drift — and
+	// below the questions because a session blocked on this keyboard outranks
+	// somewhere else to be.
+	//
+	// It answers false unless it is open or the key is its own, so on every other
+	// keystroke this line costs one string comparison.
+	if cmd, taken := a.hopKey(msg); taken {
+		return cmd
+	}
+
 	// AND WHATEVER PLACE IS STANDING IS MODAL AT THIS RUNG, in ONE arm and never
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the

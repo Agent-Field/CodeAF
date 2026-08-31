@@ -126,6 +126,16 @@ type behindWatch struct {
 	// trace on the agent that says "and it finished just now" — so it is carried
 	// on the watcher and taken by the surface rather than put on the message.
 	landed atomic.Bool
+	// finished counts turns that have ended in here since the person left, and
+	// it is a COUNTER BESIDE [behindWatch.landed] rather than a second reader of
+	// it: landed is consumed on every stir ([behindWatch.took]), so by the time
+	// the switcher asks, the fact that a turn landed has usually already been
+	// spent on a banner. This is the same edge, kept for the card to read.
+	//
+	// NOTHING RESETS IT, because nothing has to: the watcher dies when the
+	// conversation comes forward ([app.bringForward] stops it), so the count is
+	// always "since you left", by construction rather than by bookkeeping.
+	finished atomic.Int64
 	// takeover says another window has asked for this conversation
 	// ([session.EventTakeover], takeover.go). It is the ONE thing this watcher
 	// reads the content of a lane for: every other event here is a nudge, and
@@ -153,6 +163,16 @@ func (w *behindWatch) stir() {
 func (w *behindWatch) took() bool {
 	w.armed.Store(false)
 	return w.landed.Swap(false)
+}
+
+// landedSince is how many turns have ended in here since the person walked away,
+// read WITHOUT consuming anything — the switcher draws its card on a keystroke
+// and may draw it many times before anybody switches (hop.go).
+func (w *behindWatch) landedSince() int {
+	if w == nil {
+		return 0
+	}
+	return int(w.finished.Load())
 }
 
 // stop ends the watcher and gives every lane back. Calling it twice is calling
@@ -281,6 +301,7 @@ func (w *behindWatch) run() {
 				// landed in its own journal and moved nothing on screen; the
 				// banner is the whole of what tells the person.
 				w.landed.Store(true)
+				w.finished.Add(1)
 				w.stir()
 			}
 		}
@@ -666,17 +687,11 @@ func (a *app) waitingCount() int {
 func (a *app) behindTasks() int {
 	tasks := 0
 	for _, held := range a.behind {
-		door, ok := held.conv.Agent.(interface {
-			TaskIndex() []session.TaskIndexEntry
-		})
-		if !ok {
-			continue
-		}
-		for _, entry := range door.TaskIndex() {
-			if entry.Status == string(session.TaskRunning) {
-				tasks++
-			}
-		}
+		// THE COUNT GOES THROUGH ONE FUNCTION, which the switcher's rows also
+		// call (hop.go's [runningTasks]): the assertion, the status string and
+		// the walk were about to exist twice, and two spellings of one count is
+		// how a status line and a card come to disagree about the same session.
+		tasks += runningTasks(held.conv.Agent)
 	}
 	return tasks
 }

@@ -2882,6 +2882,15 @@ func (a *app) legendRight(width int) string {
 	// line existed, was recoverable only by knowing it was there. So the rest
 	// state of the slot names them both, and neither costs a row: this is the
 	// legend, which is on the frame either way (home.go).
+	// THE SWITCHER IS NAMED WHEREVER IT WOULD ACT, AND ITS CONDITION IS ITS OWN.
+	// `tab last` rides on the home door because both need a door onto a session
+	// ([app.canOpen]); the switcher needs none — it re-points the surface at a
+	// conversation this process is already holding — so a build with no resume
+	// door still has one, and the slot still says so (hop.go).
+	//
+	// It is named from THREE open rather than two: with two, the card would hold
+	// exactly one destination and `tab` reaches it in one key instead of two.
+	switcher := a.hopAvailable() && a.openCount() > 2
 	if a.homeDoorShowing() {
 		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
 		// terminal holds only one conversation, which is the emptiness law again:
@@ -2891,9 +2900,24 @@ func (a *app) legendRight(width int) string {
 		// when the slot is tight, by [app.homeDoorShowing]'s own rule about the
 		// box being empty.
 		if _, ok := a.lastBehind(); ok {
-			return homeDoorWord + " · " + lastDoorWord + " · " + microcopy
+			// AND WITH THREE OR MORE OPEN THE SLOT NAMES THE SWITCHER INSTEAD OF
+			// THE FLICK (hop.go). Both keys are bound at every size — `tab` still
+			// goes straight to the last one — but the slot has room for one, and
+			// with a third conversation open the card is the key worth teaching:
+			// `tab` can only ever reach one of the others.
+			door := lastDoorWord
+			if switcher {
+				door = hopDoorWord
+			}
+			return homeDoorWord + " · " + door + " · " + microcopy
+		}
+		if switcher {
+			return homeDoorWord + " · " + hopDoorWord + " · " + microcopy
 		}
 		return homeDoorWord + " · " + microcopy
+	}
+	if switcher {
+		return hopDoorWord + " · " + microcopy
 	}
 	return microcopy
 }
@@ -2903,6 +2927,12 @@ func (a *app) legendRight(width int) string {
 // it goes to — the conversation you were in last, which is the same promise
 // `cd -` makes.
 const lastDoorWord = "tab last"
+
+// hopDoorWord advertises the switcher, and it names `ctrl+k` rather than the
+// `ctrl+tab` alias because this line is drawn on every terminal and the alias is
+// only real on some of them (hop.go states the whole argument). A hint may only
+// name a key that works.
+const hopDoorWord = hopOpenKey + " switch"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //

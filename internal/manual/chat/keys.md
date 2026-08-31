@@ -1172,6 +1172,10 @@ It **does nothing at all** when there is nowhere to go: one conversation open, o
 terminal has been in before. A key that cannot act says so by not being advertised — and
 when it can, the legend line above the box says `space space home · tab last · / commands`.
 
+With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k` opens the
+card of all of them — see *Switch between open conversations*. `tab` still works and still
+goes to the last one.
+
 It works while a turn is running in either conversation. Nothing is interrupted: the turn
 you leave keeps streaming into its own transcript, and it is redrawn from its first token
 when you come back.
@@ -1196,6 +1200,85 @@ uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and n
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
+
+## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
+
+**Press `ctrl+k`.** A card appears in the middle of whatever you are looking at, the screen
+behind it dims, and on it is every conversation this terminal has open — most recently in
+front first, with the one you are sitting in last, marked `you are here`.
+
+```
+3 open                              tab down · shift+tab up · enter go · esc back
+
+1 ● harness dry run on one public…  asking you something      aforge-v2    4m
+2 ○ openrouter price scrape         2 tasks running            research     1d
+3 ○ Refactor the rail scope model   you are here              aforge-v2   40m
+```
+
+| Key | What it does |
+| --- | --- |
+| `ctrl+k` | Open the card. Pressed again with the card up, it steps one further down — tap it like alt+tab |
+| `ctrl+tab` | The same key, on terminals that can send it. See below |
+| `tab` / `↓` | Down one |
+| `shift+tab` / `↑` | Up one. Both wrap round at the ends |
+| `1`…`8` | Go to that row outright — the number is drawn on it |
+| `enter` | Go to the row you are on |
+| `esc` | Put the card away. You are exactly where you were |
+| any other key | Puts the card away, and does nothing else — the key does not land in your message |
+
+It works **in a conversation and on every place** — home, tasks, standing, memory, spend,
+search, settings — because it is drawn over the screen rather than being a screen of its
+own. Nothing under it moves by a cell.
+
+**It does nothing when this terminal holds one conversation**, and says so by not being
+there: no card, and the legend above the box does not name it.
+
+## What did my other chats do while I was away — what each row of the switcher tells you
+
+Every row says **what changed since you last looked**, not what the conversation is about:
+
+| The row says | What happened |
+| --- | --- |
+| `asking you something` | it is waiting on you — a question or an approval |
+| `3 tasks running` | that many pieces of work are turning in it right now |
+| `it finished while you were away` | a turn ended in there after you left |
+| `nothing new` | it has been quiet since you left it |
+| `you are here` | the conversation you are sitting in |
+
+Then the project it is in and how long ago you left it. That is what makes the switcher
+double as the catch-up: after twenty minutes in one chat, one key says what the other seven
+did.
+
+The card is **frozen the moment it opens**. A conversation that finishes a turn while you
+are looking at the card does not re-rank the list under your finger.
+
+## Why ctrl+k and not ctrl+tab or alt+tab
+
+`ctrl+tab` **is** bound — but only on terminals that can send it, and many cannot.
+
+`ctrl+tab` has no distinct encoding in an ordinary terminal: it arrives as a plain `tab` and
+is indistinguishable from it. Only a terminal that speaks the kitty keyboard protocol sends
+it as itself, and aforge asks yours on every frame — where the answer is yes, `ctrl+tab`
+opens the switcher and `ctrl+shift+tab` walks it back. Where the answer is no, the chord is
+not bound and is never named, because a key aforge tells you about is a key that works.
+Two popular terminals — WezTerm and Windows Terminal — also spend `ctrl+tab` on their own
+tabs by default, so it would never reach aforge there.
+
+`alt+tab` is not available at any price: the window manager takes it on Windows and on most
+Linux desktops.
+
+`ctrl+k` has none of those problems. Every terminal sends it, no window manager wants it,
+and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS Code.
+
+## `tab` still goes straight to the last one
+
+`tab` on an empty message box has not changed: it goes to the conversation you were in
+before this one, in one key, with no card. Use `tab` to flick between two and `ctrl+k` when
+there are more.
+
+The legend above the box names whichever is worth pressing: `tab last` with two
+conversations open, `ctrl+k switch` with three or more. On a place, the switcher is named on
+the map (`alt+.`) instead, because a place's foot is four fixed clauses.
 
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 
@@ -1950,7 +2033,7 @@ answer:
 | `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
+| `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |

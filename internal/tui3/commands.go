@@ -854,6 +854,11 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
+		// THE SWITCHER (hop.go). It is named here on every terminal because
+		// `ctrl+k` reaches every terminal; the `ctrl+tab` alias is not on this
+		// list, for the reason the manual states — a line that named it would be
+		// naming a chord half the terminals reading this cannot send.
+		"ctrl+k         the conversations this terminal has open · tab moves · enter goes",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
 		// task room for the conversation; /home is a screen of every project on

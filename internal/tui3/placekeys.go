@@ -178,6 +178,13 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "right":
+		// A FOLD OUTRANKS THE VERBS ON A ROW THAT HAS BOTH, and only on the
+		// first press. `→` on a family root opens the family; `→` again, with it
+		// already open, falls through to the verbs below — one key, two rungs,
+		// both of them drawn on the row (place_tasks.go's [app.taskSheetFold]).
+		if a.placeFold(true) {
+			return nil, true
+		}
 		// `→` OPENS THE ROW'S VERBS, and only when the row has any. Where it does
 		// not, the arrow keeps every meaning it already had on that place — the
 		// fold ladder and the walk across the columns on home, the caret's step
@@ -185,6 +192,16 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// key rather than a seizure of it.
 		if a.openStrip() {
 			a.touch()
+			return nil, true
+		}
+		return nil, false
+
+	case "left":
+		// AND `←` SHUTS IT. It is the one arm this key has in the grammar: on a
+		// row that heads no open family the arrow keeps every meaning it already
+		// had on that place, which is why this answers false rather than
+		// swallowing it.
+		if a.placeFold(false) {
 			return nil, true
 		}
 		return nil, false

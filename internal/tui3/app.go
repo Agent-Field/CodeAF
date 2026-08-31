@@ -1662,6 +1662,14 @@ type app struct {
 	// and not on a place's state — the three facts it settles are the same three
 	// wherever a person typed the sentence.
 	composer composerLayer
+	// hop is the conversation switcher — `ctrl+k`, the card over everything
+	// (hop.go). It is a field of the app rather than of a place because it
+	// belongs to no place: it is drawn over the conversation and over all seven.
+	hop hopCard
+	// frontAt is when the conversation on screen came forward, which is the only
+	// thing the switcher's own row can measure an age from — every other row
+	// measures from the sidecar its detach left (keeper.go's [aside.since]).
+	frontAt time.Time
 	// errand builds the agent behind `ask here` and standingRoot is where its
 	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a
