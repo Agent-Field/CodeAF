@@ -228,6 +228,32 @@ type Meta struct {
 	// [TaskIndexEntry.Tokens] already uses for the same fact about a task.
 	SpentUSD float64 `json:"spentUsd,omitempty"`
 	Tokens   int     `json:"tokens,omitempty"`
+	// Places is the set of folders THIS CONVERSATION IS ABOUT beyond the one it
+	// is standing in — named by the person, or kept from a ground the work
+	// resolved (places.go). It is here for the reason Effort is: a set that
+	// lived only on the running agent would be a conversation that forgot every
+	// folder it was about the moment the terminal closed, and the whole value of
+	// it is that nobody is asked the same question twice.
+	//
+	// AN ABSENT FIELD IS A CONVERSATION WITH NO REFERRED PLACES, which is every
+	// conversation written before this existed and every one that has not
+	// accrued one yet. Like everything else in this file it is a citation: what
+	// the conversation touched is in the transcript, and this is the answer
+	// already worked out from it.
+	Places []PlaceRef `json:"places,omitempty"`
+	// Trees is the working copies this conversation holds of those folders, and
+	// what has been written into each that the folder itself does not have yet
+	// (standingtree.go).
+	//
+	// IT IS THE ONE THING IN THIS FILE THAT IS NOT A CITATION. Everything else
+	// here is recoverable by looking again — the workspace, the model, what the
+	// talking cost. Unlanded work is recoverable from nowhere, so this is
+	// written the moment it changes and read back at open, and a conversation
+	// closed with changes waiting comes back still holding them.
+	//
+	// An absent field is a conversation that has written nothing outside the
+	// folder it stands in, which is every conversation until one does.
+	Trees []StandingTree `json:"trees,omitempty"`
 	// Archived marks a conversation somebody PUT AWAY from home's resting
 	// list: it leaves its project's block and gathers under home's one folded
 	// archive line, reachable there and still found by search. It is the

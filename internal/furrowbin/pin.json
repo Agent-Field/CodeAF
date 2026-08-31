@@ -1,0 +1,23 @@
+{
+  "repository": "Agent-Field/furrow",
+  "tag": "v0.1.0",
+  "version": "0.1.0",
+  "artifacts": {
+    "darwin-amd64": {
+      "asset": "furrow-darwin-amd64",
+      "sha256": "07998fe49a2aa19f4ed08755b9dea65a48b08d1fd680b58528c55b3579cb6852"
+    },
+    "darwin-arm64": {
+      "asset": "furrow-darwin-arm64",
+      "sha256": "1093751669e56b576a2b658fbd9c4529caaf3567eaa09c9f76e0d5db02f8fa16"
+    },
+    "linux-amd64": {
+      "asset": "furrow-linux-amd64",
+      "sha256": "c7f87ede6f352aad05d3aea42517eac9c86609adeb625187286411492663e2b4"
+    },
+    "linux-arm64": {
+      "asset": "furrow-linux-arm64",
+      "sha256": "89f13d506f2f7f54d2c8920c53b5784f0b0188ae70f758e912b71bfefdf1d1d6"
+    }
+  }
+}

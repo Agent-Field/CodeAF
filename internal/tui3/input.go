@@ -303,6 +303,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.takeRoomPump()
 	}
 
+	// THE SWITCHER IS READ HERE, ABOVE THE PLACES AND BELOW THE THREE QUESTIONS,
+	// and it is ONE arm for both roads (hop.go). It belongs above the places
+	// because it is drawn over them as well as over the conversation — a card
+	// that had to be claimed twice would be a card whose two claims drift — and
+	// below the questions because a session blocked on this keyboard outranks
+	// somewhere else to be.
+	//
+	// It answers false unless it is open or the key is its own, so on every other
+	// keystroke this line costs one string comparison.
+	if cmd, taken := a.hopKey(msg); taken {
+		return cmd
+	}
+
 	// AND WHATEVER PLACE IS STANDING IS MODAL AT THIS RUNG, in ONE arm and never
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
@@ -366,6 +379,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// each is opened by a command typed into a box neither of them leaves open.
 	if a.roster.open && msg.String() != "ctrl+c" {
 		return a.resumeKey(msg)
+	}
+
+	// And the folder picker at the same rung, for the same reasons again: it
+	// takes the input line's place, it holds its own filter — which is also the
+	// path box a person browses with — and esc leaves everything exactly as it
+	// was (folderpick.go).
+	if a.folder.open && msg.String() != "ctrl+c" {
+		return a.folderKey(msg)
 	}
 
 	// And the deliverables picker at the same rung, for the same reasons again:
@@ -1228,6 +1249,14 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
+	}
+	// AND THE FOLDER PICKER'S BOX IS TWO BOXES IN ONE POSITION, which is why its
+	// legend is asked for rather than named: free words filter a list and a path
+	// browses columns, and the keys mean different things in the two
+	// (folderpick.go's [folderPick.folderHintAt]).
+	if a.folder.open {
+		return draftBlock(&a.folder.filter, a.pal, width, 1,
+			a.folder.folderHintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	// AND /subharness TAKES IT ON THE SAME TERMS, for whichever of its two boxes
 	// is open: the filter over the list, and the box over one field of the intake

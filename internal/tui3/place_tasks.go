@@ -38,6 +38,11 @@ import (
 type tasksPlace struct {
 	cursor int
 	top    int
+	// opened is which families are unfolded, keyed by the root's identity
+	// (tasksplace.go's [tasksFamilyOf]). Nil is every fold shut, which is what
+	// the page opens on: a record of four hundred tasks with every family
+	// expanded is the clutter the fold exists to remove.
+	opened map[tasksKey]bool
 	// query is the type-to-filter box, and it is the [editor] every other box on
 	// this surface is rather than a string of its own: backspace, ctrl+u and
 	// ctrl+w are edits a person's hands already know, and a second implementation
@@ -375,6 +380,11 @@ func (a *app) tasksFiltered() tasksReading {
 	// in its body and stale in its foot.
 	a.taskSheet.regroup(a)
 	r := a.taskSheet.reading
+	// THE FOLDS ARE THE PLACE'S AND THE ROWS ARE THE READING'S, joined here at
+	// the one door onto both. A snapshot is replaced whole every time a node
+	// lands ([tasksPlace.regroup]), so a fold kept on the reading would shut
+	// itself under somebody who had just opened it.
+	r.open = a.taskSheet.opened
 	needle := a.taskSheetFilter()
 	if needle == "" {
 		return r
@@ -448,6 +458,43 @@ func (a *app) taskSheetCurrent() (tasksItem, bool) {
 	r := a.tasksFiltered()
 	width, _ := a.size()
 	return r.at(r.lay(width), a.taskSheet.cursor)
+}
+
+// taskSheetFold opens or shuts the family under the cursor, and reports whether
+// there was one to act on.
+//
+// `→` OPENS AND `←` SHUTS, which is the roster's own bargain with the same two
+// keys (task.go), and it is asked BEFORE the verb strip on a row that heads a
+// family (placekeys.go's `right` arm says why). A second `→` on a family already
+// open falls through to the verbs, so a running root keeps its `stop it` — one
+// key, two rungs, both of them drawn on the row.
+func (a *app) taskSheetFold(open bool) bool {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	at := a.taskSheet.cursor
+	if at < 0 || at >= len(lines) {
+		return false
+	}
+	line := lines[at]
+	if !line.folds || line.open == open {
+		return false
+	}
+	if a.taskSheet.opened == nil {
+		a.taskSheet.opened = map[tasksKey]bool{}
+	}
+	a.taskSheet.opened[line.family] = open
+	if !open {
+		delete(a.taskSheet.opened, line.family)
+	}
+	// THE CURSOR STAYS ON THE ROW IT WAS ON. Shutting a fold above it would
+	// otherwise slide the whole list up under a person's finger; the root is the
+	// line the cursor is on and the line index of that root does not move, so
+	// there is nothing to correct — but the window under it might now be past the
+	// end, which [app.tasksSettle] is the one answer to.
+	a.taskSheet.cursor = a.tasksSettle(a.taskSheet.cursor)
+	a.touch()
+	return true
 }
 
 // taskSheetTyped is what every edit of the filter ends with: the list has
@@ -988,6 +1035,13 @@ func (p *tasksPlace) hint(a *app) string {
 	default:
 		parts = append(parts, tasksEnterInsideWord)
 	}
+	// AND THE FOLD, WHERE THE CURSOR IS ON A FAMILY. It is named before the verbs
+	// because on a shut family `→` is the fold and not the verb, and a foot that
+	// said otherwise would be naming the second rung of a key whose first rung it
+	// had not mentioned ([app.taskSheetFold]).
+	if word := a.taskSheetFoldWord(); word != "" {
+		parts = append(parts, word)
+	}
 	if verbs := p.verbs(a); len(verbs) > 0 {
 		words := make([]string, 0, len(verbs))
 		for _, v := range verbs {
@@ -1256,3 +1310,40 @@ func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	cmd, _ := a.taskSheetKeyPress(msg)
 	return cmd
 }
+
+// placeFold is the grammar's one door onto a place's tree: `→` opens the thing
+// under the cursor and `←` shuts it, on whichever place has one.
+//
+// TODAY EXACTLY ONE PLACE ANSWERS IT. That is a fact about the places and not a
+// shortcut — home's fold is a single line at the foot of a list rather than a
+// tree, and the other five have flat bodies — and the router asks through this
+// one name so a second place growing a tree is one arm here rather than another
+// claim on an arrow key in placekeys.go.
+func (a *app) placeFold(open bool) bool {
+	if !a.at(pageTasks) {
+		return false
+	}
+	return a.taskSheetFold(open)
+}
+
+// taskSheetFoldWord is what the foot says about the family under the cursor, and
+// "" where the cursor is not on one — the emptiness law said about a key.
+func (a *app) taskSheetFoldWord() string {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	at := a.taskSheet.cursor
+	if at < 0 || at >= len(lines) || !lines[at].folds {
+		return ""
+	}
+	if lines[at].open {
+		return tasksShutWord
+	}
+	return tasksOpenWord
+}
+
+// The two words, spelled once, and quoted in the manual exactly as they are here.
+const (
+	tasksOpenWord = "→ what ran under it"
+	tasksShutWord = "← fold it back up"
+)

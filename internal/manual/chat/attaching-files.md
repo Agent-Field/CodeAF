@@ -72,6 +72,11 @@ terminal that cannot draw the box — and the message box stays the sentence you
 writing. The tray already holds pictures; files sit on the same row, and a file's chip
 carries no number because there is nothing in the sentence for a number to point at.
 
+**A folder after `/attach` is not a refusal.** It used to answer
+`<name> is a folder · attach a file`; now the folder goes to the same place the `/folder`
+picker's `enter` sends one, and says `folder · <path>`. See the "Choosing a folder" page
+for what that does and what it does not.
+
 ## I dropped a file and nothing happened
 
 Dropping a file onto the terminal is the same as `/attach <path>`. aforge recognises a
@@ -144,9 +149,12 @@ attached and says so:
 that was a file, not a command · attached
 ```
 
-A folder gets `/attach`'s own sentence instead — `<name> is a folder · attach a file` —
-and an unknown command that names nothing on the disk still refuses exactly as it always
-did.
+A folder dropped or pasted gets the drop road's own sentence instead — `<name> is a folder ·
+attach a file` — and an unknown command that names nothing on the disk still refuses exactly
+as it always did. That sentence belongs to the drop and the paste alone: `/attach
+~/code/thing`, typed, refers the folder and answers `folder · ~/code/thing`. A drop is a
+gesture nobody typed, and reading a decision about your project out of a mouse would be
+inferring far too much.
 
 ## Drag and drop shows the path as text
 
@@ -300,7 +308,6 @@ Exactly as they are written:
 ```
 /attach takes a path · try /attach server.log
 no such file: <what you typed>
-<name> is a folder · attach a file
 <name> is already attached
 <name> is 24MB and over the 16MB file limit
 the files on this message are over the 32MB limit
@@ -309,12 +316,16 @@ this connection cannot carry a file · the words were not sent
 ```
 
 The first is a bare `/attach` with nothing after it. The second is a path that is not
-there. The third is a directory — attach the file inside it, not the folder. The fourth
-means it is on the tray already; the same path twice is one chip. The fifth and sixth are
-the ceilings, and they only ever appear over `--host`. The seventh is a file that vanished
-or became unreadable between attaching and sending. The last means this connection was
-opened without a door for files; your words were **not** sent and your tray is still
-yours.
+there. The third means it is on the tray already; the same path twice is one chip. The
+fourth and fifth are the ceilings, and they only ever appear over `--host`. The sixth is a
+file that vanished or became unreadable between attaching and sending. The last means this
+connection was opened without a door for files; your words were **not** sent and your tray
+is still yours.
+
+**A folder is not on this list any more.** `/attach ~/code/thing` used to answer
+`<name> is a folder · attach a file`; it now goes to the folder door and says
+`folder · ~/code/thing`. Dropping a folder on the window still refuses with that old
+sentence — see "Choosing a folder".
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:

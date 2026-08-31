@@ -2918,20 +2918,39 @@ func (a *app) legendRight(width int) string {
 	// line existed, was recoverable only by knowing it was there. So the rest
 	// state of the slot names them both, and neither costs a row: this is the
 	// legend, which is on the frame either way (home.go).
+	// THE SWITCHER IS NAMED WHEREVER IT WOULD ACT, AND ITS CONDITION IS ITS OWN.
+	// `tab last` rides on the home door because both need a door onto a session
+	// ([app.canOpen]); the switcher needs none — it re-points the surface at a
+	// conversation this process is already holding — so a build with no resume
+	// door still has one, and the slot still says so (hop.go).
+	//
+	// IT IS NAMED WHENEVER IT WOULD ACT, AND FROM THE FIRST FRAME. It used to be
+	// held back until three conversations were open, on the reasoning that `tab`
+	// reaches the only other one in a single key — which was true and was the
+	// wrong trade: the card lists every conversation on this machine, not only
+	// the ones already open, so on a fresh session it is the thing that gets you
+	// anywhere at all, and a person who is never told about it never finds it.
+	// THE IDLE SLOT NAMES EVERY DOOR THAT WOULD ACT, IN THE ORDER A PERSON MEETS
+	// THEM: home, the flick back, the switcher, the commands. Each clause is
+	// under its own condition and none of them is under another's — a key that
+	// cannot act says so by not being advertised, and the converse defect is the
+	// one this wave was written to fix: a key that acts and is never named.
+	//
+	// `tab last` needs an empty box, because that is the only state it acts in
+	// (keeper.go's [app.lastConversation]); the switcher needs no box at all and
+	// no door onto sessions, because it re-points the surface at conversations
+	// this machine already has.
+	doors := make([]string, 0, 4)
 	if a.homeDoorShowing() {
-		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
-		// terminal holds only one conversation, which is the emptiness law again:
-		// a key that cannot act says so by not being advertised (keeper.go's
-		// [app.lastConversation]). It sits between the two doors because it is
-		// the same kind of thing — somewhere else to be — and it is dropped first
-		// when the slot is tight, by [app.homeDoorShowing]'s own rule about the
-		// box being empty.
-		if _, ok := a.lastBehind(); ok {
-			return homeDoorWord + " · " + lastDoorWord + " · " + microcopy
-		}
-		return homeDoorWord + " · " + microcopy
+		doors = append(doors, homeDoorWord)
 	}
-	return microcopy
+	if _, ok := a.lastBehind(); ok && a.input.empty() && !a.copy.on && !a.rew.on {
+		doors = append(doors, lastDoorWord)
+	}
+	if a.hopAvailable() {
+		doors = append(doors, hopDoorWord)
+	}
+	return strings.Join(append(doors, microcopy), " · ")
 }
 
 // lastDoorWord advertises the key back to the conversation before this one. It
@@ -2939,6 +2958,12 @@ func (a *app) legendRight(width int) string {
 // it goes to — the conversation you were in last, which is the same promise
 // `cd -` makes.
 const lastDoorWord = "tab last"
+
+// hopDoorWord advertises the switcher, and it names `ctrl+k` rather than the
+// `ctrl+tab` alias because this line is drawn on every terminal and the alias is
+// only real on some of them (hop.go states the whole argument). A hint may only
+// name a key that works.
+const hopDoorWord = hopOpenKey + " switch"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //
