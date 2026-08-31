@@ -1,0 +1,62 @@
+# THE TESTS THAT ARE ALREADY RED, WRITTEN DOWN SO NEW RED STILL MEANS SOMETHING.
+#
+# A suite with fifteen permanent failures is a suite nobody reads, and the
+# sixteenth failure — the one somebody just caused — arrives invisible. So the
+# known ones are listed here by name and skipped, which turns the full run back
+# into a signal: red means this change did it.
+#
+# THIS FILE IS THE DEBT, AND IT IS A DIFF. Every line is a test somebody owes a
+# fix for. Adding a line is allowed and sometimes right, but it is a reviewable
+# line in the same pull request as the reason, never something a passing build
+# quietly acquired. SIZE-BUDGET carries the same rule for bytes.
+#
+# One name per line. Matched as a whole Go test name against the full run in
+# .github/workflows/ci-full.yml. Blank lines and # comments are ignored.
+#
+# Seeded from the list in CLAUDE.md (verified failing on a clean macOS tree,
+# 2026-08-26), then trued up against the first real Linux run on 2026-08-31
+# (actions/runs/33414121900) — which named the four cmd/harness-design tests
+# CLAUDE.md could not spell, and found six more nobody was tracking.
+
+# Fail on a clean tree.
+TestHarnessEntriesFromStore
+TestSettingsSheetIsOneCalmColumnAtEveryWidth
+TestSettingsNavigatesAndEditsEveryKindAndPersists
+TestSettingsRefusesToFightTheEnvironment
+TestRegistryCoversEveryUserFacingEnvironmentPin
+TestEveryGoroutineInTheGuardedTreeIsGuarded
+TestEveryLockInTheGuardedTreeUnlocksFromADefer
+TestEveryMessageWriteUsesThreadPost
+
+# Fails where the temp path is too long for a unix socket. Green on Linux with a
+# short TMPDIR, so this line may well be removable — check before trusting it.
+TestTheSocketMovesWithTheStateRoot
+
+# Flake under full-suite load; pass alone. Rerun in isolation before believing a
+# failure here.
+TestOnlyADesignsOwnThreadCarriesTheReviseVerb
+TestInterruptedTurnDoesNotWakeOnTheNoteItDrained
+
+# The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
+# had only been able to say "four cmd/harness-design tests".
+TestTheGuidesRender
+TestReviewerCarriesTheWholeLaw
+TestBothBriefsSayTheSyntaxIsASCII
+TestTheReviewerBriefCarriesBothDuties
+
+# Fails on macOS AND Linux — a clean-tree red on every platform that nobody had
+# written down anywhere before 2026-08-31. Owed a real fix, not just this line.
+TestTheEnginesStandingStoreAnswersOverTheWire
+
+# Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run
+# locally on 2026-08-31 to confirm). Environment-shaped: whoever picks one up
+# should reproduce on Linux first.
+TestTickWalksTheItemsAndWritesAWakeLine
+TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch
+TestRenderTerrainStaysUnderTheCap
+TestTheFixedPrefixStaysUnderItsBudget
+TestATransientClaimFailureDoesNotEndDispatchForever
+
+# From the second Linux run (2026-08-31, the first in which internal/tui3 ever
+# survived to report): red on the Linux runner, passes on a clean macOS tree.
+TestAPathInsideACorrectionIsADoor

@@ -61,21 +61,38 @@ func TestAWorkerMayNotMoveItsCopyOntoWorkItDidNotDo(t *testing.T) {
 	}
 }
 
-// AND IT MAY NOT REACH ANOTHER MACHINE. A node's working copy is a copy of what
-// the person has; a node that went and got something newer is reporting on a
-// repository nobody asked it about.
+// AND IT MAY NOT REACH ANOTHER MACHINE FOR SOMEBODY ELSE'S WORK. A node's working
+// copy is a copy of what the person has; a node that went and got something newer
+// is reporting on a repository nobody asked it about.
+//
+// THE SENTENCE NO LONGER SAYS "reaches no remote", and that is a repair rather
+// than a rewording: it was said to a worker whose brief pointed at the person's
+// live checkout, where it was simply untrue, and a refusal a model can see
+// through is a refusal it goes around (taskoutside.go carries that whole run).
 func TestAWorkerMayNotReachARemote(t *testing.T) {
 	for _, command := range []string{
 		"git pull", "git pull --rebase origin main", "git fetch --all",
-		"git push origin HEAD", "git remote add upstream https://example.invalid/x.git",
+		"git remote add upstream https://example.invalid/x.git",
 		"git clone https://example.invalid/x.git", "git submodule update --init",
 	} {
 		got := refusedTaskGit(command)
 		if got == "" {
-			t.Fatalf("%q was allowed, want a worker's copy to reach no remote", command)
+			t.Fatalf("%q was allowed, want work this task did not do kept out of its copy", command)
 		}
-		if !strings.Contains(got, "reaches no remote") {
+		if !strings.Contains(got, "work this task did not do") {
 			t.Fatalf("%q was refused with %q, want the refusal to say why", command, got)
+		}
+	}
+}
+
+// AND PUSH IS THE OTHER DIRECTION, which is why it has a sentence of its own: it
+// is not somebody else's work arriving, it is this task's own work leaving past
+// the landing that is the road it comes home on.
+func TestAWorkerDoesNotPushItsOwnWork(t *testing.T) {
+	for _, command := range []string{"git push", "git push origin HEAD", "git push -u origin fix/codeql-54"} {
+		got := refusedTaskGit(command)
+		if !strings.Contains(got, "comes home through its landing") {
+			t.Fatalf("%q was refused with %q, want the refusal to name the road home", command, got)
 		}
 	}
 }

@@ -108,11 +108,19 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// above is the mechanical cut of the person's own opening words — which is
 	// what [taskSpec.named] says, and what sends the cheap namer after it once
 	// the node is running (taskname.go).
-	graph.admit(id, taskSpec{
+	spec := taskSpec{
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, brief: work,
 		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
-	})
+	}
+	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
+	// ladder a proposal gets, because a person who opened aforge in their home
+	// directory and typed `/task fix the crash` is in exactly the position issue
+	// #76 was written about — and the one thing this door cannot do is ask, so it
+	// takes the rung below rather than stopping.
+	stand := a.taskGroundOrStandingIn(spec)
+	spec.ground, spec.mode = stand.dir, stand.mode
+	graph.admit(id, spec)
 	return id, title, nil
 }
 

@@ -572,9 +572,10 @@ the file it just wrote — anything at all after the last save is the reply havi
 itself, and it is then priced like any other short reply. aforge does not try to tell a build
 from a test from a read; it only asks whether the reply stopped on the change or looked at it.
 
-**What bounds it is the same meter as everything else on this page.** Carrying on counts as a
-round, so it climbs the same three points, and a carried-on reply that reaches the third one
-is handed to a task in the ordinary way. There is no separate limit and no number to raise.
+**What bounds it is the same meter as everything else on this page, and one count of its own.**
+Carrying on counts as a round, so it climbs the same three points, and a carried-on reply that
+reaches the third one is handed to a task in the ordinary way. On top of that, one question is
+carried on at most three times — see *Waiting on something, and the limit on carrying on* below.
 
 **A reply that BROKE is never carried on.** Carrying on is for a reply that stopped early,
 and a reply that ended on a **failed request** did not stop early — it broke. A provider
@@ -587,6 +588,55 @@ crews and what things cost* for what the error line says now.
 **And if nobody can be reached, the reply just ends.** No second model configured, a reader
 that faults, a reader that takes too long: each of those ends the reply as it would have
 ended before this existed.
+
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say "carried on 3 times", it turned my wait into a task
+
+**A reply that ends while something IT started is still running is never carried on.** A
+background command, a watch, a video or music render, a forked hand — while any of those is
+still going, the reply is waiting on it exactly the way a reply that ends on a question is
+waiting on you, and pushing it on would only make it poll.
+
+**The ending comes back and starts a new reply by itself.** A background command exiting, a
+render landing, a hand coming home, **a watch firing**: each of those wakes aforge and you get
+the sentence about it without typing anything. So you can start something, close the laptop
+lid on the conversation, and come back to the answer rather than to a card and silence.
+`jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
+
+**A watch is two kinds of news and only one of them wakes you.** Its ordinary updates — the
+new lines in a log, the number that moved — are quiet: they wait for the next thing you say,
+because a reply every time a log grows by a line would be a ticker tape. But the tick that
+**ends** the watch is the answer you started it for, and that one wakes the conversation: the
+line `until` was waiting for appeared, the output went quiet for as long as you asked, or the
+command failed three ticks in a row and the watch gave up. Nothing else will ever come from
+that watch, which is why it is the one that gets said out loud.
+
+**What that fixes, measured.** A conversation waiting for GitHub's checks on two pull requests
+had a watch of its own running over `gh pr checks`, and said so at the end of every reply.
+Nothing knew that "waiting on the world" was an answer, so the reply was read, found unfinished
+— it *was* unfinished — and carried on. Twenty times in five minutes, each one another poll of
+the very command that was going to report, for about a third of a dollar and no progress, until
+the running-long point moved the wait into a task whose done-condition nobody could ever fail.
+
+**A sub-task of your own is deliberately not one of these.** A task landing wakes a reply and
+that reply *is* read for what remains, however short it was — that is the rule in the section
+above, and going quiet while any sub-task was out would take it away from the reply it was
+written for.
+
+**And one question is carried on at most three times.** A reader that answers "still not
+finished" about the same stopped reply three times running has stopped telling aforge anything
+new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen:
+
+```
+carried on 3 times and it is still not finished · stopping here rather than carrying on again
+```
+
+**You are being told the truth when you read that.** aforge asks before it says it, so the
+reply really is unfinished — it is simply yours to pick up now rather than aforge's to push a
+fourth time. There is no number to raise and no setting that turns it off.
+
+**Three carry-ons can never reach the running-long point by themselves.** That point stands at
+forty rounds and carrying on can add three, so a reply that gets handed to a task got there on
+rounds of its own work, which is exactly the reply that point was written for.
 
 ## Every key the proposal card takes
 
@@ -1023,6 +1073,15 @@ column's width. That line is the whole handle back to the work: the number is wh
 `jobs output 3` and `jobs kill 3` take, and the path is a file you can open yourself. A
 session with no folder of its own keeps its logs where they always were, in the
 workspace's own dot directory.
+
+## Stray lines painted over the conversation, the screen glitching while a job runs — a job cannot draw on your chat
+
+**A job cannot draw on your screen.** It runs in its own terminal session, away from the
+window you are looking at, so a command that tries to open the terminal directly — a CLI
+that is itself a full-screen program, a prompt that insists on the keyboard — is refused
+by the system rather than painting its output across your conversation. Everything a job
+says goes to its log and nowhere else; if the chat's own frame ever glitches or shows
+stray lines, it is not a job doing it.
 
 **Once the job has ended the row is one line**, like every other finished row on the
 column, and the log line is folded under it rather than dropped: walk to the row and press
@@ -2293,6 +2352,17 @@ brief, fix a boundary two parts share, fold two parts into one, or say the parts
 stages of one procedure and not a division at all — in which case nothing is split and the
 worker carries on, exactly as a no from either test above. So the parts you see may be fewer
 than the worker asked for, and their briefs may not be word for word what it wrote.
+
+**And it has one more answer, which is not about the split at all.** The mastermind may
+read the work and find that what is left of it **cannot be done by a worker** — an approving
+review only a named person may give, a credential or an account nobody here holds, a
+decision that is yours to make, or a step that is somebody else's system doing something by
+itself. When it says that, the task does **not** start a worker: it lands straight away
+needing your look, with the mastermind's own sentence as its report, and the only thing
+spent on it is that one reading. The next section, *A task that landed needing your look
+without doing anything*, is what you see. This is a deliberate word the mastermind has to
+reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
+this, has refused a division and the worker carries on with the work exactly as above.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -98,7 +99,7 @@ func TestASketchWithPartsIsHandedOutWithoutTheWorkerAsking(t *testing.T) {
 		"A is the flaking auth test, B is the http client major version, C is the release notes for 2.4")),
 		0, reviewer, nil)
 
-	said := nest.node.divideFromSketch(context.Background())
+	said, _ := nest.node.divideFromSketch(context.Background())
 
 	kids := nest.graph.children(nest.parent.id)
 	if len(kids) != 3 {
@@ -212,7 +213,7 @@ func TestAReviewerThatRefusesTheDrawingLeavesOneWorker(t *testing.T) {
 		"A is the flaking auth test, B is the release notes for 2.4")),
 		0, reviewer, nil)
 
-	if said := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
 		t.Fatalf("the worker was told %q about a division nobody admitted", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -278,7 +279,7 @@ func TestASketchOfOneJobHandsNothingOut(t *testing.T) {
 			nest := newDivideNestFrom(t, drawnSpec(batchSketch(shape, "A is the parser, B is the tests, C is the docs")),
 				0, reviewer, nil)
 
-			if said := nest.node.divideFromSketch(context.Background()); said != "" {
+			if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
 				t.Fatalf("a chain was handed out: %q", said)
 			}
 			if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -306,7 +307,7 @@ func TestAnUnarmedTaskIsNeverDividedForByTheHarness(t *testing.T) {
 		t.Fatalf("this work was armed by %q, and the test needs work nobody armed", nest.parent.armedBy())
 	}
 
-	if said := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
 		t.Fatalf("unarmed work was divided for: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -322,10 +323,10 @@ func TestTheDrawingIsPutOnceAndNeverTwice(t *testing.T) {
 		"A is the auth test, B is the release notes")),
 		0, &scriptedCompleter{}, nil)
 
-	if said := nest.node.divideFromSketch(context.Background()); said == "" {
+	if said, _ := nest.node.divideFromSketch(context.Background()); said == "" {
 		t.Fatal("the first ask handed nothing out")
 	}
-	if said := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
 		t.Fatalf("the drawing was put a second time: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 2 {
@@ -342,7 +343,7 @@ func TestABracketedFirstStageHandsOutItsPartsAndKeepsTheStepBehindThem(t *testin
 		"A is the auth test, B is the http client, C is the release notes, D is running the whole suite once")),
 		0, &scriptedCompleter{}, nil)
 
-	said := nest.node.divideFromSketch(context.Background())
+	said, _ := nest.node.divideFromSketch(context.Background())
 
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
 		t.Fatalf("the bracketed stage bore %d parts, want its 3", len(kids))
@@ -361,7 +362,7 @@ func TestADrawnDivisionNobodyCanPickUpIsRefusedLikeAnyOther(t *testing.T) {
 		"A is the auth test, B is the release notes")),
 		1, &scriptedCompleter{}, nil)
 
-	if said := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
 		t.Fatalf("a session that runs one task at a time handed parts out: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -591,4 +592,149 @@ func TestAChainPieceIsNamedFromEveryLetterInIt(t *testing.T) {
 	if got := sketchSaid("(A > B)", segments); got != "the slugify module, then its test file" {
 		t.Fatalf("bracketed chain named %q", got)
 	}
+}
+
+// ── work only a person can do ───────────────────────────────────────────────
+//
+// THE MEASURED FAILURE. On 2026-08-31 a task arrived whose whole remainder was
+// `(A | B) > C` — approve PR #1018, approve PR #1019, and then the merge queue
+// merging both by itself. The reviewer read the drawing and answered, in the
+// journal, verbatim: "Nothing here can actually be divided or done by a worker:
+// A and B are the same single action — an approving review GitHub will only
+// accept from a human who isn't the author — and C is just the merge queue and
+// CodeQL re-scan happening on their own afterward."
+//
+// It was right, it cost two cents, and it arrived before the node had spent
+// anything. It was then thrown away: the division was journalled `refused:review`
+// and the worker ran anyway — nine minutes, $1.24 over the run, the check, a
+// repair round and the check again, spent fixing a file in an empty repository
+// while it looked for something it could do, and failed by the check at the end.
+
+// AND THE FIRST LAW OF THIS ROAD IS THE ONE THAT KEEPS IT SAFE: A REVIEWER BEING
+// CAUTIOUS MUST NEVER PARK DOABLE WORK ON SOMEBODY.
+//
+// The two answers are one sentence apart in prose — "these parts are really one
+// job" and "nobody here can do this" are both a refusal explaining itself — and
+// they are not one sentence apart in what they do. So the finding is a FIELD the
+// reviewer has to reach for, never a reading of its words, and everything it
+// merely says is an ordinary refusal that leaves one worker carrying on. This
+// test is written first because it is the whole reason the field exists.
+func TestACautiousRefusalStillLeavesOneWorkerToDoTheWork(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		why  string
+	}{
+		{"it reads them as one job", "these are stages of one job"},
+		{"it will not have the boundary", "parts 2 and 3 are the same file"},
+		// THE WORDS OF THE OTHER ANSWER, WITHOUT THE ANSWER. A reviewer that says
+		// this and does not reach for the field has refused a division, and the
+		// work is still work: a road that read the sentence would stop it here.
+		{"it says the shape of the other answer without giving it",
+			"nobody could split this sensibly and a person should really look at it"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reviewer := &divideReviewer{answer: `{"refuse": true, "why": "` + test.why + `"}`}
+			nest := newDivideNestFrom(t, drawnSpec(batchSketch("A | B",
+				"A is the auth test, B is the release notes")), 0, reviewer, nil)
+
+			said, person := nest.node.divideFromSketch(context.Background())
+
+			if person != "" {
+				t.Fatalf("a refusal that only said %q parked the work on a person: %q", test.why, person)
+			}
+			if said != "" {
+				t.Fatalf("a refused division told the worker %q, want it to start as it always did", said)
+			}
+			if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+				t.Fatalf("a refused division still bore %d parts", len(kids))
+			}
+			divisions := journaledDivisions(t, nest.journal)
+			if len(divisions) != 1 || divisions[0].Decision != divisionRefusedReview {
+				t.Fatalf("the journal reads %+v, want an ordinary refused division", divisions)
+			}
+		})
+	}
+}
+
+// AND THE MEASURED SHAPE STOPS BEFORE A WORKER IS STARTED. The reviewer's own
+// sentence comes back out, no parts are admitted, and the record says which
+// finding this was — because a task sitting on a person is not the same fact as
+// a division a mastermind read as one job.
+func TestWorkNoWorkerCanDoIsHandedBackInsteadOfStarted(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"refuse": true, "nobody": true, "why": ` +
+		strconv.Quote(measuredHumanOnlyFinding) + `}`}
+	nest := newDivideNestFrom(t, drawnSpec(batchSketch("(A | B) > C",
+		"A is approving PR #1018, B is approving PR #1019, C is the merge queue merging both")),
+		0, reviewer, nil)
+
+	said, person := nest.node.divideFromSketch(context.Background())
+
+	if person == "" {
+		t.Fatal("the reader said no worker could do this and the node was started anyway")
+	}
+	// THE READER'S OWN WORDS, because the difference between "somebody has to
+	// approve this" and "somebody has to give you an account" is the whole of
+	// what the person is being handed.
+	if !strings.Contains(person, "an approving review GitHub will only accept from a human") {
+		t.Fatalf("the person is handed %q, and not what the reader actually found", person)
+	}
+	// AND NOT THE RECORD'S OWN BOOKKEEPING, which the journal keeps and a card
+	// does not.
+	if strings.HasPrefix(person, "refused") {
+		t.Fatalf("the person's own job is handed over as %q", person)
+	}
+	if said != "" {
+		t.Fatalf("a worker was told %q about parts that do not exist", said)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts were admitted for work no worker can do", len(kids))
+	}
+	divisions := journaledDivisions(t, nest.journal)
+	if len(divisions) != 1 || divisions[0].Decision != divisionRefusedNobody {
+		t.Fatalf("the journal reads %+v, want the person named as what this came to", divisions)
+	}
+	if !strings.Contains(divisions[0].Error, "an approving review GitHub will only accept") {
+		t.Fatalf("the record keeps %q and not the reason", divisions[0].Error)
+	}
+	// AND NOTHING WAS SPENT BUT THE READING ITSELF. One call — the reader's —
+	// which is the whole of what this road costs when it stops the work.
+	if spent := nest.node.Usage(); spent.Calls != 1 {
+		t.Fatalf("stopping the work took %d calls, want the one reading", spent.Calls)
+	}
+}
+
+// measuredHumanOnlyFinding is what the reader actually wrote on 2026-08-31,
+// copied out of the journal. It is here rather than paraphrased because what is
+// under test is a real answer's shape, and a tidied one would be a test about
+// prose somebody wrote for it.
+const measuredHumanOnlyFinding = "Nothing here can actually be divided or done by a worker: A and B are the same single action — an approving review GitHub will only accept from a human who isn't the author — and C is just the merge queue and CodeQL re-scan happening on their own afterward. The one real job left is to escalate the approval blocker to the user and then verify the merge and alert closure, and that is one pair of hands, not three."
+
+// AND A WORKER THAT IS ALREADY RUNNING IS TOLD TO STOP RATHER THAN TO CARRY ON.
+// It cannot be unspent — that is what the road above is for — but "carry on with
+// the work in your own hands", which is what every other refusal here says and
+// what this one used to say, is the instruction that produced the fix to a file
+// in an empty repository.
+func TestAWorkerThatAsksIsToldToStopAndSaySoRatherThanCarryOn(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"refuse": true, "nobody": true, "why": "only a person can approve these pull requests"}`}
+	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(issueEvidence, 2))
+
+	if !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want the same refusal shape the gates use", answer)
+	}
+	if !strings.Contains(answer, "it needs a person") {
+		t.Fatalf("the worker is told %q and never that this needs somebody", answer)
+	}
+	if !strings.Contains(answer, "only a person can approve these pull requests") {
+		t.Fatalf("the worker is told %q and never what the reader found", answer)
+	}
+	if strings.Contains(answer, "Carry on with the work in your own hands") {
+		t.Fatalf("the worker is told to carry on with work nobody can do: %q", answer)
+	}
+	if !strings.Contains(answer, "say so in your report") {
+		t.Fatalf("the worker is told %q and never to hand it back", answer)
+	}
+	// THE VOCABULARY LAW: a person reads this over the worker's shoulder.
+	assertPlainWords(t, "what the worker is told about work only a person can do", answer)
 }

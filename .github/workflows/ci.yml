@@ -1,0 +1,131 @@
+name: PR gate
+
+# THE LIGHT GATE, AND IT IS DELIBERATELY LIGHT. Work moves into `dev` many
+# times a day, much of it written by agents, and a gate that takes fifteen
+# minutes is a gate people learn to route around. So this one asks only the
+# questions whose answer is always the same on every machine and whose failure
+# always means somebody broke something: does the tree compile, does vet find a
+# real bug, and does the manual still know about the feature that just landed.
+#
+# The whole suite is not here. It runs on the way into `staging`, and nightly
+# against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
+# in that place and what has to be true before it moves.
+on:
+  pull_request:
+    branches:
+      - dev
+  # Also on the push, because a merge of two individually-green branches can
+  # still be red, and the merge is exactly the moment nobody is watching.
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The name of this job is the name of the required status check in
+  # .github/rulesets/dev.json. Renaming it silently un-protects the branch, so
+  # the two move together or not at all.
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The changelog check compares against the base of the pull request,
+          # which a shallow clone does not contain.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Several sessions work this tree at once and a half-finished file breaks
+      # the build for everyone. This is the cheapest way to find that out, and
+      # the one failure that blocks every other kind of work.
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # THE PACKED CORPORA ARE GENERATED FROM THE FOLDERS. A page edited without
+      # a build ships yesterday's manual, so regenerate and demand the tree come
+      # back clean. The packer is a pure function of the folder — an identical
+      # folder rewrites identical bytes — so a diff here means a real drift.
+      - name: The packed corpora match their folders
+        run: |
+          set -euo pipefail
+          go generate ./internal/manual ./internal/swepro/internal/baked ./internal/swepro/internal/assets
+          if ! git diff --exit-code; then
+            echo
+            echo 'A packed corpus disagrees with the folder it is generated from.'
+            echo 'Run `make build` (or `make embed`) and commit the regenerated'
+            echo '.pack.gz beside the Markdown you changed.'
+            exit 1
+          fi
+
+      # THE CHANGELOG CARRIES WHAT A DIFF CANNOT — which of the things somebody
+      # believes about this repository stopped being true. It is checked here
+      # because it is worth nothing written later: the only moment the author
+      # knows they contradicted a page is the moment they went and edited it.
+      #
+      # Two seconds, and the cost of complying is one file with three fields.
+      # `kind: internal` with just a title is a legitimate entry; the
+      # `no-changelog` label is the way out for a typo in a comment.
+      # docs/rules/changelog.md is the rule.
+      - name: The change is written down
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PRNUM: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          go run ./cmd/aforge-changes check
+          if git diff --name-only --diff-filter=A "$BASE" HEAD \
+               -- 'docs/changes/unreleased/*.md' | grep -q .; then
+            echo "This pull request adds a change entry."
+            exit 0
+          fi
+          cat <<'MSG'
+
+          This pull request adds no entry in docs/changes/unreleased/.
+
+          The changelog here is written for whoever reads the repository next,
+          and increasingly that is a model with a fortnight-old memory of it. Its
+          job is to say what somebody now believes WRONGLY — the branch that
+          stopped existing, the default that moved, the refusal that became a
+          capability. No tool can derive that from a diff, which is why it is
+          asked for here.
+
+          MSG
+          # The number is spelled out so the command pastes unedited — a message
+          # that can be pasted unedited is a message that gets pasted.
+          echo "  make changelog-new PR=${PRNUM} KIND=changed SLUG=<a-short-slug>"
+          cat <<'MSG'
+
+          Kinds: added changed renamed fixed removed internal. A one-line
+          `kind: internal` entry is perfectly legitimate and takes ten seconds.
+          If this really is a typo in a comment, add the `no-changelog` label.
+
+          docs/rules/changelog.md says what belongs in the fields.
+          MSG
+          exit 1
+
+      # THE MANUAL LAW, ENFORCED HERE BECAUSE IT IS THE LAW AGENTS BREAK MOST.
+      # A feature that ships without its page is a feature the running chat will
+      # deny having. These are the three gates CLAUDE.md names — every slash
+      # command and alias, every tool on the belt, every probe question still
+      # reaching the page that answers it — and they cost six seconds.
+      - name: The manual knows about the features
+        run: |
+          set -euo pipefail
+          go test ./internal/manual/
+          go test -run 'Manual' ./internal/tui3/ ./internal/session/

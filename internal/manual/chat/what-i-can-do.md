@@ -362,7 +362,8 @@ Arguments: `command` (required), `every_seconds`, `on` (`change`, `match`,
   moved — see the next section.
 - The first tick of `change`, `match` and `quiet` is silent — it is the baseline.
 - `until` is checked on every tick including the first, and the first matching
-  line ends the watch.
+  line ends the watch — and that last note wakes the conversation, so you are
+  told without having to type.
 
 The interval defaults to **10s**, with a **2s** minimum and a **3600s** maximum;
 out-of-range values are clamped, not refused. One tick is bounded by the smaller
@@ -376,17 +377,49 @@ with `jobs kill`. Starting one answers
 **At most 3 watches run at once.** Over that:
 `this session already has 3 watches running, which is the limit — stop one with jobs kill first, or use bash background:true for a command that ends on its own`
 
-Three identical failures in a row end a watch. Watch updates never interrupt a
-running turn and do not wake an idle session. At the next turn boundary they
-arrive as one compact item such as
+Three identical failures in a row end a watch. An ordinary update never
+interrupts a running turn and never wakes an idle session. At the next turn
+boundary they arrive as one compact item such as
 `codex-jobs watch: 3 updates — latest: 7 lines new — fixed the parser`; every
-tick remains available through `jobs output`. Watches die with the session like
-any other job.
+tick remains available through `jobs output`. **The tick that ENDS the watch is
+different and it does wake you** — see the next section. Watches die with the
+session like any other job.
 
 For something that has to keep an eye on the world **after** this window is
 closed — "tell me when CI goes red", "every Monday draft the update", "keep main
 green" — a watch is the wrong tool and there is a right one: see the
 keeping-an-eye page.
+
+## Will it tell me when the watch finishes if I walk away — does a watch wake the conversation, or do I have to type first?
+
+**A watch's ordinary updates are quiet, and the tick that ends it speaks.**
+
+An update — the new lines in a log, the number that moved, a line matching your
+pattern — waits for the next thing you say. That is deliberate: a reply every
+time a log grows by a line would be a ticker tape, and every tick is already in
+`jobs output` if it is wanted.
+
+**The tick that ends the watch wakes the conversation, with nobody typing.** A
+watch ends in exactly three ways, and all three are the answer you started it
+for:
+
+- the line `until` was waiting for appeared,
+- the output went quiet for as long as you asked (`on=quiet`),
+- the command failed three ticks in a row and the watch gave up.
+
+When one of those happens, aforge starts a reply by itself carrying that final
+note, so you get the sentence about it rather than a job row that quietly went
+grey. Start a watch over `gh pr checks`, walk away, and you come back to "the
+checks are green on both pull requests" — not to a conversation that learned it
+and said nothing.
+
+Nothing further ever comes from that watch: it is over, which is exactly why its
+last note is the one worth waking for. `jobs list` no longer shows it running,
+and its whole tick history stays at `jobs output <id>`.
+
+A background command exiting, a video or music render landing and a forked hand
+coming home wake a reply the same way. The tasks page has the rest of it under
+*Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?
 
@@ -413,7 +446,8 @@ Linking target/release/app
 ```
 
 — the terms that were met, then the last non-empty line the command was still
-printing. Nothing more comes from that watch afterwards.
+printing. Nothing more comes from that watch afterwards, and that note **starts a
+reply by itself** rather than waiting for you to type.
 
 **`on` is one mode, not a set of them.** `quiet` cannot be combined with
 `change`, `match` or `always`, and asking for `quiet_ticks` in any other mode is

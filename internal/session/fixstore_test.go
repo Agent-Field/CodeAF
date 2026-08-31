@@ -155,7 +155,11 @@ func TestAStoreRemembersAFixAcrossAReopen(t *testing.T) {
 	path := filepath.Join(directory, fixesFileName)
 	signature, _ := fixSignature("bash", "ugrep: error at position 5 (empty (sub)expression)")
 
+	// Twice, because one watched pairing is an adjacency and is never offered
+	// (fixremedy.go). What this test is about is that the count crosses the
+	// process boundary.
 	first := newFixStore(path)
+	first.confirm(signature, "grep -F '(sub)' .")
 	first.confirm(signature, "grep -F '(sub)' .")
 
 	if _, err := os.Stat(path); err != nil {
@@ -196,20 +200,22 @@ func TestAStoreOffersOnlyTheBestPatch(t *testing.T) {
 	signature, _ := fixSignature("bash", "no space left on device while linking")
 
 	for i := 0; i < 5; i++ {
-		store.confirm(signature, "the good one")
+		store.confirm(signature, "go clean -cache")
 	}
-	store.confirm(signature, "the thin one")
-	store.confirm(signature, "the beaten one")
-	store.blame(signature, "the beaten one")
-	store.blame(signature, "the beaten one")
+	store.confirm(signature, "go mod tidy")
+	store.confirm(signature, "go mod tidy")
+	for i := 0; i < 2; i++ {
+		store.confirm(signature, "go build ./...")
+		store.blame(signature, "go build ./...")
+	}
 
 	found := store.consult(signature)
 	if len(found) != fixAdviceLimit {
 		t.Fatalf("at most %d patches may be offered; got %d", fixAdviceLimit, len(found))
 	}
-	// 5/5 and 1/1 tie on ratio; the confirmations break it, which is the whole
-	// reason the tiebreak exists.
-	if found[0].Fix != "the good one" {
+	// 5/5 and 2/2 tie on ratio; the confirmations break it, which is the whole
+	// reason the tiebreak exists. The third is 2/4 and is under the ratio.
+	if found[0].Fix != "go clean -cache" {
 		t.Fatalf("the best patch should win; got %q", found[0].Fix)
 	}
 }
@@ -258,7 +264,8 @@ func TestTheStoreCountsWhatItWasAskedAndWhatItAnswered(t *testing.T) {
 
 	known, _ := fixSignature("bash", "ugrep: error at position 5 (empty (sub)expression)")
 	unknown, _ := fixSignature("bash", "something nobody has ever seen before here")
-	store.confirm(known, "grep -F")
+	store.confirm(known, "grep -F '(sub)' .")
+	store.confirm(known, "grep -F '(sub)' .")
 	store.consult(known)
 	store.consult(unknown)
 	store.consult(unknown)
@@ -319,7 +326,8 @@ func TestAnUnwritableStoreIsSilent(t *testing.T) {
 	}
 	store := newFixStore(filepath.Join(blocked, "under", fixesFileName))
 	signature, _ := fixSignature("bash", "some error worth keying on here")
-	store.confirm(signature, "the fix")
+	store.confirm(signature, "go build ./...")
+	store.confirm(signature, "go build ./...")
 	if found := store.consult(signature); len(found) != 1 {
 		t.Fatal("the in-memory store should still work when the disk refuses")
 	}
@@ -435,11 +443,11 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	global := newFixStore(filepath.Join(root, "v3", fixesFileName))
 	elsewhere, _ := fixSignature("bash", "dyld: Library not loaded libssl")
 	for i := 0; i < 2; i++ {
-		global.confirm(elsewhere, "brew reinstall openssl")
+		global.confirm(elsewhere, "go mod download")
 	}
 	fresh := newFixShelf(filepath.Join(root, "v3", "projects", "another-workspace"))
 	advice := fresh.consult(elsewhere)
-	if len(advice) != 1 || advice[0].patch != "brew reinstall openssl" {
+	if len(advice) != 1 || advice[0].patch != "go mod download" {
 		t.Fatalf("the machine store should answer where the project cannot: %+v", advice)
 	}
 	if advice[0].from != fresh.global {
@@ -449,10 +457,12 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	// And the project's answer wins where both have one.
 	project := newFixShelf(bucket)
 	both, _ := fixSignature("bash", "some error both stores know about")
-	project.project.confirm(both, "the project answer")
-	project.global.confirm(both, "the machine answer")
+	for i := 0; i < 2; i++ {
+		project.project.confirm(both, "go test ./internal/...")
+		project.global.confirm(both, "go test ./...")
+	}
 	answered := project.consult(both)
-	if len(answered) != 1 || answered[0].patch != "the project answer" {
+	if len(answered) != 1 || answered[0].patch != "go test ./internal/..." {
 		t.Fatalf("the project should be asked first: %+v", answered)
 	}
 }
@@ -468,7 +478,8 @@ func TestAShelfWithNoProjectStillHasTheMachineStore(t *testing.T) {
 		t.Fatal("every session has the machine's store")
 	}
 	signature, _ := fixSignature("bash", "an error worth keying on here")
-	shelf.confirm(signature, "the fix", false)
+	shelf.confirm(signature, "go build ./...", false)
+	shelf.confirm(signature, "go build ./...", false)
 	if advice := shelf.consult(signature); len(advice) != 1 {
 		t.Fatal("the machine store should still answer")
 	}

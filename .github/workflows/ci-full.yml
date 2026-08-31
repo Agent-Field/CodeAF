@@ -1,0 +1,205 @@
+name: Full check
+
+# THE HEAVY GATE, AND IT SITS BETWEEN `dev` AND `staging` ON PURPOSE. Work
+# reaches `dev` fast and lightly checked, which is the right trade while people
+# are building; the price of that trade is that `dev` is not trustworthy on its
+# own. This is where the price is paid — before a commit is promoted to the
+# branch other people install and use.
+#
+# It also runs nightly against `dev`, because the failure this repository
+# actually suffers is not "the pull request was bad" but "the merge of two good
+# pull requests was bad", and nobody is watching at the moment of the merge.
+# A nightly run names the day something started being broken.
+#
+# docs/rules/ci.md says which of these are required to merge and what has to be
+# true before the rest join them.
+on:
+  pull_request:
+    branches:
+      - staging
+  push:
+    branches:
+      - staging
+  schedule:
+    # 09:00 UTC, which is the small hours in California and the morning in India
+    # — a result waiting on both desks rather than a run nobody sees finish.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-check-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # THE WHOLE SUITE, MINUS WHAT IS ALREADY OWED. .github/known-red.txt lists the
+  # tests that fail on a clean tree; they are skipped here so that red in this
+  # job means this change caused it. The ledger is the debt and shrinking it is
+  # the work — see the file's own header.
+  #
+  # IN THREE SHARDS, BECAUSE THE MACHINE IS SMALL AND THE BINARIES ARE NOT. A
+  # free-plan private repository gets a two-core, seven-gigabyte runner, and this
+  # repository's test binaries are heavy — internal/tui3's links most of the
+  # product. The suite's first run died of exactly that: every package result in
+  # by seven minutes except the eight link-heaviest, then thirteen silent
+  # minutes, then the runner itself was shut down under it. Test time was never
+  # the problem — 483 seconds across 82 packages — the peak was. Three machines
+  # holding a third of the load each stay comfortably inside their memory, and
+  # the suite's wall clock becomes compile-plus-a-few-minutes.
+  #
+  # The split is round-robin over `go list` order, computed at run time. Not a
+  # hand-kept list of packages per shard: a list would go stale with the next
+  # package added, and stale here means silently untested.
+  full-tests-shard:
+    name: full tests ${{ matrix.shard }}/3
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # A short TMPDIR, because at least one test builds a unix socket under it
+      # and the default runner path is long enough to overflow the 104-byte
+      # sun_path limit. Cheaper to give it room than to skip the test.
+      #
+      # The eight-minute -timeout is per test binary and exists so that a hang
+      # says which package hung — the alternative was the thirteen silent
+      # minutes above, which named nothing.
+      - name: Test
+        env:
+          TMPDIR: /tmp/aforge-ci
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          skip="$(grep -v -e '^#' -e '^[[:space:]]*$' .github/known-red.txt | paste -sd'|' -)"
+          # internal/swepro is excluded the same way the Makefile excludes it —
+          # it arrived with its own failures and fixing them was not on the way
+          # in. internal/swepro/EMBEDDING.md is the to-do.
+          pkgs="$(go list ./... | grep -v '/internal/swepro/' | awk -v s="$SHARD" 'NR % 3 == s')"
+          echo "shard ${SHARD}: $(echo "$pkgs" | wc -l) packages, skipping ${skip}"
+          # -p 1: ONE PACKAGE AT A TIME WITHIN A SHARD. The second full run died
+          # the same way as the first — a runner shutdown with slow packages in
+          # flight and no Go timeout — after sharding had already cut each
+          # machine's load to a third. Halving the peak again by serialising is
+          # the experiment that settles whether the killer is memory: if a shard
+          # still dies at -p 1, it is not, and the package that was running is
+          # the suspect by name. The shards keep the wall clock acceptable
+          # while each one runs serial.
+          go test -p 1 -timeout 8m -skip "^(${skip})$" $pkgs
+
+  # ONE NAME FOR THE THREE, for the same reason cross build has one below: a
+  # branch rule can only require a name it can spell, and a matrix's legs are
+  # not spellable in advance.
+  full-tests:
+    name: full tests
+    needs: [full-tests-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        run: |
+          set -euo pipefail
+          result='${{ needs.full-tests-shard.result }}'
+          echo "full tests shards: ${result}"
+          [ "$result" = "success" ]
+
+  # EVERY PLATFORM THE PRODUCT SHIPS ON, COMPILED. This is the one gate here
+  # whose answer is identical on every machine and every run, so it is the one
+  # that blocks a promotion. A build tag or a syscall that only exists on Linux
+  # is invisible on the laptop that wrote it and obvious here.
+  cross-build-matrix:
+    # One check per target, so a red one names the platform it broke on.
+    name: cross build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+  # ONE NAME FOR THE SIX. A matrix publishes its checks as `cross build (linux,
+  # arm64)` and so on, and a branch rule can only require a name it can spell —
+  # adding a target would silently leave the new one unrequired. This job is the
+  # spellable name: it is green only when every leg of the matrix was.
+  cross-build:
+    name: cross build
+    needs: [cross-build-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every target built
+        run: |
+          set -euo pipefail
+          result='${{ needs.cross-build-matrix.result }}'
+          echo "cross build matrix: ${result}"
+          [ "$result" = "success" ]
+
+  # TWO MACHINES, ACTUALLY TWO — three containers sharing no path, no home and
+  # no credential, so a session that only works because both halves happen to be
+  # one filesystem fails here. The Makefile calls this a nightly or pre-release
+  # gate rather than an every-change one, and this is that nightly.
+  remote:
+    name: remote
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Two machines
+        run: make test-remote
+
+  # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET was set on
+  # linux/arm64 with the toolchain of the day, and this runner is linux/amd64,
+  # so the two numbers are not comparable and a hard compare here would be red
+  # for a reason nobody caused. It prints both so the drift is visible; making
+  # it block means first agreeing which architecture the budget is measured on.
+  size:
+    name: size (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Weigh the binary
+        run: |
+          set -euo pipefail
+          make build
+          actual="$(stat -c%s bin/aforge)"
+          budget="$(cat SIZE-BUDGET)"
+          printf 'bin/aforge on linux/amd64: %s bytes. SIZE-BUDGET (set on linux/arm64): %s.\n' \
+            "$actual" "$budget"

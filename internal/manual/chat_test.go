@@ -65,6 +65,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// windows on one chat, but this chat, here, now.
 		{"continue this chat in another terminal", "sessions-and-rewind"},
 		{"where are my conversations saved", "sessions-and-rewind"},
+		// A secret that reached a tool result, asked the two ways it is asked:
+		// before it happens, by somebody deciding whether to trust the thing, and
+		// after it happens, by somebody who has just watched a token go past.
+		{"does aforge save my API keys", "sessions-and-rewind"},
+		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
@@ -139,6 +144,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// WHICH PROJECT THE WORK IS ABOUT, asked the four ways people meet it: the
+		// plain question, the conversation opened in the wrong place, the wish to
+		// send work somewhere else, and the complaint after it went wrong.
+		{"which folder does a task work in", "how-tasks-run"},
+		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
+		{"can a task work in a different repo", "how-tasks-run"},
+		{"my task worked in the wrong project", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.
@@ -162,6 +174,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the way a person who has not read it asks.
 		{"my task says lost the connection what does that mean", "how-tasks-run"},
 		{"task went in circles", "how-tasks-run"},
+		// Written from a real run: a worker whose last six calls were distinct,
+		// successful git commands was cut off and its row said it had gone in
+		// circles. Both halves of the correction have to be findable — the word
+		// under the row, and the note the worker was actually being handed.
+		{"it said going in circles but it was working", "how-tasks-run"},
+		{"what does the silent note mean", "keys"},
 		{"what does the exclamation mark next to a task mean", "how-tasks-run"},
 		{"task blocked by another task", "how-tasks-run"},
 		{"why does it say not accepted under my task", "how-tasks-run"},
@@ -170,6 +188,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// copy onto main and reported somebody else's fixes as its own.
 		{"why is my task waiting on its parts", "how-tasks-run"},
 		{"can a task run git pull", "how-tasks-run"},
+		// The two stages a person waits through with the work not obviously
+		// moving. They are asked in front of a card that has only just appeared
+		// and a status line nobody has read before, so they are asked in the
+		// words on the screen and in the words of somebody who thinks it hung.
+		{"my task says sizing the work", "how-tasks-run"},
+		{"task appeared and then nothing happened", "how-tasks-run"},
+		{"how long does sizing the work take", "how-tasks-run"},
+		{"what does briefing a worker mean", "how-tasks-run"},
+		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
+		// WHERE a task may write, which is a different question from WHOSE work
+		// it may take — and the one a person asks after reading a refusal that
+		// named a directory they recognise.
+		{"can a task edit files in another repo", "how-tasks-run"},
+		{"why did the task say outside your copy", "how-tasks-run"},
+		{"my task wrote in the wrong repository", "how-tasks-run"},
+		{"can a task push or open a PR", "how-tasks-run"},
+		{"why can a task not push", "how-tasks-run"},
+		{"is a task allowed to use gh api", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
 		// Written from a real run: a task made a symlink so a scorer would find
@@ -179,6 +215,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the check run", "how-tasks-run"},
 		{"why did my task fail on a file it says it created", "how-tasks-run"},
 		{"does the checker see the files my task installed", "how-tasks-run"},
+		// Written from a real run: the worker's last line scrolled past and then
+		// the card said nothing for minutes while a check and a round ran, and
+		// the person watching concluded the work had hung.
+		{"task says checking what it left", "how-tasks-run"},
+		{"closing gaps what does that mean", "how-tasks-run"},
+		{"the task finished but the card is still busy", "how-tasks-run"},
+		{"my task went quiet after the last line", "how-tasks-run"},
+		{"what does round 1 of 1 mean under my task", "how-tasks-run"},
+		{"why does my task say not done under it", "how-tasks-run"},
 		// Written from a real run: a task was landed, lost bash, read and grep to
 		// the landing turn, was answered "Unknown tool" eight times, was nudged
 		// three times for the retries that answer invited, and then saved two
@@ -271,6 +316,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// jobs tool, so these have to land on the page that owns the column.
 		{"why is nothing showing on the right while a command is running", "tasks"},
 		{"does a background job show up on the task column", "tasks"},
+		{"the job is drawing over my chat", "tasks"},
+		{"stray lines painted over the conversation", "tasks"},
 		{"what is the row for my dev server on the right", "tasks"},
 		{"can I stop a background job from the sidebar", "tasks"},
 		{"do you ask before running rm", "permissions"},
@@ -423,6 +470,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+g do", "keys"},
 		{"tell me when the build stops changing", "what-i-can-do"},
 		{"how do I know when something has finished", "what-i-can-do"},
+		// The wave that made a watch's LAST tick wake the conversation. Both are
+		// asked by somebody deciding whether they can walk away from a watch they
+		// just started, which is the only reason to start one.
+		{"will it tell me when the watch finishes if I walk away", "what-i-can-do"},
+		{"does a watch wake the conversation or do I have to type first", "what-i-can-do"},
 
 		// The streams wave. Every one of these was asked with a running job on
 		// screen and a model that either could not see it or was burning turns

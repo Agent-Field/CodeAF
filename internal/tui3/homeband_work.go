@@ -114,6 +114,14 @@ func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width i
 		detail := outcome
 		if word == taskRecordRunsWord {
 			detail = strings.TrimSpace(entry.Activity)
+			// AND WHEN THE NODE IS NOT ITS OWN WORKER, THAT IS THE MORE HONEST
+			// LINE. The activity is what the node's room last did, and a check
+			// runs outside the room — so through the minutes of a check and a
+			// repair round this row would quote a call that finished before
+			// either started (taskphase.go).
+			if phase := taskPhaseWords(entry.Phase, 0, 0); phase != "" {
+				detail = phase
+			}
 		}
 		if detail != "" {
 			lead += " · " + detail

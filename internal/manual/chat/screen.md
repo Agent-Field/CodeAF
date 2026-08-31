@@ -2216,6 +2216,18 @@ The same words also ride the status line beside your model, where they take the 
 `via <machine>` for as long as the turn is running (see *Models, context, and what it
 costs*).
 
+**A turn also has waits of its own, between requests**, and they use the same line and the
+same clock:
+
+| The word | What is happening |
+|---|---|
+| `running <tool>` | one call on the belt is executing |
+| `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work |
+| `tidying` | the conversation is being compacted |
+| `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
+
+Each of them is taken off the screen the moment the wait ends.
+
 ## It says thinking and nothing is on the screen — is it stuck, is it frozen, why is it slow, and what still working means
 
 `thinking` means the model is writing and none of what it writes is for you. Reasoning

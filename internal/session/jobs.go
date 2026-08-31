@@ -318,10 +318,18 @@ type jobRegistry struct {
 	// has no idea what a turn is — it reports, and the lane decides whether
 	// anybody has to answer.
 	notify func(string)
-	// notifyWatch carries watch updates to the AMBIENT lane. It is separate
-	// because a periodic tick must never interrupt a running model turn, while a
-	// job ending after the model was told to wait remains owed.
-	notifyWatch func(string, string)
+	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
+	// IS: false for a periodic tick, true for the tick that ENDED the watch —
+	// `until` matched, the output went quiet, the command failed its way out
+	// (tools_watch.go's [jobRegistry.watchTick]).
+	//
+	// The split is here rather than at the lane's door because this is the only
+	// place that knows the difference. A tick is telemetry with a complete log
+	// behind it and must never interrupt a running turn; the FIRING is the answer
+	// to the question the watch was started for, and it is the last thing that
+	// watch will ever say — so it is owed exactly as a process job's exit is, and
+	// agent.go's lane reads this bool to decide which of the two it queues.
+	notifyWatch func(string, string, bool)
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -352,7 +360,7 @@ type jobRegistry struct {
 	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string)) *jobRegistry {
+func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
 	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
 	if len(watch) > 0 {
 		registry.notifyWatch = watch[0]
@@ -485,10 +493,16 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	process := exec.Command(shell, shellArgs...)
 	process.Dir = r.workspace
 	process.Env = bare.StreamingEnv()
-	// Setpgid puts the job and everything it spawns in one process group, so a
-	// kill reaches the whole tree. A dev server that forks a compiler must not
-	// survive the kill of its parent.
-	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Setsid puts the job and everything it spawns in one process group, so a
+	// kill reaches the whole tree — the leader of a new session leads its own
+	// group, so every `kill -pgid` here works exactly as it did under Setpgid.
+	// A dev server that forks a compiler must not survive the kill of its
+	// parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty, so
+	// a child that opens /dev/tty — a CLI that is itself a screen, a prompt
+	// that insists on the keyboard — is refused instead of painting over the
+	// person's frame. That was measured, not imagined: two review CLIs run as
+	// jobs drew their own output across the top of a running conversation.
+	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 
@@ -1017,6 +1031,14 @@ func (s *jobSink) text() string {
 // skipped because a job whose last write was a newline still has something to
 // say about how it went.
 func (s *jobSink) lastNonEmptyLine() string {
+	// A JOB WITH NO SINK HAS SAID NOTHING, and this reads as exactly that. The
+	// footer walks every live row (jobfooter.go's runningFooter), and a row
+	// built without a sink used to take this call as a nil-pointer panic that
+	// the guard then swallowed — eighteen recovered faults per test run, each
+	// one a tool result silently losing its footer.
+	if s == nil {
+		return ""
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lines := strings.Split(string(s.ring), "\n")

@@ -1004,6 +1004,12 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	if spec.summary == "" {
 		spec.summary = spec.title
 	}
+	// AND WHERE THE WORK STANDS (taskstands.go), on the same ladder every other
+	// door climbs. This door cannot ask anything either — the person is told
+	// afterwards that work began — so an evidence that will not settle falls back
+	// to the workspace, which is what this card has always used.
+	stand := a.taskGroundOrStandingIn(spec)
+	spec.ground, spec.mode = stand.dir, stand.mode
 	state := graph.admit(id, spec)
 	word := "started"
 	if state == TaskQueued {

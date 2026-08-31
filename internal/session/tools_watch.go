@@ -28,17 +28,27 @@ package session
 //     baseline delivered as news would be exactly the fifty-line chunk this tool
 //     exists to stop sending.
 //
-//   - IT RIDES THE AMBIENT LANE. The full tick is kept in the job log, while a
-//     compact update waits in agent.go until the turn boundary. Several ticks
-//     become one count plus the newest fact. No push and no new surface event:
-//     the job row and log remain live, while the model is protected from a
-//     synthetic user message in the middle of unrelated work.
+//   - A TICK RIDES THE AMBIENT LANE AND THE FIRING DOES NOT. The full tick is
+//     kept in the job log, while a compact update waits in agent.go until the
+//     turn boundary. Several ticks become one count plus the newest fact. No
+//     push and no new surface event: the job row and log remain live, while the
+//     model is protected from a synthetic user message in the middle of
+//     unrelated work.
 //
-//     IT DOES NOT WAKE AN IDLE SESSION. A watch is periodic telemetry rather
+//     A TICK DOES NOT WAKE AN IDLE SESSION. A delta is periodic telemetry rather
 //     than a new question, and waking once per delta turns a quiet observer into
 //     an autonomous conversation. Its accumulated result is waiting in the
 //     next turn's opening batch, and `jobs output` holds every tick if the model
 //     needs the detail.
+//
+//     THE FIRING WAKES IT, and it is the opposite case wearing the same clothes.
+//     When `until` matches, the output goes quiet, or the command fails its way
+//     out, the watch has ANSWERED THE QUESTION IT WAS STARTED FOR and will never
+//     say anything again. Held for a turn boundary, that answer sits until the
+//     person happens to type — measured: a session watching `gh pr checks` learned
+//     the checks had settled and said nothing about it. So the firing is queued as
+//     an OWED note that starts a turn by itself, exactly as a background job's
+//     exit is ([runWatch], agent.go's [Agent.enqueueWatchNote]).
 //
 // Two governors, because a timer that never stops is a way to burn a session
 // down. THREE WATCHES AT A TIME, so a model that discovers the tool cannot turn
@@ -208,7 +218,7 @@ type watchState struct {
 // The concurrency limit is INTERPOLATED, never typed: [watchMaxConcurrent] is
 // what claimWatch actually enforces and a digit here would be the second copy
 // that drifts.
-var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists and kills it) whose updates are batched at the turn boundary, never injected mid-turn; use jobs output for every tick. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
+var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists, kills and prints every tick); updates batch at the turn boundary, never mid-turn, and its ENDING comes back on its own. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
 
 // Every bound in the schema is INTERPOLATED from the constant the parser clamps
 // against ([parseWatchArguments]), for the one-source-of-truth law's reason: a
@@ -470,7 +480,7 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 
 	state := &watchState{}
 	for ctx.Err() == nil {
-		note, final := r.watchTick(ctx, watched, spec, state)
+		note, fired := r.watchTick(ctx, watched, spec, state)
 		// A cancel that landed during the tick is a kill, and a kill is not
 		// news: the caller who asked for it already knows, exactly as a killed
 		// job does not report its own death (jobs.go).
@@ -478,9 +488,13 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 			break
 		}
 		if note != "" && r.notifyWatch != nil {
-			r.notifyWatch(spec.name, note)
+			// AND THE LANE IS CHOSEN HERE, because this is the one place that
+			// knows whether the note is a tick or the ending. A tick waits for a
+			// turn boundary; the firing is owed and starts a turn, exactly as a
+			// background job's exit does (jobs.go's notifyWatch states the law).
+			r.notifyWatch(spec.name, note, fired)
 		}
-		if final {
+		if fired {
 			break
 		}
 		select {
@@ -495,7 +509,10 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 }
 
 // watchTick runs the command once and decides what, if anything, to say. The
-// bool is "this was the last tick".
+// bool is THE FIRING: this was the last tick, because the terms the watch was
+// started for were met — `until` matched, the output went quiet, or the command
+// failed its way out. Every other note is a tick, and the difference is what
+// decides which lane the news rides into the conversation on ([runWatch]).
 //
 // The order of the decisions is the design. `until` is checked FIRST and on
 // every tick including the baseline, because it is the answer to a question the
@@ -626,7 +643,11 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	process := exec.CommandContext(tickCtx, shell, append(shellArgs, spec.command)...)
 	process.Dir = r.workspace
 	process.Env = os.Environ()
-	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// A new SESSION rather than a bare process group: the group-kill below is
+	// unchanged (a session leader leads its own group), and a tick's child that
+	// opens /dev/tty is refused rather than drawing on the person's frame
+	// (jobs.go states the measured case).
+	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	// The timeout kills the whole GROUP, not just the shell: a tick that ran
 	// `sleep 600 | grep x` leaves two processes, and killing the parent alone
 	// would leak the rest of them once per tick, forever.
