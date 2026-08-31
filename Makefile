@@ -2,7 +2,8 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed test test-swepro test-remote vet check size clean
+.PHONY: all build debug demo-home embed test test-swepro test-remote vet check size clean \
+        changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
 # tree that produces it. See `size` below for why it is a file and not a number
@@ -157,6 +158,40 @@ size: build
 # The end-of-change ritual in one word: prove it, then ship the binary, then
 # weigh it.
 check: vet test size
+
+# ── the changelog ───────────────────────────────────────────────────────────
+#
+# ONE FILE PER PULL REQUEST, ROLLED UP WHEN A VERSION IS CUT. The entries live
+# loose in docs/changes/unreleased because several sessions work this tree at
+# once and a shared file that every branch appends to conflicts on every merge —
+# and a step that reliably produces a conflict is a step people reliably route
+# around.
+#
+# What the entries carry is not what shipped. It is what somebody now believes
+# WRONGLY: the branch that stopped existing, the default that moved, the refusal
+# that became a capability. docs/rules/changelog.md says why that is the field
+# the format is built around and why it cannot be generated.
+CHANGES := ./cmd/aforge-changes
+
+changelog-new:
+	@test -n "$(PR)"   || { echo 'usage: make changelog-new PR=82 KIND=changed SLUG=branch-rules'; exit 1; }
+	@test -n "$(KIND)" || { echo 'usage: make changelog-new PR=82 KIND=changed SLUG=branch-rules'; exit 1; }
+	@test -n "$(SLUG)" || { echo 'usage: make changelog-new PR=82 KIND=changed SLUG=branch-rules'; exit 1; }
+	@go run $(CHANGES) new $(KIND) $(PR) $(SLUG)
+
+changelog-check:
+	@go run $(CHANGES) check
+
+changelog-preview:
+	@test -n "$(VERSION)" || { echo 'usage: make changelog-preview VERSION=v0.2.0'; exit 1; }
+	@go run $(CHANGES) render $(VERSION)
+
+# Run this on a branch and land it through a pull request into `dev` BEFORE the
+# promotion — never as a commit on `staging`, which would break the fast-forward
+# the whole branch model rests on. docs/rules/promotion.md has the order.
+changelog:
+	@test -n "$(VERSION)" || { echo 'usage: make changelog VERSION=v0.2.0'; exit 1; }
+	@go run $(CHANGES) roll $(VERSION)
 
 clean:
 	rm -rf bin

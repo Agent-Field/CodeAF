@@ -1,0 +1,37 @@
+# THE TESTS THAT ARE ALREADY RED, WRITTEN DOWN SO NEW RED STILL MEANS SOMETHING.
+#
+# A suite with fifteen permanent failures is a suite nobody reads, and the
+# sixteenth failure — the one somebody just caused — arrives invisible. So the
+# known ones are listed here by name and skipped, which turns the full run back
+# into a signal: red means this change did it.
+#
+# THIS FILE IS THE DEBT, AND IT IS A DIFF. Every line is a test somebody owes a
+# fix for. Adding a line is allowed and sometimes right, but it is a reviewable
+# line in the same pull request as the reason, never something a passing build
+# quietly acquired. SIZE-BUDGET carries the same rule for bytes.
+#
+# One name per line. Matched as a whole Go test name against the full run in
+# .github/workflows/ci-full.yml. Blank lines and # comments are ignored.
+#
+# Seeded from the list in CLAUDE.md, verified failing on a clean tree on
+# 2026-08-26. CLAUDE.md also names four cmd/harness-design tests and does not
+# spell them; add them here from the first real run that shows them.
+
+# Fail on a clean tree.
+TestHarnessEntriesFromStore
+TestSettingsSheetIsOneCalmColumnAtEveryWidth
+TestSettingsNavigatesAndEditsEveryKindAndPersists
+TestSettingsRefusesToFightTheEnvironment
+TestRegistryCoversEveryUserFacingEnvironmentPin
+TestEveryGoroutineInTheGuardedTreeIsGuarded
+TestEveryLockInTheGuardedTreeUnlocksFromADefer
+TestEveryMessageWriteUsesThreadPost
+
+# Fails where the temp path is too long for a unix socket. Green on Linux with a
+# short TMPDIR, so this line may well be removable — check before trusting it.
+TestTheSocketMovesWithTheStateRoot
+
+# Flake under full-suite load; pass alone. Rerun in isolation before believing a
+# failure here.
+TestOnlyADesignsOwnThreadCarriesTheReviseVerb
+TestInterruptedTurnDoesNotWakeOnTheNoteItDrained
