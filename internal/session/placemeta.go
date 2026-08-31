@@ -166,6 +166,10 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// goes through here, so a place accrued between two stamps cannot be undone
 	// by whichever one happens to run next (places.go).
 	meta.Places = a.places
+	// And the working copies held on those folders, for the same reason and one
+	// sharper: the places are an answer that could be worked out again, and this
+	// is work that exists nowhere else (standingtree.go).
+	meta.Trees = a.trees
 	return meta
 }
 
@@ -191,6 +195,16 @@ func (a *Agent) stampEffort() { a.stampMeta() }
 // It is one write per deliberate change and never per turn — [Agent.refer]
 // returns without calling this when the set already reads the way it would.
 func (a *Agent) stampPlaces() { a.stampMeta() }
+
+// stampTrees writes the working copies down the moment one is cut, one is
+// written into, or one lands.
+//
+// IT IS THE ONE STAMP THAT CANNOT BE LOST. A rung and a set of folders are
+// conveniences a next process could live without; a copy holding an hour of
+// unlanded work that nothing wrote down is work the person cannot get back to
+// (standingtree.go). It is still the same read-and-rename of a few hundred
+// bytes, and it happens once per file first written rather than once per write.
+func (a *Agent) stampTrees() { a.stampMeta() }
 
 // stampMeta is the write those two share: read the identity, fill in everything
 // this running session knows about itself, put it back. It is one function

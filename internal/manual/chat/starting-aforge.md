@@ -127,7 +127,9 @@ It depends on where you started it, and there are two cases. (Where the conversa
 a folder* has that half. This section is about where you are standing.)
 
 **You started it inside a project.** Aforge borrows that directory. Its tools read
-and write your repository, exactly where you are standing, and the status line
+and write your repository, exactly where you are standing — and that stays true of it
+however many other folders the conversation turns out to be about, because a folder you
+chose with `/folder` is written through a copy and landed with `/land` instead, and the status line
 shows that directory's name — `app`, `my-site` — until the conversation names
 itself, so you can always tell which project this conversation is about. The full
 path is on `/status` and on the status sheet, under `place`, with the git branch

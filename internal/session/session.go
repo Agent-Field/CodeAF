@@ -1899,8 +1899,28 @@ type Agent struct {
 	// IT IS REPLACED AND NEVER EDITED IN PLACE, because a stamp hands the live
 	// slice to the marshaller and writes it after the lock is released
 	// (placemeta.go's [Agent.stampMeta]).
-	places   []PlaceRef
-	messages []ai.Message
+	places []PlaceRef
+	// trees is the working copies this conversation holds of the folders it
+	// refers to, and what has been written into each that the folder itself
+	// does not have yet (standingtree.go). It rides the same meta.json for the
+	// same reason places does, and it is REPLACED AND NEVER EDITED IN PLACE for
+	// the same one.
+	//
+	// Nil is the ordinary state and means nothing has been written outside the
+	// folder this conversation stands in, which is every conversation until one
+	// aims a write somewhere else.
+	trees []StandingTree
+	// treeCut serializes the CUTTING of one, and nothing else. Making a working
+	// copy runs git and copies files, so it cannot be done under mu, and two
+	// tool calls in one turn that both find no copy would otherwise both make
+	// one — leaving a registered worktree that nothing holds a record of.
+	treeCut sync.Mutex
+	// toldStanding is which folders' working copies THIS PROCESS has already
+	// told the model about (standingbelt.go). It is not on the meta on purpose:
+	// what it tracks is whether the model in front of it has been told, and a
+	// resumed conversation's model has been told nothing.
+	toldStanding map[string]bool
+	messages     []ai.Message
 	// messageReasoning is aligned one-for-one with messages and carries the
 	// provider fields ai.Message cannot represent. Rewrites clear or move the
 	// matching slot; no model working is ever smuggled into visible Content.

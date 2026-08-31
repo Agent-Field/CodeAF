@@ -102,6 +102,14 @@ var commands = []command{
 	// three should have to find out which one this build chose.
 	{name: "folder", desc: "choose a folder to work in · type a path to browse", alias: []string{"place", "dir"}},
 	{name: "folder", args: "<path>", desc: "…open it already pointed at that path"},
+	// AND ITS OTHER END. Choosing a folder is where work aimed somewhere else
+	// starts; this is where it arrives. It sits directly under /folder because
+	// nobody reaches for it who has not already done the first — and because
+	// the row above the box says the word the moment there is anything to land
+	// (landcmd.go), so the list is the second way of finding it and not the
+	// first.
+	{name: "land", desc: "put the changes for another folder into it · says what changed first"},
+	{name: "land", args: "<folder>", desc: "…that folder, when more than one is waiting"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
 	// here" and this is "what is there at all" — the same question one size up —

@@ -94,6 +94,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"do I have to start a new conversation for another project", "choosing-a-folder"},
 		{"which folders is this conversation about", "choosing-a-folder"},
 		{"how do I change directory", "choosing-a-folder"},
+		// AND THE OTHER END OF IT, asked the way somebody asks when the folder
+		// they are looking at has not moved. "where did my changes go" is the
+		// first question; "merge what you did" and "land the work" are the two
+		// verbs people reach for next; and the fourth is the fear underneath all
+		// three, which the page answers by saying nothing reached the folder at
+		// all until they said so.
+		{"where did my changes go", "choosing-a-folder"},
+		{"merge what you did into my folder", "choosing-a-folder"},
+		{"put the changes into the folder", "choosing-a-folder"},
+		{"you changed my files?", "choosing-a-folder"},
+		{"undo what you did to my folder", "choosing-a-folder"},
+		{"work in that folder directly", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about

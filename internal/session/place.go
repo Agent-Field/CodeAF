@@ -241,6 +241,19 @@ type Meta struct {
 	// the conversation touched is in the transcript, and this is the answer
 	// already worked out from it.
 	Places []PlaceRef `json:"places,omitempty"`
+	// Trees is the working copies this conversation holds of those folders, and
+	// what has been written into each that the folder itself does not have yet
+	// (standingtree.go).
+	//
+	// IT IS THE ONE THING IN THIS FILE THAT IS NOT A CITATION. Everything else
+	// here is recoverable by looking again — the workspace, the model, what the
+	// talking cost. Unlanded work is recoverable from nowhere, so this is
+	// written the moment it changes and read back at open, and a conversation
+	// closed with changes waiting comes back still holding them.
+	//
+	// An absent field is a conversation that has written nothing outside the
+	// folder it stands in, which is every conversation until one does.
+	Trees []StandingTree `json:"trees,omitempty"`
 	// Archived marks a conversation somebody PUT AWAY from home's resting
 	// list: it leaves its project's block and gathers under home's one folded
 	// archive line, reachable there and still found by search. It is the

@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -130,6 +131,25 @@ func (a *Agent) belt() []bare.Tool {
 			// to "the output limit cut your file in half" is to pay for the
 			// whole file again.
 			tools[index] = a.appendableWrite(tool)
+		}
+	}
+	// AND THE THREE HANDS THAT CAN BE AIMED AT A FOLDER THIS CONVERSATION ONLY
+	// REFERS TO are wrapped once more, OUTERMOST (standingbelt.go): where you
+	// stand you write, and where you refer the work is kept in a copy until
+	// somebody lands it. The wrapper is outside the two above so that everything
+	// they do — the append's own read, the PDF sense's open — happens to the same
+	// file the write did.
+	//
+	// It is absent where it could not work rather than present and failing: a
+	// conversation with no folder of its own has nowhere to put a copy, and a
+	// task node stands on a ground of its own with a guard already around it
+	// (taskoutside.go), so neither is given the redirect.
+	if !a.config.InTask && strings.TrimSpace(a.config.Place.Dir) != "" {
+		for index, tool := range tools {
+			switch tool.Name {
+			case "read", "write", "edit":
+				tools[index] = a.placeAimed(tool)
+			}
 		}
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
