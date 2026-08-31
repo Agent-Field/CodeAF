@@ -6,31 +6,35 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// ── THE MINUTES AFTER THE WORKER STOPS TALKING ──────────────────────────────
+// ── THE MINUTES WHEN THE WORKER IS NOT THE ONE WORKING ──────────────────────
 //
-// A task node has three lives and one state. Its worker writes the code, a check
-// reads what the worker left, and a repair round closes the gaps the check named
-// — and the engine calls all three of those `running`, correctly, because
-// nothing landed and nothing was undone between them (session's task_audit.go).
+// A task node has several lives and one state. Its worker writes the code, a
+// check reads what the worker left, a repair round closes the gaps the check
+// named, and a reading decides whether the work is handed out in parts — and the
+// engine calls every one of those `running`, correctly, because nothing landed
+// and nothing was undone between them (session's task_audit.go, task_divide.go).
 //
 // SO THE ROW WENT QUIET. The worker's last line scrolls past, the check spends
 // four minutes reading a tree, a repair round spends another six rewriting it,
 // and this surface drew for all of that exactly what it drew for a node between
 // two calls: a clock. The person watching has no way to tell that from work that
-// hung, and in the run this file exists for they concluded it had.
+// hung, and in the run this file exists for they concluded it had. The sizing
+// reading is the same defect at the OTHER end of a node's life — thirteen
+// measured seconds on a card that has only just appeared, before its worker has
+// said one word.
 //
 // The engine now says which life it is in ([session.EventTaskPhase]) and this
 // file is where the words are. THE WORDS ARE THE SURFACE'S, not the engine's:
-// the wire carries `checking` and `repairing`, which are the same three words
-// the pulse file on disk carries, and what a person reads is written here, once,
-// for every place that draws it.
+// the wire carries `checking`, `repairing` and `sizing`, which are the same
+// words the pulse file on disk carries, and what a person reads is written here,
+// once, for every place that draws it.
 //
 // NONE OF THE MACHINERY IS IN THEM. There is a gate, and rounds, and a judgement
 // — and a person watching their own work has no use for any of that. What they
 // have a use for is that the work is being looked at, that it is being finished
 // rather than abandoned, how far through that it is, and what was found. So:
-// "checking what it left", "closing gaps · round 1 of 1", and the finding under
-// it in the checker's own sentence.
+// "checking what it left", "closing gaps · round 1 of 1", "sizing the work", and
+// the finding under it in the checker's own sentence.
 
 const (
 	// taskCheckingWord is a node under the check that reads what its worker
@@ -41,10 +45,21 @@ const (
 	// does; the round numbers follow it, because how far through it is is the
 	// second thing anybody watching a second minute of one wants.
 	taskClosingWord = "closing gaps"
+	// taskSizingWord is the reading that decides whether the work is handed out
+	// in parts, and how (session's task_divide.go).
+	//
+	// IT SAYS THE WORK AND NOT THE DIVISION. "reviewing the division" is the
+	// harness's own name for a call it is making; what is actually being settled
+	// is how big this job is and how many hands it wants, and a person who has
+	// just watched a task appear and do nothing wants that in the words they
+	// would use. It carries no numbers, because there are none yet — how many
+	// parts there are is what this reading is deciding, and the roster says so
+	// afterwards when they exist.
+	taskSizingWord = "sizing the work"
 )
 
-// taskPhaseLine is what a person reads for one of a node's three lives, and ""
-// for the ordinary one.
+// taskPhaseLine is what a person reads for one of a node's lives, and "" for the
+// ordinary one.
 //
 // WORKING DRAWS NOTHING AT ALL. A node getting on with the work is what this
 // column has always drawn — its call, its gap, its clock — and a row that added
@@ -62,6 +77,8 @@ func taskPhaseWords(phase string, round, rounds int) string {
 			return taskClosingWord + railSep + "round " + itoa(round) + " of " + itoa(rounds)
 		}
 		return taskClosingWord
+	case session.TaskPhaseSizing:
+		return taskSizingWord
 	}
 	return ""
 }
@@ -115,9 +132,10 @@ func (a *app) railPhase(node *taskNode, width int) []string {
 // and it is what keeps this event from being a second way to create a row.
 //
 // AND IT IS COPIED WHOLE, INCLUDING ITS ABSENCE. The engine sends `working` on
-// the way out of a check and out of a repair round, and everything the check or
-// the round put on this row goes with it: a finding left standing under a node
-// that is back at work would be this column explaining a present that has passed.
+// the way out of a check, a repair round and a sizing reading, and everything
+// the stage that is ending put on this row goes with it: a finding left standing
+// under a node that is back at work would be this column explaining a present
+// that has passed.
 func (a *app) taskPhaseMoved(ev session.Event) {
 	move := ev.TaskPhase
 	if move == nil {

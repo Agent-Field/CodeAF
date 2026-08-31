@@ -513,13 +513,13 @@ type TaskAnswer struct {
 
 // ── the phases of a running node ────────────────────────────────────────────
 
-// The three lives a running node has, in the plain words every file here writes
-// and a surface draws from.
+// The lives a running node has, in the plain words every file here writes and a
+// surface draws from.
 //
 // THEY ARE THE ONE SPELLING. task_beat.go writes these same strings into the
 // node's pulse file for other windows to read, and task_run.go sends them on
 // [EventTaskPhase] for this one, so a reader outside the process and the card in
-// front of the person are never two vocabularies for the same three moments.
+// front of the person are never two vocabularies for the same moment.
 const (
 	// TaskPhaseWorking is the node's own worker, in its worktree.
 	TaskPhaseWorking = "working"
@@ -527,10 +527,21 @@ const (
 	TaskPhaseChecking = "checking"
 	// TaskPhaseRepairing is a repair round closing named gaps.
 	TaskPhaseRepairing = "repairing"
+	// TaskPhaseSizing is the reading that decides whether this work is handed
+	// out in parts, and how (task_divide.go's [Agent.reviewDivision]).
+	//
+	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
+	// belongs on this list beside the other three. The reading is a full call to
+	// the tier that thinks — measured at thirteen seconds, and bounded at
+	// [divideReviewPatience] — and it happens twice in a node's life where the
+	// harness submits a drawing on the worker's behalf before its first request
+	// (task_divide_sketch.go): a card that has just appeared, with a clock going
+	// up and nothing else on it, for as long as the reading lasts.
+	TaskPhaseSizing = "sizing"
 )
 
 // TaskPhaseNotice is the payload of [EventTaskPhase]: which node moved, which of
-// the three words it moved into, and — while a repair round runs — which round
+// the words above it moved into, and — while a repair round runs — which round
 // out of how many.
 //
 // IT EXISTS BECAUSE A RUNNING NODE IS NOT ONE THING. The state stays `running`
@@ -548,11 +559,11 @@ type TaskPhaseNotice struct {
 	// ID names the node, and is the same id its [TaskNotice] carries: a surface
 	// folds this into the row it already drew rather than opening a second one.
 	ID uint64
-	// Phase is one of the three words above.
+	// Phase is one of the words above.
 	Phase string
 	// Round and Rounds are which repair round this is and how many the person's
 	// settings allow ("round 1 of 1"). They are set on TaskPhaseRepairing alone
-	// and are zero on the other two, which is the emptiness law: a surface draws
+	// and are zero on the others, which is the emptiness law: a surface draws
 	// no numbers at all for a check, because a check has no rounds.
 	Round  int
 	Rounds int

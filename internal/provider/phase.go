@@ -87,12 +87,17 @@ const (
 	// is a different answer, and a surface that spelled the two the same way
 	// would be hiding the one that matters.
 	PhaseSwitchingModel Phase = "switching model"
-	// PhaseRunning, PhaseChecking and PhaseTidying belong to internal/session
-	// and are spelled here because there is ONE vocabulary and one reader:
-	// a tool executing, a gate reading an answer, and a compaction pass.
+	// PhaseRunning, PhaseChecking, PhaseTidying and PhaseBriefing belong to
+	// internal/session and are spelled here because there is ONE vocabulary and
+	// one reader: a tool executing, a gate reading an answer, a compaction pass,
+	// and a turn being written down for whoever takes it over.
 	PhaseRunning  Phase = "running"
 	PhaseChecking Phase = "checking"
 	PhaseTidying  Phase = "tidying"
+	// PhaseBriefing is the harness writing the instruction a turn is handed over
+	// on, before there is a task to point at (internal/session's checkpoint.go).
+	// Detail names who it is for, so the row reads "briefing a worker".
+	PhaseBriefing Phase = "briefing"
 )
 
 // PhaseNews is one moment of one request's life.

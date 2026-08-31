@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -232,5 +233,103 @@ func TestAHomeRowSaysTheNodeIsBeingChecked(t *testing.T) {
 	under = plain(strings.Join(homeWorkUnder(entry, row, 80, a.pal), "\n"))
 	if !strings.Contains(under, "go test ./...") {
 		t.Fatalf("the home row lost the call a working node is inside: %q", under)
+	}
+}
+
+// ── THE STAGES BEFORE THE WORKER HAS SAID ANYTHING ──────────────────────────
+
+// A NODE BEING SIZED SAYS SO, IN EVERY PLACE A LIFE IS DRAWN.
+//
+// This is the same defect at the other end of a node's life. A task started off
+// a drawing somebody else made has its division read before its worker's first
+// request (session's task_divide_sketch.go) — thirteen measured seconds on a
+// card that has only just appeared, with a clock going up and nothing else on
+// it at all.
+func TestANodeBeingSizedSaysSoOnEveryColumn(t *testing.T) {
+	a, _, advance := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Modernise the adapters", session.TaskRunning, runningNotice())})
+	node := a.tasks[7]
+	node.tokens = 9_900
+	advance(42 * time.Second)
+	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseSizing, 0, 0, "")})
+
+	// THE RAIL, with the telemetry a person opens this column for kept under it.
+	rows := a.railUnder(node, underWidth(railWideCols))
+	want := []string{taskSizingWord, "42s · 9.9k · $0.31 · gpt-5"}
+	if len(rows) != len(want) {
+		t.Fatalf("the under-block is %d rows, want %d:\n%q", len(rows), len(want), rows)
+	}
+	for i, line := range want {
+		if got := plain(rows[i]); got != line {
+			t.Fatalf("row %d is %q, want %q", i, got, line)
+		}
+	}
+
+	// THE ROOM HEADER, for the person standing inside the page while it happens.
+	if got := a.roomStateWord(node); got != taskSizingWord {
+		t.Fatalf("the header calls a node being sized %q, want %q", got, taskSizingWord)
+	}
+
+	// AND IT SAYS NOTHING ABOUT PARTS OR ROUNDS, because how many parts there are
+	// is exactly what this reading is deciding.
+	if strings.ContainsAny(taskSizingWord, "0123456789") {
+		t.Fatalf("the sizing word carries a number it cannot know yet: %q", taskSizingWord)
+	}
+	for _, banned := range []string{"audit", "verdict", "verified", "refuted", "review", "divide"} {
+		if strings.Contains(strings.ToLower(taskSizingWord), banned) {
+			t.Fatalf("the sizing word says %q: %q", banned, taskSizingWord)
+		}
+	}
+
+	// AND IT CLEARS THE MOMENT THE READING ENDS. The engine sends `working` on
+	// the way out, and the row goes back to being the row it always was.
+	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseWorking, 0, 0, "")})
+	if word := taskPhaseLine(node); word != "" {
+		t.Fatalf("a node back at work still says %q", word)
+	}
+}
+
+// AND HOME'S OWN ROW SAYS IT TOO, off the phase the project row carries.
+func TestAHomeRowSaysTheNodeIsBeingSized(t *testing.T) {
+	a := newTestApp(nil)
+	entry := session.TaskIndexEntry{
+		Label: "Modernise the adapters", Status: string(session.TaskRunning),
+		Activity: "bash go test ./... · 24s", Phase: session.TaskPhaseSizing,
+	}
+	row := session.SessionRow{Open: true, Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{entry}}}
+
+	under := plain(strings.Join(homeWorkUnder(entry, row, 80, a.pal), "\n"))
+	if !strings.Contains(under, taskSizingWord) {
+		t.Fatalf("the home row does not say the work is being sized: %q", under)
+	}
+}
+
+// THE HANDOVER'S OWN WAIT IS THE TURN'S CLOCK, AND IT NAMES WHO THE BRIEF IS
+// FOR. Nothing exists to point at yet — the task is admitted after the brief is
+// written — so the row a person reads is the status line, and "briefing" alone
+// would be the harness naming its paperwork.
+func TestTheBriefingPhaseNamesWhoTheBriefIsFor(t *testing.T) {
+	fields := phaseFields(PhaseNews{
+		Phase: provider.PhaseBriefing, Detail: "a worker",
+		Since: time.Now().Add(-12 * time.Second),
+	}, time.Now())
+	if len(fields) != 2 {
+		t.Fatalf("the briefing segment is %d fields, want the words and a clock", len(fields))
+	}
+	if got := fields[0].full; got != "briefing a worker" {
+		t.Fatalf("the briefing segment reads %q, want %q", got, "briefing a worker")
+	}
+	// AND A NARROW ROW DROPS THE NOUN BEFORE IT DROPS THE CLOCK.
+	if got := fields[0].short; got != "briefing" {
+		t.Fatalf("the narrow briefing segment reads %q, want %q", got, "briefing")
+	}
+	if got := fields[1].full; got != "12s" {
+		t.Fatalf("the briefing clock reads %q, want 12s", got)
+	}
+	// AND WITH NOBODY NAMED IT IS STILL A TRUE ROW rather than a stranger's noun:
+	// the phase's own word, and the clock.
+	bare := phaseFields(PhaseNews{Phase: provider.PhaseBriefing, Since: time.Now()}, time.Now())
+	if len(bare) != 2 || bare[0].full != "briefing" {
+		t.Fatalf("an unnamed briefing draws %v", bare)
 	}
 }

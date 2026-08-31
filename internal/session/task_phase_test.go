@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -187,5 +188,184 @@ func TestANodeWithNoRepairRoundsStillSaysItIsChecking(t *testing.T) {
 			t.Fatalf("a %s move with the loop off carried round %d of %d and %q",
 				move.Phase, move.Round, move.Rounds, move.Text)
 		}
+	}
+}
+
+// ── THE TWO STAGES THAT USED TO RUN IN THE DARK ─────────────────────────────
+//
+// Two model runs stood between a person and their work with nothing drawn for
+// either. The reading that decides whether work is handed out in parts is a full
+// call to the tier that thinks — measured at thirteen seconds — and on the road
+// where the harness submits a drawing for the worker it happens on a task card
+// that has only just appeared. The handover's two calls are longer still:
+// fifteen to thirty seconds between the last thing a model said and the task
+// showing up on the rail.
+//
+// Each of them now says what it is, on the lane that fits where it happens: the
+// division is a life of a node that already has a row, and the handover happens
+// before there is a node at all, so it rides the turn's own clock.
+
+// phaseMovesAbout collects the next `want` phase moves about one node.
+func phaseMovesAbout(t *testing.T, updates <-chan Event, id uint64, want int) []TaskPhaseNotice {
+	t.Helper()
+	var seen []TaskPhaseNotice
+	deadline := time.After(30 * time.Second)
+	for len(seen) < want {
+		select {
+		case event, open := <-updates:
+			if !open {
+				t.Fatalf("the task lane closed after %d of %d phase moves", len(seen), want)
+			}
+			if event.Kind == EventTaskPhase && event.TaskPhase != nil && event.TaskPhase.ID == id {
+				seen = append(seen, *event.TaskPhase)
+			}
+		case <-deadline:
+			t.Fatalf("only %d of %d phase moves arrived about node %d", len(seen), want, id)
+			return nil
+		}
+	}
+	return seen
+}
+
+// THE READING THAT DECIDES WHETHER THE WORK SPLITS IS DRAWN, AND THEN CLEARS.
+//
+// It is announced from the CONVERSATION and not from whoever noticed it, which
+// is the half of this that is easy to get wrong: a division is read by the node's
+// own worker, and a worker's only lanes are its room's — so a move sent from
+// there would reach somebody sitting inside the task and nobody at all on the
+// card, the rail or the home row ([TaskNode.phaseTeller]).
+func TestTheReadingThatSizesTheWorkIsDrawnAndThenClears(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"the adapters","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"the tests","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+	updates := nest.session.TaskUpdates()
+
+	if answer := nest.divide(t, divideArgs(wideEvidence, 2)); !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want the division the reviewer admitted", answer)
+	}
+	if reviewer.reads() != 1 {
+		t.Fatalf("the reviewer was asked %d times, want the one reading this is about", reviewer.reads())
+	}
+
+	moves := phaseMovesAbout(t, updates, nest.parent.id, 2)
+	want := []string{TaskPhaseSizing, TaskPhaseWorking}
+	if got := taskPhaseWords(moves); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("the node's phases were %v, want %v", got, want)
+	}
+	// AND THE READING CARRIES NO NUMBERS AND NO FINDING, which is the emptiness
+	// law on this wire: how many parts there are is what the reading is deciding,
+	// so there is nothing true to say about them yet.
+	for _, move := range moves {
+		if move.Round != 0 || move.Rounds != 0 || move.Text != "" {
+			t.Fatalf("a %s move carried round %d of %d and %q", move.Phase, move.Round, move.Rounds, move.Text)
+		}
+	}
+	// AND THE NODE IS BACK AT ITS OWN WORK, on the pulse other windows read as
+	// well as on the wire.
+	nest.graph.mu.Lock()
+	life := nest.parent.life
+	nest.graph.mu.Unlock()
+	if life != TaskPhaseWorking {
+		t.Fatalf("the node was left in %q after the reading ended, want it back at work", life)
+	}
+}
+
+// AND A REFUSAL THAT COSTS NOTHING SAYS NOTHING.
+//
+// The evidence gate is arithmetic over text and answers in microseconds. A word
+// drawn for it would be the surface narrating machinery rather than a wait, which
+// is the emptiness law: a stage nobody waits through is not a stage.
+func TestADivisionRefusedWithoutAReadingDrawsNoPhaseAtAll(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"refuse": true, "why": "unused"}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+	updates := nest.session.TaskUpdates()
+
+	if answer := nest.divide(t, divideArgs(narrowEvidence, 2)); !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want the floor's refusal", answer)
+	}
+	if reviewer.reads() != 0 {
+		t.Fatalf("the reviewer was asked %d times about a division the floor refused for free", reviewer.reads())
+	}
+
+	// Nothing is on the lane. It is read with a short deadline rather than
+	// drained, because the claim is an absence and an absence has no arrival to
+	// wait for.
+	select {
+	case event := <-updates:
+		if event.Kind == EventTaskPhase {
+			t.Fatalf("a free refusal announced the phase %q", event.TaskPhase.Phase)
+		}
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// THE HANDOVER SAYS IT IS WRITING THE BRIEF, FOR THE WHOLE OF IT.
+//
+// This is the other silence and it is the harder one, because it happens BEFORE
+// there is a task to point at: the turn writes down what it found and a
+// mastermind turns that into an instruction, and only then does a node exist. So
+// it rides the turn's own clock (phasenews.go) — which says what is true while it
+// is true and takes itself off the screen when the stage ends, whichever way the
+// handover goes.
+func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
+	log := watchPhases(t)
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, "Finish the currency module.", "Finish the currency module; the suite is the done-condition.")}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	ran.await(t)
+
+	// IT WAS SAID, AND IT NAMED WHO THE BRIEF IS FOR. "briefing" alone is the
+	// harness naming its own paperwork; the noun is what makes the row a sentence
+	// somebody watching their turn stop can act on.
+	said := 0
+	for _, one := range log.all() {
+		if one.Phase != PhaseBriefing {
+			continue
+		}
+		said++
+		if one.Detail != checkpointBriefingWho {
+			t.Fatalf("the briefing phase named %q, want %q", one.Detail, checkpointBriefingWho)
+		}
+		if one.Since.IsZero() {
+			t.Fatal("the briefing phase carries no start, so nothing can count up from it")
+		}
+	}
+	// TWICE, ONCE PER CALL. A surface drops a phase it has not heard again for
+	// fifteen seconds and nothing here beats, so a single post would go dark
+	// halfway through the stage it was added to cover.
+	if said != 2 {
+		t.Fatalf("the handover said it was briefing %d times, want one per model call", said)
+	}
+
+	// AND IT IS CLOSED. A phase left open is a clock a surface goes on drawing for
+	// work that ended, which is the defect this lane exists to prevent.
+	words := phaseWords(log.all())
+	last := -1
+	for index, one := range log.all() {
+		if one.Phase == PhaseBriefing {
+			last = index
+		}
+	}
+	if last < 0 {
+		t.Fatalf("no briefing phase at all; phases were %v", words)
+	}
+	closed := false
+	for _, one := range log.all()[last+1:] {
+		if one.Phase == "" {
+			closed = true
+			break
+		}
+	}
+	if !closed {
+		t.Fatalf("the briefing clock was never taken off the screen; phases were %v", words)
 	}
 }

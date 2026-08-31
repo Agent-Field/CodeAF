@@ -708,7 +708,30 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), "", false
 	}
+	// AND THE CARD SAYS THE READING IS HAPPENING, for the whole of it.
+	//
+	// This is the one step of a division that a person WAITS THROUGH. Everything
+	// above is arithmetic on text and everything below is admission, and both are
+	// instant; this is a full call to the tier that thinks, measured at thirteen
+	// seconds and bounded at [divideReviewPatience] — during which the node's row
+	// drew what it draws between two tool calls, which is a clock. On the road
+	// where the harness submits a drawing before the worker's first request
+	// (task_divide_sketch.go) that is a task card that has just appeared and has
+	// nothing on it at all, and the run this was measured on read as a task that
+	// had started and then hung.
+	//
+	// IT RIDES THE PHASE THE CHECK AND A REPAIR ROUND RIDE ([Agent.enterPhase]),
+	// on the same event and into the same pulse file, so the card, the rail row,
+	// the room header and the home row all say it without any of them learning a
+	// new lane.
+	//
+	// AND IT IS SETTLED ON THE LINE THAT ENDS THE READING rather than deferred to
+	// the end of this function. What follows is the admission, which is the node's
+	// own work again and takes no time a person can see — leaving the sizing word
+	// standing over it would be the row explaining a moment that had passed.
+	settle := a.enterPhase(node, taskBeatSizing, 0, 0, "")
 	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
+	settle()
 	if refusal.refused() {
 		// A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
 		// THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
