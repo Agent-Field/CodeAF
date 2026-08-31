@@ -411,9 +411,13 @@ type realSheetClient struct {
 	rows map[string][]lane.Row
 }
 
-func (s *realSheetClient) Rows(model string) []lane.Row { return s.rows[model] }
+// Rows files and reads under the BARE id, which is what the shipped sheet does
+// and why: one model served by one set of machines has one endpoints page, and
+// the router publishes it under the id without the tier suffix.
+func (s *realSheetClient) Rows(model string) []lane.Row { return s.rows[lane.BareModel(model)] }
 
 func (s *realSheetClient) Refresh(ctx context.Context, model string) error {
+	model = lane.BareModel(model)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, realBase+"/models/"+model+"/endpoints", nil)
 	if err != nil {
 		return err
@@ -705,4 +709,194 @@ func realStream(ctx context.Context, key string, only []string, maxTokens int, w
 	}
 	answer.wall = time.Since(began)
 	return answer, nil
+}
+
+// ── THE TIER, THE TOOLS, AND THE REAL ROUTER ────────────────────────────────
+
+// realTierModel is the model the 2026-08-30 incident happened on, spelled the
+// way the person's own settings spell it. The suffix is a reasoning tier: the
+// router serves the same endpoints for it and publishes the same sheet under
+// the bare id, which is the fact [lane.BareModel] states and this test checks
+// against the live router rather than against a fixture.
+const realTierModel = "moonshotai/kimi-k3:high"
+
+// realToolTokens is the ceiling on the one tool-bearing call. Forty is enough
+// for a small tool call to be emitted whole and few enough that the whole test
+// costs a fraction of a cent.
+const realToolTokens = 40
+
+// TestRealRouterChoosesForATierAndATurnThatCarriesTools is the incident, run
+// against the machine it happened on.
+//
+// A turn carrying tools, on a model asked for by its tier, must come back with
+// a preference — and be served by a machine the sheet knows. Before this wave
+// the sheet was fetched and primed under one id and every question was asked of
+// another, so the chooser had fewer than two lanes to rank and answered with no
+// opinion at all; the request then went out on the router's own sort with
+// nothing watching it.
+//
+//	go test -tags e2e ./internal/lane/ -run TestRealRouterChooses -v
+func TestRealRouterChoosesForATierAndATurnThatCarriesTools(t *testing.T) {
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	if key == "" {
+		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
+	}
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Cleanup(lane.Default().Reset)
+	lane.Default().Reset()
+
+	sheet := &realSheetClient{key: key, rows: map[string][]lane.Row{}}
+	lane.Default().SetSheet(sheet)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	// ── 1. the sheet, fetched for the TIER ──────────────────────────────────
+	//
+	// The refresh is asked for with the suffix on, exactly as a session's beat
+	// would ask for the model the person configured, and what it must come back
+	// with is the bare model's endpoints page.
+	if err := lane.Default().Sheet().Refresh(ctx, realTierModel); err != nil {
+		t.Skipf("no sheet for %s today (%v) — this test is about the id and not about the router's uptime", realTierModel, err)
+	}
+	rows := lane.Default().Sheet().Rows(realTierModel)
+	if len(rows) < 2 {
+		t.Fatalf("%s came back with %d lanes; there is nothing to choose between", realTierModel, len(rows))
+	}
+	bare := lane.BareModel(realTierModel)
+	if len(lane.Default().Sheet().Rows(bare)) != len(rows) {
+		t.Fatalf("the tier and the bare id do not read the same sheet: %d against %d",
+			len(rows), len(lane.Default().Sheet().Rows(bare)))
+	}
+	tooled := 0
+	for _, row := range rows {
+		if row.Facts.Tools {
+			tooled++
+		}
+	}
+	t.Logf("sheet: %d lanes for %s, %d of them take a tool call", len(rows), bare, tooled)
+	if tooled == 0 {
+		t.Skip("no lane of this model takes a tool call today, so there is no tool-bearing turn to route")
+	}
+
+	ledger := lane.Default().Ledger()
+	for _, row := range rows {
+		ledger.Prime(row, lane.SheetWeight)
+	}
+	// The primes landed under the BARE id, which is the whole fix, and the
+	// beliefs are readable through the tier the person actually configured.
+	//
+	// It is counted against the DISTINCT lane names rather than against the
+	// rows, because a real endpoints page lists the same provider more than
+	// once — on the day this was written `moonshotai/kimi-k3` published
+	// seventeen endpoints under fourteen names, with Morph and Fireworks each
+	// appearing at two quantizations. A belief is keyed on (model, lane), so
+	// fourteen is the right answer and seventeen would be the wrong one.
+	names := map[string]bool{}
+	for _, row := range rows {
+		names[row.ID.Lane] = true
+	}
+	if got := len(ledger.Beliefs(realTierModel)); got != len(names) {
+		t.Fatalf("%d rows under %d names primed and the tier reads %d beliefs", len(rows), len(names), got)
+	}
+
+	// ── 2. one real turn, carrying a tool ───────────────────────────────────
+	client, err := provider.NewClient(provider.Config{APIKey: key, BaseURL: realBase, Model: realTierModel})
+	if err != nil {
+		t.Fatalf("build a client: %v", err)
+	}
+	choice := lane.Default().Chooser().Choose(realTools(time.Now()))
+	if choice.Empty() {
+		t.Fatalf("a turn carrying tools, on a model with %d primed lanes, got no preference at all — "+
+			"which is the incident this test is written from", len(rows))
+	}
+	t.Logf("choice: order %v, alt %q, hedge at %v, why %q", choice.Order, choice.Alt, choice.Deadline, choice.Why)
+	head, ok := ledger.Belief(lane.ID{Model: bare, Lane: choice.Order[0]})
+	if !ok || !head.Facts.Tools {
+		t.Fatalf("a turn carrying tools was ranked first onto %q, which the sheet does not say takes one", choice.Order[0])
+	}
+
+	served := &provider.ServedEndpoint{}
+	callCtx := provider.WithServedEndpoint(ctx, served)
+	began := time.Now()
+	var firstToken time.Time
+	var tokens int
+	callCtx = provider.WithStreamObserver(callCtx, func(event provider.StreamEvent) {
+		if event.Delta == "" {
+			return
+		}
+		if firstToken.IsZero() {
+			firstToken = time.Now()
+		}
+		tokens++
+	})
+	response, err := client.CompleteWithMessages(callCtx,
+		[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "What is the weather in Paris? Use the tool."}}}},
+		ai.WithMaxTokens(realToolTokens),
+		ai.WithTools([]ai.ToolDefinition{{
+			Type: "function",
+			Function: ai.ToolFunction{
+				Name:        "get_weather",
+				Description: "The current weather in one city.",
+				Parameters: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{"city": map[string]any{"type": "string"}},
+					"required":   []string{"city"},
+				},
+			},
+		}}))
+	if err != nil {
+		t.Fatalf("the tool-bearing call failed: %v", err)
+	}
+	t.Logf("this run billed $%.6f", costOf(response))
+
+	lane_ := strings.TrimSpace(served.Name())
+	if lane_ == "" {
+		t.Fatal("the answer did not name the machine that served it")
+	}
+	onTheSheet := false
+	for _, row := range rows {
+		if strings.EqualFold(row.ID.Lane, lane_) {
+			onTheSheet = true
+		}
+	}
+	// Fallbacks are left on for every choice that is not a pin — a slow answer
+	// beats no answer — so the lane that answers need not be the one asked for
+	// first. What it may never be is a machine on no row of the sheet.
+	if !onTheSheet {
+		t.Fatalf("served by %q, which is on no row of %s's sheet", lane_, bare)
+	}
+	t.Logf("asked for %v, served by %s", choice.Order, lane_)
+
+	// ── 3. and the wait was measured, under the bare id ──────────────────────
+	if firstToken.IsZero() {
+		t.Skipf("%s answered with no streamed content at all, so there is no first token to time", lane_)
+	}
+	ledger.Note(lane.Sighting{
+		ID: lane.ID{Model: realTierModel, Lane: lane_}, TTFT: firstToken.Sub(began),
+		PromptTokens: 16, At: time.Now(),
+	})
+	belief, ok := ledger.Belief(lane.ID{Model: bare, Lane: lane_})
+	if !ok || !belief.TTFT.Known() {
+		t.Fatalf("a turn timed at %v left no first-token belief under %s",
+			firstToken.Sub(began).Round(time.Millisecond), bare)
+	}
+	t.Logf("first token %v over %d deltas; the belief now reads %.0fms",
+		firstToken.Sub(began).Round(time.Millisecond), tokens, belief.TTFT.Mean())
+}
+
+// realTools is the turn this test routes: a person waiting, a short answer they
+// will read, and a tool on the request.
+func realTools(now time.Time) lane.Request {
+	return lane.Request{
+		Model:        realTierModel,
+		PromptTokens: 16,
+		Visible:      400,
+		Tools:        true,
+		MaxTokens:    realToolTokens,
+		QualityNeed:  0.9,
+		ValueOfTime:  90,
+		Horizon:      40,
+		Now:          now,
+	}
 }

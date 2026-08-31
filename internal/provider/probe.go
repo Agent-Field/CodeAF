@@ -246,7 +246,10 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 		// published is a request that either 404s or lands somewhere else.
 		return
 	}
-	lanes.Default().Prober().Probe(ctx, normalizeModel(model), head)
+	// The BELIEF's own id, not the wire's — see [laneModel]. A probe writes a
+	// sighting, and a sighting filed under a tier suffix is a measurement of a
+	// machine nothing will ever ask about again.
+	lanes.Default().Prober().Probe(ctx, laneModel(model), head)
 }
 
 // probeHead is how many lanes off the front of the frontier a probe pair

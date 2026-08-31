@@ -1,10 +1,12 @@
 package lane
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,12 +76,16 @@ func TestTheBeliefFileIsWrittenWholeOrNotAtAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the directory: %v", err)
 	}
+	// The lock file is the one other thing a save is entitled to leave: it is
+	// created once, never replaced, and it is what makes two processes writing
+	// this file safe (store.go, "two processes, one file"). A TEMPORARY is what
+	// this test refuses — a half-written set with a name somebody could read.
 	for _, entry := range entries {
-		if entry.Name() != "lanes.json" {
+		if entry.Name() != "lanes.json" && entry.Name() != "lanes.json"+lockSuffix {
 			t.Fatalf("a write left %q behind", entry.Name())
 		}
 	}
-	if len(entries) != 1 {
+	if len(entries) != 2 {
 		t.Fatalf("three writes left %d files", len(entries))
 	}
 	data, err := os.ReadFile(path)
@@ -179,5 +185,153 @@ func TestAnUnattachedLedgerKeepsBelievingAnyway(t *testing.T) {
 	l.Note(Sighting{ID: ID{Model: "m", Lane: "l"}, TTFT: time.Second, Tokens: 1, At: noon})
 	if belief, ok := l.Belief(ID{Model: "m", Lane: "l"}); !ok || !belief.Known() {
 		t.Fatal("a ledger with no store believed nothing")
+	}
+}
+
+// ── TWO PROCESSES, ONE FILE ─────────────────────────────────────────────────
+//
+// The scenario these three tests are written from happened on a person's own
+// machine and cost them five seconds of staring at an empty line, so it is
+// written here in the shape it happened in rather than as an abstraction: two
+// aforge processes, one belief file, one of them holding a seventeen-lane
+// sheet the other has never heard of.
+
+// twoProcessRows is a sheet for a model only one of the two processes knows
+// about — the kimi lanes of the report, shortened to the three that matter.
+func twoProcessRows(model string) []Row {
+	return []Row{
+		{
+			ID:    ID{Model: model, Lane: "DeepInfra"},
+			Facts: Facts{Tools: true, Quant: "fp8", MaxOut: 16_384, Context: 256_000, Uptime5m: 100, PriceIn: 0.0000005, PriceOut: 0.000002},
+			At:    noon, TTFTp50: 1490, TTFTp90: 2400, Ratep50: 21, Ratep90: 30,
+		},
+		{
+			ID:    ID{Model: model, Lane: "Modal"},
+			Facts: Facts{Tools: true, Quant: "fp8", MaxOut: 32_000, Context: 256_000, Uptime5m: 100, PriceIn: 0.0000006, PriceOut: 0.0000024},
+			At:    noon, TTFTp50: 933, TTFTp90: 1500, Ratep50: 79, Ratep90: 95,
+		},
+		{
+			ID:    ID{Model: model, Lane: "Fireworks"},
+			Facts: Facts{Tools: true, Quant: "fp8", MaxOut: 32_000, Context: 256_000, Uptime5m: 100, PriceIn: 0.0000007, PriceOut: 0.0000028},
+			At:    noon, TTFTp50: 1025, TTFTp90: 1700, Ratep50: 72, Ratep90: 88,
+		},
+	}
+}
+
+// TestASecondProcessSavingCannotDeleteTheFirstsModel is the whole incident, in
+// one test: A primes a model B has never heard of, B saves a sighting about its
+// own model, and the file afterwards holds both — because a save is a
+// read-merge-write and not a replace.
+func TestASecondProcessSavingCannotDeleteTheFirstsModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lanes.json")
+	const mine, theirs = "moonshotai/kimi-k3", "z-ai/glm-5.3"
+
+	a := newLedger()
+	a.keepIn(newStore().at(path))
+	for _, row := range twoProcessRows(mine) {
+		a.Prime(row, SheetWeight)
+	}
+
+	b := newLedger()
+	b.keepIn(newStore().at(path))
+	b.Note(Sighting{ID: ID{Model: theirs, Lane: "Cloudflare"}, TTFT: 700 * time.Millisecond, Gen: time.Second, Tokens: 64, At: noon})
+
+	held, err := newStore().at(path).Load()
+	if err != nil {
+		t.Fatalf("loading the file both processes wrote: %v", err)
+	}
+	kept := map[string]int{}
+	for _, belief := range held {
+		kept[belief.ID.Model]++
+	}
+	if kept[mine] != 3 || kept[theirs] != 1 {
+		t.Fatalf("the file holds %d lanes of %s and %d of %s; the last writer deleted the other's model",
+			kept[mine], mine, kept[theirs], theirs)
+	}
+	// And what the first process primed is still a lane anybody could choose:
+	// the facts came through, not just the id.
+	for _, belief := range held {
+		if belief.ID.Model == mine && !belief.Facts.Known() {
+			t.Fatalf("%s survived the merge with every fact blank: %+v", belief.ID.Lane, belief.Facts)
+		}
+	}
+
+	// Each process now reads back what the other learned. A reads on the beat;
+	// B learned it for nothing, because its own save came back merged.
+	a.reload()
+	if _, ok := a.Belief(ID{Model: theirs, Lane: "Cloudflare"}); !ok {
+		t.Fatal("the first process reloaded and still had not heard of the second's model")
+	}
+	if _, ok := b.Belief(ID{Model: mine, Lane: "Modal"}); !ok {
+		t.Fatal("the second process saved into a merge and learned nothing from it")
+	}
+}
+
+// TestAMergeKeepsTheHalfEachProcessHolds is why the merge is field-wise. One
+// process has primed a lane from the sheet and never measured it; the other has
+// measured it and never seen a row. Neither reading is newer than the other in
+// any sense that would let one of them be dropped.
+func TestAMergeKeepsTheHalfEachProcessHolds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lanes.json")
+	row := cloudflareRow()
+	row.At = noon
+
+	primed := newLedger()
+	primed.keepIn(newStore().at(path))
+	primed.Prime(row, SheetWeight)
+
+	seen := newLedger()
+	seen.keepIn(newStore().at(path))
+	seen.Note(Sighting{ID: row.ID, TTFT: 300 * time.Millisecond, Gen: time.Second, Tokens: 120, At: noon.Add(time.Hour)})
+
+	held, _ := newStore().at(path).Load()
+	if len(held) != 1 {
+		t.Fatalf("one lane, two processes, and %d rows in the file", len(held))
+	}
+	belief := held[0]
+	if !belief.At.Equal(noon.Add(time.Hour)) {
+		t.Fatalf("the newer sighting did not win the timing: At is %v", belief.At)
+	}
+	if belief.Facts != row.Facts {
+		t.Fatalf("the sheet's facts were thrown away by a sighting that carried none: %+v", belief.Facts)
+	}
+	if !belief.Quality.Known() {
+		t.Fatal("the primed quality belief did not survive the merge")
+	}
+}
+
+// TestFourLedgersOverOneFileKeepEverybodysBeliefs is the same law under -race,
+// with four processes standing in for the two a person actually runs.
+func TestFourLedgersOverOneFileKeepEverybodysBeliefs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lanes.json")
+	const writers, each = 4, 8
+	var running sync.WaitGroup
+	for writer := range writers {
+		running.Add(1)
+		go func(writer int) {
+			defer running.Done()
+			l := newLedger()
+			l.keepIn(newStore().at(path))
+			model := fmt.Sprintf("vendor/model-%d", writer)
+			for n := range each {
+				l.Note(Sighting{
+					ID:     ID{Model: model, Lane: fmt.Sprintf("lane-%d", n)},
+					TTFT:   time.Duration(200+n) * time.Millisecond,
+					Gen:    time.Second,
+					Tokens: 64,
+					At:     noon.Add(time.Duration(n) * time.Minute),
+				})
+			}
+		}(writer)
+	}
+	running.Wait()
+
+	held, err := newStore().at(path).Load()
+	if err != nil {
+		t.Fatalf("loading the file four processes wrote: %v", err)
+	}
+	if len(held) != writers*each {
+		t.Fatalf("four processes wrote %d beliefs between them and the file holds %d",
+			writers*each, len(held))
 	}
 }

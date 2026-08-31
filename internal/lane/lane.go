@@ -44,6 +44,7 @@ package lane
 
 import (
 	"math"
+	"strings"
 	"time"
 )
 
@@ -73,6 +74,49 @@ func (id ID) Zero() bool { return id.Model == "" || id.Lane == "" }
 // String is the key form, "model|lane". It is a map key and a file key and is
 // never shown to a person.
 func (id ID) String() string { return id.Model + "|" + id.Lane }
+
+// ── A TIER IS NOT A DEPLOYMENT ──────────────────────────────────────────────
+//
+// `moonshotai/kimi-k3:high` and `moonshotai/kimi-k3` are ONE MODEL served by
+// ONE SET OF MACHINES. The suffix says how hard to think, or how the router
+// should sort what it already serves; the endpoints page answers the same
+// seventeen lanes for both, and it answers them under the bare id. A belief
+// filed under the suffixed id is therefore a belief about a sheet nobody
+// fetched — which is exactly how a machine holding a fresh seventeen-lane
+// sheet in memory answered a request with no opinion at all, and sent it to
+// whatever the router's own sort picked.
+//
+// THE LIST IS CLOSED, and it is closed for the reason `internal/tui2/modelui`
+// closes its effort words: an open rule would read ":free" as a tier and credit
+// a free endpoint's wait to the paid lane of the same name, which is a
+// DIFFERENT DEPLOYMENT wearing the same word. A suffix this build has not been
+// taught keeps its own sheet and its own beliefs — the safe way to be wrong.
+
+// tierSuffixes are the words that name how hard to think or how to sort, and
+// never a different set of machines.
+var tierSuffixes = map[string]bool{
+	"off": true, "minimal": true, "low": true, "medium": true,
+	"high": true, "xhigh": true, "max": true,
+	"nitro": true, "floor": true,
+}
+
+// BareModel is a model id with its tier suffix taken off, and every other id
+// unchanged. It is what every door of this package files a belief under, so
+// that a request for `model:high` reads the beliefs and the sheet of `model`.
+func BareModel(model string) string {
+	trimmed := strings.TrimSpace(model)
+	index := strings.LastIndexByte(trimmed, ':')
+	if index <= 0 || index+1 >= len(trimmed) {
+		return trimmed
+	}
+	if !tierSuffixes[strings.ToLower(trimmed[index+1:])] {
+		return trimmed
+	}
+	return trimmed[:index]
+}
+
+// bare is this id filed where its beliefs live. See [BareModel].
+func (id ID) bare() ID { return ID{Model: BareModel(id.Model), Lane: id.Lane} }
 
 // Facts are what a lane IS, as opposed to how fast it has lately been.
 //
@@ -125,6 +169,26 @@ type Facts struct {
 	// admit the same lanes (bench/lanelab/REPORT.md, "the two capability gates
 	// do not admit the same lanes").
 	Status int
+}
+
+// Known reports whether the SHEET HAS EVER SPOKEN about this lane.
+//
+// It is the difference between "the router publishes no tool flag for this
+// machine" and "nobody has looked it up yet", and until this method existed
+// the two were the same zero. A lane that has only ever been SEEN — it served
+// an answer, so we know it exists and how quick it was, and nothing else — has
+// facts like these, and a gate that read them as published would refuse it for
+// a tool call it was never asked about (frontier.go's [capable]) and a merge
+// would overwrite a primed row with them (store.go's [fresher]).
+//
+// Every field is read as the sheet publishes it: any of them carrying anything
+// at all is a row that was decoded, and all of them empty is a row that was
+// never seen. [Facts.Status] is deliberately not among them — its zero means
+// "healthy" rather than "nobody said", which is the one field here that reads
+// that way round.
+func (f Facts) Known() bool {
+	return f.Tools || f.Quant != "" || f.MaxOut > 0 || f.Context > 0 ||
+		f.Uptime5m > 0 || f.PriceIn > 0 || f.PriceOut > 0 || f.PriceCache > 0 || f.Caches
 }
 
 // Row is one line of the sheet: the public, thirty-minute account of a lane.

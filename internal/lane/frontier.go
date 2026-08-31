@@ -81,13 +81,31 @@ type gateOptions struct {
 // EVERY TEST HERE IS "KNOWN AND FAILING", never "unknown and assumed bad". The
 // sheet does not publish every field for every lane, and a gate that read a
 // zero context length as "cannot read this prompt" would refuse the whole
-// candidate set the first time a router stopped publishing a column. The one
-// exception is tools, where the sheet's word is a flag and its absence is a
-// lane that does not take tool calls — which is the fact the flag exists to
-// state.
+// candidate set the first time a router stopped publishing a column.
+//
+// ── AND A LANE NOBODY HAS LOOKED UP IS UNKNOWN ON EVERY FIELD ───────────────
+//
+// There was one exception here and it was wrong. Tools was read as a flag whose
+// absence states a fact — "this lane does not take tool calls" — which is true
+// of a row the sheet published and false of a lane that has only ever been
+// SEEN. A lane arrives that way whenever an answer comes back from a machine
+// this process has no row for: the id is real, the timing is real, and every
+// other field is a zero nobody wrote. Read as a published false, that zero
+// removed the lane from every request carrying tools — which on a machine whose
+// only kimi beliefs were two sightings meant the whole candidate set went, the
+// choice came back empty, and the request went out with no opinion on it at all.
+//
+// So the zero is asked what it means ([Facts.Known]) and a lane the sheet has
+// never spoken about passes every gate here. It is NOT thereby claimed to
+// honour a tool call: [toolsLast] puts it behind every lane known to, so what
+// is unknown is tried after what is known rather than instead of it. A gate
+// answers "could this lane serve the request"; only evidence answers "and is it
+// the one to send".
 func capable(belief Belief, req Request, opts gateOptions) bool {
 	facts := belief.Facts
-	if req.Tools && !facts.Tools {
+	// THE ROW WAS PUBLISHED AND IT SAYS NO. That is the only reading of a false
+	// tools flag this gate acts on.
+	if req.Tools && !facts.Tools && facts.Known() {
 		return false
 	}
 	if req.MaxTokens > 0 && facts.MaxOut > 0 && facts.MaxOut < req.MaxTokens {
@@ -125,6 +143,35 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 		return false
 	}
 	return true
+}
+
+// toolsLast moves the lanes nobody has published a tool flag for behind every
+// lane known to honour a tool call, keeping the order otherwise.
+//
+// IT IS A TIEBREAK AND NOT A GATE, which is the whole difference between it and
+// what [capable] used to do. An unknown lane stays in the candidate set — it
+// can still be hedged to, probed and, when nothing else is known, sent to —
+// but it never goes in front of a machine the sheet says will take the call.
+// A request carrying no tools is left exactly as it was ranked.
+func toolsLast(order []Scored, req Request, known map[ID]Belief) []Scored {
+	if !req.Tools || len(order) < 2 {
+		return order
+	}
+	sure := make([]Scored, 0, len(order))
+	unsure := make([]Scored, 0, len(order))
+	for _, candidate := range order {
+		if known[candidate.ID].Facts.Tools {
+			sure = append(sure, candidate)
+			continue
+		}
+		unsure = append(unsure, candidate)
+	}
+	// Nothing is known to take a tool call, so there is nothing to rank behind
+	// and the order stands as scored.
+	if len(sure) == 0 {
+		return order
+	}
+	return append(sure, unsure...)
 }
 
 // scoredAt is one capable lane with its p75 numbers, before any request-shaped
@@ -179,8 +226,43 @@ func frontierFor(beliefs []Belief, req Request, opts gateOptions, cached func(ID
 		sorted = append(sorted, candidates[index])
 		sortedFacts = append(sortedFacts, facts[index])
 	}
+	sorted = pricedPessimistically(sorted, sortedFacts)
 	sorted = underPriceCeiling(sorted, sortedFacts, req)
 	return paretoFront(sorted, req.QualityNeed)
+}
+
+// pricedPessimistically charges a lane nobody has published a tariff for what
+// the dearest lane that DID publish costs.
+//
+// AN UNKNOWN TARIFF IS NOT A FREE ONE. Every price in [Facts] is a zero when
+// the sheet said nothing, and a zero is a number the rest of this file compares
+// — so a lane that has only ever been SEEN would beat every priced lane on the
+// price axis outright, survive the prune on that alone, and then, with nobody
+// waiting and the score in dollars, win every request forever. That is a router
+// choosing the machine it knows least about because it knows least about it.
+//
+// The pessimistic reading is the safe one and it is the honest one: the lane may
+// well be dear, and until the sheet says otherwise it is not allowed to win an
+// argument it has no evidence in. It costs the lane nothing on speed, which is
+// the axis it does have evidence on. A candidate set in which nobody published
+// a price is left alone — there is nothing to compare it with.
+func pricedPessimistically(candidates []Scored, facts []Facts) []Scored {
+	dearest := 0.0
+	for _, candidate := range candidates {
+		if candidate.Price > dearest {
+			dearest = candidate.Price
+		}
+	}
+	if dearest <= 0 {
+		return candidates
+	}
+	for index := range candidates {
+		if facts[index].Known() || candidates[index].Price > 0 {
+			continue
+		}
+		candidates[index].Price = dearest
+	}
+	return candidates
 }
 
 // underPriceCeiling drops lanes that charge more than this request can justify.
