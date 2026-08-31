@@ -1131,7 +1131,13 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 // TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the four rows a
 // person actually turns. For each it checks the shipped reading against the
 // constant that owns it — one source of truth, so a raise that forgot the row
-// fails here — and then writes 0 and reads the receipt back.
+// fails here — and then writes 0 and reads the row back.
+//
+// THE WORD MOVED FROM THE RECEIPT TO THE VALUE and this test moved with it. A
+// row at zero used to read `$0` with `no limit` beside it, which is the emptiness
+// law asking a person to read two things to learn one; it now reads `no limit`
+// itself, through [Setting.EmptyLabel] — the mechanism every other kind of row
+// already uses for its off state — and `$0` appears nowhere at all.
 func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	for _, name := range []string{
 		"AFORGE_DAILY_BUDGET", "AFORGE_PRACTICE_BUDGET", "AFORGE_PLAN_CONSENT",
@@ -1158,7 +1164,13 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s is not registered", rail.key)
 		}
-		if got, want := row.Value(), formatDollars(rail.shipped); got != want {
+		want := formatDollars(rail.shipped)
+		if rail.shipped == 0 {
+			// A rail that SHIPS at zero ships with no limit, and reads the word
+			// for it rather than a figure nobody set.
+			want = rail.zeroSays
+		}
+		if got := row.Value(); got != want {
 			t.Fatalf("%s ships reading %q, want %q — the row and the constant have drifted",
 				rail.key, got, want)
 		}
@@ -1169,11 +1181,20 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s went missing after a write", rail.key)
 		}
-		if reread.Value() != "$0" {
-			t.Fatalf("%s reads %q after being set to 0", rail.key, reread.Value())
+		if reread.Value() != rail.zeroSays {
+			t.Fatalf("%s reads %q after being set to 0, want %q", rail.key, reread.Value(), rail.zeroSays)
 		}
-		if got := reread.Receipt(); got != rail.zeroSays {
-			t.Fatalf("%s at 0 says %q, want %q", rail.key, got, rail.zeroSays)
+		if strings.Contains(reread.Value(), "$0") {
+			t.Fatalf("%s draws a bare zero: %q", rail.key, reread.Value())
+		}
+		// AND EVERY WORD A PERSON MIGHT TYPE FOR IT LANDS THE SAME THING.
+		for _, word := range []string{"none", "no", "off", "unlimited", "∞", "0"} {
+			if err := mustRow(t, registry(t, dir), rail.key).Apply(word); err != nil {
+				t.Fatalf("%s refused %q: %v", rail.key, word, err)
+			}
+			if got := mustRow(t, registry(t, dir), rail.key).Value(); got != rail.zeroSays {
+				t.Fatalf("%s reads %q after %q, want %q", rail.key, got, word, rail.zeroSays)
+			}
 		}
 		// And a rail that is ON says nothing extra: the receipt is for the
 		// state a number cannot express, never a second copy of the value.
@@ -1181,15 +1202,16 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 			t.Fatalf("%s could not be set back: %v", rail.key, err)
 		}
 		if got := mustRow(t, registry(t, dir), rail.key).Receipt(); got != "" {
-			t.Fatalf("%s at $12.50 grew a receipt: %q", rail.key, got)
+			t.Fatalf("%s at $12.50 grew a receipt with no seam behind it: %q", rail.key, got)
 		}
 	}
 }
 
-// TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord is the one row with two
-// things to say at once. "no limit" alone would hide the figure a person came
-// to the row to read.
-func TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord(t *testing.T) {
+// TestTheDailyRailReceiptIsTheDaysOwnFigure. The receipt is a LIVE FACT beside
+// the value and never a second copy of it: the word for zero is the value now
+// ([Setting.EmptyLabel]), which leaves this column free to say the one thing a
+// person came to the row to read — what the day has actually cost.
+func TestTheDailyRailReceiptIsTheDaysOwnFigure(t *testing.T) {
 	t.Setenv("AFORGE_DAILY_BUDGET", "")
 	dir := t.TempDir()
 	rows := NewSettings(SettingsOptions{
@@ -1212,8 +1234,68 @@ func TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord(t *testing.T) {
 		SplitPct:      func() int { return 0 },
 		SpentTodayUSD: func() (float64, bool) { return 4.25, true },
 	})
-	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "no limit · $4.25 today" {
+	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "$4.25 today" {
 		t.Fatalf("a removed rail's receipt = %q", got)
+	}
+	if got := mustRow(t, rows, KeyDailyBudget).Value(); got != NoLimitWord {
+		t.Fatalf("a removed rail reads %q, want %q", got, NoLimitWord)
+	}
+}
+
+// TestTheConversationCeilingCarriesWhatThisOneHasSpent is the other receipt: the
+// row that bounds THIS conversation says what this conversation has spent
+// against it, and says nothing at all through a door that has no conversation
+// behind it.
+func TestTheConversationCeilingCarriesWhatThisOneHasSpent(t *testing.T) {
+	dir := t.TempDir()
+	rows := NewSettings(SettingsOptions{ProfileDir: dir,
+		SpentThisSessionUSD: func() (float64, bool) { return 0.41, true }})
+	if got := mustRow(t, rows, KeySpendRail).Receipt(); got != "this one $0.41" {
+		t.Fatalf("the ceiling's receipt = %q", got)
+	}
+	blind := NewSettings(SettingsOptions{ProfileDir: dir})
+	if got := mustRow(t, blind, KeySpendRail).Receipt(); got != "" {
+		t.Fatalf("a door with no conversation behind it invented a receipt: %q", got)
+	}
+	quiet := NewSettings(SettingsOptions{ProfileDir: dir,
+		SpentThisSessionUSD: func() (float64, bool) { return 0, true }})
+	if got := mustRow(t, quiet, KeySpendRail).Receipt(); got != "" {
+		t.Fatalf("a conversation that has spent nothing said %q", got)
+	}
+}
+
+// TestTheThreeCategoriesSpendingLeftBehind. `spending` had grown to hold what
+// may be spent, what may be run without asking, and how tasks are run — and a
+// person looking for the first read about the third. The split is the registry's
+// own, so every surface over it gets the same three sections.
+func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
+	rows := registry(t, t.TempDir())
+	want := map[string]string{
+		KeyDailyBudget:      CategorySpending,
+		KeyPlanConsent:      CategorySpending,
+		KeyPracticeBudget:   CategorySpending,
+		KeySpendRail:        CategorySpending,
+		KeyToolApprovalMode: CategorySafety,
+		KeyGuardian:         CategorySafety,
+		KeyConsentTimeout:   CategorySafety,
+		KeyTaskSettle:       CategorySafety,
+		KeyTaskAutoApprove:  CategorySafety,
+		KeyTaskStart:        CategoryTasks,
+		KeyTaskAudit:        CategoryTasks,
+		KeyTaskParallel:     CategoryTasks,
+		KeyTaskModel:        CategoryTasks,
+		KeyWorkers:          CategoryTasks,
+	}
+	for key, category := range want {
+		if got := mustRow(t, rows, key).Category; got != category {
+			t.Errorf("%s is filed under %q, want %q", key, got, category)
+		}
+	}
+	// AND NOTHING THAT IS NOT MONEY IS LEFT ON SPENDING.
+	for _, row := range rows.Rows() {
+		if row.Category == CategorySpending && row.Kind != SettingDollars {
+			t.Errorf("%s is on the spending category and is not a dollar figure", row.Key)
+		}
 	}
 }
 

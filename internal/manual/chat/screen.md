@@ -429,7 +429,9 @@ times this row calls anything slow, and it says it while something is already be
 about it. The models page has the whole of it under "what rescued means".
 
 Pressing the model segment opens the model picker, and it brightens under the pointer to
-say so.
+say so. The **money figure** further along the row is a door in the same way: pressing
+`$0.14` opens the **Spending** tab of `/settings`, where every money limit is set. `/budget`
+is the keyboard door onto the same tab.
 
 Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
 `crew frugal`, or `crew custom` when you pinned one of the four yourself — so the two model
@@ -460,7 +462,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 | 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
 | 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
-| 4 | cost | `$0.14` | the session's running spend | never empty |
+| 4 | cost | `$0.14` | the session's running spend. **It is a door**: press it and the **Spending** tab of `/settings` opens, and it brightens under the pointer to say so. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | never empty |
 | 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
 | 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
 | 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
