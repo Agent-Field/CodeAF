@@ -479,22 +479,25 @@ type bandFoldLine struct {
 	text    string
 }
 
+// noteBandFoldLine records one painted fold line as a door of the card. The
+// registry it goes into is the card's ONE door registry (carddoors.go), which
+// the work rows share: what lights under the pointer has to be what a press
+// acts on, and two registries would be two answers to that.
 func (a *app) noteBandFoldLine(band string, subject bandSubject, text string) {
-	a.home.foldLines = append(a.home.foldLines, bandFoldLine{band: band, subject: subject, text: text})
+	a.noteCardDoor(cardDoor{
+		kind: cardDoorFold,
+		text: text,
+		fold: bandFoldLine{band: band, subject: subject, text: strings.TrimSpace(ansi.Strip(text))},
+	})
 }
-
-// resetBandFoldLines is called at the top of every detail paint.
-func (a *app) resetBandFoldLines() { a.home.foldLines = a.home.foldLines[:0] }
 
 // bandFoldAt answers the fold line whose text is in a painted row, for a click.
 func (a *app) bandFoldAt(rowText string) (bandFoldLine, bool) {
-	plain := strings.TrimSpace(rowText)
-	for _, line := range a.home.foldLines {
-		if strings.Contains(plain, line.text) {
-			return line, true
-		}
+	door, ok := a.cardDoorOfKind(rowText, cardDoorFold)
+	if !ok {
+		return bandFoldLine{}, false
 	}
-	return bandFoldLine{}, false
+	return door.fold, true
 }
 
 // ── the bands that were home.go's own, now registered ──────────────────────

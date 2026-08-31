@@ -729,45 +729,27 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 // phone: the record over the list, with the list parked on the row that was
 // pressed, so `esc` comes back one layer at a time.
 //
-// AND THE ROWS ARE RECORDED BY THE DRAW, for [app.bandFoldAt]'s reason stated
-// once for both registries: the card is assembled band by band, drops whole
-// bands on a short frame and folds its own work rows at [homeCardTasks], so a
-// row number computed a second time would name a different row exactly when a
-// person could not tell why. The record dies with the frame that wrote it.
-
-// cardTaskLine is one work row the card painted this frame, and the piece of
-// work it named.
-type cardTaskLine struct {
-	text  string
-	entry session.TaskIndexEntry
-}
+// AND THE ROWS ARE RECORDED BY THE DRAW, INTO THE CARD'S ONE DOOR REGISTRY
+// (carddoors.go), which the fold lines share: the card is assembled band by
+// band, drops whole bands on a short frame and folds its own work rows at
+// [homeCardTasks], so a row number computed a second time would name a different
+// row exactly when a person could not tell why. The record dies with the frame
+// that wrote it — and because it is one registry, the row that LIGHTS under the
+// pointer is by construction the row a press acts on.
 
 // noteCardTask records one painted work row as a door.
 func (a *app) noteCardTask(painted string, entry session.TaskIndexEntry) {
-	text := strings.TrimSpace(ansi.Strip(painted))
-	if text == "" {
-		return
-	}
-	a.home.cardTasks = append(a.home.cardTasks, cardTaskLine{text: text, entry: entry})
+	a.noteCardDoor(cardDoor{kind: cardDoorTask, text: painted, task: entry})
 }
-
-// resetCardTasks is called at the top of every card paint, beside
-// [app.resetBandFoldLines] and for its reason.
-func (a *app) resetCardTasks() { a.home.cardTasks = a.home.cardTasks[:0] }
 
 // cardTaskAt answers the piece of work whose row is in a painted frame line, for
 // a click.
 func (a *app) cardTaskAt(rowText string) (session.TaskIndexEntry, bool) {
-	plain := strings.TrimSpace(rowText)
-	if plain == "" {
+	door, ok := a.cardDoorOfKind(rowText, cardDoorTask)
+	if !ok {
 		return session.TaskIndexEntry{}, false
 	}
-	for _, line := range a.home.cardTasks {
-		if strings.Contains(plain, line.text) {
-			return line.entry, true
-		}
-	}
-	return session.TaskIndexEntry{}, false
+	return door.task, true
 }
 
 // homeCardMade is the files this conversation left behind, under the words a

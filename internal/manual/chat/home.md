@@ -834,6 +834,12 @@ The `▸ N more tasks` line at the foot of `work` is **not** one of them. It nam
 place out at the right margin because a card is not the place that holds them; `ctrl+g`, or
 `tab` onto `tasks`, is the way there.
 
+**Move the mouse over the card and the doors show themselves.** The line under the pointer
+lights — the same highlight the row under the pointer wears in the list on the left — and
+lines that do nothing stay plain. So the way to find out whether something on the card can
+be pressed is to point at it: a task's name row lights, a fold line lights, and the
+headings, the title, the place line, the facts and the `▸ N more tasks` line do not.
+
 The card is only drawn where the frame is genuinely wide — around 160 columns and up. On a
 narrower window there is no card, and the tasks place (`ctrl+g`) is where the work is
 listed; `enter` or a click on a row there opens the same record.
