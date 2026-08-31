@@ -16,6 +16,7 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"io"
 	"strings"
 	"testing"
@@ -166,5 +167,47 @@ func TestAPartsLeashIsCheckedByTheSameHandTheConversationSet(t *testing.T) {
 	working, reason := worker.taskProgress(context.Background(), piece, t.TempDir(), []string{"the same grep again"}, io.Discard)
 	if working || !strings.Contains(reason, "still circling") {
 		t.Fatalf("the part's checkpoint answered working=%v %q, want the conversation's own hand", working, reason)
+	}
+}
+
+// E1: the foreground-command handoff clock reaches every worker through the
+// production constructor, including a part whose parent is itself a worker.
+func TestTheBackgroundAfterClockTravelsOntoEveryWorker(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 17
+	})
+	worker, node := workerFor(t, session, taskSpec{
+		title: "the whole job", brief: "b", acceptance: "a", depth: 1,
+	})
+	if got := worker.config.BashBackgroundAfterSeconds; got != 17 {
+		t.Fatalf("the first worker inherited a %d-second clock, want 17", got)
+	}
+
+	piece := pieceOf(t, session.graph(), node, worker, "one part of it")
+	part, err := worker.newTaskAgent(context.Background(), t.TempDir(), piece, "")
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a part's worker: %v", err)
+	}
+	t.Cleanup(func() { _ = part.Close() })
+	if got := part.config.BashBackgroundAfterSeconds; got != 17 {
+		t.Fatalf("the part inherited a %d-second clock, want 17", got)
+	}
+}
+
+// E1's other constructor: an adaptive run's node is the person's work at one
+// remove too, so the handoff clock rides newChild exactly as it rides
+// newTaskAgent.
+func TestTheBackgroundAfterClockTravelsOntoARunsNode(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 17
+	})
+	exec := &orchestrateExec{agent: session, id: "r1"}
+	child, err := exec.newChild(t.TempDir(), orchestrate.Node{ID: "n1", Goal: "g"})
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a run's node: %v", err)
+	}
+	t.Cleanup(func() { _ = child.Close() })
+	if got := child.config.BashBackgroundAfterSeconds; got != 17 {
+		t.Fatalf("the run's node inherited a %d-second clock, want 17", got)
 	}
 }

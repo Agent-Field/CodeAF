@@ -1425,6 +1425,12 @@ type Config struct {
 	// number the person typed.
 	TaskAutoApproveSeconds int
 
+	// BashBackgroundAfterSeconds is how long a foreground command stays in the
+	// turn before the same running process is kept as a job (promote.go,
+	// config.KeyBashBackgroundAfter). 0 TURNS THE CLOCK OFF, preserving the
+	// timeout-only posture for tests and callers that do not use the v3 door.
+	BashBackgroundAfterSeconds int
+
 	// TaskRepairRounds is how many times a node whose work came back with gaps
 	// is handed back to a fresh worker in the SAME worktree before it lands as
 	// incomplete (task_audit.go, config.KeyTaskRepairRounds). 0 IS THE LOOP

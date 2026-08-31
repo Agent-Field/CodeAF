@@ -63,9 +63,10 @@ func Tools(cwd string) []Tool {
 
 // ── wire schemas (verbatim from pi) ────────────────────────────────────────
 
-// The schemas are the exact JSON pi sends on the wire. They are raw literals
-// rather than constructed maps so the wire bytes are byte-for-byte identical
-// and a test can pin them without ordering ambiguity.
+// The schemas are the exact JSON pi sends on the wire. They are raw bytes
+// rather than constructed maps so the wire is byte-for-byte stable and a test
+// can pin it without ordering ambiguity; bash interpolates its one shared
+// timeout ceiling into those bytes.
 
 // THE WHOLE-NUMBER ARGUMENTS BELOW ARE DECLARED "integer", NOT "number", AND
 // THAT IS THE ONE THING THIS FILE DOES NOT TAKE VERBATIM. JSON has no integers,
@@ -77,7 +78,7 @@ func Tools(cwd string) []Tool {
 // that fix, for the tools aforge adds itself.)
 const readSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"integer","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"integer","description":"Maximum number of lines to read"}},"required":["path"],"additionalProperties":false}`
 
-const bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional; 600 when unset)"}},"required":["command"],"additionalProperties":false}`
+var bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional; ` + strconv.Itoa(BashCeilingSeconds) + ` when unset)"}},"required":["command"],"additionalProperties":false}`
 
 // BashCeilingSeconds is the bound a foreground bash call runs under when the
 // model named no usable timeout of its own — ONE NUMBER, typed once, read by

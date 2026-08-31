@@ -92,6 +92,7 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	}
 	tools, prompt := len(block), len(systemPrompt)
 	total := tools + prompt
+	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d", total, total/4, prompt, tools)
 
 	if total <= fixedPrefixBudget {
 		return

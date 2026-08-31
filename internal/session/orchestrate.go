@@ -1008,12 +1008,17 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		RolesSource:    parent.RolesSource,
 		SearchProvider: parent.SearchProvider,
 		SearchFetcher:  parent.SearchFetcher,
-		Connect:        parent.Connect,
-		connectHub:     parent.connectHub,
-		Media:          parent.Media,
-		MediaModel:     parent.MediaModel,
-		MediaPick:      parent.MediaPick,
-		DocumentEngine: parent.DocumentEngine,
+		// The foreground-command handoff clock rides along for a task node's
+		// reason (task_run.go's newTaskAgent): a node's work is the person's
+		// work at one remove, and a clock that stopped at the conversation
+		// would mean something different as soon as work was handed out.
+		BashBackgroundAfterSeconds: parent.BashBackgroundAfterSeconds,
+		Connect:                    parent.Connect,
+		connectHub:                 parent.connectHub,
+		Media:                      parent.Media,
+		MediaModel:                 parent.MediaModel,
+		MediaPick:                  parent.MediaPick,
+		DocumentEngine:             parent.DocumentEngine,
 	}, client)
 	if err != nil {
 		return nil, err

@@ -7,7 +7,11 @@ package session
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
+
+	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // timeoutOf reads back the timeout the law left on one call's arguments, and
@@ -104,5 +108,59 @@ func TestTheBoundTheSurfaceDrawsIsTheBoundTheCommandDiesOn(t *testing.T) {
 	// refuse is still a call somebody may be watching.
 	if got := BashTimeoutSeconds(json.RawMessage(`not json at all`)); got != BashCeilingSeconds {
 		t.Fatalf("undecodable arguments read as %v seconds, want the ceiling", got)
+	}
+}
+
+// M6: the visible foreground bound is the earlier of the command timeout and
+// the background-after clock, while zero leaves the old timeout law alone.
+func TestBashBoundIsTheEarlierArmedClock(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		args       string
+		background int
+		want       float64
+	}{
+		{"clock off", `{"command":"go test ./...","timeout":80}`, 0, 80},
+		{"background clock first", `{"command":"go test ./...","timeout":80}`, 30, 30},
+		{"command timeout first", `{"command":"go test ./...","timeout":8}`, 30, 8},
+		{"unset command timeout", `{"command":"go test ./..."}`, 30, 30},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := BashBoundSeconds(json.RawMessage(test.args), test.background); got != test.want {
+				t.Fatalf("BashBoundSeconds = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+// M5: the tool tells the model the armed background clock and derives every
+// numeric claim from the same constants that execute it.
+func TestBashDescriptionStatesTheArmedBackgroundClock(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
+	})
+	description := beltTool(t, agent, "bash").Description
+	for _, want := range []string{
+		"up to " + strconv.Itoa(configpkg.DefaultBashBackgroundAfter) + " seconds",
+		"kept running as a background job",
+		"output so far",
+		"job id",
+		strconv.Itoa(BashCeilingSeconds) + " seconds",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("the armed bash description is missing %q:\n%s", want, description)
+		}
+	}
+	if schema := string(beltTool(t, agent, "bash").Schema); !strings.Contains(schema,
+		strconv.Itoa(BashCeilingSeconds)+" when unset") {
+		t.Fatalf("the bash schema does not derive the timeout ceiling: %s", schema)
+	}
+	if strings.Contains(systemPrompt, "up to 600s") || !strings.Contains(systemPrompt, "finishes or its armed bound") {
+		t.Fatalf("the system prompt still promises the timeout-only posture")
+	}
+
+	off, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if got := beltTool(t, off, "bash").Description; !strings.Contains(got, "is never turned into a job before then") {
+		t.Fatalf("the zero-value config did not preserve today's sentence:\n%s", got)
 	}
 }
