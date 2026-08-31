@@ -1248,11 +1248,11 @@ opens the five-seat reading, bottom-anchored like the model picker. From the top
 the four models aforge uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   frugal — qwen handles careful work · pennies a day
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
 › balanced — kimi-k3 thinks, qwen checks
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
 each of the four can be pinned on its own in /settings → Providers
 ```
 

@@ -860,7 +860,7 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTie
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
 // here, and that distinction is the whole mechanism ([TierModelAt] says how).
 const (
-	DefaultReflexModel = "nex-agi/nex-n2-mini"
+	DefaultReflexModel = "mistralai/mistral-nemo"
 	DefaultLowModel    = "deepseek/deepseek-v4-flash"
 	DefaultHighModel   = "qwen/qwen3.8-27b"
 	// The mastermind ships with a LEVEL on it, which no other tier does. The
