@@ -228,6 +228,19 @@ type Meta struct {
 	// [TaskIndexEntry.Tokens] already uses for the same fact about a task.
 	SpentUSD float64 `json:"spentUsd,omitempty"`
 	Tokens   int     `json:"tokens,omitempty"`
+	// Places is the set of folders THIS CONVERSATION IS ABOUT beyond the one it
+	// is standing in — named by the person, or kept from a ground the work
+	// resolved (places.go). It is here for the reason Effort is: a set that
+	// lived only on the running agent would be a conversation that forgot every
+	// folder it was about the moment the terminal closed, and the whole value of
+	// it is that nobody is asked the same question twice.
+	//
+	// AN ABSENT FIELD IS A CONVERSATION WITH NO REFERRED PLACES, which is every
+	// conversation written before this existed and every one that has not
+	// accrued one yet. Like everything else in this file it is a citation: what
+	// the conversation touched is in the transcript, and this is the answer
+	// already worked out from it.
+	Places []PlaceRef `json:"places,omitempty"`
 	// Archived marks a conversation somebody PUT AWAY from home's resting
 	// list: it leaves its project's block and gathers under home's one folded
 	// archive line, reachable there and still found by search. It is the
