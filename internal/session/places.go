@@ -386,6 +386,15 @@ func loadPlaces(dir string) []PlaceRef {
 	if err != nil {
 		return nil
 	}
+	return metaPlaces(meta)
+}
+
+// metaPlaces is one meta.json's referred places, read the same way for the
+// conversation that owns them and for a surface that is merely LOOKING at the
+// conversation ([readSessionRow], world.go). It is one function because a home
+// row drawing a different set from the one the ladder weighs would be the
+// screen and the work disagreeing about what a conversation is about.
+func metaPlaces(meta Meta) []PlaceRef {
 	var out []PlaceRef
 	for _, place := range meta.Places {
 		if path := strings.TrimSpace(place.Path); path != "" && filepath.IsAbs(path) {

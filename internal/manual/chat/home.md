@@ -1041,14 +1041,49 @@ rules, its crew, its spend ceiling and its saved shapes of work are resolved fro
 workspace it launched in, and carrying a conversation across without carrying those would
 be a window quietly running under another project's permissions. What changed is the
 answer: a second project is a second **conversation**, built the way the first one was, on
-its own workspace, with its own gate. A conversation still never moves between projects.
+its own workspace, with its own gate. A conversation still never moves between projects —
+though it can be **about** another folder without moving, which is what to reach for when
+you want the work somewhere else rather than a second set of settings: see *What also about
+means on a row* below and *Choosing a folder*.
 
 `another window` is a different sentence and still means what it always did — see *Why
 can't I open a session from home*.
 
+## What also about means on a row — the conversation is about another folder
+
+A conversation is filed under the project it is **standing in** — the folder aforge was
+opened in. It can also be **about** other folders: ones you named with `/folder` or
+`/attach`, and ones a task's ground settled on and the conversation wrote down. When that is
+true of a row, its dim tail ends with the name:
+
+```
+Flaky pipeline               2 running · 3h · also about wisp
+Tuesday notes                            1d · also about wisp +2
+```
+
+One name and a count, never a list — a row is the same shape whatever it is about. The card
+on the right names them in full under `also about`, three at a time, with `▸ …N more
+folders` behind the rest; `→` opens every fold on the card.
+
+**A row with nothing to add says nothing.** A conversation about exactly the project it is
+filed under draws no such clause, and neither does one whose folder would only repeat the
+project's own name. Nothing on this screen is a permanent "attached" list: a folder appears
+when it tells you something you could not already see.
+
+Where the work itself goes is *Which folder does a task work in*, and how a conversation
+comes to be about a folder is *Choosing a folder*.
+
 ## Switch between projects without leaving — work on two projects or two repos at once in one terminal
 
-One terminal holds up to **eight** conversations at once. One is on screen; the rest are
+**One conversation can be about more than one folder.** Name the other project — `/folder`,
+`/attach ~/code/other`, or the path in your own words when you ask for the work — and the
+work you ask for goes there; you do not need a second conversation for a second repository.
+What does not move is where the conversation is **standing**: its own working directory, its
+`AGENTS.md` and its settings stay the folder it was opened in. *Choosing a folder* has both
+halves.
+
+For a genuinely separate conversation — a different project's settings, its own model, its
+own history — one terminal holds up to **eight** at once. One is on screen; the rest are
 open behind it, fully alive.
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
@@ -1107,14 +1142,20 @@ old one.
 **Just type.** There is no prefix and no mode: the box at the foot of home searches every
 project on the machine as you type, live, and narrows the list in place.
 
-It matches four things, and the first that scores highest wins the row: the conversation's
-name, the project it is in, the titles of the tasks it ran, and **what those tasks came
-to** — the one-sentence outcome in the project's record. That last one is the closest thing
-to remembering something by what happened rather than by what it was called: typing
-`postgres` finds the conversation whose task outcome mentions the connection pool, even
-though nothing in its name does.
+It matches five things, and the first that scores highest wins the row: the conversation's
+name, the project it is in, **the folders it is about**, the titles of the tasks it ran, and
+**what those tasks came to** — the one-sentence outcome in the project's record. That last
+one is the closest thing to remembering something by what happened rather than by what it
+was called: typing `postgres` finds the conversation whose task outcome mentions the
+connection pool, even though nothing in its name does.
 
 Matching a project's name keeps every conversation in it.
+
+**A folder's name finds the chats about it wherever they were held.** A conversation opened
+in your home directory that spent an afternoon on `~/code/wisp` is filed under `~` and not
+under wisp — so typing `wisp` finds it too, alongside the conversations held inside wisp
+itself. Those come first: standing in a folder is a stronger claim on its name than being
+about it.
 
 Ranking is match quality first — a whole word beats a name that starts with what you typed,
 which beats a word inside it, which beats the letters appearing in order. Then two things

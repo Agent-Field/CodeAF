@@ -149,9 +149,12 @@ attached and says so:
 that was a file, not a command · attached
 ```
 
-A folder gets `/attach`'s own sentence instead — `<name> is a folder · attach a file` —
-and an unknown command that names nothing on the disk still refuses exactly as it always
-did.
+A folder dropped or pasted gets the drop road's own sentence instead — `<name> is a folder ·
+attach a file` — and an unknown command that names nothing on the disk still refuses exactly
+as it always did. That sentence belongs to the drop and the paste alone: `/attach
+~/code/thing`, typed, refers the folder and answers `folder · ~/code/thing`. A drop is a
+gesture nobody typed, and reading a decision about your project out of a mouse would be
+inferring far too much.
 
 ## Drag and drop shows the path as text
 

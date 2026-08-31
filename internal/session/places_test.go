@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A PLACE SOMEBODY NAMED IS ON THE FOLDER, and it comes back. This is the same
@@ -266,5 +267,48 @@ func TestAPartIsNotMovedByTheConversationsPlaces(t *testing.T) {
 	})
 	if stand.dir != canonicalPath(repo) || stand.rung != taskGroundStandingIn {
 		t.Fatalf("a part was re-grounded onto a referred place: %+v", stand)
+	}
+}
+
+// AND HOME READS IT BACK OFF THE FOLDER. The row a person scans on home is
+// built from meta.json and never from a live conversation (world.go's
+// [readSessionRow]), so a set that only the running agent could answer would be
+// a set home could never draw — and every conversation on the screen would look
+// like a conversation about exactly one directory again.
+func TestTheWorldCarriesTheFoldersAConversationIsAbout(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "-tmp-alpha", "aaaa000000000001")
+	elsewhere := t.TempDir()
+	if err := SaveMeta(dir, Meta{
+		ID: "aaaa000000000001", Workspace: "/tmp/alpha", Title: "Pricing",
+		LastUserAt: time.Now(),
+		Places:     []PlaceRef{{Path: elsewhere, Arrival: PlaceSaid, Referred: time.Now()}},
+	}); err != nil {
+		t.Fatalf("SaveMeta: %v", err)
+	}
+	write(t, Place{Dir: dir}.Transcript(), `{"type":"session","version":1,"id":"aaaa000000000001","timestamp":"t"}`)
+
+	world := ReadWorld(root)
+	if len(world.Projects) != 1 || len(world.Projects[0].Sessions) != 1 {
+		t.Fatalf("the world read %d projects, want the one written", len(world.Projects))
+	}
+	row := world.Projects[0].Sessions[0]
+	if len(row.Places) != 1 || row.Places[0].Path != elsewhere {
+		t.Fatalf("the row is about %+v, want the folder the meta names", row.Places)
+	}
+
+	// A CONVERSATION WITH NO SET IS EVERY CONVERSATION WRITTEN BEFORE THIS, and
+	// it answers nothing rather than an empty something.
+	plain := filepath.Join(root, "-tmp-beta", "bbbb000000000001")
+	if err := SaveMeta(plain, Meta{ID: "bbbb000000000001", Workspace: "/tmp/beta", LastUserAt: time.Now()}); err != nil {
+		t.Fatalf("SaveMeta: %v", err)
+	}
+	write(t, Place{Dir: plain}.Transcript(), `{"type":"session","version":1,"id":"bbbb000000000001","timestamp":"t"}`)
+	for _, project := range ReadWorld(root).Projects {
+		for _, row := range project.Sessions {
+			if row.ID == "bbbb000000000001" && row.Places != nil {
+				t.Fatalf("a conversation with no folders answered %+v", row.Places)
+			}
+		}
 	}
 }
