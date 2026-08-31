@@ -1111,9 +1111,10 @@ tail. Every row has the same thin left line and one space of padding:
 The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
 The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
 `/task solo <brief>` and a `single` starting setting begin at shaping because they skip
-sizing. When work starts, the thin line and scaffold disappear
-in the same frame and the normal started-task row takes their place. If starting fails,
-only the error sentence remains.
+sizing. Once shaping starts writing, a fourth dim row appears under the phase row with the
+newest words of the brief on it — see *Can I see the brief while it is being written*. When
+work starts, the thin line and scaffold disappear in the same frame and the normal
+started-task row takes their place. If starting fails, only the error sentence remains.
 
 ## Why is there a line next to my task
 
@@ -1121,6 +1122,72 @@ The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the 
 into one thing being formed. It is a single left hairline, not a box or a task-status
 border. It exists only while a `/task` command is in flight and disappears when that
 command becomes the ordinary started-task row or an error line.
+
+## Can I see the brief while it is being written — the preview line under shaping the brief
+
+Yes. While `shaping the brief…` is up, one extra dim row hangs under it carrying the newest
+part of the brief as the model writes it:
+
+```text
+▏ task
+▏ "write the release notes"
+▏ ⠙ shaping the brief… · 13s
+▏ ▸ the failure this kind of work has is a release note that lists comm
+```
+
+It is **one row, always**. It never grows into a second row and never pushes the
+conversation up the screen — the words on it change, the height does not. It is the last
+line the brief lays out to at your terminal's width, so it fills up left to right and then
+starts again, and the end of it is where the model's pen is.
+
+**While the model is still thinking, the row shows its thinking, in italics.** The shaper
+runs on the careful-work model and is allowed to reason before it writes, and on some models
+that is most of the wait — so the row shows whatever is actually being produced. Italic is
+the model working; upright is your brief. **The brief takes the row the moment there is a
+brief and never gives it back**, so nothing you have started reading is un-said.
+
+**It appears only when there is something to show.** Before the model has produced anything
+there is no fourth row at all, and a task you approved from a proposal card never grows one
+— that brief was written before you were asked, so there is no stream behind the wait.
+
+**`▸` on the row means there is more behind it.** Press the row, or press `→` with an empty
+box, and the one line becomes the last six lines of the brief so far; `←` or another press
+shuts it again and `▾` goes back to `▸`. No new key is involved — it is the same fold every
+block on this surface has.
+
+Nothing about the preview is kept. The reasoning in particular is never written anywhere,
+never sent anywhere, and is not part of the brief the worker is given.
+
+The preview is **telemetry about a wait, not a transcript**. When the brief lands, the
+preview and the whole forming block disappear in the same frame, and what stays is the
+ordinary started-task row. Nothing of the preview is kept, and the shaped brief itself is
+readable in full in the task's own room.
+
+## Several tasks forming at once — one block with a row each
+
+Two `/task` commands can be shaping at the same time. They share **one** block rather than
+stacking two four-row blocks at the tail of the transcript:
+
+```text
+▏ tasks · 3 forming
+▏ ⠙ write the release notes · 13s
+▏ ⠙ fix the nil-map crash in the loader · 9s
+▏ ▸ Reproduce the crash from the stack trace in issue #94, then write a
+▏ ⠙ write the docs for /task · 2s
+```
+
+The head counts them. Each task is one compact row: the same spinning mark, its name or the
+opening of what you typed, and its own clock. **Only the row you are pointed at shows a
+preview under it**, so the block stays the same height however long the briefs get.
+
+`↑` and `↓` with an empty box move between the rows — the keys that walk rows in the
+transcript already — and the preview follows. `→` opens that row's window, `←` shuts it.
+Clicking a row you are not on points at it and opens it; clicking the row you are on shuts
+it again. Walking off either end of the block hands the arrows back to whatever they do
+next, so nothing else you press changes meaning.
+
+**With one task forming, none of this appears.** No head that counts, no rows to walk: the
+block is `task`, your words, the phase row and the preview, exactly as above.
 
 ## /history — the task history command: past tasks, every task this project has run
 

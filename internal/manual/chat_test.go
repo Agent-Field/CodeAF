@@ -636,6 +636,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The wait a person can now see into: the preview row under the phase
+		// row, asked the three ways somebody meets it — wanting it, describing
+		// it, and asking what the extra line is.
+		{"can I see the brief while it is being written", "commands"},
+		{"what is the line under shaping the brief", "commands"},
+		{"several tasks forming at once", "commands"},
+		{"why is the line under shaping the brief in italics", "commands"},
 
 		// The answer that gets moved because it ran long. People meet this as a
 		// line that appeared under a reply they were reading, so they say it back
