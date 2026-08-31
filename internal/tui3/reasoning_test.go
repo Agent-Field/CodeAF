@@ -40,9 +40,9 @@ func TestAPickerRowCarriesTheWindowThePriceAndTheScore(t *testing.T) {
 	got := strings.Join(pickerLines(a), "\n")
 	for _, want := range []string{
 		"anthropic/claude-sonnet-4.5",
-		"1M · $3/$15 per M · elo 1243",
+		"$3/$15 per M · 1M · elo 1243",
 		"openai/gpt-4.1-mini",
-		"128k · $0.08/$0.15 per M",
+		"$0.08/$0.15 per M · 128k",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the picker has to say %q:\n%s", want, got)
@@ -63,10 +63,12 @@ func TestAPickerRowCarriesTheWindowThePriceAndTheScore(t *testing.T) {
 	}
 }
 
-// The level rides the id, and it is the NAME that gives way when the row runs
-// out of room: a clipped id is still recognizable, a clipped level is a knob
-// that looks like it did nothing.
-func TestANarrowRowClipsTheNameAndKeepsTheLevel(t *testing.T) {
+// The level rides the id, and NEITHER gives way when the row runs out of room:
+// a clipped level is a knob that looks like it did nothing, and a clipped id is
+// a row a person cannot match against the name they are hunting for. What gives
+// way is the TAIL, one whole fact at a time, from the bottom of the hierarchy
+// up (rowfit.go).
+func TestANarrowRowKeepsTheNameAndTheLevelAndSpendsTheTail(t *testing.T) {
 	agent := &fakeAgent{model: "moonshotai/kimi-k3", levels: map[string]string{
 		"anthropic/claude-sonnet-4.5": "high",
 	}}
@@ -79,11 +81,16 @@ func TestANarrowRowClipsTheNameAndKeepsTheLevel(t *testing.T) {
 	settleLevels(a, "anthropic/claude-sonnet-4.5")
 
 	line := pickerLines(a)[0]
-	if !strings.Contains(line, ":high") {
-		t.Fatalf("the level was clipped off a narrow row: %q", line)
+	if !strings.Contains(line, "anthropic/claude-sonnet-4.5:high") {
+		t.Fatalf("a narrow row cut the name or the level off it: %q", line)
 	}
-	if !strings.Contains(line, "1M · $3/$15 per M · elo 1243") {
-		t.Fatalf("the tail was clipped instead of the name: %q", line)
+	if strings.Contains(line, glyphMore) {
+		t.Fatalf("a narrow row cut something in half instead of dropping it: %q", line)
+	}
+	// Sixty columns hold the name, the level and the two facts a person chooses
+	// on; the arena score is under the fold of the row and simply is not drawn.
+	if !strings.Contains(line, "$3/$15 per M · 1M") || strings.Contains(line, "elo") {
+		t.Fatalf("the narrow row spent its tail in the wrong order: %q", line)
 	}
 }
 
@@ -105,7 +112,7 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	// band from lead to note, and a dim tail inside it would be grey on grey —
 	// the three facts a person is comparing, greyed out on the one row they are
 	// comparing them on. Off the cursor the tail is dim, which is asserted below.
-	id, note := "anthropic/claude-sonnet-4.5", "1M · $3/$15 per M · elo 1243"
+	id, note := "anthropic/claude-sonnet-4.5", "$3/$15 per M · 1M · elo 1243"
 	if !strings.Contains(rows[0], a.pal.ink(note)) {
 		t.Fatalf("the selected row's tail is not inside the band:\n%q", rows[0])
 	}
@@ -117,7 +124,7 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	// the band read as a selection rather than as the list's ordinary paint.
 	drive(t, a, key("ctrl+u"))
 	rows = a.pick.rows(a.width, len(a.pick.hits), a.pal, -1, a.reasoningFor)
-	if !strings.Contains(rows[1], a.pal.dim("128k · $0.08/$0.15 per M")) {
+	if !strings.Contains(rows[1], a.pal.dim("$0.08/$0.15 per M · 128k")) {
 		t.Fatalf("an unselected row's tail has to be dim:\n%q", rows[1])
 	}
 }
@@ -225,7 +232,10 @@ func TestTheNoteLeavesOutWhatNobodyPublished(t *testing.T) {
 		{Model{ID: "c"}, ""},
 		{
 			Model{ID: "d", ContextLength: 1_000_000, PromptPrice: 0.000003, CompletionPrice: 0.000015, ArenaElo: 1300},
-			"1M · $3/$15 per M · elo 1300",
+			// The tail is RANKED, not catalog order: the price a person pays
+			// every turn stands in front of the window they meet once a week
+			// (models.go's modelFields states the whole hierarchy).
+			"$3/$15 per M · 1M · elo 1300",
 		},
 	}
 	for _, c := range cases {
