@@ -161,14 +161,13 @@ func TestBlocksTwinsAreOneMark(t *testing.T) {
 // a gate people learn to ignore. A package joins this list the day its sweep
 // lands, and never leaves it.
 var scannedPackages = []string{
-	"../homes", "../placeline", "../modelui", "../golden",
+	"../modelui",
 	// Not yet, and each for the same reason — the sweep is a later wave, and the
-	// exact site list is already written down in the glyph audit's punch list:
-	// blocks (a leaf, so it needs twin constants rather than an import), chat,
-	// composer, footer, palette, settings, prose, consentui, and internal/tui2
-	// itself (placeholder.go, dialog.go). rail, dialogchrome and reltime were
-	// scanned during the audit and are already clean, so they can join the day
-	// somebody wants them pinned.
+	// remaining sites are few since the v2 surface's packages were removed on
+	// 2026-08-31: blocks (a leaf, so it needs twin constants rather than an
+	// import), prose, and internal/tui2 itself (placeholder.go, dialog.go).
+	// reltime was scanned during the audit and is already clean, so it can join
+	// the day somebody wants it pinned.
 }
 
 // literalExemptions are the files allowed to spell a vocabulary byte, with the
