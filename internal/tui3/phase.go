@@ -16,8 +16,8 @@ import (
 // — a handshake, a queue before the first word, a run of thought, an answer
 // arriving, a rate-limit wait, a relaxed re-ask, a rescue in flight, a tool
 // running, a compaction, a turn being written down for whoever takes it over —
-// and it says so (internal/provider's phase.go,
-// forwarded by internal/session's phasenews.go). This file is the only place
+// and it says so (internal/provider's phase.go, forwarded by
+// internal/session's phasenews.go). This file is the only place
 // that DRAWS one. Before it the surface could see a single bit of any of that,
 // whether a delta had arrived in the last ten seconds, so a stalled thinking
 // pass read "still working" while the row beside it quoted the LAST answer's
@@ -265,19 +265,18 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 			return []rowField{rowSay(word)}
 		}
 		return []rowField{rowSay(word+" → "+modelBase(news.Then), word)}
-	case provider.PhaseRunning:
-		// The tool's own name is the substance and the verb is the frame, so a
-		// narrow row keeps "running" and lets the noun go before the clock does.
+	case provider.PhaseRunning, provider.PhaseBriefing:
+		// THE NOUN IS THE SUBSTANCE AND THE VERB IS THE FRAME, so a narrow row
+		// keeps "running" or "briefing" and lets the noun go before the clock
+		// does. The two phases share this arm because they share the shape: a
+		// call that is running is named by the tool it is running, and the
+		// harness writing a handover is named by who the writing is FOR —
+		// "briefing" alone is it naming its own paperwork, and "briefing a
+		// worker" is the sentence that tells somebody watching their turn stop
+		// what is about to happen to it.
 		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying:
 		return []rowField{rowSay(word), rowSay(countUpWord(since))}
-	case provider.PhaseBriefing:
-		// WHO IT IS FOR IS THE SUBSTANCE, exactly as the tool's own name is for a
-		// call that is running: "briefing" alone is the harness naming its
-		// paperwork, and "briefing a worker" is the sentence that tells somebody
-		// watching their turn stop what is about to happen to it. So the noun
-		// leads and a narrow row drops it before it drops the clock.
-		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
 	}
 	// A PHASE THIS SURFACE HAS NEVER HEARD OF DRAWS NOTHING, rather than its own
 	// machine word with a clock after it. The vocabulary is closed and spelled
