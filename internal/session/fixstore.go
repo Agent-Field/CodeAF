@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/redact"
 )
 
 const (
@@ -778,10 +779,19 @@ func writeFixDocument(path string, document fixDocument) bool {
 // model-authored text that will be read back out into a person's transcript, so
 // it loses the bytes a terminal takes as instructions (loop.go's `scrubbed`
 // states why) and is clipped to one readable line.
+//
+// AND IT LOSES ANY TOKEN THE COMMAND SPELLED OUT (internal/redact), which
+// matters more here than almost anywhere else in this package: a patch is the
+// one thing a session writes into a file that OUTLIVES it — the machine-wide
+// store at `~/.aforge/v3` is read by every project on the laptop — so a `curl`
+// with a key typed into it would be a credential kept for months and handed
+// back to a model on the next matching error. The result the patch answers is
+// redacted at the chokepoint (loop.go's [Agent.finishToolResult]); this is the
+// same law applied to the model's own arguments, which do not pass through it.
 func fixCleanPatch(patch string) string {
 	patch = strings.TrimSpace(scrubbed(strings.ReplaceAll(patch, "\n", " ")))
 	patch = fixSpaces.ReplaceAllString(patch, " ")
-	return clip(patch, fixPatchLimit)
+	return clip(redact.Secrets(patch), fixPatchLimit)
 }
 
 // ── the two scopes ──────────────────────────────────────────────────────────
