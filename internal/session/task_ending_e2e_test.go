@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -162,5 +163,61 @@ func TestAWorkerRefusedByAnotherTasksTreeLandsAsBlocked(t *testing.T) {
 	}
 	if graph.node(4).blockedByNow() != "" {
 		t.Fatal("the holder was marked blocked by its own refusal")
+	}
+}
+
+// (5) A WORKER THAT LANDED ITS WORK QUIETLY IS NOT CIRCLING. The evening's fifth
+// row: a worker whose commit-and-push phase was twenty-six distinct, successful
+// shell commands with nothing said between them was cut off by the third
+// [silent] note and written up as `went in circles` — the one sentence about it
+// that was not true. Silence books no nudge now, so the run reaches its landing
+// write and the row says nothing about circles.
+func TestATaskThatWorkedQuietlyDoesNotGoInCircles(t *testing.T) {
+	var quiet []step
+	// Past the last silent rung (24 batches) with room to spare, and every
+	// command leaves a different file behind, which is what a landing phase does.
+	for round := range 3 * silentThreshold(1) {
+		quiet = append(quiet, bashCall(fmt.Sprintf("call-land-%d", round),
+			fmt.Sprintf("printf 'step %d\\n' > note-%d.txt", round, round)))
+	}
+	quiet = append(quiet,
+		writeCall("call-greet", "greet.go", "package main\n\nfunc Greet() string { return \"hi\" }\n"),
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return pricedResponse("Done: greet.go written.", 0.01), nil
+		})
+
+	completer := &routedCompleter{
+		parent: []step{proposeCall("Add the greeting", "write greet.go with a greeting"), finalText("handed off")},
+		child:  quiet,
+		audit: []step{
+			bashCall("call-look", "git status --porcelain"),
+			verdictFromEvidence("greet.go", "VERIFIED — greet.go is staged", "REFUTED — no greet.go"),
+		},
+	}
+	agent, graph := endingAgent(t, completer)
+	notice := landedNode(t, agent, graph)
+
+	if notice.Ending == TaskEndingCircling {
+		t.Fatalf("a quiet landing was written up as circling: state %q report %q", notice.State, notice.Report)
+	}
+	if strings.Contains(notice.Report, loopLeftUndoneNote) {
+		t.Fatalf("the loop guard ended a working turn: report %q", notice.Report)
+	}
+	// AND IT WAS NEVER SCOLDED. A landing phase of distinct, successful shell
+	// commands is work, so no note about it belongs in the worker's context at
+	// all: the tree moved on every one of them, which resets the silent ladder
+	// and answers the "read nothing new" rule in the same reading.
+	for _, note := range []string{"[silent]", "[stuck]"} {
+		if completer.childSaw(note) {
+			t.Fatalf("a quiet landing was handed a %s note", note)
+		}
+	}
+	// AND IT REACHED ITS LAST STEP. The whole defect was a turn taken away with
+	// the work unlanded, so "not circling" is only half the claim.
+	if !completer.childSaw("greet.go") {
+		t.Fatal("the run never reached the write that lands the work")
+	}
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
 	}
 }

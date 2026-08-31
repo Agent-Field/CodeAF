@@ -103,15 +103,19 @@ func (g taskGitGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call
 	return call, toolResult{}, true
 }
 
-// gitReachesARemote are the subcommands that talk to another machine. They are
+// gitReachesARemote are the subcommands that FETCH from another machine. They are
 // refused for a worker whether or not a remote is configured: what is wrong with
 // them is not that they might fail, it is that a node's working copy is a copy of
 // what the person has, and a node that went and got something newer is reporting
 // on a repository nobody asked it about.
+//
+// `push` IS NOT ONE OF THEM, and the split is the repair for a refusal that was
+// false. These five bring somebody else's work IN; push sends this task's own
+// work OUT, past the landing that is the road it comes home on — a different act,
+// which taskoutside.go answers with a sentence about where the work actually goes.
 var gitReachesARemote = map[string]bool{
 	"pull":      true,
 	"fetch":     true,
-	"push":      true,
 	"clone":     true,
 	"remote":    true,
 	"submodule": true,
@@ -255,8 +259,14 @@ func gitSubcommand(words []string) (string, []string) {
 // spinning.
 func refusedGitVerb(verb string, rest []string) string {
 	switch {
+	case verb == "push":
+		return taskPushRefusal
 	case gitReachesARemote[verb]:
-		return "git " + verb + " is not yours to run: this is your own copy of the repository and it reaches no remote. " + taskGitInstead
+		// IT DOES NOT SAY "reaches no remote", which is what this sentence said
+		// until a task was pointed at the person's live checkout and told that
+		// about it. What is true of every copy a task works in, wherever it
+		// stands, is the second clause: work it did not do is not its to bring in.
+		return "git " + verb + " is not yours to run: it would bring in work this task did not do, and this task reports what it writes as its own. " + taskGitInstead
 	case gitMovesTheWork[verb]:
 		return "git " + verb + " is not yours to run: it would put work this task did not do into your copy, and only what you write here comes home. " + taskGitInstead
 	}

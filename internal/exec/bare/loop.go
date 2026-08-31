@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/redact"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -500,6 +501,16 @@ func (l *loopState) executeTools(ctx context.Context, calls []ai.ToolCall) []too
 }
 
 // executeTool dispatches one tool call to the matching bare tool.
+//
+// ── A SECRET NEVER LEAVES THIS FUNCTION ──
+//
+// Every result goes out through [redacted], because everything past this point
+// is a copy that outlives the call: the transcript entry recorded for the
+// person, the tool message the model reads on every later request of the run,
+// and the store the runner flushes to disk. This engine has its own toolResult
+// and therefore its own door — internal/session's chokepoint governs the chat's
+// belt and cannot see this one — but both doors read the SAME table
+// (internal/redact), so a shape learned once is recognised in both.
 func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResult {
 	name := call.Function.Name
 	args := json.RawMessage(call.Function.Arguments)
@@ -525,9 +536,9 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 				// error message as the model-visible text. This mirrors pi's
 				// behavior: a thrown Error becomes isError=true with
 				// error.message as the toolResult content.
-				return toolResult{text: err.Error(), isError: true}
+				return redacted(toolResult{text: err.Error(), isError: true})
 			}
-			return toolResult{text: text, isError: isError}
+			return redacted(toolResult{text: text, isError: isError})
 		}
 	}
 	// Unknown tool: pi does not have this path, but a model could emit one.
@@ -536,6 +547,16 @@ func (l *loopState) executeTool(ctx context.Context, call ai.ToolCall) toolResul
 		text:    fmt.Sprintf("Unknown tool: %s", name),
 		isError: true,
 	}
+}
+
+// redacted replaces the token-shaped spans in one result with a marker naming
+// what was taken (internal/redact says why nothing downstream needs the
+// characters). It is a function rather than a line at each return so that the
+// claim in executeTool's comment — every result goes out through here — is
+// something a reader can check by grep.
+func redacted(result toolResult) toolResult {
+	result.text = redact.Secrets(result.text)
+	return result
 }
 
 // toolDefinitions builds the ai.ToolDefinition slice from the bare tools,

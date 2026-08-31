@@ -24,6 +24,8 @@ package session
 //     plan that vanishes at every step boundary while every individual call
 //     remains distinct. The notes arrive after six, twelve and twenty-four
 //     batches, each stronger than the last, and progress resets the ladder.
+//     SILENCE IS HYGIENE AND NOT STUCKNESS, so its notes are the only ones that
+//     cannot end a turn — the hand-off section at the foot of this comment.
 //   - ROUNDS THAT READ NOTHING NEW. Distinct command strings can ask the same
 //     question with slightly different words, so the ledger rather than the
 //     signature decides whether the answers added anything. Five consecutive
@@ -85,13 +87,53 @@ package session
 //     is fine and slow to escalate against it, because escalating costs the
 //     person's attention and being wrong about progress costs nothing.
 //
-// ── AND THEN THE HAND-OFF ──
+// ── AND THEN THE HAND-OFF, WHICH SILENCE HAS NO PART IN ──
 //
 // Past two nudges the notes have stopped working, and a third one is the harness
 // talking to itself. The third signal therefore ends the turn through the same
 // checkpoint hand-off that governs any other overlong turn. When that road is
 // unavailable — inside a task, without a consent surface, or when no brief can
 // be carried — the turn still ends and says plainly that its remains were left.
+//
+// FOUR RULES CAN SPEND THAT COUNT, AND SILENCE IS NOT ONE OF THEM: identity, the
+// repeated error, the argument refusal, and the round that read nothing new.
+// Each of those is a claim that the turn is not moving. Silence is a claim about
+// the RECORD — that reasoning is being lost between steps — and a turn can be
+// entirely silent while committing, pushing and landing real work.
+//
+// The measured case: a worker's last six calls before it was stopped were
+// `commit-tree`, `write-tree`, a second commit, a ref update, a log and a
+// cleanup — all distinct, all succeeding, with three visible notes written in
+// the minute before. Two early silence notes plus one late one added up to a
+// hand-off, and the row it left said the turn "went in circles" when the turn
+// had been working the whole time. So a silent note keeps its rung and its
+// wording and books nothing, and its third rung no longer promises a hand-off
+// it cannot make.
+//
+// AND MATERIAL PROGRESS GIVES THE COUNT BACK, ONE RUNG AT A TIME. The two
+// ledgers this file keeps take different evidence, on purpose:
+//
+//   - THE PER-SIGNATURE STREAKS take the weak kind — any successful call this
+//     turn has not been nudged about — and clear to NOTHING. They are evidence
+//     about one repetition, and evidence that the turn is working destroys the
+//     backward case outright. That is the hysteresis law above, unchanged.
+//   - THE NUDGE COUNT takes only the strong kind: a file written, or a shell
+//     command that left the tree different from how it found it — and neither of
+//     them from a call this turn has already been nudged about, because a loop
+//     that paid its own refund would put the ceiling out of reach. It steps DOWN
+//     BY ONE rather than clearing.
+//
+// Both halves of that are load-bearing. VISIBLE TEXT CANNOT BUY THE COUNT BACK,
+// because a model narrating its own loop is still looping — text is the cure for
+// the silent ladder and for nothing else. NOR CAN THE WEAK KIND: the first two
+// calls of a turn's SECOND loop are by construction calls nobody has been nudged
+// about yet, so a turn-wide budget refunded by them is no budget at all.
+//
+// And it steps down rather than zeroing because the count is not evidence — it
+// is the person's attention, already spent, and attention already spent does not
+// un-spend. Zeroing would mean a turn that loops, is nudged, does one token of
+// real work and loops again can never be handed over however long it runs.
+// Stepping down says: forgiven quickly, and still remembered.
 
 import (
 	"context"
@@ -137,7 +179,18 @@ const (
 	// loopNudgeCeiling is how many notes a turn gets before the work is handed
 	// off instead. Two, because a third note would be the third time advice failed
 	// to change anything.
+	//
+	// IT COUNTS THE RULES THAT CLAIM THE TURN IS NOT MOVING and no others, which
+	// is why [silentRungs] is its own number rather than this one reused: the
+	// two ladders answer different questions and only one of them may stop work.
 	loopNudgeCeiling = 2
+
+	// silentRungs is how many notes ONE silent stretch earns before the harness
+	// stops mentioning it: three, at six batches, twelve and twenty-four. The
+	// third is the last because silence cannot end a turn, and a fourth note
+	// about it would be the harness nagging a worker that is working. A stretch
+	// broken by progress and begun again starts at the first rung.
+	silentRungs = 3
 
 	// loopHysteresis is how many MORE repetitions of an already-named signature
 	// count as evidence before the ladder advances again.
@@ -178,8 +231,10 @@ type nudge struct {
 	// the same argument went out twice — because a call nobody can execute is
 	// not the same news as work that keeps failing out in the world.
 	invalid bool
-	// nth is which nudge of this turn it is, 1-based. It is what the escalation
-	// law reads.
+	// nth is which STOPPING nudge of this turn it is, 1-based — and zero for a
+	// note that cannot end a turn, which today is every silent one. It is what
+	// the escalation law reads, so a zero here is the whole of "this note is
+	// hygiene, and the work goes on".
 	nth int
 	// fact is the structural sentence the turn's [workClock] can say about
 	// itself — when the work last changed, and how much the results since
@@ -224,8 +279,19 @@ type loopWatch struct {
 	// streak; either fresh information or a successful write rearms it.
 	noNewStreak int
 	noNewNudged bool
-	// nudges is how many nudges this turn has produced.
+	// nudges is how many STOPPING nudges this turn has produced — the count the
+	// hand-off ceiling is read against. Silent notes never touch it, and a batch
+	// of forward progress gives one of them back.
 	nudges int
+	// dir is the directory whose worktree answers "did anything actually change"
+	// for a batch of shell commands, and "" for a watch with no workspace behind
+	// it. dirt is the last fingerprint read from it, and dirtRead says one has
+	// been read at all: THE FIRST READING IS A BASELINE AND NEVER PROGRESS,
+	// because a tree that was already dirty when the turn opened is not work this
+	// batch did.
+	dir      string
+	dirt     string
+	dirtRead bool
 	// clock and ledger are the turn's account of ITSELF rather than of its
 	// repetitions: when the work last changed, and how much of what has come
 	// back since was new (novelty.go). The ledger also supplies the structural
@@ -289,10 +355,14 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 		return nudge{}, false
 	}
 
+	// BOTH KINDS OF FORWARD EVIDENCE ARE READ BEFORE ANY RULE IS TESTED, so a
+	// batch that both progressed and repeated cannot escalate. The weak kind
+	// empties the per-signature streaks; the strong kind also breaks the silent
+	// ladder and gives a spent note back.
 	if w.sawProgress(calls, results) {
 		clear(w.streak)
 	}
-	material := sawMaterialProgress(calls, results)
+	material := w.materialProgress(calls, results)
 	if visibleText || material {
 		w.silentStreak = 0
 		w.silentCalls = 0
@@ -394,7 +464,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 			}, true
 		}
 	}
-	if w.silentRung <= loopNudgeCeiling && w.silentStreak >= silentThreshold(w.silentRung) {
+	if w.silentRung < silentRungs && w.silentStreak >= silentThreshold(w.silentRung) {
 		// An identity nudge from this same batch already told the model the turn
 		// is stuck. Booking silence with it avoids two rules taking turns to say
 		// the same moment is bad, while distinct-call silence gets its own words.
@@ -410,11 +480,22 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 			}, true
 		}
 	}
+	// THE COUNT COMES BACK BEFORE IT IS SPENT. A batch that got something done
+	// and also tipped a rule over cannot escalate on it: the step down and the
+	// step up cancel, and the note goes out as an aside.
+	if material && w.nudges > 0 {
+		w.nudges--
+	}
 	if !ok {
 		return nudge{}, false
 	}
-	w.nudges++
-	found.nth = w.nudges
+	// AND A SILENT NOTE BOOKS NOTHING. It keeps its rung, it says its piece, and
+	// the hand-off ceiling never hears about it: nth stays zero, which is what
+	// [Agent.nudgeIfLooping] reads as "this one cannot end the turn".
+	if !found.silent {
+		w.nudges++
+		found.nth = w.nudges
+	}
 	// The clock's note is the fallback and never an override: an argument
 	// refusal already put the sentence that matters here.
 	if found.fact == "" {
@@ -423,28 +504,90 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	return found, true
 }
 
-// silentThreshold derives every rung from the first. Its caller bounds the rung
-// by the shared nudge ceiling, so the detector and checkpoint ladder cannot
-// drift into a fourth warning: rung zero is six batches, then each rung doubles.
+// silentThreshold derives every rung from the first: rung zero is six batches,
+// then each rung doubles. Its caller bounds the rung by [silentRungs], so one
+// silent stretch cannot earn a fourth note.
 func silentThreshold(rung int) int {
 	return silentStreakLimit << rung
 }
 
-// sawMaterialProgress reports the kind of forward evidence that breaks a
-// silent streak: a successful call through a belt hand known to write a file.
-// [loopWatch.sawProgress] remains deliberately broader for signature
-// hysteresis, but using it here would let a run of distinct successful greps
-// reset forever — precisely the silent loop this rule exists to catch.
-func sawMaterialProgress(calls []ai.ToolCall, results []toolResult) bool {
+// materialProgress reports the STRONG kind of forward evidence: this batch put
+// something in the world. It is what breaks a silent streak and what gives a
+// spent note back, and it has two halves.
+//
+// THE CHEAP HALF is a successful call through a belt hand whose effect on the
+// disk is a known path ([mutatingTools]). [loopWatch.sawProgress] stays
+// deliberately broader for signature hysteresis, but using it here would let a
+// run of distinct successful greps reset the ladder forever — precisely the
+// silent loop these rules exist to catch.
+//
+// THE OTHER HALF IS THE TREE. A commit, a push, a landing phase is pure bash, so
+// a worker doing the last and most valuable part of its job is structurally
+// silent AND structurally reading nothing new — which is how six distinct,
+// successful git calls came to be written up as a turn going in circles. The one
+// signal nobody can argue with is whether the tree looks different from a step
+// ago, and it is THE RUNNER'S OWN reading ([worktreeDirt], task_run.go): one
+// fingerprint, one exclusion of the harness's own droppings, so the leash out at
+// the task boundary and this watch cannot disagree about what moving means.
+//
+// IT IS READ ONCE PER BATCH AND ONLY WHEN THE ANSWER COULD CHANGE ONE — never
+// per call. A batch that already wrote a file has its answer, and a batch with no
+// unnamed successful shell command in it has no verb that could have moved the
+// tree unseen. A git call per model step is thirty milliseconds against a model
+// round trip; a git call per tool call is a process per grep.
+//
+// AND A CALL THIS TURN HAS ALREADY BEEN NUDGED ABOUT COUNTS FOR NOTHING, however
+// well it went — [loopWatch.sawProgress]'s rule, and it has to hold here too. A
+// model writing the same file with the same content seven times is looping, and
+// a refund the loop paid itself would put the hand-off ceiling out of reach.
+func (w *loopWatch) materialProgress(calls []ai.ToolCall, results []toolResult) bool {
+	shell := false
 	for index, call := range calls {
 		if index >= len(results) || results[index].isError || results[index].harness {
+			continue
+		}
+		if w.named[callSignature(call)] {
 			continue
 		}
 		if mutatingTools[call.Function.Name] {
 			return true
 		}
+		if call.Function.Name == "bash" {
+			shell = true
+		}
 	}
-	return false
+	return shell && w.treeMoved()
+}
+
+// treeMoved reports whether the worktree under this turn's workspace looks
+// different from the last time this watch looked at it, and records the new
+// fingerprint either way.
+//
+// A watch with no directory behind it, and a directory that is not a
+// repository, both answer no forever — stable, so they never move any counter.
+// THE FIRST READING IS A BASELINE. With nothing to compare against, a tree that
+// was already dirty when the turn opened would read as work this batch did, and
+// the whole point of the reading is that it is the one claim nobody can argue
+// with.
+//
+// It keeps its OWN fingerprint rather than sharing the runner's cell: reading a
+// transition consumes it, and two readers sharing one cell would each see half
+// the movement (task_run.go's [worktreeMoved] is that cell's only owner).
+func (w *loopWatch) treeMoved() bool {
+	if w.dir == "" {
+		return false
+	}
+	dirt := worktreeDirt(w.dir)
+	if !w.dirtRead {
+		w.dirtRead = true
+		w.dirt = dirt
+		return false
+	}
+	if dirt == w.dirt {
+		return false
+	}
+	w.dirt = dirt
+	return true
 }
 
 // count folds one call and its result into the turn's clock: a step taken, what
@@ -590,7 +733,7 @@ func nudgeNote(n nudge) string {
 		case 2:
 			note += " This is the second warning; stop calling tools until you have written that note."
 		case 3:
-			note += " This is the final warning; if the silent run continues, the harness will hand the turn over."
+			note += " This is the third and last note about this run. Nothing is being stopped — keep working — but nothing you have worked out since the first note is on the record either."
 		}
 		return note
 	}
@@ -644,9 +787,10 @@ func loopRule(n nudge) string {
 // are in the transcript and before the next request is assembled — the one
 // moment a note can ride into the next request the way a person's steering does.
 //
-// The first two nudges are asides. Past the shared ceiling the episode is marked
-// for the main loop to end through checkpointing, because only that caller owns
-// the turn usage and the person's original request needed by the hand-off.
+// The first two stopping nudges are asides, and every silent note is one
+// forever. Past the ceiling the episode is marked for the main loop to end
+// through checkpointing, because only that caller owns the turn usage and the
+// person's original request needed by the hand-off.
 func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	// WAITING ON HANDED-OUT PARTS IS NEITHER WORKING NOR SPINNING. A parent with
 	// pieces outstanding has no new information because those pieces are still
@@ -672,6 +816,9 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 
 	// Past the ceiling no fourth message is useful. The hook cannot end a turn,
 	// so it leaves the decision on the episode for loop.go to spend immediately.
+	// A SILENT NOTE CARRIES nth 0 AND NEVER REACHES THIS. What it is about is the
+	// record, not the work, and taking a turn away from a worker that is landing
+	// commits because it landed them quietly is the defect this guard caused.
 	if looping.nth > loopNudgeCeiling {
 		ep.loopHandoff = true
 		return
@@ -681,6 +828,11 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 	a.enqueueAmbientNote(nudgeNote(looping))
 }
 
+// loopLeftUndoneNote is the sentence a handed-over turn leaves behind, and the
+// one this package rather than a worker wrote — task_run.go's [endingOfClaim]
+// reads it back to say a node "went in circles". ONLY THE RULES THAT CLAIM THE
+// TURN IS NOT MOVING can reach it: a silent note books no nudge, so no amount of
+// quiet work can put these words on a row.
 const loopLeftUndoneNote = "this turn is going in circles · stopping here with anything remaining left undone"
 
 // handOverLoopingTurn spends the terminal signal at the one point that owns all

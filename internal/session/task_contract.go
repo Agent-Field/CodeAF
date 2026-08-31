@@ -125,6 +125,43 @@ func TaskKindWord(kind TaskKind) string {
 	return ""
 }
 
+// TaskMode is HOW a task stands on its ground — the one word that says whether
+// the work is isolated from the place it is about, and how it comes back to it.
+//
+// IT IS DERIVED FROM THE DELIVERABLE AND NEVER ASKED. Nobody is made to answer a
+// question about worktrees to get a piece of work started: the ground is
+// resolved from what the conversation already holds (taskstands.go's ladder) and
+// the mode falls out of what the work has to leave behind — writing in a
+// repository is a branch, reading one is not, and a folder that has no history
+// to branch from is copied or worked in directly.
+//
+// IT IS A RECORD, NOT A SCREEN WORD. A surface says "in ~/x · branch off main",
+// which is these facts spelled as a sentence; none of these five strings is
+// meant to be drawn as it stands.
+type TaskMode string
+
+const (
+	// TaskModeWorktree is a branch cut FROM THE GROUND off its HEAD, worked in a
+	// directory of the task's own and merged back when it lands. It is what
+	// ordinary work in a repository gets, and the person's uncommitted changes
+	// are not carried into it — the branch comes off HEAD and nothing else.
+	TaskModeWorktree TaskMode = "worktree"
+	// TaskModeReference is work that only READS its ground: the task gets a
+	// folder of its own to write in and the ground stays read-only for it.
+	TaskModeReference TaskMode = "reference"
+	// TaskModeMirror is a plain folder — no history to branch from — copied into
+	// the task's own directory, worked in there, and landed back by name.
+	TaskModeMirror TaskMode = "mirror"
+	// TaskModeInPlace is the person saying "here": the work happens in the ground
+	// itself, with nothing isolating it and the turn's file ledger (recovery.go)
+	// as the only undo there is.
+	TaskModeInPlace TaskMode = "in place"
+	// TaskModeFolder is the honest nothing — the conversation's own folder, with
+	// no repository anywhere under it. The work happens there because there is
+	// nowhere else it could be about.
+	TaskModeFolder TaskMode = "folder"
+)
+
 // TaskEnding is WHY a node that settled `failed` stopped where it did — the one
 // word under the state that tells a person whether to look for a fault, wait,
 // or steer. A `failed` node carries exactly one, or none; the report's first
@@ -308,6 +345,19 @@ type TaskNotice struct {
 	// Where says where the task will work. A proposal carries the resolved task
 	// folder or explicit path; later notices carry the worker's actual directory.
 	Where string
+	// Ground is the repository or folder THE WORK IS ABOUT, absolute, and Mode is
+	// how the task stands on it (taskstands.go resolves both). Where says which
+	// directory the worker types in; these two say which project that directory is
+	// a copy of, which is the fact a person needs to read before they approve
+	// anything — a card that named only a task folder under a session was telling
+	// somebody where the machinery was, never where their work was going.
+	//
+	// They are on the PROPOSAL and on every update, because the answer is settled
+	// before the countdown starts and never moves afterwards. Empty Ground is the
+	// emptiness law and not a claim: a notice written by a door that never
+	// resolved one has nothing to say about it.
+	Ground string
+	Mode   TaskMode
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64
@@ -459,4 +509,60 @@ type TaskAnswer struct {
 	Approved bool
 	Redirect string
 	Model    string
+}
+
+// ── the phases of a running node ────────────────────────────────────────────
+
+// The three lives a running node has, in the plain words every file here writes
+// and a surface draws from.
+//
+// THEY ARE THE ONE SPELLING. task_beat.go writes these same strings into the
+// node's pulse file for other windows to read, and task_run.go sends them on
+// [EventTaskPhase] for this one, so a reader outside the process and the card in
+// front of the person are never two vocabularies for the same three moments.
+const (
+	// TaskPhaseWorking is the node's own worker, in its worktree.
+	TaskPhaseWorking = "working"
+	// TaskPhaseChecking is the gate looking at what the worker left.
+	TaskPhaseChecking = "checking"
+	// TaskPhaseRepairing is a repair round closing named gaps.
+	TaskPhaseRepairing = "repairing"
+)
+
+// TaskPhaseNotice is the payload of [EventTaskPhase]: which node moved, which of
+// the three words it moved into, and — while a repair round runs — which round
+// out of how many.
+//
+// IT EXISTS BECAUSE A RUNNING NODE IS NOT ONE THING. The state stays `running`
+// across a worker, a check and every repair round, so a surface holding only
+// [EventTaskUpdate] draws the same row for a node writing code and a node that
+// finished writing code eight minutes ago and has been under a check ever since.
+// That gap is what makes a person conclude the work hung: the worker's last line
+// scrolls past, and then nothing at all is drawn for minutes while the check
+// reads the tree and a repair round rewrites it.
+//
+// IT IS NEWS, NOT A ROW. It carries no state, no elapsed, no cost — an update
+// is where those live and this never contradicts one. A surface that ignores
+// this kind is exactly the surface it was.
+type TaskPhaseNotice struct {
+	// ID names the node, and is the same id its [TaskNotice] carries: a surface
+	// folds this into the row it already drew rather than opening a second one.
+	ID uint64
+	// Phase is one of the three words above.
+	Phase string
+	// Round and Rounds are which repair round this is and how many the person's
+	// settings allow ("round 1 of 1"). They are set on TaskPhaseRepairing alone
+	// and are zero on the other two, which is the emptiness law: a surface draws
+	// no numbers at all for a check, because a check has no rounds.
+	Round  int
+	Rounds int
+	// Text is the check's finding in ONE line, in a person's words, and it rides
+	// the repairing phase because that is the moment it becomes true of the work:
+	// the check did not accept it, and here is what it said. It is "" everywhere
+	// else, and "" is drawn as nothing.
+	//
+	// It is the checker's own sentence with a plain-words opener in front of it
+	// ([mendingLine], [taskFindingLine]) and never a paraphrase — the machinery's
+	// names for what happened are not on this wire.
+	Text string
 }

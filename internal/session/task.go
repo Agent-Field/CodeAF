@@ -104,7 +104,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation. Its `where` decides the place. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
+var taskDescription = "Hand self-contained work to a task outside this conversation. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -121,6 +121,21 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // It is a var rather than a const for exactly this reason; the cost is one
 // package-level string built at init, and what it buys is a default that
 // cannot be wrong.
+//
+// GROUND AND WHERE ARE TWO QUESTIONS AND TWO FIELDS. `where` is the directory
+// the worker types in, which is the person's to name; `ground` is the project
+// that directory is a copy OF, which the harness resolves from evidence and the
+// model only fills in when it knows better (taskstands.go). They read as one
+// question and they are not: the task that made this whole design necessary had
+// a perfectly good `where` and was about a repository three levels away from it.
+//
+// AND TWO RULES LEFT THIS SCHEMA WHEN GROUND ARRIVED, both of them because they
+// were being stated twice. "Do not paste or contradict the person's message" is
+// prompts/system.md's, where the same line also says the worker follows theirs
+// on a disagreement; the class-word rule about `model` came the other way, INTO
+// the field that governs it, and left system.md. The prefix is a budget
+// (prefixbudget_test.go) and a rule that appears in two places is the cheapest
+// thing in it to spend twice.
 //
 // THE BRIEF AND ACCEPTANCE DESCRIPTIONS CARRY THE SHAPING GUIDE IN MINIATURE.
 // prompts/shape.md is the canonical statement of what a worker-ready brief must
@@ -152,13 +167,14 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing. Do not paste, summarise or contradict the person's message, attached verbatim above"},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing."},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
-	`"where":{"type":"string","description":"Path the person named, or 'in place'. Empty uses a task-folder worktree; never guess"},` +
+	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
+	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
 	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. The worker may hand parts out under itself once the material shows the width is real, then fold their reports into one deliverable. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items. Leave it out for a linear job"},` +
-	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"). Otherwise the configured model is used. A word fitting several is shown to the person to settle"},` +
+	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word — resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle, one fitting none returns the nearest ids"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops. Raise it for a wide sweep, lower it for something small"},` +
 	`"no_progress":{"type":"integer","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). It fires only on repeats. Raise it when the work needs much reading before its first edit"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
@@ -170,6 +186,7 @@ type taskArguments struct {
 	Brief       string   `json:"brief"`
 	Deliverable string   `json:"deliverable"`
 	Where       string   `json:"where"`
+	Ground      string   `json:"ground"`
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on"`
 	Wide        bool     `json:"wide"`
@@ -210,7 +227,18 @@ type taskSpec struct {
 	// where is empty for the default task-folder worktree, "in place" when the
 	// request is deliberately non-code work in this conversation's directory,
 	// or the exact path the person named. A worker never infers it from prose.
-	where      string
+	where string
+	// ground is the repository or folder THE WORK IS ABOUT, absolute, and mode is
+	// how the task stands on it (taskstands.go resolves both, and [TaskMode]
+	// spells the five modes out). They are settled at the door, before the person
+	// is asked anything, so that the card they answer says where their work is
+	// going — and frozen from admission like every other field here.
+	//
+	// WHERE AND GROUND ARE TWO QUESTIONS. `where` is the directory the worker
+	// types in; this is the project that directory is a copy of. A task that
+	// names neither gets both resolved for it.
+	ground     string
+	mode       TaskMode
 	acceptance string
 	dependsOn  []uint64
 	// modelWord is the `model` argument as the model wrote it — a word, not an
@@ -430,6 +458,20 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// of it (task_brief.go). A node proposing a sub-task inherits the same
 	// sentence; there is nobody in a worktree to type a new one.
 	spec.request = a.taskRequest()
+	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
+	// already holds (taskstands.go) before anybody is asked anything, so the card
+	// the person answers names the project rather than a folder under a session.
+	// Two places with real weight in the evidence are a QUESTION and never a coin
+	// toss: the model is handed the person's sentence to put to them, and nothing
+	// is admitted until it comes back with an answer.
+	stand := a.resolveTaskGround(spec)
+	switch {
+	case stand.refusal != "":
+		return stand.refusal, true, nil
+	case stand.ask != "":
+		return stand.ask + "\nAsk the person which, then propose this again with `ground` set to their answer.", true, nil
+	}
+	spec.ground, spec.mode = stand.dir, stand.mode
 	graph := a.graph()
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
@@ -583,6 +625,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		brief:       strings.TrimSpace(parsed.Brief),
 		deliverable: strings.TrimSpace(parsed.Deliverable),
 		where:       strings.TrimSpace(parsed.Where),
+		ground:      strings.TrimSpace(parsed.Ground),
 		acceptance:  strings.TrimSpace(parsed.Acceptance),
 		dependsOn:   parsed.DependsOn,
 		// THE MODEL'S OWN "THIS IS WIDE", carried to [TaskGraph.admit] where the
@@ -729,6 +772,8 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 				Brief:      spec.brief,
 				Acceptance: spec.acceptance,
 				Where:      taskWhereNotice(a.config.Place, a.config.Workspace, id, spec.where),
+				Ground:     spec.ground,
+				Mode:       spec.mode,
 				DependsOn:  spec.dependsOn,
 				Deadline:   deadline,
 				// What it will run on, and — when one word fit more than one model

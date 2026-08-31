@@ -2763,6 +2763,17 @@ func (a *app) roomStateWord(node *taskNode) string {
 		if node.doing != "" {
 			return node.doing
 		}
+		// AND SO DOES A NODE THAT IS NOT ITS OWN WORKER RIGHT NOW. A check
+		// reading what the work left, and a round closing what the check found,
+		// are minutes each and the header said "working" through all of them —
+		// which is the one line on the page a person watching a run that has gone
+		// quiet actually reads (taskphase.go says what the silence cost). It
+		// outranks the gap clause below because it says the gap's own round and
+		// how far through it is; the finding itself is on the rail's row under the
+		// node, and the header has one line and spends it on the state.
+		if word := taskPhaseLine(node); word != "" {
+			return word
+		}
 		// A NODE CLOSING A GAP IS FINISHING, AND THE HEADER SAYS SO. It is still
 		// running — the engine has not moved it and neither does this — but a
 		// person standing in the room of work that is nearly home is owed the

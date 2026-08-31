@@ -145,10 +145,17 @@ func TestAResultWhoseOnlyNewLineIsItsClockTeachesNothing(t *testing.T) {
 // a node that dirtied its own tree every step would be making progress by the
 // only rule that cannot be argued with ([worktreeMoved]), and this test would be
 // measuring nothing.
+//
+// AND IT IS THE COUNTER'S OWN SENTENCE THAT IS ASSERTED. This used to read the
+// loop guard's `going in circles` instead, which it reached only because the
+// SILENT ladder raced the counter home: the same command with nothing said
+// between the calls booked a nudge at six batches, and the third nudge ended the
+// turn one step before the counter would have. Silence books nothing now
+// (looped.go), so the road this test is named for is the road it takes.
 func TestANodeThatRemeasuresAnUnchangedDeliverableIsStopped(t *testing.T) {
 	report := runScriptedNode(t, bashSteps(repeated(remeasuring, 10)), 6, 40)
-	if !strings.Contains(report, loopLeftUndoneNote) {
-		t.Fatalf("re-measuring an unchanged deliverable did not end at the loop ceiling: %q", report)
+	if !strings.Contains(report, "6 steps without progress") {
+		t.Fatalf("re-measuring an unchanged deliverable was not stopped by the counter: %q", report)
 	}
 }
 
