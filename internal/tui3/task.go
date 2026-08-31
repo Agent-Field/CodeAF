@@ -631,6 +631,13 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		mentions = a.refreshTasks()
 	case session.EventStandingProposal:
 		a.proposeStanding(ev)
+	case session.EventTakeover:
+		// ANOTHER WINDOW HAS ASKED FOR THIS CONVERSATION and the engine has
+		// already agreed — it announces this only when no turn is in flight
+		// (internal/session's takeover.go). This window lets go, and the lane
+		// pump is deliberately NOT re-armed below: the agent it was reading is
+		// about to be closed.
+		return a.takeOver()
 	case session.EventStandingUpdate:
 		// AN ITEM FIRES WITH NOBODY IN THE ROOM, which is the whole of the
 		// ambient side — so a FIRING reaches this surface here and only here,
