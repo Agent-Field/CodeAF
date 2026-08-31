@@ -289,6 +289,18 @@ const (
 	// differences the session is willing to pay attention to.
 	KeyRouting = "routing"
 
+	// KeyLaneGuard is whether one slow answer may be rescued by asking a second
+	// lane the same question while the first is still thinking (internal/lane's
+	// watch.go). It is a separate row from [KeyRouting] because it answers a
+	// different question: routing says WHICH lane a request prefers, and this
+	// says whether a request that has already gone wrong is allowed to spend a
+	// little more to come back on time.
+	//
+	// It is on by default. The extra call is capped at one per answer and at a
+	// tenth of what the session spends, and it is off under price routing,
+	// where nobody is buying seconds at all.
+	KeyLaneGuard = "lane.guard"
+
 	// KeyTaskAutoApprove is the countdown a proposed task waits before it
 	// starts on its own (internal/session's task.go). It is named under `task.`
 	// rather than beside the approval rows for the reason the guardian row is
@@ -669,6 +681,150 @@ var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingOff}
 
 // DefaultRouting is latency.
 const DefaultRouting = RoutingLatency
+
+// ── WHICH MACHINE, NOT WHICH MODEL ──────────────────────────────────────────
+//
+// A model id is an address and a LANE is one of the machines behind it. The
+// same id is served by a dozen endpoints that differ by seven times on the wait
+// before the first word and by twelve times on how fast they write, at roughly
+// the same price — so the lane a request lands on is a bigger difference than
+// most model changes, and this is where a person says something about it.
+//
+// The rows are per slot (`lane.talk`, `lane.work`, …) for the reason the model
+// rows are: the conversation you are watching and a task worker nobody is
+// waiting on want different answers, and one row for both would be a setting
+// that is wrong half the time. [KeyRouting] is untouched and still means what
+// it meant: it is about the whole preference, and this is about one machine.
+
+const (
+	// LaneAuto lets the belief pick a lane per answer. It is the default and it
+	// is what an unset row reads as.
+	LaneAuto = "auto"
+	// LaneOpenRouter asks for no lane at all and lets the router balance on
+	// price, which is what this build did before it held an opinion.
+	LaneOpenRouter = "openrouter"
+)
+
+// laneRowSlot is the ONE slot the settings registry carries a row for: the
+// conversation. Every slot has a key — a task worker can be pinned by the same
+// grammar — but a panel with nine lane rows on it would be a panel about
+// endpoints rather than about models, and the other eight are set from the
+// picker on the model they belong to.
+const laneRowSlot = "talk"
+
+// LaneSettingKey is the row holding one slot's lane: `auto`, `openrouter`, or a
+// lane's own name as the wire spells it.
+func LaneSettingKey(slot string) string { return "lane." + slot }
+
+// LaneBorrowKey is the row beside it: whether a PINNED lane may still be
+// borrowed away from when it is slow. It is a second key rather than a fourth
+// word in the first because the two are independent — borrowing means nothing
+// under `auto` — and because a pin that quietly stopped being a pin the day
+// somebody turned rescuing on would be a promise this build did not keep.
+func LaneBorrowKey(slot string) string { return LaneSettingKey(slot) + ".borrow" }
+
+// LaneAt is the lane one slot is held to, default [LaneAuto]. A blank or
+// unreadable row reads as auto rather than as a pin nobody can see.
+func LaneAt(profileDir, slot string) string {
+	if value, ok := persistedString(profileDir, LaneSettingKey(slot)); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return LaneAuto
+}
+
+// LaneBorrowAt is whether a pinned slot may be borrowed away from when its lane
+// is slow. It is false unless somebody said so: a pin means the machine they
+// named, and widening it on their behalf is not this row's to do.
+func LaneBorrowAt(profileDir, slot string) bool {
+	value, ok := persistedBool(profileDir, LaneBorrowKey(slot))
+	return ok && value
+}
+
+// LanePinned is the lane named by a slot's row, and false when the row names no
+// machine — which is every reading of `auto` and of `openrouter`.
+func LanePinned(profileDir, slot string) (string, bool) {
+	value := LaneAt(profileDir, slot)
+	switch strings.ToLower(value) {
+	case LaneAuto, LaneOpenRouter, "":
+		return "", false
+	}
+	return value, true
+}
+
+// SetLane writes one slot's lane. An empty word clears the row back to auto,
+// which is the same thing said two ways and both of them arrive here.
+func SetLane(profileDir, slot, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.EqualFold(value, LaneAuto) {
+		return writeProfileValue(profileDir, LaneSettingKey(slot), LaneAuto)
+	}
+	if strings.ContainsAny(value, " \t") {
+		return fmt.Errorf("a lane is one name, like cloudflare")
+	}
+	return writeProfileValue(profileDir, LaneSettingKey(slot), value)
+}
+
+// SetLaneBorrow writes the borrow flag beside a pin.
+func SetLaneBorrow(profileDir, slot string, borrow bool) error {
+	return writeProfileValue(profileDir, LaneBorrowKey(slot), borrow)
+}
+
+// DefaultLaneGuard is on: a slow answer is worth one extra call to rescue, and
+// the budget around it is what keeps that true rather than a hope.
+const DefaultLaneGuard = true
+
+// LaneGuardAt resolves the speed-guard row. A malformed row reads as the
+// default rather than quietly turning the rescue off — a person who never
+// touched this row has not asked to wait.
+func LaneGuardAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyLaneGuard); ok {
+		return value
+	}
+	return DefaultLaneGuard
+}
+
+// LaneRowWord is one slot's lane row as a person reads it: `auto`,
+// `openrouter`, `pinned: cloudflare`, or `pinned: cloudflare, borrow when
+// slow`. It is here rather than in a surface because the same words are what
+// [WriteLaneRow] reads back, and two spellings of one row is how a row stops
+// round-tripping.
+func LaneRowWord(profileDir, slot string) string {
+	name, pinned := LanePinned(profileDir, slot)
+	if !pinned {
+		if strings.EqualFold(LaneAt(profileDir, slot), LaneOpenRouter) {
+			return LaneOpenRouter
+		}
+		return LaneAuto
+	}
+	if LaneBorrowAt(profileDir, slot) {
+		return "pinned: " + name + ", " + laneBorrowWord
+	}
+	return "pinned: " + name
+}
+
+// laneBorrowWord is the tail that says a pin may be left when it is slow. It is
+// stated once because it is written on the row, read back off it, and said in
+// the manual.
+const laneBorrowWord = "borrow when slow"
+
+// WriteLaneRow takes what [LaneRowWord] says and puts it back: `auto`,
+// `openrouter`, a bare lane name, or either `pinned:` form.
+func WriteLaneRow(profileDir, slot, raw string) error {
+	value := strings.TrimSpace(raw)
+	borrow := false
+	if at := strings.LastIndex(strings.ToLower(value), laneBorrowWord); at >= 0 {
+		borrow = true
+		value = strings.TrimRight(strings.TrimSpace(value[:at]), ",")
+		value = strings.TrimSpace(value)
+	}
+	value = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "pinned:"))
+	if err := SetLane(profileDir, slot, value); err != nil {
+		return err
+	}
+	return SetLaneBorrow(profileDir, slot, borrow)
+}
 
 // The two tier names internal/roles resolves auxiliary calls under. They are
 // spelled here rather than imported for the reason [DocumentEngines] is: the
@@ -1565,6 +1721,33 @@ func (s *Settings) build() []Setting {
 				"nothing and measures nothing. A change lands on the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
+		},
+		// AND THE ROW UNDER IT NAMES A MACHINE. Routing says what a request
+		// prefers; this says which endpoint the conversation actually goes to,
+		// for the person who has watched the numbers and knows.
+		Setting{
+			Key: LaneSettingKey(laneRowSlot), Category: CategoryModels, Kind: SettingText,
+			Label: "lane", EmptyLabel: LaneAuto,
+			Hint: "which machine behind your model answers you. One model id is served by " +
+				"a dozen endpoints that differ by seven times on the wait before the first " +
+				"word, so this is often a bigger change than switching model. auto lets aforge " +
+				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
+				"else is asked; `pinned: cloudflare, borrow when slow` keeps the pin but lets " +
+				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
+				"lets the router balance on price. The picker under /model lists them with " +
+				"their measured speeds; → on a row opens them.",
+			read:  func() string { return LaneRowWord(dir, laneRowSlot) },
+			write: func(raw string) error { return WriteLaneRow(dir, laneRowSlot, raw) },
+		},
+		Setting{
+			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
+			Label: "speed guard",
+			Hint: "when an answer takes much longer to start than that endpoint normally " +
+				"does, the same question is asked of the next-best one and whichever replies " +
+				"first is the one you read. It hedges at most one extra call, under a tenth of " +
+				"spend; off under price routing.",
+			read:  func() string { return formatBool(LaneGuardAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyLaneGuard, raw) },
 		},
 		Setting{
 			Key: KeyMouse, Category: CategoryInterface, Kind: SettingChoice,

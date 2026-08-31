@@ -58,8 +58,14 @@ Type to filter. The keys:
 | pgup / pgdown | move 12 rows |
 | left, right, home, end, ctrl+u, ctrl+w | edit the filter text |
 | ctrl+t | walk the reasoning effort of the model under the cursor |
-| enter | switch to the row under the cursor |
+| tab, → | open the lanes — the providers serving the model under the cursor |
+| tab, ← | close them again |
+| enter | switch to the row under the cursor — or, on an open lane, pin it |
 | esc | cancel, changing nothing |
+
+`→` and `←` open and close the lanes only from the **end** and the **start** of what
+you have typed; with characters to step over they move the caret through the filter
+instead. `tab` always opens and closes.
 
 The cursor opens **on the model in use**, which is also the marked row, so enter with
 nothing typed confirms rather than changes.
@@ -76,7 +82,7 @@ remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · ctrl+t effort · enter switch · esc cancel`
+`filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`
 
 There is no mouse commit on the picker's rows.
 
@@ -116,6 +122,20 @@ appears on `aforge models`.
 ## Switching model by name in one command
 
 `/model <slug>` switches straight to that slug — no list, no confirmation.
+
+The words after `/model` are read for their **shape**, not for a flag:
+
+| What you type | What happens |
+|---|---|
+| `/model` | the picker opens |
+| `/model deepseek/deepseek-v4-flash` | switches to that slug |
+| `/model @cloudflare` | pins the provider that serves your model — the model does not change |
+| `/model auto` | gives the choice of provider back to aforge |
+| `/model deepseek <1s` | opens the picker with `deepseek <1s` already in the filter |
+
+Anything with a space in it, and any single word the picker's filter grammar understands
+(`fast`, `cheap`, `tools`, `<1s`, `>50t/s`, `$<0.3`, `fp8`), opens the list already
+narrowed. A slug has no spaces in it, so two words were never a name.
 
 There is one check, and only one. If the slug **is** in the catalog and cannot hold a
 conversation — a drawing model, a speech model, a transcriber — aforge refuses in one line
@@ -1282,6 +1302,164 @@ So, with the **routing** row on the Providers tab left alone, aforge asks for tw
 Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
 
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
+
+**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row beside it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
+
+## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
+
+One model id is served by a dozen different endpoints, and they are not alike: on one
+model measured on one afternoon they differed by **seven times** on the wait before the
+first word and by **twelve times** on how fast they wrote, at roughly the same price.
+Some of them will not take a tool call at all; some stop writing at 65,000 tokens; some
+serve four-bit weights. Which endpoint answers you is often a bigger difference than which
+model you picked.
+
+aforge calls one of those endpoints a **lane**, and you can see them and choose one.
+
+In the model picker (`/model`), press `→` or `tab` on a row and the model's lanes open
+underneath it:
+
+```
+ deepseek-v4-flash        1M · $0.09/$0.18 per M · ▲0.8s 58t/s · via cloudflare
+   ● auto        picks the fastest lane each answer — cloudflare now · recommended
+     cloudflare      0.8s  58 t/s  100%  $1.3/M  ▁▂▁▃▁▂  no tools
+     coreweave       0.4s  24 t/s   99%  $0.28/M ▁▁▇▁▂▁  tail 12s
+     deepinfra       0.8s  27 t/s   99%  $0.18/M         out ≤ 65k
+   ○ openrouter  let the router balance on price
+```
+
+Each lane row reads, in order: its name, the wait before the first word, how fast it
+writes, how much of the last five minutes it was answering, what a million output tokens
+cost there, a sparkline of **your own** last eight first-token waits on it (taller is
+slower), and one short note. `←` or `tab` closes the lanes again.
+
+`enter` on a lane **pins** it: every request for this conversation goes to that lane
+and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
+at all and lets the router balance on price. If the lanes were open under a model you are
+not talking to, `enter` switches to that model as well — choosing a lane under a name
+means you want that name served from there.
+
+From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
+
+**A model nobody has measured has no lanes to open, and `→` does nothing on it.** There
+is nothing truthful to put under it, so nothing is drawn — the same rule that leaves the
+speed off its row.
+
+## What the note on a lane row means — no tools, out ≤ 65k, tail 12s, fp4
+
+One note at most, and it is the thing that would spoil the answer soonest:
+
+| Note | What it means |
+|---|---|
+| `no tools` | the lane does not honour a tool call — a fast wrong answer |
+| `out ≤ 65k` | it stops writing well before other lanes do, so a long answer is cut |
+| `fp4` | it serves weights at a lower precision than the others |
+| `tail 12s` | its worst answers start about that late — five times its own median |
+
+A lane with none of those shows no note.
+
+## Where the numbers on a lane row come from — the sheet, and your own answers
+
+Every figure is aforge's own **belief** about that lane, never a raw published number.
+It starts from the router's public sheet — first-token and throughput percentiles over
+the last half hour, over everybody's prompts — and every answer you get moves it toward
+what that lane did for **you**, from where you are, with the prompts you send.
+
+The belief also **forgets**: with nothing new arriving, aforge's confidence in it halves
+about every ten minutes, so a lane that misbehaved once at breakfast is not held to it
+all day and there is no penalty box to let anything out of.
+
+The dim line under the cursor says both halves out loud:
+
+```
+cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers
+```
+
+## Filtering the picker by speed, price and capability — @cloudflare, <1s, >50t/s, $<0.3
+
+The filter box takes a few words that are not names at all. Each narrows the list, and
+they combine:
+
+| What you type | What it keeps |
+|---|---|
+| `@cloudflare` | models with a lane whose name carries that word — and it opens the first one on that lane |
+| `<1s`, `<800ms` | the best lane starts within that |
+| `>50t/s` | the best lane writes at least that fast |
+| `$<0.3` | the best lane charges under that per million output tokens |
+| `fp8`, `bf16` | it has a lane serving at least that precision |
+| `tools` | it has a lane that honours a tool call |
+| `sees`, `draws` | the model reads images, or answers with them |
+| `fast` | sorts what is left by how soon an answer would start |
+| `cheap` | sorts what is left by price |
+
+**Anything else you type is still the search it has always been** — prefix, then
+substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
+as before, and a word this grammar does not know is simply a word to search for.
+
+## Why did it say via cloudflare — the lane named on the status line
+
+Beside your model on the status line, `via <name>` is the lane that actually answered,
+and it is a fact rather than a decision: it is the name that came back on the answer. When
+aforge knows the timings it reads `via cloudflare · 0.6s · 61 t/s` — the wait before the
+first word, and how fast it was writing. The rate is only there **while a turn is
+running**, because a rate is a claim about now; the name alone goes quiet after ten
+minutes.
+
+It is left off entirely when the lane's name is already in the model id: `gpt-4.1 ·
+via openai` is a row saying the same thing twice.
+
+## What "rescued" means on the status line, and "slow · trying …"
+
+Those two only appear together, and only when the **speed guard** is on.
+
+When an answer takes much longer to start than that lane normally takes, aforge asks
+the next-best lane the same question, and you read whichever one replies first. While
+that second request is out the status line says `slow · trying coreweave…` — the only
+place this program calls anything slow, and it says it while something is already being
+done about it. If the second lane wins, the line reads `via coreweave · rescued` for
+that answer, and goes back to normal on the next one.
+
+Whichever way it lands, the loser is cancelled and what it told aforge about that lane
+is kept, so a rescue is also a free measurement.
+
+## Speed guard — what it costs and when to turn it off
+
+**speed guard** is a row on the Providers tab of the settings panel, and it is **on**.
+
+It hedges **at most one extra call** per answer and stays under **a tenth** of what the
+session spends. It does nothing under `routing: price` — nobody is buying seconds there —
+and nothing while an answer is already flowing normally.
+
+Turn it off if you are paying for every token and never mind waiting. With it off, the
+`auto` row in the model picker says `no rescue`, so you can see the promise it is making.
+
+## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
+
+Settings → Providers has two rows under **routing**:
+
+```
+ your model     deepseek-v4-flash · auto (cloudflare now)
+ lane           auto
+ speed guard    on
+```
+
+`enter` on **lane** walks it through four answers:
+
+| Value | What it does |
+|---|---|
+| `auto` | aforge picks the fastest lane each answer |
+| `pinned: cloudflare` | every request goes to that lane and nowhere else |
+| `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
+| `openrouter` | no lane is asked for; the router balances on price |
+
+The pinned rungs are missing until aforge has measured something — there is no honest
+lane to name yet, so the walk is `auto` ↔ `openrouter`.
+
+The **your model** row says which lane is answering it beside the model id — `auto
+(cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
+`lane` and `routing` are different questions: routing is what every request **prefers**
+(fastest, cheapest, or nothing at all), and lane is which endpoint your conversation
+actually lands on.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 

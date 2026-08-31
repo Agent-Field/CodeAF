@@ -97,6 +97,12 @@ const (
 	widgetToggle
 	// widgetCycle walks a short enum in place, in the registry's own order.
 	widgetCycle
+	// widgetLane walks the four answers to "which machine behind this model" —
+	// auto, pinned, pinned but borrowable, and openrouter. It is not
+	// [widgetCycle] because two of the four carry a NAME the registry cannot
+	// list: the lanes come from what has been measured, and a row of static
+	// choices could only offer the ones somebody thought of on the day.
+	widgetLane
 	// widgetSelect opens THE MODEL PICKER — the same component /model opens
 	// (palette.go), filter box, ranking, and rows carrying window, price and
 	// arena score. A slot row is a model choice, and a model choice is a thing
@@ -594,6 +600,18 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "routing", widget: widgetCycle,
 		about: "one model is served by many endpoints. latency asks for the fastest and " +
 			"demotes one that keeps being slow; price asks for the cheapest; off asks for nothing.",
+	},
+	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
+	// prefers; this is about which endpoint your conversation actually lands on.
+	config.LaneSettingKey(talkSlot): {
+		tab: tabProviders, label: "lane", widget: widgetLane,
+		about: "which machine behind your model answers you. auto picks the fastest one " +
+			"each answer; pinning holds one; → on a row in the model picker shows them all.",
+	},
+	config.KeyLaneGuard: {
+		tab: tabProviders, label: "speed guard", widget: widgetToggle,
+		about: "an answer that is slow to start is asked of the next-best machine as well, " +
+			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
 }
 
@@ -1675,6 +1693,9 @@ func (a *app) activate() tea.Cmd {
 		}
 		a.applySetting(item, choices[at])
 
+	case widgetLane:
+		a.cycleLane(item)
+
 	case widgetSelect:
 		// The picker opens ON the id the row currently holds, the way /model
 		// opens on the model in use: enter with nothing typed confirms rather
@@ -1708,6 +1729,41 @@ func (a *app) activate() tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// cycleLane is enter on the lane row: auto → pinned → pinned but borrowable →
+// openrouter → auto, writing the row's own words back through the registry so
+// that the panel, the picker and the `settings` tool all read one spelling
+// (config's [config.LaneRowWord]).
+//
+// THE PINNED RUNGS ARE SKIPPED WHEN THERE IS NO MACHINE TO NAME. On a session
+// that has measured nothing there is no honest lane to pin, so the walk is auto
+// ↔ openrouter and the two missing rungs are simply not there — which is the
+// emptiness law applied to a gesture rather than to a number.
+func (a *app) cycleLane(item sheetItem) {
+	slot := laneSlotFor(a.model)
+	name, pinned := config.LanePinned(a.profileDir, slot)
+	if !pinned {
+		if best, ok := bestLane(laneViews(a.model, a.now())); ok {
+			name = best.Name
+		}
+	}
+	current := config.LaneAt(a.profileDir, slot)
+	borrow := config.LaneBorrowAt(a.profileDir, slot)
+	next := config.LaneAuto
+	switch {
+	case strings.EqualFold(current, config.LaneOpenRouter):
+		next = config.LaneAuto
+	case !pinned && name != "":
+		next = "pinned: " + name
+	case !pinned:
+		next = config.LaneOpenRouter
+	case !borrow:
+		next = "pinned: " + name + ", borrow when slow"
+	default:
+		next = config.LaneOpenRouter
+	}
+	a.applySetting(item, next)
 }
 
 // applySetting writes one row and keeps whatever the registry said about it.
@@ -2176,7 +2232,37 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if name, pinned := item.row.PinnedBy(); pinned {
 		value += "  set by " + name
 	}
+	// THE MODEL ROW SAYS WHICH MACHINE IS ANSWERING IT. The id alone names a
+	// decision this session did not make — one id is a dozen endpoints — and the
+	// row that a person opens to change their model is exactly where the rest of
+	// that fact belongs. Nothing is added when nothing is known (lanes.go).
+	if word := s.laneWord(item); word != "" {
+		value += " · " + word
+	}
 	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
+}
+
+// laneWord is the tail on the conversation's model row: `auto (cloudflare now)`
+// when the lane is being chosen for you, `pinned: cloudflare` when it is not.
+//
+// It is only ever on THAT row. The other model rows are slots aforge fills on
+// your behalf, and a lane pinned for the conversation is not a claim about them.
+func (s *sheet) laneWord(item sheetItem) string {
+	if item.row.Key != config.ModelSettingKey(talkSlot) {
+		return ""
+	}
+	// THE ANSWER IS READ OFF THE LANE ROW ITSELF and not out of the profile a
+	// second time: the two rows are two readings of one fact, and a panel where
+	// they could disagree would be a panel that is wrong about one of them.
+	if row, ok := s.registry.Row(config.LaneSettingKey(talkSlot)); ok {
+		if word := row.Value(); word != "" && !strings.EqualFold(word, config.LaneAuto) {
+			return strings.ToLower(word)
+		}
+	}
+	if best, ok := bestLane(laneViews(s.sessionModel, timeNow())); ok {
+		return "auto (" + strings.ToLower(best.Name) + " now)"
+	}
+	return ""
 }
 
 // connBoxRows is the most an open box may take from the list window. Its row

@@ -5604,6 +5604,20 @@ func (a *app) slash(line string) tea.Cmd {
 			a.openPicker()
 			return nil
 		}
+		// AND THE WORDS AFTER IT ARE READ FOR SHAPE (commands.go's [modelArg]):
+		// a machine to pin, the word that un-pins, a question for the list, or
+		// — still, and as the fall-through — a slug to switch to.
+		switch intent, value := modelArg(rest); intent {
+		case modelPinLane:
+			a.pinLane(a.model, value)
+			return nil
+		case modelAutoLane:
+			a.clearLanePin(a.model)
+			return nil
+		case modelQuery:
+			a.openPickerFiltered(value)
+			return nil
+		}
 		// AND A SLUG THE CATALOG KNOWS IS CHECKED BEFORE IT IS TAKEN. Since the
 		// door carries the whole catalog, "openai/gpt-4o-mini-tts" is a name
 		// this surface can look up and know is a speaker rather than a

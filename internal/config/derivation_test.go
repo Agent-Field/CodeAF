@@ -284,6 +284,12 @@ var settingReaders = map[string]string{
 	KeySSHServerAlive:    "SSHTransportAt",
 	KeySSHServerMisses:   "SSHTransportAt",
 	KeySSHIPQoS:          "SSHTransportAt",
+	// The lane rows are read by the v3 surface: the picker opens on the pin so
+	// that the machine you are held to is the marked row, and the `auto` row
+	// says whether a slow answer will be rescued (internal/tui3's palette.go
+	// and lanes.go). The chooser reads the pin too, through the same reader.
+	LaneSettingKey(laneRowSlot): "LaneAt",
+	KeyLaneGuard:                "LaneGuardAt",
 }
 
 // Every persisted row names a reader, and every named reader is really there.
