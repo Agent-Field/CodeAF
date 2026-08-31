@@ -53,6 +53,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// screen is actually showing them.
 		{"I clicked on the task and there is nothing there at all", "task-rooms-after-restart"},
 		{"nothing on this page yet", "reading-a-task-page"},
+		// The switcher, asked in the words people bring to it: the gesture they
+		// already know from every other program, the thing they are looking for,
+		// and the two spellings of the key.
+		{"alt tab between conversations", "keys"},
+		{"switch chats without pressing enter", "keys"},
+		{"ctrl+k switched me right away how do I stop that", "keys"},
+		{"it goes when I stop pressing", "keys"},
+		{"switch between my open chats", "keys"},
+		{"is there a conversation switcher", "keys"},
+		{"how do I get to my other conversation without going home", "keys"},
+		{"what does ctrl+k do", "keys"},
+		{"why does ctrl+tab do nothing", "keys"},
+		{"what did my other chats do while I was away", "keys"},
+		// And the tasks page's tree, asked by somebody looking at a page that is
+		// hiding rows from them on purpose.
+		{"where did the workers go on the task page", "tasks"},
+		{"what does +3 under mean", "tasks"},
+		{"expand a task to see what ran under it", "tasks"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
@@ -74,6 +92,39 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
+		// THE FOLDER PICKER, asked in the four vocabularies people bring to it.
+		// "folder" is the word most people say, "directory" is what a terminal
+		// person says, "repo" is what somebody with several checkouts says, and
+		// the fourth is the ask underneath all three — which the page has to
+		// answer honestly: the conversation comes to be ABOUT the folder, and
+		// where it is STANDING does not move.
+		{"how do I choose a folder", "choosing-a-folder"},
+		{"pick a directory", "choosing-a-folder"},
+		{"work on a different repo in this chat", "choosing-a-folder"},
+		{"open another project", "choosing-a-folder"},
+		{"can I attach a folder", "choosing-a-folder"},
+		// AND THE SAME ASK IN THE WORDS OF SOMEBODY WHO BELIEVES IT IS IMPOSSIBLE.
+		// Every one of these used to be answered "no, start another conversation"
+		// by a page that was right when it was written and is not any more, so
+		// each is here to hold the corrected answer in place.
+		{"work on two projects in one chat", "choosing-a-folder"},
+		{"how do I switch folders", "choosing-a-folder"},
+		{"can you see my other repo", "choosing-a-folder"},
+		{"do I have to start a new conversation for another project", "choosing-a-folder"},
+		{"which folders is this conversation about", "choosing-a-folder"},
+		{"how do I change directory", "choosing-a-folder"},
+		// AND THE OTHER END OF IT, asked the way somebody asks when the folder
+		// they are looking at has not moved. "where did my changes go" is the
+		// first question; "merge what you did" and "land the work" are the two
+		// verbs people reach for next; and the fourth is the fear underneath all
+		// three, which the page answers by saying nothing reached the folder at
+		// all until they said so.
+		{"where did my changes go", "choosing-a-folder"},
+		{"merge what you did into my folder", "choosing-a-folder"},
+		{"put the changes into the folder", "choosing-a-folder"},
+		{"you changed my files?", "choosing-a-folder"},
+		{"undo what you did to my folder", "choosing-a-folder"},
+		{"work in that folder directly", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
@@ -391,10 +442,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it say elsewhere", "home"},
 		{"can I work on two repos in one terminal", "home"},
 		{"can I work on two projects at once", "home"},
-		{"how do I switch back to the last conversation", "home"},
+		{"how do I switch back to the last conversation", "keys"},
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
+		// WHAT A ROW SAYS WHEN ITS CONVERSATION IS ABOUT SOMEWHERE ELSE, and the
+		// search that finds it. The first is somebody reading a word off their
+		// own screen; the rest are somebody looking for a conversation they know
+		// the subject of and not the folder it was held in.
+		{"what does also about mean on home", "home"},
+		{"why does a row say also about", "home"},
+		{"find the conversation about a folder", "home"},
+		{"search home by folder name", "home"},
 		// The onboarding wave: home is always reachable, and an empty home is a
 		// designed screen. Each of these is asked on a fresh machine, by
 		// somebody who tried the gesture on day one.

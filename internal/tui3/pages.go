@@ -973,7 +973,10 @@ func placeFrameWithBar(a *app, width, height int,
 	// a strip drawn under it would be a letter that does nothing — which is the
 	// one state this surface may never be in.
 	bodyRoom := room - len(inline)
-	if a.composer.open || bodyRoom < 1 {
+	// AND THE SWITCHER TAKES THE STRIP DOWN FOR THE LAYER'S REASON EXACTLY: it
+	// has claimed the whole keyboard (hop.go), so every letter on a strip drawn
+	// under it would be a letter that does nothing.
+	if a.composer.open || a.hopShowing() || bodyRoom < 1 {
 		bodyRoom, inline = room, nil
 	}
 
@@ -984,6 +987,21 @@ func placeFrameWithBar(a *app, width, height int,
 	// for exactly the body it would have asked for and paints it differently,
 	// which is why no place has a word to say about being underneath one.
 	drawn := body(width, bodyRoom)
+	// AND THE SWITCHER OVER THE PLACE, on the same terms as the layer below it:
+	// the place's own rows dim and the card is written over their middle
+	// (hop.go). It is asked FIRST because the two can never be up together —
+	// [app.hopAvailable] refuses to open over the layer — and because a card
+	// drawn under a fade would be a card nobody can read.
+	if a.hopShowing() {
+		texts := make([]string, len(drawn))
+		for i := range drawn {
+			texts[i] = drawn[i].text
+		}
+		texts = a.hopOver(texts, width, pal)
+		for i := range drawn {
+			drawn[i].text, drawn[i].hit = texts[i], nil
+		}
+	}
 	if a.composer.open {
 		// The model list `alt+o` opens is drawn in the body's room and not over
 		// the page, because a place takes the frame whole and the bottom-anchored
@@ -1211,6 +1229,10 @@ const (
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
 	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close"
+	// mapCloseWords is that line's last clause, named so the switcher's own
+	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
+	// close` is the way out and the way out is always said last.
+	mapCloseWords = "esc close"
 )
 
 // placeRestWord is what this place's box row says with nothing typed in it, and
@@ -1237,8 +1259,24 @@ func (a *app) placeHintSaid() string {
 	if a.composer.open {
 		return a.composerFoot()
 	}
+	// AND THE SWITCHER'S OWN FOOT ABOVE THE MAP'S, on the same terms: while the
+	// card is up its keys are the only keys, so the line says them (hop.go).
+	if a.hopShowing() {
+		return hopFootWords
+	}
 	if a.mapShowing {
-		return a.chords.mapLine(placeMapWords, a.ctrlDigits())
+		// THE SWITCHER IS NAMED ON THE MAP AND NOWHERE ELSE ON A PLACE. The map
+		// is this surface's own chord list — the one line whose job is to say
+		// what the keys are — and the place's resting foot is four clauses that
+		// the design fixes word for word (FIDELITY.md item 3). A key bound on
+		// every place and drawn on none of them would break SCREEN 3a's clause,
+		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…7`
+		// alias ([chordSpelling.mapLine]).
+		line := a.chords.mapLine(placeMapWords, a.ctrlDigits())
+		if a.hopAvailable() {
+			line = strings.Replace(line, mapCloseWords, hopMapWords+" · "+mapCloseWords, 1)
+		}
+		return line
 	}
 	if a.strip.open {
 		return stripHint

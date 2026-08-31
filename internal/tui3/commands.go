@@ -86,6 +86,30 @@ var commands = []command{
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
 	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
+	// AND THE OTHER HALF OF THE SAME ERRAND, directly under it: /workspace is
+	// the one-shot anchor a project-less conversation needs once, and this is
+	// "which folder do you mean" asked at any moment, with a picker to answer it
+	// (folderpick.go). They sit together because a person hunting either reads
+	// both rows on the way past.
+	//
+	// It is BELOW /compact for the reason /home and /permissions are: [menuRows]
+	// shows eight rows at once, position in this table is a claim about
+	// frequency, and a row inserted above /compact would push a daily command
+	// behind a scroll.
+	//
+	// THE OTHER WORDS ARE THE OTHER VOCABULARIES. People say "folder", the
+	// design says "place", and terminal fingers type "dir" — and none of the
+	// three should have to find out which one this build chose.
+	{name: "folder", desc: "choose a folder to work in · type a path to browse", alias: []string{"place", "dir"}},
+	{name: "folder", args: "<path>", desc: "…open it already pointed at that path"},
+	// AND ITS OTHER END. Choosing a folder is where work aimed somewhere else
+	// starts; this is where it arrives. It sits directly under /folder because
+	// nobody reaches for it who has not already done the first — and because
+	// the row above the box says the word the moment there is anything to land
+	// (landcmd.go), so the list is the second way of finding it and not the
+	// first.
+	{name: "land", desc: "put the changes for another folder into it · says what changed first"},
+	{name: "land", args: "<folder>", desc: "…that folder, when more than one is waiting"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
 	// here" and this is "what is there at all" — the same question one size up —
@@ -863,6 +887,15 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
+		// THE SWITCHER (hop.go). It is named here on every terminal because
+		// `ctrl+k` reaches every terminal; the `ctrl+tab` alias is not on this
+		// list, for the reason the manual states — a line that named it would be
+		// naming a chord half the terminals reading this cannot send.
+		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
+		// has no reach into the profile, and a clause that named one mode would be
+		// wrong in the other. The card's own head and the manual say the rest.
+		"ctrl+k         switch conversations · tap it like alt+tab · esc goes back",
+		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
 		// task room for the conversation; /home is a screen of every project on

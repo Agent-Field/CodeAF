@@ -223,6 +223,13 @@ const (
 	// A person who put v3's column away has said
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
+	// KeyQuickSwitch is whether the conversation switcher (internal/tui3's
+	// hop.go) SWITCHES ON EACH PRESS of its chord — `ctrl+k` lands you in the
+	// previous conversation at once and pressing again keeps going — or opens as
+	// a card that waits for `enter`. It is a BOOLEAN because the two behaviours
+	// are the whole of the choice: there is no third rung between "the key is
+	// the switch" and "the key is the menu".
+	KeyQuickSwitch = "ui.quick_switch"
 	// KeyHints is whether the v3 chat shows its earned hints — the one-line tips
 	// in the slot above the message box that each retire once the key or command
 	// they name has been used (internal/tui3's notice.go) — and, with them, the
@@ -900,8 +907,8 @@ var OperatorEnvPins = []string{
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// AFORGE_BASE_URL is.
 	"AFORGE_RELAY",
-	// AFORGE_FURROW names the furrow binary on a machine where PATH would not
-	// find it (internal/furrow). A path to a program is plumbing.
+	// AFORGE_FURROW names a furrow to use instead of the one aforge carries
+	// (internal/furrow). A path to a program is plumbing.
 	"AFORGE_FURROW",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
@@ -1155,6 +1162,14 @@ const (
 	// their behalf — the strip is what keeps running work reachable from a frame
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
+
+	// DefaultQuickSwitch makes the switcher's chord SWITCH rather than ask, on a
+	// profile that has never said otherwise. It is the behaviour every window
+	// manager and browser taught: the fast gesture is the default and nobody
+	// opts into it. The slower card is still one arrow key away — touching
+	// anything but the chord converts the fading card into the browsing one —
+	// so the default costs a careful reader nothing but `esc`.
+	DefaultQuickSwitch = true
 
 	// DefaultHints shows the v3 chat's tips to a profile that has never said
 	// otherwise. The tips retire themselves the moment each is acted on, so the
@@ -2113,6 +2128,17 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyTaskColumn, raw) },
 		},
 		Setting{
+			Key: KeyQuickSwitch, Category: CategoryInterface, Kind: SettingBool,
+			Label: "quick switch",
+			Hint: "whether ctrl+k switches conversations the moment it is pressed — press " +
+				"again to go further back, pause and the card fades, esc returns to where " +
+				"you started. Turned off, ctrl+k opens the card and waits for enter. Either " +
+				"way, touching the arrow keys holds the card open to look around without " +
+				"switching.",
+			read:  func() string { return formatBool(QuickSwitchAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyQuickSwitch, raw) },
+		},
+		Setting{
 			Key: KeyHistoryEnabled, Category: CategoryInterface, Kind: SettingBool,
 			Label: "input history", Env: "AFORGE_HISTORY",
 			Hint: "remembers the messages you send, so the up arrow walks them back in a later " +
@@ -2740,6 +2766,17 @@ func TaskColumnAt(profileDir string) bool {
 // validation.
 func SaveTaskColumn(profileDir string, open bool) error {
 	return writeBool(profileDir, KeyTaskColumn, formatBool(open))
+}
+
+// QuickSwitchAt resolves whether the conversation switcher's chord switches on
+// each press, default on. A row that will not parse reads as the default rather
+// than as off, for [TaskColumnAt]'s reason: a garbled row must not quietly slow
+// a gesture down.
+func QuickSwitchAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyQuickSwitch); ok {
+		return value
+	}
+	return DefaultQuickSwitch
 }
 
 // HintsAt resolves whether the v3 chat shows its tips, default on. A row that

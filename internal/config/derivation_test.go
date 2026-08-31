@@ -128,7 +128,8 @@ var settingReaders = map[string]string{
 	// The v3 task column names its own accessor, which the surface reads at boot
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).
-	KeyTaskColumn: "TaskColumnAt",
+	KeyTaskColumn:  "TaskColumnAt",
+	KeyQuickSwitch: "QuickSwitchAt",
 	// The hints row names its accessor too: the surface reads it at boot and at
 	// every turn end, beside the mouse row (internal/tui3's notice.go).
 	KeyHints:    "HintsAt",
