@@ -250,3 +250,101 @@ func TestLastIsTheNewestFinishedCallEvenWithTheFileOff(t *testing.T) {
 		t.Fatalf("At = %s, want the end row's own time", call.At.Format(timeLayout))
 	}
 }
+
+// ── THE LANE, AND THE WAIT IT MADE ──────────────────────────────────────────
+
+// TestALaneRowSeparatesTheQueueFromTheWriting pins the four field names on the
+// wire and the one distinction they exist for: `ms` is the whole call and
+// `ttft_ms` is the half of it a person feels, and a row that carries both is
+// the only kind that can tell a queue apart from a slow writer.
+func TestALaneRowSeparatesTheQueueFromTheWriting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", FileName)
+	fresh(t, path)
+	Append(Record{
+		Time: "2026-08-30T10:00:00.000Z", ID: "abcd1234", Tag: "turn",
+		Model: "deepseek/deepseek-v4-flash", Served: "CoreWeave", Lane: "Cloudflare",
+		Status: 200, Millis: 4768, TTFTms: 768, DeadlineMs: 1200, Hedged: true,
+		Finish: "stop",
+	})
+
+	rows := readLines(t, path)
+	if len(rows) != 1 {
+		t.Fatalf("wrote %d rows, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.TTFTms != 768 || row.DeadlineMs != 1200 {
+		t.Fatalf("the timings came back as %+v", row)
+	}
+	// The two names are the whole point: the preference asked for one machine
+	// and another answered, and a log that kept only one of them could not say
+	// so.
+	if row.Lane != "Cloudflare" || row.Served != "CoreWeave" {
+		t.Fatalf("asked for %q and served by %q", row.Lane, row.Served)
+	}
+	if !row.Hedged {
+		t.Fatal("the row forgot it was a rescue")
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the log: %v", err)
+	}
+	for _, field := range []string{`"ttft_ms":768`, `"deadline_ms":1200`, `"lane":"Cloudflare"`, `"hedged":true`} {
+		if !strings.Contains(string(raw), field) {
+			t.Fatalf("the line does not carry %s: %s", field, raw)
+		}
+	}
+}
+
+// TestACallWithNoLaneNamesNone is the emptiness law, which this file states in
+// its own type comment and which is what makes four new fields safe to add to
+// a format a person greps: an endpoint that is not a router names no lane, a
+// call that was not streamed has no first-token wait, and a request nobody
+// armed a watch on has no deadline. All four are then absent, and a reader may
+// take anything they DO find as something that was measured.
+func TestACallWithNoLaneNamesNone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", FileName)
+	fresh(t, path)
+	Append(Record{
+		Time: "2026-08-30T10:00:00.000Z", ID: "abcd1234", Tag: "turn",
+		Model: "sim/model", Served: "quicksilver", Status: 200, Millis: 900, Finish: "stop",
+	})
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the log: %v", err)
+	}
+	for _, word := range []string{"ttft_ms", "deadline_ms", "lane", "hedged"} {
+		if strings.Contains(string(raw), word) {
+			t.Fatalf("the row names %q with nothing to say: %s", word, raw)
+		}
+	}
+}
+
+// TestARowWrittenBeforeLanesExistedStillDecodes holds the wire compatible: the
+// log rotates rather than being rewritten, so the file a person opens today
+// holds rows from before these fields existed and every one of them must come
+// back whole and believing nothing.
+func TestARowWrittenBeforeLanesExistedStillDecodes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", FileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("make the directory: %v", err)
+	}
+	const old = `{"ts":"2026-08-25T13:11:00.000Z","id":"abcd1234","tag":"turn",` +
+		`"model":"opus-4.1","served":"quicksilver","status":200,"ms":1400,"finish":"stop",` +
+		`"prompt_tokens":1200,"completion_tokens":340,"cost":0.42}`
+	if err := os.WriteFile(path, []byte(old+"\n"), 0o644); err != nil {
+		t.Fatalf("write the old row: %v", err)
+	}
+	rows := readLines(t, path)
+	if len(rows) != 1 {
+		t.Fatalf("read %d rows, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Served != "quicksilver" || row.Millis != 1400 || row.Cost != 0.42 {
+		t.Fatalf("the old row lost its figures: %+v", row)
+	}
+	if row.TTFTms != 0 || row.DeadlineMs != 0 || row.Lane != "" || row.Hedged {
+		t.Fatalf("a row from before lanes existed came back believing something: %+v", row)
+	}
+}
