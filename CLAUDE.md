@@ -17,6 +17,59 @@ v3 is a **session you sit in front of**. The resident is an employee that keeps 
 while the terminal is closed. They share a repository and almost nothing else — do not
 carry vocabulary or assumptions between them.
 
+## Branches — where work goes
+
+`dev` is the trunk and the default branch. Five rules, and they are here rather
+than only in `docs/rules/` because they are the ones that must never be looked up:
+
+- **Branch off `dev`, and open the pull request against `dev`.** Never against
+  `main`, which is parked fifteen hundred commits back at the released v0.1.0.
+- **Never push directly to `dev`, `staging` or `main`, and never force-push any
+  of the three.**
+- **`staging` moves by fast-forward onto a commit that is already on `dev`** —
+  `git push origin <sha>:staging`, never a merge. `main` is not in the pipeline
+  yet and nothing promotes to it.
+- **Nothing publishes by itself.** A release is a semver tag on a commit that is
+  on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+- **Every pull request carries a change entry** in `docs/changes/unreleased/` —
+  `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
+  demands it.
+
+The pull-request gate into `dev` is deliberately light — build, vet, the packed
+corpora, the change entry, the manual law, a few minutes. The whole suite runs on the way into
+`staging` and nightly against `dev`. So **`dev` is where things are allowed to be
+briefly wrong**, which is the trade that keeps it fast, and the reason a commit
+soaks on `dev` for a couple of days before anyone promotes it.
+
+**AND IF YOUR MEMORY OF THIS REPOSITORY IS OLDER THAN A FEW DAYS, READ
+`docs/changes/unreleased/` BEFORE ACTING ON IT.** That is what those entries are
+for, and it is the one thing `git log` cannot tell you. They do not say what
+shipped; they say what somebody now believes **wrongly** — the branch that
+stopped existing, the default that moved, the refusal that became a capability.
+This has cost real hours: this file ordered work pushed to `origin chat-v3-task`
+for days after that branch stopped existing, and `generate_image` was documented
+as impossible right up until the wave that shipped it. In both cases the code was
+right, the tests were green, and what was wrong was what somebody remembered.
+
+```sh
+grep -rn 'invalidates' -A6 docs/changes/unreleased/    # everything that moved
+grep -rln 'surface:.*chat' docs/changes/unreleased/    # only the v3 surface
+```
+
+When you land a change, write yours the same way: what was true, and what is true
+now. `docs/rules/changelog.md` says why it cannot be generated from the diff.
+
+Read on demand, not up front: [docs/rules/branching.md](docs/rules/branching.md)
+for the model and why promotion is a fast-forward,
+[docs/rules/ci.md](docs/rules/ci.md) for what runs where and the known-red ledger
+in `.github/known-red.txt`, [docs/rules/changelog.md](docs/rules/changelog.md)
+for what an entry carries, [docs/rules/promotion.md](docs/rules/promotion.md)
+for the promote-and-release runbook.
+
+None of it is enforced by the server yet — the org is on the free plan and a
+private repository gets no branch rules there, so today every line above is
+convention. `.github/rulesets/` holds the rules ready to apply.
+
 ## Build and ship — the owner's standing orders
 
 - **Always build with `make build`**, which writes `bin/aforge`. Never a bare
@@ -27,11 +80,12 @@ carry vocabulary or assumptions between them.
   and `shasum` before debugging anything).
 - Rebuild after every merge. Never `cp` over a binary that may be running —
   `rm` first, then install — or the next launch dies with `Killed: 9`.
-- **Finished work is committed and pushed to `origin chat-v3-task`** in the
+- **Finished work is pushed and opened as a pull request against `dev`** in the
   same wave — never left sitting on a local branch or an unpushed worktree. If
-  the shared checkout is dirty with another session's work, merge and push
-  through a temporary detached worktree (`git worktree add --detach … origin/chat-v3-task`)
-  rather than touching their tree.
+  the shared checkout is dirty with another session's work, push through a
+  temporary detached worktree (`git worktree add --detach … origin/dev`) rather
+  than touching their tree. (`chat-v3-task` was the trunk until 2026-08-31 and no
+  longer exists; anything still naming it is stale.)
 
 `make check` is vet, the tests, the build, and the binary-size ratchet in `SIZE-BUDGET`.
 The performance laws it and the suite enforce — and the rule that changing any cap
@@ -139,8 +193,9 @@ Several Claude sessions often work this repo at once, in the same working tree.
 - Run `ListAgents` before assuming whose work something is.
 - Re-run `go build ./...` after fetching: another lane's half-finished file can break the
   tree for everyone.
-- Feature waves are built in git worktrees off `chat-v3-task` (`git worktree add
-  ~/af-<name> -b <branch>`), merged back, then the worktrees and branches are removed.
+- Feature waves are built in git worktrees off `dev` (`git worktree add
+  ~/af-<name> -b <branch> origin/dev`), land through a pull request, then the
+  worktrees and branches are removed. GitHub deletes the remote branch on merge.
 
 ## Tests
 
@@ -155,11 +210,15 @@ tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuarded
 `internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
 `TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
 TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
-green with `TMPDIR=/tmp/eh`) — all verified failing at `origin/chat-v3-task`
+green with `TMPDIR=/tmp/eh`) — all verified failing at what is now `origin/dev`
 on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
 alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
 `TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
 believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
+
+**This list is also `.github/known-red.txt`, which CI reads and skips**, so that red
+in the full run means the change caused it. The two are the same debt written twice;
+fix a test and delete it from both in the same commit.
 
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
 

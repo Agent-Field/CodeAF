@@ -219,6 +219,13 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// left to say about who is holding the tree — and it is a no-op in every
 	// session that has never groomed a task, which is most of them.
 	plane.register(treeClaimGuard{agent: a})
+	// AND WHERE A TASK IS STANDING, which is the path half of the same question
+	// (taskoutside.go): not whose work a command would take, but which directory
+	// it is aimed at. It is registered BEFORE the git guard below and the order
+	// is load-bearing — a command aimed outside the task's ground has to be
+	// refused with a sentence about where it was aimed, because the git guard's
+	// sentences are about the task's own copy and are false about anywhere else.
+	plane.register(taskGroundGuard{agent: a})
 	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
 	// and about a different kind of reach: not which files this agent may touch,
 	// but whose work it may pull into its own copy (taskgit.go). It is registered
@@ -374,7 +381,16 @@ type loopDetector struct{ agent *Agent }
 
 func (loopDetector) Name() string { return "loop" }
 
-func (loopDetector) EpisodeInit(ep *episode) { ep.watch = newLoopWatch() }
+// EpisodeInit opens the turn's window and tells it which tree answers "did
+// anything actually change" for a batch of shell commands — the workspace this
+// agent was built on, which for a task's worker is that node's own working copy.
+func (loopDetector) EpisodeInit(ep *episode) {
+	watch := newLoopWatch()
+	if ep.agent != nil {
+		watch.dir = ep.agent.config.Workspace
+	}
+	ep.watch = watch
+}
 
 func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results, visibleText)

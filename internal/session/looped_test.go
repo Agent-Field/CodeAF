@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -317,8 +318,18 @@ func TestThirtySilentBatchesClimbAtSixTwelveAndTwentyFour(t *testing.T) {
 	if !strings.Contains(notes[1], "second warning") {
 		t.Fatalf("second note did not escalate: %q", notes[1])
 	}
-	if !strings.Contains(notes[2], "harness will hand the turn over") {
-		t.Fatalf("last note did not promise the hand-off: %q", notes[2])
+	// AND THE THIRD RUNG PROMISES NOTHING IT CANNOT DO. Silence books no nudge,
+	// so the harness will not hand this turn over however long the run goes on,
+	// and the note has to say the true thing instead.
+	if !strings.Contains(notes[2], "third and last note") ||
+		!strings.Contains(notes[2], "Nothing is being stopped") {
+		t.Fatalf("last note did not say the run continues: %q", notes[2])
+	}
+	if strings.Contains(strings.Join(notes, " "), "hand the turn over") {
+		t.Fatalf("a silent note still promises a hand-off: %v", notes)
+	}
+	if watch.nudges != 0 {
+		t.Fatalf("thirty silent batches spent %d of the hand-off count, want 0", watch.nudges)
 	}
 }
 
@@ -601,5 +612,234 @@ func TestOneBatchSaysOneThing(t *testing.T) {
 	}
 	if watch.nudges != 1 {
 		t.Fatalf("nudges: got %d, want 1", watch.nudges)
+	}
+}
+
+// ── silence is hygiene, not stuckness ───────────────────────────────────────
+
+// THE MEASURED SHAPE, REPLAYED. A worker fixing two code-scanning findings was
+// stopped with `this turn is going in circles`, and its row said "went in
+// circles". Its last six calls before the cut were `commit-tree`, `write-tree`,
+// a second commit, a ref update, a log and a cleanup: all distinct, all
+// succeeding, with three visible notes written in the minute before. What ended
+// it was the THIRD [silent] note — two early ones plus one late one adding up
+// to the hand-off ceiling.
+//
+// So: the notes still arrive, and none of them may spend the count.
+func TestTheJournalsSilentCommitPhaseIsNotAHandOff(t *testing.T) {
+	watch := newLoopWatch()
+	plumbing := []string{
+		"git write-tree", "git commit-tree -p HEAD -m fix", "git commit-tree -p HEAD -m docs",
+		"git update-ref refs/heads/work", "git log --oneline -5", "rm -rf /tmp/scratch",
+	}
+	round := 0
+	silent := func() (nudge, bool) {
+		command := plumbing[round%len(plumbing)]
+		call := ai.ToolCall{ID: fmt.Sprintf("g%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":%q}`, fmt.Sprintf("%s # %d", command, round))}}
+		round++
+		return watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("ok %d", round)}}, false)
+	}
+
+	notes := 0
+	for range 30 {
+		if looping, fired := silent(); fired {
+			notes++
+			if !looping.silent {
+				t.Fatalf("a distinct successful call fired a stuck rule: %q", loopRule(looping))
+			}
+			if looping.nth != 0 {
+				t.Fatalf("silent note %d booked nth=%d, want 0", notes, looping.nth)
+			}
+		}
+	}
+	if notes != silentRungs {
+		t.Fatalf("silent notes = %d, want %d", notes, silentRungs)
+	}
+	if watch.nudges != 0 {
+		t.Fatalf("the silent run spent %d of the hand-off count, want 0", watch.nudges)
+	}
+}
+
+// And the visible notes in that minute change nothing either way: the shape
+// [silent, silent, progress, progress, silent] does not end a turn.
+func TestSilenceAroundVisibleWorkNeverEndsTheTurn(t *testing.T) {
+	watch := newLoopWatch()
+	round := 0
+	step := func(visible bool) (nudge, bool) {
+		call := ai.ToolCall{ID: fmt.Sprintf("s%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show %d"}`, round)}}
+		round++
+		return watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}}, visible)
+	}
+	// Two silent stretches long enough to earn their first rung, with two spoken
+	// batches between them, then a third silent stretch that earns another.
+	for _, visible := range []bool{false, false, true, true, false} {
+		for range silentStreakLimit {
+			if looping, fired := step(visible); fired && looping.nth != 0 {
+				t.Fatalf("a note that can end a turn fired: %q", loopRule(looping))
+			}
+		}
+	}
+	if watch.nudges != 0 {
+		t.Fatalf("nudges = %d, want 0: no silent stretch may reach the ceiling", watch.nudges)
+	}
+}
+
+// AND THE RULES THAT DO MEAN STUCK STILL END A TURN, after any amount of
+// silence. This is the guard on the change above: making silence free must not
+// make a real loop free with it.
+func TestARealLoopStillHandsOverAfterASilentRun(t *testing.T) {
+	watch := newLoopWatch()
+	for round := range 3 * silentStreakLimit {
+		call := ai.ToolCall{ID: fmt.Sprintf("q%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show %d"}`, round)}}
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}}, false)
+	}
+	if watch.nudges != 0 {
+		t.Fatalf("the silent run spent %d of the count before the loop began", watch.nudges)
+	}
+
+	// Three identical failing calls, three times over: the ordinary ladder.
+	highest := 0
+	for round := range 12 {
+		call := ai.ToolCall{ID: fmt.Sprintf("b%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: `{"command":"make build"}`}}
+		looping, fired := watch.observe([]ai.ToolCall{call},
+			[]toolResult{{text: "undefined: Frobnicate", isError: true}}, false)
+		if fired && looping.nth > highest {
+			highest = looping.nth
+		}
+	}
+	if highest <= loopNudgeCeiling {
+		t.Fatalf("the highest nudge was %d; a real loop after silence must still pass %d",
+			highest, loopNudgeCeiling)
+	}
+}
+
+// ── the tree is the third kind of progress ──────────────────────────────────
+
+// A commit phase is pure bash, so edit-and-write alone reads it as silence. The
+// tree does not: a command that left something behind is the one claim nobody
+// can argue with, and it breaks the ladder exactly as a write does.
+func TestAShellCommandThatMovedTheTreeIsProgress(t *testing.T) {
+	repo := newTestRepo(t)
+	watch := newLoopWatch()
+	watch.dir = repo
+
+	round := 0
+	shell := func(wrote bool) bool {
+		if wrote {
+			writeFile(t, filepath.Join(repo, fmt.Sprintf("made-%d.txt", round)), "landed")
+		}
+		call := ai.ToolCall{ID: fmt.Sprintf("c%d", round), Function: ai.ToolCallFunction{
+			Name: "bash", Arguments: fmt.Sprintf(`{"command":"land %d"}`, round)}}
+		result := fmt.Sprintf("landed step %d", round)
+		round++
+		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: result}}, false)
+		return fired
+	}
+
+	// The first reading is the baseline: a tree that is already dirty is not work
+	// this batch did, so it may not read as progress, and neither may a second
+	// reading of a tree nothing has touched since.
+	writeFile(t, filepath.Join(repo, "already-there.txt"), "before the turn")
+	if watch.treeMoved() {
+		t.Fatal("the baseline reading counted the tree's existing dirt as this turn's work")
+	}
+	if watch.treeMoved() {
+		t.Fatal("a second reading of an unchanged tree claimed it had moved")
+	}
+
+	for cycle := range 3 {
+		for range silentStreakLimit - 1 {
+			if shell(false) {
+				t.Fatalf("nudged before the landing command in cycle %d", cycle+1)
+			}
+		}
+		if shell(true) {
+			t.Fatalf("the command that moved the tree nudged in cycle %d", cycle+1)
+		}
+	}
+	if watch.nudges != 0 || watch.silentStreak != 0 {
+		t.Fatalf("nudges=%d silent=%d after three landings", watch.nudges, watch.silentStreak)
+	}
+}
+
+// A watch with no directory behind it, and one pointed at a plain folder, both
+// answer "nothing moved" forever — stable, so they never move a counter either
+// way, and the small unit tests above are not quietly running git.
+func TestAWatchWithNoRepositoryNeverSeesTheTreeMove(t *testing.T) {
+	for name, dir := range map[string]string{"no workspace": "", "not a repository": t.TempDir()} {
+		watch := newLoopWatch()
+		watch.dir = dir
+		for round := range 3 {
+			if watch.treeMoved() {
+				t.Fatalf("%s: reading %d claimed the tree moved", name, round+1)
+			}
+		}
+	}
+}
+
+// ── the count comes back ────────────────────────────────────────────────────
+
+// Two loops earn two notes. Then the turn gets something done, and the third
+// loop is a note rather than the end of the turn — the count stepped down by
+// one. It is a step and not a reset: a second real loop after that reaches the
+// ceiling, so the turn is forgiven quickly and still remembered.
+func TestMaterialProgressGivesOneSpentNoteBack(t *testing.T) {
+	watch := newLoopWatch()
+	loop := func(name string) (nudge, bool) {
+		call := ai.ToolCall{ID: name, Function: ai.ToolCallFunction{
+			Name: name, Arguments: `{"path":"a"}`}}
+		var last nudge
+		var fired bool
+		for range loopRepeats {
+			last, fired = watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}}, false)
+		}
+		return last, fired
+	}
+	wrote := func() {
+		call := ai.ToolCall{ID: "w", Function: ai.ToolCallFunction{
+			Name: "write", Arguments: `{"path":"out.md","content":"landed"}`}}
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "wrote out.md"}}, false)
+	}
+
+	if first, fired := loop("alpha"); !fired || first.nth != 1 {
+		t.Fatalf("first loop: fired=%v nth=%d", fired, first.nth)
+	}
+	if second, fired := loop("beta"); !fired || second.nth != 2 {
+		t.Fatalf("second loop: fired=%v nth=%d", fired, second.nth)
+	}
+	wrote()
+	if watch.nudges != 1 {
+		t.Fatalf("nudges after progress = %d, want 1 — a step down, not a reset", watch.nudges)
+	}
+	third, fired := loop("gamma")
+	if !fired || third.nth != loopNudgeCeiling {
+		t.Fatalf("third loop after progress: fired=%v nth=%d, want %d", fired, third.nth, loopNudgeCeiling)
+	}
+	fourth, fired := loop("delta")
+	if !fired || fourth.nth <= loopNudgeCeiling {
+		t.Fatalf("fourth loop: fired=%v nth=%d, want past %d", fired, fourth.nth, loopNudgeCeiling)
+	}
+}
+
+// And the WEAK evidence does not buy the count back. The first calls of a
+// turn's next loop are, by construction, calls nobody has been nudged about
+// yet; a budget those refunded would be no budget at all.
+func TestASuccessfulUnnamedCallDoesNotGiveTheCountBack(t *testing.T) {
+	watch := newLoopWatch()
+	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
+	for range loopRepeats {
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}}, false)
+	}
+	if watch.nudges != 1 {
+		t.Fatalf("nudges = %d after one loop, want 1", watch.nudges)
+	}
+	read := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
+	watch.observe([]ai.ToolCall{read}, []toolResult{{text: "a line nobody has read"}}, true)
+	if watch.nudges != 1 {
+		t.Fatalf("a successful read gave the count back: nudges = %d, want 1", watch.nudges)
 	}
 }

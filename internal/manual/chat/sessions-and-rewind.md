@@ -683,6 +683,48 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## Does aforge save my API keys — a token or password a command printed, and whether it is in the transcript
+
+**A secret is taken out of a tool result before anything keeps it.** When output comes
+back from a shell command, a file that was read, or a page that was fetched, every span in
+it shaped like a credential is replaced with a marker — and that happens before the result
+is written to the journal on disk, before it is drawn on your screen, and before it is
+sent to the model. What you see, and what the file holds, is the marker:
+
+```
+$ gh auth token
+[redacted token · gho_…]
+```
+
+The marker keeps the fixed prefix and nothing else, so you can tell what kind of thing was
+there without a single character of the secret surviving.
+
+**The model never gets the characters, and never needs them.** A command that has to *use*
+a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
+does — so nothing on the belt is worse off for this.
+
+**What is recognised**, by shape rather than by service, so a provider that mints the same
+shape is covered without aforge having heard of it:
+
+- GitHub tokens — `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_`
+- keys in the `sk-` family — OpenAI, Anthropic, OpenRouter, and everything else using it
+- AWS access key ids — `AKIA…`, and the temporary `ASIA…` an assumed role hands out
+- Slack tokens — `xoxb-`, `xoxp-` and the rest of that family
+- the credential after `Authorization: Bearer`
+- a JWT — the three dotted segments
+- a private key block, `-----BEGIN … PRIVATE KEY-----` through its `-----END`, fences and all
+
+**What this does not cover.** A secret with no shape — a bare password, a database URL with
+the credentials inside it, a key your own program prints in a format nobody else uses —
+reads as ordinary text and is kept as ordinary text. A private key cut in half by an output
+limit keeps its half, because the closing fence never arrived. This is a net under an
+accident, not a reason to print a secret on purpose.
+
+**Where it does not run:** what you and the model *type*. Your own messages, and the
+arguments the model writes into a command, are journaled as written — only tool output is
+redacted. The one thing on the typed side that is cleaned the same way is the command an
+error's fix is remembered by, because that one outlives the conversation.
+
 ## What is never written down
 
 Some things live only in memory, and a resumed conversation does not have them.
@@ -695,6 +737,9 @@ Some things live only in memory, and a resumed conversation does not have them.
 - **Image bytes.** Pictures are journaled as a path and a digest. If the file has moved or
   changed, the resumed conversation carries the placeholder
   `[image /path/to/file — file changed or gone]` instead.
+- **A token a command printed.** A credential in a tool result is replaced with
+  `[redacted token · gho_…]` before the line is written, so the journal holds the marker
+  and never the secret. The section above says which shapes are recognised.
 
 Two things are kept on your behalf rather than the conversation's, and they survive
 independently of it: your input history at `~/.aforge/v3/history.jsonl`, and your unsent

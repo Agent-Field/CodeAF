@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/redact"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -1913,7 +1914,27 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // where the model reads them the way a shell prints its background jobs under
 // the prompt — and where [stripJobFooter] can take them off again for anything
 // that has to compare two results as bodies.
+//
+// ── AND A SECRET IS TAKEN OUT BEFORE ANY OF IT ──
+//
+// The first thing that happens to a result here is that token-shaped spans in
+// it are replaced with a marker (internal/redact). It is THE FIRST line rather
+// than the last because everything after this function is a copy: the journal
+// on disk, the row on the person's screen, the transcript the model reads on
+// every later request, and the error→fix store's own signature and patch, which
+// outlive the session entirely. One of those copies is written by the line
+// below this one, so a redaction added anywhere further out would already be
+// too late for it.
+//
+// It sits at THIS chokepoint for the same reason the pre-action gate sits at
+// the one above ([Agent.executeTool]): the batch, the early warm start, a task
+// node's turns and a subharness's worker all pass through here and nothing else
+// does, so a tool appended later — by the workforce, by a connected account, by
+// a test — cannot return a credential without passing this line. A worker that
+// ran `gh auth token` put a live OAuth token in two task journals in plain text
+// before it existed.
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+	result.text = redact.Secrets(result.text)
 	return a.withJobState(ep.noteToolOutcome(call, result))
 }
 
