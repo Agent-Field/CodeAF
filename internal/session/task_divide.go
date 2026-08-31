@@ -533,11 +533,13 @@ func (a *Agent) judgedDivisible(text string) bool {
 // whatever is counting.
 //
 // THE GATE IS NAMED IN THE REFUSAL and not merely the fact of one, because the
-// three refusals are three different findings about the same work: `floor` says
-// the material does not enumerate enough to pay for parts, `lane` says nobody was
-// free to pick them up, and `review` says a mastermind read the parts together
-// and saw one job. A record that spelled all three "refused" could not tell a
-// road that is working from a road that is switched off by a busy machine.
+// refusals are different findings about the same work: `floor` says the material
+// does not enumerate enough to pay for parts, `lane` says nobody was free to pick
+// them up, `review` says a mastermind read the parts together and saw one job,
+// and `nobody` says it read them and saw work no worker can do at all. A record
+// that spelled them all "refused" could not tell a road that is working from a
+// road that is switched off by a busy machine, and could not tell either of
+// those from a task that is now sitting on a person.
 const (
 	divisionByWorker = "worker"
 	divisionBySketch = "sketch"
@@ -553,6 +555,13 @@ const (
 	divisionRefusedLane       = "refused:lane"
 	divisionRefusedCap        = "refused:cap"
 	divisionRefusedReview     = "refused:review"
+	// divisionRefusedNobody is the reviewer saying the remainder is not work for
+	// any worker — the approving review only a person may give, the credential
+	// nobody here holds, the decision that is the person's to make. It is a
+	// SEPARATE WORD FROM `review` because it has a separate ending: an ordinary
+	// refusal leaves one worker carrying on, and this one stops a worker being
+	// spent at all ([Agent.landNeedsPerson]).
+	divisionRefusedNobody = "refused:nobody"
 )
 
 // divideWork is the tool's whole life, and it is a WRAPPER because the life is
@@ -566,20 +575,34 @@ const (
 // carrying on, and an error would end its turn over a question it was entitled
 // to ask.
 func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, bool, error) {
-	answer, malformed := a.divideOnce(ctx, args, divisionByWorker)
+	// THE WORKER'S OWN ASK HAS NO USE FOR THE THIRD ANSWER, and that is a fact
+	// about when it is asked rather than an omission. A human-only finding stops a
+	// worker being STARTED (task_divide_sketch.go); this caller is a worker already
+	// mid-turn, whose money is already being spent, and the honest thing to do with
+	// it is tell it — which [divisionNeedsPerson] does, in the answer.
+	answer, _, malformed := a.divideOnce(ctx, args, divisionByWorker)
 	return answer, malformed, nil
 }
 
 // divideOnce reads the request, puts it to the two gates, and — if both say yes —
-// admits the parts on the nesting road. It answers what the asker is told, and
-// whether what it read was malformed.
+// admits the parts on the nesting road. It answers what the asker is told, THE
+// PERSON'S OWN JOB where the reviewer said there is one, and whether what it read
+// was malformed.
+//
+// THE SECOND ANSWER IS EMPTY ON EVERY ROAD BUT ONE. It carries the reviewer's own
+// sentence when it said that what is left cannot be done by any worker
+// ([divideReview.Nobody]), and it is the only thing on this road that can stop a
+// worker being started at all — which is why it is a value handed back to the
+// caller rather than a decision taken here: this function does not know whether
+// its asker is a worker already running or a node that has not begun
+// (task_divide_sketch.go).
 //
 // AND IT WRITES DOWN WHAT IT DECIDED, once, on every road out. The line is the
 // last thing this function does whatever happened, which is why it is a deferred
 // write over one record rather than a call at each ending: five endings and five
 // call sites is four chances to add a sixth ending and forget (sessionfile.go's
 // [journalDivision] carries what the record is for).
-func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, bool) {
+func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, string, bool) {
 	parent := a.config.taskID
 	line := journalDivision{TaskID: parent, Source: source}
 	defer func() { a.file.appendDivision(line) }()
@@ -590,7 +613,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	}
 	if problem != "" {
 		line.Decision = divisionRefusedMalformed
-		return problem, true
+		return problem, "", true
 	}
 	line.Requested = len(parsed.Parts)
 	graph := a.graph()
@@ -632,7 +655,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
 	if thin && !node.armedByJudgement() {
 		line.Decision = divisionRefusedFloor
-		return divisionTooNarrow(parsed.Evidence), false
+		return divisionTooNarrow(parsed.Evidence), "", false
 	}
 	// GATE TWO: THE FREE HANDS, AND IT IS THE LANES ONLY.
 	//
@@ -656,7 +679,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// so ([divisionDone]).
 	if graph.freeHands() <= 0 {
 		line.Decision = divisionRefusedLane
-		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), false
+		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), "", false
 	}
 
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
@@ -683,10 +706,10 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// ([TaskNode.takeTiebreak]).
 	if thin && !node.takeTiebreak() {
 		line.Decision = divisionRefusedFloor
-		return divisionTooNarrow(parsed.Evidence), false
+		return divisionTooNarrow(parsed.Evidence), "", false
 	}
-	parts, refusal, why := a.reviewDivision(ctx, node, parsed, thin)
-	if refusal != "" {
+	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
+	if refusal.refused() {
 		// A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
 		// THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
 		// ([divisionUnadjudicated]) — and the adjudication it never used is
@@ -702,12 +725,21 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		// own reason reaches the worker, and the tiebreak stays spent —
 		// `why` carries the "refused: " prefix that tells the two apart.
 		line.Decision = divisionRefusedReview
-		line.Error = why
-		if thin && !strings.HasPrefix(why, "refused") {
+		line.Error = refusal.why
+		if thin && !strings.HasPrefix(refusal.why, "refused") {
 			line.Decision = divisionRefusedUnreviewed
 			node.refundTiebreak()
 		}
-		return refusal, false
+		// AND THE ONE REFUSAL THAT IS NOT ABOUT THE DIVISION AT ALL. Everything
+		// above is a finding about whether these parts are worth handing out; this
+		// is a finding about the WORK — that what is left of it is not work for any
+		// worker — and it is the only answer on this road that its caller may act
+		// on by not starting one.
+		if refusal.nobody {
+			line.Decision = divisionRefusedNobody
+			return refusal.said, personsOwnJob(refusal.why), false
+		}
+		return refusal.said, "", false
 	}
 	parsed.Parts = parts
 
@@ -725,7 +757,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	for range parsed.Parts {
 		if refusal := graph.claimChild(parent); refusal != "" {
 			line.Decision = divisionRefusedCap
-			return refusal, false
+			return refusal, "", false
 		}
 		taken++
 	}
@@ -779,7 +811,16 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		titles = append(titles, part.Title)
 	}
 	line.Decision, line.Admitted = divisionAdmitted, len(ids)
-	return divisionDone(ids, titles, graph.machineBusy()), false
+	return divisionDone(ids, titles, graph.machineBusy()), "", false
+}
+
+// personsOwnJob is the reviewer's reason with the record's own prefix taken back
+// off, because the two readers want different things from the same sentence. The
+// journal keeps "refused: " in front of it so an autopsy can tell an answered
+// refusal from a review that came to nothing ([Agent.reviewDivision]); a person
+// reading their task's report wants the sentence and not the bookkeeping.
+func personsOwnJob(why string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(why), "refused:"))
 }
 
 // parseDivideArguments reads one call and says, in plain words, what is wrong
@@ -900,7 +941,15 @@ REFUSE ONLY WHEN THIS IS NOT A DIVISION AT ALL — the parts are stages of one p
 
   {"refuse": true, "why": "one line, in a person's own words"}
 
-Refusing throws nothing away: the worker carries on with the work in its own hands. It is not the answer to a division you would have written differently — amend that one instead.`
+Refusing throws nothing away: the worker carries on with the work in its own hands. It is not the answer to a division you would have written differently — amend that one instead.
+
+AND ONE ANSWER MORE, FOR THE CASE WHERE THERE IS NO JOB LEFT FOR ANYBODY HERE:
+
+  {"refuse": true, "nobody": true, "why": "one line, in a person's own words, saying what only a person can do"}
+
+Add "nobody" ONLY when what is left cannot be done by a worker at all, however many of them there were: an approval or a signature only a named human may give, a credential or an account nobody here holds, a decision that is the person's to make, or work that is simply somebody else's system doing something by itself. Say what the person has to do, in their words.
+
+IT IS NOT THE WORD FOR A DIVISION YOU THINK IS UNWISE. "This is really one job", "these parts overlap", "this would not pay" and "I would rather one worker did this" are all the plain refusal above, and the worker gets on with the work. "nobody" STOPS THE WORK AND PUTS IT IN FRONT OF A PERSON, so it is worth being sure: if one worker could still make progress on any part of what is left, this is not it.`
 
 // divideAdjudicateAsk is the head of the question on the one path where this
 // call decides whether the work divides at all rather than how well.
@@ -925,10 +974,47 @@ Yes to all three: answer with the parts, as usual. Any of them no: refuse, and t
 // admits the original parts, or refuses as undecided where this call is the
 // one adjudicating (see [Agent.reviewDivision]).
 type divideReview struct {
-	Refuse bool         `json:"refuse"`
-	Why    string       `json:"why"`
+	Refuse bool   `json:"refuse"`
+	Why    string `json:"why"`
+	// Nobody is the reviewer saying the remainder is not work for any worker at
+	// all — the approving review only a person may give, the credential nobody
+	// here holds, somebody else's system doing something by itself.
+	//
+	// IT IS A FIELD AND NOT A READING OF [divideReview.Why], and that is the
+	// whole of why this wave is a field rather than a grep. The two answers a
+	// reviewer gives here are one sentence apart in prose — "this is really one
+	// job" and "nobody here can do this" are both a refusal explaining itself —
+	// and the ending is not one sentence apart at all: the first leaves a worker
+	// carrying on, and the second stops the work and puts it in front of a
+	// person. A road that told them apart by matching words would park doable
+	// work on somebody every time a cautious reviewer reached for a discouraging
+	// phrase. So the reviewer has to REACH FOR THE WORD, and anything it merely
+	// says is an ordinary refusal.
+	Nobody bool         `json:"nobody"`
 	Parts  []dividePart `json:"parts"`
 }
+
+// divisionRefusal is what a review that admitted no parts came to: the sentence
+// its ASKER is told, the line the RECORD keeps, and whether the reviewer said the
+// remainder is not work for any worker.
+//
+// IT IS A STRUCT BECAUSE THE THIRD FACT HAS A DIFFERENT ENDING FROM THE OTHER
+// TWO. The sentence and the record were two return values for as long as every
+// refusal ended the same way — the worker carries on — and a third bare string
+// beside them would be a fourth thing to get in the wrong order at the one call
+// site that decides whether somebody's money is spent.
+type divisionRefusal struct {
+	// said is what the asker reads, and an empty one is "not refused".
+	said string
+	// why is the line the journal keeps: the reviewer's own reason behind a
+	// "refused: " prefix, or how the review came to nothing.
+	why string
+	// nobody is [divideReview.Nobody] as it survived the reviewer's answer.
+	nobody bool
+}
+
+// refused reports whether there is a refusal here at all.
+func (r divisionRefusal) refused() bool { return r.said != "" }
 
 // reviewDivision is the one mastermind call a division makes. It answers the
 // parts to admit and an empty refusal, or no parts and the sentence the worker
@@ -950,20 +1036,25 @@ type divideReview struct {
 // the unused adjudication handed back. Failing open there would let an
 // unreachable mastermind admit every below-floor division the road ever armed,
 // which is the floor switched off by an outage.
-func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed divideArguments, thin bool) ([]dividePart, string, string) {
+func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed divideArguments, thin bool) ([]dividePart, divisionRefusal) {
 	// unanswered is what a review that could not be had comes to, and it is the
 	// whole of the two postures in one place so they cannot drift apart. The
-	// third value says WHY there was no answer — a reviewer that could not be
+	// `why` says WHY there was no answer — a reviewer that could not be
 	// reached and a reviewer that answered nonsense both refuse as undecided,
 	// and the journal must be able to tell them apart from a counter that
 	// simply said no (bench autopsy of a live cell could not). The prefix
 	// matters: [Agent.divideOnce] reads a `why` that does not begin with
 	// "refused" as no-answer and refunds the tiebreak on it.
-	unanswered := func(why string) ([]dividePart, string, string) {
+	//
+	// AND NOTHING THAT COMES THROUGH HERE IS EVER A HUMAN-ONLY FINDING. A review
+	// nobody could have has read nothing, and the one answer on this road that
+	// stops a worker being spent may only come from a reviewer that actually said
+	// it (see [divideReview.Nobody]).
+	unanswered := func(why string) ([]dividePart, divisionRefusal) {
 		if thin {
-			return nil, divisionUnadjudicated(), why
+			return nil, divisionRefusal{said: divisionUnadjudicated(), why: why}
 		}
-		return parsed.Parts, "", why
+		return parsed.Parts, divisionRefusal{why: why}
 	}
 	ctx, cancel := context.WithTimeout(ctx, divideReviewPatience)
 	defer cancel()
@@ -998,10 +1089,28 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		return unanswered("unparseable")
 	}
 	if review.Refuse {
-		// The reviewer's own reason rides the third value so the record can
+		// The reviewer's own reason rides on the refusal so the record can
 		// carry it: a refusal with no why is the one answer an autopsy cannot
 		// learn from, and a live cell has already been read that way.
-		return nil, divisionNotAsWritten(review.Why), "refused: " + strings.TrimSpace(review.Why)
+		//
+		// AND A HUMAN-ONLY FINDING IS A DIFFERENT SENTENCE FOR A DIFFERENT
+		// ENDING. `nobody` is the reviewer saying the work left over is not work
+		// for any worker, so the asker is not told to carry on with it in its own
+		// hands — which is what [divisionNotAsWritten] says, and what the measured
+		// cell did before this existed: nine minutes and a dollar spent fixing a
+		// file in an empty repository, over an approval GitHub was only ever going
+		// to take from a person.
+		if review.Nobody {
+			return nil, divisionRefusal{
+				said:   divisionNeedsPerson(review.Why),
+				why:    "refused: " + strings.TrimSpace(review.Why),
+				nobody: true,
+			}
+		}
+		return nil, divisionRefusal{
+			said: divisionNotAsWritten(review.Why),
+			why:  "refused: " + strings.TrimSpace(review.Why),
+		}
 	}
 	parts := make([]dividePart, 0, len(review.Parts))
 	for _, part := range review.Parts {
@@ -1022,7 +1131,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		// is what the fail-open law exists to stop.
 		return unanswered("shape")
 	}
-	return parts, "", ""
+	return parts, divisionRefusal{}
 }
 
 // divideReviewQuestion is the division as the reviewer reads it: the work it
@@ -1142,6 +1251,34 @@ func divisionNotAsWritten(why string) string {
 	}
 	return "not split: read together, the parts are one job rather than several — " +
 		line + ". Carry on with the work in your own hands; nothing is cancelled and nothing is lost."
+}
+
+// divisionNeedsPerson is the answer to a division whose reviewer said the work
+// left over is not work for any worker — and it is the ONE sentence in this
+// family that does not end "carry on with the work in your own hands".
+//
+// THAT ENDING WOULD BE THE BUG. Every other refusal here is a finding about the
+// DIVISION, and the honest thing after one is the work carrying on in one pair of
+// hands. This is a finding about the WORK, and the measured cell is what telling a
+// worker to carry on with it produces: a task whose whole remainder was an
+// approving review GitHub only accepts from a human read "carry on", went looking
+// for something it could do, fixed a file in an empty repository, and was failed
+// by the check nine minutes and $1.24 later. So the sentence says the two things
+// the asker can actually act on: this needs a person, and what the person has to
+// do.
+//
+// It says the reviewer's own line, for [divisionNotAsWritten]'s reason — the
+// difference between "somebody has to approve this" and "somebody has to give you
+// an account with access" is the whole of what is useful here — and it says
+// nothing about who decided, because a person reads this over the worker's
+// shoulder in the journal.
+func divisionNeedsPerson(why string) string {
+	line := clip(firstLine(strings.TrimSpace(why)), divideRefusalBytes)
+	if line == "" {
+		return "not split: what is left of this work is not something a worker can do — it needs a person. Stop here and say so in your report, naming what has to be done and who has to do it; nothing is cancelled and nothing is lost."
+	}
+	return "not split: what is left of this work is not something a worker can do — it needs a person: " +
+		line + ". Stop here and say so in your report, naming what has to be done and who has to do it; nothing is cancelled and nothing is lost."
 }
 
 // divisionDone is the receipt: what the work was split into, and what happens

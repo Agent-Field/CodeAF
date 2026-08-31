@@ -1008,8 +1008,10 @@ stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below — or the work held and its branch would not merge cleanly. The task
-is neither done nor failed: nothing merges, the branch is kept, and nothing
+its own section below — or the work held and its branch would not merge cleanly — or what
+was left of the work turned out to be something no worker can do at all, which lands this
+way before a worker is ever started (*A task that landed needing your look without doing
+anything*). The task is neither done nor failed: nothing merges, the branch is kept, and nothing
 waiting on it fails. The report leads
 `finished, but needs your look — ` and then what was said, or
 `finished, but needs your look — nobody could say whether it holds` when nothing was said.
@@ -1040,6 +1042,33 @@ session takes the same road your own `[d] decide these for me` takes: aforge rea
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
+
+## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
+
+Sometimes a task lands needing your look within seconds, having written nothing, spent
+almost nothing and touched no files. That is not a failure and nothing went wrong. It means
+what was left of the work is **not work a worker can do**: an approving review only a named
+person may give, a credential or an account nobody here holds, a decision that is yours to
+make, or a step that is somebody else's system doing something by itself.
+
+It is found by the same `mastermind` model that reads a task's parts before it splits (the
+tasks page, *when a task turns out to be too wide for one worker*). That reading happens
+**before the task's worker is asked anything**, and when it comes back saying nobody here
+can do this, the task stops there rather than starting one. The report is that reading's own
+sentence, in its words — `finished, but needs your look — an approving review GitHub will
+only accept from a human who isn't the author`, say — so what you are being asked to do is
+the first line on the card.
+
+Everything else about the landing is the ordinary needs-your-look landing above: nothing
+merges, the branch is kept, nothing waiting on it fails, and the four choices on the card
+are the door. Usually the right one is to do the thing yourself and then accept it, or to
+say what you want done instead and start the work again.
+
+**Why this exists.** Before it did, a task whose whole remainder was two GitHub approvals
+was read correctly, told nobody, and ran anyway: nine minutes and about $1.24 across the
+run, the check, a repair round and the check again, spent editing a file in an empty copy
+of the repository while it looked for something it could do — and then failed by the check.
+The reading that would have saved all of it had already been paid for.
 
 ## Why my task needs my look when it finished fine — another window changed the same file
 

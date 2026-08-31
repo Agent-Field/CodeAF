@@ -10,7 +10,7 @@ order, nothing was forced.
 
 ## 1. What was measured
 
-Journal: `~/.aforge/v3/projects/-Users-santoshkumar/8f75d6c1ffdeaaf5/tasks/20260831-115001_7.jsonl`,
+Journal: `~/.aforge.bak-20260831-1236/v3/projects/-Users-santoshkumar/8f75d6c1ffdeaaf5/tasks/20260831-115001_7.jsonl`,
 second and fourth lines. Task 7's brief was `(A | B) > C` — A = approve PR #1018,
 B = approve PR #1019, C = the merge queue merging both by itself.
 
