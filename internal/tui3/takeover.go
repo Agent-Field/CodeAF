@@ -137,6 +137,14 @@ func (a *app) takeoverLine() string {
 // and the two things about it that surprise people.
 func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 	h := &a.home
+	// A ROW ALREADY ASKED FOR IS NOT ASKED FOR AGAIN. The request is one file and
+	// the answer is somebody else's reply ending, so a second press has nothing
+	// to add — it repeats the line, which is what a person leaning on enter is
+	// looking for anyway.
+	if a.waitingToTakeOver() && a.takeover.file == line.row.Transcript {
+		h.say(a.takeoverLine(), "")
+		return nil
+	}
 	if h.armed != line.row.Transcript || line.row.Transcript == "" {
 		h.armed = line.row.Transcript
 		h.say(takeoverArmedWord(a.homeHolding(line.row)), "")
@@ -150,6 +158,10 @@ func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 		h.say(sessionBusyWord, "")
 		return nil
 	}
+	// ONE WINDOW WAITS FOR ONE CONVERSATION. Asking for a second while the first
+	// is still out would leave a request nobody is listening for on the disk, and
+	// the holder answering it would close a window for no reason.
+	a.cancelTakeover()
 	if err := session.AskTakeover(line.row.Dir); err != nil {
 		h.say(err.Error(), "")
 		return nil

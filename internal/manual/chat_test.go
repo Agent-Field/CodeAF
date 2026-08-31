@@ -827,6 +827,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// no longer do.
 		{"can I approve a command from home", "home"},
 		{"how do I answer a question in another window", "home"},
+		{"continue this chat in another terminal", "home"},
+		{"move the conversation to this window", "home"},
+		{"it says open in another window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},

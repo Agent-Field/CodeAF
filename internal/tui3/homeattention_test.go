@@ -324,10 +324,10 @@ func TestOneBlankRowSeparatesTheBlocksOfTheList(t *testing.T) {
 // A ROW OF THE LIST IS A DOOR OF THE KIND IT ALWAYS WAS. The card beside it is
 // that conversation's, a digit over it answers the window it belongs to through
 // the road the answer band already rides, and enter walks the conversation's own
-// door — which in this lab refuses, because the conversation it names is the one
-// another window is sitting on ([app.homeOpenLine]'s third check). The refusal is
-// the proof: a row that was not a conversation's door would have folded
-// something, or done nothing at all.
+// door — which in this lab offers to MOVE the conversation, because the one it
+// names is the one another window is sitting on ([app.homeOpenLine]'s third
+// check, takeover.go). That offer is the proof: a row that was not a
+// conversation's door would have folded something, or done nothing at all.
 func TestARowThatIsWaitingIsADoorOfTheKindItAlwaysWas(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
@@ -351,7 +351,7 @@ func TestARowThatIsWaitingIsADoorOfTheKindItAlwaysWas(t *testing.T) {
 		t.Fatalf("the row answered %+v", answer)
 	}
 	a.homeEnter()
-	if a.home.msg != sessionBusyWord {
+	if !strings.Contains(a.home.msg, "enter again to move it here") {
 		t.Fatalf("enter on the row did not walk the conversation's door: %q", a.home.msg)
 	}
 }
