@@ -88,29 +88,110 @@ folder · ~/code/agentfield
 
 and writes the choice down, so the next `/folder` opens with that folder near the top.
 
-**That is all it does today, and it is worth being plain about.** Choosing a folder does
-**not** move this conversation's own working directory, does not change which `AGENTS.md`
-the model is reading, and does not make edits land somewhere else. The directory the
-conversation is anchored to is set at launch, or once with `/workspace <path>`, and where a
-task's work happens is decided when the task starts. If you want this conversation to be
-about a different project, start one there — `/home` lists every project on the machine and
-opens a conversation in any of them.
+From then on the conversation is **about** that folder as well as the one it is standing
+in. Work aimed at it — a task, or the model's own edits — is allowed to go there, which is
+the whole point of choosing it. What it does **not** do is move this conversation: the
+directory it is anchored to, the `AGENTS.md` it reads, and its own status line stay
+exactly as they were. That anchor is set at launch, or once with `/workspace <path>`.
+
+## Where edits go — the folder you are standing in, and the ones you chose
+
+Two rules, and they are the whole of it.
+
+- **The folder you started aforge in is edited directly.** A write is a write; the file on
+  disk changes the moment the model writes it. Nothing about that has changed.
+- **A folder you chose is not.** Edits aimed there are kept for this conversation — you
+  see `changes for <name> · 3 files · /land` above the message box — and your own copy of
+  that folder does not move until you run `/land`. For a repository that is a branch taken
+  from its current commit; for a plain folder it is a copy of it.
+
+So choosing a folder is cheap and safe to get wrong: nothing reaches it until you have
+been shown what changed and said so. See `## /land` below.
+
+`bash` is the exception, and it is worth knowing: a shell command runs in the folder you
+are standing in and touches whatever it names, including files in a folder you chose. Only
+the model's `read`, `write` and `edit` go through the copy.
+
+## /land — merge what you did into my folder, put the changes in, land the work
+
+`/land` on its own shows what is waiting and moves nothing:
+
+```
+changes for agentfield · 2 files · shared.txt, notes.md · type /land now to put them in
+```
+
+`/land now` is what actually puts them in, and says so:
+
+```
+agentfield now has the changes · 2 files
+```
+
+For a repository the work is committed on a branch of its own and merged into your
+checkout — your uncommitted changes are left alone, and if the merge cannot settle you get
+`could not put it all into agentfield ·` and the sentence naming the files that clashed,
+with the branch kept so nothing is lost. For a plain folder the files are copied back over
+it by name.
+
+With more than one folder waiting, `/land` asks which: `changes are waiting for agentfield
+and notes · say which one · /land agentfield`. Then `/land agentfield now`.
+
+**A folder lands whole.** There is no way to land some of the files and keep the rest
+today — you either put the folder's changes in or leave them waiting.
+
+## Work in a folder directly, without keeping the changes aside
+
+Say so in your own words — "work in ~/code/notes directly", "edit it in place", "just
+change it there". That is remembered for that one folder, and from then on writes aimed at
+it change the folder itself immediately, exactly like the folder you are standing in.
+Nothing guesses this; it is only ever set because you said it.
+
+## Where did my changes go — the folder still looks unchanged
+
+If the model edited files in a folder you chose with `/folder` and that folder still looks
+exactly as it did, nothing is broken: the changes are waiting for this conversation, and
+the row above the message box says so — `changes for agentfield · 3 files · /land`. Run
+`/land` to see what they are and `/land now` to put them in.
+
+The folder you are standing in is the other case entirely: writes there landed the moment
+they happened, and there is nothing waiting.
+
+## You changed my files? — what has actually reached my folder
+
+Only two things ever change a file on disk without you saying anything more:
+
+- a write in **the folder you started aforge in**, which is direct and always has been;
+- a `bash` command, which runs there and touches whatever it names.
+
+Everything the model writes for **a folder you chose with `/folder`** is kept aside until
+you run `/land`. So a folder you chose is untouched until the moment you say so, and you
+are shown the list of files first.
+
+## Undo what you did to my folder — throwing away changes that have not landed
+
+Changes waiting for a folder you chose have not reached it, so there is nothing to undo
+there: simply do not run `/land`. They stay waiting when you close the conversation and
+are offered again when you reopen it; they go for good when the conversation itself is
+deleted.
+
+Work that **already landed**, and changes in the folder you are standing in, are a
+different question with a different answer — see
+`## Undo what the agent did to my files — restoring the workspace` on the workspace page.
 
 ## Open another project, work on a different repo, change directory
 
 Three different asks, three different answers.
 
-- **"Which folder do you mean?"** — `/folder`. It picks one, says so, and remembers it.
+- **"Which folder do you mean?"** — `/folder`. It picks one, says so, remembers it, and
+  the conversation can work there from then on — through a copy, landed with `/land`.
 - **"This chat has no project; give it one."** — `/workspace <path>`, once. A conversation
   that already has a workspace answers `this conversation already has a workspace` and
   changes nothing.
-- **"I want to work in a different project."** — `/home`, then open or start a conversation
-  under that project. A conversation is anchored where it was started; there is no command
-  that picks it up and moves it.
+- **"Move this whole conversation to another project."** — you cannot. A conversation is
+  anchored where it was started; `/home` lists every project on the machine and opens a
+  conversation in any of them.
 
 There is no `cd`. Typing a path into the message box does not change anything either — the
-model reads and writes through its own tools, against the directory the conversation was
-started in.
+model reads and writes through its own tools.
 
 ## Attach a folder — /attach with a directory after it
 
@@ -147,8 +228,8 @@ internal/tui3/app.go
 
 Choosing a folder inserts its path into your sentence exactly the way choosing a file does
 — `@internal/tui3/` — which is a fast way to point the model at a directory without typing
-the whole thing. It does **not** open the picker and does not choose the folder as a place;
-it is text in your message, and the model resolves it.
+the whole thing. It does **not** open the picker and does not add the folder to the ones
+this conversation is about; it is text in your message, and the model resolves it.
 
 The same list opens after `/attach `, `/image ` and `/export ` when you press `tab`, so the
 folders are offered there too.
@@ -163,6 +244,13 @@ nothing to offer yet · type a path after /folder, or use the picker's box
 no folder matches · type a path to browse
 no such folder · <path>
 nothing below here
+```
+
+And the two `/land` gives you, exactly as they are written:
+
+```
+nothing is waiting · what this conversation writes in the folder it is standing in is already there
+putting changes into a folder is not available over --host yet — the conversation is on the other machine.
 ```
 
 - The first is `/folder` on a session opened with `--host`. The folders this program can

@@ -3274,6 +3274,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case landNoteMsg:
+		// A landing's whole answer is one line, the clean one and the one that
+		// could not go in alike (landcmd.go).
+		a.note(msg.line)
+		return a, nil
+
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
@@ -5765,6 +5771,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// already narrowed. One list, one gesture, and the argument only decides
 		// where it starts.
 		return a.openFolderPick(rest)
+
+	case "land":
+		// The other end of choosing a folder: what was written for a folder this
+		// conversation only refers to, put into it. Shown first and done second
+		// (landcmd.go), and the landing itself runs off the loop.
+		return a.runLandCommand(rest)
 
 	case "image":
 		// The other door onto the tray, for a picture that is not under this

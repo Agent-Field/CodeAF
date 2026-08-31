@@ -5165,8 +5165,21 @@ func cutTaskWorktree(place Place, root, session string, id uint64, title string)
 	// conversation standing in a subdirectory of a project still puts its
 	// worktrees in one place, which is what keeps a sweep able to find them.
 	dir, mode := taskOwnFolder(place, root, session, id)
-	branch := "task/" + slugify(title) + "-" + shortID()
+	return cutWorktreeAt(place, root, dir, "task/"+slugify(title)+"-"+shortID(), mode)
+}
 
+// cutWorktreeAt is the git of it, with the two names handed in: a directory to
+// stand the working copy in and a branch to cut.
+//
+// IT IS SEPARATE FROM [cutTaskWorktree] SO THAT THERE IS ONE WORKTREE ROAD AND
+// NOT TWO. A node's tree is named from its id under the session's trees/; the
+// conversation's own standing tree on a referred folder is named from that
+// folder (standingtree.go) and must NEVER land in the id space a node counts
+// through, or the reclaim below — which is safe precisely because the only
+// thing that can be sitting at a node's path is that node's own wreckage —
+// would be clearing out a live working copy. Everything else about a worktree
+// is identical for both, so everything else is here.
+func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (taskTree, error) {
 	defer lockGitRoot(place, root)()
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err

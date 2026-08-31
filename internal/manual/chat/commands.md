@@ -185,6 +185,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/folder` | `/place`, `/dir` | — | opens the folder picker — the one way of choosing a directory |
 | `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
+| `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
+| `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
+| `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |

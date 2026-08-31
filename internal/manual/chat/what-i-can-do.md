@@ -5,7 +5,9 @@ what is simply not there in this build.
 
 ## Can you read, write, create, delete, rename or move files?
 
-Yes. Three tools do this, and they work on the workspace you started aforge in.
+Yes. Three tools do this. They work on the folder you started aforge in, where a write
+changes the file straight away — and on any other folder you chose with `/folder`, where
+what they write is kept for this conversation until you run `/land`.
 
 | Tool | What it does |
 | --- | --- |
@@ -259,7 +261,10 @@ of you knew in advance that the command would be a long one.
 
 ## Does cd stick between commands — changing directory in bash
 
-No. **Every `bash` call starts again in the workspace root.** Each one is its own
+No. **Every `bash` call starts again in the workspace root** — including when the
+conversation is also about another folder: `bash` runs where you are standing and touches
+whatever it names, which is the one hand `/land` does not stand in front of. Each one is
+its own
 `/bin/bash -c`, its own process, run with the workspace as its working directory — so a
 `cd` in one call is gone by the next, and nothing else a command changes about its own
 shell (an exported variable, a `source`, a shell function, an activated environment)

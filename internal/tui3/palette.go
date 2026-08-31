@@ -1740,7 +1740,7 @@ func (a *app) overlayHeight() int {
 	// conversation — a list that left neither would be a list that took the
 	// screen.
 	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.parkedHeight(); want > room {
+		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight(); want > room {
 		want = room
 	}
 	if want < 0 {
