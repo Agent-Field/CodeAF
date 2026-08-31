@@ -2038,6 +2038,73 @@ func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
 	}
 }
 
+// Every sentence typed at home opens a conversation OF ITS OWN, and the one
+// that cannot open does not go into somebody else's.
+//
+// THE DEFECT THIS CLOSES, in the owner's own words: "whenever I create a new
+// chat, it seems to go into the same chat instead of creating a new one". Home
+// closed itself, asked [app.renew] for a conversation, and sent the sentence
+// whether or not one came back — so from the eighth conversation onward, where
+// the keeper refuses another ([app.roomForAnother]), every new chat typed at
+// home was delivered to the conversation that was already on the screen. The
+// same one, every time, with the refusal noted underneath it.
+func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	var made []*fakeAgent
+	a.start = func(string) (Conversation, error) {
+		next := &fakeAgent{model: "m"}
+		made = append(made, next)
+		return Conversation{Agent: next,
+			SessionFile: fmt.Sprintf("/tmp/alpha/next-%d/transcript.jsonl", len(made))}, nil
+	}
+	// One round of what a person does: open home, type a sentence, press enter.
+	say := func(text string) {
+		a.openHome()
+		for _, r := range text {
+			a.homeKey(key(string(r)))
+		}
+		runCmd(a.homeEnter())
+	}
+	// UP TO THE CAP EVERY SENTENCE GETS ITS OWN CONVERSATION. The first replaces
+	// the fresh empty one this window opened on; every one after it is added
+	// beside what is already running.
+	for i := 0; i < convCap; i++ {
+		say(fmt.Sprintf("message %d", i))
+	}
+	if len(made) != convCap {
+		t.Fatalf("%d sentences opened %d conversations", convCap, len(made))
+	}
+	for i, agent := range made {
+		want := fmt.Sprintf("message %d", i)
+		if len(agent.sent) != 1 || agent.sent[0] != want {
+			t.Fatalf("conversation %d was sent %v, not %q alone", i, agent.sent, want)
+		}
+	}
+
+	// AND THE ONE THAT CANNOT OPEN IS REFUSED WHERE IT WAS TYPED. Home stays on
+	// the screen saying so, the sentence is still in the box, and not one word of
+	// it reaches the conversation in front.
+	last := made[len(made)-1]
+	say("this one has nowhere to go")
+	if len(last.sent) != 1 {
+		t.Fatalf("a new chat landed in the conversation already on screen, which was sent %v", last.sent)
+	}
+	if len(made) != convCap {
+		t.Fatalf("the cap was passed: %d conversations", len(made))
+	}
+	if !a.at(pageHome) {
+		t.Fatal("a refused conversation closed home anyway")
+	}
+	if a.home.msg != convCapWord() {
+		t.Fatalf("home said %q about a refused conversation", a.home.msg)
+	}
+	if got := a.home.box.String(); got != "this one has nowhere to go" {
+		t.Fatalf("the refused sentence was left as %q", got)
+	}
+}
+
 // Typing anything that is not a search is the start of a new conversation.
 func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	lab := newHomeLab(t)
@@ -2868,7 +2935,11 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 
 	// /new: another conversation in this project, which leaves the one the
 	// launch opened behind as somewhere to go back to (app.go's [app.renew]).
-	runCmd(a.renew())
+	renewed, started := a.renew()
+	if !started {
+		t.Fatal("/new refused to open a second conversation")
+	}
+	runCmd(renewed)
 	if a.file == mine {
 		t.Fatal("/new did not move the surface onto another conversation")
 	}

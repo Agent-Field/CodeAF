@@ -1231,6 +1231,13 @@ Starting a conversation this way is `/new` followed by your sentence, so everyth
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
 `/new is unavailable here`.
 
+**At eight conversations open it refuses and home stays exactly where it is.** The foot
+line reads `8 open is as many as aforge holds — /quit closes this one`, your sentence is
+still in the box, and nothing is sent anywhere — in particular it is **not** sent into the
+conversation this window was already holding. Close one with `/quit` and press `enter`
+again. The same is true of the rarer `new session failed: <error>`: the conversation you
+were in is never given a sentence that was typed for a new one.
+
 **Typing a path starts a conversation there instead.** When what you typed resolves to a
 directory on this machine — an absolute path, a `~` path, a `./` path, or a project name
 that matches exactly one heading on the list — the action row reads
