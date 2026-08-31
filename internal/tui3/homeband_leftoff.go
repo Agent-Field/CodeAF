@@ -2,8 +2,6 @@ package tui3
 
 import (
 	"strings"
-
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 func init() {
@@ -11,14 +9,9 @@ func init() {
 }
 
 func drawLeftOffBand(a *app, ctx bandContext) []string {
-	if a.home.last == nil {
-		a.home.last = map[string]session.Summary{}
-	}
-	summary, ok := a.home.last[ctx.subject.row.Transcript]
-	if !ok {
-		summary, _ = session.Peek(ctx.subject.row.Transcript)
-		a.home.last[ctx.subject.row.Transcript] = summary
-	}
+	// THE JOURNAL WAS PEEKED AT WHEN THIS CARD ARRIVED (homecardread.go's
+	// [app.readHomeLeftOff]). A body does not open files.
+	summary := a.home.last[ctx.subject.row.Transcript]
 	ask, answer := strings.TrimSpace(summary.LastUser), lastSentence(summary.LastAssistant)
 	if ask == "" && answer == "" {
 		return nil

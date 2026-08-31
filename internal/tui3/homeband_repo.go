@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 const homeRepoTTL = 5 * time.Second
@@ -41,45 +43,74 @@ func drawRepoBand(a *app, ctx bandContext) []string {
 	return bandClauses(ctx.width, 0, ctx.pal.dim, strings.Split(cached.line, " · ")...)
 }
 
-// refreshHomeRepo takes the one bounded reading when a card arrives — under the
-// cursor, or under the pointer, because the card follows whichever of them is
-// pointing at a row (home.go's [homeView.previewLine]). Drawing then remains
-// pure no matter how often the terminal repaints, and a reading is taken once
-// per workspace per [homeRepoTTL] however the arrival happened.
-func (a *app) refreshHomeRepo(now time.Time) {
-	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindSession {
-		return
-	}
-	a.refreshRepoOf(strings.TrimSpace(subject.row.Workspace), now)
+// homeRepoMsg is one workspace's reading, coming BACK. It carries the workspace
+// it is about because several may be in flight — a pointer sweeping down a list
+// of conversations in three projects asks about three repositories — and a
+// reading that landed against whichever row happened to be under the cursor when
+// it arrived would be a branch name from another project.
+type homeRepoMsg struct {
+	workspace string
+	line      string
+	branch    string
 }
 
-// refreshRepoOf is that reading for ONE NAMED WORKSPACE, which is what the
-// composer layer needs: it opens on a keystroke and moves its destination on a
-// keystroke, and the workspace it lands on may be one no card has ever drawn.
-//
-// IT IS STILL NEVER CALLED FROM A DRAW. Both callers are keystrokes — a card
-// arriving under the cursor, and the layer opening or cycling — which is the
-// whole of what ARCHITECTURE.md's fourth law asks: `open` and `tick` may read
-// the disk and `body` may not.
-func (a *app) refreshRepoOf(workspace string, now time.Time) {
-	if workspace == "" {
-		return
-	}
-	if cached, ok := a.home.repos[workspace]; ok && now.Sub(cached.at) < homeRepoTTL {
-		return
-	}
+// tookHomeRepo files that answer.
+func (a *app) tookHomeRepo(msg homeRepoMsg) {
+	delete(a.repoAsking, msg.workspace)
 	if a.home.repos == nil {
 		a.home.repos = map[string]homeRepoReading{}
 	}
-	commandCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	raw, err := homeGitStatus(commandCtx, workspace)
-	line, branch := "", ""
-	if err == nil {
-		line, branch = parseHomeRepo(string(raw))
+	a.home.repos[msg.workspace] = homeRepoReading{at: a.now(), line: msg.line, branch: msg.branch}
+	a.touch()
+}
+
+// refreshRepoOf asks for the reading of ONE NAMED WORKSPACE, and it is a
+// tea.Cmd rather than a syscall because A KEYSTROKE MAY NOT WAIT FOR git.
+//
+// This used to run `git status --porcelain=v2 --branch` INSIDE the update loop,
+// on the arrow keys and on every hover that moved the card. It was already off
+// the draw and already behind a five-second cache, which is why it read as
+// correct; what neither of those bounds is the WALL. The command was given a
+// whole second of ceiling, and a repository big enough to need it is a
+// repository a person browsing home meets on their first `↓` — measured at 7.7ms
+// on aforge's own worktree, and seconds on a cold cache or a network mount, with
+// every key and every motion queued behind it. It is exactly the fault
+// reasoninglevel.go took off the pointer's way over a connection, made locally.
+//
+// So the reading is ASKED FOR here and ANSWERED in [app.tookHomeRepo], and the
+// card draws the last one it was given (homeband_repo.go's [drawRepoBand] reads
+// the cache and never the disk). A workspace nobody has read yet simply has no
+// branch clause on its place line for one frame, which is the emptiness law and
+// not a blank.
+//
+// ONE ASK PER WORKSPACE IS IN FLIGHT AT A TIME. Without that, a pointer swept
+// down twenty rows of one project would fork twenty gits at the same repository,
+// all of them answering the same thing.
+func (a *app) refreshRepoOf(workspace string, now time.Time) tea.Cmd {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return nil
 	}
-	a.home.repos[workspace] = homeRepoReading{at: now, line: line, branch: branch}
+	if cached, ok := a.home.repos[workspace]; ok && now.Sub(cached.at) < homeRepoTTL {
+		return nil
+	}
+	if a.repoAsking == nil {
+		a.repoAsking = map[string]bool{}
+	}
+	if a.repoAsking[workspace] {
+		return nil
+	}
+	a.repoAsking[workspace] = true
+	return func() tea.Msg {
+		commandCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		raw, err := homeGitStatus(commandCtx, workspace)
+		line, branch := "", ""
+		if err == nil {
+			line, branch = parseHomeRepo(string(raw))
+		}
+		return homeRepoMsg{workspace: workspace, line: line, branch: branch}
+	}
 }
 
 // repoBranchOf is the head one workspace is on, as the last reading found it,

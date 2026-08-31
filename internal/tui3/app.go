@@ -1463,6 +1463,17 @@ type app struct {
 	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
 	// turns into the product's own path.
 	artifacts string
+	// repoAsking is which workspaces have a `git status` in flight, so a sweep
+	// down twenty rows of one project forks one command and not twenty
+	// (homeband_repo.go's [app.refreshRepoOf]).
+	repoAsking map[string]bool
+	// newsAsking and leftOffAsking are the same idea for the two readings a card
+	// takes of its own row (homecardread.go).
+	newsAsking    map[string]bool
+	leftOffAsking map[string]bool
+	// homeFrames counts the frames home has BUILT. It is PERF.md's instrument
+	// and nothing reads it but the pins (home.go's [app.homeFrame]).
+	homeFrames int
 	// models is the door's model list, asked for at the moment the picker
 	// opens rather than at boot — a lazily warmed catalog may have arrived in
 	// between, and it must never be waited for. Nil falls through to the cache
@@ -2645,7 +2656,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.taskSheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			if a.at(pageHome) {
-				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
+				// A CLICK MOVES THE CURSOR, so it is an arrival like a key
+				// (homecardread.go).
+				pressed := a.homePress(msg.Mouse().X, msg.Mouse().Y)
+				return a, tea.Batch(pressed, a.refreshHomeCard(a.now()))
 			}
 			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
 			// THE SAME REASON: each is the whole screen, so a press that fell
@@ -2941,8 +2955,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.at(pageHome) {
-			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
-			return a, nil
+			return a, a.homeHover(msg.Mouse().X, msg.Mouse().Y)
 		}
 		// AND THE FOUR PLACES THE ROUTER PROMOTED, on home's own law: THE POINTER
 		// PREVIEWS AND THE CURSOR SELECTS (pages.go's [app.placeBodyHover]). They
@@ -3076,6 +3089,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
+
+	case homeNewsMsg:
+		a.tookHomeNews(msg)
+		return a, nil
+
+	case homeLeftOffMsg:
+		a.tookHomeLeftOff(msg)
+		return a, nil
+
+	case homeRepoMsg:
+		// A REPOSITORY'S READING, COMING BACK. It was asked for on the keystroke
+		// that brought a card up and answered here, off the update loop, because
+		// a `git status` on a big worktree is the one thing on this screen that
+		// can hold a key (homeband_repo.go).
+		a.tookHomeRepo(msg)
+		return a, nil
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,

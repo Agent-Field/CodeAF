@@ -30,15 +30,10 @@ func init() {
 }
 
 func drawNewsBand(a *app, ctx bandContext) []string {
-	key := ctx.subject.id()
-	if a.home.news == nil {
-		a.home.news = map[string]homeNewsCache{}
-	}
-	cached, ok := a.home.news[key]
-	if !ok || ctx.now.Sub(cached.at) >= homeEvery {
-		cached = homeNewsCache{at: ctx.now, notes: newsNotes(a, ctx)}
-		a.home.news[key] = cached
-	}
+	// THE INBOX WAS READ WHEN THIS CARD ARRIVED (homecardread.go's
+	// [app.readHomeNews]) and a card nobody has read for draws no band rather
+	// than opening a file in the middle of a frame.
+	cached := a.home.news[ctx.subject.id()]
 	if len(cached.notes) == 0 {
 		return nil
 	}
@@ -69,16 +64,16 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 // NEITHER is emptied here — draining is what an opening conversation does
 // ([session.Agent.drainStandingInbox]), and a screen that consumed the news
 // while drawing it would take the fold away from the person it was for.
-func newsNotes(a *app, ctx bandContext) []standing.Note {
+func newsNotesOf(a *app, subject bandSubject) []standing.Note {
 	// project inbox
-	if ctx.subject.kind == bandKindProject {
-		project, ok := bandProjectOf(ctx.subject)
+	if subject.kind == bandKindProject {
+		project, ok := bandProjectOf(subject)
 		if !ok || strings.TrimSpace(project.Path) == "" {
 			return nil
 		}
 		return standing.PeekProjectInbox(a.standingHome(), project.Path)
 	}
-	return readHomeNews(filepath.Dir(ctx.subject.row.Transcript))
+	return readHomeNews(filepath.Dir(subject.row.Transcript))
 }
 
 func readHomeNews(dir string) []standing.Note {
