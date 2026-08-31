@@ -228,7 +228,7 @@ func (a *app) readSpendLines(now time.Time) {
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
-	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow())
+	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).railed(a.machineAllowance())
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -407,6 +407,13 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	if !stop.ok {
 		return nil, false
 	}
+	// AND THE POINTER LINE OPENS THE ONE EDITOR MONEY HAS. It is the only row
+	// here that is not a thing money was spent on, and the only door out of this
+	// place that goes somewhere a person can change something (moneydoor.go's
+	// [app.openSpending]).
+	if stop.rails {
+		return a.openSpending(spendTodayKey), true
+	}
 	switch stop.subject.Kind {
 	case session.SubjectTask:
 		return a.showPage(pageTasks), true
@@ -564,12 +571,33 @@ func (placeSpend) stops(a *app) []int {
 // [place.cursorAt]).
 func (placeSpend) cursorAt(a *app) int { return a.spend.cursor }
 
+// rowID names the row the cursor is standing on, so a verb strip opened over it
+// closes the moment the cursor walks away (verbstrip.go's [app.holdStrip]).
+func (placeSpend) rowID(a *app) string { return "spend/" + itoa(a.spend.cursor) }
+
 func (placeSpend) enter(a *app) tea.Cmd {
 	cmd, _ := a.openSpendRow()
 	return cmd
 }
 
 func (placeSpend) window(a *app, key string) bool { return a.spendWindowKey(key) }
+
+// verbs is what `→` opens over the row under the cursor, and on this place it is
+// one letter: `b`, the limits.
+//
+// THIS IS WHERE THE DESIGN'S `b` IS REAL. A bare letter may be a verb only while
+// the strip naming it is on the screen (verbstrip.go's first law) — every
+// printable key belongs to the composer otherwise, which is the product and not
+// a compromise — so `b` is drawn before it works, and it works on every row of
+// this place because every row of this place is about money.
+func (placeSpend) verbs(a *app) []verb {
+	if !a.spendStopAt(a.spend.cursor).ok {
+		return nil
+	}
+	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
+		return a.openSpending(spendTodayKey)
+	}}}
+}
 
 func (placeSpend) press(a *app, y int) bool {
 	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {

@@ -423,54 +423,6 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	}
 }
 
-// Linear mode is off until someone says otherwise — the opposite default from
-// attribution, so the pin and the persisted file are both exercised in the
-// direction that actually turns something on.
-func TestLinearModeDefaultsOffPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("AFORGE_CHAT_LINEAR", "")
-	rows := registry(t, dir)
-	row, ok := rows.Row(KeyLinearMode)
-	if !ok {
-		t.Fatal("linear mode is not registered")
-	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "linear mode" {
-		t.Fatalf("linear mode row = %+v", row)
-	}
-	if row.Value() != "off" || LinearModeAt(dir) {
-		t.Fatalf("linear mode does not default off: %q", row.Value())
-	}
-	if err := row.Apply("on"); err != nil {
-		t.Fatal(err)
-	}
-	if !LinearModeAt(dir) {
-		t.Fatal("on did not persist")
-	}
-	reread, _ := registry(t, dir).Row(KeyLinearMode)
-	if reread.Value() != "on" {
-		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
-	}
-
-	t.Setenv("AFORGE_CHAT_LINEAR", "off")
-	if LinearModeAt(dir) {
-		t.Fatal("the environment lost to the persisted file")
-	}
-	pinned, _ := registry(t, dir).Row(KeyLinearMode)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "AFORGE_CHAT_LINEAR" {
-		t.Fatalf("linear mode did not report its pin: %q", name)
-	}
-	if err := pinned.Apply("on"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned linear mode accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over a rendering preference.
-	t.Setenv("AFORGE_CHAT_LINEAR", "sure")
-	if LinearModeAt(dir) {
-		t.Fatal("a malformed pin did not fall back to the default")
-	}
-}
 
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
@@ -517,96 +469,29 @@ func TestTheDividerRowIsAbsentWithoutSomewhereToSaveIt(t *testing.T) {
 	}
 
 	// With the seam it is back, and it is back WHERE IT WAS: at the head of the
-	// interface group, ahead of the nerd-font row it has always sat above.
+	// interface group, ahead of the task-column row it has always sat above.
 	full := NewSettings(SettingsOptions{
 		ProfileDir:   t.TempDir(),
 		SplitPct:     func() int { return 60 },
 		SaveSplitPct: func(int) {},
 	})
-	divider, nerd := -1, -1
+	divider, taskcol := -1, -1
 	for index, row := range full.Rows() {
 		switch row.Key {
 		case KeySplitPct:
 			divider = index
-		case KeyNerdFont:
-			nerd = index
+		case KeyTaskColumn:
+			taskcol = index
 		}
 	}
 	if divider < 0 {
 		t.Fatal("a surface that CAN save the divider was not given the row")
 	}
-	if divider > nerd {
-		t.Fatalf("the divider moved: it is row %d and nerd font is row %d", divider, nerd)
+	if divider > taskcol {
+		t.Fatalf("the divider moved: it is row %d and the task column is row %d", divider, taskcol)
 	}
 }
 
-// The nerd-font tier is ON until someone says otherwise, which is the opposite
-// default from linear mode — so this exercises the pin and the persisted file
-// in the direction that actually turns something OFF, and proves the row that
-// carries the opt-out really carries it (12.7 E.3, F.11).
-func TestNerdFontDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("AFORGE_NERD_FONT", "")
-	rows := registry(t, dir)
-	row, ok := rows.Row(KeyNerdFont)
-	if !ok {
-		t.Fatal("the nerd font row is not registered")
-	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "nerd font" {
-		t.Fatalf("nerd font row = %+v", row)
-	}
-	if row.Value() != "on" || !NerdFontAt(dir) {
-		t.Fatalf("the tier does not default on: %q", row.Value())
-	}
-	if err := row.Apply("off"); err != nil {
-		t.Fatal(err)
-	}
-	if NerdFontAt(dir) {
-		t.Fatal("off did not persist")
-	}
-	reread, _ := registry(t, dir).Row(KeyNerdFont)
-	if reread.Value() != "off" {
-		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
-	}
-
-	t.Setenv("AFORGE_NERD_FONT", "on")
-	if !NerdFontAt(dir) {
-		t.Fatal("the environment lost to the persisted file")
-	}
-	pinned, _ := registry(t, dir).Row(KeyNerdFont)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "AFORGE_NERD_FONT" {
-		t.Fatalf("the nerd font row did not report its pin: %q", name)
-	}
-	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned row accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over which characters get drawn.
-	t.Setenv("AFORGE_NERD_FONT", "sure")
-	if !NerdFontAt(dir) {
-		t.Fatal("a malformed pin did not fall back to the default")
-	}
-
-	// And the second answer the launcher needs: WHO chose. A value nobody can
-	// parse is not a choice, which is what lets the terminal veto run only
-	// where no human has spoken (12.7 E.1).
-	if _, source := NerdFontChosenAt(dir); source != NerdFontSourceNone {
-		t.Errorf("an unparseable pin was reported as a choice by %q", source)
-	}
-	t.Setenv("AFORGE_NERD_FONT", "off")
-	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourceEnv {
-		t.Errorf("the pin did not name itself: %v, %q", value, source)
-	}
-	t.Setenv("AFORGE_NERD_FONT", "")
-	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourcePersisted {
-		t.Errorf("the persisted row did not name itself: %v, %q", value, source)
-	}
-	if _, source := NerdFontChosenAt(t.TempDir()); source != NerdFontSourceNone {
-		t.Errorf("an untouched profile reported a chooser: %q", source)
-	}
-}
 
 // ── the web-search rows ─────────────────────────────────────────────────────
 
@@ -1131,7 +1016,13 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 // TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the four rows a
 // person actually turns. For each it checks the shipped reading against the
 // constant that owns it — one source of truth, so a raise that forgot the row
-// fails here — and then writes 0 and reads the receipt back.
+// fails here — and then writes 0 and reads the row back.
+//
+// THE WORD MOVED FROM THE RECEIPT TO THE VALUE and this test moved with it. A
+// row at zero used to read `$0` with `no limit` beside it, which is the emptiness
+// law asking a person to read two things to learn one; it now reads `no limit`
+// itself, through [Setting.EmptyLabel] — the mechanism every other kind of row
+// already uses for its off state — and `$0` appears nowhere at all.
 func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	for _, name := range []string{
 		"AFORGE_DAILY_BUDGET", "AFORGE_PRACTICE_BUDGET", "AFORGE_PLAN_CONSENT",
@@ -1158,7 +1049,13 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s is not registered", rail.key)
 		}
-		if got, want := row.Value(), formatDollars(rail.shipped); got != want {
+		want := formatDollars(rail.shipped)
+		if rail.shipped == 0 {
+			// A rail that SHIPS at zero ships with no limit, and reads the word
+			// for it rather than a figure nobody set.
+			want = rail.zeroSays
+		}
+		if got := row.Value(); got != want {
 			t.Fatalf("%s ships reading %q, want %q — the row and the constant have drifted",
 				rail.key, got, want)
 		}
@@ -1169,11 +1066,20 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s went missing after a write", rail.key)
 		}
-		if reread.Value() != "$0" {
-			t.Fatalf("%s reads %q after being set to 0", rail.key, reread.Value())
+		if reread.Value() != rail.zeroSays {
+			t.Fatalf("%s reads %q after being set to 0, want %q", rail.key, reread.Value(), rail.zeroSays)
 		}
-		if got := reread.Receipt(); got != rail.zeroSays {
-			t.Fatalf("%s at 0 says %q, want %q", rail.key, got, rail.zeroSays)
+		if strings.Contains(reread.Value(), "$0") {
+			t.Fatalf("%s draws a bare zero: %q", rail.key, reread.Value())
+		}
+		// AND EVERY WORD A PERSON MIGHT TYPE FOR IT LANDS THE SAME THING.
+		for _, word := range []string{"none", "no", "off", "unlimited", "∞", "0"} {
+			if err := mustRow(t, registry(t, dir), rail.key).Apply(word); err != nil {
+				t.Fatalf("%s refused %q: %v", rail.key, word, err)
+			}
+			if got := mustRow(t, registry(t, dir), rail.key).Value(); got != rail.zeroSays {
+				t.Fatalf("%s reads %q after %q, want %q", rail.key, got, word, rail.zeroSays)
+			}
 		}
 		// And a rail that is ON says nothing extra: the receipt is for the
 		// state a number cannot express, never a second copy of the value.
@@ -1181,15 +1087,16 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 			t.Fatalf("%s could not be set back: %v", rail.key, err)
 		}
 		if got := mustRow(t, registry(t, dir), rail.key).Receipt(); got != "" {
-			t.Fatalf("%s at $12.50 grew a receipt: %q", rail.key, got)
+			t.Fatalf("%s at $12.50 grew a receipt with no seam behind it: %q", rail.key, got)
 		}
 	}
 }
 
-// TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord is the one row with two
-// things to say at once. "no limit" alone would hide the figure a person came
-// to the row to read.
-func TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord(t *testing.T) {
+// TestTheDailyRailReceiptIsTheDaysOwnFigure. The receipt is a LIVE FACT beside
+// the value and never a second copy of it: the word for zero is the value now
+// ([Setting.EmptyLabel]), which leaves this column free to say the one thing a
+// person came to the row to read — what the day has actually cost.
+func TestTheDailyRailReceiptIsTheDaysOwnFigure(t *testing.T) {
 	t.Setenv("AFORGE_DAILY_BUDGET", "")
 	dir := t.TempDir()
 	rows := NewSettings(SettingsOptions{
@@ -1212,8 +1119,68 @@ func TestTheDailyRailReceiptKeepsTodaysSpendBesideTheWord(t *testing.T) {
 		SplitPct:      func() int { return 0 },
 		SpentTodayUSD: func() (float64, bool) { return 4.25, true },
 	})
-	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "no limit · $4.25 today" {
+	if got := mustRow(t, rows, KeyDailyBudget).Receipt(); got != "$4.25 today" {
 		t.Fatalf("a removed rail's receipt = %q", got)
+	}
+	if got := mustRow(t, rows, KeyDailyBudget).Value(); got != NoLimitWord {
+		t.Fatalf("a removed rail reads %q, want %q", got, NoLimitWord)
+	}
+}
+
+// TestTheConversationCeilingCarriesWhatThisOneHasSpent is the other receipt: the
+// row that bounds THIS conversation says what this conversation has spent
+// against it, and says nothing at all through a door that has no conversation
+// behind it.
+func TestTheConversationCeilingCarriesWhatThisOneHasSpent(t *testing.T) {
+	dir := t.TempDir()
+	rows := NewSettings(SettingsOptions{ProfileDir: dir,
+		SpentThisSessionUSD: func() (float64, bool) { return 0.41, true }})
+	if got := mustRow(t, rows, KeySpendRail).Receipt(); got != "this one $0.41" {
+		t.Fatalf("the ceiling's receipt = %q", got)
+	}
+	blind := NewSettings(SettingsOptions{ProfileDir: dir})
+	if got := mustRow(t, blind, KeySpendRail).Receipt(); got != "" {
+		t.Fatalf("a door with no conversation behind it invented a receipt: %q", got)
+	}
+	quiet := NewSettings(SettingsOptions{ProfileDir: dir,
+		SpentThisSessionUSD: func() (float64, bool) { return 0, true }})
+	if got := mustRow(t, quiet, KeySpendRail).Receipt(); got != "" {
+		t.Fatalf("a conversation that has spent nothing said %q", got)
+	}
+}
+
+// TestTheThreeCategoriesSpendingLeftBehind. `spending` had grown to hold what
+// may be spent, what may be run without asking, and how tasks are run — and a
+// person looking for the first read about the third. The split is the registry's
+// own, so every surface over it gets the same three sections.
+func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
+	rows := registry(t, t.TempDir())
+	want := map[string]string{
+		KeyDailyBudget:      CategorySpending,
+		KeyPlanConsent:      CategorySpending,
+		KeyPracticeBudget:   CategorySpending,
+		KeySpendRail:        CategorySpending,
+		KeyToolApprovalMode: CategorySafety,
+		KeyGuardian:         CategorySafety,
+		KeyConsentTimeout:   CategorySafety,
+		KeyTaskSettle:       CategorySafety,
+		KeyTaskAutoApprove:  CategorySafety,
+		KeyTaskStart:        CategoryTasks,
+		KeyTaskAudit:        CategoryTasks,
+		KeyTaskParallel:     CategoryTasks,
+		KeyTaskModel:        CategoryTasks,
+		KeyWorkers:          CategoryTasks,
+	}
+	for key, category := range want {
+		if got := mustRow(t, rows, key).Category; got != category {
+			t.Errorf("%s is filed under %q, want %q", key, got, category)
+		}
+	}
+	// AND NOTHING THAT IS NOT MONEY IS LEFT ON SPENDING.
+	for _, row := range rows.Rows() {
+		if row.Category == CategorySpending && row.Kind != SettingDollars {
+			t.Errorf("%s is on the spending category and is not a dollar figure", row.Key)
+		}
 	}
 }
 

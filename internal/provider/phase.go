@@ -87,13 +87,49 @@ const (
 	// is a different answer, and a surface that spelled the two the same way
 	// would be hiding the one that matters.
 	PhaseSwitchingModel Phase = "switching model"
-	// PhaseRunning, PhaseChecking and PhaseTidying belong to internal/session
-	// and are spelled here because there is ONE vocabulary and one reader:
-	// a tool executing, a gate reading an answer, and a compaction pass.
+	// PhaseRunning, PhaseChecking, PhaseTidying and PhaseBriefing belong to
+	// internal/session and are spelled here because there is ONE vocabulary and
+	// one reader: a tool executing, a gate reading an answer, a compaction pass,
+	// and a turn being written down for whoever takes it over.
 	PhaseRunning  Phase = "running"
 	PhaseChecking Phase = "checking"
 	PhaseTidying  Phase = "tidying"
+	// PhaseBriefing is the harness writing the instruction a turn is handed over
+	// on, before there is a task to point at (internal/session's checkpoint.go).
+	// Detail names who it is for, so the row reads "briefing a worker".
+	PhaseBriefing Phase = "briefing"
+	// PhaseTakingStock is the reading a turn stops for at a mark: a second mind
+	// is shown an account of the work so far and asked what is left of the ask
+	// (internal/session's checkpoint.go, [readMark]). It is a ten-to-thirty
+	// second call and it used to draw nothing at all.
+	//
+	// THE WORD IS THE ONE A PERSON WOULD USE for stopping to see where you are,
+	// and it is a different word from `checking` on purpose: checking is a
+	// reader deciding whether an answer is finished, and this is a reader
+	// weighing the whole ask against everything that has been done. A surface
+	// that spelled them the same way would say the same sentence twice for two
+	// waits that mean different things.
+	PhaseTakingStock Phase = "taking stock"
 )
+
+// PhaseWindow is how long a phase still describes the present: past it a surface
+// draws nothing rather than a clock for work that may be over.
+//
+// IT IS THE CONTRACT BETWEEN WHOEVER POSTS A PHASE AND WHOEVER DRAWS ONE, so it
+// is spelled once, here, with the vocabulary — and every beat that keeps a phase
+// alive is DERIVED from it rather than written down beside it. Two packages with
+// two ideas of how long a phase lasts is a stage that goes dark while it is still
+// running, which is the defect this constant was moved out of internal/tui3 to
+// end.
+//
+// Both beats sit comfortably inside it: a request says its phase again at most
+// once a second while it lasts ([phaseBeat] below), and a turn holding a phase
+// open says it again every third of this window (internal/session's
+// [phaseHeldBeat]). Fifteen seconds is therefore a wide margin on either — wide
+// enough that a busy frame or a machine under load never blinks the segment, and
+// short enough that a posting layer whose goroutine was killed without saying so
+// takes its clock off the screen while a person is still looking at it.
+const PhaseWindow = 15 * time.Second
 
 // PhaseNews is one moment of one request's life.
 //
@@ -213,7 +249,8 @@ type phaseClock struct {
 
 // phaseBeat is how often a phase that has not changed says so again. One second
 // is the granularity a person reads an elapsed clock at, and it keeps the cost
-// of the whole seam at one post a second per request.
+// of the whole seam at one post a second per request. It is a fifteenth of
+// [PhaseWindow], which is the margin that makes a dropped beat invisible.
 const phaseBeat = time.Second
 
 // newPhaseClock starts one request's clock. A nil clock is a request nobody is

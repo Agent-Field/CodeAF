@@ -70,6 +70,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// after it happens, by somebody who has just watched a token go past.
 		{"does aforge save my API keys", "sessions-and-rewind"},
 		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
+		{"if a task prints a token is it saved", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
@@ -221,6 +222,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// copy onto main and reported somebody else's fixes as its own.
 		{"why is my task waiting on its parts", "how-tasks-run"},
 		{"can a task run git pull", "how-tasks-run"},
+		// The two stages a person waits through with the work not obviously
+		// moving. They are asked in front of a card that has only just appeared
+		// and a status line nobody has read before, so they are asked in the
+		// words on the screen and in the words of somebody who thinks it hung.
+		{"my task says sizing the work", "how-tasks-run"},
+		{"task appeared and then nothing happened", "how-tasks-run"},
+		{"how long does sizing the work take", "how-tasks-run"},
+		{"what does briefing a worker mean", "how-tasks-run"},
+		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
 		// WHERE a task may write, which is a different question from WHOSE work
 		// it may take — and the one a person asks after reading a refusal that
 		// named a directory they recognise.
@@ -232,6 +242,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a task allowed to use gh api", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
+		// #85 flagged the token on a task's belt as an open hole; the read is
+		// refused inside a task now, and these are the words somebody meets it in.
+		{"can a task read my github token", "how-tasks-run"},
+		{"my task said gh auth token is not yours to run", "how-tasks-run"},
+		{"does a task have my credentials", "how-tasks-run"},
 		// Written from a real run: a task made a symlink so a scorer would find
 		// its fixtures, measured against the symlink, and reported the work done.
 		// The check now runs somewhere the symlink is not, and these are the
@@ -320,6 +335,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"task page is empty", "reading-a-task-page"},
 		{"the task page is stuck at the top", "reading-a-task-page"},
 		{"what does scroll up or ctrl+o mean", "reading-a-task-page"},
+		// A ROOM THAT WAS DEAD WHILE THE WORK WAS ALIVE. The first is the exact
+		// sentence the screenshot provoked — a running job's page drawing the
+		// landed foot — and the second is what the person wanted the page to be
+		// doing instead. The third is how somebody says it before they have
+		// noticed which of the two is wrong.
+		{"the task page says finished but it is still running", "reading-a-task-page"},
+		{"can I watch a background job's log", "reading-a-task-page"},
+		{"the task page looks stuck", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
@@ -471,6 +494,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// they ask for the first and are refused.
 		{"can you change my settings", "what-i-can-do"},
 		{"set my daily budget to 5", "what-i-can-do"},
+
+		// THE SPENDING WAVE, in the words of the person asking
+		// (docs/design/spending/DESIGN.md acceptance 9). Money has one editor
+		// and many doors, and every one of these is somebody standing at a
+		// different door asking the same question.
+		{"how do I remove the daily limit", "models-and-cost"},
+		{"why did it stop and ask me about money", "models-and-cost"},
+		{"what does per plan mean", "models-and-cost"},
+		{"where do I set what aforge may spend", "models-and-cost"},
+		{"how much money can a task spend of its own", "models-and-cost"},
+		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
@@ -642,6 +677,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The wait a person can now see into: the preview row under the phase
+		// row, asked the three ways somebody meets it — wanting it, describing
+		// it, and asking what the extra line is.
+		{"can I see the brief while it is being written", "commands"},
+		{"what is the line under shaping the brief", "commands"},
+		{"several tasks forming at once", "commands"},
+		{"why is the line under shaping the brief in italics", "commands"},
 
 		// The answer that gets moved because it ran long. People meet this as a
 		// line that appeared under a reply they were reading, so they say it back
@@ -814,6 +856,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does first word mean while it is waiting", "screen"},
 		{"how long until it gives up on this one", "screen"},
 		{"what does still working mean", "screen"},
+		// AND THE STAGE THAT LASTS. A reading between rounds can run for minutes,
+		// and until the beat was written the line went blank after fifteen
+		// seconds while the work carried on — so these are asked in the words of
+		// somebody watching that happen, and in the word the line now wears.
+		{"what does taking stock mean", "screen"},
+		{"the status line went blank while it was still working", "screen"},
+		{"does a slow stage stop being shown", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply
@@ -839,6 +888,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
+
+		// The 2026-08-31 incident, asked the ways a person describes what they
+		// saw: a serving endpoint leaked the model's own tool grammar as text,
+		// and the screen filled with markup instead of an answer.
+		{"the screen filled with weird tokens instead of an answer", "models-and-cost"},
+		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
+		{"the model kept writing its own internal markup", "models-and-cost"},
+
+		// /model while a task runs: the task keeps its model, and the person
+		// who watched the old voice continue asks why.
+		{"I changed the model but my task is still on the old one", "models-and-cost"},
+		{"does /model change the model my running task uses", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

@@ -119,7 +119,12 @@ func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width i
 			// runs outside the room — so through the minutes of a check and a
 			// repair round this row would quote a call that finished before
 			// either started (taskphase.go).
-			if phase := taskPhaseWords(entry.Phase, 0, 0); phase != "" {
+			//
+			// AND IT IS ASKED OF THE ROW, NOT OF THE ENTRY, so the line is the
+			// same for work happening in ANOTHER window: the index row carries
+			// the phase only inside the process holding the graph, and the
+			// presence file is what crosses the gap ([session.SessionRow.Phase]).
+			if phase := taskPhaseWords(row.Phase(entry), 0, 0); phase != "" {
 				detail = phase
 			}
 		}

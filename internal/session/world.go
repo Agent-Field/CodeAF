@@ -321,6 +321,31 @@ func (r SessionRow) Runs(entry TaskIndexEntry) bool {
 	return r.Open
 }
 
+// Phase is which of its lives one running row of the index is in — the worker,
+// the check, a repair round, the reading that sizes the work — in the words
+// task_contract.go exports, and "" for a row that is merely working, one that has
+// landed, and one nothing alive can say anything about.
+//
+// IT IS A LADDER OF TWO, AND THE ORDER IS THE POINT. [TaskIndexEntry.Phase] is
+// filled by the process that HOLDS the graph and travels nowhere (task_index.go),
+// so it is the right answer for this window's own work and empty for everybody
+// else's; the presence file is what crosses a window ([PresenceTask.Phase]), and
+// it is asked second so a session's own rows never take the slower answer.
+//
+// A ROW NOTHING IS BEHIND SAYS NOTHING. A conversation whose presence has gone
+// stale is one no live claim exists for, and a phase read off its last file would
+// be this surface narrating a minute that ended when the window did — the same
+// judgement [SessionRow.Runs] makes one method up.
+func (r SessionRow) Phase(entry TaskIndexEntry) string {
+	if phase := strings.TrimSpace(entry.Phase); phase != "" {
+		return phase
+	}
+	if !r.Live {
+		return ""
+	}
+	return r.Presence.Phase(entry.ID)
+}
+
 // TaskRollup is one session's share of its project's index, counted.
 type TaskRollup struct {
 	// Rows are this session's entries, newest first, exactly as

@@ -84,6 +84,13 @@ seconds.
 A still line here would mean something is wrong. If the mark is not turning, aforge is not
 waiting on the shaper — look for the task's own row on the roster instead.
 
+**You can watch the brief being written.** One dim row under the phase row carries the
+newest words as they arrive — the model's own reasoning in italics while it is still
+thinking, then your brief upright once it starts writing one — and `→` with an empty box
+(or a click on that row) opens it into the last six lines. It is a preview of the wait and nothing is kept from it — the
+whole block disappears when the task starts. The commands page has it in full, under *Can I
+see the brief while it is being written*.
+
 **If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
 answer that was not readable — the task starts with exactly your sentence and the plain
 done-condition `Complete the brief and report the result and checks run.`, which is what
@@ -1103,11 +1110,15 @@ Three things a job's row deliberately does **not** have, because a job has none 
 
 - **no room in the sense a task has one.** There is no agent inside a job and no
   transcript to read, so `enter` on the row opens a page that carries what a job actually
-  leaves behind: the same `job 3 · log /path/…` line, and under it
-  `a background job keeps a log, not a transcript`. The log file named there is where you
-  read what it did. What that page never shows is a chat — there was never one to show.
-  (On a job that has ended, `→` on the row itself does one thing only: it unfolds that
-  log line back under the row.)
+  leaves behind: the same `job 3 · log /path/…` line, and under it the **end of that log**
+  — the last 200 lines, newest at the bottom, re-read four times a second while the job
+  runs, with a foot reading `this log grows as the job works — esc to return`. When the job
+  ends the page takes one last reading, so the process's final lines are on it, and the foot
+  becomes `task finished — esc to return`. A job that has written nothing yet says
+  `a background job keeps a log, not a transcript` instead, and never an error. What that
+  page never shows is a chat — there was never one to show, and `enter` inside it steers
+  nothing, because there is nobody in a job to read a line. (On a job that has ended, `→` on
+  the row itself does one thing only: it unfolds that log line back under the row.)
 - **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
   `jobs kill`; every running job is also killed when the conversation closes.
 - **no branch, no changed-files list and no price.** A job runs in the workspace itself,
@@ -1132,7 +1143,7 @@ stopped, because there is nothing left to stop. The log file it was writing is s
 this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
 was started here or by a task's worker in its own checkout.
 
-## A task started from the composer carries a cap — how much a task may spend before it asks
+## A task started from the composer carries a cap — how much a task may spend before it asks, how do I set a spend limit on a task before I send it
 
 A task started with **`alt+enter`** from the composer on home or on any other place goes out
 with a **spend cap** on it. The composer layer's third line is where you read it and where
@@ -1156,9 +1167,16 @@ Type digits while the layer is up and the figure is whatever you typed.
   is the *asks* in the sentence on the line.
 
 **A task started any other way carries whatever this window carries.** `/task <brief>`, the
-proposal card and the model's own hands run under the conversation's own rail — which is off
-unless you set the `spend rail` row in settings — and an adaptive run they start opens on
-the $100.00 default.
+proposal card and the model's own hands run under the conversation's own limit — the
+`per conversation` row on the **Spending** tab of `/settings`, which reads `no limit` until
+you set it — and under the day's limit above it. An adaptive run they start opens on the
+$100.00 default.
+
+**A task has no dollar limit of its own**, which the Spending tab says on its `per task`
+row in those words: `no limit of its own · it spends against the day and this conversation`.
+Its own bounds are steps and time. The composer layer's third line is the one place a
+figure is put on a single piece of work, and there is no per-task money row to edit
+anywhere in settings.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
@@ -1890,9 +1908,12 @@ messages use the ordinary room renderer. `enter` steers the far worker; `x` rais
 ordinary confirmation and stopping uses the far engine's own sentence. Changing the
 task's model remains absent over this connection. Leaving with `esc` or `←` works normally.
 
-A background job still has no transcript. Its room says `a background job keeps a log,
-not a transcript`, and both its row and room prefix the far log path with that machine's
-name; they never offer the same spelling as a local path.
+A background job still has no transcript, and over this connection its room draws no log
+either: the path belongs to the other machine, and reading it here would open a file on
+yours. Its room says `a background job keeps a log, not a transcript`, and both its row and
+room prefix the far log path with that machine's name; they never offer the same spelling
+as a local path. `jobs output 3` is how you read a far job's output. On a local
+conversation the same page tails that log live.
 
 ## What is different inside a room
 

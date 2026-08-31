@@ -785,6 +785,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.recallBack() {
 			return nil
 		}
+		// A BLOCK OF SEVERAL TASKS FORMING WALKS BEFORE THE CALLS DO. Its rows are
+		// the live thing at the tail of the transcript and the only rows on screen
+		// whose preview a person can steer, so for the seconds they are up the
+		// arrows walk them (formingblock.go). It answers false with one task
+		// forming and false at either end, so nothing about the ladder below
+		// changes in the ordinary case or when the walk runs out.
+		if a.input.empty() && a.walkForming(-1) {
+			return nil
+		}
 		if a.input.empty() && a.selectTool(-1) {
 			return nil
 		}
@@ -797,6 +806,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if a.recallForward() {
+			return nil
+		}
+		if a.input.empty() && a.walkForming(1) {
 			return nil
 		}
 		if a.input.empty() && a.selectTool(1) {
@@ -920,6 +932,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// matters, because the key keeps its ordinary meaning the instant there
 		// is a sentence to move through. See [app.navBack].
 		if a.input.empty() {
+			// AND THE FORMING BLOCK'S OWN FOLD SHUTS FIRST (formingblock.go). It is
+			// the same reading `→` gets below and for the same reason: the nearest
+			// thing a person is standing on answers before the navigation does, and
+			// a block with no window open answers nothing at all, so the key keeps
+			// the meaning it has had.
+			if a.closeForming() {
+				return nil
+			}
 			a.navBack()
 			return nil
 		}
@@ -938,6 +958,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// navigation it has always been.
 			if cmd, took := a.steerWaiting(); took {
 				return cmd
+			}
+			// AND THE FORMING BLOCK'S WINDOW OPENS BEFORE THE STEP INTO A ROOM. It
+			// is the fold every block on this surface has, spent on the one thing at
+			// the transcript tail that is still being written (formingblock.go) — and
+			// it is read here rather than given a key of its own because a new
+			// keybinding for a block that lives fifteen seconds is a key nobody
+			// learns. It answers false with no block up, with nothing written yet and
+			// with the window already open, so `→` goes on meaning what it means.
+			if a.openForming() {
+				return nil
 			}
 			return a.navForward()
 		}

@@ -30,7 +30,7 @@ func sheetApp(t *testing.T) (*app, string) {
 	// testing their shell. Empty reads as unset everywhere in that package.
 	for _, pin := range []string{
 		"AFORGE_ATTRIBUTION", "AFORGE_NERD_FONT", "AFORGE_CHAT_LINEAR",
-		"AFORGE_HISTORY", "AFORGE_DRAFT_PERSIST", "AFORGE_RAIL", "AFORGE_DOC_ENGINE",
+		"AFORGE_HISTORY", "AFORGE_DRAFT_PERSIST", "AFORGE_DOC_ENGINE",
 		"AFORGE_CONTEXT_FILL_PCT", "AFORGE_DAILY_BUDGET", "EXA_API_KEY", "JINA_API_KEY",
 		// The capability slots resolve their environment variable before the
 		// profile too, now that the profile is where their writes land.
@@ -74,17 +74,29 @@ func sheetHas(a *app, want string) bool {
 	return false
 }
 
-// cursorTo walks the cursor onto the row with this key, and fails when the tab
-// on show does not hold it.
+// cursorTo walks the panel to the tab that holds this row and puts the cursor on
+// it, and fails when no tab does.
+//
+// IT WALKS RATHER THAN ASSUMING. A row's tab is a UI decision that moves — the
+// money rows left Workspace for Spending, the gate rows left Session for Safety
+// — and a helper that only looked at the tab already on show made every one of
+// those moves look like a broken feature in twenty unrelated tests.
 func cursorTo(t *testing.T, a *app, key string) {
 	t.Helper()
-	for i, item := range a.sheet.items {
-		if !item.heading() && item.row.Key == key {
-			a.sheet.cursor = i
-			return
+	for tab := range settingTabs {
+		if a.sheet.tab != tab {
+			a.sheet.tab = tab
+			a.sheet.cursor, a.sheet.top = 0, 0
+			a.sheet.build()
+		}
+		for i, item := range a.sheet.items {
+			if item.restful() && item.row.Key == key {
+				a.sheet.cursor = i
+				return
+			}
 		}
 	}
-	t.Fatalf("row %q is not on the %s tab", key, settingTabs[a.sheet.tab])
+	t.Fatalf("row %q is on no tab of the panel", key)
 }
 
 // ── the settings panel ──────────────────────────────────────────────────────
@@ -136,7 +148,7 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	if strings.Contains(plain(frame(a)), microcopy) {
 		t.Fatal("the panel is drawn over a frame that is still showing its status line")
 	}
-	if !sheetHas(a, "ask before running") {
+	if !sheetHas(a, "memory") {
 		t.Fatalf("the Session tab is missing its first row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 }
@@ -149,13 +161,21 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	if got := settingTabs[a.sheet.tab]; got != tabSession {
 		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
 	}
-	for _, want := range []string{"ask before running", "session ceiling"} {
+	for _, want := range []string{"memory", "fallback models", "ssh reuse"} {
 		if !sheetHas(a, want) {
 			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
 		}
 	}
 	if sheetHas(a, "compact at") {
 		t.Fatal("a Context row is showing on the Session tab")
+	}
+	// AND THE THREE QUESTIONS THAT LEFT IT ARE GONE FROM IT. The gate belongs to
+	// Safety, the task rows to Tasks and the money to Spending
+	// (docs/design/spending/DESIGN.md's information hierarchy).
+	for _, gone := range []string{"ask before running", "per conversation", "tasks at once"} {
+		if sheetHas(a, gone) {
+			t.Fatalf("%q is still on the Session tab:\n%s", gone, strings.Join(sheetLabels(a), "\n"))
+		}
 	}
 	// THE CREW IS ON PROVIDERS, with the model it answers under — one tab, one
 	// question (settings.go's [modelsSection] says why it moved).

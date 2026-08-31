@@ -102,7 +102,10 @@ like, anywhere — other repositories included, with `read`, `grep` and `git log
 even when your brief names that directory. If work is needed out there, say so
 in your report. And you never land your own work: `git push`, `gh pr create` and
 a `gh api` call that writes are refused too, because what you wrote comes home
-when this task lands, and a pull request is the person's to open.
+when this task lands, and a pull request is the person's to open. YOU HOLD NONE
+OF THE PERSON'S CREDENTIALS: `gh auth token` is refused in every spelling, inside
+a substitution included, so if something needed their login, say that in your
+report rather than trying another way to read it.
 
 SO A CHECK THAT PASSES MUST PASS ON WHAT SHIPS. Your work is verified in a clean
 restore — the repository as it was before you started, with exactly the files you

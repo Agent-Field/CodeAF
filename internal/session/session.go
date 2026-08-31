@@ -2302,4 +2302,11 @@ type Agent struct {
 	// and never again, which is what lets task_run.go copy the whole config
 	// without a lock and still be right.
 	approvalPolicy *approval.Policy
+
+	// phase is the one stage this agent is holding open and the beat that keeps
+	// saying it while it lasts (phasenews.go). It has a lock of its own rather
+	// than riding mu because it is written from the beat's goroutine and read
+	// under it, and a measurement must never be able to contend with the turn it
+	// is measuring.
+	phase phaseHeart
 }

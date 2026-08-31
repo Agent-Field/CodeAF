@@ -861,7 +861,8 @@ Two tools, because reading your configuration and rewriting it are different
 acts and you get to answer them separately.
 
 `settings` reads. With no arguments it lists every row of the settings registry
-— the same rows `/settings` shows, in the same four categories — one line each,
+— the same rows `/settings` shows, in the registry's own six categories: `models`,
+`spending`, `safety`, `tasks`, `memory & practice`, `interface` — one line each,
 as `key · label · what it reads now`. Give it a `key` and it reads that one row
 in full: what the row takes, what it governs, its current value, and whether
 aforge may change it. Give it a `search` word and it lists only the rows whose
