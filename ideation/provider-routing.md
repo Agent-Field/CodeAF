@@ -375,3 +375,199 @@ L1 starts.
 - No racing of all lanes; no hedge without a budget.
 - No lane names in prompts, manuals or laws — aforge names *lanes*, the sheet
   names vendors.
+
+---
+
+# Part II — The Pareto point, found just in time
+
+*Added 2026-08-30. Answers: "find the ideal point on cost × first-token ×
+throughput × quality, per request, without ever feeling slow."*
+
+## Bottom line
+
+A fixed weight (`0.6·T + 0.4·tail + λ·$`) is a guess about a trade the user
+never made. The clever move is to stop guessing the weight and **derive it
+from the request**: the price of a second is a property of *who is waiting
+and what their wait costs*, and the value of throughput *saturates at reading
+speed* for text a person reads. With those two facts the multi-objective
+problem collapses to a single scalar **per request** — different for a chat
+turn, a critical-path node, and an off-path background call — and the Pareto
+frontier over lanes is only the *candidate set* that scalar chooses from.
+
+Five mechanisms, ranked by leverage:
+
+1. **The price of a second comes from the graph, not a config.** λ (seconds
+   a dollar buys) is computed per request from attention and slack.
+2. **Throughput has a ceiling of value.** Visible text is worth at most the
+   reading rate (~15–20 tok/s); hidden tokens (reasoning, tool JSON) are
+   worth their full rate. So a 75 tok/s lane and a 58 tok/s lane are *equal*
+   for a visible answer, and the cheaper one wins.
+3. **Cost is path-dependent because of the prompt cache.** The cheapest lane
+   on the sheet is not the cheapest lane for *this* request if another lane
+   already holds the prefix. Cache state is an input to the price.
+4. **Probe on typing.** The moment a person starts typing, a one-token probe
+   goes to the top-two frontier lanes. Two seconds later, at `enter`, the
+   choice is made on a measurement two seconds old instead of a thirty-minute
+   aggregate. Cost ≈ $0.00002 a turn.
+5. **Quality is a lane property too**, learned from the gate: a lane that
+   drops tool calls, truncates, or returns JSON the parser refuses earns a
+   Beta posterior on "accepted", and falls below the gate before it costs
+   the user a second retry.
+
+## 1. λ — the price of a second, per request
+
+Three questions, each answerable from state aforge already holds:
+
+| question | source | effect on λ |
+|---|---|---|
+| Is a person watching this stream now? | the TUI's focus + the request's `IntentInteractive` | attention time: at a nominal $40/h, one dollar buys 90 s → λ ≈ 90 s/$ … in plain terms **spend up to a cent to save a second**. |
+| Is this node on the critical path of a task? | the plan DAG: slack = (latest start − earliest start) from the node's expected duration | on the path: λ = the wall value of the whole task (the person waits for its end); off the path with slack ≥ expected duration: λ → 0, price wins. |
+| Is there a deadline (standing item, scheduled beat)? | standing/schedule registry | λ rises as the deadline nears; a missed deadline is a step cost. |
+
+`λ` is one number handed to the chooser with the request (`WithRoutingIntent`
+becomes `WithValueOfTime`). `routing: price` sets λ = 0 for everything;
+`routing: latency` sets the table above; `off` stays total. No new dial —
+the existing row keeps its three words and gains its meaning.
+
+## 2. Perceived time, not wall time
+
+```
+T_perceived = TTFT
+            + hidden_tokens / rate                 # reasoning, tool JSON — nobody reads them
+            + visible_tokens / min(rate, R_read)   # R_read ≈ 18 tok/s
+```
+
+Consequences the fixed score got wrong:
+
+- For a talk turn (N̂ ≈ 400 visible), any lane over ~30 tok/s is the same
+  speed to the person; the decision is TTFT and $ only. Cloudflare's $1.32
+  loses to Baidu's $0.28 at the same TTFT.
+- For a work node (tool loop, hidden tokens) throughput is linear and
+  Cloudflare's 58 tok/s at $1.32 may still lose to Baidu's 75 tok/s — but
+  beats DeepInfra's 27.
+- The first call of a turn is scored on TTFT alone with λ at attention value
+  (the person is looking at an empty line); later calls in the same loop use
+  the task's λ.
+
+## 3. Cache-aware price
+
+```
+$ (lane, request) = p_in(lane) · (prompt − cached(lane, prefix))
+                  + p_cache(lane) · cached(lane, prefix)
+                  + p_out(lane) · N̂
+```
+
+`cached(lane, prefix)` is a belief, not a fact: a lane that served this
+session's prefix within its cache TTL (per-lane, learned from
+`cached_tokens` in the usage frame — the sheet says `supports_implicit_caching`)
+probably still holds it. A lane switch forfeits it; the score pays that
+forfeit explicitly instead of the current hidden "cache-affinity pin
+prepended to `order`". This is also what stops the router from flapping
+between two equal lanes: the incumbent is cheaper by the cache term.
+
+## 4. The frontier is the candidate set; the scalar is the pick
+
+Per request, after the capability gate:
+
+1. Take each lane's posterior **p75** for TTFT and for `1/rate`, and its
+   cache-aware $ and quality posterior mean.
+2. **Pareto-prune**: drop a lane that another lane beats on all four at p75.
+   With 17 lanes this leaves 3–5. Dominated lanes are never sampled, never
+   probed, never hedged to — exploration budget is spent only where it can
+   change a decision. (Using p75, not the mean, keeps an *uncertain* lane in
+   the set: it might be good.)
+3. **Scalarize** the survivors with this request's λ and shape:
+   `score = λ⁻¹·$ + T_perceived` (in seconds), Thompson-sampled from the
+   posteriors as in Part I.
+4. Send `provider.order` = survivors by sampled score. When λ = 0 and the
+   frontier has a cheapest lane above the quality gate, `order` is that lane
+   alone plus `allow_fallbacks`.
+
+The picker's **auto** row can now explain itself with the frontier, which is
+the only honest explanation: *"3 lanes worth choosing between — Baidu
+(0.8s, 75 t/s, $0.28), Cloudflare (0.8s, 58 t/s, $1.32), DeepInfra (0.8s,
+27 t/s, $0.18). Talk turns go to Baidu; long hidden work goes to Cloudflare
+when the task is on the clock."*
+
+## 5. Probe on typing — freshness for two hundredths of a cent
+
+The sheet is a 30-minute aggregate over everyone's prompts. Our own belief
+may be minutes old. But we know, seconds ahead, when a request is coming:
+the composer got a keystroke.
+
+- On the first keystroke of a turn (debounced; not on every key), send a
+  `max_tokens: 1` request with a fixed tiny prompt to the top-two frontier
+  lanes with `provider.only: [lane]`, streaming, and record TTFT. Cost per
+  probe ≈ 10 prompt tokens + 1 output ≈ $0.000005 on this model; two probes
+  a turn is ~$0.00001. It also warms the HTTP/2 connection to that lane so
+  TLS is out of the real TTFT.
+- The probe is a real sighting into the Kalman with a small `R` (it is
+  *exactly* our path, right now). It is not a rate measurement.
+- Budget: at most one probe pair per 20 s per session; none when λ = 0
+  (nobody is waiting); none when the connection budget is under pacing.
+- The chooser at `enter` runs on beliefs that are ~2 s old. That is the
+  "just in time" in the title.
+
+## 6. Quality as a lane axis
+
+Per `(model, lane)` a **Beta(α, β)** on "the answer was accepted", updated
+from signals the harness already produces and that are attributable to the
+lane that served the call: tool-call JSON the decoder refused, `finish_reason:
+length` below the requested `max_tokens`, empty replies, refusals classified
+by the argument-refusal law, gate failures on a node whose only change was
+the model call, `cached_tokens` = 0 on a lane that claims caching. Also
+prior from the sheet: quantization `fp4` starts at Beta(2, 2) instead of
+Beta(8, 1).
+
+Quality is a **gate**, not a weight: a lane whose posterior mean falls under
+`q_need` (per role: talk 0.90, work 0.97) leaves the candidate set until
+the posterior recovers (it decays toward the prior like the Kalman states).
+Weighing quality against price is how a router learns to ship wrong answers
+cheaply.
+
+## 7. Exploration sized to the horizon
+
+Thompson sampling explores in proportion to posterior width, blind to how
+many more decisions this session will make. A 3-call session should never
+explore; a 500-call swarm should explore early. **Knowledge-gradient**
+scaling: multiply the sampling variance by `min(1, H / H₀)` where `H` is the
+expected remaining calls (from the task's plan size, or the session's rate
+over the last ten minutes) and `H₀ ≈ 50`. It is one multiply; it makes
+exploration free where it pays and absent where it does not.
+
+## 8. Model × lane × effort on one frontier (later)
+
+Nothing above is specific to lanes of one model. The same frontier can hold
+`(model, lane, effort)` triples, with quality from `bench/routerlab`'s IRT
+ability and the request's difficulty estimate giving `q_need` per request.
+That is the one-road escalation ladder and this router becoming one
+mechanism. Not for v1 — it needs the difficulty estimate to be trustworthy —
+but the interfaces should not preclude it: the chooser takes *candidates*
+with `{quality, ttft, rate, price}` posteriors, and does not know what a
+candidate is.
+
+## What this changes in Part I
+
+- Score: `λ⁻¹·$ + T_perceived` replaces `0.6·T + 0.4·tail + λ·price`; the
+  tail term survives inside `T_perceived` by scoring at p75, and the hedge
+  deadline still comes from the full posterior.
+- Chooser inputs gain: λ, visible/hidden split of N̂, cache state, quality
+  posterior, horizon `H`.
+- New: `laneprobe.go` (probe on typing), `lanequality.go` (Beta per lane),
+  the Pareto prune in the chooser, `WithValueOfTime`.
+- Bench: `lanelab` sim gains λ scenarios (talk / critical path / off-path)
+  and reports the frontier, so a reviewer can see *which* lane each scenario
+  picks and why.
+
+## Ideas considered and dropped
+
+- **Race all frontier lanes, keep the first.** 3–5× cost for a p50 gain the
+  hedge already captures at ~2% cost.
+- **Split one answer across lanes** (reasoning cheap, answer fast). One
+  generation cannot be split; the continuation-prefill hedge is the only
+  sanctioned form and it is a rescue, not a plan.
+- **A user-facing "speed vs cost" slider.** It asks the person to state λ;
+  the graph already knows it, and a slider that is wrong for the next
+  request is a setting nobody re-checks.
+- **Per-lane fixed allow/deny lists.** Pinning exists for the person who
+  knows; everyone else gets a belief that is right more often than a list.
