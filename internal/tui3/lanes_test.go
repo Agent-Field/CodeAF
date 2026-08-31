@@ -159,7 +159,8 @@ func TestTheModelRowCarriesTheSpeedOfTheLaneItNames(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the row says %q, want the lane that is answering", note)
 	}
-	named := strings.TrimSpace(note[at+len("via "):])
+	named, _, _ := strings.Cut(note[at+len("via "):], " · ")
+	named = strings.TrimSpace(named)
 	view, known := laneExactly(laneViews(flash, timeNow()), named)
 	if !known {
 		t.Fatalf("the row names %q, which nothing is believed about:\n%s", named, note)
@@ -680,7 +681,7 @@ func TestTheSparklineIsOurOwnLastAnswersAndNothingUntilThereAreTwo(t *testing.T)
 	if !ok || len(view.Sightings) != 3 {
 		t.Fatalf("the ring holds %v", view.Sightings)
 	}
-	_, note := laneRowText(view)
+	_, note := laneRowText(view, 80)
 	if !strings.ContainsAny(note, sparkBars) {
 		t.Fatalf("the lane row draws no sparkline: %q", note)
 	}
@@ -723,7 +724,7 @@ func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
 	if math.Abs(views[0].TTFT-2.418) > 0.002 {
 		t.Fatalf("a belief at X=7.79 read back as %.4f seconds", views[0].TTFT)
 	}
-	head, tail := laneRowText(views[0])
+	head, tail := laneRowText(views[0], 80)
 	for what, text := range map[string]string{
 		"the model row": laneSpeedWord(views, ""),
 		"the lane row":  head + " " + tail,

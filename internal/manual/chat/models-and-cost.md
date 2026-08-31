@@ -95,11 +95,24 @@ There is no mouse commit on the picker's rows.
 
 ## What each row in the model picker tells you
 
-A row reads `<id>:<level>` on the left and, dimly on the right, the facts the catalog
-published: the context window, the price per million prompt and completion tokens, the
-arena elo, and what the model can do besides write. **Each part is hidden when nobody
-published it.** A price shows only when both halves are known — a zero means "nobody said",
-never "free".
+A row reads `<id>:<level>` on the left and, dimly on the right, the facts about it — in
+this order, which is the order they are given up in when the window is narrow: the
+machine that would serve it (`via cloudflare`), the wait before the first word
+(`▲0.8s`), the price per million prompt and completion tokens, the context window, how
+fast it writes (`58t/s`), the arena elo, and what the model can do besides write.
+**Each part is hidden when nobody published it.** A price shows only when both halves are
+known — a zero means "nobody said", never "free".
+
+**A narrow window shows fewer numbers, never a shortened name.** The id keeps every cell
+it needs first; then the facts are added from the front of that list, each in the longest
+spelling that still fits — `$0.09/$0.18 per M` becomes `$0.18/M` becomes `$0.18`, and
+`via cloudflare` becomes `cloudflare` — and the ones that do not fit are simply not
+drawn. So a sixty-column terminal shows the whole model name with the lane, the wait and
+the price beside it, and nothing is ever half a number. Under sixty columns the facts
+move to a line of their own under the name. The only time a name is shortened is when the
+window cannot hold it alone, and then it loses its author first (`nvidia/nemotron-3.5-lightning`
+becomes `nemotron-3.5-lightning`) — unless two models on the list share that slug, which
+is the one case where the author is what tells them apart.
 
 Only models you can hold a conversation with are listed: text in, text out. A model that
 publishes `["image","text"]` out (a drawing model that captions) is excluded, and so is a
@@ -109,7 +122,8 @@ by its id against a narrow list of generation and sidecar words.
 ## What "sees", "draws", "speaks", "films", "hears" mean on a model row
 
 The dim tail of a picker row ends with what the model can do besides hold a conversation,
-in one word each:
+in one word each — last in the row's order, so it is the first thing a narrow window
+drops:
 
 | Word | What the catalog published |
 |---|---|
@@ -1346,18 +1360,21 @@ In the model picker — `/model`, or `enter` on that **your model** row — pres
 `tab` on a row and the model's lanes open underneath it:
 
 ```
- deepseek-v4-flash        1M · $0.09/$0.18 per M · ▲0.8s 58t/s · via cloudflare
+ deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
    ● auto        picks the fastest lane each answer — cloudflare now · recommended
-     cloudflare      0.8s  58 t/s  100%  $1.3/M  ▁▂▁▃▁▂  no tools
-     coreweave       0.4s  24 t/s   99%  $0.28/M ▁▁▇▁▂▁  tail 12s
-     deepinfra       0.8s  27 t/s   99%  $0.18/M         out ≤ 65k
+     cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
+     coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
+     deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
    ○ openrouter  let the router balance on price
 ```
 
 Each lane row reads, in order: its name, the wait before the first word, how fast it
-writes, how much of the last five minutes it was answering, what a million output tokens
-cost there, a sparkline of **your own** last eight first-token waits on it (taller is
-slower), and one short note. `←` or `tab` closes the lanes again.
+writes, what a million output tokens cost there, one short note about what is wrong with
+it, how much of the last five minutes it was answering, and a sparkline of **your own**
+last eight first-token waits on it (taller is slower). That is also the order a narrow
+window gives them up in — the sparkline goes first, and the note about capability outranks
+the uptime because `no tools` changes the answer you get. `←` or `tab` closes the lanes
+again.
 
 `enter` on a lane **pins** it: every request for this conversation goes to that lane
 and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
