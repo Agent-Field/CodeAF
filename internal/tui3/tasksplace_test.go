@@ -340,3 +340,126 @@ func TestTasksChangedSinceCountsOnlyLandedWorkAfterTheLook(t *testing.T) {
 		t.Fatalf("changed tasks = %d, want 1", got)
 	}
 }
+
+// tasksFamilyFixture is one conversation that split a piece of work up: a root
+// that landed today with three workers under it, and a second root beside it
+// that is nobody's family.
+func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
+	loc := time.FixedZone("fixture", -4*60*60)
+	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
+	at := func(hour int) time.Time { return time.Date(2026, time.August, 25, hour, 0, 0, 0, loc) }
+	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "aforge", Open: true}
+	kid := func(id, parent, label string) session.TaskIndexEntry {
+		return session.TaskIndexEntry{
+			ID: id, Parent: parent, Label: label, SessionID: "room-a",
+			Status: string(session.TaskDone), EndedAt: at(10),
+		}
+	}
+	row.Tasks.Rows = []session.TaskIndexEntry{
+		kid("1", "", "port the parser"),
+		kid("2", "1", "port the lexer"),
+		kid("3", "1", "port the tests"),
+		kid("4", "1", "port the docs"),
+		kid("9", "", "rename the flag"),
+	}
+	world := session.World{Projects: []session.Project{
+		{Name: "aforge", Sessions: []session.SessionRow{row}},
+	}, Read: now}
+	return world, session.LastDays(now, 24), now
+}
+
+// TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand is the clutter fix: eight
+// workers used to arrive as eight peers of everything else this machine ran.
+func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
+	world, win, now := tasksFamilyFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+
+	shut := reading.lay(120)
+	work := func(lines []tasksLine) []tasksLine {
+		var out []tasksLine
+		for _, line := range lines {
+			if line.kind == tasksLineTask {
+				out = append(out, line)
+			}
+		}
+		return out
+	}
+	rows := work(shut)
+	// TWO ROWS AND NOT FIVE: the root, and the task that heads no family.
+	if len(rows) != 2 {
+		t.Fatalf("a shut page drew %d rows of work, and it holds one family and one loner", len(rows))
+	}
+	root := rows[0]
+	if !root.folds || root.kids != 3 || root.open {
+		t.Fatalf("the root came out as folds=%v kids=%d open=%v", root.folds, root.kids, root.open)
+	}
+	if root.kin != tasksFoldShut {
+		t.Fatalf("the shut root wears %q", root.kin)
+	}
+	// AND THE LONER HOLDS THE COLUMN OPEN rather than sitting two cells left of
+	// everything else.
+	if rows[1].kin != tasksKinPad {
+		t.Fatalf("the task with no family wears %q", rows[1].kin)
+	}
+	// THE SHUT FOLD SAYS WHAT IS UNDER IT.
+	page := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	if !strings.Contains(page, tasksUnderWord(3)) {
+		t.Fatalf("the shut family does not say what it is holding:\n%s", page)
+	}
+	if strings.Contains(page, "port the lexer") {
+		t.Fatalf("a child was drawn under a shut fold:\n%s", page)
+	}
+
+	// OPENED, the three workers are under it, connected, and the last one closes
+	// the family.
+	reading.open = map[tasksKey]bool{tasksFamilyOf(root.item.entry): true}
+	rows = work(reading.lay(120))
+	if len(rows) != 5 {
+		t.Fatalf("an open family drew %d rows of work", len(rows))
+	}
+	if rows[0].kin != tasksFoldOpen {
+		t.Fatalf("the open root wears %q", rows[0].kin)
+	}
+	if rows[1].kin != tasksKinCont || rows[3].kin != tasksKinLast {
+		t.Fatalf("the connectors came out as %q … %q", rows[1].kin, rows[3].kin)
+	}
+	if !strings.Contains(strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n"), "port the lexer") {
+		t.Fatal("an open family does not draw its children")
+	}
+}
+
+// TestAPageWithNoFamiliesDrawsNoFamilyColumn is the other half of the law: the
+// column APPEARS when there is a tree, so nothing moves sideways on a machine
+// that has never split work up.
+func TestAPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
+	world, win, now := tasksFixture()
+	for _, line := range readTasks(world, tasksMine{}, win, time.Time{}, now).lay(120) {
+		if line.kind == tasksLineTask && line.kin != "" {
+			t.Fatalf("a page with no families drew the column: %q on %q", line.kin, line.item.entry.Label)
+		}
+	}
+}
+
+// TestAChildWhoseRootIsNotOnThisSectionStandsAlone guards the row that would
+// otherwise vanish: the sections are what a person acts on next, so a worker
+// still running under a root that landed this morning is filed apart from it.
+func TestAChildWhoseRootIsNotOnThisSectionStandsAlone(t *testing.T) {
+	world, win, now := tasksFamilyFixture()
+	rows := world.Projects[0].Sessions[0].Tasks.Rows
+	rows[2].Status, rows[2].EndedAt = string(session.TaskRunning), time.Time{}
+	world.Projects[0].Sessions[0].Open = true
+
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	found := false
+	for _, line := range reading.lay(120) {
+		if line.kind == tasksLineTask && line.item.entry.ID == "3" {
+			found = true
+			if line.kin == tasksKinCont || line.kin == tasksKinLast {
+				t.Fatalf("the running worker was drawn as a child of a root in another section: %q", line.kin)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the running worker is not on the page at all")
+	}
+}

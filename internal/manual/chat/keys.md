@@ -579,7 +579,7 @@ at and filtered, not edited by pointer.
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
-| `ctrl+w` | Delete the word behind the caret |
+| `ctrl+w` | Delete the word behind the caret. While the switcher is up it closes the conversation under the cursor instead |
 | `alt+backspace` | Same as `ctrl+w` |
 | `ctrl+backspace` | Same as `ctrl+w` |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
@@ -1172,6 +1172,10 @@ It **does nothing at all** when there is nowhere to go: one conversation open, o
 terminal has been in before. A key that cannot act says so by not being advertised — and
 when it can, the legend line above the box says `space space home · tab last · / commands`.
 
+With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k` opens the
+card of all of them — see *Switch between open conversations*. `tab` still works and still
+goes to the last one.
+
 It works while a turn is running in either conversation. Nothing is interrupted: the turn
 you leave keeps streaming into its own transcript, and it is redrawn from its first token
 when you come back.
@@ -1196,6 +1200,185 @@ uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and n
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
+
+## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
+
+**Press `ctrl+k` and you are in your previous conversation, at once.** Press it again and
+you are one further back. This is quick switch, the default: the press is the switch, the
+way a browser's `ctrl+tab` changes tabs. A card is drawn over the conversation you just
+landed in — the screen behind it dims — showing **the conversations this terminal has
+open**, and when you stop pressing, the card fades by itself after about a second. `esc`
+takes the whole thing back to where you started. There is nothing to confirm: by the time
+the card fades you are already there.
+
+Touch any other key while the card is up — an arrow, `→`, `ctrl+w` — and the card stops
+fading and holds still, so you can look around without switching; `enter` then goes. With
+quick switch turned off in `/settings`, `ctrl+k` always opens this holding card and waits.
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│  open              3 of 12 · tab down · shift+tab up · enter go · esc back   │
+│                                                                              │
+│  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
+│  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
+│  3 ○ Refactor the rail scope mo…  you are here              aforge-v2   40m  │
+│  ▸ 9 more on this machine · → reach them                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+Fixed columns — **number, glyph, subject, one clause, project, clock** — which is what
+makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many are
+open, of how many this machine has.
+
+**Everything else on the machine is behind the fold at the foot.** `→` reaches them and
+`←` puts them away again. A conversation below the fold is not open in this terminal;
+taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
+you are in keeps running.
+
+It works from the **first** session: on a fresh launch you hold one conversation, the card
+has that one row, and the fold has the rest of the machine in it.
+
+| Key | What it does |
+| --- | --- |
+| `ctrl+k` | Switch to the previous conversation at once; each further press goes one older. With quick switch off, it opens the card and steps the cursor instead |
+| `ctrl+tab` | The same key, on terminals that can send it. See below |
+| `ctrl+shift+k` / `ctrl+shift+tab` | Up one, on those same terminals |
+| `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
+| `shift+tab` / `↑` | Up one. Both wrap round at the ends |
+| `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
+| `enter` | Go to the row you are on |
+| `→` | Open the fold — every other conversation on this machine |
+| `←` | Fold them away again |
+| `ctrl+w` | Close the conversation under the cursor. See below |
+| `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
+| any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
+
+It works **in a conversation and on every place** — home, tasks, standing, memory, spend,
+search, settings — because it is drawn over the screen rather than being a screen of its
+own. Nothing under it moves by a cell.
+
+The cursor opens on the **first row you can actually go to**, never on `you are here`, so
+`ctrl+k` `enter` always lands somewhere.
+
+**It does nothing on a machine with one conversation on it** — a first run, and nothing
+else — and says so by not being there: no card, and the legend above the box does not name
+it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
+/ commands`, dropping clauses from the left as the frame narrows.
+
+**Eight conversations is the cap** on what one terminal holds at once. Taking a ninth row
+says `8 open is as many as aforge holds — /quit closes this one` and leaves you where you
+were.
+
+## What did my other chats do while I was away — what each row of the switcher tells you
+
+Every row says **what changed since you last looked**, not what the conversation is about:
+
+| The row says | What happened |
+| --- | --- |
+| `asking you something` | it is waiting on you — a question or an approval |
+| `3 tasks running` | that many pieces of work are turning in it right now |
+| `it finished while you were away` | a turn ended in there after you left |
+| `nothing new` | it has been quiet since you left it |
+| `you are here` | the conversation you are sitting in |
+| `open in another window` | another terminal is holding it; `enter` will refuse |
+| `that folder is gone` | the project directory it worked in is not there any more |
+| *(nothing)* | quiet — nothing has happened in it since you left |
+
+Then the project it is in and how long ago you left it. That is what makes the switcher
+double as the catch-up: after twenty minutes in one chat, one key says what the other seven
+did.
+
+The card is **frozen the moment it opens**. A conversation that finishes a turn while you
+are looking at the card does not re-rank the list under your finger.
+
+## Switch without pressing enter — quick switch, it goes when I stop pressing, it switched right away
+
+**Quick switch is on by default**: `ctrl+k` switches on the press, the card over the new
+conversation is a receipt, and pausing is what makes it fade — there is no `enter` in the
+gesture at all. `ctrl+shift+k` (where the terminal can send it) cycles the other way, and
+with the card down it enters at the far end of the ring: the open conversation you have
+not looked at for longest.
+
+Three things to know about the fast gesture:
+
+- **`esc` is the undo.** However many presses deep you are, `esc` puts you back in the
+  conversation the first press left, with the card down.
+- **`tab` afterwards returns to where you started.** Cycling through two conversations on
+  the way to a third does not make a stepping stone "the last one" — after the card fades,
+  `tab` goes back to the conversation you were actually in before the burst.
+- **You can start typing immediately.** A letter typed while the card is still fading lands
+  in your message; the receipt never eats a keystroke.
+
+**To turn it off**: `/settings`, interface, the row named `quick switch`. Off, `ctrl+k`
+opens the card, the cursor steps, and nothing moves until `enter` — the same card, held
+open, that any non-chord key converts the fading one into.
+
+It commits on the press and never on releasing `ctrl`, deliberately: a terminal only
+reports key releases under an optional protocol that dies inside tmux and most terminals,
+and a gesture that worked at the desk and died over ssh would be worse than one honest
+gesture everywhere. Chrome's `ctrl+tab` commits on the press too — there is no difference
+to feel.
+
+## Why ctrl+k and not ctrl+tab or alt+tab
+
+`ctrl+tab` **is** bound — but only on terminals that can send it, and many cannot.
+
+`ctrl+tab` has no distinct encoding in an ordinary terminal: it arrives as a plain `tab` and
+is indistinguishable from it. Only a terminal that speaks the kitty keyboard protocol sends
+it as itself, and aforge asks yours on every frame — where the answer is yes, `ctrl+tab`
+opens the switcher and `ctrl+shift+tab` walks it back. Where the answer is no, the chord is
+not bound and is never named, because a key aforge tells you about is a key that works.
+Two popular terminals — WezTerm and Windows Terminal — also spend `ctrl+tab` on their own
+tabs by default, so it would never reach aforge there.
+
+`alt+tab` is not available at any price: the window manager takes it on Windows and on most
+Linux desktops.
+
+`ctrl+k` has none of those problems. Every terminal sends it, no window manager wants it,
+and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS Code.
+
+**`ctrl+shift+k` is the reverse, under the same rule.** An ordinary terminal sends
+`ctrl+shift+k` and `ctrl+k` as the same byte, so it is bound only where the terminal
+answered the keyboard query — and it costs nothing that half the terminals in the world
+cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
+card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
+unlooked-at — and under quick switch lands you in it at once.
+
+## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
+
+**`ctrl+w` on the row closes that conversation in this terminal.** The card stays up and
+says `closed · <name>`, so tidying three of them costs three keystrokes rather than three
+openings.
+
+**Closing is not switching.** It ends that conversation's session, and **work running inside
+it stops with it** — the same thing the quit door warns about. So:
+
+- a conversation with nothing running closes on **one** press;
+- a conversation with work in it takes **two**, and the card says what is running in
+  between: `2 tasks running · ctrl+w again to close it anyway`;
+- moving the cursor cancels that warning, so a second press never lands on a row you have
+  walked away from.
+
+`ctrl+w` on the row marked `you are here` closes the conversation you are in and brings the
+next one forward — the same thing `/quit` on it would do. With only one conversation open it
+says `that is the only conversation open — /quit closes aforge`.
+
+**`ctrl+w` on a row below the fold does nothing** and says
+`that one is not open here — enter opens it`. There is nothing to close: this terminal is
+not holding it.
+
+Eight is the cap on how many one terminal holds. `ctrl+w` is how you make room.
+
+## `tab` still goes straight to the last one
+
+`tab` on an empty message box has not changed: it goes to the conversation you were in
+before this one, in one key, with no card. Use `tab` to flick between two and `ctrl+k` when
+there are more.
+
+The legend above the box names **every door that would act**: `tab last` appears once a
+second conversation is open, `ctrl+k switch` whenever there is anywhere at all to go. On a
+place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
+fixed clauses the design sets word for word.
 
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 
@@ -1919,6 +2102,13 @@ Two more chords surprise people:
   terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
+- **`ctrl+w` means two things**, and never on the same screen: in the message box it
+  deletes the word behind the caret; while the **switcher** is up it closes the
+  conversation under the cursor. The card has taken the whole keyboard by then, and there
+  is no caret on it to delete a word behind.
+- **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
+  inside a harness design's room, while its approval row is up, it saves the design. That
+  row is modal and takes the key first.
 
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
@@ -1976,7 +2166,7 @@ answer:
 | `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
+| `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |

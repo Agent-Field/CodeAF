@@ -70,6 +70,39 @@ var demoTasks = []demoTask{
 			DurationMS: 3 * 60 * 1000,
 		},
 	},
+	// A FAMILY: one root and the three workers it handed the job out to. It is
+	// here so the tasks page has a tree to fold — a fixture with none of them
+	// draws the same flat list it always drew, which is indistinguishable from
+	// the fold being broken (tasksplace.go's [tasksFamilies]).
+	{
+		project: firstProjectName, talk: "The Tab Bar's Counts", ago: 90 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "5", Parent: "1", Title: "Port the lexer", Status: string(session.TaskDone),
+			Outcome:      "The lexer reads the new list's rows and keeps its own cursor.",
+			Files:        []string{"internal/tui3/lex.go"},
+			FilesChanged: 1, Cost: 0.11, Model: "anthropic/claude-sonnet-4", Tokens: 14_200,
+			DurationMS: 3 * 60 * 1000,
+		},
+	},
+	{
+		project: firstProjectName, talk: "The Tab Bar's Counts", ago: 80 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "6", Parent: "1", Title: "Port the tests", Status: string(session.TaskDone),
+			Outcome:      "Every table test moved over; two of them needed the new fixture.",
+			Files:        []string{"internal/tui3/lex_test.go", "internal/tui3/fixtures_test.go"},
+			FilesChanged: 2, Cost: 0.19, Model: "anthropic/claude-sonnet-4", Tokens: 21_600,
+			DurationMS: 5 * 60 * 1000,
+		},
+	},
+	{
+		project: firstProjectName, talk: "The Tab Bar's Counts", ago: 70 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "7", Parent: "1", Title: "Port the docs", Status: string(session.TaskFailed),
+			Outcome: "The page it rewrites is generated, so the edit had nowhere to land.",
+			Cost:    0.04, Model: "anthropic/claude-sonnet-4", Tokens: 5_900,
+			DurationMS: 1 * 60 * 1000,
+		},
+	},
 	{
 		project: "infra", talk: "The Certificate Rotation",
 		entry: session.TaskIndexEntry{
