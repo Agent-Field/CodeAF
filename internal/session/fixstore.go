@@ -79,10 +79,25 @@ const (
 	// the silence is worth more than the line.
 	fixMinSuccessRatio = 0.6
 
-	// fixMinConfirmations is how many times a patch must have worked before it is
-	// ever offered. One is deliberate: a fix seen once is thin evidence, and it is
-	// still infinitely better than the nothing the model would otherwise have.
-	fixMinConfirmations = 1
+	// fixMinPairings is how many times the SAME error and the SAME command must
+	// have been watched together before the pairing may be spoken at all.
+	//
+	// TWO, and it is the floor under calling an adjacency a cause. One command
+	// follows one failure in every session that has ever failed at anything, and
+	// the store cannot tell which of those pairs is a remedy — it measured
+	// `git log --oneline -5` as the fix for `npm error Missing script: build`
+	// (fixremedy.go's second measured failure) because that is what got typed
+	// next. A pairing the world produced TWICE is a different kind of fact. The
+	// counts halve on the decay interval, so a pair seen twice long enough ago
+	// falls back under this floor and goes quiet again, which is the direction to
+	// fail in.
+	fixMinPairings = 2
+
+	// fixMinWorkedOffers is the other road to being spoken, and it is one. A
+	// patch this store OFFERED, that was taken, after which the error went away
+	// is not an adjacency at all — it is the one observation that says the
+	// command is a cure (see [fixEntry]) — so it needs no second sighting.
+	fixMinWorkedOffers = 1
 
 	// fixAdviceLimit is how many patches may ride on one failed result. ONE. The
 	// line is read by a model that has just failed and is deciding what to do
@@ -336,11 +351,27 @@ func (e *fixEntry) ratio() float64 {
 	return float64(e.ok()) / float64(attempts)
 }
 
-// worthSaying is the gate the whole sidecar's silence hangs on.
+// worthSaying is the gate the whole sidecar's silence hangs on: A HINT IS A
+// COMMAND WITH EVIDENCE BEHIND IT, OR IT IS SILENCE (fixremedy.go's law, and the
+// two measured lines that put it there).
+//
+// It is asked HERE, on the way out, rather than only where an entry is written,
+// because every store already on a laptop is full of what the old gate let
+// through — a regex fragment, a `gh` that once followed an unrelated failure —
+// and those files are read by the next session either way.
 func (e *fixEntry) worthSaying() bool {
-	return strings.TrimSpace(e.Fix) != "" &&
-		e.ok() >= fixMinConfirmations &&
-		e.ratio() >= fixMinSuccessRatio
+	if strings.TrimSpace(e.Fix) == "" || !fixRunnableRemedy(e.Fix) {
+		return false
+	}
+	if e.ratio() < fixMinSuccessRatio {
+		return false
+	}
+	// A patch that was handed back and seen to work stands on that alone;
+	// anything else has to have been watched more than once.
+	if e.worked() >= fixMinWorkedOffers {
+		return true
+	}
+	return e.ok() >= fixMinPairings
 }
 
 // fixDocument is the file on disk. The four counters are the product metric —
